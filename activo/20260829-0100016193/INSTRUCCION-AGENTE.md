@@ -5,7 +5,7 @@ Lea **del disco** en este orden:
 
 1. `activo/20260829-0100016193/solicitud.json` — formulario completo
 2. `activo/20260829-0100016193/chat.json` — mensajes del coordinador (releer en cada turno)
-3. `C:\DevQuasar\Qrystalos\Qrys.Quatec\cola\aval-asesor-lista.htm` — HTML avalasesor (cola)
+3. `C:\DevQuasar\Qrystalos\QrystalosBA\cola\aval-asesor-lista.htm` — HTML avalasesor (cola)
 4. `sql/` — scripts: SPK_AFACTURAR.sql, SPK_AFACTURAR_CORTE.sql, SPK_ESTADO_ADMI.sql
 5. Documentación y Qrystalos2 según dictamen
 

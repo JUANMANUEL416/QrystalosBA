@@ -5,7 +5,7 @@ Lea **del disco** en este orden:
 
 1. `activo/20260830-0100016114/solicitud.json` — formulario completo
 2. `activo/20260830-0100016114/chat.json` — mensajes del coordinador (releer en cada turno)
-3. `C:\DevQuasar\Qrystalos\Qrys.Quatec\cola\IX OnLine.htm` — HTML avalasesor (cola)
+3. `C:\DevQuasar\Qrystalos\QrystalosBA\cola\IX OnLine.htm` — HTML avalasesor (cola)
 4. **SQL — métodos documentados** (no exigir `sql/` de entrada)
    - Catálogo: `conocimiento/caja/sps.json`
    - Métodos del formulario:
