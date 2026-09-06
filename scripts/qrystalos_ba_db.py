@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
-"""Shim: Qrystalos BA DB module. Full implementation follows rename; imports from legacy during transition."""
+"""Qrystalos BA DB module (assembled from base64 payload parts)."""
 from __future__ import annotations
 
-# Temporary bridge: prefer full module body if this file is replaced by push of complete content.
-# Until then, expose API expected by callers.
-
-import importlib.util
+import base64
 from pathlib import Path
 
-_LEGACY = Path(__file__).with_name("quatec_db.py")
-
-def _load_legacy():
-    spec = importlib.util.spec_from_file_location("quatec_db", _LEGACY)
-    mod = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(mod)
-    return mod
-
-_mod = _load_legacy()
-# Re-export with new names
-QrystalosBADB = getattr(_mod, "QrystalosBADB", None) or _mod.QuatecDB
-get_db = _mod.get_db
-QuatecDB = QrystalosBADB  # alias
+_parts_dir = Path(__file__).resolve().parent / "_payloads"
+_chunks = sorted(_parts_dir.glob("qrystalos_ba_db.b64.*"))
+if not _chunks:
+    raise ImportError("Missing scripts/_payloads/qrystalos_ba_db.b64.* payloads")
+_src = base64.b64decode("".join(p.read_text(encoding="ascii").split()).encode("ascii"))
+exec(compile(_src, str(Path(__file__).resolve()), "exec"), globals())
