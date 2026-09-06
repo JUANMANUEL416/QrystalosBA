@@ -2,9 +2,9 @@
  * Histórico de dictámenes — sincronizado con activo/, dictamenes/ y historico/registro.json
  */
 window.QrysHistorico = (function () {
-  const STORAGE = "qrys_quatec_historico";
-  const PATH_APROBADOS = "C:\\DevQuasar\\Qrystalos\\Qrys.Quatec\\aprobados\\";
-  const PATH_DICTAMENES = "C:\\DevQuasar\\Qrystalos\\Qrys.Quatec\\dictamenes\\";
+  const STORAGE = "qrystalos_ba_historico";
+  const PATH_APROBADOS = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\aprobados\\";
+  const PATH_DICTAMENES = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\dictamenes\\";
 
   function load() {
     try {
