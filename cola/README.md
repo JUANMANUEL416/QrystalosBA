@@ -7,7 +7,7 @@ Evita transcribir manualmente los datos de avalasesor.
 ### A) Lista de requerimientos (flujo diario)
 
 1. Guarde la tabla aval técnico (**Ctrl+S**) como `aval-asesor-lista.htm` en esta carpeta.
-2. En Qrys.Quatec → **Examinar…** (o **Registrar** con servidor local).
+2. En Qrystalos BA → **Examinar…** (o **Registrar** con servidor local).
 3. Se registran **todos los REQ nuevos** en la cola automáticamente.
 4. Los REQ que ya estaban en cola se **omiten** (aún en espera de aval).
 5. Trabaje **uno a uno** con **Abrir** en la tabla.

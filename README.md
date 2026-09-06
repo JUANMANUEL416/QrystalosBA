@@ -1,4 +1,4 @@
-# Qrys.Quatec — Oficina de coordinación Qrystalos
+# Qrystalos BA — Oficina de coordinación Qrystalos
 
 Proyecto de **coordinación técnica**. Recibe requerimientos del cliente, los analiza contra Qrystalos2 y la documentación del sistema, y genera **dictámenes HTML** para el equipo de desarrollo. **No implementa cambios** en la aplicación.
 
@@ -28,7 +28,7 @@ Abrir: **`abrir-app.bat`** → menú central (Analista / Consultas / Documentar)
 ## Estructura del proyecto
 
 ```
-Qrys.Quatec/
+QrystalosBA/
 ├── app/                    # GUI (menú central + analista)
 ├── conocimiento/           # Flujos de proceso (no cuerpos de SP)
 ├── cola/                   # HTML guardados de ixonline (Ctrl+S)

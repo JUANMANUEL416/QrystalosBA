@@ -1,6 +1,6 @@
-# Base de datos Qrys.Quatec
+# Base de datos Qrystalos BA
 
-Archivo: **`quatec.db`** (SQLite)
+Archivo: **`qrystalos_ba.db`** (SQLite)
 
 ## Tablas
 

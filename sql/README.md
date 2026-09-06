@@ -1,6 +1,6 @@
 # Carpeta SQL — Trabajo (siempre la misma)
 
-**Ruta fija:** `C:\DevQuasar\Qrystalos\Qrys.Quatec\sql\`
+**Ruta fija:** `C:\DevQuasar\Qrystalos\QrystalosBA\sql\`
 
 Un solo caso a la vez. Coloque aquí los `.sql` del requerimiento en curso.
 

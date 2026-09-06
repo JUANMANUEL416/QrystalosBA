@@ -1,4 +1,4 @@
-# Qrys.Quatec — Oficina de coordinación
+# Qrystalos BA — Oficina de coordinación
 
 Proyecto de **coordinación técnica** para Qrystalos. No contiene código de la aplicación; genera dictámenes HTML para desarrolladores a partir de requerimientos del cliente.
 
