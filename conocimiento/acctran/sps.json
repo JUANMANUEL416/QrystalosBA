@@ -1,0 +1,75 @@
+{
+  "procesoId": "acctran",
+  "actualizado": "2026-09-03",
+  "nota": "SPQ_HACTRAN leído hoy en sql/ (LLENAR, INSERT, UPDATE). DATOSAFI no se bajó: el FE ya lo usa y este REQ no lo cambia.",
+  "sps": [
+    {
+      "nombre": "SPQ_HACTRAN",
+      "tipo": "SPQ",
+      "modelo": "HACTRAN",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_HACTRAN.sql",
+      "cola": "Resto visto en FE y no fichado: CONSULTAR, DELETE, RELIQUIDAR, CONSULTARTOPES, CERTIFICADORES, CONSULTARSIRASADMISION, VALIDARACCIDENTEMISMODIA, CERTIFICADO_ATENCION, CERTIFICADO_CONSUMO, FORMATO_RECLAMACION, AVISO_AUT_POLICIAL.",
+      "metodos": [
+        {
+          "id": "LLENAR",
+          "hace": "Carga el expediente HACTRAN (incluye campos *_AMPARO) para el modal.",
+          "valida": ["CNSHACTRAN en PARAMETROS"],
+          "noValida": ["No trae AFI; no rellena amparo si está vacío en HACTRAN"],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT del expediente. Los *_AMPARO salen como están guardados.",
+          "capaId": "02-operacion",
+          "gateId": "amparo-traer-afi",
+          "estado": "leido"
+        },
+        {
+          "id": "INSERT",
+          "hace": "Crea HACTRAN desde JSON del FE, incluidos TIPODOC_AMPARO, DOC_AMPARO y los cuatro nombres.",
+          "valida": ["No duplicar mismo IDAFILIADO accidentado el mismo día"],
+          "noValida": ["No exige que *_AMPARO coincidan con AFI"],
+          "errores": ["YA ESTA CREADO EL ACCIDENTE NO PUEDO INSERTARLO EL MISMO IDAFILIADO ACCIDENTADO EL MISMO DIA"],
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "Nueva fila HACTRAN. Consecutivo con SPK_GENCONSECUTIVO. Este REQ no cambia el SP.",
+          "capaId": "02-operacion",
+          "gateId": "amparo-traer-afi",
+          "estado": "leido"
+        },
+        {
+          "id": "UPDATE",
+          "hace": "Actualiza HACTRAN desde JSON, incluidos los seis campos de persona de Amparo.",
+          "valida": ["CNSHACTRAN"],
+          "noValida": ["No valida contenido de amparo contra AFI"],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE de columnas existentes. Este REQ no cambia el SP.",
+          "capaId": "02-operacion",
+          "gateId": "amparo-traer-afi",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PACIENTE_COL",
+      "tipo": "SPQ",
+      "modelo": "PACIENTE_COL",
+      "estado": "no_leido",
+      "fuente": "",
+      "cola": "DATOSAFI: el FE ya lo llama para conductor/propietario. No se pide el .sql: este REQ reutiliza esa llamada.",
+      "metodos": [
+        {
+          "id": "DATOSAFI",
+          "hace": "Devuelve datos del afiliado (tipo doc, documento, nombres, FNACIMIENTO, etc.).",
+          "valida": ["IDAFILIADO"],
+          "noValida": ["No escrito en HACTRAN"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura. El botón de Amparo copia un subconjunto al formulario.",
+          "capaId": "02-operacion",
+          "gateId": "amparo-traer-afi",
+          "estado": "listado"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,696 @@
+{
+  "procesoId": "caja",
+  "actualizado": "2026-08-31",
+  "nota": "SP → METODO. Se llena al leer el .sql. No se copia el cuerpo. Fuente de SPQ_CONF_CAJA: sql_refe/0100015121; revalidar con sql/ de hoy.",
+  "sps": [
+    {
+      "nombre": "SPQ_CONF_CAJA",
+      "tipo": "SPQ",
+      "modelo": "CONF_CAJA",
+      "estado": "parcial",
+      "fuente": "sql_refe/0100015121/SPQ_CONF_CAJA.sql",
+      "cola": "Cualquier METODO no listado aquí → EXEC SPQ_CONF_CAJA_2 @JSON",
+      "metodos": [
+        {
+          "id": "INFO_CAJA",
+          "hace": "Devuelve el estado de la caja del puesto (abierta/cerrada, cajero, turno, fecha).",
+          "valida": [
+            "USVGS IDCJAPERTURACAJA tiene DATO",
+            "Ese código existe en CPCJ"
+          ],
+          "noValida": [],
+          "errores": [
+            "ABRIR CAJA: Variable del Sistema IDCJAPERTURACAJA sin Definicion.",
+            "ABRIR CAJA: Concepto de Caja definido en la variable del Sistema IDCJAPERTURACAJA, No existe en la tabla conceptos de caja"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura. Si KO, no hay datos de sesión para la pantalla.",
+          "capaId": "02-operacion",
+          "gateId": "entrar-pantalla",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_INGRESO_PANTALLA",
+          "hace": "Candado al entrar a Administrativo → Caja. Decide si el usuario puede operar en ese equipo.",
+          "valida": [
+            "FNK_VALIDA_TURNO_CAJA: cajero, caja existe, cajero = quien abrió, equipo es caja, horario",
+            "IDCJAPERTURACAJA definida y ∈ CPCJ",
+            "Turno CXT+TUR del día de la semana (lun–dom)"
+          ],
+          "noValida": [
+            "Códigos 2 (caja cerrada) y 4 (sin turno) de FNK_VALIDA_TURNO_CAJA están comentados: no bloquean aquí"
+          ],
+          "errores": [
+            "No es Cajero.",
+            "La caja no existe.",
+            "Cajero diferente al que abrio la caja.",
+            "El equipo no es caja.",
+            "No tiene turno para este horario.",
+            "ABRIR CAJA: Variable del Sistema IDCJAPERTURACAJA sin Definici?.",
+            "ABRIR CAJA: Concepto … No existe en la tabla conceptos de caja",
+            "No tiene turno configurado para hoy [día]."
+          ],
+          "llama": ["FNK_VALIDA_TURNO_CAJA"],
+          "efecto": "OK → se monta la pantalla. KO → el FE redirige fuera de caja.",
+          "capaId": "02-operacion",
+          "gateId": "entrar-pantalla",
+          "estado": "leido"
+        },
+        {
+          "id": "INFO_CAJA_VALIDAR",
+          "hace": "Igual que INFO_CAJA más validación de turno y total CAJR. Arma el estado de sesión en el puesto.",
+          "valida": [
+            "Mismas de FNK_VALIDA_TURNO_CAJA (incluye código 4: sin turno)",
+            "IDCJAPERTURACAJA ∈ CPCJ"
+          ],
+          "noValida": [],
+          "errores": [
+            "No es Cajero.",
+            "La caja no existe.",
+            "Cajero diferente al que abrio la caja. + nombre",
+            "No tiene turno asignado.",
+            "El equipo no es caja.",
+            "No tiene turno para este horario.",
+            "IDCJAPERTURACAJA sin definir / no está en CPCJ"
+          ],
+          "llama": ["FNK_VALIDA_TURNO_CAJA"],
+          "efecto": "OK con datos de caja, cajero, turno y SUM(CAJR.VALOR).",
+          "capaId": "02-operacion",
+          "gateId": "entrar-pantalla",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_INGRESO_CAJA",
+          "hace": "Validación auxiliar por CODCAJA.",
+          "valida": ["Si existe alguna fila ACJ de esa caja, registra error"],
+          "noValida": ["El mensaje habla de «horarios»; la condición es COUNT(ACJ)>0 — posible desajuste de texto"],
+          "errores": ["La caja no cuenta con horarios configurados."],
+          "llama": [],
+          "efecto": "KO si ya hay sesiones ACJ. Uso en FE a confirmar.",
+          "capaId": "02-operacion",
+          "gateId": "entrar-pantalla",
+          "estado": "leido"
+        },
+        {
+          "id": "ABRIR_CAJA",
+          "hace": "Abre la sesión de caja del cajero en el puesto. Orquesta validaciones y llama al SPK de apertura.",
+          "valida": [
+            "IDCJAPERTURACAJA definida y el código existe en CPCJ",
+            "CAJ.ABIERTA no es 1 (la caja no está ya abierta)",
+            "No hay ACJ con ABIERTA=1 colgadas",
+            "Hay turno CXT+TUR para caja+cajero+turno que se abre",
+            "FNK_VALIDA_TURNO_CAJA (cajero, caja, quién abrió, turno, equipo, horario)"
+          ],
+          "noValida": [],
+          "errores": [
+            "ABRIR CAJA: Variable del Sistema IDCJAPERTURACAJA sin Definicion.",
+            "ABRIR CAJA: Concepto … No existe en la tabla conceptos de caja",
+            "La caja ya esta abierta.",
+            "Existen sesiones de caja abiertas sin cerrar (ACJ). Debe regularizarlas antes de abrir nuevamente.",
+            "Cajero sin Configuraci?.",
+            "No tiene turnos configurados.",
+            "No es Cajero. / La caja no existe. / Cajero diferente… / No tiene turno asignado. / El equipo no es caja. / No tiene turno para este horario.",
+            "ERROR_MESSAGE() del SPK_APERTURA_DE_CAJA"
+          ],
+          "llama": ["FNK_VALIDA_TURNO_CAJA", "SPK_APERTURA_DE_CAJA"],
+          "efecto": "Si OK, el SPK crea la sesión (ACJ). Recién ahí se pueden armar recibos.",
+          "capaId": "02-operacion",
+          "gateId": "abrir-cerrar",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_CAJA",
+          "hace": "Cierra el turno de la caja. Caja menor va a reembolso; el resto a cierre normal.",
+          "valida": [
+            "Fecha de cierre no mayor a hoy",
+            "La caja no está ya cerrada (CAJ.ABIERTA=0 → KO)",
+            "IDCJAPERTURACAJA definida y ∈ CPCJ",
+            "No hay FCJ de la sesión ESTADO='P' y CERRADA=0 (recibos sin confirmar); devuelve listado",
+            "Caja no Menor y no NOCONTAB: no hay recibos confirmados (CERRADA=1) sin CONTABILIZADA=1 (salvo DEAPERTURA)",
+            "Caja Auxiliar Activa: efectivo CAJR (FPA.FISICO=1) no puede superar CAJ.FOFI"
+          ],
+          "noValida": [],
+          "errores": [
+            "La fecha de cierre no puede ser mayor a la fecha actual",
+            "La Caja se encuentra cerrada",
+            "IDCJAPERTURACAJA sin definir / no está en CPCJ",
+            "CERRAR CAJA: Existen recibos de caja sin confirmar…",
+            "CERRAR CAJA: Existen Recibos de Caja con Errores Contables, No se puede Continuar con el Cierre",
+            "No se puede cerrar la caja: El valor para cerrar la caja debe ser: {FOFI}"
+          ],
+          "llama": ["SPK_SOL_REEMBOLSO_CAJAMENOR (si CAJ.CLASE=Menor)", "SPK_CIERRE_DE_CAJA (si no)"],
+          "efecto": "Turno cerrado. Recibos pendientes o con error contable bloquean el cierre.",
+          "capaId": "02-operacion",
+          "gateId": "abrir-cerrar",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDFPA",
+          "hace": "Inserta o edita formas de pago (PCJ) del recibo de ingreso. Toma CPCJ.CUENTA del primer concepto FCJD para el asiento.",
+          "valida": [
+            "INSERTAR/EDITAR: suma PCJ + valor nuevo no supera FCJ.VALORTOTAL",
+            "Si FPA.FISICO=1 y ya hay esa forma, acumula VALOR en la misma PCJ"
+          ],
+          "noValida": [
+            "No exige que FCJD.CONCEPTO exista en CPCJ: @CUENTA sale NULL si el concepto no está y igual inserta PCJ (COALESCE con TIPO_TERCERO)"
+          ],
+          "errores": [
+            "El monto total de las formas de pago, supera el monto del servicio.",
+            "ERROR_MESSAGE() del INSERT/UPDATE"
+          ],
+          "llama": ["SPK_GENCONSECUTIVO (@PCJ)"],
+          "efecto": "PCJ actualizado. Devuelve VALORCOPAGO / VALORPAGADO / VALORFALTANTE / CERRADA. Cuenta contable queda en PCJ.CUENTA.",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMAR_RECIBO",
+          "hace": "Confirma el recibo de ingreso: cierra el documento, actualiza banco y dispara el asiento de ingreso.",
+          "valida": [
+            "Hay PCJ y SUM(PCJ.VALOR) = FCJ.VALORTOTAL",
+            "Fecha del recibo ≤ hoy",
+            "Periodo PRI del mes/año del recibo existe y no está CERRADO",
+            "FCJ no CERRADA, ESTADO no D ni A, VALORTOTAL > 0",
+            "No hay MCP previo PROCEDENCIA=CAJA (REFERENCIA2=caja, REFERENCIA1=recibo) no anulado",
+            "Si procedencia CITAS: existe CIT (consecutivo + afiliado)",
+            "Si procedencia CE: AUT no Anulada",
+            "Exactamente una ACJ ABIERTA en esa caja",
+            "No usar el concepto IDCJAPERTURACAJA en un recibo operativo (salvo DEAPERTURA 1/2/3)"
+          ],
+          "noValida": [
+            "No recorre todas las líneas FCJD.CONCEPTO contra CPCJ. Un concepto huérfano pasa este candado y truena en el SPK contable"
+          ],
+          "errores": [
+            "El recibo no tiene detalles de pago.",
+            "El valor del detalle de pago, es diferente al valor del Recibo",
+            "La fecha del recibo es mayor a la fecha actual",
+            "El periodo contable no existe o se encuentra esta cerrado",
+            "El recibo ya se encuentra confirmado",
+            "No se puede Confirmar un Recibo Desecho. / Anulado. / Con Valor Cero (0).",
+            "El recibo ya se encuentra contabilizado",
+            "La cita fue cancelada, no se puede confirmar.",
+            "La Autorizaci?n fue anulada, no se puede confirmar.",
+            "La caja se encuentra abierta mas de una vez. / La caja no se encuentra abierta.",
+            "El concepto de apertura de caja (IDCJAPERTURACAJA) no puede usarse en recibos operativos.",
+            "ERROR_MESSAGE() de los SPK (cierre, banco o contab)"
+          ],
+          "llama": ["SPK_CIERRERECIBO_CAJA", "SPK_ACTUALIZA_SALDO_BANCO", "SPK_NC_CONTAB_CAJA_ING"],
+          "efecto": "Este método YA dispara capas 4 (banco) y 5 (contabilidad). Alinea CNSACJ a la sesión abierta. No espera a procaja → Contabilización.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMAR_RECIBO_EGRESO",
+          "hace": "Confirma el recibo de egreso (pago). Cierra el recibo y dispara asiento de egreso. Rama extra si es traslado entre cajas.",
+          "valida": [
+            "Si TIPOEGRESO es traslado (IDCJTETRASLADO / IDCJTETRASLADOPPAL): la caja destino (FCJ.IDTERCERO) debe estar ABIERTA",
+            "Destino debe existir como CAJ, como tercero y con categoría TEXCA = CJTE.IDCATEGORIA del tipo de egreso",
+            "PCJ con suma = VALORTOTAL; fecha; PRI abierto; no cerrado/anulado/deshecho; total>0; sin MCP duplicado",
+            "CITAS/CE igual que ingreso; una sola ACJ abierta; fecha/hora del recibo no mayor al sistema"
+          ],
+          "noValida": [
+            "Tampoco exige cada FCJD.CONCEPTO ∈ CPCJ"
+          ],
+          "errores": [
+            "Para confirmar el traslado de caja, la Caja de destino debe estar ABIERTA",
+            "Para confirmar el traslado… destino debe existir y estar creada como tercero con la categoria definida…",
+            "El recibo no tiene detalles de pago. / valor distinto / fecha / periodo / ya confirmado / deshecho / anulado / valor 0 / ya contabilizado (duplicidad)",
+            "La cita fue cancelada… / La cita fue anulada…",
+            "Caja abierta más de una vez / no abierta / Fecha/Hora de Recibo Mayor a la Fecha del Sistema."
+          ],
+          "llama": ["SPK_CIERRERECIBO_CAJA", "SPK_NC_CONTAB_CAJA_EGR"],
+          "efecto": "Marca FCJ.CERRADA=1. No llama SPK_ACTUALIZA_SALDO_BANCO (eso es del ingreso). Dispara capa 5 de egreso.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIAR_RECIBOS_CONTABILIDAD",
+          "hace": "Contabilización masiva desde Procesos de caja: marca recibos y dispara lote procedencia CAJA.",
+          "valida": ["Periodo PRI año/mes no cerrado"],
+          "noValida": [
+            "No revalida conceptos CPCJ; asume recibos ya confirmados"
+          ],
+          "errores": ["PERIODO CERRADO NO PUEDE CONTINUAR"],
+          "llama": ["SPK_CONTAB_MASIVA (procedencia 'CAJA')"],
+          "efecto": "UPDATE FCJ.MARCACONT=1 de los CNSFACJ del JSON; luego asientos masivos. Segundo camino de capa 5 (el primero fue al confirmar).",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-masivo",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIME_CONTA_EGRESO",
+          "hace": "Datos para imprimir el comprobante contable de un egreso confirmado.",
+          "valida": [
+            "FCJ clase PAGO está CERRADA=1",
+            "Existe MCP con ese NROCOMPROBANTE"
+          ],
+          "noValida": [],
+          "errores": [
+            "El recibo no esta confirmado aun.",
+            "Comprobante con errores contables."
+          ],
+          "llama": [],
+          "efecto": "Solo lectura (MCP/MCH). No cambia el proceso.",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-al-confirmar",
+          "estado": "leido"
+        },
+        {
+          "id": "CALC_IMPUESTOS",
+          "hace": "Calcula impuesto (FNK_CALCULO_IMPUESTO) para una base.",
+          "valida": ["IDIMPUESTO, IDCLASE y VALOR_BASE > 0; el FNK debe devolver filas"],
+          "noValida": [],
+          "errores": ["Par?metros inv?lidos", "Impuesto no existente o sin configurar"],
+          "llama": ["FNK_CALCULO_IMPUESTO"],
+          "efecto": "Apoyo al armar egreso/impuestos; no confirma.",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE_MOVIMIENTO",
+          "hace": "Consulta un recibo (FCJ + pagos PCJ + afiliado/tercero) para la pantalla.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAER_COMPROBANTE",
+          "hace": "Trae comprobante (temporales TFCJ / depósito). Detalle fino al releer.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "ANULAR_COMPROBANTE",
+          "hace": "Anula comprobante temporal. Detalle al releer.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "VALIDA_INSERT_FPA",
+          "hace": "Valida antes de insertar forma de pago de ingreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "VALIDA_INSERT_FPA_EGRESO",
+          "hace": "Valida forma de pago de egreso; discrimina traslado/devolución por concepto USVGS.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "trasladar"
+        },
+        {
+          "id": "VALIDA_EDIT_FPA_EGRESO",
+          "hace": "Valida edición de forma de pago en egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "ELIMINA_FPA",
+          "hace": "Quita forma de pago de ingreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "ELIMINA_FPA_EGRESO",
+          "hace": "Quita forma de pago de egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "CRUDFPA_2",
+          "hace": "Variante de CRUDFPA (segunda rama de formas de pago).",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "CRUDFPA_EGRESO",
+          "hace": "CRUD de formas de pago en egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "CRUDFPA_EGRESO_DEVOLUCION",
+          "hace": "Formas de pago en devolución de egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "NUEVO_RECIBO_EGRESO",
+          "hace": "Crea cabeza de recibo de egreso (FCJ clase PAGO).",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "VALIDA_INSERT_FCJD_EGRESO",
+          "hace": "Valida línea de detalle de egreso antes de insertar.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "INSERT_FCJD_EGRESO",
+          "hace": "Inserta línea FCJD de egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "ELIMINAR_FCJD_EGRESO",
+          "hace": "Elimina línea de egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "DESHACER_EGRESO",
+          "hace": "Marca / deshace recibo de egreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "DESHACER_INGRESO",
+          "hace": "Marca / deshace recibo de ingreso. Vive en este SPQ (el FE también llama DESHACER_INGRESO; si no coincidiera el nombre, iría a CONF_CAJA_2).",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "UTILIZAR_EGRESO",
+          "hace": "Reactiva un egreso deshecho.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "UTILIZAR_INGRESO",
+          "hace": "Reactiva un ingreso deshecho.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "PCJ_INGRESOS",
+          "hace": "Lista pagos PCJ del ingreso.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "SELECCION_PCJ",
+          "hace": "Selecciona / marca filas PCJ.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "DATOS",
+          "hace": "Consulta de apoyo (datos varios).",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "DEVOLVER_RECIBO_CAJA",
+          "hace": "Devuelve un recibo de caja.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "confirmar"
+        },
+        {
+          "id": "VALIDA_ANULAR_RECIBO_CAJA",
+          "hace": "Candado antes de anular.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "confirmar"
+        },
+        {
+          "id": "ANULAR_RECIBO_CAJA",
+          "hace": "Anula recibo; en cadena suele ir SPK_ANULARECIBO_CAJA y reverso MCP. Detalle al releer.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "confirmar"
+        },
+        {
+          "id": "ARCHIVAR_FCJ",
+          "hace": "Archiva recibo.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "ACTIVAR_FCJ",
+          "hace": "Reactiva recibo archivado.",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONF_CAJA_2",
+      "tipo": "SPQ",
+      "modelo": "CONF_CAJA",
+      "estado": "no_leido",
+      "fuente": "",
+      "cola": "Recibe el JSON que SPQ_CONF_CAJA no reconoció (ELSE final).",
+      "metodos": [
+        {
+          "id": "INSERTA_RECIBO",
+          "hace": "El FE lo llama para crear la cabeza del recibo (FCJ). Cuerpo no leído: bajar SPQ_CONF_CAJA_2.sql a sql/.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Se infiere: queda FCJ para poder cargar FCJD y PCJ.",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso",
+          "estado": "no_leido"
+        },
+        {
+          "id": "INSERTA_FCJD",
+          "hace": "El FE lo llama para insertar líneas del recibo. Aquí entra FCJD.CONCEPTO. Cuerpo no leído.",
+          "valida": [],
+          "noValida": [
+            "Hasta no leer el script no se afirma si exige CONCEPTO ∈ CPCJ (el hueco de confirmar sugiere que aquí tampoco está el candado, o no cubre todos los orígenes)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Línea FCJD grabada. Punto crítico del hueco de conceptos.",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso",
+          "estado": "no_leido"
+        },
+        {
+          "id": "EDITA_FCJ",
+          "hace": "El FE lo llama para editar la cabeza del recibo. Cuerpo no leído.",
+          "estado": "no_leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "DELETE_FCJD",
+          "hace": "El FE lo llama para borrar líneas. Cuerpo no leído.",
+          "estado": "no_leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "(otros METODO no reconocidos por SPQ_CONF_CAJA)",
+          "hace": "Todo lo que el FE mande a CONF_CAJA y no esté en el SPQ principal cae aquí. Completar al leer el script.",
+          "estado": "no_leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CAJA_RPT",
+      "tipo": "SPQ",
+      "modelo": "CAJA_RPT",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_CAJA_RPT.sql (2026-08-31). Reportes e impresión de caja; no es CONF_CAJA.",
+      "cola": "METODO no listado → el SP no tiene ELSE; no hay resultset.",
+      "metodos": [
+        {
+          "id": "IMPRIMIR_RECIBO_FCJ",
+          "hace": "Devuelve 7 recordsets para armar el PDF del recibo: (1) cabecera FCJ+afiliado/sede, (2) FCJD, (3) PCJ, (4) suma formas de pago, (5–6) FCJPCXC. Parámetros: CODCAJA, CNSFACJ.",
+          "valida": [],
+          "noValida": [
+            "El recordset 1 NO incluye FCJ.NROCOMPROBANTE ni CONTABILIZADA — aunque el campo existe en FCJ (doc tablas).",
+            "No filtra por CLASE_FAC: sirve ingreso (COBRO→PROCEDENCIA INGRESO) y egreso."
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura. El PDF lo arma jsPDF en useCajaReportes.rptFCJ (y useFCJ si usara este METODO).",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_RECIBO",
+          "hace": "useFCJ.js lo invoca (CAJA_RPT · IMPRIMIR_RECIBO) desde flujos externos (Autorizador, etc.).",
+          "valida": [],
+          "noValida": [
+            "No existe rama IF @METODO = 'IMPRIMIR_RECIBO' en SPQ_CAJA_RPT.sql de hoy — posible SPQ distinto, legacy o KO silencioso."
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fuera del alcance de Administrativo → Caja (ese usa IMPRIMIR_RECIBO_FCJ). Si el FE llama este METODO, el SP de hoy no entra a ningún IF.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "UPDATE_PRINT",
+          "hace": "UPDATE FCJ SET IMPRESO=COALESCE(IMPRESO,0)+1 WHERE CODCAJA/CNSFACJ. Lo usa Reimpresión tras imprimir.",
+          "valida": ["CODCAJA y CNSFACJ en JSON"],
+          "noValida": [],
+          "errores": ["Hubo un error al intentar imprimir, error:+ERROR_MESSAGE()"],
+          "llama": [],
+          "efecto": "Marca impreso; no genera PDF.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_APERTURA_DE_CAJA",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "no_leido",
+      "fuente": "",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Crea la sesión de caja. Lo llama ABRIR_CAJA cuando ya pasaron las validaciones del SPQ.",
+          "valida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Debería dejar ACJ/ACJD y CAJ.ABIERTA. Tablas exactas al leer el .sql de hoy.",
+          "capaId": "02-operacion",
+          "gateId": "abrir-cerrar",
+          "estado": "no_leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIERRE_DE_CAJA",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Cierra el turno (caja no menor). Lo llama CERRAR_CAJA.",
+          "estado": "no_leido",
+          "capaId": "02-operacion",
+          "gateId": "abrir-cerrar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_SOL_REEMBOLSO_CAJAMENOR",
+      "tipo": "SPK",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Cierre de caja CLASE=Menor (reembolso). Lo llama CERRAR_CAJA.",
+          "estado": "no_leido",
+          "gateId": "abrir-cerrar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIERRERECIBO_CAJA",
+      "tipo": "SPK",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Cierra el documento de recibo. Lo llama CONFIRMAR_RECIBO y CONFIRMAR_RECIBO_EGRESO.",
+          "estado": "no_leido",
+          "gateId": "confirmar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ACTUALIZA_SALDO_BANCO",
+      "tipo": "SPK",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Puente bancario al confirmar ingreso. Lo llama CONFIRMAR_RECIBO (no el de egreso).",
+          "estado": "no_leido",
+          "capaId": "04-bancos",
+          "gateId": "saldo-banco-al-confirmar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CAJA_ING",
+      "tipo": "SPK",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Asiento de ingreso. Lo llama CONFIRMAR_RECIBO. Aquí se consume CPCJ.CUENTA: si el concepto no está, el error sale aquí.",
+          "noValida": [],
+          "estado": "no_leido",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-al-confirmar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CAJA_EGR",
+      "tipo": "SPK",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Asiento de egreso. Lo llama CONFIRMAR_RECIBO_EGRESO.",
+          "estado": "no_leido",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-al-confirmar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CONTAB_MASIVA",
+      "tipo": "SPK",
+      "estado": "no_leido",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Asientos por lote. Lo llama ENVIAR_RECIBOS_CONTABILIDAD con procedencia 'CAJA'.",
+          "estado": "no_leido",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-masivo"
+        }
+      ]
+    }
+  ]
+}

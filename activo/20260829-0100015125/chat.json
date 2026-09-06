@@ -1,0 +1,106 @@
+{
+  "mensajes": [
+    {
+      "id": "20260830121226225515",
+      "autor": "coordinador",
+      "texto": "hola, estas",
+      "fecha": "2026-08-30T12:12:26"
+    },
+    {
+      "id": "20260830121226248300w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T12:12:26"
+    },
+    {
+      "id": "20260830121500000001",
+      "autor": "agente",
+      "texto": "Hola, sí — caso **20260829-0100015125** (REQ 0100015125) cargado desde disco.\n\n**Resumen leído:** falla al validar Notas de Ajuste (NA) de respuestas a glosas en UNIPSA (rama `hotfix/UNIPSA24`). Error RVG018 (CUV nulo o ≠96 caracteres). Facturas de ejemplo: UV27556, UV27557, UV27559, UV27563, UV27584, UV28121, UV29119, UV29122. Su análisis indica priorizar **validación con soporte/cliente** antes de reabrir desarrollo.\n\n**Contabilidad:** `afecta=false` → no aplica validación MCUE/CON.\n\n**SQL:** confirmado en carpeta fija como «por ahora no requiere cambios en sql». Para trazabilidad backend (paso 3) pediré los SPQ cuando confirmemos ventana y proceso.\n\n---\n\n## Fase 1 — Paso 1: Ventana (propuesta)\n\nUbiqué el flujo en **Administrativo → Glosas** (`/adm/AdmGlosas`, `AdminGlosasPage.vue`):\n\n| Pestaña | Componente | Rol en el caso |\n|---|---|---|\n| **Radicar** | `RadRptaGloComponent.vue` | Lista FGLOI/FGLOID; filtro CUV (Sin Validar / Validados); botón **Descargar FEV-RIPS** |\n| (diálogo) | `SopFevRipsComponent.vue` (`procedencia='RESP_GLOSAS'`) | Exportación masiva del paquete; llama `FGLO_COL.TRAER_GLOSAS_VALIDADOS` |\n| (por glosa) | `VisorXMLsComponent` → `ValidacionesFEVRipsComponent.vue` (`tipoDocumento='NA'`) | Generar JSON, validar ante SISPRO (`CargarNotaAjuste`), persistir CUV |\n\n**Composables clave:** `useNotaAjusteJsonEnvio.js`, `useEnvioMasivoNA.js`, `useRecuperarCuvSispro.js`.\n\n**Hallazgo preliminar (sin dictamen aún):** en código actual, `resolverNumNotaAjuste()` usa `N_FACTURA` como `numNota` cuando el SP devuelve null — coincide con la causa (1) del REQ. Persistencia CUV en glosas: campo `FGLO.CUV` (doc `tablas/FGLO.md`); el guardado pasa por `RIPS.SET_DATOS` / flujo FEV-RIPS NA.\n\n---\n\n**Confirme por favor:**\n1. ¿La ventana de trabajo es **AdmGlosas → pestaña Radicar** (validación/descarga FEV-RIPS por glosa), o hay otra pantalla donde reproducen el error?\n2. ¿El flujo que falla es **validación individual** (Visor NA por factura) o también el **envío masivo** desde SopFevRips?\n3. ¿Tienen captura o log del payload enviado a `CargarNotaAjuste` para una de las facturas (p. ej. UV27556)?\n\nCon eso pasamos al **Paso 2 (proceso usuario)**. Aún no hay dictamen HTML.",
+      "fecha": "2026-08-30T12:15:00"
+    },
+    {
+      "id": "20260830121605646574",
+      "autor": "coordinador",
+      "texto": "1.no el compomnente es el mismo que se usa los procesos de validacion, 2.hay que revisarlos dos, 3. se debe validar con el soporte",
+      "fecha": "2026-08-30T12:16:05"
+    },
+    {
+      "id": "20260830121605669607w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T12:16:05"
+    },
+    {
+      "id": "20260830121800000002",
+      "autor": "agente",
+      "texto": "Gracias — **Paso 1 cerrado** con su aclaración.\n\n---\n\n## Ventana confirmada\n\n**Componente central:** `ValidacionesFEVRipsComponent.vue` (el mismo de validación FEV-RIPS en facturación, NC, NA, etc.), embebido vía `VisorXMLsComponent.vue`.\n\n**Punto de entrada en glosas:** AdmGlosas → **Radicar** → ícono FEVRIPS en FGLOID abre el visor con `tipoDocumento='NA'` y documento armado desde la glosa (`CNSGLO` como `CNSFCT`, más `CNSFCT_FTR`, `N_FACTURA`, `CUV` de FGLO).\n\n**Segundo flujo (masivo):** revisar **ambos**:\n- **A. Individual:** visor NA por glosa (arriba).\n- **B. Masivo:** `/adm/FEVRIPSMasivo` → pestaña NA (`NARIPSMasivoComponent` → `NASISPROEnvioComponent` → `useEnvioMasivoNA.js`) **y** exportación desde `SopFevRipsComponent` (Descargar FEV-RIPS en Radicar).\n\n**Evidencia payload:** se validará **con soporte/cliente** (sin captura local por ahora), alineado con su análisis del REQ.\n\n---\n\n## Fase 1 — Paso 2: Proceso usuario (propuesta)\n\n### Flujo A — Validación individual (glosa → NA)\n\n1. Usuario entra **Administrativo → Glosas → Radicar**.\n2. Filtra/selecciona lote FGLOI; en detalle FGLOID localiza factura (ej. UV27556).\n3. Clic ícono **FEVRIPS** (no aplica si glosa aceptada con VLRACEPTADO > 0 → NC, no NA).\n4. Se abre diálogo con `VisorXMLsComponent` → pestaña **FEV RIPS** → `ValidacionesFEVRipsComponent` (`tipoDocumento='NA'`).\n5. Usuario **Genera** JSON (`FTR_COL.RIPS_JSON`, `TIPODOC='AJUSTE'`) o trae original (`FEVRIPS_COL.NOTA_AJUSTE`).\n6. Frontend prepara sobre `{ rips, xmlFevFile }` (`useNotaAjusteJsonEnvio.js`; `numNota` fallback = `N_FACTURA`).\n7. Usuario **Valida** → POST SISPRO `api/PaquetesFevRips/CargarNotaAjuste`.\n8. Si OK o CUV recuperable → `RIPS.SET_DATOS` (`CNSDOC=CNSGLO`, `TIPODOC='NA'`, `CNSFCT` factura base) → debe persistir CUV en **FGLO.CUV**.\n9. Tras validar, **Descargar FEV-RIPS** (SopFevRips) exporta ZIP solo de glosas con CUV.\n\n**Punto de falla reportado (RVG018):** paso 7 — SISPRO rechaza por CUV nulo/inválido en el payload.\n\n### Flujo B — Validación / exportación masiva\n\n**B1 — Envío masivo SISPRO (NA):**\n1. **Administrativo → FEV-RIPS Masivo** → pestaña Notas de Ajuste.\n2. Selecciona facturas/glosas, genera JSON (`RIPS_JSON` vía cola async).\n3. **Iniciar Envío** (`useEnvioMasivoNA`) → por cada doc: `CargarNotaAjuste` con `prepararEnvelopeNotaAjusteParaEnvio(json, N_FACTURA)` → `RIPS.SET_DATOS`.\n\n**B2 — Descarga masiva paquete (glosas):**\n1. AdmGlosas → Radicar → **Descargar FEV-RIPS**.\n2. `FGLO_COL.TRAER_GLOSAS_VALIDADOS` → arma ZIP por factura validada (`JSON_ENVIO`, CUV, XML si aplica).\n3. Si no hay CUV persistido (paso 8 del flujo A falló), la exportación queda incompleta o manual en BD.\n\n---\n\n### Relación con las 4 causas del REQ\n\n| # | Causa REQ | Paso afectado | Capa |\n|---|---|---|---|\n| 1 | `numNota` = N_FACTURA en vez de consecutivo glosa | 6 (FE) + generación SP | FE + SQL |\n| 2 | No envía CUV factura original | 6–7 | FE + JSON RIPS |\n| 3 | Envía estructura FV completa vs JSON NA | 5–6 | SQL (`RIPS_JSON`) + FE |\n| 4 | CUV no se guarda en FGLO | 8 | API (`RIPS.SET_DATOS`) + SP |\n\n---\n\n**Confirme el Paso 2:** ¿Este recorrido coincide con lo que hace soporte/cliente en UNIPSA? Si sí, en el **Paso 3 (backend)** pediré en `sql/` los SPQ:\n\n- `SPQ_FTR_COL.sql` (rama `RIPS_JSON` / `TIPODOC=AJUSTE`)\n- `SPQ_FEVRIPS_COL.sql` (rama `NOTA_AJUSTE`)\n- `SPQ_RIPS.sql` (ramas `SET_DATOS`, `GET_DATOS` para `TIPODOC=NA`)\n- `SPQ_FGLO_COL.sql` (rama `TRAER_GLOSAS_VALIDADOS`)\n\nSin esos scripts no puedo trazar SPKs ni avanzar al dictamen. Aún no hay dictamen HTML.",
+      "fecha": "2026-08-30T12:18:00"
+    },
+    {
+      "id": "20260830121918576219",
+      "autor": "coordinador",
+      "texto": "genera el documento para ver y revisarlo",
+      "fecha": "2026-08-30T12:19:18"
+    },
+    {
+      "id": "20260830121918601223w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T12:19:18"
+    },
+    {
+      "id": "20260830122200000003",
+      "autor": "agente",
+      "texto": "Listo — **dictamen v1** generado según su solicitud.\n\n**Documento:** dictamenes/20260829-0100015125.html\n\n---\n\n## Contenido del dictamen\n\n1. **Requerimiento** y su análisis (validación con soporte primero).\n2. **Ventana confirmada:** `ValidacionesFEVRipsComponent` + flujos A (individual glosa) y B (masivo NA + descarga SopFevRips).\n3. **Correlación de las 4 causas del REQ** con evidencia en código FE (sin inventar SP).\n4. **Tabla trazabilidad backend** — marcada ☐ porque no hay SPQ en `sql/` (solicitud dice «no requiere cambios en sql» por ahora).\n5. **Cambios propuestos** (condicionados a que soporte confirme la falla en `hotfix/UNIPSA24`).\n6. **Plan de validación con soporte** (prioritario) + pruebas dev/coord/soporte.\n\n**Contabilidad:** `no_aplica` — registrado en solicitud.\n\n---\n\n## Hallazgos clave (código actual)\n\n| Causa | Evidencia FE |\n|---|---|\n| numNota = N_FACTURA | `resolverNumNotaAjuste()` y `completarMetadatosNotaAjusteEnRips()` usan `N_FACTURA` como fallback |\n| CUV factura original | Documento glosa trae `FGLO.CUV`, no `FTR.CUV`; no hay inyección explícita en composables |\n| Estructura NA vs FV | Depende de `FTR_COL.RIPS_JSON` — **SP no revisado** |\n| CUV no en FGLO | FE llama `RIPS.SET_DATOS` con `CNSDOC=CNSGLO`; persistencia en SP — **no verificado** |\n\n---\n\n## Siguiente paso sugerido\n\n1. **Revise el HTML** y comente en Chat qué ajustar.\n2. Si aprueba el enfoque «validar con soporte primero»: coordinar prueba con facturas UV27556 etc. y reportar resultado aquí.\n3. Si prefiere ir directo a desarrollo: coloque en `sql/` los SPQ (`SPQ_FTR_COL`, `SPQ_RIPS`, `SPQ_FGLO_COL`, `SPQ_FEVRIPS_COL`) para completar trazabilidad SPK y refinar la sección SQL del dictamen.\n\nQuedo atento a sus comentarios sobre el documento.",
+      "fecha": "2026-08-30T12:22:00"
+    },
+    {
+      "id": "20260830122801800760",
+      "autor": "coordinador",
+      "texto": "ven este ultimo documento sale diferente el documento a los ultimos ajustes que hemos realizado",
+      "fecha": "2026-08-30T12:28:01"
+    },
+    {
+      "id": "20260830122801825761w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T12:28:01"
+    },
+    {
+      "id": "20260830123000000004",
+      "autor": "agente",
+      "texto": "Tiene razón — el **v1** seguía la plantilla antigua (12 secciones, tablas naranjas, bloques duplicados). Lo reescribí al **formato de los dictámenes recientes** (6037, 5705, 6193).\n\n**Documento actualizado:** dictamenes/20260829-0100015125.html · **borrador v2**\n\n---\n\n## Qué cambió en v2\n\n| Antes (v1) | Ahora (v2, alineado) |\n|---|---|\n| 12 secciones numeradas | **8 secciones:** Requerimiento → Flujo → Backend → Propuesta → Riesgos → Pruebas → Contabilidad → Fuentes |\n| «Análisis coordinador» sección aparte | Integrado en alerta bajo criterios (sección 1) |\n| Ventana + dictamen + cambios separados | **Flujo ASCII** (sección 2) + **propuesta 4.x** (sección 4) |\n| Tablas `<th>` fondo naranja | `<th>` fondo gris `#eef2f5` (como 6037/5705) |\n| Tarjetas impacto FE/API/SQL | Meta «Impacto» + texto en propuesta |\n| Subtítulo «Propuesto v1» | «borrador v2 — formato alineado» |\n| Sin Desarrollador en meta | Incluye ELAN BRAVO + rama hotfix |\n\nEl **contenido técnico** se mantiene (4 causas, trazabilidad SPQ ☐, validación con soporte primero, flujos A/B).\n\n---\n\nRevise de nuevo el HTML. Si aún ve diferencias con algún dictamen de referencia concreto (indique cuál REQ), lo ajusto en v3.",
+      "fecha": "2026-08-30T12:30:00"
+    },
+    {
+      "id": "agente-quita-fuentes-5125",
+      "autor": "agente",
+      "texto": "Quité la sección 8 «Fuentes consultadas» del dictamen.\n\nDocumento: dictamenes/20260829-0100015125.html (v3)\n\nEl documento queda en 7 secciones: Requerimiento · Flujo · Backend · Propuesta · Riesgos · Pruebas · Contabilidad. El contenido técnico no cambió.\n\nÁbralo de nuevo (Ctrl+F5 si lo tenía abierto). ¿Algo más que ajustar?",
+      "fecha": "2026-08-30T14:05:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-08-30T14:06:31"
+    },
+    {
+      "id": "correo-cierre-20260829-0100015125",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a elan.bravo@ixcolombia.com.",
+      "fecha": "2026-08-30T14:07:00"
+    },
+    {
+      "id": "20260830140648000006",
+      "autor": "agente",
+      "texto": "Caso **reactivado** — releído desde disco (INSTRUCCION, solicitud, cola, dictamen, código Qrystalos2).\n\n---\n\n## Estado actual\n\n| Ítem | Valor |\n|---|---|\n| Fase 1 | Cerrada (30/08/2026 14:06) — correo enviado a ELAN BRAVO |\n| Dictamen | **v3** — dictamenes/20260829-0100015125.html |\n| Copia aprobados | aprobados/20260829-0100015125/20260829-0100015125.html |\n| SQL | Carpeta fija vacía (confirmado «por ahora no requiere cambios en sql») |\n| Contabilidad | `no_aplica` — sin impacto MCUE/CON/MCPE |\n\n---\n\n## Resumen técnico (sin cambios desde v3)\n\n**Ventana confirmada:** `ValidacionesFEVRipsComponent.vue` (mismo componente de validación FEV-RIPS), embebido en glosas vía `VisorXMLsComponent` (`tipoDocumento='NA'`) y en envío masivo (`useEnvioMasivoNA.js`). Revisar **flujo A** (individual) y **flujo B** (masivo + descarga SopFevRips).\n\n**Evidencia FE vigente en código:**\n- `resolverNumNotaAjuste()` retorna `N_FACTURA` como fallback → causa (1) del REQ.\n- `prepararEnvelopeNotaAjusteParaEnvio(envelope, N_FACTURA)` en individual y masivo.\n- Persistencia CUV depende de `RIPS.SET_DATOS` con `CNSDOC=CNSGLO` — SP no revisado (sin SPQ en `sql/`).\n\n**Enfoque acordado:** validar primero con soporte/cliente en `hotfix/UNIPSA24`; desarrollo condicionado a que la falla se reproduzca.\n\n---\n\n## Qué puede hacer ahora\n\n1. **Dejar tal cual** — el dictamen v3 ya se envió al desarrollador; coordinar prueba con soporte (facturas UV27556, etc.).\n2. **Ajustar el documento** — indique qué sección o formato cambiar.\n3. **Completar trazabilidad backend** — coloque en `sql/` los SPQ (`SPQ_FTR_COL`, `SPQ_RIPS`, `SPQ_FGLO_COL`, `SPQ_FEVRIPS_COL`) y actualizo la sección 3 del dictamen con SPKs reales.\n4. **Reportar resultado de soporte** — escriba aquí si la validación en UNIPSA fue OK o falló; ajusto el dictamen según el veredicto.\n\nIndique cuál opción prefiere. El dictamen no cambió en esta reactivación.",
+      "fecha": "2026-08-30T14:06:48"
+    },
+    {
+      "id": "agente-v4-emular-5125",
+      "autor": "agente",
+      "texto": "Quedó la regla que pidió: no se desarrolla hasta emular y confirmar el error.\n\nDocumento: dictamenes/20260829-0100015125.html (v4). Copia en aprobados/ actualizada.\n\nPuerta (sección 1.1):\n• Si al emular el RVG018 NO aparece → se informa que el proceso está bien. Sin cambio de código.\n• Si SÍ aparece (o no guarda CUV / no exporta) → evidencia y recién ahí la sección 4.\n\nCómo emular (mínimo): hotfix/UNIPSA24, UV27556 + otra, flujo A y B, Network de CargarNotaAjuste, FTR.CUV y FGLO.CUV antes/después.\n\nLa sección 4 queda condicionada. El Paso 0 de pruebas es obligatorio antes del checklist de desarrollador.\n\nFase 1 ya estaba cerrada y el correo v3 se envió. Si quiere que Elan reciba esta v4, use Reenviar correo.\n\nCuando soporte reporte el resultado de la emulación, lo dejamos en el dictamen.",
+      "fecha": "2026-08-30T14:28:00"
+    }
+  ]
+}

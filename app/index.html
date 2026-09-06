@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qrys.Quatec — Coordinación Qrystalos</title>
+  <link rel="stylesheet" href="css/app.css?v=26">
+</head>
+<body>
+  <div id="bootSplash" style="padding:2rem;font-family:Segoe UI,sans-serif;max-width:640px;margin:2rem auto;">
+    <h1 style="color:#E67817;margin-bottom:.5rem;">Qrys.Quatec</h1>
+    <p id="bootSplashMsg">Cargando aplicación…</p>
+    <p style="margin-top:1rem;font-size:.9rem;color:#566573;">
+      Si se queda aquí: cierre servidores viejos y ejecute <strong>abrir-app.bat</strong>.<br>
+      Dictamen directo: <a href="../dictamenes/20260829-0100016193.html">dictamenes/20260829-0100016193.html</a>
+    </p>
+  </div>
+
+  <div id="hubScreen" class="hub-screen" hidden>
+    <div class="hub-inner">
+      <div class="hub-brand">
+        <img src="assets/logo-ixcolombia.png" alt="IX Colombia SAS">
+        <div>
+          <p class="hub-kicker">Qrys.Quatec</p>
+          <p class="subtitle">IX Colombia SAS · Business Analyst</p>
+        </div>
+      </div>
+      <h2>¿Qué necesita hacer?</h2>
+      <p class="hint">Tres puertas. El trabajo de requerimientos no se mezcla con la consulta ni con documentar procesos.</p>
+      <div class="hub-grid">
+        <button type="button" class="hub-card" id="btnHubAnalista" data-hub-mode="analista" onclick="window.QrysConocimiento&&window.QrysConocimiento.enterMode('analista')">
+          <span class="hub-icon">📋</span>
+          <strong>Analista de negocio</strong>
+          <span>Cola, casos, Chat del requerimiento y dictámenes.</span>
+        </button>
+        <button type="button" class="hub-card" id="btnHubConsultas" data-hub-mode="consultas" onclick="window.QrysConocimiento&&window.QrysConocimiento.enterMode('consultas')">
+          <span class="hub-icon">🔍</span>
+          <strong>Consultas</strong>
+          <span>Alguien llama con un problema en caja (u otro proceso): ubicar capa, gate e invariante.</span>
+        </button>
+        <button type="button" class="hub-card" id="btnHubDocumentar" data-hub-mode="documentar" onclick="window.QrysConocimiento&&window.QrysConocimiento.enterMode('documentar')">
+          <span class="hub-icon">📝</span>
+          <strong>Documentar</strong>
+          <span class="hub-badge" id="hubBadgePendientes" hidden></span>
+          <span>Pendientes del valle, indicar el SP de hoy y Chat para aclarar. No se archiva el cuerpo del procedimiento.</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-shell" id="appShell" hidden>
+    <header class="app-header">
+      <div class="app-header-brand">
+        <img src="assets/logo-ixcolombia.png" alt="IX Colombia SAS">
+        <div>
+          <h1>Qrys.Quatec</h1>
+          <p class="subtitle">IX Colombia SAS · Business Analyst · Qrystalos</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnInicioHub" hidden onclick="window.QrysConocimiento&&window.QrysConocimiento.showHub()">← Inicio</button>
+        <span id="estadoFormulario" class="badge badge-borrador">—</span>
+      </div>
+    </header>
+
+    <nav class="main-tabs">
+      <button type="button" class="main-tab active" data-view="cola">Cola de trabajo</button>
+      <button type="button" class="main-tab" data-view="formulario">Nuevo / Editar caso</button>
+      <button type="button" class="main-tab" data-view="chat">Chat</button>
+      <button type="button" class="main-tab" data-view="historico">Histórico</button>
+    </nav>
+
+    <!-- VISTA: COLA -->
+    <section id="view-cola" class="view active">
+      <div class="alert alert-warning" id="alertFileProtocol" hidden>
+        <strong>Modo archivo local (file://):</strong> no puede leer <code>cola/</code> ni <code>sql/</code> automáticamente.<br>
+        Ejecute <strong><code>abrir-app.bat</code></strong> en la raíz del proyecto → abre
+        <a href="http://localhost:8765/app/" target="_blank" rel="noopener">http://localhost:8765/app/</a>
+      </div>
+      <div class="grid-2 mb">
+        <div class="field">
+          <label for="colaUpload">Registrar página guardada (.html)</label>
+          <input type="file" id="colaUpload" accept=".html,.htm">
+          <small>Sube todos los REQ nuevos a la cola. Copie también el archivo a <code>cola/</code>.</small>
+        </div>
+        <div class="field">
+          <label for="colaArchivoManual">O indicar archivo ya en cola/</label>
+          <div class="inline-field">
+            <input type="text" id="colaArchivoManual" placeholder="aval-asesor-lista.htm" value="aval-asesor-lista.htm">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnRegistrarColaManual">Registrar</button>
+          </div>
+        </div>
+      </div>
+      <div id="colaCorruptaAlert" class="alert alert-warning hidden"></div>
+      <div class="cola-toolbar mb">
+        <label class="cola-filtro" for="filtroColaReq">
+          <span>N.º requerimiento</span>
+          <input type="search" id="filtroColaReq" placeholder="Ej. 0100015121 o 5121" autocomplete="off">
+        </label>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnLimpiarFiltroCola" title="Quitar filtro">Limpiar</button>
+        <span class="hint" id="colaFiltroHint"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnLimpiarCorruptos">Quitar entradas corruptas</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnVaciarCola">Vaciar cola</button>
+      </div>
+      <table class="data-table" id="tablaCola">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Estado</th>
+            <th>ID REQ / Archivo</th>
+            <th>Proyecto</th>
+            <th>Módulo</th>
+            <th>Fecha cola</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="colaBody"></tbody>
+      </table>
+      <p class="hint">Estados: <span class="pill pill-pending">Pendiente</span>
+        <span class="pill pill-progress">En análisis</span>
+        <span class="pill pill-done">Dictamen listo</span>
+        <span class="pill pill-approved">Aprobado</span></p>
+
+      <div id="modalSelReq" class="modal hidden">
+        <div class="modal-box">
+          <h3>Seleccionar ID REQ</h3>
+          <p class="hint">Esta página contiene varios requerimientos. Elija uno:</p>
+          <select id="selectIdReq" size="8" class="select-req-list"></select>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" id="btnCancelSelReq">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnConfirmSelReq">Confirmar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: FORMULARIO -->
+    <section id="view-formulario" class="view">
+      <nav class="stepper" id="stepper">
+        <button type="button" class="step active" data-step="1">1. General</button>
+        <button type="button" class="step" data-step="2">2. Requerimiento</button>
+        <button type="button" class="step" data-step="3">3. Análisis</button>
+        <button type="button" class="step" data-step="4">4. SQL <span class="req">*</span></button>
+        <button type="button" class="step" data-step="5">5. Revisión</button>
+      </nav>
+
+      <main class="app-main">
+        <form id="formSolicitud" novalidate>
+          <section class="panel active" data-panel="1">
+            <div class="panel-head">
+              <h2>Datos generales</h2>
+              <p class="hint compact">Solo lo esencial. Fechas y extras van plegados.</p>
+            </div>
+            <div class="alert alert-info" id="alertOrigenCola" hidden>
+              Datos importados desde cola. Revise y complete lo que falte.
+            </div>
+            <p class="hint compact">Cola: <code id="archivoColaVinculado">—</code></p>
+
+            <div class="form-card">
+              <h3>Caso</h3>
+              <div class="grid-3">
+                <div class="field"><label for="idReq">ID REQ</label><input type="text" id="idReq" placeholder="0100016198"></div>
+                <div class="field"><label for="idCaso">ID caso <span class="req">*</span></label><input type="text" id="idCaso" required></div>
+                <div class="field"><label for="fecha">Fecha <span class="req">*</span></label><input type="date" id="fecha" required></div>
+              </div>
+              <div class="field"><label for="titulo">Título <span class="req">*</span></label><input type="text" id="titulo" required></div>
+              <details class="form-more">
+                <summary>Fechas, orden y extras</summary>
+                <div class="grid-3">
+                  <div class="field"><label for="fechaAsignacion">F. asignación</label><input type="date" id="fechaAsignacion"></div>
+                  <div class="field"><label for="fechaDesarrollo">F. desarrollo</label><input type="date" id="fechaDesarrollo"></div>
+                  <div class="field"><label for="diasDesarrollo">Días desa</label><input type="number" id="diasDesarrollo" min="0"></div>
+                  <div class="field"><label for="fechaEntregaCliente">F. entrega cliente</label><input type="date" id="fechaEntregaCliente"></div>
+                  <div class="field"><label for="orden">Orden</label><input type="number" id="orden" min="0"></div>
+                </div>
+              </details>
+            </div>
+
+            <div class="form-card">
+              <h3>Proyecto</h3>
+              <div class="grid-2">
+                <div class="field"><label for="proyecto">Proyecto <span class="req">*</span></label><input type="text" id="proyecto" required></div>
+                <div class="field"><label for="moduloNombre">Módulo <span class="req">*</span></label><input type="text" id="moduloNombre" required></div>
+                <div class="field"><label for="area">Área</label><input type="text" id="area"></div>
+                <div class="field"><label for="rutaPantalla">Ruta pantalla</label><input type="text" id="rutaPantalla"></div>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-card">
+                <h3>Personas</h3>
+                <div class="grid-2">
+                  <div class="field"><label for="asesor">Asesor <span class="req">*</span></label><input type="text" id="asesor" required value="JOSE MANUEL JIMENEZ"></div>
+                  <div class="field"><label for="coordinador">Coordinador <span class="req">*</span></label><input type="text" id="coordinador" required value="JOSE MANUEL JIMENEZ"></div>
+                  <div class="field"><label for="desarrollador">Desarrollador</label><input type="text" id="desarrollador"></div>
+                </div>
+                <details class="form-more">
+                  <summary>Soporte y extras</summary>
+                  <div class="grid-2">
+                    <div class="field"><label for="soporteProyecto">Soporte</label><input type="text" id="soporteProyecto"></div>
+                    <div class="field"><label for="subidoPor">Subido por</label><input type="text" id="subidoPor"></div>
+                  </div>
+                </details>
+              </div>
+              <div class="form-card">
+                <h3>Gestión</h3>
+                <div class="grid-2">
+                  <div class="field"><label for="estadoReq">Estado <span class="req">*</span></label>
+                    <select id="estadoReq" required><option>INGRESADO</option><option>ASIGNADO</option><option>EN DESARROLLO</option></select></div>
+                  <div class="field"><label for="prioridad">Prioridad <span class="req">*</span></label>
+                    <select id="prioridad" required><option>1 - Alta</option><option selected>2 - Media</option><option>3 - Baja</option></select></div>
+                  <div class="field"><label for="aval">Aval</label>
+                    <select id="aval"><option>Sin aval</option><option>Con aval</option><option>Rechazado</option></select></div>
+                  <div class="field"><label for="tipo">Tipo</label>
+                    <select id="tipo"><option>Performance</option><option>Mejora</option><option>Bug</option><option>Nuevo</option></select></div>
+                  <div class="field"><label for="ticket">Ticket</label><input type="text" id="ticket"></div>
+                  <div class="field"><label for="rama">Rama Git</label><input type="text" id="rama"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-card" id="cardCorreoDev">
+              <h3>Correo al desarrollador</h3>
+              <p class="hint compact">Se envía por el SMTP de IX Colombia. Siempre va con copia a DevSoporte (<code>jose.jimenez@ixcolombia.com</code>). Queda archivo en <code>correos/</code>.</p>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="correoDestino">Correo destino</label>
+                  <input type="email" id="correoDestino" placeholder="nombre@ixcolombia.com" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label for="fechaEnvioCorreo">Fecha de envío</label>
+                  <input type="date" id="fechaEnvioCorreo">
+                </div>
+              </div>
+              <label class="chk-line">
+                <input type="checkbox" id="chkCorreoEnviado"> Correo enviado
+              </label>
+              <p class="hint compact" id="correoEnvioHint">Aún no se ha enviado el dictamen.</p>
+              <div class="correo-acciones">
+                <button type="button" class="btn btn-primary" id="btnEnviarCorreo">Enviar correo</button>
+                <button type="button" class="btn btn-secondary" id="btnBorradorCorreo">Abrir borrador en Outlook</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="2">
+            <div class="panel-head">
+              <h2>Requerimiento del cliente</h2>
+              <p class="hint compact">Si hay HTML en cola/, el agente lo lee del disco. Aquí complemente lo necesario.</p>
+            </div>
+            <div class="form-card">
+              <div class="field">
+                <div class="field-head">
+                  <label for="requerimiento">Descripción <span class="req">*</span></label>
+                  <button type="button" class="btn btn-primary btn-sm" id="btnAnalizarRequerimiento" title="El agente lee el REQ y su análisis y dice qué le falta revisar">Analizar requerimiento</button>
+                </div>
+                <textarea id="requerimiento" class="textarea-lg" rows="6" required placeholder="Opcional si está en cola/ — el agente lo lee del HTML"></textarea>
+                <p class="hint compact" id="brechaAnalisisHint">El agente (Cursor) contrasta el REQ con su análisis y lista qué le falta revisar. No usa OpenAI.</p>
+                <div id="brechaAnalisisBox" class="criterios-box hidden"></div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="field">
+                <div class="field-head">
+                  <label for="criteriosAceptacion">Criterios de aceptación <span class="req">*</span></label>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnSugerirCriterios" title="El agente (Cursor) propone criterios con base en Qrystalos2">Pedir criterios al agente</button>
+                </div>
+                <div class="dictado-bar">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnDictarCriterios" title="Dictar con micrófono">🎤 Dictar criterios</button>
+                  <button type="button" class="btn btn-ghost btn-sm btn-detener-dictado" id="btnDetenerDictadoCriterios" disabled>Detener</button>
+                  <span id="dictadoEstadoCriterios" class="dictado-estado"></span>
+                </div>
+                <textarea id="criteriosAceptacion" class="textarea-lg" rows="8" required placeholder="Pídalos al agente, dicte o escríbalos. Una sola fuente: el agente (Cursor)."></textarea>
+                <p class="criterios-estado" id="criteriosEstadoHint">Pendiente de proponer</p>
+                <p class="criterios-estado" id="openaiEstadoHint">Criterios, análisis y recomendación los escribe el agente (Cursor) con base en Qrystalos2. OpenAI no interviene.</p>
+              </div>
+              <div id="criteriosSugerenciaBox" class="criterios-box hidden">
+                <strong>Sugerencia del agente</strong>
+                <pre class="criterios-sugerencia-texto"></pre>
+                <div class="criterios-box-actions">
+                  <button type="button" class="btn btn-primary btn-sm btn-usar-criterios">Usar sugerencia</button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-anadir-criterios">Añadir al texto</button>
+                  <button type="button" class="btn btn-ghost btn-sm btn-descartar-criterios">Descartar</button>
+                </div>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field"><label for="alcance">Alcance</label><textarea id="alcance" rows="2"></textarea></div>
+              <div class="field"><label for="restricciones">Restricciones</label><textarea id="restricciones" rows="2"></textarea></div>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="3">
+            <div class="panel-head">
+              <h2>Análisis del coordinador</h2>
+              <p class="hint compact">Tras escribir el análisis puede actualizar los criterios y compararlos al cierre.</p>
+            </div>
+            <div class="form-card">
+              <div class="field">
+                <label for="analisis">Análisis <span class="req">*</span></label>
+                <div class="dictado-bar">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnDictarAnalisis" title="Dictar con micrófono">🎤 Dictar análisis</button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-ia-organizar hidden" data-campo="analisis" hidden>Organizar</button>
+                  <button type="button" class="btn btn-ghost btn-sm btn-detener-dictado" id="btnDetenerDictado" disabled>Detener</button>
+                  <span id="dictadoEstado" class="dictado-estado"></span>
+                </div>
+                <textarea id="analisis" rows="5" required placeholder="Hable con el micrófono o escriba aquí..."></textarea>
+                <div class="criterios-refine-bar">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnRefinarCriterios">Pedir al agente que actualice los criterios</button>
+                  <span class="hint compact" id="criteriosRefineHint"></span>
+                </div>
+                <div id="criteriosSugerenciaBoxAnalisis" class="criterios-box hidden">
+                  <strong>Sugerencia actualizada (requerimiento + análisis)</strong>
+                  <pre class="criterios-sugerencia-texto"></pre>
+                  <div class="criterios-box-actions">
+                    <button type="button" class="btn btn-primary btn-sm btn-usar-criterios">Usar sugerencia</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-anadir-criterios">Añadir al texto</button>
+                    <button type="button" class="btn btn-ghost btn-sm btn-descartar-criterios">Descartar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <details class="form-card form-more-card">
+              <summary>Opciones evaluadas y recomendación</summary>
+              <div class="field">
+                <label>Opciones evaluadas</label>
+                <div id="opcionesLista" class="dynamic-list"></div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnAddOpcion">+ Opción</button>
+              </div>
+              <div class="field">
+                <label for="recomendacion">Recomendación</label>
+                <div class="dictado-bar">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnDictarRecomendacion">🎤 Dictar recomendación</button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-ia-organizar hidden" data-campo="recomendacion" hidden>Organizar</button>
+                </div>
+                <textarea id="recomendacion" rows="3"></textarea>
+              </div>
+            </details>
+            <div class="form-card compact-card">
+              <h3>Impacto</h3>
+              <div class="grid-3">
+                <div class="field"><label for="impactoFe">Frontend</label><select id="impactoFe"><option>No</option><option>Parcial</option><option selected>Sí</option></select></div>
+                <div class="field"><label for="impactoApi">API</label><select id="impactoApi"><option>No</option><option>Parcial</option><option selected>Sí</option></select></div>
+                <div class="field"><label for="impactoSql">SQL</label><select id="impactoSql"><option>No</option><option>Parcial</option><option selected>Sí</option></select></div>
+              </div>
+            </div>
+            <div class="form-card" id="cardValidarAntes">
+              <h3>Validar antes de desarrollar</h3>
+              <p class="hint compact">Márquelo si el REQ ya se trabajó o hay duda de si el error sigue. El dictamen incluirá una sección obligatoria para el desarrollador.</p>
+              <div class="field">
+                <label class="chk-line"><input type="checkbox" id="chkValidarAntes"> Validar primero: comprobar que no se haya corregido antes de desarrollar</label>
+              </div>
+              <div id="validarAntesCampos" class="hidden">
+                <div class="field">
+                  <label for="validarAntesTexto">Texto de la sección</label>
+                  <div class="dictado-bar">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnDictarValidarAntes">🎤 Dictar</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-ia-organizar hidden" data-campo="validarAntesTexto" hidden>Organizar</button>
+                    <button type="button" class="btn btn-ghost btn-sm btn-detener-dictado">Detener</button>
+                    <span class="dictado-estado"></span>
+                  </div>
+                  <textarea id="validarAntesTexto" rows="4" placeholder="Qué debe validar el desarrollador antes de tocar código…"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="form-card" id="cardContabilidad">
+              <h3>Contabilidad</h3>
+              <p class="hint compact">Si el cambio mueve cuentas, MCUE, comprobantes o asientos, márquelo. El agente valida contra Qrystalos2 y la documentación.</p>
+              <div class="field">
+                <label class="chk-line"><input type="checkbox" id="chkAfectaContabilidad"> Afecta contabilidad</label>
+              </div>
+              <div id="contabilidadCampos" class="hidden">
+                <div class="field">
+                  <label for="contComoAfecta">Cómo lo afecta <span class="req">*</span></label>
+                  <div class="dictado-bar">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnDictarContComo">🎤 Dictar</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-ia-organizar hidden" data-campo="contComoAfecta" hidden>Organizar</button>
+                    <button type="button" class="btn btn-ghost btn-sm btn-detener-dictado">Detener</button>
+                    <span class="dictado-estado"></span>
+                  </div>
+                  <textarea id="contComoAfecta" rows="3" placeholder="Ej. al anular factura debe reversar el asiento MCUE / no genera nuevo comprobante…"></textarea>
+                </div>
+                <div class="field">
+                  <label for="contDesarrollo">Desarrollo contable</label>
+                  <div class="dictado-bar">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnDictarContDesarrollo">🎤 Dictar</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-ia-organizar hidden" data-campo="contDesarrollo" hidden>Organizar</button>
+                    <button type="button" class="btn btn-ghost btn-sm btn-detener-dictado">Detener</button>
+                    <span class="dictado-estado"></span>
+                  </div>
+                  <textarea id="contDesarrollo" rows="3" placeholder="Qué debe hacer el desarrollador en contabilidad (MCUE, CON, MCPE, SPs…)"></textarea>
+                </div>
+                <div class="cont-validar-bar">
+                  <button type="button" class="btn btn-primary btn-sm" id="btnValidarContabilidad">Validar con el agente</button>
+                  <span class="hint compact" id="contValidarHint"></span>
+                </div>
+                <div id="contValidacionBox" class="criterios-box hidden"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="4">
+            <h2>SQL — documentados o carpeta fija</h2>
+            <p class="hint compact">No hace falta para analizar el requerimiento. Pídalo el Chat después del análisis, o cuando soporte / director de proyecto confirmen el SP.</p>
+
+            <div class="form-card sql-kb-card">
+              <h3>Métodos ya documentados</h3>
+              <p class="hint">Si el procedimiento ya está en Consultas, traiga los METODO y marque los de este REQ. No hace falta bajar el .sql hasta que el Chat del caso pida releerlo (los SP se actualizan a diario).</p>
+              <div class="sql-toolbar">
+                <label class="sr-only" for="sqlProcesoId">Proceso</label>
+                <select id="sqlProcesoId">
+                  <option value="">Proceso…</option>
+                </select>
+                <button type="button" class="btn btn-primary btn-sm" id="btnTraerMetodosKb">Traer métodos documentados</button>
+                <span id="sqlKbEstado" class="sql-leido-estado"></span>
+              </div>
+              <div class="sql-toolbar">
+                <input type="search" id="sqlKbBuscar" placeholder="Buscar SP o METODO (ej. IMPRIMIR, CAJA_RPT)…" autocomplete="off">
+              </div>
+              <div id="sqlMetodosKbLista" class="sql-kb-lista"></div>
+              <label class="sql-kb-usar">
+                <input type="checkbox" id="chkUsarDocSp">
+                Usar estos métodos documentados. El Chat del caso valida si hay que leer el .sql de hoy.
+              </label>
+              <p id="sqlKbAvisoReleer" class="hint" hidden></p>
+              <div id="sqlResumenCaso" class="sql-resumen-caso"></div>
+            </div>
+
+            <div class="alert alert-info">
+              Si el método <strong>no</strong> está documentado (o el Chat pide releerlo), coloque los scripts en:<br>
+              <code id="pathSqlCaso" class="path-block">sql/</code>
+              con los nombres exactos de la lista inferior.
+            </div>
+            <div class="field">
+              <label for="objetosSolicitados">Objetos / archivos SQL <span id="sqlArchivosReq" class="req">*</span> <span class="hint compact" id="sqlArchivosHint">(omitible si usa métodos documentados)</span></label>
+              <textarea id="objetosSolicitados" rows="4" placeholder="Uno por línea, o use Leer carpeta SQL…"></textarea>
+              <div class="sql-toolbar">
+                <button type="button" class="btn btn-primary btn-sm" id="btnLeerCarpetaSql">📂 Leer carpeta SQL</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnGenerarListaSql">Actualizar desde texto</button>
+                <span id="sqlLeidoEstado" class="sql-leido-estado"></span>
+              </div>
+              <small class="hint">Carpeta fija: <code>sql/</code>. Al <strong>cerrar fase 1</strong> se mueven a <code id="pathSqlRefe">sql_refe/{ID-REQ}/</code></small>
+            </div>
+            <ul id="listaArchivosSql" class="sql-nombre-lista"></ul>
+            <div id="sqlLoadError" class="alert alert-warning hidden"></div>
+            <div class="field">
+              <label><input type="checkbox" id="chkSqlColocados"> Confirmo que coloqué todos los .sql en la carpeta fija con esos nombres</label>
+            </div>
+            <div class="field"><label for="notasSql">Notas SQL</label><textarea id="notasSql" rows="2"></textarea></div>
+          </section>
+
+          <section class="panel" data-panel="5">
+            <h2>Revisión</h2>
+            <div id="validacionResumen" class="validacion-resumen"></div>
+            <div id="sqlResumenRevision" class="sql-resumen-caso"></div>
+            <div id="criteriosComparacion" class="form-card criterios-compare-card"></div>
+            <div class="field">
+              <label for="imagenesNecesarias">Imágenes para el dictamen (opcional)</label>
+              <textarea id="imagenesNecesarias" rows="2" placeholder="El agente pedirá capturas si las necesita. Guárdelas en aprobados/{id-caso}/imagenes/"></textarea>
+            </div>
+            <div class="alert alert-info">
+              <strong>Sin copiar prompt:</strong> pulse <em>Activar análisis (Fase 1)</em>.
+              El agente lee <code>activo/{id-caso}/</code>, <code>cola/</code>, métodos en <code>conocimiento/</code> y <code>sql/</code> si aplica.
+              Escriba solo en la pestaña <strong>Chat</strong>; no repita el texto en Cursor.
+            </div>
+            <p class="hint">Fase: <span id="badgeFase" class="pill pill-progress">—</span>
+              <span id="chatCasoLabel"></span></p>
+            <details class="preview-details">
+              <summary>Vista previa técnica (opcional)</summary>
+              <pre id="previewPrompt" class="preview-pre"></pre>
+            </details>
+            <div class="actions-final">
+              <button type="button" class="btn btn-primary" id="btnActivarAnalisis" disabled>Activar análisis (Fase 1)</button>
+              <button type="button" class="btn btn-secondary" id="btnAbrirChat">💬 Chat del caso</button>
+              <button type="button" class="btn btn-secondary" id="btnCerrarFase1" disabled title="Aprueba el dictamen y envía el correo al desarrollador">Cerrar fase 1 y enviar correo</button>
+              <button type="button" class="btn btn-secondary" id="btnArchivarSql" title="Mover SQL a sql_refe/{REQ}">📦 Archivar SQL</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnCopiarPrompt" disabled title="Opcional">Copiar prompt</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnGuardarJson">JSON</button>
+              <button type="button" class="btn btn-ghost" id="btnNuevo">Nuevo caso</button>
+            </div>
+          </section>
+        </form>
+      </main>
+
+      <footer class="app-footer form-footer">
+        <button type="button" class="btn btn-ghost" id="btnPrev" disabled>Anterior</button>
+        <span id="stepIndicator">Paso 1 de 5</span>
+        <button type="button" class="btn btn-primary" id="btnNext">Siguiente</button>
+      </footer>
+    </section>
+
+    <!-- VISTA: CHAT -->
+    <section id="view-chat" class="view">
+      <div class="chat-header">
+        <div>
+          <h2>Chat del caso</h2>
+          <p class="hint">Caso: <code id="chatIdCaso">—</code> · REQ: <code id="chatIdReq">—</code>
+            · Fase: <span id="chatBadgeFase" class="pill pill-progress">—</span></p>
+          <label class="hint compact" for="chatSelectCaso">Requerimiento / caso activo</label>
+          <select id="chatSelectCaso" class="select-req-list" size="1"></select>
+        </div>
+        <div class="chat-header-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnChatVolverForm">← Formulario</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnChatVolverCola">Cola</button>
+          <button type="button" class="btn btn-ghost btn-sm hidden" id="btnChatVerHistorico">Histórico</button>
+        </div>
+      </div>
+      <div class="alert alert-info">
+        <strong>Escriba solo aquí.</strong> No copie el mismo texto en Cursor.
+        Esta pestaña se actualiza sola. El punto amarillo = su mensaje ya está guardado;
+        el verde «Agente» = ya respondió. En Cursor basta un «continúa» para que tome lo pendiente.
+      </div>
+      <div id="chatServerOffline" class="alert alert-warning hidden">
+        <strong>Servidor apagado.</strong> Ejecute <code>abrir-app.bat</code> (o deje abierta la ventana de <code>servir-app.bat</code>).
+        Luego abra <a href="http://localhost:8765/app/" target="_blank" rel="noopener">http://localhost:8765/app/</a>
+      </div>
+      <div id="chatEstadoAgente" class="chat-estado-agente chat-estado-esperando hidden">
+        <span class="chat-estado-dot" aria-hidden="true"></span>
+        <div class="chat-estado-text">
+          <strong id="chatEstadoLabel">Esperando al agente en Cursor</strong>
+          <span id="chatEstadoDetail" class="hint">Nada corre solo. El análisis lo hace el agente en Cursor.</span>
+          <span id="chatTimer" class="chat-timer hidden">0:00</span>
+        </div>
+      </div>
+      <div class="chat-docs-bar">
+        <div class="chat-docs-bar-head">
+          <strong>Documentos del caso</strong>
+          <span class="hint">Clic en la fila, doble clic o botón Abrir → pestaña nueva</span>
+        </div>
+        <ul id="chatDocumentList" class="chat-doc-list">
+          <li class="chat-doc-empty hint">Sin documentos detectados aún.</li>
+        </ul>
+      </div>
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="chat-compose">
+        <div id="chatComposeActivo">
+          <textarea id="chatInput" rows="3" placeholder="Escriba solo aquí. Enter envía · Alt+Enter salto de línea"></textarea>
+          <p class="hint compact">Enter envía. No lo vuelva a escribir en Cursor. Alt+Enter = salto de línea.</p>
+          <div class="chat-compose-actions">
+            <button type="button" class="btn btn-primary" id="btnEnviarChat">Enviar</button>
+            <button type="button" class="btn btn-secondary" id="btnRefrescarChat">Actualizar</button>
+            <button type="button" class="btn btn-secondary" id="btnCerrarFase1Chat" title="Aprueba el dictamen y envía el correo al desarrollador">Cerrar fase 1 y enviar correo</button>
+          </div>
+        </div>
+        <div id="chatCerradoBar" class="chat-cerrado-bar hidden">
+          <p><strong>Caso finalizado.</strong> El dictamen quedó en <code>aprobados/</code> y el correo debió enviarse al desarrollador. Ya no se escribe en este chat.</p>
+          <div class="chat-compose-actions">
+            <button type="button" class="btn btn-primary" id="btnChatCerrarVolver">Volver a cola</button>
+            <button type="button" class="btn btn-secondary" id="btnChatCerrarHistorico">Ver histórico</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: HISTÓRICO -->
+    <section id="view-historico" class="view">
+      <div class="historico-toolbar">
+        <button type="button" class="btn btn-primary btn-sm" id="btnRefrescarHistorico">Actualizar desde disco</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnExportHistorico">Exportar registro.json</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnImportHistorico">Importar registro.json</button>
+        <input type="file" id="importHistoricoFile" accept=".json" hidden>
+      </div>
+      <table class="data-table" id="tablaHistorico">
+        <thead>
+          <tr>
+            <th>ID caso</th>
+            <th>Proyecto</th>
+            <th>Módulo</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+            <th>Correo</th>
+            <th>Dictamen</th>
+            <th>Aprobado</th>
+            <th>Notas</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="historicoBody"></tbody>
+      </table>
+      <p class="hint">Documentos aprobados: carpeta <code id="pathAprobados">aprobados/{id-caso}/</code></p>
+    </section>
+
+    <!-- VISTA: CONSULTAS -->
+    <section id="view-consultas" class="view">
+      <h2>Consultas de proceso</h2>
+      <p class="hint">Flujo (capa → gate), Procedimientos (SP → método) y Chat para preguntar (p. ej. qué SP imprime un recibo). El agente responde aquí; no hace falta pegar el texto en Cursor.</p>
+      <div class="field mb">
+        <label for="consultaBuscar">Buscar proceso</label>
+        <input type="search" id="consultaBuscar" placeholder="caja, confirmar, facturación…" autocomplete="off">
+      </div>
+      <div class="kb-consulta-layout">
+        <div id="consultaProcesos" class="kb-proc-list"></div>
+        <div id="consultaDetalle" class="kb-consulta-detalle"></div>
+      </div>
+      <div class="form-card kb-consulta-chat">
+        <h3 class="kb-h3">Preguntar sobre el proceso</h3>
+        <p class="hint compact">Ejemplo: «¿cuál es el SP que imprime los recibos de caja?». El agente responde aquí solo; no hace falta pegar el texto en Cursor.</p>
+        <p class="hint compact" id="consultaChatBotHint" hidden></p>
+        <div id="consultaChatMensajes" class="chat-messages kb-doc-chat"></div>
+        <div class="chat-compose">
+          <textarea id="consultaChatInput" rows="3" placeholder="Escriba la pregunta…"></textarea>
+          <button type="button" class="btn btn-primary" id="btnConsultaEnviarChat">Enviar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: DOCUMENTAR -->
+    <section id="view-documentar" class="view">
+      <div class="historico-toolbar">
+        <h2 style="margin:0;flex:1">Documentar procesos</h2>
+        <span class="hub-badge" id="docBadgePendientes" hidden></span>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnDocRefrescar">Actualizar</button>
+      </div>
+      <p class="hint">Se guarda el flujo y, por cada SP, sus <strong>métodos</strong> (qué hace, valida, errores, qué llama). El .sql se baja a <code>sql/</code> el día que se documenta; no se copia el cuerpo.</p>
+      <div id="docTareaActiva" class="alert alert-info" hidden></div>
+      <div id="docError" class="alert alert-warning" hidden></div>
+
+      <div class="grid-2">
+        <div>
+          <h3 class="kb-h3">Pendientes</h3>
+          <p class="hint compact">Si el .sql ya está en <code>sql/</code>, el pendiente de ese SP se quita solo. No hace falta marcar otro ni repetir el de apertura.</p>
+          <div id="docPendientesLista"></div>
+          <div class="form-card">
+            <h3>Indicar SP de hoy</h3>
+            <p class="hint compact">No hace falta marcar el pendiente que aparece arriba. Elija <strong>cualquier</strong> .sql de <code>sql/</code> (lista o nombre). Si hay una tarea abierta de otro SP, <em>Documentar SP</em> la sustituye.</p>
+            <div class="field">
+              <label for="docProcesoId">Proceso</label>
+              <select id="docProcesoId">
+                <option value="">Proceso (se infiere si el SP ya está en el catálogo)…</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="docSqlSelect">Archivo en sql/</label>
+              <select id="docSqlSelect"></select>
+            </div>
+            <div class="field">
+              <label for="docSqlManual">O nombre del archivo</label>
+              <input type="text" id="docSqlManual" placeholder="SPQ_CAJA_RPT.sql" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="docNotas">Nota para el agente (opcional)</label>
+              <textarea id="docNotas" rows="2" placeholder="Este es el de impresión de recibo, no el de apertura"></textarea>
+            </div>
+            <div class="inline-field">
+              <button type="button" class="btn btn-primary btn-sm" id="btnDocDocumentarSp">Documentar SP</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnDocCerrarTarea" title="Cierra la tarea abierta para poder indicar otro SP">Cerrar tarea abierta</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnDocMarcarHecho">Marcar pendiente hecho</button>
+            </div>
+          </div>
+          <div class="form-card">
+            <h3>Proceso nuevo</h3>
+            <div class="field">
+              <label for="docNuevoNombre">Nombre</label>
+              <input type="text" id="docNuevoNombre" placeholder="Facturación">
+            </div>
+            <div class="field">
+              <label for="docNuevoModulo">Módulo</label>
+              <input type="text" id="docNuevoModulo" placeholder="FTR">
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnDocNuevoProceso">Crear esqueleto</button>
+          </div>
+        </div>
+        <div>
+          <h3 class="kb-h3">Chat de proceso</h3>
+          <p class="hint compact">Aclaraciones para el agente. No pegue el mismo texto en Cursor.</p>
+          <p class="hint compact" id="docChatBotHint" hidden></p>
+          <div id="docChatMensajes" class="chat-messages kb-doc-chat"></div>
+          <div class="chat-compose">
+            <textarea id="docChatInput" rows="3" placeholder="Ej. el SP de confirmar es SPQ_… método CONFIRMAR"></textarea>
+            <button type="button" class="btn btn-primary" id="btnDocEnviarChat">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div><!-- app-shell -->
+
+  <script src="js/sql-manifest.js?v=9"></script>
+  <script src="js/chat.js?v=32"></script>
+  <script src="js/cola.js?v=16"></script>
+  <script src="js/dictado.js?v=9"></script>
+  <script src="js/historico.js?v=10"></script>
+  <script src="js/criterios.js?v=9"></script>
+  <script src="js/desarrolladores.js?v=2"></script>
+  <script src="js/conocimiento.js?v=9"></script>
+  <script src="js/app.js?v=52"></script>
+</body>
+</html>

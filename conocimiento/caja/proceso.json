@@ -1,0 +1,300 @@
+{
+  "id": "caja",
+  "nombre": "Caja",
+  "modulo": "CJA · MODULO DE CAJA",
+  "estado": "parcial",
+  "resumen": "Configuración (CAJ/CJR/CPCJ/FPA/turnos) → abrir sesión → recibos ingreso/egreso → confirmar (cierra recibo, toca banco y dispara contabilidad de ingreso) → procesos (reportes, anulación, contabilización masiva) → cierre de turno. Orquestador FE: MODELO CONF_CAJA (SPQ_CONF_CAJA + cola SPQ_CONF_CAJA_2). Reportes: CAJA_RPT (SPQ_CAJA_RPT).",
+  "actualizado": "2026-08-31",
+  "notaSql": "Flujo leído en Qrystalos2 y en sql_refe/0100015121/SPQ_CONF_CAJA.sql. No se archiva el cuerpo. Para un REQ hay que bajar el SPQ/SPK de hoy a sql/. INSERTA_FCJD e INSERTA_RECIBO no están en ese SPQ: caen en SPQ_CONF_CAJA_2 (pendiente).",
+  "ventanas": [
+    {
+      "uso": "Operación diaria",
+      "ruta": "admin.caja",
+      "path": "/admin/caja",
+      "vue": "CajaPage.vue → CAJMovinComponent.vue",
+      "entrada": "VALIDA_INGRESO_PANTALLA (PROCEDENCIA=INGRESA DESDE CAJA). Exige equipo caja (UBEQ), cajero y caja abierta."
+    },
+    {
+      "uso": "Procesos / reportes / contabilización masiva",
+      "ruta": "admin.procaja",
+      "path": "/admin/procaja",
+      "vue": "ProCajaPage.vue → ProCajaComponent.vue"
+    },
+    {
+      "uso": "Catálogo cajas",
+      "ruta": "conf.caj",
+      "path": "/conf/caj",
+      "vue": "CnfCajPage.vue (tabla CAJ)"
+    },
+    {
+      "uso": "Conceptos",
+      "ruta": "conf.cpcj",
+      "path": "/conf/cpcj",
+      "vue": "CnfCpcjPage.vue (tabla CPCJ)"
+    },
+    {
+      "uso": "Formas de pago",
+      "ruta": "conf.fpa",
+      "path": "/conf/fpa",
+      "vue": "CnfFpaPage.vue (tabla FPA)"
+    },
+    {
+      "uso": "Caja financiera + cajeros",
+      "ruta": "conf.caja",
+      "path": "/conf/caja",
+      "vue": "CajaPage.vue → CAJComponent (CAJ_COL/CRUDCAJ) + CJRComponent"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Antes de operar: caja en CAJ, cajero en CJR, vínculo turno CXT+TUR, equipo UBEQ.ESCAJA y UBEQ.CAJA, conceptos CPCJ, formas de pago FPA (por caja en TGEN FORMAPAGO/TIPOEGRESO). Variable USVGS IDCJAPERTURACAJA debe existir en CPCJ (la usa abrir/cerrar). Otras variables de proceso: IDCJ_TRASLADOENCAJAS, IDCJTEDEVOLRECIBO, IDCJDEPOSITO, CAJCONCEPTNOANULABLE.",
+      "tablasClave": ["CAJ", "CJR", "CXT", "TUR", "UBEQ", "CPCJ", "FPA", "USVGS", "USUSU"],
+      "gates": [
+        {
+          "id": "catalogos",
+          "nombre": "Catálogos de caja",
+          "explicacion": "conf.caj = CAJ. conf.cpcj = CPCJ (cuenta, NOCONTAB, TIPORECIBO). conf.fpa = FPA. conf.caja = CRUD CAJ_COL y cajeros CJR. Turno cajero-caja en CXT.",
+          "invariante": "No se abre caja si falta IDCJAPERTURACAJA en CPCJ, si no hay turno CXT o si el equipo no es caja.",
+          "sps": [
+            {
+              "nombre": "SPQ_CAJ_COL",
+              "metodo": "CRUDCAJ",
+              "rol": "Alta/edición de cajas (MODELO CAJ_COL). Convención SPQ_; verificar script de hoy."
+            }
+          ]
+        },
+        {
+          "id": "conceptos",
+          "nombre": "Conceptos de caja (CPCJ)",
+          "explicacion": "Catálogo que debería clasificar cada línea FCJD.CONCEPTO. FK reales hacia CPCJ: CAJCP, CJTE, MOCM — no FCJD. En CRUDFPA el SP busca CPCJ.CUENTA por concepto+TIPORECIBO para el asiento.",
+          "invariante": "Un concepto operable existe en CPCJ. Abrir caja exige el de IDCJAPERTURACAJA. Confirmar hoy NO exige que todas las líneas FCJD existan en CPCJ (hueco de proceso).",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Pantalla Administrativo → Caja (admin.caja). Pestañas movimiento ingreso y egreso. Recibo FCJ, detalle FCJD, pagos PCJ, sesión ACJ/ACJD. CLASE_FAC COBRO vs PAGO. Procedencia CAJA vs CITAS/CE/otros cambia si se puede editar el documento (REQ 0100015121).",
+      "tablasClave": ["ACJ", "ACJD", "FCJ", "FCJD", "PCJ", "TFCJ", "TFCJD"],
+      "gates": [
+        {
+          "id": "entrar-pantalla",
+          "nombre": "Entrar a la pantalla",
+          "explicacion": "Al montar CajaPage: VALIDA_INGRESO_PANTALLA. Si KO, redirige a admin. INFO_CAJA / INFO_CAJA_VALIDAR / ESTADO_CAJA arman el estado de sesión en el puesto.",
+          "invariante": "Sin validación OK no se opera. FNK_VALIDA_TURNO_CAJA cubre: no es cajero, caja inexistente, cajero distinto al que abrió, sin turno, equipo no caja, horario.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "VALIDA_INGRESO_PANTALLA / INFO_CAJA / INFO_CAJA_VALIDAR / ESTADO_CAJA",
+              "rol": "Candado de entrada y estado de la sesión en el equipo."
+            }
+          ]
+        },
+        {
+          "id": "abrir-cerrar",
+          "nombre": "Abrir y cerrar sesión",
+          "explicacion": "ABRIR_CAJA valida IDCJAPERTURACAJA∈CPCJ, CAJ no abierta, ACJ sin sesión ABIERTA, turno CXT, FNK_VALIDA_TURNO_CAJA; luego SPK_APERTURA_DE_CAJA. CERRAR_CAJA: caja debe estar abierta, fecha de cierre ≤ hoy; caja CLASE=Menor → SPK_SOL_REEMBOLSO_CAJAMENOR; si no → SPK_CIERRE_DE_CAJA.",
+          "invariante": "Una sola sesión ABIERTA por caja. No operar recibos sin ACJ abierta. No reabrir con ACJ abiertas colgadas.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "ABRIR_CAJA / CERRAR_CAJA",
+              "rol": "Orquesta validaciones y llama al SPK de apertura o cierre."
+            },
+            {
+              "nombre": "SPK_APERTURA_DE_CAJA",
+              "metodo": "—",
+              "rol": "Crea la sesión (ACJ/ACJD). Cuerpo no leído: bajar a sql/."
+            },
+            {
+              "nombre": "SPK_CIERRE_DE_CAJA",
+              "metodo": "—",
+              "rol": "Cierra el turno (caja no menor). Cuerpo no leído."
+            },
+            {
+              "nombre": "SPK_SOL_REEMBOLSO_CAJAMENOR",
+              "metodo": "—",
+              "rol": "Cierre de caja menor. Cuerpo no leído."
+            }
+          ]
+        },
+        {
+          "id": "ingreso-egreso",
+          "nombre": "Ingreso y egreso (armar recibo)",
+          "explicacion": "Ingreso: INSERTA_RECIBO (cabeza FCJ), INSERTA_FCJD (líneas; CONCEPTO viene de la UI), CRUDFPA / CRUDFPA_2 / VALIDA_INSERT_FPA (pagos PCJ), EDITA_FCJ, DELETE_FCJD, DESHACER/UTILIZAR_INGRESO. Egreso: NUEVO_RECIBO_EGRESO, INSERT_FCJD_EGRESO, CRUDFPA_EGRESO, CONFIRMAR_RECIBO_EGRESO, ELIMINAR_FCJD_EGRESO. Totales PCJ vs FCJ.VALORTOTAL. TRAER_COMPROBANTE usa TFCJ (temporal) y SPK_TRAERECIB_CAJA. Variables: traslado entre cajas IDCJ_TRASLADOENCAJAS; devolución IDCJTEDEVOLRECIBO.",
+          "invariante": "VALORTOTAL debe cuadrar con PCJ antes de confirmar. Procedencia distinta de CAJA: no editar automático el total (REQ 0100015121). INSERTA_FCJD/INSERTA_RECIBO viven en SPQ_CONF_CAJA_2 (no en el SPQ leído).",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CRUDFPA / CRUDFPA_2 / VALIDA_INSERT_FPA / PCJ_INGRESOS / TRAER_COMPROBANTE / NUEVO_RECIBO_EGRESO / INSERT_FCJD_EGRESO / …",
+              "rol": "Pagos, egresos y temporales en el SPQ leído (sql_refe 5121)."
+            },
+            {
+              "nombre": "SPQ_CONF_CAJA_2",
+              "metodo": "INSERTA_FCJD / INSERTA_RECIBO / EDITA_FCJ / DELETE_FCJD / (resto no reconocido por SPQ_CONF_CAJA)",
+              "rol": "Cola ELSE del SPQ principal. Obligatorio bajar el script de hoy: aquí se inserta FCJD.CONCEPTO."
+            },
+            {
+              "nombre": "SPK_TOTPCJ_EG",
+              "metodo": "—",
+              "rol": "Recalcula totales de pago en egreso."
+            }
+          ]
+        },
+        {
+          "id": "trasladar",
+          "nombre": "Traslado entre cajas / depósito",
+          "explicacion": "No hay un METODO TRASLADAR suelto. Se reconoce por FCJD.CONCEPTO = variable IDCJ_TRASLADOENCAJAS (egreso) o IDCJDEPOSITO (depósito al traer comprobante). Misma pantalla de movimiento.",
+          "invariante": "El concepto de traslado/depósito debe existir en CPCJ (variables USVGS). Un traslado no debería confirmar detalle con concepto huérfano.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "VALIDA_INSERT_FPA_EGRESO / TRAER_COMPROBANTE (rama depósito)",
+              "rol": "Discrimina TIPO EGRESO vs PAGO según concepto de traslado o devolución."
+            }
+          ]
+        },
+        {
+          "id": "confirmar",
+          "nombre": "Confirmar recibo",
+          "explicacion": "CONFIRMAR_RECIBO (ingreso): exige PCJ con suma = VALORTOTAL, fecha ≤ hoy, periodo PRI abierto, no CERRADA, ESTADO no D/A, total > 0, no MCP previo procedencia CAJA, caja abierta una vez. Si procedencia CITAS, la cita (NOADMISION) debe existir; si CE, AUT no Anulada. No permite concepto de apertura (IDCJAPERTURACAJA) en recibo operativo. NO recorre todas las líneas FCJD contra CPCJ. Si OK: alinea CNSACJ, SPK_CIERRERECIBO_CAJA, SPK_ACTUALIZA_SALDO_BANCO, SPK_NC_CONTAB_CAJA_ING. Egreso: CONFIRMAR_RECIBO_EGRESO → SPK_CIERRERECIBO_CAJA y SPK_NC_CONTAB_CAJA_EGR. Anular: VALIDA_ANULAR / ANULAR_RECIBO_CAJA → SPK_ANULARECIBO_CAJA y reversa MCP si había asiento.",
+          "invariante": "Deseable: ninguna línea FCJD sin CONCEPTO en CPCJ. Hecho hoy (script 5121): confirma si cuadran pagos y sesión; el hueco de concepto explota en el SPK contable. Este gate YA dispara capa 4 y 5.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CONFIRMAR_RECIBO / CONFIRMAR_RECIBO_EGRESO / ANULAR_RECIBO_CAJA / DEVOLVER_RECIBO_CAJA",
+              "rol": "Candado de confirmar/anular/devolver e invocación de SPK de cierre y contabilidad."
+            },
+            {
+              "nombre": "SPK_CIERRERECIBO_CAJA",
+              "metodo": "—",
+              "rol": "Marca el recibo cerrado (CERRADA). Cuerpo no leído."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Otros módulos no tienen otro MODELO de caja: llaman CONF_CAJA (sobre todo CRUDFPA y confirmar) con procedencia distinta de CAJA. CONFIRMAR_RECIBO trata CITAS (FCJ.NOADMISION → CIT) y CE (AUT). Si esos orígenes graban FCJD.CONCEPTO que no está en CPCJ, el hueco llega ya armado.",
+      "tablasClave": ["CIT", "AUT", "FCJ", "FCJD", "PCJ"],
+      "gates": [
+        {
+          "id": "citas-ce",
+          "nombre": "Citas y consulta externa",
+          "explicacion": "AgendaNuevaComponent, OncologiaAgenda, APLIMAgenda, AutorizadorComponent: MODELO CONF_CAJA / CRUDFPA (y variantes) al recaudar. Procedencia típica CITAS o CE.",
+          "invariante": "Si la cita se canceló o la AUT está Anulada, confirmar en caja debe fallar (ya validado en CONFIRMAR_RECIBO).",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CRUDFPA / CONFIRMAR_RECIBO",
+              "rol": "Mismo orquestador; el origen es la agenda/autorizador, no la pantalla admin.caja."
+            }
+          ]
+        },
+        {
+          "id": "venta-cxp-peru",
+          "nombre": "Farmacia, CxP y recaudo Perú",
+          "explicacion": "VentaPrincipalComponent, OPComponent/OPPagoEgresosDialog, RecaudarPeruComponent: CONF_CAJA para armar o pagar desde inventario/cuentas por pagar/Perú.",
+          "invariante": "Deben entregar concepto y forma de pago del catálogo. Egresos tipo CXP en CAJMovin tienen reglas de no editar líneas de origen CxP.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CRUDFPA / CONFIRMAR_EGRESOS_MASIVO_OP / …",
+              "rol": "Pagos y egresos originados fuera de la pantalla de caja."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-bancos",
+      "numero": 4,
+      "nombre": "Subproceso con bancos",
+      "estado": "parcial",
+      "explicacion": "No es el módulo bancos completo. Al confirmar ingreso, SPQ_CONF_CAJA ejecuta SPK_ACTUALIZA_SALDO_BANCO. Flujo de caja en procaja (FlujoCajaComponent) es reporte CAJA_RPT por caja y FPA, no el movimiento bancario. Formas de pago FPA pueden exigir banco/documento/autorización.",
+      "tablasClave": ["PCJ", "FPA", "BCO"],
+      "gates": [
+        {
+          "id": "saldo-banco-al-confirmar",
+          "nombre": "Actualizar saldo banco al confirmar",
+          "explicacion": "Va en cadena de CONFIRMAR_RECIBO, no en una pantalla de bancos. Si el SPK falla, el usuario ve error de confirmar/contabilidad.",
+          "invariante": "Un confirmado de ingreso deja rastro bancario vía ese SPK. Cuerpo no leído: no afirmar cuentas ni tablas internas.",
+          "sps": [
+            {
+              "nombre": "SPK_ACTUALIZA_SALDO_BANCO",
+              "metodo": "—",
+              "rol": "Llamado tras SPK_CIERRERECIBO_CAJA en CONFIRMAR_RECIBO. Bajar script para el puente exacto."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "Dos caminos: (A) al confirmar, SPK_NC_CONTAB_CAJA_ING (ingreso) o SPK_NC_CONTAB_CAJA_EGR / SPK_CONTAB_CAJA_ING en anulación. (B) masivo en Procesos de caja → Contabilización: ENVIAR_RECIBOS_CONTABILIDAD marca FCJ.MARCACONT y SPK_CONTAB_MASIVA procedencia CAJA. Periodo PRI debe estar abierto. MCP.PROCEDENCIA=CAJA con REFERENCIA2=CODCAJA y REFERENCIA1=CNSFACJ. CRUDFPA usa CPCJ.CUENTA: si el concepto no está, el asiento sale mal o truena.",
+      "tablasClave": ["MCP", "MCUE", "PRI", "FCJ", "CPCJ"],
+      "gates": [
+        {
+          "id": "contabilizar-al-confirmar",
+          "nombre": "Contabilizar al confirmar",
+          "explicacion": "No espera a la pestaña Contabilización. El SPK de NC/contab de caja corre dentro de CONFIRMAR_RECIBO. Anular puede SPK_REVERSAR_MCP y recontabilizar.",
+          "invariante": "Si FCJD.CONCEPTO no tiene fila/cuenta en CPCJ, el fallo aparece aquí aunque el recibo ya pasó el candado de confirmar.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_ING",
+              "metodo": "—",
+              "rol": "Asiento de ingreso al confirmar. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_EGR",
+              "metodo": "—",
+              "rol": "Asiento de egreso al confirmar egreso. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPK_CONTAB_CAJA_ING",
+              "metodo": "—",
+              "rol": "Usado en rama de anulación/reverso. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPK_REVERSAR_MCP",
+              "metodo": "—",
+              "rol": "Reversa comprobante al anular recibo ya contabilizado."
+            }
+          ]
+        },
+        {
+          "id": "contabilizar-masivo",
+          "nombre": "Contabilización masiva (procaja)",
+          "explicacion": "admin.procaja pestaña Contabilización (ContabilizacionComponent). Periodo año/mes, lista enviados/no enviados, clase COBRO/PAGO. METODO ENVIAR_RECIBOS_CONTABILIDAD: PRI abierto, MARCACONT=1, SPK_CONTAB_MASIVA … 'CAJA'.",
+          "invariante": "Periodo cerrado → KO. No es el primer policía del concepto; asume recibos ya confirmados.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "ENVIAR_RECIBOS_CONTABILIDAD",
+              "rol": "Marca y dispara contabilidad masiva de caja."
+            },
+            {
+              "nombre": "SPK_CONTAB_MASIVA",
+              "metodo": "—",
+              "rol": "Genera asientos por lote procedencia CAJA. Cuerpo no leído."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

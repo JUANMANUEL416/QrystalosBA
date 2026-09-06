@@ -1,0 +1,107 @@
+{
+  "procesoId": "facturacion",
+  "mensajes": [
+    {
+      "id": "caja-flujo-20260831",
+      "autor": "agente",
+      "en": "2026-08-31T09:17:00",
+      "texto": "Revisé el flujo de Caja en Qrystalos2 y en sql_refe/0100015121/SPQ_CONF_CAJA.sql (no copié cuerpos). Actualicé conocimiento/caja/proceso.json (estado parcial) y Consultas.\n\nMapa corto:\n1) Config: conf.caj / cpcj / fpa / caja (CAJ+CJR). Turnos CXT. Variable IDCJAPERTURACAJA ∈ CPCJ.\n2) Operación: admin.caja (CAJMovin). VALIDA_INGRESO_PANTALLA → ABRIR_CAJA → armar FCJ/FCJD/PCJ → CONFIRMAR_RECIBO.\n3) Confirmar ingreso YA llama cierre de recibo + saldo banco + SPK_NC_CONTAB_CAJA_ING. No espera a la pestaña Contabilización.\n4) Hueco: CONFIRMAR_RECIBO no exige todas las líneas FCJD.CONCEPTO en CPCJ; el error sale en el SPK contable.\n5) INSERTA_FCJD / INSERTA_RECIBO no están en SPQ_CONF_CAJA: van a SPQ_CONF_CAJA_2 (pendiente en Documentar).\n6) Alimentadores: agenda, autorizador, farmacia, CxP, Perú — mismo CONF_CAJA.\n7) Masivo: admin.procaja → Contabilización → ENVIAR_RECIBOS_CONTABILIDAD → SPK_CONTAB_MASIVA.\n\nPendientes de valle: SPQ_CONF_CAJA_2, SPK de apertura/cierre/recibo, SPK banco y SPK contab. Para un REQ, bajar el .sql de hoy a sql/."
+    },
+    {
+      "id": "caja-sps-20260831",
+      "autor": "agente",
+      "en": "2026-08-31T09:30:00",
+      "texto": "La documentación de SP queda por método, no el cuerpo.\n\nFormato (Consultas → Caja → Procedimientos):\nSP → SPQ_CONF_CAJA\n  ABRIR_CAJA → abre la sesión; valida IDCJAPERTURACAJA∈CPCJ, caja no abierta, ACJ colgadas, turno, FNK_VALIDA_TURNO_CAJA; errores: ya abierta, sesiones sin cerrar, no es cajero…; llama SPK_APERTURA_DE_CAJA.\n  CONFIRMAR_RECIBO → cierra recibo + banco + asiento; valida pagos=total, PRI, sesión; NO valida cada FCJD.CONCEPTO∈CPCJ (hueco); llama SPK_CIERRERECIBO_CAJA, SPK_ACTUALIZA_SALDO_BANCO, SPK_NC_CONTAB_CAJA_ING.\n\nYa leídos en SPQ_CONF_CAJA: INFO_CAJA, VALIDA_INGRESO_PANTALLA, ABRIR_CAJA, CERRAR_CAJA, CRUDFPA, CONFIRMAR_RECIBO, CONFIRMAR_RECIBO_EGRESO, ENVIAR_RECIBOS_CONTABILIDAD, etc. El resto de ese SPQ está listado (nombre + una frase) hasta releer.\n\nSPQ_CONF_CAJA_2 (INSERTA_RECIBO / INSERTA_FCJD) y los SPK: ficha vacía hasta bajar el .sql a sql/ y pulsar Documentar SP.\n\nCtrl+F5. Si Documentar no lista sql/, reinicie con abrir-app.bat."
+    },
+    {
+      "id": "caja-print-20260831",
+      "autor": "agente",
+      "en": "2026-08-31T11:35:00",
+      "texto": "Consultas ya tiene chat abajo (el mismo de Documentar). Pregunte ahí; yo respondo en este hilo.\n\nImprimir recibos de caja:\n• Administrativo → Caja y Procesos → Reimpresión: MODELO CAJA_RPT / METODO IMPRIMIR_RECIBO_FCJ → SPQ_CAJA_RPT. Trae FCJ+FCJD+PCJ; el PDF lo arma el frontend (jsPDF), no un SP que «imprima».\n• Hay un alias IMPRIMIR_RECIBO (useFCJ) al mismo MODELO.\n• Al reimprimir, UPDATE_PRINT marca el recibo como impreso.\n• No confundir: IMPRIME_CONTA_EGRESO (CONF_CAJA) y el visor MCP son el comprobante contable, no el recibo de caja.\n\nCuerpo de SPQ_CAJA_RPT no leído: bajar el .sql de hoy a sql/ y pasarlo en Documentar."
+    },
+    {
+      "id": "fee9de22",
+      "autor": "coordinador",
+      "texto": "Documentar SP **SPK_APERTURA_DE_CAJA.sql** (vigente en sql/).\nPendiente: —.\nProceso: —.\n\n\nLeer el script de hoy. En conocimiento/ID/sps.json documentar por METODO:\n  SP → METODO: hace (una frase), valida (lista), noValida (huecos), errores (textos KO), llama (SPK/SPQ anidados), efecto en el proceso, estado=leido.\nNo copiar el cuerpo. Si el METODO no está en este SPQ, anotarlo en la cola (ELSE). Anidados faltantes → filas en pendientes. Actualizar el gate en proceso.json solo si cambia el flujo.",
+      "en": "2026-08-31T10:06:17"
+    },
+    {
+      "id": "caja-rpt-doc-ui",
+      "autor": "agente",
+      "en": "2026-08-31T17:40:00",
+      "texto": "SPQ_CAJA_RPT no está fuera de Caja: es el SP de reportes/impresión del módulo (MODELO CAJA_RPT). Qrystalos2 ya lo usa en Administrativo → Caja (IMPRIMIR_RECIBO_FCJ) y en Procesos → Reimpresión. CONF_CAJA opera el recibo; CAJA_RPT lo imprime. No hace falta releer todo el FE de caja para ubicarlo.\n\nDocumentar ya no queda atado al SPK de apertura: puede indicar cualquier .sql de sql/ (lista o nombre), elegir proceso, y si hay tarea abierta de otro SP, Documentar SP la sustituye. También hay «Cerrar tarea abierta». Ctrl+F5.\n\nYa leí sql/SPQ_CAJA_RPT.sql. IMPRIMIR_RECIBO_FCJ está leído: el SELECT no trae NROCOMPROBANTE. IMPRIMIR_RECIBO no existe en ese SP (solo lo llama useFCJ). UPDATE_PRINT leído. Tarea de apertura queda cerrada; SPK_APERTURA_DE_CAJA sigue en pendientes para otro valle."
+    },
+    {
+      "id": "5c9b9010",
+      "autor": "coordinador",
+      "texto": "Documentar SP **SPQ_CAJA_RPT.sql** (vigente en sql/).\nPendiente: — (sin pendiente; SP suelto).\nProceso: caja.\n\n\nLeer el script de hoy. En conocimiento/caja/sps.json documentar por METODO:\n  SP → METODO: hace (una frase), valida (lista), noValida (huecos), errores (textos KO), llama (SPK/SPQ anidados), efecto en el proceso, estado=leido.\nNo copiar el cuerpo. Si el METODO no está en este SPQ, anotarlo en la cola (ELSE). Anidados faltantes → filas en pendientes. Actualizar el gate en proceso.json solo si cambia el flujo.",
+      "en": "2026-08-31T12:33:18"
+    },
+    {
+      "id": "caja-pend-sql",
+      "autor": "agente",
+      "en": "2026-08-31T17:42:00",
+      "texto": "Pendientes: si el .sql ya está en sql/, se quita solo (coincide el nombre del SP). SPK_APERTURA_DE_CAJA.sql ya estaba → ese pendiente queda cerrado. No se crea otro por el mismo SP. SPQ_CAJA_RPT también. Los que siguen son los que aún no tienen archivo (CONF_CAJA, CONF_CAJA_2, banco, contab). Ctrl+F5 en Documentar."
+    },
+    {
+      "id": "e7f9dc12",
+      "autor": "coordinador",
+      "texto": "estoy abriendo la caja y me dice que no tiene turno",
+      "en": "2026-08-31T13:38:15"
+    },
+    {
+      "id": "caja-turno-20260831",
+      "autor": "agente",
+      "en": "2026-08-31T13:46:00",
+      "texto": "Eso casi nunca es un fallo del programa: la caja no deja abrir si el cajero no tiene un turno válido en ese momento.\n\nPídale a quien llama el mensaje exacto (se parecen):\n• «No tiene turnos configurados» o «No tiene turno asignado» → esa persona no está como cajero de esa caja, o no le pusieron turno.\n• «No tiene turno para este horario» → sí tiene turno, pero no a esta hora.\n• «No tiene turno configurado para hoy lunes» (u otro día) → el turno no aplica hoy.\n\nQué debe revisar el sitio (configuración de cajeros / turnos):\n1. El usuario con el que entra a Qrystalos debe estar marcado como cajero.\n2. Ese cajero debe estar asignado a la caja de ese computador, con un turno.\n3. Ese turno debe cubrir el día de hoy y la hora actual.\n4. El computador debe estar definido como puesto de caja.\n\nOjo: el sistema usa el cajero del usuario que inició sesión, no el que elijan en pantalla.\n\nSi me pasa el texto exacto, quién entra y qué caja es, le digo cuál de esas cuatro es."
+    },
+    {
+      "id": "3c750b48",
+      "autor": "coordinador",
+      "texto": "Documentar SP **SPQ_CAJA_RPT.sql** (vigente en sql/).\nPendiente: — (sin pendiente; SP suelto).\nProceso: caja.\n\n\nLeer el script de hoy. En conocimiento/caja/sps.json documentar por METODO:\n  SP → METODO: hace (una frase), valida (lista), noValida (huecos), errores (textos KO), llama (SPK/SPQ anidados), efecto en el proceso, estado=leido.\nNo copiar el cuerpo. Si el METODO no está en este SPQ, anotarlo en la cola (ELSE). Anidados faltantes → filas en pendientes. Actualizar el gate en proceso.json solo si cambia el flujo.",
+      "en": "2026-08-31T13:48:52"
+    },
+    {
+      "id": "967df253",
+      "autor": "coordinador",
+      "texto": "Documentar SP **SPQ_CAJA_RPT.sql** (vigente en sql/).\nPendiente: — (sin pendiente; SP suelto).\nProceso: caja.\nNota: procedimiento para reportes de caja\n\nLeer el script de hoy. En conocimiento/caja/sps.json documentar por METODO:\n  SP → METODO: hace (una frase), valida (lista), noValida (huecos), errores (textos KO), llama (SPK/SPQ anidados), efecto en el proceso, estado=leido.\nNo copiar el cuerpo. Si el METODO no está en este SPQ, anotarlo en la cola (ELSE). Anidados faltantes → filas en pendientes. Actualizar el gate en proceso.json solo si cambia el flujo.",
+      "en": "2026-08-31T13:49:29"
+    },
+    {
+      "id": "a17c409a",
+      "autor": "coordinador",
+      "texto": "enviar a contabilidad",
+      "en": "2026-08-31T13:50:17"
+    },
+    {
+      "id": "76dd5306",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-08-31T13:50:17"
+    },
+    {
+      "id": "caja-enviar-conta-20260831",
+      "autor": "agente",
+      "en": "2026-08-31T13:52:00",
+      "texto": "**Enviar a contabilidad** (recibos de caja)\n\nHay **dos caminos**; no son lo mismo:\n\n**A) Al confirmar el recibo** (Administrativo → Caja, botón Confirmar)\n• CONFIRMAR_RECIBO ya cierra el recibo, toca banco y llama SPK_NC_CONTAB_CAJA_ING.\n• Si el asiento sale bien, FCJ queda **CONTABILIZADA = 1** (punto verde) y con NROCOMPROBANTE.\n• Muchos recibos **no necesitan** pasar por la pestaña Contabilización: ya contabilizaron al confirmar.\n• Si falla (concepto sin cuenta en CPCJ, periodo cerrado, etc.), el error sale **en el mismo Confirmar**.\n\n**B) Contabilización masiva** (Administrativo → Caja y Procesos → pestaña **Contabilización**)\n• Pantalla: ContabilizacionComponent (admin.procaja).\n• Pasos:\n  1. Elegir **periodo contable** (PRI abierto — si está cerrado no deja marcar ni enviar).\n  2. Caja, **Clase** (COBRO / PAGO) y **Tipo** (INTERNO / EXTERNO / CREDITO).\n  3. Filtro «Ver recibos»: **No enviados** (= CONTABILIZADA 0, punto rojo).\n  4. Marque los recibos (solo confirmados, CERRADA=1).\n  5. **Enviar a Contabilidad** → CONF_CAJA · ENVIAR_RECIBOS_CONTABILIDAD → marca MARCACONT=1 y SPK_CONTAB_MASIVA procedencia CAJA.\n\n**Semáforo en la grilla**\n• Rojo (0): sin contabilizar → se puede seleccionar y enviar.\n• Verde (1): ya contabilizado → no aparece checkbox.\n• Amarillo (2): en proceso o con error contable → revisar NROCOMPROBANTE / MCP antes de reenviar.\n\n**Requisitos previos**\n• Recibo **confirmado** (no basta armarlo).\n• Periodo del mes del recibo **abierto** en PRI.\n• Para cerrar caja: CERRAR_CAJA exige que los confirmados tengan CONTABILIZADA=1 (salvo DEAPERTURA); si quedan rojos, el cierre se bloquea.\n\n**Excepción:** cajas con CAJ.NOCONTAB=1 marcan CONTABILIZADA=1 con NROCOMPROBANTE='NOCONTAB' al confirmar — no generan MCP real.\n\n**Errores frecuentes**\n• «PERIODO CERRADO NO PUEDE CONTINUAR» → abrir PRI o cambiar periodo.\n• Lista vacía con «No enviados» → ya están verdes (contabilizados al confirmar) o faltan filtros (caja/clase/tipo).\n• Error al confirmar o al enviar masivo → casi siempre concepto FCJD sin fila/cuenta en CPCJ (hueco documentado).\n\nSi me dice qué ve (¿rojos en Contabilización?, ¿error al confirmar?, ¿al cerrar caja?), le indico el camino exacto. SPK_CONTAB_MASIVA no está leído hoy; el flujo de pantalla y ENVIAR_RECIBOS_CONTABILIDAD sí (sql/SPQ_CONF_CAJA.sql)."
+    },
+    {
+      "id": "e5ef9532",
+      "autor": "agente",
+      "texto": "Se creó el esqueleto del proceso **FACTURACION** (`facturacion`). Quedó en pendientes para completar en un valle. No se inventó flujo ni SP.",
+      "en": "2026-08-31T14:02:49"
+    },
+    {
+      "id": "ftr-flujo-20260831",
+      "autor": "agente",
+      "en": "2026-08-31T14:22:00",
+      "texto": "Revisé Facturación hasta radicar la cuenta de cobro (lo que ve quien opera; Consultas ya tiene el flujo).\n\nCamino:\n1) Antes: resolución DIAN vigente y firma digital. El banner naranja/rojo en Facturación avisa si la firma se vence.\n2) Administrativo → Facturación: armar la factura (una a una, masiva, citas, hospitalización/urgencias, programa).\n3) Notificar a la DIAN (pestaña Proceso DIAN). El aviso de «días para radicar» es el plazo de la factura electrónica, no el de la cuenta.\n4) Empaqueta: junta historia y soportes en PDF/ZIP para la aseguradora. Empacar no es radicar.\n5) Armar la cuenta de cobro (varias facturas del mismo pagador): Traslados de facturas, o Cuentas por cobrar, o el cargue de saldos iniciales (mismo pagador + misma fecha = una cuenta).\n6) Cuentas por cobrar → cerrar la cuenta → Radicar CXC: fecha, quién recibió, número de radicado y guía. Después no se meten ni se sacan facturas. Ahí queda lista para cobrar y para contabilizar.\n\nEso no es el menú Radicaciones (incapacidades, lotes, PQR): es otro producto.\n\nEn Documentar dejé pendientes para bajar el procedimiento de: facturas, masiva, empaque, traslados y cuentas por cobrar. Sin esos .sql no documentamos los mensajes de error de cada botón.\n\nCtrl+F5 en Consultas → Facturación.\n\nConfirme: ¿«radicación de cuentas» es este Radicar CXC, o también quieren el menú Radicaciones?"
+    },
+    {
+      "id": "glosas-pend-cerrado-20260902",
+      "autor": "agente",
+      "en": "2026-09-02T17:58:00",
+      "texto": "El pendiente «GLOSAS · proceso nuevo» no era trabajo del REQ 0100016259: era recordar completar el esqueleto de 5 capas en un valle. El REQ ya cerró fase 1 (dictamen listo). Cerré ese pendiente. Documentar Glosas entero queda para cuando lo pida, no para este caso."
+    }
+  ]
+}

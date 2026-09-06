@@ -1,0 +1,70 @@
+{
+  "mensajes": [
+    {
+      "id": "20260901122117697478",
+      "autor": "sistema",
+      "texto": "El bot no pudo arrancar (clave, red o Cursor). Revise CURSOR_API_KEY y reintente.",
+      "fecha": "2026-09-01T12:21:17"
+    },
+    {
+      "id": "a-paso0-1-6259",
+      "autor": "agente",
+      "texto": "El bot falló al activar (CursorAgentError). Tomé el caso desde disco: cola IX OnLine.htm, solicitud, sql/SPQ_FGLO_COL.sql y sql/SPQ_FPAG_COL.sql, Qrystalos2 y documentación de tablas.\n\n**Paso 0 — Proceso**\nNo estaba en `conocimiento/INDICE.json` (solo Caja y Facturación; Facturación deja glosas/recaudo fuera). Creé esqueleto **glosas** (5 capas). Este REQ dictamina solo el gate *motivos-desde-recaudo*. El resto queda para Documentar.\n\n---\n\n**Paso 1 — Ventanas (confirme)**\n\n| # | Ventana | Ruta / menú | Componente | Rol |\n|---|---------|-------------|------------|-----|\n| 1 | **Administrativo → Cartera → Recaudos** | `admin.recaudos` (`/admin/Recaudos`) | `RecaudosPage.vue` → `cartera/FPAGComponent.vue` | **Origen.** Cartera carga factura + valor glosa + **MOTIVO1 y MOTIVO2** (en el formulario usted dijo glosa1/glosa2). INGRESO=GLOSAS. Permiso enviar: `BEnviarAuditoriaFPAG`. |\n| 2 | **Auditoría → Glosas → Responder Glosas** | `auditoria.glosas` (`/audit/Glosas`) | `AdiGlosasPage.vue` pestaña Respuesta → `RespGlosasComponent.vue` | **Destino.** Diálogo Motivo de Glosa lee `FGLOCG` (`TRAE_MOTIGLO`) y hoy se llena a mano (`CRUD_FGLOCG`). |\n| 3 | Adm. glosas (catálogo) | `Admin.Glosas` | `ConfGloComponent.vue` (`FCGLO`) | Solo validar que los códigos existan. Sin cambio salvo que indique lo contrario. |\n\nNo hay columnas `GLOSA1`/`GLOSA2` en el SQL de hoy ni en la ficha de `FPAGD`. Lo que sí existe: **`FPAGD.MOTIVO1` / `MOTIVO2`** (doc) y en recaudo se capturan como JSON `MOTIVO1`/`MOTIVO2` hacia **RPDX.ID11/ID12** (y en TXT también ID5/ID6). ¿Confirmamos que glosa1/glosa2 = esos motivos?\n\n---\n\n**Paso 3 — Lo leído hoy (causa raíz preliminar)**\n\nCartera sí guarda los dos códigos en el lote (`PROCESAR_FACTURA`, `SUBIR_TXT`, `CARGAR_FACTURAS`). `ASIGNAR` no copia a `FPAGD` en el SPQ: llama **SPK_CARGA_MASIVA_FAC_CXC_02**. `APLICARPAGO` no escribe `FGLOCG`: llama **SPK_PAGOSCXC** (ahí debería nacer `FGLO`). `ENVIAR_AUDIT` arma `ENT`/`ENTD` y no toca `FGLOCG`.\n\nAuditoría: `TRAE_MOTIGLO` solo lee `FGLOCG`. Si está vacío, el auditor no ve el motivo. Al aplicar respuesta tipo T, `CRUD_FGLO` exige `SUM(FGLOCG.VALOR) = FGLO.VLRGLOSA`.\n\nEn `SPQ_FPAG_COL` y `SPQ_FGLO_COL` de hoy **no hay INSERT a FGLOCG** en el camino recaudo → enviar auditoría. El INSERT de motivos en FGLO_COL es el CRUD manual o la carga masiva de *respuesta* (otro flujo).\n\n**Veredicto releer SPQ:** no hace falta volver a bajar `SPQ_FPAG_COL` / `SPQ_FGLO_COL` para este gate (leídos hoy). **Sí hace falta** el .sql de hoy de:\n1. `SPK_PAGOSCXC.sql`\n2. `SPK_CARGA_MASIVA_FAC_CXC_02.sql`\n3. `SPK_FINALIDAD_GLOSAS.sql` — solo si el sitio usa FINDEVOL 4, 5 o 6 al aplicar glosas\n\nColóquelos en `C:\\DevQuasar\\Qrystalos\\Qrys.Quatec\\sql\\`.\n\nNo hay ficha `tablas/FGLOCG.md` (sí se cita desde FGLO). No inventé columnas de `FGLOCG` más allá de las que usa el SP: `CNSGLO`, `CNSFCGLO`, `VALOR`, `OBSERVACION`.\n\n**Contabilidad:** no afecta. Corregí la validación del formulario (el texto de caja no aplicaba).\n\n---\n\n**Trazabilidad (☐ = falta SPK)**\n\n| Paso | Vue | MODELO | METODO | Fuente | Anidados |\n|------|-----|--------|--------|--------|----------|\n| Cargar motivos | FPAGComponent | FPAG_COL | PROCESAR_FACTURA / SUBIR_TXT / CARGAR_FACTURAS | sql/ ☑ | — |\n| Maestro códigos | CXC/FPAG | FPAG_COL | CODIGO_GLOSA | sql/ ☑ | FCGLO |\n| Asignar lote → FPAGD | FPAGComponent | FPAG_COL | ASIGNAR | sql/ ☑ | ☐ SPK_CARGA_MASIVA_FAC_CXC_02 |\n| Aplicar recaudo | FPAGComponent | FPAG_COL | APLICARPAGO | sql/ ☑ | ☐ SPK_PAGOSCXC, ☐ SPK_FINALIDAD_GLOSAS |\n| Enviar auditoría | FPAGComponent | FPAG_COL | ENVIAR_AUDIT | sql/ ☑ | SPK_GENCONSECUTIVO |\n| Ver motivos | RespGlosasComponent | FGLO_COL | TRAE_MOTIGLO | sql/ ☑ | — |\n| Motivo a mano | RespGlosasComponent | FGLO_COL | CRUD_FGLOCG | sql/ ☑ | — |\n\n---\n\n**Confirme en este Chat (y deje los SPK en sql/):**\n1. ¿Alcance ventanas 1 + 2 (catálogo 3 solo validación)?\n2. ¿glosa1/glosa2 = MOTIVO1/MOTIVO2?\n3. Reparto del valor (su análisis hablaba de partir el monto entre los dos conceptos): ¿50/50 si hay dos motivos; 100 % al único si solo hay uno? ¿Qué hacer si el código no está en FCGLO?\n4. ¿Copiar a FGLOCG al **aplicar** el recaudo (cuando nace FGLO) o al **enviar a auditoría**?\n\nNo hay dictamen HTML todavía. Con ventanas + SPK + esas reglas cierro análisis rápido y emito `dictamenes/20260901-0100016259.html`.",
+      "fecha": "2026-09-01T12:35:00"
+    },
+    {
+      "id": "20260901131238396306",
+      "autor": "coordinador",
+      "texto": "ya te coloque los otros dos procedimientos para completar el analisis",
+      "fecha": "2026-09-01T13:12:38"
+    },
+    {
+      "id": "20260901131238442305w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-01T13:12:38"
+    },
+    {
+      "id": "a-dictamen-6259",
+      "autor": "agente",
+      "texto": "Disculpe: el bot se quedó colgado a las 13:12 y no contestó. Ya leí los dos SPK.\n\n**Causa:** al asignar, MOTIVO1 y MOTIVO2 sí quedan en FPAGD. Al aplicar, SPK_PAGOSCXC crea FGLO pero no copia esos códigos a FGLOCG. Auditoría lee FGLOCG → vacío → los digitó a mano.\n\n**Propuesta:** un cambio en SPK_PAGOSCXC (después de crear FGLO): insertar 1 o 2 filas en FGLOCG. Dos códigos válidos → 50/50 (residuo en MOTIVO1). Uno solo → 100 %. Código que no esté en FCGLO (clase GLOSA, activo) se omite y el recaudo no falla. Sin cambio de pantalla ni de API.\n\n**Documento (detalle y pruebas):** dictamenes/20260901-0100016259.html\n\nSi está de acuerdo, Cerrar fase 1 en la app. Si el 50/50 o el momento (aplicar vs enviar auditoría) no es eso, dígalo aquí y ajusto el HTML.",
+      "fecha": "2026-09-01T13:22:00"
+    },
+    {
+      "id": "a-fglocg-env-6259",
+      "autor": "agente",
+      "texto": "Quité del dictamen la frase de la ficha FGLOCG.md. El HTML ahora solo nombra las columnas que ya usa CRUD_FGLOCG / TRAE_MOTIGLO: CNSGLO, CNSFCGLO, VALOR, OBSERVACION.\n\nIntenté leer FGLOCG en el servidor de prueba (.env.local, base PCEM). El login del usuario de servidor1 no entró (SQL 18456). Revise usuario y clave en .env.local; cuando autentique, consulto la tabla ahí y, si hay más columnas, actualizo el dictamen.\n\nSigue: dictamenes/20260901-0100016259.html",
+      "fecha": "2026-09-01T16:45:00"
+    },
+    {
+      "id": "a-fglocg-ok-6259",
+      "autor": "agente",
+      "texto": "Reintenté PCEM (.env.local): ahora sí entró.\n\nFGLOCG tiene 5 columnas: CNSGLO, CNSFCGLO, VALOR decimal(14,2), OBSERVACION varchar(1024) e ID identity. El INSERT del dictamen no debe enviar ID (igual que CRUD_FGLOCG). FPAGD sí tiene MOTIVO1, MOTIVO2, VLRGLOSA y CNSGLO_ASIG.\n\nActualicé dictamenes/20260901-0100016259.html. La propuesta no cambia: copiar motivos al aplicar en SPK_PAGOSCXC. Si 50/50 y el momento (aplicar) le parecen bien, Cerrar fase 1.",
+      "fecha": "2026-09-01T16:50:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-01T16:59:27"
+    },
+    {
+      "id": "a-ui-cola-ayuda-6259",
+      "autor": "agente",
+      "fecha": "2026-09-02T17:52:00",
+      "texto": "Quité de Cola de trabajo las cajas «Cómo guardar (ixonline avalasesor)» y «Archivos en cola/ (manifest)». Siguen Examinar, el archivo manual y la tabla. Recargue con Ctrl+F5."
+    },
+    {
+      "id": "a-pend-glosas-6259",
+      "autor": "agente",
+      "fecha": "2026-09-02T17:58:00",
+      "texto": "El pendiente de Documentar («GLOSAS · proceso nuevo») no era del dictamen: lo creé al armar el esqueleto de 5 capas. Este REQ ya cerró fase 1. Lo marqué completado. Recargue Documentar (Ctrl+F5)."
+    },
+    {
+      "id": "a-btn-analizar-req",
+      "autor": "agente",
+      "fecha": "2026-09-02T18:05:00",
+      "texto": "En el paso Requerimiento quedó el botón «Analizar requerimiento». El agente (Cursor) contrasta el REQ con su análisis y lista qué le falta revisar para validarlo. El resultado aparece ahí y en el Chat. Recargue con Ctrl+F5."
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "id": "glosas",
+  "nombre": "Glosas",
+  "modulo": "CAR",
+  "estado": "esqueleto",
+  "resumen": "Cartera carga glosas en Recaudos (MOTIVO1/MOTIVO2). Al aplicar nace FGLO. Auditoría responde leyendo FGLOCG. Este REQ: copiar los motivos de recaudo a FGLOCG. Resto de capas incompleto.",
+  "actualizado": "2026-09-01",
+  "notaSql": "SPQ_FPAG_COL y SPQ_FGLO_COL leídos hoy en sql/. No se archivó cuerpo. SPK_PAGOSCXC y SPK_CARGA_MASIVA_FAC_CXC_02 no están en sql/.",
+  "alcanceHasta": "Que los motivos cargados en recaudo (MOTIVO1/MOTIVO2) se vean en Auditoría → Responder Glosas (FGLOCG). No incluye respuesta, conciliación ni contabilidad de glosas.",
+  "ventanas": [
+    {
+      "uso": "Recaudos (origen: cartera alimenta glosas y motivos)",
+      "ruta": "admin.recaudos",
+      "path": "/admin/Recaudos",
+      "vue": "RecaudosPage.vue → cartera/FPAGComponent.vue",
+      "entrada": "Administrativo → Cartera → Recaudos. Permiso BEnviarAuditoriaFPAG para enviar. INGRESO=GLOSAS. Plantilla de carga: MOTIVO1, MOTIVO2."
+    },
+    {
+      "uso": "Responder glosas (destino: motivos FGLOCG)",
+      "ruta": "auditoria.glosas",
+      "path": "/audit/Glosas",
+      "vue": "AdiGlosasPage.vue pestaña Respuesta → RespGlosasComponent.vue",
+      "entrada": "Auditoría → Glosas → Responder Glosas. Diálogo Motivo de Glosa (CRUD_FGLOCG). Lectura TRAE_MOTIGLO."
+    },
+    {
+      "uso": "Catálogo de códigos de glosa",
+      "ruta": "Admin.Glosas",
+      "path": "/admin/AdmGlosas",
+      "vue": "AdminGlosasPage.vue → ConfGloComponent.vue (FCGLO)",
+      "entrada": "Administrativo → Adm. glosas. Maestro FCGLO (CLASE=GLOSA, ESTADO=ACTIVO). Fuera del cambio salvo validar que MOTIVO1/2 existan ahí."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "esqueleto",
+      "explicacion": "Antes de operar: códigos de glosa en FCGLO (clase GLOSA, activos). Variables IDFDEPCARTERA e IDFDEPAUDITORIA para el envío. No se inventó más parametrización.",
+      "tablasClave": ["FCGLO"],
+      "gates": [
+        {
+          "id": "catalogo-fcglo",
+          "nombre": "Catálogo de motivos (FCGLO)",
+          "explicacion": "CODIGO_GLOSA (SPQ_FPAG_COL) lista CNSFCGLO+DESCRIPCION de FCGLO según INGRESO GLOSAS o DEVOLUCION. El diálogo de motivos en Responder busca la misma tabla.",
+          "invariante": "Un código escrito en MOTIVO1/MOTIVO2 o en FGLOCG.CNSFCGLO debe existir en FCGLO y estar ACTIVO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "CODIGO_GLOSA",
+              "rol": "Maestro de códigos para la carga de recaudo. Leído hoy."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "esqueleto",
+      "explicacion": "Auditoría recibe la glosa y responde. Hoy el auditor abre Motivo de Glosa y carga FGLOCG a mano (CRUD_FGLOCG) porque TRAE_MOTIGLO no trae filas si cartera no las escribió.",
+      "tablasClave": ["FGLO", "FGLOCG", "FGLOD", "FCGLO"],
+      "gates": [
+        {
+          "id": "ver-motivos",
+          "nombre": "Ver y editar motivos al responder",
+          "explicacion": "Al seleccionar una glosa, TRAE_MOTIGLO lee FGLOCG+FCGLO. Alta/edición/borrado: CRUD_FGLOCG. Al guardar respuesta tipo T, CRUD_FGLO exige que SUM(FGLOCG.VALOR)=FGLO.VLRGLOSA.",
+          "invariante": "Sin filas en FGLOCG el auditor no ve el motivo que cartera ya digitó. Con filas, la suma de valores debe cuadrar con VLRGLOSA.",
+          "sps": [
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "TRAE_MOTIGLO",
+              "rol": "Lectura de motivos. Leído hoy."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CRUD_FGLOCG",
+              "rol": "Alta/edita/borra motivo. Leído hoy."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CRUD_FGLO",
+              "rol": "Guarda respuesta; valida suma de motivos si TIPORESPUESTA=T. Leído en ese tramo."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Cartera en Recaudos (INGRESO=GLOSAS) carga factura + valor de glosa + MOTIVO1 y MOTIVO2 (plantilla TXT/Excel o PROCESAR_FACTURA). Eso queda en RPDX (ID11/ID12). ASIGNAR llama SPK_CARGA_MASIVA_FAC_CXC_02 (cuerpo no leído) para pasar a FPAGD. APLICARPAGO llama SPK_PAGOSCXC (cuerpo no leído) y crea/actualiza FGLO. SPQ_FPAG_COL no inserta FGLOCG.",
+      "tablasClave": ["FPAG", "FPAGD", "RPDX", "FGLO"],
+      "gates": [
+        {
+          "id": "motivos-desde-recaudo",
+          "nombre": "Motivos de cartera hacia FGLOCG (gate de este REQ)",
+          "explicacion": "Cartera carga MOTIVO1/MOTIVO2; SPK_CARGA_MASIVA_FAC_CXC_02 los deja en FPAGD. SPK_PAGOSCXC crea FGLO si VLRGLOSA>0 pero no inserta FGLOCG (hueco de este REQ). El destino de lectura es FGLOCG.",
+          "invariante": "Si cartera cargó uno o dos códigos válidos, al abrir Responder deben existir filas FGLOCG con esos CNSFCGLO y valores que sumen VLRGLOSA.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "PROCESAR_FACTURA / SUBIR_TXT / CARGAR_FACTURAS",
+              "rol": "Captura MOTIVO1/MOTIVO2 en RPDX. Leído hoy."
+            },
+            {
+              "nombre": "SPK_CARGA_MASIVA_FAC_CXC_02",
+              "metodo": "(ASIGNAR)",
+              "rol": "Pasa lote RPDX a FPAGD. Cuerpo no leído: bajar a sql/."
+            },
+            {
+              "nombre": "SPK_PAGOSCXC",
+              "metodo": "(APLICARPAGO)",
+              "rol": "Aplica recaudo y genera FGLO. Cuerpo no leído: bajar a sql/."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-entrega",
+      "numero": 4,
+      "nombre": "Subproceso unido (entrega a auditoría)",
+      "estado": "esqueleto",
+      "explicacion": "ENVIAR_AUDIT arma ENT/ENTD proceso GLOSAS, marca FGLO.CNSENTREGA/ASIGENT y FPAG.ENAUDIT. No escribe FGLOCG.",
+      "tablasClave": ["ENT", "ENTD", "FGLO", "FPAG"],
+      "gates": [
+        {
+          "id": "enviar-auditoria",
+          "nombre": "Enviar recaudo a auditoría",
+          "explicacion": "Permiso BEnviarAuditoriaFPAG. Exige glosas del recaudo con ENAUDITORIA=0 y departamento cartera. Error: ya hay envío ENT/ENTD, o no hay glosas pendientes.",
+          "invariante": "Tras enviar, la glosa aparece en el circuito de auditoría. Los motivos no se copian en este método (leído hoy).",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "ENVIAR_AUDIT",
+              "rol": "Entrega ENT. Leído hoy. No toca FGLOCG."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "Este REQ no afecta contabilidad (formulario: afecta=false). No se dictamina asiento de glosas.",
+      "tablasClave": [],
+      "gates": []
+    }
+  ]
+}

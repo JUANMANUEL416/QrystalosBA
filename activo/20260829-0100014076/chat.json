@@ -1,0 +1,40 @@
+{
+  "mensajes": [
+    {
+      "id": "20260830164703169088",
+      "autor": "coordinador",
+      "texto": "si, ya se esta generando asi y no han presentado mas quejas, 2. no debe ser validado por el antes del cambio, el desarrollador debe contactar al soporte y validar que todo este bien",
+      "fecha": "2026-08-30T16:47:03"
+    },
+    {
+      "id": "20260830164703199086w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T16:47:03"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-08-30T17:06:58"
+    },
+    {
+      "id": "correo-cierre-20260829-0100014076",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a juan.llamas@ixcolombia.com.",
+      "fecha": "2026-08-30T17:07:32"
+    },
+    {
+      "id": "agente-paso1-ventana",
+      "autor": "agente",
+      "texto": "Caso activado — REQ 0100014076 (SermultiSalud / hotfix SERMUS64).\n\nLeí solicitud, cola y configuración. SQL marcado como «no requiere sql» — OK para este arranque.\n\n**Alcance según formulario**\n• Requerimiento original: redondeo en liquidación de cirugía SOAT (valores no quedaban en centena según tarifa/resolución).\n• Criterios de aceptación actuales: **solo validar que ya funcione** — soporte evidenció corrección previa; no hay desarrollo pendiente salvo que el fallo se reproduzca.\n• `validarAntes.aplica = true`: antes de cualquier cambio hay que comprobar en ambiente cliente que el escenario sigue fallando.\n\n**Contabilidad:** `afecta = false` → veredicto **no_aplica** (redondeo en HPRED/prestaciones SOAT; no toca MCPE/MCP en este alcance).\n\n---\n\n## PASO 1 — Ventana (propuesta, pendiente su confirmación)\n\nEl REQ está registrado en módulo **FTR · Facturación**, pero el redondeo de **liquidación de cirugía SOAT** ocurre en admisiones, no al emitir la factura:\n\n| # | Pantalla | Componente Vue | Notas |\n|---|----------|----------------|-------|\n| 1 | Admisiones → admisión tipo SOAT → pestaña **Cargos SOAT** | `HPRESOATComponent` (dentro de `HADMAsistencialComp.vue`) | Ventana principal de cargos/distribución SOAT |\n| 2 | Mismo flujo → expandir prefijo con cirugía (`ES_CIRUGIA`) | `ServiciosPrefijoComponent` | Lista servicios de cirugía vía `DISTRIHPRED_SOAT` / `HPRED_SOATCIRU` |\n| 3 | Botón/diálogo **Reliquidación** en Cargos SOAT | `HPRESOATComponent` → `HPRE` / `RELIQUIDAR_ADMISION` | Recalcula prestaciones incl. cirugías |\n| 4 | *(Opcional, aguas abajo)* Facturación administrativa SOAT | `FTRHADMComponent` → `FTR_CXC_SOAT.FACTURAR_SOAT` | Factura; el redondeo debería estar resuelto antes |\n\n**Hipótesis:** el escenario a validar es **1 + 2** (y eventualmente **3** si reliquidaron), revisando que cada ítem HPRED de cirugía quede redondeado según `TAR/TARF.REDONDEO` (p. ej. Centena).\n\n---\n\n**Necesito que confirme en Chat:**\n1. ¿La ventana donde soporte validó fue **Cargos SOAT → prefijo cirugía**, u otra (p. ej. solo Facturación FTR)?\n2. ¿Tienen **número de admisión** o datos del caso probado por soporte (prefijo, acto quirúrgico, tarifa)?\n3. ¿El dictamen debe ser **solo runbook de validación** (sin cambios FE/SQL) o esperan desarrollo si al reproducir falla?\n\nNo genero dictamen completo hasta confirmar ventana (metodología Fase 1). Cuando confirme, avanzamos a **Paso 2 — Proceso**.",
+      "fecha": "2026-08-30T21:50:00"
+    },
+    {
+      "id": "agente-dictamen-validacion-v1",
+      "autor": "agente",
+      "texto": "Gracias por la confirmación en Chat.\n\n**Paso 1 — Ventana: cerrado**\n• Ventana validada: **Cargos SOAT → prefijo cirugía** (`HPRESOATComponent` + `ServiciosPrefijoComponent`).\n• Soporte confirma que **ya se genera con redondeo correcto** y no hay quejas nuevas.\n• Validación funcional: la realiza **JUAN LLAMAS contactando a soporte** (no usted antes del cierre).\n\n**Paso 2 — Proceso (resumen)**\n1. Abrir admisión SOAT → pestaña Cargos SOAT.\n2. Expandir prefijo con `ES_CIRUGIA`.\n3. Verificar que cada ítem muestre `HPRED.VALOR` redondeado según `TAR/TARF.REDONDEO` (Centena → múltiplo de 100).\n4. Si es admisión antigua: opcionalmente **Reliquidar admisión** y revisar de nuevo.\n5. Documentar evidencia con soporte (`NOADMISION`, capturas).\n\n**Paso 3–4 — Backend (referencia, sin SP en sql/)**\n| Acción | MODELO | METODO | SPQ documentado |\n|--------|--------|--------|-----------------|\n| Servicios cirugía | DISTRIHPRED_SOAT | HPRED_SOATCIRU | SPQ_DISTRIHPRED_SOAT |\n| Reliquidar | HPRE | RELIQUIDAR_ADMISION | SPQ_HPRE → SPK_RELIQUIDAR_HADM |\n\nNo se requieren scripts SQL para este alcance. Si el defecto se reproduce, pediré `SPQ_DISTRIHPRED_SOAT.sql` y `SPQ_HPRE.sql`.\n\n**Contabilidad:** `afecta = false` → **no_aplica** (actualizado en solicitud). Redondeo en HPRED; no toca MCPE/MCP/MCHE.\n\n---\n\n## Veredicto\n\n**Sin desarrollo** — dictamen de **validación y cierre formal**. Criterios de aceptación: comprobar que sigue funcionando; soporte ya lo evidenció.\n\nEl desarrollador debe ejecutar el checklist del dictamen con soporte. Solo escalar a hotfix si en admisión **nueva** (tras reliquidar) persisten valores sin redondear a centena.\n\n**Dictamen:** dictamenes/20260829-0100014076.html\n\nRevíselo en la pestaña correspondiente. Si está de acuerdo, puede **cerrar Fase 1**; el desarrollador usará el runbook para validar con soporte y cerrar el REQ en IX OnLine.",
+      "fecha": "2026-08-30T22:00:00"
+    }
+  ]
+}

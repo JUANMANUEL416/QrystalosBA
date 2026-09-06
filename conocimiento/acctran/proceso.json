@@ -1,0 +1,99 @@
+{
+  "id": "acctran",
+  "nombre": "Accidentes de tránsito SOAT",
+  "modulo": "ACCTRAN",
+  "estado": "esqueleto",
+  "resumen": "Expediente HACTRAN (modal SOAT): accidente, paciente, vehículo, conductor, remisión, amparo. Gate de este REQ: botón en pestaña Amparo para copiar datos básicos del paciente. Resto de capas incompleto.",
+  "actualizado": "2026-09-03",
+  "notaSql": "SPQ_HACTRAN leído hoy (LLENAR/INSERT/UPDATE). DATOSAFI no se bajó. Gate amparo-traer-afi: botón FE, sin cambio de SP.",
+  "alcanceHasta": "Botón en Amparo que copia tipo doc, documento y cuatro nombres desde AFI (IDAFILIADO). Sin fecha de nacimiento en Amparo. Sin FURIPS, topes ni facturación.",
+  "ventanas": [
+    {
+      "uso": "Lista y modal SOAT (menú)",
+      "ruta": "asis.soat",
+      "path": "/asis/soat",
+      "vue": "AccidentesPage.vue → HactranComponent.vue",
+      "entrada": "Asistencial → SOAT. Permiso asis.soat."
+    },
+    {
+      "uso": "Modal SOAT desde urgencias / admisión",
+      "ruta": "asis.hadm (diálogo)",
+      "path": "HADMAsistencialComp / ModalAdmisionComponent / triage",
+      "vue": "HactranComponent.vue con :paciente (idafiliado, noadmision)",
+      "entrada": "Admisión o triage: diálogo Accidentes del paciente."
+    },
+    {
+      "uso": "Modal SOAT desde consultas externas",
+      "ruta": "cexterna agenda / autorizador",
+      "path": "AgendarCita / AgendaNueva / Autorizador / EditaCita",
+      "vue": "HactranComponent.vue embebido",
+      "entrada": "Agenda o autorizador: mismo modal HACTRAN."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "esqueleto",
+      "explicacion": "Variables IDTARIFASOAT / IDPLANSOAT. Catálogos de tipo doc y tipo transporte en el FE. No se inventó más parametrización.",
+      "tablasClave": ["HACTRAN", "AFI"],
+      "gates": []
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "esqueleto",
+      "explicacion": "Alta/edición del expediente HACTRAN (pestañas Accidente → Paciente → Vehículo → Conductor → Remisión → Amparo). Guardar: INSERT/UPDATE. Cargar: LLENAR.",
+      "tablasClave": ["HACTRAN", "HACTRAND"],
+      "gates": [
+        {
+          "id": "amparo-traer-afi",
+          "nombre": "Traer datos básicos en Amparo",
+          "explicacion": "Hoy Amparo se llena a mano. Vehículo y Conductor ya copian AFI (PACIENTE_COL · DATOSAFI). Este REQ: mismo patrón en Amparo.",
+          "invariante": "TIPODOC_AMPARO, DOC_AMPARO y los cuatro nombres salen del afiliado del expediente (IDAFILIADO). No se copia FNACIMIENTO a Amparo.",
+          "sps": [
+            {
+              "nombre": "SPQ_PACIENTE_COL",
+              "metodo": "DATOSAFI",
+              "rol": "Ya lo usa el FE para conductor/propietario. No leído en este REQ."
+            },
+            {
+              "nombre": "SPQ_HACTRAN",
+              "metodo": "INSERT / UPDATE",
+              "rol": "Persisten campos *_AMPARO. No leídos. Pedir .sql solo si el alcance sale de copiar AFI en FE."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "esqueleto",
+      "explicacion": "HADM, triage, agenda CE y autorizador abren el mismo modal con el paciente de la atención.",
+      "tablasClave": ["HADM", "AFI"],
+      "gates": []
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "esqueleto",
+      "explicacion": "AUT.CNSHACTRAN, FURIPS, topes. Fuera de este REQ.",
+      "tablasClave": ["AUT"],
+      "gates": []
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "Este REQ no toca MCUE/CON. Facturación SOAT queda fuera.",
+      "tablasClave": [],
+      "gates": []
+    }
+  ]
+}

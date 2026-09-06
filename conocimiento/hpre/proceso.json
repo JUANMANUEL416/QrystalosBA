@@ -1,0 +1,81 @@
+{
+  "id": "hpre",
+  "nombre": "Cargos / prestaciones (HPRE)",
+  "modulo": "HPRE",
+  "estado": "esqueleto",
+      "resumen": "Prestaciones HPRE/HPRED. Gates: filtro Detalle (0100016305) y restricción Facturar / CERRADA (0100016304).",
+  "actualizado": "2026-09-03",
+  "notaSql": "El coordinador indicó que no se requiere sql/ de entrada. El filtro vive en el FE (whereHPRE + gfacsoat).",
+  "alcanceHasta": "Que el check Detalle active el filtrado de ítems HPRED del responsable (GFACSOAT) seleccionado.",
+  "ventanas": [
+    {
+      "uso": "Cargos SOAT",
+      "ruta": "asis.hadm (pestaña Cargos SOAT)",
+      "path": "HADMAsistencialComp",
+      "vue": "HPRESOATComponent.vue → ServiciosPrefijoComponent.vue",
+      "entrada": "Admisión SOAT → Cargos SOAT. Check Detalle por responsable (Aseguradora/ADRES/EPS/ARL)."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "esqueleto",
+      "explicacion": "GFACSOAT 1=Aseguradora 2=ADRES 3=EPS 4=ARL. Variables de tope SOAT. No inventado más.",
+      "tablasClave": ["HPRE", "HPRED"],
+      "gates": []
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "esqueleto",
+      "explicacion": "Alta/edición de prestaciones y detalle. En SOAT se distribuyen por GFACSOAT.",
+      "tablasClave": ["HPRE", "HPRED"],
+      "gates": [
+        {
+          "id": "filtro-detalle-soat",
+          "nombre": "Filtro Detalle en Cargos SOAT",
+          "explicacion": "Check Detalle muestra filtros y debe listar HPRED de ese GFACSOAT. Sin criterio: todos los cargos del responsable. Con criterio y 0 filas: mensaje. Hoy la tabla del hijo se oculta si no hay filas (v-if).",
+          "invariante": "Con Detalle en un responsable, los ítems listados son de ese GFACSOAT. Sin filtro = todos. Filtro vacío = mensaje visible.",
+          "sps": ["SPQ_DISTRIHPRED_SOAT · HPRED_SOATSER"]
+        },
+        {
+          "id": "facturar-soat-cerrada",
+          "nombre": "Restricción Facturar en Cargos SOAT",
+          "explicacion": "REQ 0100016304. El FE habilita Facturar / Facturar todo solo si HADM.CERRADA=1. El SPQ FACTURAR (leído ayer en 6305) no valida CERRADA; llama SPK_FACTURA_SOAT_TODO. Cómo desactivar (USVGS / USGRUH / siempre) está por confirmar con el coordinador.",
+          "invariante": "Por confirmar: si se puede facturar con CERRADA≠1 y con qué interruptor.",
+          "sps": ["SPQ_DISTRIHPRED_SOAT · FACTURAR", "SPK_FACTURA_SOAT_TODO"]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "esqueleto",
+      "explicacion": "Admisión HADM SOAT abre HPRESOAT.",
+      "tablasClave": ["HADM"],
+      "gates": []
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "esqueleto",
+      "explicacion": "Facturación SOAT / anexos. Fuera de este REQ.",
+      "tablasClave": [],
+      "gates": []
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "Este REQ no toca MCUE/CON.",
+      "tablasClave": [],
+      "gates": []
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facturas anteriores HADMF — Dictamen técnico</title>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <style>
+    :root { --primary:#E67817; --secondary:#CB500F; --border:#000000; --bg:#fff8ee; --text:#1a1a1a; --muted:#5d4e37; --warn:#d35400; }
+    .brand-bar { height:6px; background:#E67817; margin:-2.5rem -2.5rem 1.15rem; }
+    .brand-head { display:flex; align-items:center; gap:12px; margin-bottom:1rem; }
+    .brand-mark { height:56px; width:auto; background:#000; border-radius:8px; }
+    .brand-name { font-size:1.05rem; font-weight:700; color:#2c2c2c; letter-spacing:.06em; }
+    .brand-sub { font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.1em; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:"Segoe UI",Tahoma,sans-serif; font-size:14px; line-height:1.6; color:var(--text); background:var(--bg); padding:2rem; }
+    .container { max-width:960px; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:4px; padding:2.5rem; }
+    header { border-bottom:3px solid var(--primary); padding-bottom:1.5rem; margin-bottom:2rem; }
+    header h1 { font-size:1.5rem; color:var(--primary); margin-bottom:.5rem; }
+    .meta-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.75rem 1.5rem; margin-top:1rem; font-size:.9rem; }
+    .meta-item label { display:block; font-weight:600; color:var(--muted); font-size:.75rem; text-transform:uppercase; }
+    .badge { display:inline-block; padding:.15rem .6rem; border-radius:3px; font-size:.8rem; font-weight:600; background:#fef9e7; color:var(--warn); border:1px solid var(--warn); }
+    section { margin-bottom:2rem; }
+    section h2 { font-size:1.1rem; color:var(--primary); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-bottom:1rem; }
+    section h3 { font-size:.95rem; color:var(--secondary); margin:1rem 0 .5rem; }
+    .content-block { background:var(--bg); border-left:4px solid var(--secondary); padding:1rem 1.25rem; margin-bottom:1rem; white-space:pre-wrap; }
+    ul { margin:.5rem 0 .5rem 1.5rem; }
+    .checklist { list-style:none; margin-left:0; }
+    .checklist li { padding-left:1.5rem; position:relative; margin-bottom:.35rem; }
+    .checklist li::before { content:"☐"; position:absolute; left:0; }
+    .alert { background:#fef9e7; border:1px solid var(--warn); border-radius:4px; padding:.75rem 1rem; margin:1rem 0; }
+    code { background:#eef2f3; padding:.1rem .35rem; border-radius:3px; font-size:.85em; }
+    footer { margin-top:2rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.8rem; color:var(--muted); text-align:center; }
+    @media print { body{background:#fff;padding:0} .container{border:none;padding:1rem} }
+  </style>
+</head>
+<body>
+<div class="container">
+    <div class="brand-bar"></div>
+    <div class="brand-head">
+      <img class="brand-mark" src="../app/assets/logo-ixcolombia.png" alt="IX Colombia SAS">
+      <div>
+        <div class="brand-name">IX COLOMBIA SAS</div>
+        <div class="brand-sub">Business Analyst · Qrystalos</div>
+      </div>
+    </div>
+  <header>
+    <h1>Ver facturas anteriores de la admisión (HADMF)</h1>
+    <p style="color:var(--muted)">Dictamen técnico — Qrys.Quatec · v2</p>
+    <div class="meta-grid">
+      <div class="meta-item"><label>ID caso</label><span>20260829-0100015154</span></div>
+      <div class="meta-item"><label>REQ</label><span>0100015154</span></div>
+      <div class="meta-item"><label>Cliente</label><span>SAN LUCAS</span></div>
+      <div class="meta-item"><label>Módulo</label><span>FTR · Facturación</span></div>
+      <div class="meta-item"><label>Rama</label><span>feature/SLUCAS2</span></div>
+      <div class="meta-item"><label>Desarrollador</label><span>ELAN BRAVO</span></div>
+      <div class="meta-item"><label>Estado</label><span class="badge">Propuesto</span></div>
+      <div class="meta-item"><label>Actualizado</label><span>30/08/2026 09:27 — v3</span></div>
+    </div>
+  </header>
+
+  <section id="requerimiento">
+    <h2>1. Requerimiento</h2>
+    <div class="content-block">En el detalle de una factura de procedencia salud, el usuario debe ver las facturas ya emitidas a esa admisión (historial) y el estado de cada una.
+
+P = activa (se puede imprimir).
+A = anulada (no imprimir).
+N = nota crédito / anulada por no dar crédito (no imprimir).
+
+El coordinador confirmó: botón + diálogo con tabla HADMF. No se cambia el PDF de la factura actual. No se requiere SQL nuevo (reutiliza GET_HADMF).</div>
+  </section>
+
+  <section id="flujo">
+    <h2>2. Flujo de ejecución</h2>
+    <pre style="background:#f4f6f7;padding:1rem;border-radius:4px;font-size:12px;line-height:1.5;overflow:auto">
+Administrativo → Facturación → abrir factura
+        │
+        ├─ PROCEDENCIA ≠ SALUD ──► sin botón (igual que hoy)
+        │
+        └─ PROCEDENCIA = SALUD
+                 │
+                 ├─ Botón «Facturas anteriores» en Acciones del detalle (FtrDetalles)
+                 ├─ Diálogo → HADMFComponent (NOADMISION = FTR.NOREFERENCIA)
+                 │         GET_HADMF → número, fecha, tercero, plan, valor, ESTADO
+                 │
+                 ├─ Fila ESTADO = P ──► Imprimir Factura habilitado
+                 └─ Fila ESTADO = A o N ──► Imprimir deshabilitado
+    </pre>
+  </section>
+
+  <section id="propuesta">
+    <h2>4. Propuesta técnica</h2>
+    <div class="alert"><strong>Objeto a cambiar:</strong> <code>FTRComponent.vue</code> (botón + diálogo). Complemento: <code>HADMFComponent.vue</code> (imprimir solo si ESTADO=P). <strong>Sin cambio de BD</strong> (confirmado: no requiere SQL).</div>
+
+    <h3>4.1 Pantalla — <code>FTRComponent.vue</code> · diálogo <code>FtrDetalles</code></h3>
+    <ul>
+      <li>Ruta: Administrativo → Facturación (<code>admin.facturacion</code>).</li>
+      <li>Page: <code>FacturacionPage.vue</code> → <code>FTRComponent.vue</code>.</li>
+      <li><strong>Punto exacto del botón:</strong> dentro del <code>&lt;q-dialog v-model="FtrDetalles"&gt;</code> (detalle de factura), sección <code>ftr-detalle-acciones</code> / grupo «Acciones», junto a Imprimir y Anexo (~líneas 1106–1171 del componente).</li>
+      <li>Label: «Facturas anteriores» o «Facturas preexistentes».</li>
+      <li>Visible solo si <code>model.PROCEDENCIA === 'SALUD'</code>.</li>
+      <li>Al pulsar: abre un <strong>segundo</strong> <code>q-dialog</code> (nuevo ref, p. ej. <code>dlgFacturasAnteriores</code>) con <code>&lt;HADMFComponent :noadmision="model.NOREFERENCIA" /&gt;</code>.</li>
+      <li>Si <code>NOREFERENCIA</code> está vacío: notify, no abrir.</li>
+    </ul>
+
+    <h3>4.2 Diálogo — <code>HADMFComponent.vue</code> (ya existe)</h3>
+    <ul>
+      <li>Ya consulta <code>AppStore.json</code> → MODELO <code>FTR_HADM_COL</code> / METODO <code>GET_HADMF</code>.</li>
+      <li>Ya muestra ESTADO, N_FACTURA, FECHAFAC, tercero, plan, valor.</li>
+      <li>Hoy «Imprimir Factura» solo valida que haya fila. Cambiar: habilitar solo si <code>ESTADO === 'P'</code>.</li>
+      <li>Tooltip: «Solo facturas activas (P). A/N = anulada o nota crédito.»</li>
+    </ul>
+    <p>En el formulario se escribió HDMF; en código y BD es <code>HADMF</code>. No inventar tabla HDMF.</p>
+
+    <h3>4.3 Impresión de la factura actual</h3>
+    <p>No tocar <code>formatofactura</code> / <code>ImprimeFormatoFtr</code>. El PDF de la factura abierta sigue igual. Imprimir del historial es otra acción, y solo si P.</p>
+
+    <h3>4.4 Contabilidad</h3>
+    <p>No aplica. No crea asientos ni toca MCUE/CON/MCPE. Solo consulta historial ya emitido.</p>
+  </section>
+
+  <section id="riesgos">
+    <h2>5. Riesgos y regresiones</h2>
+    <ul>
+      <li>HADMFComponent también se usa en admisiones (<code>HADMAsistencialComp</code>, <code>FTRHADMComponent</code>, <code>HPRESOATComponent</code>). El disable de imprimir A/N aplica a todos esos sitios, o aislarlo con una prop (<code>soloActivas</code>) si San Lucas no debe cambiar los demás.</li>
+      <li>Facturas no SALUD no deben ver el botón.</li>
+      <li>GET_HADMF no está en <code>sql/</code>: si en preversión no trae el historial, pedir <code>SPQ_FTR_HADM_COL.sql</code> antes de seguir.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas">
+    <h2>6. Plan de pruebas</h2>
+    <h3>Desarrollador</h3>
+    <ul class="checklist">
+      <li>Factura SALUD con varias filas HADMF: botón visible, diálogo lista historial.</li>
+      <li>Factura FINANCIERO / INVENTARIO: sin botón.</li>
+      <li>SALUD sin NOREFERENCIA: mensaje, no error JS.</li>
+      <li>Fila P: Imprimir habilitado. Fila A o N: deshabilitado.</li>
+      <li>Admisión sin facturas previas: mensaje actual «No hay facturas generadas».</li>
+      <li>Regresión: pestaña Facturas en admisión asistencial sigue igual.</li>
+    </ul>
+    <h3>Coordinador</h3>
+    <ul class="checklist">
+      <li>Un usuario ve factura anterior y estado sin tocar el PDF de la factura actual.</li>
+    </ul>
+    <h3>Soporte</h3>
+    <ul class="checklist">
+      <li>Si no aparece el botón: PROCEDENCIA debe ser SALUD.</li>
+      <li>Si el listado sale vacío: HADMF.NOADMISION = FTR.NOREFERENCIA.</li>
+      <li>Rollback: revertir Vue. Sin script SQL.</li>
+    </ul>
+  </section>
+
+  <footer>Generado por Qrys.Quatec — 30/08/2026 — Estado: Propuesto · v3 · Botón en FtrDetalles · Sin cambio de BD</footer>
+</div>
+</body>
+</html>

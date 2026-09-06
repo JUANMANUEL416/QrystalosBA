@@ -1,0 +1,258 @@
+{
+  "id": "facturacion",
+  "nombre": "Facturación",
+  "modulo": "FTR",
+  "estado": "parcial",
+  "resumen": "Desde armar la factura hasta radicar la cuenta de cobro ante el pagador. Administrativo → Facturación (facturas, masiva, evento, hospitalización, programa, DIAN, empaque, traslados) → Cuentas por cobrar (cerrar y radicar). No es el menú Radicaciones (/rad).",
+  "actualizado": "2026-08-31",
+  "notaSql": "Flujo leído en pantallas y manuales de Qrystalos2 y en documentación de tablas. No se archivó cuerpo de SP. Para un REQ hay que bajar el .sql de hoy a sql/ y pasarlo en Documentar.",
+  "alcanceHasta": "Radicar la cuenta de cobro (Cuentas por cobrar → Radicar CXC). Glosas, recaudo y el menú /rad quedan fuera de este proceso.",
+  "ventanas": [
+    {
+      "uso": "Facturación diaria (todas las pestañas)",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "FacturacionPage.vue → FTRComponent.vue",
+      "entrada": "Administrativo → Facturación. Pestañas según permiso (FACT_MASIVA, FACT_CIT_EVENTO, FACT_AUTPG, FACT_HOSPIURG, NOTIDIAN, LogFacturas, etc.)."
+    },
+    {
+      "uso": "Empaque de anexos para radicar",
+      "ruta": "admin.Empaqueta",
+      "path": "/admin/Empaqueta",
+      "vue": "EmpaquetaPage.vue → EMPAComponent.vue",
+      "entrada": "Administrativo → Empaqueta. Individual o masivo; junta HC y soportes en PDF/ZIP."
+    },
+    {
+      "uso": "Cuentas por cobrar / radicar cuenta",
+      "ruta": "admin.CuentasxC",
+      "path": "/admin/CuentasxCobrar",
+      "vue": "CuentasxCobrarPage.vue → FCXCComponent / FCXCAComponent",
+      "entrada": "Administrativo → Cuentas por Cobrar. Permiso CXC_RADICAR para el botón Radicar CXC."
+    },
+    {
+      "uso": "Cargue de facturas y armar cuentas (saldo inicial)",
+      "ruta": "admin.saldosInicialesFtr",
+      "path": "/admin/saldosInicialesFtr",
+      "vue": "SaldosInicialesFtrPage.vue → SIFTRColComponent.vue",
+      "entrada": "Agrupa facturas del mismo pagador con la misma fecha de radicación en una sola cuenta de cobro."
+    },
+    {
+      "uso": "Resolución DIAN",
+      "ruta": "conf.fdian",
+      "path": "/conf/fdian",
+      "vue": "ResolucionDIANPage.vue"
+    },
+    {
+      "uso": "Firma / certificado digital",
+      "ruta": "conf.firmadigital",
+      "path": "/conf/firmadigital",
+      "vue": "CertificadoDigitalPage.vue"
+    },
+    {
+      "uso": "FEV / RIPS masivo",
+      "ruta": "admin.fevripsmasivo",
+      "path": "/admin/FEVRIPSMasivo",
+      "vue": "FEVRIPSMasivoPage.vue"
+    },
+    {
+      "uso": "Buscar factura",
+      "ruta": "admin.BuscarFact",
+      "path": "/admin/BuscaFact",
+      "vue": "BusquedaftrPage.vue"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Antes de facturar: resolución DIAN vigente (rango, prefijo, ambiente), certificado de firma no vencido (el banner naranja/rojo en Facturación lo avisa), tercero y plan del pagador, contrato, servicios y sede. Sin eso la factura no numera o no notifica a la DIAN.",
+      "tablasClave": ["FDIAN", "TER", "PPT", "SED", "SER"],
+      "gates": [
+        {
+          "id": "dian-firma",
+          "nombre": "Resolución DIAN y firma",
+          "explicacion": "Configuración → Resolución DIAN y Certificado digital. La factura electrónica usa esa resolución (prefijo, consecutivos, vigencia).",
+          "invariante": "No emitir si la resolución está vencida o el consecutivo se salió del rango autorizado. Firma vencida bloquea o alerta en la pantalla de Facturación.",
+          "sps": []
+        },
+        {
+          "id": "pagador-plan",
+          "nombre": "Pagador, plan y contrato",
+          "explicacion": "La factura lleva el tercero (EPS/administradora), el plan y el contrato. Eso define tarifas y a quién se le cobra después.",
+          "invariante": "Sin tercero/plan coherentes no se arma una cuenta de cobro usable.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Quien factura entra a Administrativo → Facturación. Primero arma y confirma la factura; después empaqueta anexos; después junta facturas en una cuenta de cobro y la radica en Cuentas por cobrar.",
+      "tablasClave": ["FTR", "FTRD", "FMAS", "FCXC", "FCXCD", "ENT"],
+      "gates": [
+        {
+          "id": "armar-factura",
+          "nombre": "Armar y confirmar la factura",
+          "explicacion": "Pestaña Facturas: una a una (paciente, ítems, copago). Masiva: muchos servicios a la vez (permiso FACT_MASIVA). Evento: citas. Programa: autorizaciones de programa. Urg-Hospi-Domi: hospitalización/urgencias/domiciliaria. Pendientes por facturar: lo que aún no tiene factura. Tras confirmar, la factura queda con número y valor.",
+          "invariante": "La factura (FTR) es el documento. Sin factura confirmada no hay cuenta de cobro ni radicación.",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "CREARFTR / CRUDFTRD / VALIDA FTR / ANULARFAC / LIBERARFAC / ENVIA_CONTAB / NOTI_DIAN",
+              "rol": "Orquestador de la factura individual. Cuerpo no leído: bajar a sql/."
+            },
+            {
+              "nombre": "SPQ_FTR_MASIVA_COL",
+              "metodo": "(varios; pantalla FTRM / FTR_MASIVA_COL)",
+              "rol": "Facturación masiva. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPQ_FTR_HADM_COL",
+              "metodo": "(hospitalización / urgencias)",
+              "rol": "Factura desde admisión. Cuerpo no leído."
+            }
+          ]
+        },
+        {
+          "id": "notificar-dian",
+          "nombre": "Notificar a la DIAN",
+          "explicacion": "Pestaña Proceso DIAN: envío y seguimiento. También hay FEV/RIPS masivo (menú aparte). En Facturas aparece «días para radicar» (fecha máxima de radicación de la factura electrónica).",
+          "invariante": "La factura electrónica debe quedar notificada. El plazo de radicación ante el pagador es otro reloj (cuenta de cobro).",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "NOTI_DIAN",
+              "rol": "Notificación DIAN desde la factura."
+            },
+            {
+              "nombre": "SPQ_FTRFE_COL",
+              "metodo": "VALIDAFTR / FE_FECHAFTR / FE_DESENCOLAR",
+              "rol": "Cola y fechas de factura electrónica. Cuerpo no leído."
+            }
+          ]
+        },
+        {
+          "id": "empaquetar",
+          "nombre": "Empaquetar anexos",
+          "explicacion": "Administrativo → Empaqueta. Individual (una admisión o una factura) o masivo. Arma PDF/ZIP con historia, soportes y documentos que pide la aseguradora. La configuración de anexos es por pagador.",
+          "invariante": "Sin el paquete de soportes el pagador suele devolver o glosar. Empacar no es radicar: solo prepara lo que se entrega.",
+          "sps": [
+            {
+              "nombre": "SPQ_DOCXEMPQ",
+              "metodo": "GET_ANEXOS / GET_CONFIGURACION_ANEXOS / GET_ANEXOS_FTRCXC / masivos",
+              "rol": "Empaque. Cuerpo no leído; hay runbook de soporte."
+            }
+          ]
+        },
+        {
+          "id": "armar-cuenta",
+          "nombre": "Armar la cuenta de cobro",
+          "explicacion": "Varias facturas del mismo pagador se juntan en una cuenta de cobro. Caminos vistos: (1) pestaña Traslados de facturas: entrega interna y luego crear la cuenta; (2) Cuentas por cobrar: marcar facturas y asignarlas a la cuenta; (3) Saldos iniciales: un pagador + la misma fecha de radicación = una cuenta.",
+          "invariante": "Una cuenta de cobro es del pagador, no del paciente. Hasta que no esté cerrada se pueden meter o quitar facturas.",
+          "sps": [
+            {
+              "nombre": "SPQ_ENT_COL",
+              "metodo": "CRUD_ENT / CERRAR_ENT / CREARCXC_ENT",
+              "rol": "Traslados / entrega y paso a cuenta de cobro. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPQ_FCXC_COL",
+              "metodo": "CRUD_FCXC / ASIGNAR_FACT / CIERRA_FCXC",
+              "rol": "Cabecera y detalle de la cuenta. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPQ_SIFTR_COL",
+              "metodo": "PROCESAR_CXC / VALIDAR_PRE_CXC",
+              "rol": "Cargue y armado masivo de cuentas. Cuerpo no leído."
+            }
+          ]
+        },
+        {
+          "id": "radicar-cuenta",
+          "nombre": "Radicar la cuenta de cobro",
+          "explicacion": "En Cuentas por cobrar, con la cuenta cerrada y aún no recibida: botón Radicar CXC. Pide fecha de radicación, quién recibió (mín. 10 caracteres), número de radicado (mín. 5) y guía si aplica. Marca la cuenta como recibida. Después no se agregan ni quitan facturas. Se puede asignar radicado factura a factura o importar Excel.",
+          "invariante": "Radicar es el sello de que el pagador recibió la cuenta. Sin radicar no sigue el cobro formal. Permiso CXC_RADICAR.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXC_COL",
+              "metodo": "RADICA_FCXC / NRORAD_FCXCD / IMPORTAR_RADICADO_CXC / CONTAB_FCXC",
+              "rol": "Radicación de la cuenta y radicados por factura. Cuerpo no leído."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "La factura no nace sola: llega de hospitalización/urgencias (admisión), de citas, de autorizaciones y de programas. Empaqueta lee esos mismos orígenes para los anexos. La factura de inventario (farmacia/venta) es otra pantalla, no este proceso.",
+      "tablasClave": ["HADM", "CIT", "AUT", "AFI"],
+      "gates": [
+        {
+          "id": "origenes-clinicos",
+          "nombre": "Admisión, citas, autorizaciones",
+          "explicacion": "Urg-Hospi-Domi toma la admisión. Evento toma citas. Programa toma autorizaciones de programa. Si el servicio no está cerrado o no tiene tarifa, no aparece para facturar.",
+          "invariante": "No se factura lo que el origen clínico no dejó listo (alta, atención, autorización).",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-bancos",
+      "numero": 4,
+      "nombre": "Subproceso unido (empaque y RIPS)",
+      "estado": "parcial",
+      "explicacion": "Aquí no hay bancos. El encuentro es con empaque de anexos (Empaqueta) y con RIPS/FEV (validar y enviar el paquete electrónico). Ambos se entregan junto con la cuenta, pero no reemplazan el botón Radicar CXC.",
+      "tablasClave": ["FTR_SOPORTES", "DOC_ANEXOS_CONFIG"],
+      "gates": [
+        {
+          "id": "rips-fev",
+          "nombre": "RIPS / FEV",
+          "explicacion": "Administrativo → FEV/NC/NA-RIPS Masivo y Control RIPS. Validar CUV, descargar ZIP, notas crédito/ajuste. Es el paquete que pide la normativa, no el radicado del pagador.",
+          "invariante": "RIPS validado no significa cuenta radicada.",
+          "sps": [
+            {
+              "nombre": "SPQ_RIPS",
+              "metodo": "(varios; MODELO RIPS)",
+              "rol": "RIPS / FEV. Cuerpo no leído."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "La factura puede enviarse a contabilidad desde Facturación (ENVIA_CONTAB). La cuenta de cobro se contabiliza después de radicar (CONTAB_FCXC). El asiento de cartera no se documentó: falta el .sql.",
+      "tablasClave": ["FTR", "FCXC"],
+      "gates": [
+        {
+          "id": "contabilizar",
+          "nombre": "Contabilizar factura y cuenta",
+          "explicacion": "Factura: envío a contabilidad deja comprobante en la factura. Cuenta: después de radicar, botón de contabilizar en CxC. Periodo abierto se asume; no leído en SP.",
+          "invariante": "Radicar y contabilizar son pasos distintos. Radicar no genera el asiento por sí solo (el botón de contabilidad es otro).",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "ENVIA_CONTAB",
+              "rol": "Contabilidad de la factura. Cuerpo no leído."
+            },
+            {
+              "nombre": "SPQ_FCXC_COL",
+              "metodo": "CONTAB_FCXC",
+              "rol": "Contabilidad de la cuenta. Cuerpo no leído."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+{
+  "mensajes": [
+    {
+      "id": "20260830153829162806",
+      "autor": "sistema",
+      "texto": "El bot no pudo arrancar (clave, red o Cursor). Revise CURSOR_API_KEY y reintente.",
+      "fecha": "2026-08-30T15:38:29"
+    },
+    {
+      "id": "20260830154013351876",
+      "autor": "coordinador",
+      "texto": "reintentemos",
+      "fecha": "2026-08-30T15:40:13"
+    },
+    {
+      "id": "20260830154013376876w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T15:40:13"
+    },
+    {
+      "id": "20260830154028056892",
+      "autor": "sistema",
+      "texto": "El bot no pudo arrancar (clave, red o Cursor). Revise CURSOR_API_KEY y reintente.",
+      "fecha": "2026-08-30T15:40:28"
+    },
+    {
+      "id": "20260830154106800920",
+      "autor": "coordinador",
+      "texto": "intenta de nuevo",
+      "fecha": "2026-08-30T15:41:06"
+    },
+    {
+      "id": "20260830154106825922w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T15:41:06"
+    },
+    {
+      "id": "20260830154200100200",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · REQ 0100014982 · ELECTRODX**\n\nArranque Fase 1. Leí solicitud, cola (aval-asesor-lista.htm) y código Qrystalos2. SQL en carpeta fija queda pendiente para paso 3 (backend), según nota del caso.\n\n---\n\n## Paso 1 — Ventana (propuesta)\n\n| Elemento | Valor propuesto |\n|----------|-----------------|\n| **Menú** | Administrativo → **Notas Débito - Crédito** |\n| **Ruta** | `/admin/notasdbcr` (`admin.notasdbcr`) |\n| **Página** | `NotasDBCRPage.vue` |\n| **Componente principal** | `NotasDBCRComponent.vue` |\n| **Visor XML / respuesta DIAN** | Diálogo **Envíos y respuestas** → `VisorXMLsComponent` (pestaña *Respuestas DIAN*, XML solicitud/respuesta) |\n| **Tablas BD** | `FNOT` (encabezado, `VR_TOTAL`, `FACTE`), `FNOTD` (detalle por ítem), `FTR` (factura origen, `FACTE`) |\n| **Escenario reportado** | NC **01C00001527** (origen CRE25209) y **01C00001528** (origen CRE23225) — rechazo DIAN **FAU02** |\n\n**Alcance técnico del fallo (según REQ):** la discrepancia ocurre en la **generación del XML UBL CreditNote** (backend), no en pantalla Vue ni en impresión PDF. El front solo encola/consulta (`FNOT_COL` / `FNOT_ENCOLAR`) y muestra XML ya persistido.\n\n**Hallazgo exploratorio:** en Qrystalos2 y qrystalos.server (JS) **no aparece** la lógica `CreditNoteLine` / `LineExtensionAmount` ni el filtro `VR_TOTAL < 0` / `VR_UNITARIO < 0`. Eso apunta a **SPQ/SPK en SQL Server** (probablemente rama `FNOT_COL` → generador DIAN). Lo confirmaremos en paso 3 cuando tengamos el script.\n\n---\n\n## Validar antes de desarrollar (obligatorio)\n\nAntes de cualquier cambio, en ambiente **ELECTRODX** verifique:\n1. Que las NC **01C00001527** y **01C00001528** sigan con **FACTE = 3** (ConError) o rechazo FAU02 vigente.\n2. En SQL: `FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)` (diferencia 0) y facturas origen con **FTR.FACTE = 2**.\n3. En XML de solicitud (visor): `LegalMonetaryTotal/LineExtensionAmount` ≠ suma de `CreditNoteLine/LineExtensionAmount` por líneas omitidas.\n\nSi el envío ya es exitoso (**FACTE = 2**), **no hay desarrollo** — informe que está correcto.\n\n---\n\n## Contabilidad\n\n`contabilidad.afecta = false` — **no aplica** MCUE/CON/MCPE. Veredicto sin cambio: flujo FEV-RIPS / facturación electrónica, sin asientos.\n\n---\n\n## Siguiente paso\n\nConfirme o corrija la **ventana** anterior (menú, ruta, componente, visor XML). Con su OK pasamos al **Paso 2 — Proceso** (flujo usuario: crear/cerrar NC → encolar → worker DIAN → revisar FAU02 en visor).\n\nAún **no** genero dictamen HTML completo hasta cerrar ventana y proceso.",
+      "fecha": "2026-08-30T15:42:00"
+    },
+    {
+      "id": "20260830154658534401",
+      "autor": "coordinador",
+      "texto": "el error se debe a la generacion del detalle de las notas ya sea por que se anula o de manera manual o se viene de alguna procedencia, en fnotd quedan valores negativos lo que provoca el error",
+      "fecha": "2026-08-30T15:46:58"
+    },
+    {
+      "id": "20260830154658558406w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T15:46:58"
+    },
+    {
+      "id": "20260830154800000001",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · REQ 0100014982 · ELECTRODX**\n\nRecibí su aclaración sobre el origen del detalle con valores negativos en `FNOTD`. La incorporo al análisis.\n\n---\n\n## Paso 1 — Ventana (confirmada)\n\nTomo como **confirmada** la ventana propuesta en el mensaje anterior, con su matiz funcional:\n\n| Elemento | Valor |\n|----------|-------|\n| **Menú / ruta** | Administrativo → Notas Débito - Crédito · `/admin/notasdbcr` |\n| **Componentes** | `NotasDBCRPage.vue` · `NotasDBCRComponent.vue` · visor XML `VisorXMLsComponent` |\n| **Tablas** | `FNOT` (encabezado), `FNOTD` (detalle), `FTR` (factura origen) |\n| **Escenario** | NC **01C00001527** / **01C00001528** — rechazo DIAN **FAU02** |\n| **Causa funcional (su aporte)** | En `FNOTD` quedan líneas con **valores negativos** al generar el detalle — ya sea por **anulación de factura**, **captura manual** o **procedencia** (p. ej. `FACTURA`, `NOTAS`, `AJUSTE`, carga masiva). Los datos en BD cuadran (`FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)`), pero el **generador XML UBL** no refleja todas las líneas. |\n\nEl fallo **no es de pantalla Vue** ni de impresión: ocurre al armar el XML CreditNote en backend (worker DIAN), después de encolar la nota.\n\n---\n\n## Paso 2 — Proceso (propuesta)\n\nFlujo usuario/sistema hasta el error FAU02:\n\n| # | Paso | Qué ocurre | Evidencia FE |\n|---|------|------------|--------------|\n| 1 | **Crear / cargar nota crédito** | Usuario crea NC contra factura origen (CRE25209 / CRE23225) desde Notas DB/CR, carga masiva TXT/Excel o viene de otra procedencia. | `FNOT_CRUD`, `FNOT_CREARMASIVO`, `CARGAR_NOTAS` → `MODELO: FNOT_COL` |\n| 2 | **Generar detalle (`FNOTD`)** | El sistema genera o permite editar líneas de detalle. Según procedencia/anulación pueden quedar ítems con **`VR_TOTAL` o `VR_UNITARIO` negativos** (ajuste neto contra líneas positivas). | `FNOT_ADDDETA` (Generar detalles) · `FNOT_CRUDFNOTD` (edición manual) · triggers `TK_PROCESOFNOTD` en BD |\n| 3 | **Cerrar / aplicar nota** | Nota pasa a **cerrada** (`CERRADA = 1`). Encabezado `FNOT.VR_TOTAL` ya incluye todas las líneas (positivas y negativas). | `FNOT_APLICAR` |\n| 4 | **Encolar envío DIAN** | Usuario pulsa **Encolar** (FACTE 0 → 1). Backend valida y encola para facturación electrónica. | `FNOT_ENCOLAR` |\n| 5 | **Worker genera XML UBL CreditNote** | *(Backend SQL — pendiente leer SPQ)* El generador construye `LegalMonetaryTotal/LineExtensionAmount` desde `FNOT.VR_TOTAL`, pero **omite del XML** las líneas `FNOTD` con signo negativo (según REQ). | No está en Qrystalos2; apunta a rama DIAN dentro de `SPQ_FNOT_COL` o SPK anidado |\n| 6 | **DIAN rechaza FAU02** | Suma de `CreditNoteLine/LineExtensionAmount` ≠ encabezado → *\"El Valor Bruto antes de tributos no es igual a la suma de los valores de las líneas…\"*. Nota queda **FACTE = 3** (ConError). | Visor **Envíos y respuestas** → XML solicitud vs respuesta DIAN |\n| 7 | **Reintento** | Usuario puede **Desencolar** (FACTE 3 → 0), corregir si aplica y volver a encolar — pero mientras el filtro XML persista, el rechazo se repite con los mismos datos. | `FNOT_DESENCOLAR` · `FNOT_ENCOLAR` |\n\n**Punto de ruptura (hipótesis alineada con REQ y su comentario):**\n- **Entrada:** `FNOTD` con mezcla de líneas positivas/negativas (válido en BD).\n- **Salida XML:** solo líneas no negativas → desbalance FAU02.\n- **Corrección esperada:** incluir **todas** las filas `FNOTD` en `CreditNoteLine`, sin filtrar por signo, manteniendo coherencia encabezado ↔ líneas.\n\n---\n\n## Validar antes de desarrollar (recordatorio)\n\nEn ambiente **ELECTRODX**, antes de cualquier cambio:\n1. Confirmar que **01C00001527** y **01C00001528** siguen con **FACTE = 3** y FAU02 vigente.\n2. En SQL: listar `FNOTD` de esas NC e identificar líneas con `VR_TOTAL < 0` o `VR_UNITARIO < 0`; verificar `FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)`.\n3. En XML de solicitud (visor): contar `CreditNoteLine` vs filas `FNOTD` y comparar sumas con `LineExtensionAmount` del encabezado.\n\nSi ya están **FACTE = 2**, no hay desarrollo.\n\n---\n\n## Contabilidad\n\nSin cambio: `contabilidad.afecta = false` — no impacta MCUE/CON/MCPE.\n\n---\n\n## Siguiente paso\n\nConfirme o ajuste el **proceso** anterior (especialmente los orígenes del detalle negativo que aplican en ELECTRODX: anulación, manual, procedencia).\n\nCon su OK pasamos al **Paso 3 — Backend**: trazabilidad FE → `SPQ_FNOT_COL` → SPKs del generador XML. Para ello necesitaré que coloque en `sql/` el script **`SPQ_FNOT_COL.sql`** (y los SPK que invoquen la generación UBL CreditNote que salgan al leerlo). La nota del caso indica SQL diferido; sin ese script no puedo ubicar el filtro `VR_TOTAL < 0` ni proponer la corrección con evidencia.",
+      "fecha": "2026-08-30T15:48:00"
+    },
+    {
+      "id": "20260830155418171894",
+      "autor": "coordinador",
+      "texto": "se adicionaron los sql",
+      "fecha": "2026-08-30T15:54:18"
+    },
+    {
+      "id": "20260830155418199890w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T15:54:18"
+    },
+    {
+      "id": "20260830155600000001",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · REQ 0100014982 · ELECTRODX**\n\nRecibí los SQL en `sql/`. Leí **SPQ_FNOT_COL**, **SPK_GENITEMS_NOTACR** y **SPK_NC_CONTAB_FNOT**. Avanzo Pasos 3 y 4; **me detengo** antes del dictamen porque falta el SP del generador XML UBL.\n\n---\n\n## Paso 2 — Proceso\n\nVigente (sin objeción posterior). Orígenes del detalle con signos mixtos: generación automática, edición manual, anulación/procedencia.\n\n---\n\n## Paso 3 — Backend (trazabilidad)\n\n| # | Vue / acción | MODELO | METODO | SPQ | SPK / lógica | Estado |\n|---|--------------|--------|--------|-----|--------------|--------|\n| 1 | Crear nota | FNOT_COL | FNOT_CRUD | ☑ | SPK_GENCONSECUTIVO; si concepto=1 → SPK_GENITEMS_NOTACR | ☑ |\n| 2 | Generar detalle | FNOT_COL | FNOT_ADDDETA | ☑ | SPK_GENITEMS_NOTACR | ☑ |\n| 3 | Editar detalle manual | FNOT_COL | FNOT_CRUDFNOTD | ☑ | INSERT/UPDATE en FNOTD; recalcula FNOT.VR_TOTAL — **sin validar signo** | ☑ |\n| 4 | Aplicar / cerrar | FNOT_COL | FNOT_APLICAR | ☑ | SPK_RELIQUIDA_FTR; **SPK_NOTASCXC** | ☐ Falta script |\n| 5 | Encolar DIAN | FNOT_COL | FNOT_ENCOLAR | ☑ | Solo `UPDATE FNOT SET FACTE=1` + validaciones MCPE/MCP | ☑ |\n| 6 | Worker → XML CreditNote | — | — | — | **SP generador UBL** (CreditNoteLine) — **no está en sql/** | ☐ **Pendiente** |\n| 7 | Visor XML | VisorXMLsComponent | read | — | Campos persistidos en FNOT / BD DIAN | — |\n\n**Hallazgo:** `FNOT_ENCOLAR` no construye el XML; solo encola (`FACTE=1`). El filtro FAU02 está en el **worker/SP de facturación electrónica** (no incluido en los tres scripts recibidos).\n\n---\n\n## Paso 4 — SPKs recibidos\n\n**SPK_GENITEMS_NOTACR** — Genera FNOTD desde FTRD. Al final (l. 343-347) aborta si hay `VR_TOTAL<0` o `VR_UNITARIO<0`. La edición manual (`FNOT_CRUDFNOTD`) **no** tiene esa validación → explica NC con negativos en ELECTRODX (datos históricos o captura manual).\n\n**SPK_NC_CONTAB_FNOT** — Contabiliza en MCPE/MCP/MCHE. En 9 ramas filtra `FNOTD.VR_TOTAL>0`; líneas negativas no generan MCHE de detalle, pero el encabezado usa `FNOT.VR_TOTAL` neto. Patrón análogo al FAU02 XML.\n\n**SPQ_FNOT_COL** — Orquestador. `FNOT_APLICAR` exige `VR_TOTAL>0`. `FNOT_ENCOLAR` valida comprobante en MCPE y periodo MCP cerrado.\n\n---\n\n## Contabilidad (`afecta = true`)\n\n**Veredicto: observado** (actualizado en solicitud → `contabilidad.validacion`).\n\nSu nota es acertada: con signos mixtos, contabilidad ya excluye negativos del detalle MCHE pero el total neto sí contabiliza. El REQ apunta al **XML UBL**; no incluir cambio contable en el hotfix sin regresión en MCPE/MCP. Prerrequisito compartido: `FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)`.\n\n---\n\n## DETENCIÓN — falta SQL del generador XML\n\nPara ubicar el filtro con evidencia y redactar el dictamen, necesito en `sql/` el **SP que arma el XML UBL CreditNote** (CreditNoteLine / LineExtensionAmount / LegalMonetaryTotal) para NC Colombia.\n\nBusque el SP que procesa `FNOT` con `FACTE=1` en el worker DIAN (nombres tipo `SPK_*NOTA*`, `SPK_*CREDIT*`, `SPK_*UBL*`, `SPQ_*DIAN*`).\n\nOpcional incremental: **SPK_NOTASCXC.sql** (invocado en `FNOT_APLICAR`).\n\n---\n\n## Siguiente paso\n\nColoque el **SP generador XML UBL CreditNote** en `sql/` (obligatorio). Con eso paso al Paso 5 (análisis rápido) y preparo `dictamenes/20260829-0100014982.html`. Aún no hay dictamen HTML.",
+      "fecha": "2026-08-30T15:56:00"
+    },
+    {
+      "id": "20260830155745628713",
+      "autor": "coordinador",
+      "texto": "listo te adicione el spk que genera el xml SPK_GENERAR_XML_DIAN",
+      "fecha": "2026-08-30T15:57:45"
+    },
+    {
+      "id": "20260830155745652713w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T15:57:45"
+    },
+    {
+      "id": "20260830160000000001",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · REQ 0100014982 · ELECTRODX**\n\nRecibí **SPK_GENERAR_XML_DIAN.sql**. Con esto cierro Pasos 3–5 y publico el dictamen v1.\n\n---\n\n## Paso 3–4 — Backend (completo)\n\n| # | Vue | MODELO | METODO | SPQ/SPK | Estado |\n|---|-----|--------|--------|---------|--------|\n| 1 | Crear / detalle auto | FNOT_COL | FNOT_CRUD / FNOT_ADDDETA | SPQ_FNOT_COL → SPK_GENITEMS_NOTACR | ☑ |\n| 2 | Editar detalle manual | FNOT_COL | FNOT_CRUDFNOTD | SPQ_FNOT_COL | ☑ |\n| 3 | Aplicar / encolar | FNOT_COL | FNOT_APLICAR / FNOT_ENCOLAR | SPQ_FNOT_COL | ☑ |\n| 4 | **Generar XML UBL** | Worker FE | — | **SPK_GENERAR_XML_DIAN** | ☑ |\n| 5 | Contabilizar | — | — | SPK_NC_CONTAB_FNOT | ☑ (fuera alcance hotfix) |\n\n**Causa raíz confirmada** en `SPK_GENERAR_XML_DIAN`, rama CreditNote:\n- **Encabezado:** `LegalMonetaryTotal/LineExtensionAmount` = `@VR_NOTA - @VIVANOTA` (desde `FNOT.VR_TOTAL`, neto con negativos).\n- **Detalle:** `#FNOTD_OPT` filtra `WHERE … COALESCE(VR_TOTAL,0) > 0` → **omite líneas negativas** al armar `CreditNoteLine`.\n- Mismo filtro en conteo de ítems (l. ~2077) y en rama **DebitNoteLine** (l. ~3262).\n\nEsto explica FAU02: suma de líneas XML &lt; valor bruto del encabezado.\n\n---\n\n## Paso 5 — Análisis rápido\n\n- **Origen negativos en FNOTD:** anulación, captura manual (`FNOT_CRUDFNOTD` no valida signo) o procedencia; `SPK_GENITEMS_NOTACR` sí bloquea negativos en generación automática pero no corrige históricos.\n- **Corrección:** quitar filtro por signo en `SPK_GENERAR_XML_DIAN` (NC y ND); opcional validación suma líneas ↔ encabezado antes de emitir XML.\n- **Frontend:** sin cambio. **BD:** sin cambio de esquema (solo ALTER SP).\n- **Contabilidad:** veredicto **observado** — `SPK_NC_CONTAB_FNOT` también filtra `VR_TOTAL>0` en MCHE; no incluir en este hotfix.\n\n---\n\n## Validar antes de desarrollar\n\nEn **ELECTRODX**, antes de aplicar el fix:\n1. NC **01C00001527** / **01C00001528** con **FACTE=3** y FAU02 vigente.\n2. SQL: `FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)`; listar líneas negativas.\n3. XML: menos `CreditNoteLine` que filas `FNOTD`.\n\nSi ya **FACTE=2** → no hay desarrollo.\n\n---\n\n## Dictamen\n\nPropuesta completa en **dictamenes/20260829-0100014982.html** (estado *Propuesto*).\n\nResumen: modificar **SPK_GENERAR_XML_DIAN** para incluir **todas** las filas `FNOTD` en el XML (sin filtrar `VR_TOTAL>0`), alinear conteo de ítems y probar regresión NC positivas + ND.\n\n---\n\n## Siguiente paso\n\nRevise el dictamen y confirme en Chat si:\n1. Aprueba la propuesta (solo SPK, sin contabilidad).\n2. Desea incluir también corrección en **SPK_NC_CONTAB_FNOT** (ticket aparte recomendado).\n3. Tiene evidencia de validación previa en ELECTRODX (FACTE / FAU02).\n\nCon su OK cerramos Fase 1.",
+      "fecha": "2026-08-30T16:00:00"
+    },
+    {
+      "id": "20260830160630354398",
+      "autor": "coordinador",
+      "texto": "la dian rechaza valores negativos igual que la contabilidad, se debe garantizar que los valores de fnotd sean mayores que cero",
+      "fecha": "2026-08-30T16:06:30"
+    },
+    {
+      "id": "20260830160630380396w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T16:06:30"
+    },
+    {
+      "id": "20260830161423101810",
+      "autor": "coordinador",
+      "texto": "Validar antes de desarrollar haz enfasis que spk_gentiems no permite valores negativos lo mas seguro es que no haya necesidad de desarrollar",
+      "fecha": "2026-08-30T16:14:23"
+    },
+    {
+      "id": "20260830161423125846w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-08-30T16:14:23"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-08-30T16:21:06"
+    },
+    {
+      "id": "correo-cierre-20260829-0100014982",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a elan.bravo@ixcolombia.com.",
+      "fecha": "2026-08-30T16:21:36"
+    },
+    {
+      "id": "20260830210600000001",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · REQ 0100014982 · ELECTRODX**\n\nRecibí su aclaración: la DIAN rechaza valores negativos en líneas (igual que contabilidad). **Revoco la propuesta v1** (incluir negativos en el XML) y publico **dictamen v2**.\n\n---\n\n## Cambio de criterio\n\n| Aspecto | v1 (descartada) | v2 (acordada) |\n|---------|-----------------|---------------|\n| XML UBL | Incluir todas las líneas FNOTD | Mantener solo líneas con **VR_TOTAL > 0** |\n| SPK_GENERAR_XML_DIAN | Quitar filtro `VR_TOTAL>0` | **Conservar** filtro; añadir RAISERROR si llegan negativos |\n| Corrección | Ajustar generador XML | **Garantizar FNOTD > 0 en origen** antes de cerrar/encolar |\n| Contabilidad | Fuera de alcance | **Alineada** — SPK_NC_CONTAB_FNOT ya filtra VR_TOTAL>0 |\n\n**Por qué ocurre FAU02 hoy:** `FNOT.VR_TOTAL` es el neto (incluye negativos), pero XML y contabilidad solo procesan líneas positivas → desbalance encabezado ↔ líneas.\n\n**Solución:** impedir que existan FNOTD con `VR_TOTAL ≤ 0` o `VR_UNITARIO ≤ 0` cuando la nota se cierra o encola.\n\n---\n\n## Cambios propuestos (v2)\n\n**SPQ_FNOT_COL**\n1. **FNOT_CRUDFNOTD** — rechazar INSERT/UPDATE con valores ≤ 0 (hoy no valida signo; origen de negativos manuales).\n2. **FNOT_APLICAR** — bloquear si hay FNOTD negativos; verificar `FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)`.\n3. **FNOT_ENCOLAR** — misma validación antes de `FACTE=1`.\n\n**SPK_GENERAR_XML_DIAN** — mantener filtro `VR_TOTAL>0`; añadir RAISERROR explícito si aún existieran negativos (defensa en profundidad).\n\n**SPK_GENITEMS_NOTACR** — sin cambio (ya RAISERROR en l.343 si hay negativos al generar automático).\n\n**SPK_NC_CONTAB_FNOT** — sin cambio.\n\n**Qrystalos2** — sin cambio.\n\n---\n\n## NC del caso (01C00001527 / 01C00001528)\n\nAdemás del hotfix, requieren **corrección de datos** antes de reenviar:\n1. Desencolar si aplica (`FNOT_DESENCOLAR`).\n2. Identificar ítems FNOTD negativos.\n3. Absorber en línea positiva o regenerar detalle (`FNOT_ADDDETA`) si la nota lo permite.\n4. Verificar todos los ítems > 0 y `FNOT.VR_TOTAL = SUM(FNOTD.VR_TOTAL)`.\n5. Re-aplicar, re-encolar y enviar DIAN.\n\n---\n\n## Contabilidad\n\n**Veredicto: ok** (actualizado en solicitud → `contabilidad.validacion`). La v2 alinea dato de entrada con criterio contable y DIAN; no modifica MCPE/MCP/MCHE.\n\n---\n\n## Validar antes de desarrollar\n\nSin cambio: confirmar FAU02 vigente en ELECTRODX antes del fix. Si ya FACTE=2, no hay desarrollo.\n\n---\n\n## Dictamen\n\nPropuesta completa v2 en **dictamenes/20260829-0100014982.html**.\n\n---\n\n## Siguiente paso\n\nRevise el dictamen v2 y confirme en Chat si:\n1. Aprueba el enfoque (validar FNOTD > 0 en SPQ_FNOT_COL, sin incluir negativos en XML).\n2. Autoriza script de corrección de datos para las NC 01C00001527 / 01C00001528 en ELECTRODX.\n3. Tiene evidencia de validación previa (FACTE / FAU02).\n\nCon su OK cerramos Fase 1.",
+      "fecha": "2026-08-30T21:06:00"
+    },
+    {
+      "id": "20260830211400000001",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · REQ 0100014982 · ELECTRODX**\n\nRecibí sus dos aclaraciones (DIAN rechaza negativos; **SPK_GENITEMS_NOTACR** ya no permite valores negativos → lo más seguro es que **no haya necesidad de desarrollar**). Actualicé el dictamen a **v3** con ese énfasis.\n\n---\n\n## Punto clave — SPK_GENITEMS_NOTACR\n\nLa generación automática de detalle (`FNOT_ADDDETA` → `EXEC SPK_GENITEMS_NOTACR`) **ya termina con RAISERROR** si queda algún ítem con `VR_TOTAL<0` o `VR_UNITARIO<0` (l.343-346 del script en `sql/`).\n\n**Conclusión:** una NC creada hoy con «Generar detalles» **no puede** quedar con FNOTD negativos si el SP desplegado en ELECTRODX incluye esa validación. El FAU02 de **01C00001527** / **01C00001528** apunta más bien a:\n- **Datos históricos** (nota generada antes del SP con RAISERROR), o\n- **Captura manual** (`FNOT_CRUDFNOTD` — único gap confirmado: no valida signo).\n\nEn ambos escenarios la solución primaria es **corrección de datos + reenvío DIAN**, no necesariamente un hotfix de código.\n\n---\n\n## Validar antes de desarrollar (prioridad máxima)\n\nAntes de asignar desarrollo a ELAN, ejecute en **ELECTRODX**:\n\n| # | Verificación | Si cumple → |\n|---|--------------|-------------|\n| 1 | NC ya con **FACTE = 2** | **Sin desarrollo** — informar correcto |\n| 2 | **FACTE = 3** + FAU02 + FNOTD negativos + procedencia manual/histórica | **Corregir datos** (desencolar, absorber/regenerar detalle, re-encolar) — **probablemente sin código** |\n| 3 | SP en BD **ya tiene** RAISERROR l.343 y NC se generó con «Generar detalles» | Investigar otro origen (versión antigua, importación) — escalar L3 |\n| 4 | Reproducir captura manual con valor ≤ 0 **sin bloqueo** | Ahí sí aplica desarrollo v2 (validar `FNOT_CRUDFNOTD` + defensa en `SPK_GENERAR_XML_DIAN`) |\n\nChecklist SQL sugerido:\n```\nSELECT CNSFNOT, FACTE, VR_TOTAL, DETGENERADOS, PROCEDENCIA FROM FNOT\nWHERE CNSFNOT IN ('01C00001527','01C00001528');\n\nSELECT * FROM FNOTD WHERE CNSFNOT IN ('01C00001527','01C00001528')\n  AND (VR_TOTAL<=0 OR VR_UNITARIO<=0);\n```\n\n---\n\n## Criterio técnico (sin cambio v2)\n\n- **DIAN y contabilidad:** no incluir negativos en XML ni MCHE.\n- **SPK_GENERAR_XML_DIAN:** mantener filtro `VR_TOTAL>0` (correcto).\n- **Desarrollo SQL:** pasa a ser **condicional** — solo si la validación confirma el gap (manual sin bloqueo).\n\n---\n\n## Contabilidad\n\n**Veredicto: ok** (actualizado en solicitud). Alineado: garantizar FNOTD>0 antes de encolar; sin cambio en SPK_NC_CONTAB_FNOT.\n\n---\n\n## Dictamen\n\n**dictamenes/20260829-0100014982.html** (v3): árbol de decisión «Validar antes», énfasis en SPK_GENITEMS, desarrollo condicional.\n\n---\n\n## Siguiente paso\n\nConfirme en Chat el **resultado de la validación en ELECTRODX** (FACTE, FNOTD negativos, procedencia, versión del SP). Con eso definimos:\n1. **Cerrar sin desarrollo** (datos corregidos o ya FACTE=2), o\n2. **Solo corrección de datos** (soporte/L3), o\n3. **Hotfix condicional** (si manual sigue permitiendo negativos).\n\nCon su OK y evidencia cerramos Fase 1.",
+      "fecha": "2026-08-30T21:14:00"
+    },
+    {
+      "id": "20260830213800000001",
+      "autor": "agente",
+      "texto": "**Caso 20260829-0100014982 · Reactivación Fase 1**\n\nLeí `solicitud.json`, cola y Qrystalos2. El caso se **reactivó con un requerimiento distinto** al cerrado anteriormente (FAU02 / NC ELECTRODX). El dictamen previo (v3 FNOT) quedó archivado en `aprobados/`; **no aplica** a este análisis.\n\n---\n\n## Nuevo requerimiento (solicitud actual)\n\n| Campo | Valor |\n|-------|-------|\n| **Proyecto** | IX Colombia SAS |\n| **Módulo** | RIPS · Facturación masiva |\n| **Rama** | hotfix/IXCOLO144 |\n| **Tema** | Redondear copago y cuota moderadora a **enteros** en facturación masiva, XML UBL y JSON RIPS |\n| **Desarrollador** | ELAN BRAVO |\n\n**Observación ID:** en `identificacion.idReq` figura **0100014982**, pero el contenido y la cola apuntan al REQ **0100014790** (IX Colombia / RIPS). Confirme cuál es el ID correcto para documentación y correo.\n\n**SQL:** marcado «por ahora no» en formulario — aceptado para arranque; lo pediré en **Paso 3 (backend)**.\n\n---\n\n## Paso 1 — Ventana (propuesta)\n\n| Elemento | Valor propuesto |\n|----------|-----------------|\n| **Menú origen** | Administrativo → **Facturación** → pestaña **Facturación Masiva** (permiso `FACT_MASIVA`) |\n| **Ruta FE** | `/admin/facturacion` (`admin.facturacion`) |\n| **Componentes** | `FacturacionPage.vue` → `FTRComponent.vue` → **`FTRMComponent.vue`** |\n| **Sub-pestañas masiva** | Citas · Citas agrupadas · Autorizaciones · Unificadas · Oncología · Paquetes CE |\n| **Acción facturar** | `FTR_COL.FACTURAR_MASI` / `FTR_MASIVA_COL.FACTURAR_MASI` (según origen cita/aut) |\n| **Recálculo previo** | `FTR_COL.RECALCULAR_MASIVO` |\n| **Salida RIPS JSON** | `FTR_COL.RIPS_JSON` (composable `useRipsJsonAsync`; campos `valorPagoModerador`, `conceptoRecaudo` alineados con `SPK_RIPS_JSON_FTR_IND`) |\n| **Salida XML FEV** | Worker backend — **`SPK_GENERAR_XML_DIAN`** (etiquetas copago/moderadora en UBL) |\n| **Envío / validación RIPS** | Administrativo → **FEV/NC/NA-RIPS Masivo** (`/admin/FEVRIPSMasivo`) o Control RIPS (`/admin/ControlRips`) |\n| **Tablas BD** | `FTR` (`VALORCOPAGO`, `VALORMODERADORA`, `CP_VLR_COPAGOS`), `FTRD`, `CIT`, `AUTD` |\n\n**Alcance técnico (según REQ):** el fallo de decimales en copago/cuota moderadora se origina en el **cálculo al facturar masivamente** y se propaga a **XML** y **JSON RIPS**. El front muestra y encola; la lógica de redondeo/distribución está en **SPQ/SPK** (pendiente SQL).\n\n**Nota de su análisis:** antes de profundizar en el cálculo de copago, conviene aclarar si el escenario involucra **citas normales** o **sesiones de terapia** (hay desarrollo en curso de asignación de citas por sesiones).\n\n---\n\n## Contabilidad\n\n`contabilidad.afecta = false` en formulario. **Veredicto: no_aplica** (actualizado en solicitud). Si el redondeo genera diferencias vs valor contabilizado, indíquelo para reevaluar impacto MCPE/MCP en pasos posteriores.\n\n---\n\n## Siguiente paso\n\nConfirme o corrija la **ventana** anterior y aclare:\n1. **ID REQ** definitivo (0100014982 vs 0100014790).\n2. **Origen del escenario:** ¿Citas, Autorizaciones u otro tab de facturación masiva?\n3. **Ejemplo concreto:** N° factura o cita con copago/cuota moderadora con decimales y error RIPS/XML.\n4. ¿Aplica **sesiones de terapia** o citas estándar?\n\nCon su OK pasamos al **Paso 2 — Proceso**. Aún **no** genero dictamen HTML (metodología Fase 1).",
+      "fecha": "2026-08-30T21:38:00"
+    }
+  ]
+}
