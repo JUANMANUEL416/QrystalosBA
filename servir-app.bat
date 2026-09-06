@@ -10,10 +10,10 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo  Qrys.Quatec — servidor local
+echo  Qrystalos BA — servidor local
 echo  App:      http://localhost:8765/app/
 echo  Dictamen: http://localhost:8765/dictamenes/20260829-0100016193.html
 echo  Ctrl+C para detener
 echo.
-python "%~dp0scripts\servir-quatec.py"
+python "%~dp0scripts\servir-qrystalos-ba.py"
 if errorlevel 1 pause

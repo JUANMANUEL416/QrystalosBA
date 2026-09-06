@@ -4,7 +4,7 @@ echo Matando procesos en puerto 8765...
 python "%~dp0scripts\liberar_puerto.py" --port 8765
 if errorlevel 1 (
   echo.
-  echo No se pudo liberar el puerto. Cierre manualmente ventanas "Qrys.Quatec SERVIDOR".
+  echo No se pudo liberar el puerto. Cierre manualmente ventanas "Qrystalos BA SERVIDOR".
   pause
   exit /b 1
 )
