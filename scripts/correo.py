@@ -99,7 +99,7 @@ def _html_a_pdf(html_path):
         return ""
     pdf_path = os.path.splitext(html_path)[0] + ".pdf"
     url = Path(html_path).resolve().as_uri()
-    profile = os.path.join(tempfile.gettempdir(), "quatec-edge-pdf")
+    profile = os.path.join(tempfile.gettempdir(), "qrystalos-ba-edge-pdf")
     os.makedirs(profile, exist_ok=True)
     cmd = [
         edge,
@@ -213,7 +213,7 @@ def _persistir(ctx, extra):
         _write_json(HISTORICO_PATH, hist)
 
     try:
-        from quatec_db import get_db
+        from qrystalos_ba_db import get_db
 
         db = get_db()
         sol_db = db.get_solicitud(id_caso) or {}
@@ -285,7 +285,7 @@ def _enviar_outlook(para, asunto, cuerpo, adjuntos, display=False, cc="", html="
         "attachments": adjuntos,
         "display": bool(display),
     }
-    tmp = tempfile.mkdtemp(prefix="quatec-mail-")
+    tmp = tempfile.mkdtemp(prefix="qrystalos-ba-mail-")
     json_path = os.path.join(tmp, "mail.json")
     ps_path = os.path.join(tmp, "enviar.ps1")
     with open(json_path, "w", encoding="utf-8") as fh:

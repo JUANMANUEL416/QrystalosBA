@@ -2,7 +2,7 @@
  * Menú central — Analista / Consultas / Documentar (base de procesos).
  */
 window.QrysConocimiento = (function () {
-  const MODE_KEY = "qrys_quatec_modo";
+  const MODE_KEY = "qrystalos_ba_modo";
   let cache = null;
   let procesoActual = null;
   let chatPoll = null;

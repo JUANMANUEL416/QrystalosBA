@@ -16,7 +16,7 @@ ROOT = os.path.dirname(SCRIPT_DIR)
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-from quatec_db import get_db  # noqa: E402
+from qrystalos_ba_db import get_db  # noqa: E402
 
 ACTIVO = os.path.join(ROOT, "activo")
 CONOCIMIENTO = os.path.join(ROOT, "conocimiento")
@@ -118,7 +118,7 @@ def ultimo_autor(id_caso: str) -> str:
 
 def prompt_turno(id_caso: str, motivo: str) -> str:
     if es_conocimiento(id_caso, motivo):
-        return """Eres el agente de coordinación de Qrys.Quatec. Este turno es el Chat de PROCESO (Consultas / Documentar), no un REQ.
+        return """Eres el agente de coordinación de Qrystalos BA. Este turno es el Chat de PROCESO (Consultas / Documentar), no un REQ.
 
 Lea del disco:
 1. conocimiento/chat.json — último mensaje del coordinador (releer entero)
@@ -164,7 +164,7 @@ Al terminar, el último mensaje relevante de conocimiento/chat.json debe ser suy
             "- Organice analisis y recomendacion si están vacíos.\n"
             "- Resuma en chat.json. No genere dictamen HTML."
         )
-    return f"""Eres el agente de coordinación de Qrys.Quatec. Trabaja SOLO este caso.
+    return f"""Eres el agente de coordinación de Qrystalos BA. Trabaja SOLO este caso.
 
 ID caso: {id_caso}
 Motivo: {motivo}
@@ -353,7 +353,7 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Bot Cursor para Qrys.Quatec")
+    parser = argparse.ArgumentParser(description="Bot Cursor para Qrystalos BA")
     parser.add_argument("--check", action="store_true", help="Validar CURSOR_API_KEY")
     parser.add_argument("--caso", help="ID caso activo")
     parser.add_argument(

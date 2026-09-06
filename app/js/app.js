@@ -1,10 +1,10 @@
 /**
- * Qrys.Quatec — App principal
+ * Qrystalos BA — App principal
  */
 (function () {
-  const STORAGE_KEY = "qrys_quatec_solicitud";
-  const PATH_SQL = "C:\\DevQuasar\\Qrystalos\\Qrys.Quatec\\sql\\";
-  const PATH_SQL_REFE = "C:\\DevQuasar\\Qrystalos\\Qrys.Quatec\\sql_refe\\";
+  const STORAGE_KEY = "qrystalos_ba_solicitud";
+  const PATH_SQL = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\";
+  const PATH_SQL_REFE = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\";
 
   let currentStep = 1;
   const totalSteps = 5;
@@ -2228,7 +2228,7 @@
   }
 
   function buildPrompt(d) {
-    return `# Solicitud dictamen — Qrys.Quatec
+    return `# Solicitud dictamen — Qrystalos BA
 
 ## REGLA: Leer archivos en disco (no transcribir)
 1. **Cola HTML:** ${d.cola.rutaCola || "(registrar en cola/)"}${d.cola.idReq ? ` (REQ ${d.cola.idReq})` : ""}

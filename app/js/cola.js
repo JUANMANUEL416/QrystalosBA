@@ -2,8 +2,8 @@
  * Cola de trabajo — parseo de HTML guardado desde ixonline avalasesor
  */
 window.QrysCola = (function () {
-  const STORAGE_COLA = "qrys_quatec_cola";
-  const PATH_COLA = "C:\\DevQuasar\\Qrystalos\\Qrys.Quatec\\cola\\";
+  const STORAGE_COLA = "qrystalos_ba_cola";
+  const PATH_COLA = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\";
 
   function loadCola() {
     try {
