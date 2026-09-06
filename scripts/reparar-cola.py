@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from quatec_db import get_db  # noqa: E402
+from qrystalos_ba_db import get_db  # noqa: E402
 
 COLA_DIR = ROOT / "cola"
 ID_RE = re.compile(r"\b(010\d{7})\b")
