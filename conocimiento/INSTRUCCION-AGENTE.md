@@ -3,13 +3,14 @@
 Lea **del disco** en este orden cuando trabaje la base de procesos o un REQ:
 
 1. `conocimiento/INDICE.json` — ¿existe el proceso del módulo?
-2. `conocimiento/tarea.json` — si `abierta` es true, esa es la tarea de Documentar.
-3. `conocimiento/chat.json` — mensajes del coordinador (Documentar). Responda ahí (autor: `agente`).
-4. `conocimiento/pendientes.json` — cola de valles.
-5. `conocimiento/{id}/proceso.json` — flujo e invariantes.
-6. `conocimiento/{id}/sps.json` — catálogo SP → METODO (hace / valida / errores).
-7. Si la tarea trae `archivoSql`: leer **`sql/{archivo}` de hoy**. No usar copias viejas ni `sql_refe` salvo que el coordinador lo indique.
-8. Qrystalos2 y `qrystalos.documentacion` **vivos** (no duplicar aquí).
+2. `conocimiento/RUTA.json` — orden del coordinador (Caja → Facturación → Cartera → Activos → Contabilidad). El vigilante trabaja el siguiente valle.
+3. `conocimiento/tarea.json` — si `abierta` es true, esa es la tarea de Documentar.
+4. `conocimiento/canales/documentar/chat.json` — Chat de Documentar (autor: `agente`).
+5. `conocimiento/pendientes.json` — cola de valles.
+6. `conocimiento/{id}/proceso.json` — flujo e invariantes.
+7. `conocimiento/{id}/sps.json` — catálogo SP → METODO (hace / valida / errores).
+8. Si la tarea trae `archivoSql`: leer **`sql/{archivo}` de hoy**. No usar copias viejas ni `sql_refe` salvo que el coordinador lo indique.
+9. Qrystalos2 y `qrystalos.documentacion` **vivos** (no duplicar aquí).
 
 ## Si `tarea.json` está abierta (tipo `documentar_sp`)
 

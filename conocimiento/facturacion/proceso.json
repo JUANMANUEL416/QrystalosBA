@@ -4,7 +4,7 @@
   "modulo": "FTR",
   "estado": "parcial",
   "resumen": "Desde armar la factura hasta radicar la cuenta de cobro ante el pagador. Administrativo → Facturación (facturas, masiva, evento, hospitalización, programa, DIAN, empaque, traslados) → Cuentas por cobrar (cerrar y radicar). No es el menú Radicaciones (/rad).",
-  "actualizado": "2026-08-31",
+  "actualizado": "2026-09-06T18:50:00",
   "notaSql": "Flujo leído en pantallas y manuales de Qrystalos2 y en documentación de tablas. No se archivó cuerpo de SP. Para un REQ hay que bajar el .sql de hoy a sql/ y pasarlo en Documentar.",
   "alcanceHasta": "Radicar la cuenta de cobro (Cuentas por cobrar → Radicar CXC). Glosas, recaudo y el menú /rad quedan fuera de este proceso.",
   "ventanas": [
@@ -68,14 +68,27 @@
       "nombre": "Configuración",
       "estado": "parcial",
       "explicacion": "Antes de facturar: resolución DIAN vigente (rango, prefijo, ambiente), certificado de firma no vencido (el banner naranja/rojo en Facturación lo avisa), tercero y plan del pagador, contrato, servicios y sede. Sin eso la factura no numera o no notifica a la DIAN.",
-      "tablasClave": ["FDIAN", "TER", "PPT", "SED", "SER"],
+      "tablasClave": [
+        "FDIAN",
+        "TER",
+        "PPT",
+        "SED",
+        "SER"
+      ],
       "gates": [
         {
           "id": "dian-firma",
           "nombre": "Resolución DIAN y firma",
-          "explicacion": "Configuración → Resolución DIAN y Certificado digital. La factura electrónica usa esa resolución (prefijo, consecutivos, vigencia).",
-          "invariante": "No emitir si la resolución está vencida o el consecutivo se salió del rango autorizado. Firma vencida bloquea o alerta en la pantalla de Facturación.",
-          "sps": []
+          "explicacion": "Configuración → Resolución DIAN (`/conf/fdian`) y Certificado digital (`/conf/firmadigital`, TGEN FVCERTIFICADO). Al crear/numerar factura el banner (`useValidacionDian.js`) consulta FTR_COL · VALIDADIAN2 → SPQ_VALIDADIAN2: rango FDIAN, vigencia resolución, stock consecutivos, certificado.",
+          "invariante": "No emitir si la resolución está vencida o el consecutivo se salió del rango autorizado. BLOQUEADIAN=SI: CONTINUA 0=rango agotado, 2=resolución vencida, 3=sin resolución, 4/5/9=alertas. Firma vencida bloquea o alerta en Facturación.",
+          "sps": [
+            { "nombre": "SPQ_FDIAN_COL", "metodo": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN", "rol": "Config resoluciones FDIAN + datos facturador TGEN. conf.fdian · FDIANComponent. Ficha leído 2026-09-06." },
+            { "nombre": "SPQ_VALIDADIAN2", "metodo": "(SP standalone)", "rol": "Motor validación resolución/certificado al numerar. Ficha leído en sps.json." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "VALIDADIAN2", "rol": "Wrapper FE: sede/CCOSTO → SPQ_VALIDADIAN2." }
+          ],
+          "feSinSql": [
+            { "nombre": "SPQ_FDIANCER_COL", "metodo": "CRUDFDIANCER / GETVENCIMIENTO", "rol": "Certificados firma digital FDIANCER. conf.firmadigital + banner Facturación. Ficha leído 2026-09-06 16:25." }
+          ]
         },
         {
           "id": "pagador-plan",
@@ -92,7 +105,14 @@
       "nombre": "Proceso propio",
       "estado": "parcial",
       "explicacion": "Quien factura entra a Administrativo → Facturación. Primero arma y confirma la factura; después empaqueta anexos; después junta facturas en una cuenta de cobro y la radica en Cuentas por cobrar.",
-      "tablasClave": ["FTR", "FTRD", "FMAS", "FCXC", "FCXCD", "ENT"],
+      "tablasClave": [
+        "FTR",
+        "FTRD",
+        "FMAS",
+        "FCXC",
+        "FCXCD",
+        "ENT"
+      ],
       "gates": [
         {
           "id": "armar-factura",
@@ -102,8 +122,8 @@
           "sps": [
             {
               "nombre": "SPQ_FTR_COL",
-              "metodo": "CREARFTR / CRUDFTRD / VALIDA FTR / ANULARFAC / LIBERARFAC / ENVIA_CONTAB / NOTI_DIAN",
-              "rol": "Orquestador de la factura individual. Cuerpo no leído: bajar a sql/."
+              "metodo": "CREARFTR / CRUDFTRD / ANULARFAC / LIBERARFAC / ENVIA_CONTAB / NOTI_DIAN",
+              "rol": "68/68 fichas leídas sps.json. Script referencia sql_refe/ — no en sql/ hoy."
             },
             {
               "nombre": "SPQ_FTR_MASIVA_COL",
@@ -118,21 +138,118 @@
           ]
         },
         {
-          "id": "notificar-dian",
-          "nombre": "Notificar a la DIAN",
-          "explicacion": "Pestaña Proceso DIAN: envío y seguimiento. También hay FEV/RIPS masivo (menú aparte). En Facturas aparece «días para radicar» (fecha máxima de radicación de la factura electrónica).",
-          "invariante": "La factura electrónica debe quedar notificada. El plazo de radicación ante el pagador es otro reloj (cuenta de cobro).",
+          "id": "factura-financiera",
+          "nombre": "Factura financiera (manual · pestaña Facturas)",
+          "explicacion": "Factura creada **a mano** en Administrativo → Facturación → pestaña **Facturas** (`FTRComponent.vue`). Permiso **ADMINQ_FACTURAS · FACT_FACTURAR**. El FE **siempre** envía `PROCEDENCIA=FINANCIERO` al guardar (`ejecutarGuardadoFTR`). **No** es factura desde CE/AUT/CIT/masiva/hospitalización — esas llegan con otra procedencia. Flujo: **Nueva Factura** → modal cabecera (tercero, plan/contrato, sede con FDIAN, observación ≥15 chars Col, opcional capita/PGP) → **FTR_COL · CREARFTR** → abre detalle **FtrDetalles** → líneas **CRUDFTRD** (servicio, cantidad, valor, IVA CALCIMP_FTRD) → si capita/PGP: relación **ADDFTRDC** (gate capita-pgp). Cierre: imprimir puede disparar contab si CONTABILIZADA=0 · **ENVIA_CONTAB** · **NOTI_DIAN** · **FTRFE_COL · VALIDAFTR** previo envío FE.",
+          "invariante": "PROCEDENCIA=FINANCIERO (SP INSERT + FE). Edición solo si ESTADO=P, ESTDIAN=Sin Notificar, CONTABILIZADA=0. Sin FTRD no contabiliza ni encola DIAN.",
+          "ventanasFe": "/admin/facturacion · tab Facturas · FTRComponent · permiso FACT_FACTURAR",
           "sps": [
-            {
-              "nombre": "SPQ_FTR_COL",
-              "metodo": "NOTI_DIAN",
-              "rol": "Notificación DIAN desde la factura."
-            },
-            {
-              "nombre": "SPQ_FTRFE_COL",
-              "metodo": "VALIDAFTR / FE_FECHAFTR / FE_DESENCOLAR",
-              "rol": "Cola y fechas de factura electrónica. Cuerpo no leído."
-            }
+            { "nombre": "SPQ_FTR_COL", "metodo": "CREARFTR", "rol": "✅ 68/68 leído sql_refe — INSERT PROCEDENCIA=FINANCIERO." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "CRUDFTRD / DELETEFTRD / LISTAFTRD / CALCIMP_FTRD", "rol": "Detalle manual línea a línea." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "ENVIA_CONTAB / NOTI_DIAN", "rol": "Contabilizar y encolar DIAN." },
+            { "nombre": "SPQ_FTRFE_COL", "metodo": "VALIDAFTR", "rol": "Pre-validación antes de acciones FE." },
+            { "nombre": "SPK_TOTALFACTURFIN", "metodo": "(SP leído 18:26)", "rol": "Recálculo totales financiero/capita; COPAPROPIO + moderadora." }
+          ]
+        },
+        {
+          "id": "facturacion-programa-autpg",
+          "nombre": "Facturación Programa (AUTPG)",
+          "explicacion": "Pestaña **Facturación Programa** (`FTRComponent` tab `FacturacionPrograma` → `FTRCITPGComponent`). Permiso **FACT_AUTPG** + USVGS **USA_AUTPG=SI**. Grilla **AUTPG** (autorizaciones de programa por periodo ANOMES, aseguradora, plan, sede). Estados visibles: Autorizado/Autorizado Recuperado (FACTURABLE=1, ENFACT=1) → facturar; Rechazado Facturacion; FACTURADO=1. Flujo: filtrar → opcional export/import Excel → **VALIDADIAN_AUTPG** → **CONTEOAUTORIZADO** → **FACTURAR_AUTPG** (agrupa por MAX_AFILIADOS_FACTURA, servicio paquete IDSERPAQ) → FTR PROCEDENCIA=AUTPG. Alternativa import: **PROCESAR_IMPORTACION_EXCEL** → **FACTURAR_AUTPG_IMPORTADOS**. Auxiliares: rechazar, recalcular copagos, retirar copago, actualizar fecha atención, log CONSULTAR_LOG.",
+          "invariante": "Sin autorización en estado Autorizado + ENFACT no entra a facturar. Rechazo exige CAU IDCLASE=RECHAZO_FTR. Validación DIAN previa (VALIDADIAN_AUTPG / useValidacionDian). Factura generada queda en pestaña Facturas con PROCEDENCIA=AUTPG.",
+          "ventanasFe": "/admin/facturacion · tab Facturación Programa · permiso ADMINQ_FACTURAS/FACT_AUTPG",
+          "sps": [
+            { "nombre": "SPQ_AUTPG", "metodo": "24 METODOs leídos sql/SPQ_AUTPG.sql 16:43", "rol": "Motor pestaña Facturación Programa. Tabla AUTPG + AUTPG_LOG." },
+            { "nombre": "SPQ_CIT_COL_3", "metodo": "HELPER_AUTPG", "rol": "Carga periodos/combos al abrir pestaña. Sin sql/." },
+            { "nombre": "SPK_FACTURA_AUTPG", "metodo": "(SP leído)", "rol": "Agrupa AUTPG por MAXAFI_XFTR/sede → FTR paquete + FTRDC (CIT/AUT med) → contab SPK_NC_CONTAB_FTR o FTRCO." },
+            { "nombre": "SPK_RIPS_JSON_FTR_AUTPG", "metodo": "(SP anidado)", "rol": "Rama RIPS JSON para facturas AUTPG." }
+          ]
+        },
+        {
+          "id": "facturacion-evento-paq",
+          "nombre": "Facturación Evento · paquete por afiliado",
+          "explicacion": "Pestaña **Facturación Evento** (`FTRComponent` tab `FacturacionEvento` → `FTRCITEventoComponent`). Permiso **FACT_CIT_EVENTO**. Grilla **VWK_CARGOS_HADMAUTCIT_ART** (cargos CIT/HADM/AUT mezclados). Flujo paquete: filtrar tercero/plan/procedencia → marcar filas (**FTR_COL · MARCAFACT** / **MARCAFACTPTE** → CIT.MARCAFAC=1) → modal paquete (IDSERPAQ, VALORPAQ, MAX_AFILIADOS_FACTURA) → **AUTPG · FACTURAR_EVENTO_PAQ** → **SPK_FACTURACI_EVENTO_PAQ** → FTR PROCEDENCIA=**CI** (no AUTPG). **Distinto** de Facturación Programa (AUTPG) y de factura evento línea a línea (**FTR_COL · FACTU_MASIPAQ** legacy en mismo modal).",
+          "invariante": "Sin MARCAFAC=1 del usuario no entra al SPK. Una línea FTRD paquete por afiliado agrupado; sin FTRDC. Copago resta del VR paquete (VLRPAQUETE − VALORCOPAGO). Resolución FDIAN por sede obligatoria.",
+          "ventanasFe": "/admin/facturacion · tab Facturación Evento · permiso ADMINQ_FACTURAS/FACT_CIT_EVENTO",
+          "sps": [
+            { "nombre": "SPQ_AUTPG", "metodo": "FACTURAR_EVENTO_PAQ", "rol": "Orquestador JSON → EXEC SPK. Comparte SPQ con pestaña Programa." },
+            { "nombre": "SPK_FACTURACI_EVENTO_PAQ", "metodo": "(SP leído 16:48)", "rol": "Agrupa CIT marcadas por MAXAFI_XFTR/sede → FTR paquete CI → contab." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "MARCAFACT / MARCAFACTPTE", "rol": "Marca/desmarca CIT para facturación evento." }
+          ]
+        },
+        {
+          "id": "facturacion-masiva-aut",
+          "nombre": "Facturación Masiva · pestaña Autorizaciones (AUT)",
+          "explicacion": "Dentro de **Facturación Masiva** (`FTRMComponent`, tab `Autorizaciones`). **Distinto de Facturación Programa (AUTPG).** Grilla **VWK_AUT_FTR** (tabla **AUT** + detalle **AUTD**). Permiso **FACT_MASIVA**. Flujo: filtrar tercero/plan/fechas → marcar filas (**MARCAAUT_FTR** ACCION 1/2 lote, 3 individual) → **CONTEOFTRMARCADAS** → **FACTURAR_MASI** PROCEDENCIA=AUT → FTR. Aux: **MARCANOCOBRABLE** (FTR_COL), **NOCOBRAR_AUTD**, **ASIGNAR_NROAUT**, detalle expand AUTD.",
+          "invariante": "AUT.ESTADO≠Anulada. VALORTOTAL>0 y FACTURABLE=1 para marcar. CNSFACT=@USUARIO en marca. No confundir con AUTPG (programas mensuales).",
+          "ventanasFe": "/admin/facturacion · FacturaMasiva → tab Autorizaciones · permiso FACT_MASIVA",
+          "sps": [
+            { "nombre": "SPQ_FTR_MASIVA_COL", "metodo": "MARCAAUT_FTR / CONTEOFTRMARCADAS / FACTURAR_MASI / NOCOBRAR_AUTD / ASIGNAR_NROAUT", "rol": "Ficha leída en sps.json. sql/SPQ_FTR_MASIVA_COL.sql." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "MARCANOCOBRABLE / ASIGNAR_NROAUT", "rol": "Toggle FACTURABLE cabecera AUT." }
+          ]
+        },
+        {
+          "id": "capita-pgp",
+          "nombre": "Capita, PGP y relación de servicios (FTRDC)",
+          "explicacion": "Viene del plan pagador (PPT): PGPEVE=1 contrato capitado, PGPEVE=2 PGP; si no, factura por evento. Capita exige TIPOCAP (1 Inicial → 2 Periodo → 3 Final) validado en CREARFTR contra facturas previas del mismo tercero/plan. PGP usa la misma bandera CAPITADA=1 pero sin secuencia Inicial/Periodo/Final en pantalla (capipgpeve=2). Relación FTRDC: cargos marcados desde VWK_CARGOS_HADMAUTCIT (ADDFTRDC / ADDFTRDC_MARCA); copago propio (COPAPROPIO) recalcula vía SPK_TOTALFACTURFIN. Sin FTRDC no encola DIAN ni contabiliza capita/PGP.",
+          "invariante": "Capita/PGP no es un menú aparte: es variante de FTR en pestaña Facturas (y marcas masivas en evento/masiva). ANULARFAC deriva a SPK_ANULA_FACT_CAPITADA si aplica.",
+          "sps": [
+            { "nombre": "SPQ_FTR_COL", "metodo": "CREARFTR / ADDFTRDC / ADDFTRDC_MARCA / REV_DUP_FTRDC", "rol": "Cabecera capita+TIPOCAP; detalle relación FTRDC." },
+            { "nombre": "SPK_TOTALFACTURFIN", "metodo": "(SP leído 18:26)", "rol": "Recálculo totales capita/PGP y copago propio." },
+            { "nombre": "SPK_ADDSERCAP", "metodo": "(SP leído 18:36 sql/)", "rol": "ADDFTRDC PROCESO=ADD — INSERT FTRDC desde VWK_CARGOS; marca orígenes facturados." },
+            { "nombre": "SPK_DELSERCAP", "metodo": "(SP leído 18:33 sql/)", "rol": "ADDFTRDC PROCESO=DEL — DELETE FTRDC y desfactura orígenes." },
+            { "nombre": "SPK_ANULA_FACT_CAPITADA", "metodo": "(SP leído 18:35 sql/)", "rol": "ANULARFAC rama FINANCIERO+CAPITADA=1; DELETE FTRDC; NC si periodo cerrado." }
+          ]
+        },
+        {
+          "id": "envio-cartera-recepcion",
+          "nombre": "Envío a cartera y recepción de facturas",
+          "explicacion": "Traslados (ENTComponent): Facturación arma ENT/ENTD → cierra entrega → Cartera procesa. **PROCESAR_ENVIO** (PROCESO=FACTURAS): FTR pasa a dept cartera (IDFDEPCARTERA), INDCARTERA=1. **CREARCXC_ENT**: alternativa que además crea FCXC y recibe ENT. **RECIBIR_AUDIFACTU**: recepción en auditoría (IDFDEPAUDITORIA). Rama DEVFACT devuelve a facturación. Variables USVGS: IDFDEPCARTERA, IDFDEPFACTURACION, IDFDEPAUDITORIA, USUARIOJEFECARTERA/JEFEFACTURA.",
+          "invariante": "Sin PROCESAR_ENVIO o CREARCXC_ENT la factura no queda en cartera operativa. CREARCXC_ENT exige jefes configurados en USVGS.",
+          "sps": [
+            { "nombre": "SPQ_ENT_COL", "metodo": "PROCESAR_ENVIO / CREARCXC_ENT / RECIBIR_AUDIFACTU / ASIGNAR_AUDIFACT", "rol": "Puente Facturación ↔ Cartera." },
+            { "nombre": "SPQ_FCXC_COL", "metodo": "ASIGNAR_FACT / CRUD_FCXC", "rol": "Armar cuenta sin traslado ENT." },
+            { "nombre": "SPK_RELIQUIDACXCQX", "metodo": "(SP)", "rol": "Recalcula FCXC tras CREARCXC_ENT — pendiente en sql/." }
+          ]
+        },
+        {
+          "id": "informes-facturacion",
+          "nombre": "Informes de facturación",
+          "explicacion": "Pestaña Informes (FTRPTComponent): GENERAR_RPT con PROCESO dinámico (Tercero, Plan, Usuario, Prefijo, Área, Servicio, Rventas Perú, TODO con join FCXC/HADM…). Solo lectura; arma SQL dinámico sobre FTR/FTRD.",
+          "invariante": "No modifica datos; filtros por fechas, sede, procedencia, particulares (USVGS IDPLANPART).",
+          "sps": [
+            { "nombre": "SPQ_FTR_RPT_COL", "metodo": "GENERAR_RPT", "rol": "Reportes agregados y detalle." }
+          ]
+        },
+        {
+          "id": "buscar-factura",
+          "nombre": "Buscar factura (consulta)",
+          "explicacion": "Administrativo → Buscar Factura (`/admin/BuscaFact`). También embebido en Conciliaciones y Notas DB/CR. Por N_FACTURA muestra: ubicación actual (FTR+TER+FDEP), historial de traslados ENT/ENTD (FACTURAS), y si está en cartera (FCXCDV) enlace a detalle vencimientos (DetaFacxcComponent). Solo lectura.",
+          "invariante": "No modifica FTR ni CxC; es trazabilidad operativa facturación → traslados → cartera.",
+          "sps": [
+            { "nombre": "SPQ_CARTERA_IMPRESION", "metodo": "BUSCA_FACTURA", "rol": "Ficha leído en reportes-cartera/sps.json. sql/SPQ_CARTERA_IMPRESION.sql." }
+          ]
+        },
+        {
+          "id": "notificar-dian",
+          "nombre": "Notificar a la DIAN (FEV)",
+          "explicacion": "Circuito **factura electrónica DIAN** (XML, CUFE, cola FACTE). **No** es FEVRIPS ni radicación cartera. Tras armar factura (y **FTRDC** si capita/PGP): encolar → servicio externo DIAN → CUFE → **FACTE=2** + filas **FTRE**. Pantallas: pestaña **Facturas** (`NotificaDian` → NOTI_DIAN; `fnvalidaftr` → VALIDAFTR previo confirmar); pestaña **Proceso DIAN** (`FTREComponent`: grilla WFFacte, ENCOLAR_ITEM/DESCOLA_ITEM, ENCOLAR_MASIVO, LISTAR_FTRE, TREA_XML descarga/reenvío, SEDFACUMASI aging). Imprimir factura puede disparar contab si CONTABILIZADA=0 (`onPrintDocument` → ENVIA_CONTAB).",
+          "invariante": "FACTE=2 (notificada DIAN) **no** sustituye RADICA_FCXC. Capita/PGP sin FTRDC → NOTI_DIAN KO. NOTI_DIAN/FE_ENCOLAR: FACTE∈(0,3) y F_FACTURA=hoy si aún no notificada. Anulación con FACTE=2 exige contab OK para NC (ANULARFAC). **CONTAB_FTR_POSTDIAN=SI** → ENVIA_CONTAB exige FACTE=2 (SPK_NC_CONTAB_FTR). Runtime post-encolar (FACTE=1→2) = **servicio facturador electrónico**, no está en SPQ.",
+          "ventanasFe": "/admin/facturacion · tab Facturas (NotificaDian, filtro ESTADOFACTE) · tab Proceso DIAN (FTREComponent, permiso NOTIDIAN) · FTRMComponent también embebe FTRE",
+          "estadosFacte": "0 Sin Notificar · 1 En Cola · 2 Notificada (DIAN OK) · 3 Con Errores · 4 Procesando/Por Consultar · 5 Por prevalidar · 6 Prevalidada · 7 Rechazada en pruebas",
+          "flujoOperador": [
+            "1. Factura lista (contab según CONTAB_FTR_POSTDIAN; capita con FTRDC)",
+            "2. Tab Facturas → NotificaDian(n_factura) o confirmar FE → FTR_COL·NOTI_DIAN / FTRFE_COL·FE_ENCOLAR → FACTE=1, ESTDIAN=En Cola",
+            "3. Servicio externo DIAN procesa cola → FACTE=2, INSERT/UPDATE FTRE (CUFE, XML)",
+            "4. Tab Proceso DIAN → filtros fecha/ESTDIAN/procedencia/tipodoc → LISTAR_FTRE (FACTE=2) · TREA_XML descarga · reenvío correo · RESET_NOTIFICADOS",
+            "5. Masivo: ENCOLAR_MASIVO ACCION 1/2 sobre VWK_ESTADODIAN_FTRE",
+            "6. Siguiente gate opcional: rips-fev (precondición FACTE=2) o envío cartera (INDCARTERA)"
+          ],
+          "sps": [
+            { "nombre": "SPQ_FTR_COL", "metodo": "NOTI_DIAN / ENCOLAR_ITEM / DESCOLA_ITEM / ENCOLAR_MASIVO", "rol": "Encola/desencola FTR.FACTE y FNOT.FACTE. Fichas leído." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "LISTAR_FTRE / TREA_XML / RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO", "rol": "Seguimiento FTRE, XML, reenvío correo EPS. Fichas leído." },
+            { "nombre": "SPQ_FTRFE_COL", "metodo": "FE_ENCOLAR / FE_DESENCOLAR / FE_FECHAFTR / VALIDAFTR / LISTAR_FTRECXC", "rol": "Cola FE al confirmar factura; soportes FE CxC/RIPS. Fichas leído." },
+            { "nombre": "SPQ_FTR_COL", "metodo": "AJUSTAR_TOTALES_DIAN / EXPORTAR_FACTURAS_MASIVO / SEDFACUMASI", "rol": "Ajuste centavos DIAN; export masivo; aging DIAN masiva. Fichas leído." },
+            { "nombre": "SPQ_VALIDADIAN2", "metodo": "(SP)", "rol": "Precondición resolución/certificado. Ficha leído." }
           ]
         },
         {
@@ -151,37 +268,52 @@
         {
           "id": "armar-cuenta",
           "nombre": "Armar la cuenta de cobro",
-          "explicacion": "Varias facturas del mismo pagador se juntan en una cuenta de cobro. Caminos vistos: (1) pestaña Traslados de facturas: entrega interna y luego crear la cuenta; (2) Cuentas por cobrar: marcar facturas y asignarlas a la cuenta; (3) Saldos iniciales: un pagador + la misma fecha de radicación = una cuenta.",
-          "invariante": "Una cuenta de cobro es del pagador, no del paciente. Hasta que no esté cerrada se pueden meter o quitar facturas.",
+          "explicacion": "Varias facturas del mismo pagador se juntan en una cuenta de cobro. Caminos: (1) Traslados ENT → CREARCXC_ENT; (2) Cuentas por cobrar directo; (3) **Saldos iniciales FTR** (`/admin/saldosInicialesFtr`, SIFTRColComponent): cargue Excel → FTR_SI → PROCESAR_FTR (FTR financiero SI=1) → PROCESAR_CXC (FCXC PROCEDENCIA=SIFTR, agrupa **IDTERCERO + F_RADICA + sede**) → FINALIZAR_CXC_SIFTR (SPK_ENTREGA_CXC → FCXCDV → PROCEDENCIA=CARTERA).",
+          "invariante": "Una cuenta de cobro es del pagador, no del paciente. SIFTR: misma fecha F_RADICA = una cuenta. Sin FINALIZAR no hay vencimientos ni cartera operativa.",
           "sps": [
             {
               "nombre": "SPQ_ENT_COL",
               "metodo": "CRUD_ENT / CERRAR_ENT / CREARCXC_ENT",
-              "rol": "Traslados / entrega y paso a cuenta de cobro. Cuerpo no leído."
+              "rol": "Traslados / entrega y paso a cuenta de cobro."
             },
             {
               "nombre": "SPQ_FCXC_COL",
               "metodo": "CRUD_FCXC / ASIGNAR_FACT / CIERRA_FCXC",
-              "rol": "Cabecera y detalle de la cuenta. Cuerpo no leído."
+              "rol": "Cabecera y detalle de la cuenta."
             },
             {
               "nombre": "SPQ_SIFTR_COL",
-              "metodo": "PROCESAR_CXC / VALIDAR_PRE_CXC",
-              "rol": "Cargue y armado masivo de cuentas. Cuerpo no leído."
+              "metodo": "INSERTAR_LOTE / PROCESAR_FTR / PROCESAR_CXC / FINALIZAR_CXC_SIFTR",
+              "rol": "Cargue masivo saldos iniciales. 11/11 METODOs leído en sps.json."
             }
           ]
         },
         {
           "id": "radicar-cuenta",
           "nombre": "Radicar la cuenta de cobro",
-          "explicacion": "En Cuentas por cobrar, con la cuenta cerrada y aún no recibida: botón Radicar CXC. Pide fecha de radicación, quién recibió (mín. 10 caracteres), número de radicado (mín. 5) y guía si aplica. Marca la cuenta como recibida. Después no se agregan ni quitan facturas. Se puede asignar radicado factura a factura o importar Excel.",
-          "invariante": "Radicar es el sello de que el pagador recibió la cuenta. Sin radicar no sigue el cobro formal. Permiso CXC_RADICAR.",
+          "explicacion": "En Cuentas por cobrar (FCXCAComponent), con la cuenta cerrada y INDRECIBIDO=0: Radicar CXC → RADICA_FCXC → SPK_ENTREGA_CXC. Pide fecha radicación, quién recibió, Nº radicado, guía. Al radicar se crean vencimientos FCXCDV (ver gate vencimientos-cartera). Después no se agregan/quitan facturas. Opcional CONTABCXC=SI → SPK_CONTAB_RADICACXC.",
+          "invariante": "Radicar es el sello de que el pagador recibió la cuenta. Sin radicar no hay FCXCDV ni cobro formal. Permiso CXC_RADICAR.",
           "sps": [
             {
               "nombre": "SPQ_FCXC_COL",
-              "metodo": "RADICA_FCXC / NRORAD_FCXCD / IMPORTAR_RADICADO_CXC / CONTAB_FCXC",
-              "rol": "Radicación de la cuenta y radicados por factura. Cuerpo no leído."
+              "metodo": "RADICA_FCXC / NRORAD_FCXCD / IMPORTAR_RADICADO_CXC / CONTAB_FCXC / PROCESAR_RADICACION_MULTI_FECHA",
+              "rol": "Radicación cuenta y por factura; multi-fecha con RPDX."
+            },
+            {
+              "nombre": "SPK_ENTREGA_CXC",
+              "metodo": "(SP)",
+              "rol": "Marca recibida; genera FCXCDV y vencimientos."
             }
+          ]
+        },
+        {
+          "id": "vencimientos-cartera",
+          "nombre": "Vencimientos de cartera (FCXCDV)",
+          "explicacion": "Los vencimientos **no** se calculan al crear la CXC: nacen al **radicar** (SPK_ENTREGA_CXC). Por cada factura en FCXCD: si FTR.PLANDEPAGO=1 copia cuotas de FTRPP a FCXCDV (F_VENCE=FTRPP.FECHA); si no, una cuota tipo F con F_VENCE = fecha radicación + PPT.DIASVTO (contrato tercero/plan); fallback +30 días. Aging cartera: vista VWK_CXCDIASVTO (tableros/reportes: PORVENCER, DM0_30…). Recaudos aplica pagos contra ITEM de FCXCDV.",
+          "invariante": "Sin radicar no hay FCXCDV. DIASVTO viene de PPT (plan del pagador), no de la factura suelta.",
+          "sps": [
+            { "nombre": "SPK_ENTREGA_CXC", "metodo": "(SP)", "rol": "Inserta FCXCDV al radicar." },
+            { "nombre": "SPK_PAGOSCXC", "metodo": "(SP)", "rol": "Aplica recaudo a saldos FCXCD/FCXCDV (módulo Recaudos)." }
           ]
         }
       ]
@@ -192,14 +324,21 @@
       "nombre": "Lo que llega y completa",
       "estado": "parcial",
       "explicacion": "La factura no nace sola: llega de hospitalización/urgencias (admisión), de citas, de autorizaciones y de programas. Empaqueta lee esos mismos orígenes para los anexos. La factura de inventario (farmacia/venta) es otra pantalla, no este proceso.",
-      "tablasClave": ["HADM", "CIT", "AUT", "AFI"],
+      "tablasClave": [
+        "HADM",
+        "CIT",
+        "AUT",
+        "AFI"
+      ],
       "gates": [
         {
           "id": "origenes-clinicos",
           "nombre": "Admisión, citas, autorizaciones",
-          "explicacion": "Urg-Hospi-Domi toma la admisión. Evento toma citas. Programa toma autorizaciones de programa. Si el servicio no está cerrado o no tiene tarifa, no aparece para facturar.",
-          "invariante": "No se factura lo que el origen clínico no dejó listo (alta, atención, autorización).",
-          "sps": []
+          "explicacion": "Urg-Hospi-Domi toma la admisión. Evento toma citas. **Programa:** pestaña Facturación Programa lee tabla **AUTPG** (autorizaciones mensuales por afiliado/plan) y genera FTR PROCEDENCIA=AUTPG vía SPQ_AUTPG. Si el servicio no está cerrado o no tiene tarifa, no aparece para facturar.",
+          "invariante": "No se factura lo que el origen clínico no dejó listo (alta, atención, autorización ENFACT).",
+          "sps": [
+            { "nombre": "SPQ_AUTPG", "metodo": "FACTURAR_AUTPG", "rol": "Origen programa → FTR. Sin sql/." }
+          ]
         }
       ]
     },
@@ -209,19 +348,23 @@
       "nombre": "Subproceso unido (empaque y RIPS)",
       "estado": "parcial",
       "explicacion": "Aquí no hay bancos. El encuentro es con empaque de anexos (Empaqueta) y con RIPS/FEV (validar y enviar el paquete electrónico). Ambos se entregan junto con la cuenta, pero no reemplazan el botón Radicar CXC.",
-      "tablasClave": ["FTR_SOPORTES", "DOC_ANEXOS_CONFIG"],
+      "tablasClave": [
+        "FTR_SOPORTES",
+        "DOC_ANEXOS_CONFIG"
+      ],
       "gates": [
         {
           "id": "rips-fev",
-          "nombre": "RIPS / FEV",
-          "explicacion": "Administrativo → FEV/NC/NA-RIPS Masivo y Control RIPS. Validar CUV, descargar ZIP, notas crédito/ajuste. Es el paquete que pide la normativa, no el radicado del pagador.",
-          "invariante": "RIPS validado no significa cuenta radicada.",
+          "nombre": "FEVRIPS (RIPS + FEV + CUV ministerio)",
+          "explicacion": "Circuito **normativo salud** (SISPRO/ministerio): JSON RIPS + factura DIAN + **CUV**. Distinto de encolar DIAN y de radicar CXC. Precondición usual: FACTE=2. Flujo: generar JSON (FTR_COL · RIPS_JSON → SPK_GENERAR_RIPS_JSON; async INICIAR/EJECUTAR_RIPS_JSON_JOB si CONFIG_GENE_FEV) → marcar/enviar (MODELO RIPS: GET_DATOS, SET_DATOS, MARCAFAC, GET_DATOS_XML…) → cola microservicio opcional (FEVRIPS_COLA si USVGS FEVRIPS_MODO=MICROSERVICIO: TOMAR_MANUAL/ENCOLAR/ESTADOS evita CUV duplicado) → recuperar CUV (FEVRIPS_COL · NOTA_AJUSTE) → descarga paquete ZIP (FTREComponent, FEVRIPSMasivoComponent FV/NC/NA). Validaciones: ValidacionesFEVRipsComponent. Glosas: SopFevRips / NA-RIPS.",
+          "invariante": "CUV validado **no** significa cuenta radicada (FCXC). Precondición motor: FACTE=2. Marca masiva exige FACTE=2, contabilizada, CUV vacío, no caja. Cola microservicio solo si FEVRIPS_MODO=MICROSERVICIO; TOMAR_MANUAL evita CUV duplicado. ESTADO 5 (validación) no reintenta solo — ENCOLAR tras corrección. JWT SISPRO en TRANSIENT (JWT_RIPS).",
+          "ventanasFe": "/admin/FEVRIPSMasivo · Facturación → Proceso DIAN (Paquete FEVRIPS) · Validaciones FEVRIPS · Glosas SopFevRips",
           "sps": [
-            {
-              "nombre": "SPQ_RIPS",
-              "metodo": "(varios; MODELO RIPS)",
-              "rol": "RIPS / FEV. Cuerpo no leído."
-            }
+            { "nombre": "SPQ_FTR_COL", "metodo": "RIPS_JSON / INICIAR_RIPS_JSON_JOB / EJECUTAR_RIPS_JSON_ASYNC", "rol": "Wrapper generación JSON. Leído → SPK_GENERAR_RIPS_JSON." },
+            { "nombre": "SPK_GENERAR_RIPS_JSON", "metodo": "(SP)", "rol": "Motor JSON por TIPODOC (FACTURA/AJUSTE/NOTACR/NOTADB). Ramas capita/PGP/masiva/evento. Leído." },
+            { "nombre": "SPQ_RIPS", "metodo": "GET/SET_DATOS / MARCA* / GET_DATOS_XML* / GET_CONFIG_EXPORT_RIPS", "rol": "Persiste CUV (FTR/FNOT/FGLO + FTRJSON/FNOTJSON). Marca lote. Paquete ZIP. 10/10 leído." },
+            { "nombre": "SPQ_FEVRIPS_COLA", "metodo": "APTITUD / TOMAR_LOTE / SET_ESTADO / TOMAR_MANUAL / LIBERAR_MANUAL / ENCOLAR / ESTADOS", "rol": "Cola FEVRIPS_COLA + worker microservicio. 7/7 leído." },
+            { "nombre": "SPQ_FEVRIPS_COL", "metodo": "NOTA_AJUSTE", "rol": "Recupera JSON_ENVIO.rips + CUV desde FTRJSON (NA-RIPS). Leído." }
           ]
         }
       ]
@@ -232,7 +375,10 @@
       "nombre": "Envío a contabilidad",
       "estado": "parcial",
       "explicacion": "La factura puede enviarse a contabilidad desde Facturación (ENVIA_CONTAB). La cuenta de cobro se contabiliza después de radicar (CONTAB_FCXC). El asiento de cartera no se documentó: falta el .sql.",
-      "tablasClave": ["FTR", "FCXC"],
+      "tablasClave": [
+        "FTR",
+        "FCXC"
+      ],
       "gates": [
         {
           "id": "contabilizar",
@@ -254,5 +400,7 @@
         }
       ]
     }
-  ]
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-05T22:57:22"
 }

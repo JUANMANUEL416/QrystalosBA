@@ -1,0 +1,100 @@
+{
+  "mensajes": [
+    {
+      "id": "20260906170925229665",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento (y mi análisis si ya lo escribí). Dime qué te falta revisar para validar contra el mío. No hagas el dictamen completo. Deja el resultado en este Chat y en solicitud.contenido.brechaAnalisis.",
+      "fecha": "2026-09-06T17:09:25"
+    },
+    {
+      "id": "20260906170925300653w",
+      "autor": "sistema",
+      "texto": "El agente está analizando el requerimiento. El resultado aparece en el paso 2 y en el Chat.",
+      "fecha": "2026-09-06T17:09:25"
+    },
+    {
+      "id": "20260906172007823808",
+      "autor": "coordinador",
+      "texto": "Proponga los criterios de aceptación de este REQ con base en Qrystalos2 y mi análisis. Descarte textos genéricos. Escríbalos en solicitud.contenido.criteriosAceptacion y en criteriosMeta (fuente: agente). Organice analisis y recomendacion si están vacíos o vienen de OpenAI. Resuma en este Chat. No haga el dictamen completo.",
+      "fecha": "2026-09-06T17:20:07"
+    },
+    {
+      "id": "20260906172007841780w",
+      "autor": "sistema",
+      "texto": "El agente está proponiendo criterios. El resultado queda en el formulario y en este Chat.",
+      "fecha": "2026-09-06T17:20:07"
+    },
+    {
+      "id": "20260906173109001001",
+      "autor": "agente",
+      "texto": "**Caso activado — REQ 0100016318** ✅\n\nLeí cola (`IX OnLine.htm`), `solicitud.json`, `conocimiento/` (facturación + autorizaciones-ce) y Qrystalos2 (`FacturacionPage` → `FTRComponent`). **No genero dictamen completo aún** — Fase 1 paso 1 (ventana) pendiente de su confirmación.\n\n---\n\n## Veredicto SQL (métodos documentados)\n\n**Formulario:** 8 METODOs de `SPQ_AUT_COL` / `SPQ_GEN_AUT` — todos **leído** en `conocimiento/autorizaciones-ce/sps.json`.\n\n**Alcance real del REQ** (facturación dispensación) exige además fichas de **facturación** (`conocimiento/facturacion/sps.json`), también **leído**:\n\n| MODELO | METODOs clave | Uso en REQ |\n|--------|---------------|------------|\n| **FTR_COL** | RECALCULAR_MASIVO, ACTUALIZAITEM | Recalcular pre-factura POS |\n| **FTR_MASIVA_COL** | MARCAAUT_FTR, FACTURAR_MASI, MARCA_APLIMF, GEN_AUT_NOPOS_APLIMF, FACTURAR_NOPOS_APLIM | Marcar/facturar POS y No POS |\n| **FACT_MASI_COL** | MARCAR_AUT, VALIDAR_MARCA | Alternativa masiva nueva (pestaña oculta hoy) |\n| **AUT_COL** | CAMBIA_CONTRATANTE, RELIQUIDAR | Cambio tercero/plan + reliquidar |\n\n**Conclusión:** no pido `.sql` en `sql/` de entrada — alcance cubierto por fichas leídas (2026-09-06). Solo releer si en paso backend aparece gap (p. ej. persistir **AUT.TIPOUSUARIO** pre-factura).\n\n---\n\n## Contabilidad\n\n`contenido.contabilidad.afecta = false` → **no_aplica**. La ventana reutiliza flujos FTR existentes; numeración vía `SPK_FACTURACE_N` (CNSRESOL/FDIAN por sede). Sin cambio MCPE/MCP en alcance.\n\n---\n\n## Paso 0 — Proceso\n\n| Proceso | Rol |\n|---------|-----|\n| **facturacion** | Gates masiva AUT, NOPOS APLIMF, RECALCULAR_MASIVO, FACTSEDE |\n| **autorizaciones-ce** | AUT/AUTD, CAMBIA_CONTRATANTE, creación desde orden |\n\n---\n\n## Paso 1 — Ventana (confirme antes de dictamen)\n\n**Hoy en Qrystalos2** (`/admin/facturacion` → `FTRComponent.vue`):\n\n| Pestaña activa | Componente | Permiso | Qué hace hoy |\n|----------------|------------|---------|--------------|\n| Facturación Masiva | **FTRMComponent** | FACT_MASIVA | VWK_AUT_FTR, filtros tercero/plan/**sede**, FACTSEDE obligatoria, RECALCULAR_MASIVO, edición COBRARA/IDPLAN por ítem |\n| Facturación NOPOS | **FTRNoPosComponent** | FACT_NO_POS | VWK_APLIM_NOPOS, MIPRES, GEN_AUT_NOPOS_APLIMF → FACTURAR_NOPOS_APLIM, impresión PDF |\n\n*(La pestaña `FtrMasivaComponent` / FACT_MASI_COL está oculta con `v-if=\"1==0\"`.)*\n\n**Propuesta (recomendación en formulario):** pestaña nueva **«Facturación Dispensación»** en `FTRComponent`, componente dedicado (ej. `FTRDispensacionComponent.vue`) que unifique UX POS + No POS para ISSSTE/dispensación, reutilizando lógica de FTRM + FTRNoPos sin obligar a alternar pestañas.\n\n**Brecha vs REQ escrito:** «post y nopbs» del avalasesor = en su dictado **POS vs No POS/MIPRES** (no PBS contable). ¿Confirma?\n\n**Pendiente su respuesta (CA-01/CA-02):**\n1. ¿Aprueba pestaña nueva «Facturación Dispensación» o prefiere extender NOPOS / solo FTRM?\n2. ¿Permiso nuevo (ej. FACT_DISP_MED) o combinación FACT_MASIVA + FACT_NO_POS?\n3. ¿Campos editables además de tercero, plan y tipousuario? (tipo afiliado, COBRARA, otros)\n4. ¿ISSSTE = tercero/plan fijos o parametrizables en filtros?\n5. Performance (CA-19/CA-20): ¿hay baseline medido o usamos umbrales propuestos?\n\n---\n\n## Criterios, análisis y recomendación\n\nYa están en el formulario (`solicitud.contenido`):\n- **CA-01…CA-20** en `criteriosAceptacion` (fuente agente, `validados=false`)\n- **analisis**, **recomendacion**, **alcance**, **restricciones** organizados\n- **brechaAnalisis** actualizada\n\nResumen criterios: acceso FTR unificado; filtros tercero+plan+sede (FACTSEDE); grilla tipo masiva autorizador; edición pre-factura + recalcular; POS semi-masivo Fase 1; No POS evento a evento + MIPRES; CNSRESOL por sede; impresión en pantalla; concurrencia multi-sede; performance ≤8s/≤15s.\n\n---\n\n## Próximos pasos Fase 1\n\nTras confirmar ventana → **paso 2** flujo usuario → **paso 3** backend (tabla trazabilidad FE→SPQ→METODO) → dictamen en `dictamenes/20260906-0100016318.html`.\n\n**Gap técnico abierto:** en FTR no hay edición de **AUT.TIPOUSUARIO** hoy (sí en Autorizador CE). Verificar si `CRUDAUT`/`CAMBIA_CONTRATANTE` cubren el cambio o hace falta METODO/UI nuevo — lo cerramos en paso 3.",
+      "fecha": "2026-09-06T17:31:09"
+    },
+    {
+      "id": "20260906174930533975",
+      "autor": "coordinador",
+      "texto": "si no existe el campo hay que crearlo",
+      "fecha": "2026-09-06T17:49:30"
+    },
+    {
+      "id": "20260906174930558293w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-06T17:49:30"
+    },
+    {
+      "id": "20260906174945002002",
+      "autor": "agente",
+      "texto": "**Recibido — «si no existe el campo hay que crearlo»** (TIPOUSUARIO / edición pre-factura)\n\nInvestigué BD, SQL de referencia y Qrystalos2. Resumen:\n\n---\n\n## 1. Columna en base de datos — **ya existe**\n\n| Campo | Tabla | Tipo | Doc |\n|-------|-------|------|-----|\n| **TIPOUSUARIO** | AUT | varchar(1) | `qrystalos.documentacion/tablas/AUT.md` |\n| **TIPOAFILIADO** | AUT | varchar(2) | mismo (C/B/J cotizante, beneficiario, etc.) |\n\n**No propongo DDL** salvo que en la BD del cliente COESME falte la columna (poco probable). Si en preversión no está, confírmelo y lo marcamos como script de despliegue.\n\n---\n\n## 2. Lo que **no existe** hoy (y hay que crear en desarrollo)\n\n| Capa | Gap | Acción propuesta |\n|------|-----|------------------|\n| **UI FTR** | `FTRMComponent` edita tercero/plan (COBRARA, IDPLAN) pero **no** tipo afiliado ni tipousuario | Controles en la nueva ventana Dispensación (patrón `AutorizadorComponent`: selector Tipo Afiliado) |\n| **UI FTR** | `FTRNoPosComponent` tampoco expone esos campos | Misma barra/diálogo de edición pre-factura para eventos No POS |\n| **Backend** | `CRUDAUT` **EDITAR** actualiza `TIPOAFILIADO` desde JSON; **no** actualiza `AUT.TIPOUSUARIO` en edición (insert lo fija en `'I'`) | Si negocio usa **solo tipo afiliado** → reutilizar `AUT_COL · CRUDAUT` (PROCESO=Editar) + `RELIQUIDAR`. Si exigen **`AUT.TIPOUSUARIO` editable** aparte → extender `SPQ_AUT_COL` o METODO dedicado |\n| **Backend** | `FTR_COL · ACTUALIZAITEM` solo staging masiva (valor/cantidad/tercero plan en RPDX) | No sustituye persistencia en AUT para tipousuario |\n\n**Interpretación de su mensaje:** crear el **control en pantalla** y el **camino de guardado**; no una columna nueva en AUT.\n\n---\n\n## 3. Propuesta técnica (para dictamen)\n\n**Campos editables pre-factura (Fase 1):**\n- IDTERCERO / contratante → `CAMBIA_CONTRATANTE` o flujo existente FTRM + reliquidar\n- IDPLAN → mismo circuito\n- **Tipo afiliado** → `AUT.TIPOAFILIADO` vía `CRUDAUT` EDITAR (como Autorizador CE)\n- **Tipousuario** → aclarar si es lo mismo que tipo afiliado en ISSSTE o campo Sispro distinto (`AFI.TIPOUSUARIO` varchar(20) vs `AUT.TIPOUSUARIO` varchar(1))\n\nTras guardar → **Recalcular** (`RECALCULAR_MASIVO`) → facturar.\n\n**Criterio CA-09** queda: controles visibles y persistencia comprobable antes de facturar; bloqueo si `FACTURADA=1`.\n\n---\n\n## 4. SQL — ¿releer hoy?\n\nPara cerrar si `CRUDAUT` EDITAR debe ampliarse con `TIPOUSUARIO` desde JSON, conviene **`SPQ_AUT_COL.sql` de hoy** en `sql/` (referencia en `sql_refe/xsql/` puede estar desactualizada). **No bloqueo paso 1**; lo pido al entrar paso 3 backend si confirman que TIPOUSUARIO ≠ TIPOAFILIADO.\n\n---\n\n## 5. Paso 1 ventana — sigue pendiente\n\nSu mensaje aclara edición de campos, no la pantalla. **Confirme aún:**\n1. ¿Pestaña nueva «Facturación Dispensación» (recomendada)?\n2. ¿Permiso FACT_DISP_MED o FACT_MASIVA + FACT_NO_POS?\n3. En ISSSTE: ¿**tipousuario** = **tipo afiliado** (C/B/…) o dos datos distintos?\n\nCon eso paso a **paso 2** (flujo usuario) en el Chat.",
+      "fecha": "2026-09-06T17:49:45"
+    },
+    {
+      "id": "20260906175108045633",
+      "autor": "coordinador",
+      "texto": "1. si, 2 si deben crear permisos, 3. TIPOUSUARIO para la generacion de fevrips de estas facturas",
+      "fecha": "2026-09-06T17:51:08"
+    },
+    {
+      "id": "20260906175108068925w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-06T17:51:08"
+    },
+    {
+      "id": "20260906175230001002",
+      "autor": "agente",
+      "texto": "**Paso 1 cerrado — ventana confirmada** ✅\n\nRecibí sus respuestas:\n1. **Sí** → pestaña nueva **«Facturación Dispensación»** en `FTRComponent.vue` (`/admin/facturacion`), componente dedicado (ej. `FTRDispensacionComponent.vue`).\n2. **Sí** → permiso nuevo en USGRUH: propongo **`FACT_DISP_MED`** bajo `ADMINQ_FACTURAS` (IDPROCEDIMIENTO existente), independiente de `FACT_MASIVA` / `FACT_NO_POS`.\n3. **TIPOUSUARIO** → para generación **FEV-RIPS** de estas facturas.\n\n**No genero dictamen completo aún** — paso 2 (flujo) y validación suya del paso 3.\n\n---\n\n## TIPOUSUARIO y FEV-RIPS (hallazgo técnico)\n\nInvestigué el motor RIPS (`SPK_RIPS_JSON_FTR_IND`, referencia `sql_refe/xsql/`):\n\n| Origen | Campo | Uso en JSON RIPS (PROCEDENCIA=`AUT`) |\n|--------|-------|--------------------------------------|\n| **AFI** | `TIPOUSUARIO` (varchar 20, TGEN `AFI/TIPO_USUARIO`, códigos `01`/`02`/…) | **Primero** — va al nodo tipoUsuario del JSON |\n| **AFI** | `TIPOAFILIADO` (C/B/J/…) | Fallback si `AFI.TIPOUSUARIO` vacío (mapeo a `01`/`02`/…) |\n| **AUT** | `TIPOUSUARIO` (varchar 1, ej. `'I'`) | **No** se lee en la rama AUT del RIPS revisada |\n\n**Conclusión para desarrollo:** el selector «Tipo usuario» en la ventana Dispensación debe persistir **`AFI.TIPOUSUARIO`** (código Sispro TGEN), no solo `AUT.TIPOUSUARIO`. Patrón existente en Qrystalos2: `AgendaNuevaComponent` → `CIT_VALIDA · ACTUALIZA_TIPOUSUARIO_AFI`.\n\n**Acciones propuestas (Fase 1):**\n- Control selector TGEN `AFI/TIPO_USUARIO` en panel edición pre-factura (evento POS o No POS).\n- Guardar vía `ACTUALIZA_TIPOUSUARIO_AFI` (reutilizar) **antes** de facturar.\n- Mantener edición de **tercero/plan** (`CAMBIA_CONTRATANTE` + `RELIQUIDAR`) y **tipo afiliado** (`CRUDAUT` EDITAR → `AUT.TIPOAFILIADO`) como respaldo cuando AFI no tenga código Sispro.\n- Tras facturar → FEV-RIPS toma el valor ya persistido en AFI.\n\n**Gap SQL:** `ACTUALIZA_TIPOUSUARIO_AFI` no está en `sps.json`; el FE ya lo usa. No pido `.sql` de entrada; al dictamen documentamos reutilización. Solo pediría `SPQ_AUT_COL.sql` de hoy si acordamos extender `CRUDAUT` EDITAR (hoy fija `TIPOUSUARIO='I'` en edición — referencia desactualizada).\n\n**CA-09 actualizado** en formulario: tipousuario = código TGEN en AFI para FEV-RIPS.\n\n---\n\n## Paso 2 — Flujo usuario (propuesta)\n\n**Acceso:** Administrativo → Facturación → pestaña **Facturación Dispensación** (permiso `FACT_DISP_MED`).\n\n### A. Arranque de sesión\n1. Facturador elige **Tercero** (ISSSTE / pagador), **Plan** y **Sede** — los tres obligatorios si `FACTSEDE=SI` (sin «Todas»).\n2. Define rango de fechas y filtros opcionales (documento/nombre afiliado, pendiente facturar/entregar, POS vs No POS).\n3. Pulsa **Buscar** → grilla unificada de eventos dispensación pendientes.\n\n### B. Consulta y selección\n4. Grilla muestra autorizaciones/eventos con indicador **POS** (AUT/AUTD, ref. `VWK_AUT_FTR`) vs **No POS** (APLIM/APLIMF, ref. `VWK_APLIM_NOPOS`).\n5. Facturador expande fila o abre detalle para ver medicamentos, MIPRES (No POS), copago y estado entrega.\n6. Marca uno o varios eventos **POS** para facturación semi-masiva; **No POS** solo **un evento a la vez** (Fase 1).\n\n### C. Edición pre-factura (solo no facturados)\n7. Con evento seleccionado, edita: **Contratante/tercero**, **Plan**, **Tipo afiliado**, **Tipo usuario** (TGEN → AFI.TIPOUSUARIO para FEV-RIPS).\n8. **Guardar cambios** → backend persiste (ver tabla trazabilidad abajo).\n9. **Recalcular** (POS marcados) → `FTR_COL · RECALCULAR_MASIVO`; refresca totales/copago/facturable.\n10. Si `FACTURADA=1` o hay `N_FACTURA` → bloqueo edición/recálculo con mensaje.\n\n### D. Facturación\n11. **Facturar POS:** envía `IDSEDE` filtrada + marcas usuario → `FTR_COL · FACTURAR_MASI` (evento por evento en Fase 1, aunque marque varios).\n12. **Facturar No POS:** `MARCA_APLIMF` → `GEN_AUT_NOPOS_APLIMF` (si aplica) → `FACTURAR_NOPOS_APLIM` — siempre unitario.\n13. Factura generada con **CNSRESOL/prefijo+número** de la sede (`SPK_FACTURACE_N`, variable `FACTSEDE`).\n\n### E. Post-factura\n14. Mensaje éxito + botón **Imprimir PDF** (`ImprimeFormatoFtr`, patrón `FTRNoPosComponent`).\n15. Datos quedan inmutables; FEV-RIPS posterior usa `AFI.TIPOUSUARIO` ya guardado.\n\n### F. Concurrencia (4+ digitadores)\n16. Cada usuario trabaja acotado a **su sede**; marcas (`MARCAFAC` / marcas APLIMF por `@USUARIO`) no cruzan sedes.\n\n**Confirme o corrija** este flujo antes del dictamen. Puntos abiertos:\n- ¿ISSSTE = tercero/plan **fijos** (precargados) o solo filtro habitual?\n- ¿La grilla unifica POS+No POS en **una sola tabla** con columna tipo, o **sub-pestañas** internas POS | No POS?\n- ¿Baseline performance medido en cliente para CA-19/CA-20?\n\n---\n\n## Paso 3 — Backend (tabla trazabilidad inicial)\n\n| Paso proc. | Vue (propuesto) | MODELO | METODO | Fuente | SPK/SP invocados |\n|------------|-----------------|--------|--------|--------|------------------|\n| Listar POS | FTRDispensacion | — | — | `AppStore.read` VWK_AUT_FTR | — |\n| Listar No POS | FTRDispensacion | — | — | `AppStore.read` VWK_APLIM_NOPOS | — |\n| Marcar POS | FTRDispensacion | FTR_MASIVA_COL | MARCAAUT_FTR / ADDDEL_AUTD | sps.json ✅ | — |\n| Marcar No POS | FTRDispensacion | FTR_MASIVA_COL | MARCA_APLIMF | sps.json ✅ | — |\n| Cambiar tercero/plan | FTRDispensacion | AUT_COL | CAMBIA_CONTRATANTE | sps.json ✅ | reliquida copago |\n| Tipo afiliado | FTRDispensacion | AUT_COL | CRUDAUT (Editar) | sps.json ✅ | SPK_COPAGO_AUT_CEHOSP |\n| **Tipo usuario FEV-RIPS** | FTRDispensacion | **CIT_VALIDA** | **ACTUALIZA_TIPOUSUARIO_AFI** | FE existente ⚠️ | UPDATE AFI |\n| Recalcular POS | FTRDispensacion | FTR_COL | RECALCULAR_MASIVO | sps.json ✅ | tarifas/contrato |\n| Facturar POS | FTRDispensacion | FTR_COL | FACTURAR_MASI | sps.json ✅ | SPK_FACTURACE_N |\n| Gen AUT No POS | FTRDispensacion | FTR_MASIVA_COL | GEN_AUT_NOPOS_APLIMF | sps.json ✅ | SPK_GENCONSECUTIVO |\n| Facturar No POS | FTRDispensacion | FTR_MASIVA_COL | FACTURAR_NOPOS_APLIM | sps.json ✅ | SPK_FACTURACE_N |\n| Imprimir | FTRDispensacion | — | ImprimeFormatoFtr | boot FmtFtr | — |\n\n⚠️ = método usado en FE pero no fichado en `conocimiento/` — documentar al cerrar backend.\n\n**Veredicto SQL:** no pido scripts en `sql/` de entrada; fichas facturación + autorizaciones-ce cubren el alcance. Releer `SPQ_AUT_COL.sql` solo si extendemos `CRUDAUT` EDITAR.\n\n---\n\n## Contabilidad\n\nSin cambio — `no_aplica` (reutiliza post-factura FTR estándar).\n\n---\n\n## Próximo paso\n\nConfirme **paso 2** (flujo) y las tres preguntas abiertas → preparo dictamen en `dictamenes/20260906-0100016318.html`.",
+      "fecha": "2026-09-06T17:52:30"
+    },
+    {
+      "id": "20260906175322467041",
+      "autor": "coordinador",
+      "texto": "listo genere el documento y ver como quedo",
+      "fecha": "2026-09-06T17:53:22"
+    },
+    {
+      "id": "20260906175322491699w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-06T17:53:22"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-06T17:57:20"
+    },
+    {
+      "id": "correo-cierre-20260906-0100016318",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a naren.voos@ixcolombia.com.",
+      "fecha": "2026-09-06T17:57:41"
+    },
+    {
+      "id": "20260906175800001003",
+      "autor": "agente",
+      "texto": "**Dictamen generado** ✅\n\nDocumento completo en: **dictamenes/20260906-0100016318.html**\n\n---\n\n## Resumen ejecutivo\n\nNueva pestaña **«Facturación Dispensación»** en `/admin/facturacion` (`FTRComponent.vue`), componente **`FTRDispensacionComponent.vue`**, permiso **`FACT_DISP_MED`** (confirmado). Unifica en una sola UX los flujos POS (AUT/AUTD, ref. FacMasiva) y No POS (APLIM/APLIMF, ref. NOPOS) para dispensación ISSSTE con **sede obligatoria** (FACTSEDE), edición pre-factura, recalcular e impresión PDF.\n\n**Backend:** reutiliza METODOs documentados — no pido `.sql` de entrada. Tabla trazabilidad completa en el HTML (sección 5).\n\n**TIPOUSUARIO / FEV-RIPS:** selector TGEN → persistir **`AFI.TIPOUSUARIO`** vía `CIT_VALIDA · ACTUALIZA_TIPOUSUARIO_AFI` (patrón AgendaNueva). Columnas ya existen en BD; no hay DDL.\n\n**Contabilidad:** no aplica — flujos FTR estándar.\n\n---\n\n## Impacto\n\n| Capa | Alcance |\n|------|--------|\n| **FE** | Componente nuevo + pestaña + permiso USGRUH |\n| **API** | Parcial — reutiliza MODELOs existentes |\n| **SQL** | Parcial — sin cambio obligatorio; opcional extender CRUDAUT si negocio lo pide |\n| **BD** | Sin DDL en alcance estándar |\n\n---\n\n## Pendientes menores (no bloquean desarrollo)\n\n1. **Baseline performance** CA-19/CA-20 en cliente COESME (umbrales propuestos ≤8s / ≤15s).\n2. ISSSTE como filtro habitual vs tercero/plan precargados.\n3. Grilla única con columna POS/No POS (recomendado) vs sub-pestañas internas — dictamen asume grilla unificada.\n4. Fichar `ACTUALIZA_TIPOUSUARIO_AFI` en `conocimiento/` al cerrar backend.\n\n---\n\n## Próximo paso Fase 1\n\nRevise el HTML (Ctrl+P → PDF si desea). Si aprueba → **Cerrar fase 1** en la app. Si hay correcciones, escríbalas aquí y actualizo el dictamen.\n\nCapturas del flujo deseado en `aprobados/20260906-0100016318/imagenes/` refuerzan la validación del coordinador.",
+      "fecha": "2026-09-06T17:58:00"
+    }
+  ]
+}

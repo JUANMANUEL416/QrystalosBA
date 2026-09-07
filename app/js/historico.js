@@ -3,12 +3,18 @@
  */
 window.QrysHistorico = (function () {
   const STORAGE = "qrystalos_ba_historico";
+  const STORAGE_LEGACY = "qrys_quatec_historico";
   const PATH_APROBADOS = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\aprobados\\";
   const PATH_DICTAMENES = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\dictamenes\\";
 
   function load() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE) || "[]");
+      const raw = localStorage.getItem(STORAGE) || localStorage.getItem(STORAGE_LEGACY) || "[]";
+      const items = JSON.parse(raw);
+      if (!localStorage.getItem(STORAGE) && localStorage.getItem(STORAGE_LEGACY)) {
+        localStorage.setItem(STORAGE, raw);
+      }
+      return Array.isArray(items) ? items : [];
     } catch {
       return [];
     }
@@ -156,7 +162,7 @@ window.QrysHistorico = (function () {
   }
 
   function mejorEstado(a, b) {
-    const rank = { pendiente: 0, en_analisis: 1, dictamen: 2, aprobado: 3, enviado: 4 };
+    const rank = { pendiente: 0, en_analisis: 1, dictamen: 2, aprobado: 3, enviado: 4, terminado: 5 };
     return (rank[b] || 0) >= (rank[a] || 0) ? b || a : a || b;
   }
 
@@ -168,11 +174,13 @@ window.QrysHistorico = (function () {
         dictamen: "Dictamen listo",
         aprobado: "Cerrado",
         enviado: "Cerrado · correo enviado",
+        terminado: "Terminado",
       }[e] || e
     );
   }
 
   function pillClass(estado) {
+    if (estado === "terminado") return "mail-no";
     if (estado === "enviado") return "mail-ok";
     if (estado === "aprobado") return "approved";
     if (estado === "dictamen") return "done";

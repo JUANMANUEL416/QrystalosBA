@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import time
 from datetime import date
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,22 +39,48 @@ def _decode_text(raw):
 def _read_json(path, default):
     if not os.path.isfile(path):
         return default
-    raw = open(path, "rb").read()
-    text = _decode_text(raw)
     try:
-        data, end = json.JSONDecoder().raw_decode(text.lstrip())
+        raw = open(path, "rb").read()
+    except OSError as exc:
+        print(f"WARN no se pudo leer {path}: {exc}", flush=True)
+        return default
+    text = _decode_text(raw)
+    stripped = text.lstrip()
+    try:
+        data, end = json.JSONDecoder().raw_decode(stripped)
     except json.JSONDecodeError:
         return default
-    if end < len(text) and text[end:].strip():
-        _write_json(path, data)
+    # Solo reescribe si hay basura real tras el JSON (no solo \\n).
+    resto = stripped[end:].strip()
+    if resto:
+        try:
+            _write_json(path, data)
+        except OSError as exc:
+            print(f"WARN no se pudo normalizar {path}: {exc}", flush=True)
     return data
 
 
 def _write_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    """Escritura atómica con reintento (evita Errno 22 / archivo bloqueado en Windows)."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(payload)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    last_err = None
+    for intento in range(5):
+        try:
+            with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(payload)
+            os.replace(tmp, path)
+            return
+        except OSError as exc:
+            last_err = exc
+            try:
+                if os.path.isfile(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+            time.sleep(0.05 * (intento + 1))
+    raise OSError(f"No se pudo guardar {path}: {last_err}") from last_err
 
 
 def norm_nombre(nombre):
@@ -112,21 +139,26 @@ def _caso_key(caso):
 
 
 def _merge_caso(dev, caso):
+    """Fusiona un caso. Devuelve True si hubo cambio."""
     if not caso:
-        return
+        return False
     casos = dev.setdefault("casos", [])
     key = _caso_key(caso)
     if not key:
-        return
+        return False
+    nuevo = {k: v for k, v in caso.items() if v not in (None, "")}
     for i, c in enumerate(casos):
         if _caso_key(c) == key:
-            merged = {**c, **{k: v for k, v in caso.items() if v not in (None, "")}}
+            merged = {**c, **nuevo}
+            if merged == c:
+                return False
             casos[i] = merged
-            return
-    casos.append({k: v for k, v in caso.items() if v not in (None, "")})
+            return True
+    casos.append(nuevo)
+    return True
 
 
-def upsert(nombre, caso=None, correo=None):
+def upsert(nombre, caso=None, correo=None, guardar=True):
     nombre = norm_nombre(nombre)
     if not nombre:
         return load_lista(), None, False
@@ -140,7 +172,8 @@ def upsert(nombre, caso=None, correo=None):
     if correo is not None and str(correo).strip():
         dev["correo"] = validar_correo(correo)
     _merge_caso(dev, caso)
-    save_lista(data)
+    if guardar:
+        save_lista(data)
     return data, dev, creado
 
 
@@ -210,25 +243,48 @@ def caso_desde_cola_item(item):
     }, p.get("desarrollador") or ""
 
 
+def _aplicar_caso(data, nombre, caso):
+    """Aplica un caso en memoria. Devuelve (creado, cambiado)."""
+    nombre = norm_nombre(nombre)
+    if not nombre:
+        return False, False
+    creado = False
+    dev = _find(data, nombre)
+    if not dev:
+        dev = {"nombre": nombre, "correo": "", "casos": []}
+        data["desarrolladores"].append(dev)
+        creado = True
+    cambiado = _merge_caso(dev, caso)
+    return creado, creado or cambiado
+
+
 def sync_from_cola(items):
     creados = []
     actualizados = []
+    data = load_lista()
+    dirty = False
     for item in items or []:
         caso, nombre = caso_desde_cola_item(item)
         if not nombre:
             continue
-        _, dev, creado = upsert(nombre, caso=caso)
+        creado, cambiado = _aplicar_caso(data, nombre, caso)
+        dirty = dirty or cambiado
         if creado:
-            creados.append(dev["nombre"])
-        else:
-            actualizados.append(dev["nombre"])
-    return load_lista(), creados, actualizados
+            creados.append(norm_nombre(nombre))
+        elif cambiado:
+            actualizados.append(norm_nombre(nombre))
+    if dirty:
+        data = save_lista(data)
+    return data, creados, actualizados
 
 
-def sync_from_activo():
+def sync_from_activo(data=None):
     creados = []
+    dirty = False
+    if data is None:
+        data = load_lista()
     if not os.path.isdir(ACTIVO_ROOT):
-        return load_lista(), creados
+        return data, creados, dirty
     for name in os.listdir(ACTIVO_ROOT):
         carpeta = os.path.join(ACTIVO_ROOT, name)
         if not os.path.isdir(carpeta) or name.startswith("."):
@@ -251,17 +307,32 @@ def sync_from_activo():
             "dictamen": f"dictamenes/{ident.get('idCaso') or name}.html",
             "fase1": "cerrada" if est.get("fase1Cerrada") else "abierta",
         }
-        _, dev, creado = upsert(nombre, caso=caso)
+        creado, cambiado = _aplicar_caso(data, nombre, caso)
+        dirty = dirty or cambiado
         if creado:
-            creados.append(dev["nombre"])
-    return load_lista(), creados
+            creados.append(norm_nombre(nombre))
+    return data, creados, dirty
 
 
 def sync_all(cola_items=None):
-    data, creados_a = sync_from_activo()
+    """Un solo load + un solo save (evita carreras Errno 22 en Windows)."""
+    data = load_lista()
+    data, creados_a, dirty_a = sync_from_activo(data)
     creados_c, actualizados = [], []
+    dirty_c = False
     if cola_items is not None:
-        data, creados_c, actualizados = sync_from_cola(cola_items)
+        for item in cola_items or []:
+            caso, nombre = caso_desde_cola_item(item)
+            if not nombre:
+                continue
+            creado, cambiado = _aplicar_caso(data, nombre, caso)
+            dirty_c = dirty_c or cambiado
+            if creado:
+                creados_c.append(norm_nombre(nombre))
+            elif cambiado:
+                actualizados.append(norm_nombre(nombre))
+    if dirty_a or dirty_c:
+        data = save_lista(data)
     creados = sorted(set(creados_a + creados_c))
     return {
         "ok": True,

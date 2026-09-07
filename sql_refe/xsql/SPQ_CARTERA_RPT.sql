@@ -1,0 +1,666 @@
+CREATE OR ALTER PROCEDURE DBO.SPQ_CARTERA_RPT @JSON NVARCHAR(MAX)
+	WITH ENCRYPTION
+AS 
+SET DATEFORMAT dmy
+DECLARE @TBLERRORES TABLE (ERROR VARCHAR(MAX))
+DECLARE  @PARAMETROS NVARCHAR(MAX)		  
+		,@MODELO VARCHAR(100)		   
+		,@METODO VARCHAR(100)		
+		,@CONCEPTO   VARCHAR(20)	
+		,@VALOR      DECIMAL(18, 4) 
+		, @CNSLOG VARCHAR(20)
+		,@OBSERVACION VARCHAR(16)
+		,@FECHA      VARCHAR(20)	
+		,@NVOCONSEC	INT
+		,@ITEM INT					
+		,@SALDO    DECIMAL(18, 4)
+		,@NEXT_LOG      INT			
+		,@FD DATETIME	
+		,@USUARIO VARCHAR(12)			  
+		,@COMPANIA VARCHAR(2)	       
+		,@IDSEDE      VARCHAR(5)			
+        ,@SYS_COMPUTERNAME VARCHAR(200)   
+		,@DATOS    VARCHAR(MAX)      
+        ,@N_FACTURA VARCHAR(20)           
+		,@CNSCXC VARCHAR(20)         
+		,@SQL VARCHAR(MAX) 
+
+
+DECLARE 
+  @PAGE INT = 1,
+  @TamPagina INT = 16,
+  @OrdenarPor VARCHAR(255) = NULL,
+  @StringABuscar NVARCHAR(MAX) = NULL,
+  @IdTercero VARCHAR(20) = '',
+  @IsGlosa INT = 0;
+
+
+
+BEGIN
+	SELECT *
+	INTO #JSON
+	FROM OPENJSON(@json) WITH (
+			MODELO VARCHAR(100) '$.MODELO'
+			,METODO VARCHAR(100) '$.METODO'
+			,USUARIO VARCHAR(12) '$.USUARIO'
+			,PARAMETROS NVARCHAR(MAX) AS JSON
+	)
+
+	SELECT   @MODELO = MODELO			,@METODO = METODO
+			,@PARAMETROS = PARAMETROS	,@USUARIO = USUARIO
+	FROM #JSON
+   IF @METODO='TRAE_DETALLES'     
+   BEGIN         
+      SELECT @N_FACTURA=N_FACTURA,@CNSCXC=CNSCXC        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      N_FACTURA  VARCHAR(20)   '$.N_FACTURA',
+      CNSCXC  VARCHAR(20)   '$.CNSCXC'
+      )
+      SELECT 'OK'OK
+
+      SELECT CNSCXC,OBSERVACION,USUSU.NOMBRE,DBO.FNK_FECHA_DDMMAA(FECHA)FECHA,PROCESO,
+      MOTIVO1,MOTIVO2,COD_RESPUESTA,COD_REP1,COD_REP2
+      FROM FCXCR INNER JOIN USUSU ON FCXCR.USUARIO=USUSU.USUARIO  
+      WHERE N_FACTURA=@N_FACTURA
+
+      SELECT CNSFNOT,DBO.FNK_FECHA_DDMMAA(F_NOTA)F_NOTA,CLASE,VR_TOTAL,PROCEDENCIA,OBSERVACION,ESTADO,
+      CASE WHEN CERRADA=0 THEN 'Abierta'ELSE 'Aplicada'END APLICADA,NROCOMPROBANTE
+      FROM FNOT 
+      WHERE N_fACTURA=@N_FACTURA
+
+      SELECT FPAG.CNSFPAG,DBO.FNK_FECHA_DDMMAA(FPAG.FECHAPAGO)FECHAPAGO,FPAG.INGRESO,FPAG.NROCOMPROBANTE,
+      FPAGD.VLRFACTURA,FPAGD.VLRGLOSA,FPAGD.VLRIMPUESTO,FPAGD.VALORPAGO,FPAGD.CLASE,CASE WHEN FPAG.CERRADO=1 THEN 'Aplicado' ELSE 'Abierto' END CERRADO,
+      DBO.FNK_FECHA_DDMMAA(FPAG.FECHA)FECHA,USUSU.NOMBRE,FPAGD.CNSGLO
+      FROM FPAGD INNER JOIN FPAG ON FPAGD.CNSFPAG=FPAG.CNSFPAG
+                 INNER JOIN USUSU ON FPAG.USUARIO=USUSU.USUARIO
+      WHERE FPAGD.N_FACTURA=@N_FACTURA
+
+      SELECT FGLO.CNSGLO,DBO.FNK_FECHA_DDMMAA(FPAG.FECHA)FECHA,FGLO.TIPO,CASE WHEN FGLO.CERRADA=1 THEN 'Cerrada' ELSE 'Abierta' END CERRADA,
+      FGLO.VLRGLOSA,FGLO.VLRACEPTADO,FGLO.VLRRECUPERAR,DBO.FNK_FECHA_DDMMAA(FGLO.FECHARESP)FECHARRESP,FGLO.CNSGLOI,
+      DBO.FNK_FECHA_DDMMAA(FGLOI.FECHA)FIMPRESION,FGLOI.RADICADO,DBO.FNK_FECHA_DDMMAA(FGLOI.FECHARAD)FECHARAD,FGLO.CNSFNOT,
+      DBO.FNK_RTF(FGLO.OBSERVACION)OBSERVACION,DBO.FNK_RTF(FGLO.OBSERVACIONRTA)OBSERVACIONRTA,FGLO.NROCOMPROBANTE
+      FROM FGLO LEFT JOIN FGLOI ON FGLO.CNSGLOI=FGLOI.CNSGLOI
+                LEFT JOIN FPAG ON FGLO.CNSFPAG=FPAG.CNSFPAG
+      WHERE FGLO.N_FACTURA=@N_FACTURA
+
+
+      SELECT FCONCI.IDFCONCI,DBO.FNK_FECHA_DDMMAA(FCONCI.FECHACONC)FECHACONC,FCONCI.ESTADO,FCONCID.ITEM_FCONCID,FCONCID.ITEM_FCXCDV,FCONCID.SALDONETO,FCONCID.VLRACEPTADO,
+      FCONCID.VLRRECUPERAR,FCONCID.OBSERVACION,DBO.FNK_FECHA_DDMMAA(FCONCI.FECHADIG)FECHADIG
+      FROM FCONCID INNER JOIN FCONCI ON FCONCID.IDFCONCI=FCONCID.IDFCONCI
+      WHERE FCONCID.N_FACTURA=@N_FACTURA
+
+      RETURN
+      
+   END 
+   IF @METODO='RELIQUIDA_FTR'     
+   BEGIN         
+      SELECT @N_FACTURA=N_FACTURA,@CNSCXC=CNSCXC        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      N_FACTURA  VARCHAR(20)   '$.N_FACTURA',
+      CNSCXC  VARCHAR(20)   '$.CNSCXC'
+      )  
+      BEGIN TRY           
+         EXEC SPK_RELIQUIDA_FTR @CNSCXC,@N_FACTURA
+      END TRY
+      BEGIN CATCH
+              INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+      END CATCH
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+      SELECT 'OK' OK
+      RETURN 
+   END  
+   IF @METODO='TRAER_TTEC'     
+   BEGIN    
+      SELECT 'OK'OK
+      SELECT  TIPO AS value,DETALLE as label
+      FROM TTEC 
+   END 
+   IF @METODO='TRAER_TOTAL1'     
+   BEGIN         
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+      --SELECT @DATOS=REPLACE(@DATOS,'''','''''')
+      SELECT 'OK'OK
+       SELECT @SQL=' SELECT SUM(SALDOTOT)SALDOTOT,SUM(PORVENCER)PORVENCER, SUM(SALDO_0_30)SALDO_0_30,SUM(SALDO_31_60)SALDO_31_60, SUM(SALDO_61_90)SALDO_61_90, 
+         SUM(SALDO_91_120)SALDO_91_120, SUM(SALDO_121_150)SALDO_121_150, SUM(SALDO_151_180)SALDO_151_180,SUM(SALDO_181_360)SALDO_181_360,
+         SUM(SALDO_361_MAS)SALDO_361_MAS,SUM(NORADICADA)NORADICADA   
+         FROM [dbo].[VWK_VCTOS] INNER JOIN  TER ON VWK_VCTOS.IDTERCERO=TER.IDTERCERO 
+         WHERE '+@DATOS 
+         
+      PRINT @SQL
+      EXEC(@SQL)
+      RETURN
+   END
+
+   IF @METODO='TRAER_TOTAL_HISTORICO'     
+   BEGIN         
+      SELECT @DATOS=WHEREF
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+      --SELECT @DATOS=REPLACE(@DATOS,'''','''''')
+      SELECT 'OK'OK
+       SELECT @SQL=' SELECT SUM(SALDOTOT)SALDOTOT,SUM(PORVENCER)PORVENCER, SUM(SALDO_0_30)SALDO_0_30,SUM(SALDO_31_60)SALDO_31_60, SUM(SALDO_61_90)SALDO_61_90, 
+         SUM(SALDO_91_120)SALDO_91_120, SUM(SALDO_121_150)SALDO_121_150, SUM(SALDO_151_180)SALDO_151_180,SUM(SALDO_181_360)SALDO_181_360,
+         SUM(SALDO_361_MAS)SALDO_361_MAS,SUM(NORADICADA)NORADICADA   
+         FROM [dbo].[VWK_VCTOSH] INNER JOIN  TER ON VWK_VCTOSH.IDTERCERO=TER.IDTERCERO 
+         WHERE '+@DATOS 
+         
+      PRINT @SQL
+      EXEC(@SQL)
+      RETURN
+   END 
+
+
+
+   IF @METODO = 'TRAER_TOTAL_HISTORICO_CONTABLE'
+   BEGIN
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+
+        SELECT 'OK' OK
+        SELECT @SQL= '         SELECT 
+            SUM(SALDOTOT)       AS TOTAL_SALDOTOT,
+            SUM(PORVENCER)      AS TOTAL_PORVENCER,
+            SUM(SALDO_0_30)     AS TOTAL_SALDO_0_30,
+            SUM(SALDO_31_60)    AS TOTAL_SALDO_31_60,
+            SUM(SALDO_61_90)    AS TOTAL_SALDO_61_90,
+            SUM(SALDO_91_120)   AS TOTAL_SALDO_91_120,
+            SUM(SALDO_121_150)  AS TOTAL_SALDO_121_150,
+            SUM(SALDO_151_180)  AS TOTAL_SALDO_151_180,
+            SUM(SALDO_181_360)  AS TOTAL_SALDO_181_360,
+            SUM(SALDO_361_MAS)  AS TOTAL_SALDO_361_MAS,
+             SUM(NORADICADA)  AS NORADICADA
+        FROM VWK_VCTOS_TTEC
+        INNER JOIN TTEC ON VWK_VCTOS_TTEC.TIPOTTEC = TTEC.TIPO
+        WHERE'+ @DATOS;
+
+      PRINT @SQL
+      EXEC(@SQL)   
+   END
+
+
+   IF @METODO = 'TRAER_TOTAL_POR_PLAN'
+   BEGIN
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+
+        SELECT 'OK' OK
+        SELECT @SQL= '         SELECT 
+            SUM(SALDOTOT)       AS TOTAL_SALDOTOT,
+            SUM(PORVENCER)      AS TOTAL_PORVENCER,
+            SUM(SALDO_0_30)     AS TOTAL_SALDO_0_30,
+            SUM(SALDO_31_60)    AS TOTAL_SALDO_31_60,
+            SUM(SALDO_61_90)    AS TOTAL_SALDO_61_90,
+            SUM(SALDO_91_120)   AS TOTAL_SALDO_91_120,
+            SUM(SALDO_121_150)  AS TOTAL_SALDO_121_150,
+            SUM(SALDO_151_180)  AS TOTAL_SALDO_151_180,
+            SUM(SALDO_181_360)  AS TOTAL_SALDO_181_360,
+            SUM(SALDO_361_MAS)  AS TOTAL_SALDO_361_MAS,
+            SUM(NORADICADA)  AS NORADICADA
+        FROM VWK_VCTOS
+        WHERE'+ @DATOS;
+
+      PRINT @SQL
+      EXEC(@SQL)   
+   END
+
+
+   IF @METODO = 'TRAER_TOTAL_POR_PLAN_DIALOG_CXC'
+   BEGIN
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+
+        SELECT 'OK' OK
+        SELECT @SQL= '         SELECT 
+            SUM(SALDONETO)       AS TOTAL_SALDOTOT,
+            COUNT(*)         AS TOTAL_REGISTROS
+        FROM VWK_CXCDIASVTO
+        WHERE'+ @DATOS;
+
+      PRINT @SQL
+      EXEC(@SQL)   
+   END
+
+
+   IF @METODO = 'TRAER_TOTAL_POR_REGIMEN'
+   BEGIN
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+
+        SELECT 'OK' OK
+        SELECT @SQL= 'SELECT 
+            SUM(SALDOTOT)      AS TOTAL_SALDOTOT,
+            SUM(PORVENCER)     AS TOTAL_PORVENCER,
+            SUM(D0_30)         AS TOTAL_SALDO_0_30,
+            SUM(D31_60)        AS TOTAL_SALDO_31_60,
+            SUM(D61_90)        AS TOTAL_SALDO_61_90,
+            SUM(D91_120)       AS TOTAL_SALDO_91_120,
+            SUM(D121_150)      AS TOTAL_SALDO_121_150,
+            SUM(D151_180)      AS TOTAL_SALDO_151_180,
+            SUM(D181_360)      AS TOTAL_SALDO_181_360,
+            SUM(D361_MAS)      AS TOTAL_SALDO_361_MAS,
+            SUM(NORADICADA)    AS TOTAL_NORADICADA,
+            (
+                SUM(SALDOTOT) +
+                SUM(PORVENCER) +
+                SUM(D0_30) +
+                SUM(D31_60) +
+                SUM(D61_90) +
+                SUM(D91_120) +
+                SUM(D121_150) +
+                SUM(D151_180) +
+                SUM(D181_360) +
+                SUM(D361_MAS) +
+                SUM(NORADICADA)
+            ) AS GRAN_TOTAL
+        FROM VWK_VCTOS_TIPOREGIMEN
+        WHERE'+ @DATOS;
+      PRINT @SQL
+      EXEC(@SQL)   
+   END
+
+   IF @METODO = 'TRAER_TOTAL_POR_REGIMEN_DIALOG_CXCDV_REGIMEN_GRUOP'
+   BEGIN
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+        SELECT 'OK' OK
+        SELECT @SQL= 'SELECT SUM(SALDONETO) AS TOTAL_SALDOTOT FROM VWK_CXCDV_REGIMEN_GRUOP WHERE '+ @DATOS;
+      PRINT @SQL
+      EXEC(@SQL)   
+   END
+
+
+
+
+   IF @METODO='EXPORT_DETA'     
+   BEGIN         
+      SELECT @DATOS=WHEREF        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      WHEREF  VARCHAR(MAX)   '$.WHEREF'
+      )
+      SELECT 'OK'OK
+      SELECT @SQL='SELECT ANO, MES, B.NIT ,B.RAZONSOCIAL, CNSCXC, N_FACTURA, ITEM, CNSGLO, TIPO, SALDONETO, DBO.FNK_FECHA_DDMMAA(FECHA)FECHA,DBO.FNK_FECHA_DDMMAA(F_VENCE)F_VENCE,DBO.FNK_FECHA_DDMMAA(F_RECIBIDO)F_RECIBIDO, SALDOINICIAL, MARCAPAGO, DIASVENCE, 
+         PORVENCER, DM361_MAS, DM181_360, DM151_180, DM121_150,  DM91_120, DM61_90, DM31_60, DM0_30, D0_30, D31_60, D61_90, D91_120, D121_150, D151_180, D181_360, D361_MAS,
+         PROCEDENCIA, IDPLAN, NORADICADA, PARTICULAR, RAD, REGIMEN, TIPOTTEC,  CLASEINFO
+         FROM VWK_CXCDIASVTO A INNER JOIN TER B ON A.IDTERCERO=B.IDTERCERO
+         WHERE '+@DATOS 
+         
+      PRINT @SQL
+      EXEC(@SQL)               
+      RETURN
+   END
+
+
+   
+	IF @METODO='EXPORT_DETA2'     
+    BEGIN         
+        SELECT @DATOS=WHEREF        
+        FROM   OPENJSON (@PARAMETROS)
+        WITH (           
+          WHEREF  VARCHAR(MAX)   '$.WHEREF'
+        );
+
+        SELECT 'OK' OK;
+
+        SELECT @SQL='
+            SELECT 
+                A.ANO,
+                A.MES,
+                B.NIT,
+                B.RAZONSOCIAL,
+                A.CNSCXC,
+                A.N_FACTURA,
+                A.ITEM,
+                G.CNSGLO,                      -- Código de glosa
+                G.TIPO,                        -- Tipo de glosa
+                G.VLRGLOSA,                    -- Valor de la glosa
+                G.VR_TOTAL     AS GLO_PORVENCER,
+                G.VLRACEPTADO  AS GLO_ACEPTADO,
+                G.VLRRECUPERAR AS GLO_RECUPERAR,
+                A.SALDONETO,
+                DBO.FNK_FECHA_DDMMAA(A.FECHA)      AS FECHA,
+                DBO.FNK_FECHA_DDMMAA(A.F_VENCE)    AS F_VENCE,
+                DBO.FNK_FECHA_DDMMAA(A.F_RECIBIDO) AS F_RECIBIDO,
+                A.SALDOINICIAL,
+                A.MARCAPAGO,
+                A.DIASVENCE,
+                A.PORVENCER,
+                A.DM361_MAS,
+                A.DM181_360,
+                A.DM151_180,
+                A.DM121_150,
+                A.DM91_120,
+                A.DM61_90,
+                A.DM31_60,
+                A.DM0_30,
+                A.D0_30,
+                A.D31_60,
+                A.D61_90,
+                A.D91_120,
+                A.D121_150,
+                A.D151_180,
+                A.D181_360,
+                A.D361_MAS,
+                A.PROCEDENCIA,
+                A.IDPLAN,
+                A.NORADICADA,
+                A.PARTICULAR,
+                A.RAD,
+                A.REGIMEN,
+                A.TIPOTTEC,
+                A.CLASEINFO
+            FROM VWK_CXCDIASVTO A
+            INNER JOIN TER B ON A.IDTERCERO = B.IDTERCERO
+            INNER JOIN VWK_GLOSAS G ON G.IDTERCERO = A.IDTERCERO 
+                                   AND G.CNSGLO    = A.CNSCXC
+            WHERE ' + @DATOS;
+
+        PRINT @SQL;
+        EXEC(@SQL);               
+        RETURN;
+    END;
+
+
+  
+   IF @METODO = 'ACTUALIZAR_DATOS_ACTUAL_TOTAL'
+    BEGIN
+    SELECT
+      @PAGE      = ISNULL(PAGE, @PAGE),
+      @TamPagina = ISNULL(TamPagina, @TamPagina),
+      @IdTercero = ISNULL(IdTercero, @IdTercero),
+      @IsGlosa = ISNULL(IsGlosa, @IsGlosa)
+
+    FROM OPENJSON(@PARAMETROS)
+    WITH (
+      PAGE INT '$.PAGE',
+      TamPagina INT '$.TamPagina',
+      IdTercero VARCHAR(20) '$.IdTercero',
+      IsGlosa INT '$.IsGlosa'
+    );
+
+    print @isGlosa
+
+    IF @PAGE < 1 SET @PAGE = 1;
+    IF @TamPagina <= 0 SET @TamPagina = 10;
+
+    DECLARE @Offset INT = (@PAGE - 1) * @TamPagina;
+    
+
+        BEGIN TRY
+               UPDATE FTR SET INDCARTERA=1,INDCXC=1,INDASIGCXC=1 
+                FROM FCXCD INNER JOIN FTR ON FCXCD.N_FACTURA=FTR.N_FACTURA 
+                WHERE (INDCARTERA=0 OR INDCXC=0 OR INDASIGCXC=0);
+
+                EXEC SPK_CARTERA '0116608474', @IdTercero, 'Todos', @IsGlosa
+              END TRY
+              BEGIN CATCH
+                  INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+              END CATCH;      
+      
+   SELECT 'OK' OK
+    -- SELECT paginado (nota: ORDER BY es obligatorio para OFFSET/FETCH)
+    SELECT
+        CNS,
+        ITEM,
+        IDTERCERO,
+        ID6 NIT,
+        STRINGGRANDE1 RAZONSOCIAL,
+        ID2       AS N_FACTURA,     -- factura
+        ID1       AS PLAND,         -- plan
+        ID3       AS CNSCXC,        -- consecutivo cartera
+        FECHA1    AS F_FACTURA,     -- fecha factura
+        FECHA2    AS F_RAD,         -- fecha radicación
+        VALOR1    AS VR_TOTAL,
+        VALOR2    AS NORADICADA,
+        VALOR3    AS PORVENCER,
+        VALOR4    AS SALDOTOT,
+        VALOR5    AS SALDO_0_30,
+        VALOR6    AS SALDO_31_60,
+        VALOR7    AS SALDO_61_90,
+        VALOR8    AS SALDO_91_120,
+        VALOR9    AS SALDO_121_150,
+        VALOR10   AS SALDO_151_180,
+        VALOR11   AS SALDO_181_360,
+        VALOR12   AS SALDO_361_MAS,
+        VALOR13   AS NOTA_DEBITO,
+        VALOR14   AS NOTA_CREDITO,
+        VALOR15   AS DEDUCCIONES,
+        VALOR16   AS PAGOS,
+        VALOR17   AS VLRGLOSA,
+        VALOR18   AS GLOSAS_PORVENCER,   -- G
+        VALOR19   AS GLOSAS_VLRACEPTADO, -- R
+        VALOR20   AS GLOSAS_VLRRECUPERAR,-- C
+        VALOR21   AS GLOSAS_R,
+        VALOR22   AS LEVANTADO,
+        CANTIDAD1 AS G,   -- viene de D.G
+        CANTIDAD2 AS R,   -- viene de D.R
+        CANTIDAD3 AS C,   -- viene de D.C
+        ID4       AS TIPOTTEC,
+        ID5       AS CONTRATO
+    FROM RPDX
+    WHERE CNS = '0116608474'
+    ORDER BY ITEM
+    OFFSET @Offset ROWS FETCH NEXT @TamPagina ROWS ONLY;
+
+
+    -- Conteo total (misma condición)
+    SELECT COUNT(*) AS CANT_ROWS
+    FROM RPDX
+    WHERE CNS = '0116608474';
+
+
+    END
+    
+
+   IF @METODO = 'VERIFICAR_IDTERCERO'
+   BEGIN
+      SELECT @IdTercero=IdTercero        
+          FROM   OPENJSON (@PARAMETROS)
+          WITH (           
+             IdTercero  VARCHAR(MAX)   '$.IdTercero'
+          );
+          SELECT 'OK' OK
+
+          IF EXISTS (SELECT 1 FROM TER WHERE TER.IDTERCERO = @IdTercero)
+          SELECT CAST(1 AS BIT) AS Existe;
+            ELSE
+                SELECT CAST(0 AS BIT) AS Existe;
+ 
+   END 
+   IF @METODO = 'TRAER_CAB_AJUSTE_NO_CREDITO'
+	BEGIN
+		SELECT 
+			@N_FACTURA = N_FACTURA,
+			@ITEM = NULLIF(LTRIM(RTRIM(ITEM)), '')
+		FROM OPENJSON(@PARAMETROS)
+		WITH (
+			N_FACTURA VARCHAR(16) '$.N_FACTURA',
+			ITEM      INT '$.ITEM'
+		);
+
+		-- Ítem obligatorio: la NC se aplica sobre la fila seleccionada (C o G con saldo).
+		IF @N_FACTURA IS NULL OR @ITEM IS NULL
+		BEGIN
+			SELECT 'KO' AS OK, 'Factura o ítem no informado' AS ERROR;
+			RETURN;
+		END;
+
+		SELECT 'OK' AS OK;
+
+		SELECT FCXC.CNSCXC,
+				FCXC.CNSGLO,
+				FTR.IDTERCERO,
+				TER.RAZONSOCIAL,
+				FCXC.N_FACTURA,
+				FCXC.SALDONETO,
+				FCXC.TIPO,
+				FCXC.ITEM
+		FROM FCXCDV FCXC
+		LEFT JOIN FTR ON FTR.N_FACTURA = FCXC.N_FACTURA
+		LEFT JOIN TER ON TER.IDTERCERO = FTR.IDTERCERO
+		WHERE FCXC.TIPO IN ('C', 'G')
+			AND FCXC.N_FACTURA = @N_FACTURA
+			AND FCXC.ITEM = @ITEM
+			AND COALESCE(FCXC.SALDONETO, 0) > 0;
+
+		RETURN;
+	END
+   IF @METODO = 'EJECUTAR_AJUSTE_NC_FCXCDV'
+   BEGIN
+	   SELECT @N_FACTURA = NULLIF(LTRIM(RTRIM(N_FACTURA)), ''),
+			  @ITEM = NULLIF(LTRIM(RTRIM(ITEM)), ''),
+			  @CONCEPTO = NULLIF(LTRIM(RTRIM(CONCEPTO)), ''),
+			  @OBSERVACION = OBSERVACION,
+			  @VALOR = VALOR,
+			  @FECHA = NULLIF(LTRIM(RTRIM(FECHA)), ''),
+			  @USUARIO = NULLIF(LTRIM(RTRIM(USUARIO)), '')
+	   FROM OPENJSON(@PARAMETROS)
+	   WITH (
+		  N_FACTURA        VARCHAR(20)     '$.N_FACTURA',
+		  ITEM             VARCHAR(20)     '$.ITEM',
+		  CONCEPTO         VARCHAR(50)     '$.CONCEPTO',
+		  OBSERVACION      NVARCHAR(MAX)   '$.OBSERVACION',
+		  VALOR            DECIMAL(18, 4)  '$.VALOR',
+		  FECHA            VARCHAR(20)     '$.FECHA',
+		  USUARIO          VARCHAR(12)     '$.USUARIO'
+	   );
+
+	   SELECT @COMPANIA = COMPANIA, @IDSEDE=IDSEDE FROM USUSU WHERE USUARIO = @USUARIO
+
+	   IF @VALOR IS NULL OR @VALOR <= 0
+	   BEGIN
+		  SELECT 'KO' AS OK, 'El valor no puede ser menor o igual que cero' AS ERROR;
+		  RETURN;
+	   END;
+
+	   IF @CONCEPTO IS NULL
+	   BEGIN
+		  SELECT 'KO' AS OK, 'Debe seleccionar el concepto de la nota crédito' AS ERROR;
+		  RETURN;
+	   END;
+
+	   IF @N_FACTURA IS NULL OR @ITEM IS NULL
+	   BEGIN
+		  SELECT 'KO' AS OK, 'Factura o ítem no informado' AS ERROR;
+		  RETURN;
+	   END;
+
+	   -- Solo ítems ajustables desde Vencimientos: C (cuota/saldo glosa) o G (glosa) con saldo.
+	   SELECT @SALDO = SALDONETO
+	   FROM FCXCDV
+	   WHERE N_FACTURA = @N_FACTURA
+		 AND CAST(ITEM AS VARCHAR(20)) = @ITEM
+		 AND TIPO IN ('C', 'G')
+		 AND COALESCE(SALDONETO, 0) > 0;
+
+	   IF @SALDO IS NULL
+	   BEGIN
+		  SELECT 'KO' AS OK,
+				 'No hay ítem de cartera ajustable (C/G con saldo) para esta factura e ítem' AS ERROR;
+		  RETURN;
+	   END;
+
+	   IF @VALOR > @SALDO
+	   BEGIN
+		  SELECT 'KO' AS OK, 'El valor no puede ser mayor que el saldo del ítem' AS ERROR;
+		  RETURN;
+	   END;
+
+	   IF @OBSERVACION IS NULL OR LEN(LTRIM(RTRIM(@OBSERVACION))) < 15
+	   BEGIN
+		  SELECT 'KO' AS OK, 'Debe ingresar una observación válida (mínimo 15 caracteres)' AS ERROR;
+		  RETURN;
+	   END;
+
+	   IF @FECHA IS NULL
+	   BEGIN
+		  SELECT 'KO' AS OK, 'Debe indicar la fecha' AS ERROR;
+		  RETURN;
+	   END;
+
+	   BEGIN TRY
+		  SET @FD = CONVERT(DATETIME, @FECHA, 104); -- dd.mm.yyyy
+	   END TRY
+	   BEGIN CATCH
+		  BEGIN TRY
+			 SET @FD = CAST(@FECHA AS DATETIME);
+		  END TRY
+		  BEGIN CATCH
+			 SELECT 'KO' AS OK, 'Fecha no válida. Utilice formato DD.MM.AAAA' AS ERROR;
+			 RETURN;
+		  END CATCH
+	   END CATCH;
+
+	  
+
+	   IF  NOT EXISTS ( SELECT 1 FROM PRI WHERE CERRADO = 0 AND ISNULL(CERRADO_FAC, 0) = 0 AND FECHA_INI <= @FD AND FECHA_FIN >= @FD)
+	   BEGIN
+		  SELECT 'KO' AS OK,
+				 'El periodo contable no existe o se encuentra cerrado. Revise.' AS ERROR;
+		  RETURN;
+	   END;
+	   
+      BEGIN TRY
+		  EXEC DBO.SPK_AJUSTE_FCXCDV_NC @ITEM,@CONCEPTO,@OBSERVACION,@VALOR,@COMPANIA,@IDSEDE,@USUARIO,@FD;
+	   END TRY
+	   BEGIN CATCH
+		  SELECT 'KO' AS OK, ERROR_MESSAGE() AS ERROR;
+		  RETURN;
+	   --REGISTRO EN USLOG
+	   END CATCH;
+	   BEGIN TRY
+		  BEGIN TRAN;
+				EXEC DBO.SPK_GENCONSECUTIVO
+					@COMPANIA  = @COMPANIA,
+					@SEDE      = @IDSEDE,
+					@PREFIJO   = '@LOG',
+					@NVOCONSEC = @NVOCONSEC OUTPUT	
+			 
+			  SET @CNSLOG = @IDSEDE + RIGHT('00000000' + CAST(@NVOCONSEC AS VARCHAR(8)), 8);
+
+			  INSERT INTO DBO.USLOG (CNSLOG, COMPANIA, NOADMISION, PROCESO, REQUEST, REFERENCIA,USUARIO,FECHA,SYS_ComputerName,TABLA)
+			  VALUES (@CNSLOG,@COMPANIA, @ITEM,'AJUSTE FCXCDV','CHANGE','N_FACTURA =' + @N_FACTURA,@USUARIO, GETDATE(), HOST_NAME(),'FNOT');
+
+			  INSERT INTO DBO.USLOGH (CNSLOG, ITEM, CAMPO, VALORANT, VALORNVO)
+			  VALUES (@CNSLOG,1,'SALDO NETO',CONVERT(VARCHAR(50), @SALDO),CONVERT(VARCHAR(50), @SALDO - @VALOR));
+
+		  COMMIT TRAN;
+	   END TRY
+	   BEGIN CATCH
+		  IF @@TRANCOUNT > 0
+			 ROLLBACK TRAN;
+		  SELECT 'OK' AS OK,'Ajuste aplicado; auditoría USLOG no registrada: ' + ERROR_MESSAGE() AS WARN_AUDITORIA;
+		  RETURN;
+	   END CATCH;
+	   SELECT 'OK' AS OK;
+	   RETURN;
+	END	
+END
+

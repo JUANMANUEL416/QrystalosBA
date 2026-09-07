@@ -23,6 +23,9 @@ CONOCIMIENTO = os.path.join(ROOT, "conocimiento")
 ENV_PATH = os.path.join(ROOT, ".env")
 MODELO = os.environ.get("CURSOR_BOT_MODEL", "composer-2.5")
 CONOCIMIENTO_ID = "__conocimiento__"
+CONSULTAS_ID = "__consultas__"
+DOCUMENTAR_ID = "__documentar__"
+CONOCIMIENTO_IDS = {CONOCIMIENTO_ID, CONSULTAS_ID, DOCUMENTAR_ID}
 
 
 def _now() -> str:
@@ -48,13 +51,25 @@ def load_api_key() -> str:
     return (os.environ.get("CURSOR_API_KEY") or env.get("CURSOR_API_KEY") or "").strip()
 
 
+def canal_de(id_caso: str, motivo: str = "") -> str:
+    if id_caso == CONSULTAS_ID or motivo == "consultas":
+        return "consultas"
+    if id_caso == DOCUMENTAR_ID or motivo in ("documentar", "documentar-auto"):
+        return "documentar"
+    return "documentar"
+
+
 def es_conocimiento(id_caso: str, motivo: str = "") -> bool:
-    return motivo == "conocimiento" or id_caso == CONOCIMIENTO_ID
+    return motivo in ("conocimiento", "consultas", "documentar", "documentar-auto") or id_caso in CONOCIMIENTO_IDS
 
 
 def caso_dir(id_caso: str) -> str:
-    if id_caso == CONOCIMIENTO_ID:
-        return CONOCIMIENTO
+    if id_caso in CONOCIMIENTO_IDS:
+        import conocimiento as kb
+
+        canal = canal_de(id_caso)
+        kb._ensure_canal(canal)
+        return kb.canal_live_dir(canal)
     return os.path.join(ACTIVO, id_caso)
 
 
@@ -96,7 +111,13 @@ def append_chat(id_caso: str, autor: str, texto: str) -> None:
     if es_conocimiento(id_caso):
         import conocimiento as kb
 
-        kb.append_chat(autor, texto, (kb.load_chat() or {}).get("procesoId") or "")
+        canal = canal_de(id_caso)
+        proceso = ""
+        try:
+            proceso = (kb.load_chat(canal) or {}).get("procesoId") or ""
+        except (OSError, json.JSONDecodeError):
+            proceso = ""
+        kb.append_chat(autor, texto, proceso, canal)
         return
     msg = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
@@ -117,23 +138,62 @@ def ultimo_autor(id_caso: str) -> str:
 
 
 def prompt_turno(id_caso: str, motivo: str) -> str:
+    if motivo == "documentar-auto":
+        return """Eres el agente de Documentar de Qrystalos BA. Este turno es AUTÓNOMO (no un REQ).
+
+Lea del disco, en este orden:
+1. conocimiento/RUTA.json — trabaje SOLO el siguiente valle (conocimiento.py: el primer paso incompleto)
+2. conocimiento/INDICE.json y conocimiento/{proceso}/proceso.json + sps.json de ESE proceso
+3. conocimiento/pendientes.json (solo los de ese proceso)
+4. conocimiento/canales/documentar/chat.json
+5. Qrystalos2 (router, pages, AppStore.json) y qrystalos.documentacion vivos
+6. sql/ solo si hay .sql de hoy de ese proceso
+
+Orden fijo del coordinador: 1 Caja → 2 Facturación → 3 Recaudos → 4 Notas DB/CR → 5 Glosas → 6 Conciliaciones → 7 Activos fijos → 8 Contabilidad.
+ACCTRAN y HPRE no entran salvo un REQ.
+
+Este turno es UN proceso (el valle). Luego el vigilante pasa al siguiente SIN esperar .sql ni al coordinador.
+
+En ESTE proceso, en este turno:
+1. Revise lo que ya hay en proceso.json / sps.json.
+2. Analice Qrystalos2 (router, Vue, MODELO/METODO) y la documentación viva.
+3. Arme el flujo (5 capas + gates) SOLO con evidencia. estado=parcial.
+4. Cree la LISTA de pendientes (tipo sp) de los .sql que faltan. No se detenga a esperarlos.
+5. Ponga flujoPasado=true y pasadaEn (ISO) en proceso.json para que el vigilante siga al siguiente.
+6. Chat corto: qué flujo armó y qué pendientes dejó.
+
+No vuelva a este proceso en el mismo barrido. No invente columnas ni SP. Si no hay .sql de hoy, igual arme el flujo de FE/docs y deje pendientes.
+Si ya no queda valle en la ruta, pida al coordinador los siguientes módulos.
+
+Prohibido: implementar Qrystalos2, ejecutar SQL, copiar cuerpos de SP, inventar MCUE/FCONCI/IACT columnas no documentadas.
+Al terminar, el último mensaje relevante del chat de Documentar debe ser suyo.
+"""
     if es_conocimiento(id_caso, motivo):
-        return """Eres el agente de coordinación de Qrystalos BA. Este turno es el Chat de PROCESO (Consultas / Documentar), no un REQ.
+        canal = canal_de(id_caso, motivo)
+        ruta = f"conocimiento/canales/{canal}/chat.json"
+        puerta = "Consultas" if canal == "consultas" else "Documentar"
+        extra_c = ""
+        if canal == "consultas":
+            extra_c = (
+                "\nEste agente SOLO responde cuando el coordinador pregunta. "
+                "No investigue por su cuenta ni documente procesos; eso es Documentar.\n"
+            )
+        return f"""Eres el agente de coordinación de Qrystalos BA. Este turno es el Chat de {puerta}, no un REQ.{extra_c}
 
 Lea del disco:
-1. conocimiento/chat.json — último mensaje del coordinador (releer entero)
+1. {ruta} — último mensaje del coordinador (releer entero)
 2. conocimiento/tarea.json
-3. conocimiento/INDICE.json y conocimiento/{proceso}/proceso.json + sps.json
+3. conocimiento/INDICE.json y conocimiento/{{proceso}}/proceso.json + sps.json
 4. sql/ si hay .sql de hoy
 5. Qrystalos2 y documentación si hace falta para la pregunta
 
 Reglas:
-- Responda en español en conocimiento/chat.json (autor: agente). Campo de fecha: use "en" (no "fecha").
+- Responda en español en {ruta} (autor: agente). Campo de fecha: use "en" (no "fecha").
 - NO implemente Qrystalos2 ni ejecute SQL.
 - NO invente columnas ni SPs. Si falta un .sql, pídalo.
 - El coordinador escribe solo en la app. No pida que pegue el texto en Cursor.
 
-Al terminar, el último mensaje relevante de conocimiento/chat.json debe ser suyo (autor: agente).
+Al terminar, el último mensaje relevante de {ruta} debe ser suyo (autor: agente).
 """
     extra = ""
     if motivo == "contabilidad":
@@ -144,25 +204,35 @@ Al terminar, el último mensaje relevante de conocimiento/chat.json debe ser suy
         )
     elif motivo == "analizar-req":
         extra = (
-            "- Motivo de este turno: ANALIZAR REQUERIMIENTO (no dictamen).\n"
-            "- Lea solicitud.contenido: requerimiento, criteriosAceptacion, alcance, restricciones "
-            "y analisis (texto del coordinador; puede estar vacío).\n"
-            "- Contraste el REQ con el análisis del coordinador.\n"
-            "- Responda CORTO en chat.json (autor: agente), en este orden:\n"
-            "  1) Qué ya se puede dar por sentado.\n"
-            "  2) Qué LE FALTA analizar a usted (agente) en Qrystalos2 / SQL / documentación "
-            "para VALIDAR el análisis del coordinador.\n"
-            "  3) Qué dato falta del coordinador si su análisis está incompleto o vacío.\n"
-            "- NO genere dictamen HTML. NO invente SPs ni columnas. Si falta un .sql, pídalo en la lista.\n"
-            "- Escriba el mismo texto en solicitud.json → contenido.brechaAnalisis "
-            "{ texto, fecha (ISO), estado: \"listo\" }."
+            "- Motivo: ANÁLISIS DEL REQUERIMIENTO orientado a SOLUCIÓN (no dictamen HTML).\n"
+            "- Método obligatorio (en este orden):\n"
+            "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
+            "  2) Contrastar con conocimiento/: INDICE → proceso → proceso.json + sps.json "
+            "(y sql_refe si hace falta la línea exacta). También Qrystalos2/docs vivos.\n"
+            "  3) Determinar la solución concreta (qué cambia y dónde).\n"
+            "  4) Escribir OBLIGATORIAMENTE en solicitud.json → contenido:\n"
+            "     criteriosAceptacion, alcance, restricciones, analisis, recomendacion;\n"
+            "     criteriosMeta.fuente=agente; brechaAnalisis {texto, fecha ISO, estado:\"listo\"}.\n"
+            "  5) Actualizar solicitud.sql.metodosDocumentados (y procesoId) con los SP/METODO "
+            "documentados a usar; tabla en el Chat: SP · METODO · estado · rol en el fix.\n"
+            "- Responda en chat.json (autor: agente) con el mismo resumen: problema → causa "
+            "(según KB) → solución → CA/alcance/restricciones → SPs a usar.\n"
+            "- Si el coordinador ya escribió analisis en el formulario, úselo y mejórelo; "
+            "no lo ignore ni lo sustituya por un cuestionario.\n"
+            "- NO pregunte «qué le falta al coordinador» como eje. Solo pida un dato "
+            "si bloquea de verdad la solución.\n"
+            "- NO genere dictamen HTML en este turno.\n"
+            "- No dé por terminado el turno hasta que esos campos del formulario estén escritos."
         )
     elif motivo == "criterios":
         extra = (
-            "- Motivo de este turno: PROPONER CRITERIOS (no dictamen, no OpenAI).\n"
-            "- Escríbalos en solicitud.contenido.criteriosAceptacion y criteriosMeta (fuente: agente).\n"
-            "- Organice analisis y recomendacion si están vacíos.\n"
-            "- Resuma en chat.json. No genere dictamen HTML."
+            "- Motivo: criterios + proyección de análisis desde REQ y conocimiento (no OpenAI).\n"
+            "- Contraste el REQ con conocimiento/{proceso}/sps.json y proceso.json.\n"
+            "- Complete OBLIGATORIAMENTE solicitud.contenido: criteriosAceptacion, alcance, "
+            "restricciones, analisis, recomendacion; criteriosMeta (fuente: agente).\n"
+            "- Liste y deje en solicitud.sql.metodosDocumentados los SP/METODO aplicables.\n"
+            "- Resuma en chat.json. No genere dictamen HTML.\n"
+            "- No termine sin haber escrito esos campos en solicitud.json."
         )
     return f"""Eres el agente de coordinación de Qrystalos BA. Trabaja SOLO este caso.
 
@@ -181,9 +251,11 @@ Reglas:
 - Escriba la respuesta en activo/{id_caso}/chat.json (autor: agente). No incruste el HTML del dictamen en el Chat.
 - Si avanza el dictamen, déjelo en dictamenes/{id_caso}.html y ponga el enlace en el Chat.
 - NO implemente cambios en Qrystalos2, qrystalos.server ni ejecute SQL.
-- NO invente columnas ni SPs. Si falta SQL o una aclaración, PIDA y deténgase.
+- SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del gate están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas. También revise sql_refe/ si el cuerpo ya se archivó. NO pida sql/ vacío solo porque la carpeta del día esté limpia. Pida .sql en sql/ SOLO si el METODO está listado/no_leido/parcial, el alcance sale de la ficha, o el Chat concluyó que hay que releer la línea exacta.
+- Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el gate es conciliaciones/FCONCI, etc.).
+- NO invente columnas ni SPs. Si falta una aclaración funcional, PIDA y deténgase.
 - El coordinador escribe solo en el Chat de la app. No pida que pegue el texto en Cursor.
-- Metodología Fase 1: ventana → proceso → backend → SPKs → análisis rápido. No salte al dictamen completo si aún no hay ventana confirmada.
+- Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → solución** (criterios, alcance, restricciones, análisis, recomendación, SPs a usar). Luego ventana/proceso/backend solo para afinar. No convierta el Chat en un cuestionario de «qué falta del coordinador».
 - OpenAI no interviene. Usted escribe criterios, análisis organizado y recomendación en solicitud.json cuando falten o vengan de GPT.
 - Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra Qrystalos2 (MCUE, CON, MCPE, asientos, comprobantes) y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}.
 {extra}
@@ -279,8 +351,17 @@ def run_caso(id_caso: str, motivo: str) -> int:
         from cursor_sdk import CursorAgentError
     except ImportError:
         latido.set()
-        write_bot(id_caso, estado="error", error="Falta paquete cursor-sdk", terminadoEn=_now())
-        append_chat(id_caso, "sistema", "Falta instalar cursor-sdk en Python 3.12 x64.")
+        write_bot(
+            id_caso,
+            estado="error",
+            error="Falta paquete cursor-sdk",
+            terminadoEn=_now(),
+        )
+        append_chat(
+            id_caso,
+            "sistema",
+            "Falta cursor-sdk en " + (sys.executable or "Python") + ".",
+        )
         return 1
 
     try:
@@ -359,7 +440,17 @@ def main() -> int:
     parser.add_argument(
         "--motivo",
         default="chat",
-        choices=["chat", "activar", "contabilidad", "conocimiento", "analizar-req", "criterios"],
+        choices=[
+            "chat",
+            "activar",
+            "contabilidad",
+            "conocimiento",
+            "consultas",
+            "documentar",
+            "documentar-auto",
+            "analizar-req",
+            "criterios",
+        ],
     )
     args = parser.parse_args()
 
@@ -371,7 +462,20 @@ def main() -> int:
     if not os.path.isdir(caso_dir(args.caso)):
         print("No existe la carpeta del caso o de proceso: " + args.caso)
         return 1
+    _adjuntar_log(args.caso)
     return run_caso(args.caso, args.motivo)
+
+
+def _adjuntar_log(id_caso: str) -> None:
+    """pythonw no tiene consola: el traceback va a bot.log."""
+    log_path = os.path.join(caso_dir(id_caso), "bot.log")
+    try:
+        fh = open(log_path, "a", encoding="utf-8")
+        sys.stdout = fh
+        sys.stderr = fh
+        print(f"\n--- {_now()} stdout→bot.log pid={os.getpid()} ---", flush=True)
+    except OSError:
+        pass
 
 
 def pid_vivo(pid) -> bool:
@@ -419,7 +523,19 @@ def leer_estado_bot(id_caso: str) -> dict:
     data = read_json(bot_path(id_caso), {})
     vivo = pid_vivo(data.get("pid"))
     hace_hb = _segundos_desde(data.get("heartbeatEn") or data.get("iniciadoEn"))
-    colgado = data.get("estado") == "trabajando" and (not vivo or (hace_hb is not None and hace_hb > 45))
+    pid_n = 0
+    try:
+        pid_n = int(data.get("pid") or 0)
+    except (TypeError, ValueError):
+        pid_n = 0
+    arrancando = data.get("estado") == "trabajando" and pid_n <= 0 and (hace_hb is None or hace_hb < 25)
+    # Solo marcar muerto si el PID ya existió y el proceso cayó (no al arrancar con pid=0).
+    colgado = (
+        data.get("estado") == "trabajando"
+        and not arrancando
+        and not vivo
+        and (hace_hb is not None and hace_hb > 12)
+    )
     if colgado:
         motivo_err = (
             "El proceso del bot se detuvo."
@@ -446,30 +562,182 @@ def _start_heartbeat(id_caso: str) -> threading.Event:
     return stop
 
 
-def python_bot() -> str:
-    """El SDK oficial solo tiene rueda Windows x64; evitar el Python 32 bits."""
-    candidatos = [
-        os.environ.get("PYTHON_BOT"),
-        "py -3.12",
-    ]
-    for raw in candidatos:
-        if not raw:
-            continue
-        cmd = raw.split()
-        try:
-            import subprocess
+PYTHON_312_FIJO = r"C:\Users\JOSE MANUEL\AppData\Local\Programs\Python\Python312\python.exe"
+PERFIL_BOT_FIJO = r"C:\Users\JOSE MANUEL"
+TAREA_BOT = "QrystalosBA-CursorBot"
 
+
+def _perfil_usuario_bot() -> str:
+    env_u = (os.environ.get("QRISTALOS_BOT_USERPROFILE") or "").strip()
+    if env_u and os.path.isdir(env_u):
+        return env_u
+    if os.path.isdir(PERFIL_BOT_FIJO):
+        return PERFIL_BOT_FIJO
+    return (os.environ.get("USERPROFILE") or "").strip()
+
+
+def _es_cuenta_servicio() -> bool:
+    user = (os.environ.get("USERNAME") or "").upper()
+    profile = (os.environ.get("USERPROFILE") or "").replace("/", "\\").lower()
+    return user in {"SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE"} or profile.endswith(
+        "\\systemprofile"
+    )
+
+
+def _env_bot(base: dict | None = None) -> dict:
+    env = dict(base or os.environ)
+    perfil = _perfil_usuario_bot()
+    if perfil:
+        env["QRISTALOS_BOT_USERPROFILE"] = perfil
+        env["USERPROFILE"] = perfil
+        drive, tail = os.path.splitdrive(perfil)
+        if drive:
+            env["HOMEDRIVE"] = drive
+        if tail:
+            env["HOMEPATH"] = tail
+        env["LOCALAPPDATA"] = os.path.join(perfil, "AppData", "Local")
+        env["APPDATA"] = os.path.join(perfil, "AppData", "Roaming")
+        user_site = os.path.join(
+            perfil, "AppData", "Roaming", "Python", "Python312", "site-packages"
+        )
+        if os.path.isdir(user_site):
+            prev = (env.get("PYTHONPATH") or "").strip()
+            env["PYTHONPATH"] = user_site if not prev else user_site + os.pathsep + prev
+    env["CURSOR_API_KEY"] = load_api_key()
+    return env
+
+
+def python_bot() -> list[str]:
+    """El SDK oficial solo tiene rueda Windows x64; no partir rutas con espacios."""
+    perfil = _perfil_usuario_bot()
+    local_app = (
+        os.path.join(perfil, "AppData", "Local")
+        if perfil
+        else (os.environ.get("LOCALAPPDATA") or "")
+    )
+    candidatos = [
+        [os.environ["PYTHON_BOT"]] if (os.environ.get("PYTHON_BOT") or "").strip() else None,
+        [PYTHON_312_FIJO],
+        [os.path.join(local_app, "Programs", "Python", "Python312", "python.exe")],
+        [os.path.join(local_app, "Programs", "Python", "Python312-64", "python.exe")],
+        ["py", "-3.12"],
+    ]
+    import subprocess
+
+    env = _env_bot()
+    existentes: list[list[str]] = []
+    for cmd in candidatos:
+        if not cmd or not cmd[0]:
+            continue
+        if os.path.sep in cmd[0] and not os.path.isfile(cmd[0]):
+            continue
+        if "313-32" in cmd[0] or cmd[0].lower().endswith("python313-32\\python.exe"):
+            continue
+        existentes.append(cmd)
+        try:
             probe = subprocess.run(
                 cmd + ["-c", "import cursor_sdk, sys; sys.exit(0)"],
                 capture_output=True,
                 text=True,
                 timeout=20,
+                env=env,
             )
             if probe.returncode == 0:
-                return raw
+                return cmd
         except Exception:
             continue
-    return sys.executable
+    for cmd in existentes:
+        if any("312" in part for part in cmd):
+            return cmd
+    if os.path.isfile(PYTHON_312_FIJO):
+        return [PYTHON_312_FIJO]
+    return existentes[0] if existentes else [PYTHON_312_FIJO]
+
+
+def _pythonw(exe: list[str]) -> list[str]:
+    out = list(exe)
+    if not out:
+        return out
+    head = out[0]
+    if head.lower().endswith("python.exe"):
+        candidato = head[:-10] + "pythonw.exe"
+        if os.path.isfile(candidato):
+            out[0] = candidato
+    return out
+
+
+def _escribir_vbs_bot(exe: list[str], script: str, id_caso: str, motivo: str) -> str:
+    import subprocess
+
+    linea = subprocess.list2cmdline(
+        _pythonw(exe) + [script, "--caso", id_caso, "--motivo", motivo]
+    )
+    vbs_cmd = linea.replace('"', '""')
+    vbs_path = os.path.join(caso_dir(id_caso), "lanzar-bot.vbs")
+    with open(vbs_path, "w", encoding="ascii", errors="replace") as fh:
+        fh.write('Set sh = CreateObject("WScript.Shell")\r\n')
+        fh.write('sh.CurrentDirectory = "' + ROOT.replace("\\", "\\\\") + '"\r\n')
+        fh.write('sh.Run "' + vbs_cmd + '", 0, False\r\n')
+    return vbs_path
+
+
+def _lanzar_via_tarea(vbs_path: str) -> tuple[bool, str]:
+    import subprocess
+
+    user = os.path.basename(_perfil_usuario_bot()) or "JOSE MANUEL"
+    tr = subprocess.list2cmdline(["wscript.exe", "//nologo", "//B", vbs_path])
+    create = subprocess.run(
+        [
+            "schtasks",
+            "/Create",
+            "/TN",
+            TAREA_BOT,
+            "/TR",
+            tr,
+            "/SC",
+            "ONCE",
+            "/ST",
+            "23:59",
+            "/SD",
+            "01/01/2099",
+            "/RU",
+            user,
+            "/IT",
+            "/F",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if create.returncode != 0:
+        detalle = (create.stderr or create.stdout or "schtasks /Create").strip()
+        return False, detalle[:400]
+    run = subprocess.run(
+        ["schtasks", "/Run", "/TN", TAREA_BOT],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if run.returncode != 0:
+        detalle = (run.stderr or run.stdout or "schtasks /Run").strip()
+        return False, detalle[:400]
+    return True, ""
+
+
+def _esperar_arranque(id_caso: str, timeout_sec: float = 20) -> dict:
+    deadline = time.time() + timeout_sec
+    ultimo = {}
+    while time.time() < deadline:
+        ultimo = read_json(bot_path(id_caso), {})
+        estado = ultimo.get("estado") or ""
+        if estado == "trabajando" and pid_vivo(ultimo.get("pid")):
+            return {"ok": True, "pid": ultimo.get("pid"), "yaCorria": False}
+        if estado == "sin_clave" and ultimo.get("terminadoEn"):
+            return {"ok": False, "error": "sin_clave"}
+        time.sleep(0.4)
+    if pid_vivo(ultimo.get("pid")):
+        return {"ok": True, "pid": ultimo.get("pid"), "yaCorria": False}
+    return {"ok": False, "error": "proceso_muerto", "detalle": ultimo.get("error") or ""}
 
 
 def lanzar_bot(id_caso: str, motivo: str = "chat") -> dict:
@@ -485,32 +753,53 @@ def lanzar_bot(id_caso: str, motivo: str = "chat") -> dict:
     log_path = os.path.join(caso_dir(id_caso), "bot.log")
     import subprocess
 
-    creation = 0
-    if os.name == "nt":
-        creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    exe = python_bot()
+    script = os.path.join(SCRIPT_DIR, "cursor_bot.py")
     with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"\n--- {_now()} motivo={motivo} ---\n")
-        log.flush()
-        env = os.environ.copy()
-        env["CURSOR_API_KEY"] = load_api_key()
-        exe = python_bot().split()
-        proc = subprocess.Popen(
-            exe + [os.path.join(SCRIPT_DIR, "cursor_bot.py"), "--caso", id_caso, "--motivo", motivo],
-            cwd=ROOT,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            creationflags=creation,
-            env=env,
-        )
+        log.write(f"\n--- {_now()} motivo={motivo} exe={exe} servicio={_es_cuenta_servicio()} ---\n")
+
     write_bot(
         id_caso,
         estado="trabajando",
-        pid=proc.pid,
+        pid=0,
         motivo=motivo,
         iniciadoEn=_now(),
         heartbeatEn=_now(),
         error="",
+        terminadoEn=None,
     )
+
+    if _es_cuenta_servicio():
+        vbs_path = _escribir_vbs_bot(exe, script, id_caso, motivo)
+        ok, detalle = _lanzar_via_tarea(vbs_path)
+        if not ok:
+            write_bot(
+                id_caso,
+                estado="error",
+                error="No se pudo lanzar el bot en la sesión del usuario.",
+                terminadoEn=_now(),
+            )
+            append_chat(
+                id_caso,
+                "sistema",
+                "El servicio no pudo arrancar el bot en su sesión (" + detalle + ").",
+            )
+            return {"ok": False, "error": "tarea_usuario"}
+        return _esperar_arranque(id_caso)
+
+    creation = 0
+    if os.name == "nt":
+        creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    with open(log_path, "a", encoding="utf-8") as log:
+        proc = subprocess.Popen(
+            _pythonw(exe) + [script, "--caso", id_caso, "--motivo", motivo],
+            cwd=ROOT,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=creation,
+            env=_env_bot(),
+        )
+    write_bot(id_caso, pid=proc.pid)
     time.sleep(0.8)
     if proc.poll() is not None or not pid_vivo(proc.pid):
         write_bot(

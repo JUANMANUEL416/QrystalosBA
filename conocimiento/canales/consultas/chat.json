@@ -1,0 +1,113 @@
+{
+  "id": "c20260905234639c467",
+  "canal": "consultas",
+  "titulo": "Consulta · 2026-09-05 23:46",
+  "estado": "activo",
+  "procesoId": "facturacion",
+  "creadoEn": "2026-09-05T23:46:39",
+  "archivadoEn": null,
+  "mensajes": [
+    {
+      "id": "4b039732",
+      "autor": "coordinador",
+      "texto": "por que el sistema no me muestra donde colocar los motivos de glosa en recuados",
+      "en": "2026-09-05T23:47:02"
+    },
+    {
+      "id": "e2e33037",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-05T23:47:02"
+    },
+    {
+      "id": "4c42a30a",
+      "autor": "sistema",
+      "texto": "El agente no pudo arrancar (El proceso del bot se detuvo.). Reinicie abrir-app.bat o escriba de nuevo en Cursor.",
+      "en": "2026-09-05T23:47:03"
+    },
+    {
+      "id": "76d99489",
+      "autor": "sistema",
+      "texto": "El bot no pudo arrancar (clave, red o Cursor). Revise CURSOR_API_KEY y reintente.",
+      "en": "2026-09-05T23:47:19"
+    },
+    {
+      "id": "00d491c1",
+      "autor": "agente",
+      "texto": "El Chat de Consultas falló al arrancar (falso proceso_muerto / clave). Respondo aquí.\n\n**Por qué no ve Motivo 1 / Motivo 2 en Recaudos**\n\nNo están en la cabecera ni en la grilla de Administrativo → Recaudos. El diseño los pone solo al **asignar facturas** (diálogo **Traer Varias** / CXC), y solo si el recaudo es **Ingreso = GLOSAS** (o DEVOLUCION, con otras reglas).\n\nPara que aparezcan **Motivo 1** y **Motivo 2** (lupa al catálogo FCGLO) hace falta que alguna de estas variables USVGS esté en **SI**:\n• **MOBSERVAFRECGLOSA**\n• **MOBSERVADEVOLFACTURA**\n\nSi ambas están en NO / vacías:\n• Con **Paso a Seguir = Recepcionar (FINDEVOL 3)** o **Detalles Glosa (5)** solo verá **Vlr.Glosa**. No hay campos de motivo en pantalla.\n• Con **Recepcionar y Responder (4)** sí sale un **Motivo 1** + **Respuesta**, aunque las variables estén apagadas.\n• **MOTIVO2OPCIONALGLOSA=SI** solo hace opcional el Motivo 2; no enciende el bloque.\n\n**Dónde colocarlos hoy (sin cambiar FE)**\n1) Recaudo **GLOSAS**, abierto → **Traer Varias** → al procesar cada factura (si las USVGS están en SI).\n2) O **Estructura Excel** / carga masiva: columnas **MOTIVO1**, **MOTIVO2**, **OBS** (el encabezado debe coincidir con la plantilla). Pasan a FPAGD y, al Aplicar, SPK_PAGOSCXC de hoy los copia a FGLOCG si el código existe en FCGLO (GLOSA / ACTIVO).\n\n**Qué revisar en el sitio:** Configuración de variables → **MOBSERVAFRECGLOSA**. Si no es SI, el sistema no le muestra dónde digitar los motivos en Recaudos; no es un fallo de pantalla vacía, es la regla del FE.\n\nEsto no cambia el REQ 6304.",
+      "en": "2026-09-05T23:49:22"
+    },
+    {
+      "id": "6ca5d2c0",
+      "autor": "coordinador",
+      "texto": "cual es la diferencia entre devolver y devolver y anular",
+      "en": "2026-09-05T23:54:19"
+    },
+    {
+      "id": "dd493bc6",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-05T23:54:19"
+    },
+    {
+      "id": "4887267c",
+      "autor": "sistema",
+      "texto": "El agente no pudo arrancar (El proceso del bot se detuvo.). Reinicie abrir-app.bat o escriba de nuevo en Cursor.",
+      "en": "2026-09-05T23:54:20"
+    },
+    {
+      "id": "a8f3c912",
+      "autor": "agente",
+      "texto": "La diferencia está en el campo **Paso a Seguir** (`FINDEVOL`) cuando el recaudo tiene **Ingreso = DEVOLUCION**. No aplica a GLOSAS (ahí FINDEVOL 3–6 son otros procesos).\n\n---\n\n**Solo Devolver (`FINDEVOL = 0`)**\n\n• Al **Aplicar**, `SPK_PAGOSCXC` retira cada factura de la cuenta de cobro con `SPK_RETIRAFTR_DE_CXC` (sale de CxC / vuelve al circuito de facturación).\n• **No** ejecuta `SPK_FINALIDAD_DEVOL` → la factura **no se anula** en facturación.\n• **Sí** permite **Desaplicar** y **Anular** el recaudo después (reversible).\n• Motivo 1 / observación: solo si `MOBSERVADEVOLFACTURA=SI` o `MOBSERVAFRECGLOSA=SI`; si ambas están apagadas, basta N_FACTURA + VLRPAGO.\n\n---\n\n**Devolver y Anular (`FINDEVOL = 1`)**\n\n• Hace lo mismo al aplicar (retira de CxC) **y además** llama `SPK_FINALIDAD_DEVOL` con finalidad 1.\n• El FE advierte al confirmar: facturas retiradas de CxC, devueltas a facturación y **anuladas automáticamente**; **no se pueden restaurar**.\n• **No** permite Desaplicar ni Anular (el FE bloquea si `FINDEVOL ≠ 0`).\n• En carga masiva exige siempre **MOTIVO1** y **OBS** (aunque las variables de motivos estén en NO).\n\n---\n\n**Resumen operativo**\n\n| | Solo Devolver (0) | Devolver y Anular (1) |\n|---|---|---|\n| Sale de CxC | Sí | Sí |\n| Anula la factura en facturación | No | Sí (automático) |\n| Reversible (desaplicar/anular) | Sí | No |\n| Motivos obligatorios | Según USVGS | Siempre MOTIVO1 + OBS |\n\n*(Hay una tercera opción: **Devolver y Radicar (2)** — crea nueva cuenta de cobro lista para radicar; también es irreversible.)*\n\n**Nota:** el detalle interno de `SPK_FINALIDAD_DEVOL` no está en `sql/` de hoy; la diferencia de negocio la confirman `SPK_PAGOSCXC` (solo llama ese SP si FINDEVOL ∈ {1,2}) y los mensajes del FE en Recaudos.",
+      "en": "2026-09-06T00:02:00"
+    },
+    {
+      "id": "7b528ff8",
+      "autor": "agente",
+      "texto": "No. Una sola CURSOR_API_KEY alcanza para los tres agentes.\n\nLos tres (Analista por caso, Consultas, Documentar) leen la misma llave de .env. Cada uno abre su propia sesión Cursor (un agentId distinto, un chat distinto). La llave solo dice «esta cuenta puede lanzar agentes»; no es un cupo de 1 agente = 1 llave.\n\nEs el mismo esquema que varios chats en Cursor con una sola cuenta.\n\n**Cuándo sí tendría sentido otra llave:** si al correr los tres a la vez Cursor recorta por cupo/rate-limit de esa clave, o si quiere aislar facturación (p. ej. service account de equipo vs llave personal). Hoy no es un requisito de la oficina.\n\nLos fallos recientes del Chat (proceso_muerto / «revise CURSOR_API_KEY») no eran por falta de una segunda llave: la clave está configurada; fallaba el arranque del proceso.",
+      "en": "2026-09-05T23:56:41"
+    },
+    {
+      "id": "e038e8c2",
+      "autor": "agente",
+      "texto": "La ventana negra al enviar una pregunta era el .cmd del bot. Ya arranca oculto (sin consola). Vuelva a preguntar: no debería asomar el CMD.",
+      "en": "2026-09-05T23:59:59"
+    },
+    {
+      "id": "2de63b9b",
+      "autor": "coordinador",
+      "texto": "como el sistema sabe que es recaudo de cartera y cuando denomina cual es la diferencia y como me afecta",
+      "en": "2026-09-06T08:12:08"
+    },
+    {
+      "id": "28365d24",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-06T08:12:08"
+    },
+    {
+      "id": "f1b92e4d",
+      "autor": "agente",
+      "texto": "Asumo que «denomina» = **de nómina** (así lo muestra Tesorería). Si preguntaba otra cosa, aclárelo en el Chat.\n\n---\n\n**Cómo sabe el sistema que es recaudo de cartera**\n\nHay **dos niveles** distintos:\n\n**1) Módulo Cartera → Recaudos (tabla FPAG)**\nTodo lo que crea en Administrativo → Cartera → Recaudos es un **recaudo de cartera**. Al guardar elige **Ingreso** (`FPAG.INGRESO`): BANCOS, CAJA, GLOSAS, CXP, DEVOLUCION, LEVANTAMIENTO. Eso define pantalla, plantilla Excel, contabilidad (`SPK_PAGOSCXC` / `SPK_NC_CONTAB_CXC`) y reglas (glosas, devoluciones, cruce CxP, etc.).\n\n**2) Origen del dinero (banco o caja) — flag RECAUDO**\nAntes de llegar a Recaudos, el movimiento debe estar marcado como recaudo de cartera:\n\n• **Banco:** en Tesorería → Cuentas → movimiento BMOV, el **tipo de operación (OFIN)** trae `RECAUDO=1` o `RNOMI=1`. Al crear la línea BMOVD se copia `BMOVD.RECAUDO`. Solo las líneas con **RECAUDO=1**, confirmadas (`BMOV.ESTADO=O`), sin legalizar (`ENPAGOS=0`) aparecen al crear un recaudo **Ingreso = BANCOS** (mismo tercero).\n• **Caja:** el recibo FCJ queda con **FCJ.RECAUDO=1** cuando en contabilización de caja hubo cruce a CxC (`FCJPCXC`) o el concepto es de recaudo. Esas son las que lista Recaudos con **Ingreso = CAJA**.\n\nEn Tesorería el FE muestra la insignia **«Recaudo de Cartera»** cuando `RECAUDO=1`.\n\n---\n\n**Cuándo es de nómina (RNOMI) y en qué se diferencia**\n\n• El **mismo OFIN** puede traer `RNOMI=1` → insignia **«Recaudo de Nómina»** en el movimiento bancario.\n• Se guarda en `BMOVD.RNOMI` (en pantalla «Nómina»).\n• **No** entra al filtro de Recaudos cartera (`FPAGComponent` no busca RNOMI; solo `RECAUDO=1`).\n• Es otro circuito (pagos nómina / tesorería), no legalización de facturas en CxC.\n\n| | Recaudo de cartera | Recaudo de nómina |\n|---|---|---|\n| Flag | `BMOVD.RECAUDO=1` | `BMOVD.RNOMI=1` |\n| Origen | OFIN con RECAUDO | OFIN con RNOMI |\n| Pantalla | Recaudos → asignar facturas CxC | Tesorería (no módulo Recaudos) |\n| Efecto | Legaliza consignación vs CxC; `ENPAGOS`/`VLRLEGALIZADO` | Contabilidad/tratamiento nómina |\n\nUn movimiento puede venir marcado desde OFIN; en el detalle BMOVD el operador ve los checkboxes heredados (Recaudo / Nómina).\n\n---\n\n**Cómo le afecta en la práctica**\n\n1. **OFIN mal configurado:** consignación sin `RECAUDO=1` → **no sale** al armar recaudo BANCOS; hay que corregir tipo de operación o la línea BMOVD.\n2. **Confundir con nómina:** línea `RNOMI=1` no se legaliza en Recaudos cartera aunque sea del mismo pagador.\n3. **Ingreso FPAG distinto:** aunque venga de banco (`RECAUDO=1`), si elige GLOSAS o DEVOLUCION cambian campos, FINDEVOL, plantilla y SPs al aplicar.\n4. **Caja:** recibo sin `FCJ.RECAUDO=1` no aparece para recaudo CAJA (típico: recibo sin cruce CxC o concepto no recaudo).\n5. **Ya legalizado:** `ENPAGOS=1` → la línea bancaria ya está en un recaudo aplicado; no se reutiliza.\n\n**Resumen:** «Recaudo de cartera» = FPAG en Recaudos + origen marcado `RECAUDO=1` (banco/caja). «De nómina» = flag `RNOMI` en BMOVD, circuito aparte. La diferencia práctica es **si puede y debe legalizar facturas en CxC** o no.",
+      "en": "2026-09-06T08:15:00"
+    },
+    {
+      "id": "840b0830",
+      "autor": "coordinador",
+      "texto": "dime las modalidades de factura, y que tiene necuenta para validar fevrips",
+      "en": "2026-09-06T08:48:32"
+    },
+    {
+      "id": "8ed52c64",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-06T08:48:32"
+    },
+    {
+      "id": "a3f7c891",
+      "autor": "agente",
+      "texto": "Asumo que «necuenta» = **en cuenta** (qué criterios usa el sistema). Si era otra cosa, aclárelo.\n\n---\n\n## Modalidades de factura (cómo las ve Qrystalos)\n\nHay **varias capas** que se combinan; no es un solo campo.\n\n### 1) Modalidad de contrato (plan pagador — `PPT`)\n\nAl elegir plan en Facturación, el FE lee `PPT.PGP` / `PPT.CAPITADO` y fija `capipgpeve`:\n\n| Valor | Pantalla | `FTR.CAPITADA` |\n|---|---|---|\n| **0** | Contrato por **Evento** | 0 |\n| **1** | Contrato **Capitado** | 1 |\n| **2** | Contrato **PGP** | 1 (misma bandera, reglas distintas) |\n\nPGP no usa la secuencia Inicial/Periodo/Final de capita clásica.\n\n### 2) Tipo de capita (`FTR.TIPOCAP`) — solo capita clásica (`PGPEVE=1`)\n\n| TIPOCAP | Etiqueta FE | Uso |\n|---|---|---|\n| 0 | No aplica | — |\n| 1 | **Inicial** | Primera factura del ciclo capitado |\n| 2 | **Periodo** | Facturas intermedias |\n| 3 | **Final** | Cierre del ciclo |\n| 4 | **Masiva** | Capitación masiva (generador RIPS aparte) |\n\nEn capita (no PGP, no TIPOCAP=4) el FE exige **Modalidad** (`FTR.MODALIDAD` / `CP_MODALIDAD`, mín. 3 caracteres) y **Nº contrato** (SISPRO).\n\n### 3) Forma de armado (`FTR.TIPOFAC` + `PROCEDENCIA`)\n\n| Origen | Campos típicos | Generador RIPS (SPK_GENERAR_RIPS_JSON) |\n|---|---|---|\n| Factura **individual / evento** | `TIPOFAC` ≠ M, `CAPITADA=0` | `SPK_RIPS_JSON_FTR_IND` |\n| **Masiva** | `TIPOFAC='M'` | `SPK_RIPS_JSON_FTR_MAS` |\n| Masiva **programa** | `PROCEDENCIA='AUTPG'` | `SPK_RIPS_JSON_FTR_AUTPG` |\n| **Paquete citas** | `PAQUETE=1` o planes `NEDXC`/`NEDXS` | `SPK_RIPS_JSON_FTR_CITPAQ` |\n| **Capita** | `CAPITADA=1`, TIPOCAP 1–3 | `SPK_RIPS_JSON_FTR_CAPI` |\n| **Capita masiva** | TIPOCAP=4 | `SPK_RIPS_JSON_FTR_CAPMASI` |\n| **PGP** | `PPT.PGP=1` | `SPK_RIPS_JSON_FTR_PGP` |\n\nCola masiva aparte: `FTR_MASI_COLA.TIPO_FACTURACION` = **CPM** (capitado mensual por afiliado) o **PPS** (por encuentro MAD).\n\n### 4) Paquete / modalidad de pago en RIPS\n\n`FTR.PAQUETE=1` marca factura por paquete. En el JSON individual, si el XML DIAN trae modalidad de pago **Paquete/Canasta** (no evento), los valores de ítems paquetizados van en **0** en el RIPS (norma Res. 2275 / regla STORRES en `SPK_RIPS_JSON_FTR_IND`).\n\nEn reportes cartera a veces se resume: `CAPITADA=1` → «CAPITADA», si no → «EVENTO».\n\n---\n\n## Qué tiene en cuenta FEVRIPS al validar\n\nFEVRIPS = **DIAN (FACTE/CUFE) + JSON RIPS + envío SISPRO → CUV**. No es radicar CXC.\n\n### A) Precondición dura (generar JSON)\n\n`SPK_GENERAR_RIPS_JSON` **no arranca** si la factura no está notificada a DIAN:\n• **`FTR.FACTE = 2`** (CUFE en FTRE/FDIANR)\n• XML **AttachedDocument** de la FEV\n\nSin FACTE=2 el mensaje es: *«no está notificada a la DIAN»*.\n\nPara **notas de ajuste**: la factura base debe tener **CUV** ya en SISPRO.\n\n### B) Elegibilidad cola masiva / microservicio (`SPQ_FEVRIPS_COLA`)\n\nAdemás de FACTE=2 y CUV vacío, exige **todas**:\n• Resolución FDIAN con `FTRELECTRONICA=1` (procedencia FTR/FPOS)\n• `ESTADO = 'P'` (no anulada)\n• `TIPOANULACION <> 'NC'`\n• `CONTABILIZADA <> 0`\n• `VR_TOTAL > 0`\n• `PROCEDENCIA <> 'CAJA'`\n• `SI = 0` (no saldo inicial)\n• `YEAR(F_FACTURA) > 2024`\n\nEl FE bloquea manualmente si `ESTADO='A'` o hay nota crédito, o si ya hay CUV persistible.\n\n### C) Qué **sí** influye la modalidad de factura\n\n• **Qué SPK genera el JSON** (tabla arriba): capita vs evento vs masiva vs PGP vs paquete.\n• **Contenido del JSON**: relación FTRDC en capita/PGP; valores en 0 si es paquete; TIPOCAP=4 usa generador masivo.\n• **Ajustes capita TIPOCAP<4**: en algunos casos **no regenera** JSON (devuelve el persistido).\n• **Capita/PGP sin FTRDC**: suele fallar encolado DIAN y contabilización antes de llegar a FEVRIPS.\n\n### D) Qué **no** filtra la cola FEVRIPS (pero importa al validar)\n\nLa cola **no** discrimina por CAPITADA/TIPOCAP/PAQUETE: solo los filtros de la sección B. La modalidad afecta **cómo se arma el paquete**, no si entra a la cola.\n\nEl ministerio valida coherencia **FEV ↔ RIPS** (tercero, fechas, valores, modalidad de pago, CUPS, usuarios…). Errores típicos salen en Validaciones FEVRIPS o estado 5 de la cola.\n\n### E) Configuración del entorno\n\n`APTITUD` revisa: `FEVRIPS_MODO=MICROSERVICIO`, URL prod/prueba (`BDATA_PRODUCCION`), NIT prestador = `IDTERCEROINSTALADO`, credenciales SISPRO en pantalla.\n\n---\n\n**Resumen operativo:** la modalidad define **qué motor RIPS corre** y **cómo van los valores en el JSON**; FEVRIPS siempre exige **FACTE=2** y, para proceso automático, factura **contabilizada, activa, no caja, sin CUV**. CUV validado ≠ cuenta radicada en cartera.\n\n*(SPKs anidados `SPK_RIPS_JSON_*` no están todos en `sql/` de hoy; el enrutamiento sí está en `SPK_GENERAR_RIPS_JSON.sql`.)*",
+      "en": "2026-09-06T08:52:00"
+    }
+  ]
+}

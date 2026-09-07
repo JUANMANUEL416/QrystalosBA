@@ -1,0 +1,256 @@
+{
+  "procesoId": "conciliaciones",
+  "actualizado": "2026-09-06T08:10:00",
+  "nota": "SP → METODO. Ruta paso 6: SPQ_FCONCI_COL 8/8 leído + SPQ_CONCILIACIONES 3/3 + SPKs núcleo completos. SPQ_CONTABILIDAD_3 compartido con Contabilidad (gate OM). No se copió cuerpo.",
+  "sps": [
+    {
+      "nombre": "SPQ_FCONCI_COL",
+      "tipo": "SPQ",
+      "modelo": "FCONCI_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FCONCI_COL.sql",
+      "cola": "",
+      "metodos": [
+        {
+          "id": "CRUD_FCONCI",
+          "hace": "Alta (Nueva), edición o borrado de cabecera FCONCI.",
+          "valida": ["Borrar: sin filas FCONCID", "Editar: ESTADO=Ingresada"],
+          "noValida": ["No recalcula VALOR cabecera desde detalle en SP"],
+          "errores": ["La conciliación tiene detalles y no puede eliminarse.", "No se Encontro Conciliación o ya Esta cerrada…"],
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "FCONCI Ingresada PROCEDENCIA CXC, CONTABILIZADA=0.",
+          "capaId": "02-operacion",
+          "gateId": "crud-cabecera",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_FCONCID",
+          "hace": "Alta, edición o borrado de línea FCONCID en conciliación Ingresada.",
+          "valida": ["Cabecera Ingresada", "No duplicar ITEM_FCXCDV en Nueva", "Borrar: ítem existe"],
+          "noValida": ["No valida VLRACEPTADO≤SALDONETO en SP (FE sí)", "CNSFCGLO no obligatorio en SP manual"],
+          "errores": ["Ya existe este item en esta conciliación…", "Conciliación no Encontrada o ya fue cerrada…"],
+          "llama": [],
+          "efecto": "Línea Ingresada CLASE=C; campos CNSFNOT/CNSNOTADB aún vacíos.",
+          "capaId": "02-operacion",
+          "gateId": "crud-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_FCONCID",
+          "hace": "Elimina todas las líneas FCONCID con ESTADO=Ingresada del IDFCONCI.",
+          "valida": ["IDFCONCI requerido"],
+          "noValida": ["No borra líneas ya cerradas"],
+          "errores": ["IDFCONCI es requerido"],
+          "llama": [],
+          "efecto": "Detalle ingresado limpio.",
+          "capaId": "02-operacion",
+          "gateId": "crud-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMAR_CONCILIACION",
+          "hace": "Asigna CNSFNOT a ítems con VLRACEPTADO>0 y ejecuta SPK_APLICA_CONCILIACION.",
+          "valida": ["IDFCONCI existe", "PRI no cerrado si FNOT_FECHACONCILIA=CONCILIACION", "ESTADO final Cerrada"],
+          "noValida": ["Detalle del SPK no visible aquí"],
+          "errores": ["La Conciliación No se ha aplicado correctamente…", "La Fecha de Conciliación y El Período Esta Cerrado."],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_APLICA_CONCILIACION"],
+          "efecto": "FCONCI/FCONCID Cerrada; notas y cartera en SPK.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-conci",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULAR_CONCILIACION",
+          "hace": "Anula conciliación cerrada: CNSNOTADB por ítem, SPK_RETIRA_FACTURA_CONCI, ESTADO Anulada.",
+          "valida": ["Transacción por ítems Cerrada"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE en CATCH"],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_RETIRA_FACTURA_CONCI"],
+          "efecto": "Cabecera y detalle Anulada; reversos en SPK.",
+          "capaId": "02-operacion",
+          "gateId": "anular-conci",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULAR_ITEM",
+          "hace": "Anula un ítem FCONCID en estado Cerrada.",
+          "valida": ["IDFCONCI e ITEM", "ESTADO_ITEM=Cerrada", "Sin CNSNOTADB previo si VLRACEPTADO>0"],
+          "noValida": [],
+          "errores": ["Solo se pueden anular items con estado CERRADA", "Esta Factura cuenta con consecutivo de nota debito…"],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_RETIRA_FACTURA_CONCI"],
+          "efecto": "Ítem revertido vía SPK.",
+          "capaId": "02-operacion",
+          "gateId": "anular-conci",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR",
+          "hace": "Devuelve cabecera FCONCI+TER+SED y detalle FCONCID en JSON.",
+          "valida": ["IDFCONCI requerido"],
+          "noValida": [],
+          "errores": ["IDFCONCI es requerido para imprimir conciliación"],
+          "llama": [],
+          "efecto": "Datos para PDF useConci.",
+          "capaId": "02-operacion",
+          "gateId": "imprimir",
+          "estado": "leido"
+        },
+        {
+          "id": "CARGA_EXCEL_FCONCID",
+          "hace": "Inserta FCONCID masivo desde Excel validando FCXCDV, FTR, CPNT, saldos y duplicados.",
+          "valida": ["Conciliación Ingresada", "N_FACTURA, TIPO, CODCONCEPTO", "Factura en FCXCDV", "Tercero FTR", "CNSGLO si TIPO G/C/R", "SALDO>0", "VLRACEPTADO≤SALDO", "CPNT existe", "No duplicado en otra conciliación Ingresada"],
+          "noValida": ["No valida CNSFCGLO contra FCGLO"],
+          "errores": ["El numero de factura es obligatorio", "La factura no pertenece al tercero…", "El concepto ingresado no existe…"],
+          "llama": [],
+          "efecto": "Líneas Ingresada; devuelve filas ERROR=1.",
+          "capaId": "02-operacion",
+          "gateId": "carga-excel",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_APLICA_CONCILIACION",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_APLICA_CONCILIACION.sql",
+      "cola": "",
+      "metodos": [
+        {
+          "id": "APLICAR",
+          "hace": "Por cada FCONCID Ingresada: si VLRACEPTADO>0 crea NC (FNOT PROCEDENCIA CONCILIA, CONDCONCEPTO/CPNT) → SPK_GENITEMS_NOTACR + SPK_NOTASCXC; si VLRRECUPERAR>0 mueve saldo a FCXCDV tipo C (conciliación). Cierra ítem y FCONCI.",
+          "valida": ["IDCOPNOTACONCI configurado", "PRI abierto en FECHACONCILIA si FNOT_FECHACONCILIA=CONCILIACION", "FCONCI no ya Cerrada", "CPNT por línea o default IDCOPNOTACONCI"],
+          "noValida": ["Errores por ítem en CATCH: @CERRAR=0 sin RAISERROR global claro"],
+          "errores": ["NO EXISTE CONFIGURACION PARA GENERAR LA NOTA CREDITO", "CONCILIACION YA CERRADA", "Periodo Contable NO Existe.", "Periodo Contable Cerrado."],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_GENITEMS_NOTACR", "SPK_NOTASCXC", "SPK_RELIQUIDA_FTR", "SPK_CONTAB_CONCI", "SPK_NC_CONTAB_RECLASIFIACXC"],
+          "efecto": "FCONCID Cerrada; NC aplicada; saldo conciliación en FCXCDV; FCONCI Cerrada si todo OK. PROCEDENCIA RECLA → solo reclasificación contable. FNOT.F_NOTA = FECHACONC si USVGS FNOT_FECHACONCILIA='CONCILIACION'; si no = @HOY/GETDATE().",
+          "capaId": "04-unido",
+          "gateId": "notas-al-confirmar",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_RETIRA_FACTURA_CONCI",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_RETIRA_FACTURA_CONCI.sql",
+      "cola": "",
+      "metodos": [
+        {
+          "id": "ANULAR_ITEM",
+          "hace": "Revierte ítem conciliado: si VLRACEPTADO>0 crea ND (FNOT D, PROCEDENCIA CONCILIA) → SPK_NOTASCXC; si VLRRECUPERAR>0 borra FCXCDV tipo C y reliquida.",
+          "valida": ["IDCOPNOTACONCI", "CNSNOTADB generado si VLRACEPTADO>0"],
+          "noValida": ["No valida MCP confirmado antes de ND"],
+          "errores": [],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_NOTASCXC", "SPK_RELIQUIDA_FTR", "SPK_NC_CONTAB_ANULA_CONCI"],
+          "efecto": "FCONCID ESTADO=Anulada; reverso cartera y contabilidad conciliación.",
+          "capaId": "02-operacion",
+          "gateId": "anular-conci",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONCILIACIONES",
+      "tipo": "SPQ",
+      "modelo": "CONCILIACIONES",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONCILIACIONES.sql",
+      "cola": "",
+      "metodos": [
+        {
+          "id": "LISTA",
+          "hace": "Grilla OM: FCONCI por año/mes FECHACONC; filtro ENVIADAS vs NO_ENVIADAS (CONTABILIZADA+NROCOMPROBANTE).",
+          "valida": ["ANOCONTABLE y MESCONTABLE requeridos"],
+          "noValida": [],
+          "errores": ["Año y mes contable son requeridos"],
+          "llama": [],
+          "efecto": "Lista para marcar y enviar a contabilidad.",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE",
+          "hace": "Devuelve líneas FCONCID de un IDFCONCI.",
+          "valida": ["IDFCONCI existe"],
+          "noValida": [],
+          "errores": ["Conciliación no encontrada"],
+          "llama": [],
+          "efecto": "Solo lectura detalle OM.",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-om",
+          "estado": "leido"
+        },
+        {
+          "id": "CONTAB_MASIVA",
+          "hace": "Marca CONTABILIZADA=1 y NROCOMPROBANTE=AAAAMM-CONCI para array IDFCONCI (alternativa directa en SPQ).",
+          "valida": ["Array CONCILIACIONES no vacío"],
+          "noValida": ["No genera MCP real — solo UPDATE cabecera"],
+          "errores": ["No se enviaron conciliaciones para procesar"],
+          "llama": [],
+          "efecto": "Semáforo verde en OM. FE actual usa CONTABILIDAD_3/ENV_CONTA_OTROS_MODULS.",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTABILIDAD_3",
+      "tipo": "SPQ",
+      "modelo": "CONTABILIDAD_3",
+      "estado": "listado",
+      "fuente": "",
+      "cola": "OMConciliacionesComponent: ENV_CONTA_OTROS_MODULS con ITEMS=IDFCONCI. Proceso Contabilidad compartido.",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_CONTAB_CONCI",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_CONCI .sql",
+      "cola": "Nota: archivo en sql/ con espacio en nombre.",
+      "metodos": [
+        {
+          "id": "CONTABILIZAR",
+          "hace": "Si VLRRECUPERAR>0: MCPE PROCEDENCIA CONCI, MCHE DB cuenta CG (TTEC) y CR por tipo FCXCDV (F/G/R/C), REVISAMCPE + PASA_MCP.",
+          "valida": ["Al menos un FCONCID VLRRECUPERAR>0", "PRI abierto", "IDCON_TCOM_CONCI / COMMS CONCILIACIONES"],
+          "noValida": [],
+          "errores": ["No Existe valor a recuperar…", "Periodo Contable NO Existe.", "Periodo Contable Cerrado."],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_NC_REVISAMCPE", "SPK_PASA_MCP_MCPNIIF"],
+          "efecto": "Asiento conciliación glosa (valor recuperar).",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_ANULA_CONCI",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_ANULA_CONCI.sql",
+      "cola": "",
+      "metodos": [
+        {
+          "id": "ANULAR_ITEM",
+          "hace": "Reverso contable al anular ítem con VLRRECUPERAR>0 (por ITEM_FCONCID). MCPE CONCI inverso.",
+          "valida": ["VLRRECUPERAR>0", "PRI abierto"],
+          "noValida": [],
+          "errores": ["No Existe valor a recuperar…", "Periodo Contable Cerrado."],
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_NC_REVISAMCPE", "SPK_PASA_MCP_MCPNIIF"],
+          "efecto": "Reverso asiento conciliación.",
+          "capaId": "02-operacion",
+          "gateId": "anular-conci",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

@@ -179,18 +179,22 @@ def _persistir(ctx, extra):
         "via": extra.get("via") or ctx.get("via") or "",
     }
     path = _solicitud_path(id_caso)
+    nombre_dev = (ctx.get("desarrollador") or "").strip()
     if os.path.isfile(path):
         sol = _read_json(path, {})
         sol["correo"] = payload
-        if payload["destinatario"] and (sol.get("personas") or {}).get("desarrollador"):
-            pass
+        if not nombre_dev:
+            nombre_dev = ((sol.get("personas") or {}).get("desarrollador") or "").strip()
         _write_json(path, sol)
 
-    if ctx.get("desarrollador") and payload["destinatario"]:
+    # Una sola digitación: el correo queda en la lista para el próximo REQ.
+    if nombre_dev and payload["destinatario"]:
         try:
-            devs.set_correo(ctx["desarrollador"], payload["destinatario"])
-        except ValueError:
-            pass
+            devs.set_correo(nombre_dev, payload["destinatario"])
+        except ValueError as exc:
+            print(f"WARN no se pudo guardar correo de {nombre_dev}: {exc}", flush=True)
+        except OSError as exc:
+            print(f"WARN error al escribir desarrolladores.json: {exc}", flush=True)
 
     devs.marcar_envio_caso(
         id_caso,
@@ -513,8 +517,10 @@ def _guardar_imap(raw):
         return {"saved": False, "error": str(e)[:200]}
 
 
-def enviar(id_caso, correo=None, reenviar=False, display=False):
+def enviar(id_caso, correo=None, reenviar=False, display=False, desarrollador=None):
     ctx = contexto(id_caso)
+    if desarrollador and str(desarrollador).strip():
+        ctx["desarrollador"] = str(desarrollador).strip()
     if not ctx["idCaso"]:
         raise ValueError("Falta idCaso")
     if not ctx["tieneDictamen"]:
@@ -523,6 +529,13 @@ def enviar(id_caso, correo=None, reenviar=False, display=False):
     dest = devs.validar_correo(dest)
     if not dest:
         raise ValueError("Falta el correo del desarrollador.")
+
+    # Guardar YA en la lista (antes del SMTP), para que quede aunque falle el envío.
+    if ctx.get("desarrollador"):
+        try:
+            devs.set_correo(ctx["desarrollador"], dest)
+        except (ValueError, OSError) as exc:
+            print(f"WARN set_correo previo a envío: {exc}", flush=True)
 
     asunto, cuerpo, html = _componer({**ctx, "desarrollador": ctx.get("desarrollador") or dest})
     adjuntos = _adjuntos(ctx)

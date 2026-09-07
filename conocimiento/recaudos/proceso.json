@@ -1,0 +1,360 @@
+{
+  "id": "recaudos",
+  "nombre": "Cartera · Recaudos",
+  "modulo": "FPAG_COL",
+  "estado": "parcial",
+  "resumen": "Registrar el pago del pagador (FPAG), asignar facturas de CxC (FPAGD/FPAGDI vía RPDX), aplicar el recaudo y contabilizar. Ventana Administrativo → Cartera → Recaudos. Orquestador FE: MODELO FPAG_COL → SPQ_FPAG_COL. Al aplicar llama SPK_PAGOSCXC (actualiza CxC; si hay glosa crea FGLO).",
+  "actualizado": "2026-09-06T07:52:00",
+  "notaSql": "SPQ_FPAG_COL 46/46 leído en sql/SPQ_FPAG_COL.sql (2026-09-06). SPKs PAGOSCXC, DESPAGOSCXC, CARGA_MASIVA, FINALIDAD_GLOSAS, FPAG, RETIRA_FPAGD, BORRAPAGO, NC_CONTAB_CXC, FINALIDAD_DEVOL, RETIRAFTR leídos.",
+  "alcanceHasta": "Aplicar o anular/desaplicar el recaudo y su efecto en CxC. Glosas (FGLO), conciliaciones, notas DB/CR y presupuesto son procesos hermanos.",
+  "familia": "cartera",
+  "prioridad": 3,
+  "ventanas": [
+    {
+      "uso": "Recaudos (operación principal)",
+      "ruta": "admin.recaudos",
+      "path": "/admin/Recaudos",
+      "vue": "RecaudosPage.vue → cartera/FPAGComponent.vue",
+      "entrada": "Administrativo → Cartera → Recaudos. Grilla maestro FPAG + detalle FPAGD. Diálogo «Asignar facturas» embebe CXCComponent."
+    },
+    {
+      "uso": "Carga masiva / plantilla Excel (mismo módulo)",
+      "ruta": "admin.recaudos",
+      "path": "/admin/Recaudos",
+      "vue": "FPAGComponent → CXCComponent (SUBIR_TXT, CARGAR_FACTURAS, DETALLE_RESPONDER)",
+      "entrada": "Dentro del recaudo abierto: cargue plano o Excel de facturas. Columnas según INGRESO (GLOSAS incluye MOTIVO1/MOTIVO2)."
+    },
+    {
+      "uso": "Consignaciones ADRES (Perú)",
+      "ruta": "admin.recaudos",
+      "path": "/admin/Recaudos",
+      "vue": "FPAGComponent → DistribuyeAdresComponent (MODELO BMOV / DISTRUYE_ADRES)",
+      "entrada": "Botón visible si PAGOS_ADRES devuelve PEND > 0. Permiso BDistribuirAdres."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Antes de aplicar: periodo contable abierto (PRI), cuentas de impuesto vigentes en FIMPDV, códigos de glosa/devolución en FCGLO si INGRESO=GLOSAS o DEVOLUCION, y variables REC_VLRMAX_AJUSTE / VLRMAXAJUSTERECAUDOS para límites de ajuste al peso.",
+      "tablasClave": [
+        "FCGLO",
+        "FIMPDV",
+        "PRI",
+        "TER"
+      ],
+      "gates": [
+        {
+          "id": "catalogo-motivos",
+          "nombre": "Códigos de glosa y devolución (FCGLO)",
+          "explicacion": "CODIGO_GLOSA lista FCGLO activos: CLASE=GLOSA si INGRESO=GLOSAS, CLASE=DEVOLUCION si no. La plantilla de carga masiva exige MOTIVO1/MOTIVO2 cuando el proceso Glosas lo use.",
+          "invariante": "Un código en MOTIVO1/MOTIVO2 debe existir en FCGLO y estar ACTIVO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "CODIGO_GLOSA",
+              "rol": "Catálogo para combos y validación de carga. Leído."
+            }
+          ]
+        },
+        {
+          "id": "impuestos-fimpdv",
+          "nombre": "Cuentas de impuesto (FIMPDV)",
+          "explicacion": "APLICARPAGO valida que cada línea FPAGDI con impuesto tenga cuenta vigente en FIMPDV antes de llamar SPK_PAGOSCXC.",
+          "invariante": "Impuesto en FPAGD sin desglose FPAGDI o sin cuenta FIMPDV bloquea la aplicación.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "APLICARPAGO",
+              "rol": "Validación previa a contabilidad (no leído el SPK)."
+            }
+          ]
+        },
+        {
+          "id": "variables-ajuste",
+          "nombre": "Límites de ajuste al peso",
+          "explicacion": "Variable REC_VLRMAX_AJUSTE (FNK_VALORVARIABLE): el FE bloquea BANCOS/CAJA/CXP si no está configurada; el SP valida |VLRAJUSTEPESO| en APLICARPAGO. VLRMAXAJUSTERECAUDOS aparece comentada para otros descuentos.",
+          "invariante": "Ajuste al peso fuera del máximo → KO en aplicar (y aviso en FE para BANCOS/CAJA/CXP).",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Quien cobra entra a Recaudos: filtra por tercero, tipo INGRESO, estado y fechas; crea el recaudo (cabecera FPAG); asigna facturas de CxC al detalle (FPAGD); revisa impuestos (FPAGDI); aplica el pago. Puede anular, desaplicar o inactivar según permisos y estado.",
+      "tablasClave": [
+        "FPAG",
+        "FPAGD",
+        "FPAGDI",
+        "FPAGDCXP",
+        "RPDX"
+      ],
+      "gates": [
+        {
+          "id": "crear-recaudo",
+          "nombre": "Crear o editar cabecera",
+          "explicacion": "Nuevo recaudo: tercero, INGRESO (CAJA, BANCOS, GLOSAS, CXP, DEVOLUCION, LEVANTAMIENTO), valor, fechas, documento bancario o enlace a caja (CODCAJA/CNSFACJ) o movimiento banco (BMOVD). INSERTAR genera CNSFPAG y CNSRPDX; marca ENPAGOS en FCJ o BMOVD según procedencia.",
+          "invariante": "No puede haber dos recaudos abiertos (CERRADO=0, ESTADO=Activo) del mismo usuario, tercero e INGRESO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "INSERTAR / ACTUALIZAR / INACTIVAR / BORRARTODO",
+              "rol": "Cabecera FPAG. Leído (INSERTAR/ACTUALIZAR/INACTIVAR/BORRARTODO)."
+            }
+          ]
+        },
+        {
+          "id": "asignar-facturas",
+          "nombre": "Asignar facturas a CxC",
+          "explicacion": "Diálogo con CXCComponent: consulta cuentas/facturas (CONSULTACXC), agrega líneas (ADD_FACTURA, PROCESAR_FACTURA), carga masiva Excel/plano (CARGAR_FACTURAS, SUBIR_TXT, ASIGNA_PLANO), impuestos (IMPUESTOS*, ADDFTIMP), cierra staging (ASIGNAR → SPK_CARGA_MASIVA_FAC_CXC_02). FPAGD persiste el detalle; MOTIVO1/MOTIVO2 en carga masiva.",
+          "invariante": "Sin líneas FPAGD no se puede aplicar. Duplicados N_FACTURA (+ CLASE según INGRESO) bloquean en FE y en APLICARPAGO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "CREA_RPDX / CONSULTACXC / ADD_FACTURA / ASIGNAR / CARGAR_FACTURAS / FPAGD / FPAGDI",
+              "rol": "Staging RPDX y detalle. Leído."
+            },
+            {
+              "nombre": "SPK_CARGA_MASIVA_FAC_CXC_02",
+              "metodo": "(anidado en ASIGNAR)",
+              "rol": "RPDX → FPAGD. Leído."
+            }
+          ]
+        },
+        {
+          "id": "aplicar-pago",
+          "nombre": "Aplicar recaudo",
+          "explicacion": "Botón Aplicar (permiso BAplicarPago): APLICARPAGO valida periodo PRI, detalle, duplicados, ajuste al peso, impuestos FPAGDI/FIMPDV; ejecuta SPK_PAGOSCXC. Si INGRESO=GLOSAS y FINDEVOL ∈ {4,5,6} llama SPK_FINALIDAD_GLOSAS. Al OK: FPAG.CERRADO=1.",
+          "invariante": "Aplicar es irreversible sin desaplicar/anular. Es el gate que mueve cartera y puede crear FGLO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "APLICARPAGO",
+              "rol": "Orquestador del apply. Leído."
+            },
+            {
+              "nombre": "SPK_PAGOSCXC",
+              "metodo": "(anidado)",
+              "rol": "Efecto en CxC y contabilidad del recaudo. Leído."
+            }
+          ]
+        },
+        {
+          "id": "devolucion-findevol",
+          "nombre": "Devolución de facturas (FINDEVOL 0–2)",
+          "explicacion": "INGRESO=DEVOLUCION (o DEVPAR parcial con NC). Paso a Seguir en cabecera FPAG: 0=Solo devolver (retira FTR de CxC vía SPK_RETIRAFTR_DE_CXC), 1=Devolver y anular (post-apply SPK_FINALIDAD_DEVOL), 2=Devolver y radicar (SPK_FINALIDAD_DEVOL). Una factura por línea; no duplicar N_FACTURA. FE bloquea retirar factura si FINDEVOL≠0 y recaudo cerrado.",
+          "invariante": "DEVOLUCION fuerza TIPO F en carga masiva. VLRGLOSA en plantilla = saldo devuelto. DESAPLICAR/ANULAR bloqueados si FINDEVOL≠0 (FE).",
+          "sps": [
+            { "nombre": "SPK_PAGOSCXC", "metodo": "DEVOLUCION/DEVPAR", "rol": "Retira CxC o genera NC parcial." },
+            { "nombre": "SPK_FINALIDAD_DEVOL", "metodo": "FINDEVOL 1/2", "rol": "Anular o radicar tras apply. Leído." },
+            { "nombre": "SPK_RETIRAFTR_DE_CXC", "metodo": "(anidado)", "rol": "Retiro físico de factura en CxC. Leído." }
+          ]
+        },
+        {
+          "id": "anular-desaplicar",
+          "nombre": "Anular, desaplicar o retirar",
+          "explicacion": "DESAPLICARPAGO y ANULARPAGO llaman SPK_DESPAGOSCXC. QUITARFPAGD / retirar factura usa SPK_RETIRA_FACTURA_FPAGD. BORRARTODO → SPK_BORRAPAGO. Restricciones en FE para devoluciones (FINDEVOL) y facturas retiradas.",
+          "invariante": "No anular si hay facturas retiradas o devolución con FINDEVOL≠0 según reglas FE.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "ANULARPAGO / DESAPLICARPAGO / QUITARFPAGD / BORRARTODO",
+              "rol": "Reversos. Leído."
+            },
+            {
+              "nombre": "SPK_DESPAGOSCXC",
+              "metodo": "(anidado)",
+              "rol": "Reverso CxC/contabilidad. Leído."
+            }
+          ]
+        },
+        {
+          "id": "cruce-cxp",
+          "nombre": "Cruce con cuentas por pagar",
+          "explicacion": "INGRESO=CXP: pestaña cruce en FPAGComponent (tabla FPAGDCXP). CRUD_FPAGDCXP agrega FCXP con VLRCRUCE; REGRESA_FCXPAGDCXP actualiza VALORPAGO. APLICARPAGO exige SUM(VLRCRUCE)=VLRITEMS del recaudo.",
+          "invariante": "Recaudo abierto; no duplicar CNSFCXP; totales deben cuadrar antes de Aplicar.",
+          "sps": [
+            { "nombre": "SPQ_FPAG_COL", "metodo": "CRUD_FPAGDCXP / REGRESA_FCXPAGDCXP", "rol": "Fichas leído." },
+            { "nombre": "SPQ_FPAG_COL", "metodo": "APLICARPAGO", "rol": "Valida igualdad cruce vs ítems." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "El recaudo no inventa la deuda: consume cuentas de cobro radicadas (FCXC/FCXCD) del proceso Facturación. También puede arrancar desde un movimiento de caja (FCJ) o banco (BMOVD) ya registrado.",
+      "tablasClave": [
+        "FCXC",
+        "FCXCD",
+        "FCJ",
+        "BMOVD",
+        "FTR"
+      ],
+      "gates": [
+        {
+          "id": "desde-facturacion",
+          "nombre": "CxC radicada",
+          "explicacion": "CONSULTACXC y ADD_FACTURA leen facturas en cartera del tercero. Solo facturas elegibles según INGRESO y estado de la cuenta.",
+          "invariante": "Sin cuenta/factura radicada en CxC no hay qué aplicar (salvo cargue especial o reliquidación).",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "CONSULTACXC / ADD_FACTURA / RELIQUIDAR",
+              "rol": "Puente a CxC. RELIQUIDAR llama SPK_RELIQUIDA_FTR."
+            }
+          ]
+        },
+        {
+          "id": "desde-caja-banco",
+          "nombre": "Recaudo desde caja o banco",
+          "explicacion": "INGRESO=CAJA: INSERTAR enlaza CODCAJA+CNSFACJ y marca FCJ.ENPAGOS=1. INGRESO=BANCOS: enlaza BMOVD (banco/sucursal/cuenta/ítem/renglón) y marca ENPAGOS=1.",
+          "invariante": "El movimiento origen no debe estar ya en otro recaudo abierto.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "INSERTAR / TRAE_PAGO",
+              "rol": "Trae datos del recibo o consignación bancaria."
+            }
+          ]
+        },
+        {
+          "id": "carga-masiva",
+          "nombre": "Plano / Excel masivo",
+          "explicacion": "Dentro del recaudo abierto: Subir Archivo Excel (CARGAR_FACTURAS) o TXT (SUBIR_TXT) → staging RPDX+FTIMP → revisar → ASIGNAR → FPAGD. Columnas base: N_FACTURA, VLRPAGO, VLRGLOSA, TIPO (F/G/R), impuestos (hasta 4), MOTIVO1/MOTIVO2, OBS, VLR_DTO. Plantilla depende INGRESO+FINDEVOL (HelpManual sección 13). EXPORT_ERRADOS/LOG para corregir.",
+          "invariante": "Encabezado idéntico a plantilla descargada; VALIDACION=OK en FINDEVOL 4/5/6; no aplicar hasta ASIGNAR exitoso.",
+          "sps": [
+            { "nombre": "SPQ_FPAG_COL", "metodo": "SUBIR_TXT / CARGAR_FACTURAS / DETALLE_RESPONDER", "rol": "Fichas leído en sps.json." },
+            { "nombre": "SPQ_FPAG_COL", "metodo": "ASIGNAR", "rol": "Cierra staging → FPAGD." }
+          ]
+        },
+        {
+          "id": "carga-masiva-findevol-6",
+          "nombre": "Carga FINDEVOL 6 (Detalles y Responder)",
+          "explicacion": "DETALLE_RESPONDER: plantilla con CODRPTA, VLR_ACEPTA, MOTIVO1; RPDX_1 resumen + detalle ítems glosa. Usado cuando Paso a Seguir = 6 en recaudo GLOSAS.",
+          "invariante": "Código glosa ∈ FCGLO; observaciones longitud mínima según FE.",
+          "sps": [{ "nombre": "SPQ_FPAG_COL", "metodo": "DETALLE_RESPONDER", "rol": "Ficha leído." }]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Al aplicar un recaudo de glosas nace el expediente FGLO (proceso Glosas). Envío a auditoría, ADRES y conciliaciones son pasos vecinos, no sustituyen Aplicar.",
+      "tablasClave": [
+        "FGLO",
+        "ENT"
+      ],
+      "gates": [
+        {
+          "id": "glosas-al-aplicar",
+          "nombre": "Glosas al aplicar",
+          "explicacion": "INGRESO=GLOSAS: SPK_PAGOSCXC crea FGLO si VLRGLOSA>0. Con FINDEVOL 4, 5 o 6 APLICARPAGO llama SPK_FINALIDAD_GLOSAS. MOTIVO1/MOTIVO2 van en FPAGD en carga masiva; el gate REQ 6259 documenta si llegan a FGLOCG.",
+          "invariante": "Responder glosas (Auditoría) es otro proceso; depende de lo que SPK_PAGOSCXC escriba.",
+          "sps": [
+            {
+              "nombre": "SPK_PAGOSCXC",
+              "metodo": "(anidado APLICARPAGO)",
+              "rol": "Crea/actualiza FGLO. Leído."
+            },
+            {
+              "nombre": "SPK_FINALIDAD_GLOSAS",
+              "metodo": "(anidado FINDEVOL 4/5/6)",
+              "rol": "Finalidad glosa según FINDEVOL. Leído."
+            }
+          ]
+        },
+        {
+          "id": "enviar-auditoria",
+          "nombre": "Enviar a auditoría",
+          "explicacion": "Manual: ENVIAR_AUDIT (permiso BEnviarAuditoriaFPAG) crea ENT/ENTD glosas. Automático: tras APLICARPAGO si INGRESO=GLOSAS y FINDEVOL∈{4,5,6} → SPK_FINALIDAD_GLOSAS (ENVIAR_AUDIT → RECIBIR_GLOSA → respuesta SPK_RESPUESTAGLOSA). FINDEVOL 4=Recepcionar y Responder; 5=Detalles; 6=Detalles y Responder.",
+          "invariante": "Sin entrega previa ENT/ENTD por factura. Auditoría no sustituye Aplicar.",
+          "sps": [
+            { "nombre": "SPQ_FPAG_COL", "metodo": "ENVIAR_AUDIT", "rol": "Entrega manual. Ficha leído." },
+            { "nombre": "SPK_FINALIDAD_GLOSAS", "metodo": "FINDEVOL 4/5/6", "rol": "Circuito automático post-apply." }
+          ]
+        },
+        {
+          "id": "adres-peru",
+          "nombre": "Consignaciones ADRES",
+          "explicacion": "PAGOS_ADRES cuenta pendientes; DistribuyeAdresComponent usa BMOV/DISTRUYE_ADRES para repartir consignaciones agregadas.",
+          "invariante": "Solo visible cuando hay pendientes ADRES para el tercero.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "PAGOS_ADRES",
+              "rol": "Conteo pendientes ADRES."
+            },
+            {
+              "nombre": "SPQ_BMOV",
+              "metodo": "DISTRUYE_ADRES",
+              "rol": "Distribución ADRES (otro SPQ). Fuera de sql/ recaudos."
+            }
+          ]
+        },
+        {
+          "id": "devolucion-findevol",
+          "nombre": "Devolución al aplicar recaudo (FINDEVOL 0–2)",
+          "explicacion": "INGRESO=DEVOLUCION/DEVPAR: al Aplicar, SPK_PAGOSCXC llama SPK_RETIRAFTR_DE_CXC (INSERT FCXCR) y SPK_FINALIDAD_DEVOL si FINDEVOL=1 (anular vía ENT DEVFACT) o 2 (crea FCXC devuelta). FINDEVOL 0 solo retira de CxC.",
+          "invariante": "La respuesta operativa (Soportar/Anular) ocurre después en Respuesta Devoluciones (FCXCR), no en el apply.",
+          "sps": [
+            { "nombre": "SPK_RETIRAFTR_DE_CXC", "metodo": "(SP)", "rol": "Crea fila FCXCR con MOTIVO1/2 y OBSERVACION." },
+            { "nombre": "SPK_FINALIDAD_DEVOL", "metodo": "FINDEVOL 1/2", "rol": "Anula o radica cuenta devuelta post-apply." }
+          ]
+        },
+        {
+          "id": "respuesta-devoluciones",
+          "nombre": "Respuesta a devoluciones (FCXCR)",
+          "explicacion": "Administrativo → Respuesta Devoluciones (`/admin/fcxcr`) o informe Devoluciones en Consultas. Cartera define COD_RESPUESTA (FCGLO), RESPUESTA y Paso a Seguir (Soportar/Anular); luego Enviar a facturación (DEVOL→ENT DEVFACT) o a nueva cuenta (CXC). Distinto de respuesta a glosas (FGLO/auditoría).",
+          "invariante": "Sin DEFINIR_FACTURA (ESTADO≠'') no puede ENVIAR_FACTURA. CNSDEVCXC bloquea liberar.",
+          "sps": [
+            { "nombre": "SPQ_FCXCR", "metodo": "DEFINIR_FACTURA / ENVIAR_FACTURA", "rol": "Fichas leído 2026-09-06. sql/SPQ_FCXCR.sql." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "La contabilización del recaudo ocurre al aplicar (SPK_PAGOSCXC), no en un botón aparte como caja masiva. FPAG.CONTABILIZADO y NROCOMPROBANTE marcan el estado; FPAGD.CONTABILIZADA_R por línea. Checkbox NOCONTABILIZA (permiso ChkNoContabilizaFPAG) evita asiento.",
+      "tablasClave": [
+        "FPAG",
+        "FPAGD",
+        "MCP"
+      ],
+      "gates": [
+        {
+          "id": "contabilizar-recaudo",
+          "nombre": "Contabilizar al aplicar",
+          "explicacion": "APLICARPAGO exige periodo PRI abierto para la FECHAPAGO. Valida FIMPDV antes de SPK_PAGOSCXC. Anular/desaplicar revierte vía SPK_DESPAGOSCXC.",
+          "invariante": "Sin periodo abierto o sin cuentas de impuesto → KO en aplicar, no queda medio aplicado.",
+          "sps": [
+            {
+              "nombre": "SPK_PAGOSCXC",
+              "metodo": "(anidado)",
+              "rol": "Genera comprobante MCP. Leído (SPK_NC_CONTAB_CXC)."
+            },
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "APLICARPAGO / ANULARPAGO / DESAPLICARPAGO",
+              "rol": "Candados previos y reversos."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-05T23:20:36"
+}

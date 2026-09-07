@@ -133,6 +133,7 @@ class QrystalosBADB:
             conn.commit()
         if not self._migrated:
             self.migrate_from_disk()
+            self.migrate_from_quatec()
             self._migrated = True
 
     def migrate_from_disk(self) -> None:
@@ -161,6 +162,54 @@ class QrystalosBADB:
         registro = _read_json(os.path.join(self.historico, "registro.json"), [])
         if registro:
             self.save_historico(registro)
+
+    def _rewrite_quatec_paths(self, value: Any) -> Any:
+        old = "Qrys.Quatec"
+        new = "QrystalosBA"
+        if isinstance(value, str):
+            return value.replace(old, new).replace("qrys.quatec", "qrystalosba")
+        if isinstance(value, list):
+            return [self._rewrite_quatec_paths(v) for v in value]
+        if isinstance(value, dict):
+            return {k: self._rewrite_quatec_paths(v) for k, v in value.items()}
+        return value
+
+    def migrate_from_quatec(self) -> None:
+        """Copia cola y borradores desde data/quatec.db si la base nueva quedó vacía."""
+        old_path = os.path.join(self.root, "data", "quatec.db")
+        if not os.path.isfile(old_path):
+            return
+        if os.path.abspath(old_path) == os.path.abspath(self.db_path):
+            return
+        with self.connect() as conn:
+            cola_n = conn.execute("SELECT COUNT(*) FROM cola_items").fetchone()[0]
+            borr_n = conn.execute("SELECT COUNT(*) FROM borradores").fetchone()[0]
+        if cola_n and borr_n:
+            return
+        try:
+            old = sqlite3.connect(f"file:{old_path}?mode=ro", uri=True, timeout=10)
+            old.row_factory = sqlite3.Row
+        except sqlite3.Error:
+            return
+        try:
+            if not cola_n:
+                items = []
+                for row in old.execute("SELECT item_json FROM cola_items"):
+                    try:
+                        items.append(self._rewrite_quatec_paths(json.loads(row["item_json"])))
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+                if items:
+                    self.save_cola(items)
+            if not borr_n:
+                for row in old.execute("SELECT id_caso, datos_json FROM borradores"):
+                    try:
+                        data = self._rewrite_quatec_paths(json.loads(row["datos_json"]))
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+                    self.save_borrador(row["id_caso"], data)
+        finally:
+            old.close()
 
     def _upsert_caso_row(
         self,

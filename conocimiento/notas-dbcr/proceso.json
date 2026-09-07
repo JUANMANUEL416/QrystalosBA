@@ -1,0 +1,349 @@
+{
+  "id": "notas-dbcr",
+  "nombre": "Cartera · Notas débito/crédito",
+  "modulo": "FNOT_COL",
+  "estado": "parcial",
+  "resumen": "FNOT/FNOTD: crear NC/ND → detalle → aplicar (SPK_NOTASCXC) → DIAN/SUNAT. SPQ 14/14 + SPKs núcleo leído 2026-09-06. /admin/notasdbcr.",
+  "notaSql": "SPQ_FNOT_COL 14/14 leído + SPKs núcleo (NOTASCXC, ANULANOTA_CR, GEN/DESITEMS, APLICA_FNOT_MASIVA, NC_CONTAB_FNOT) en sql/ — fichas leído 2026-09-06.",
+  "actualizado": "2026-09-06",
+  "alcanceHasta": "Aplicar o anular nota CxC y su efecto en saldo de factura/CxC + cola DIAN. Glosas, conciliaciones y recaudos alimentan PROCEDENCIA; CxP usa otra ventana.",
+  "familia": "cartera",
+  "prioridad": 4,
+  "ventanas": [
+    {
+      "uso": "Notas débito/crédito CxC (operación principal)",
+      "ruta": "admin.notasdbcr",
+      "path": "/admin/notasdbcr",
+      "vue": "NotasDBCRPage.vue → notasdbcr/NotasDBCRComponent.vue",
+      "entrada": "Administrativo → Notas DB/CR. Grilla FNOT (AppStore.read) + detalle embebido FNOTD. AppStore.json MODELO FNOT_COL."
+    },
+    {
+      "uso": "Conceptos de notas (configuración)",
+      "ruta": "conf.cpnt",
+      "path": "/conf/cpnt",
+      "vue": "ConceptosNotasPage.vue → CPNTComponent.vue",
+      "entrada": "Configuración → Conceptos de Notas. AppStore.json MODELO CPNT_COL / CRUDCPNT. Alimenta FNOT.IDCONCEPTO."
+    },
+    {
+      "uso": "Carga plano desde Recaudos (alimentador)",
+      "ruta": "admin.recaudos",
+      "path": "/admin/Recaudos",
+      "vue": "FPAGComponent → uploadTxt FNOT_COL / CARGAR_NOTAS",
+      "entrada": "Recaudos puede subir archivo de notas al mismo SPQ (método distinto al lote de Notas DB/CR)."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Antes de aplicar: concepto CPNT vigente (cuenta contable, homologación DIAN DB/CR, TIPORESPUESTA P/T), periodos PRI abiertos (cartera y contable), resolución DIAN y firma digital (Facturación), variables IDCONCEP_ANULAFTRCE (NC anula factura) y FTR_PREVALIDA_ACTIVA (cola prevalidación).",
+      "tablasClave": [
+        "CPNT",
+        "FNT",
+        "PRI",
+        "FRES",
+        "TGEN"
+      ],
+      "gates": [
+        {
+          "id": "catalogo-cpnt",
+          "nombre": "Conceptos de notas (CPNT)",
+          "explicacion": "Cada nota exige IDCONCEPTO ∈ CPNT. El selector en pantalla hace JOIN CPNT. NC con CONCEPTO=true puede generar detalle automático (SPK_GENITEMS_NOTACR). Homologación DIAN en CPNT.HOMOLOGODIANDB / HOMOLOGODIANCR.",
+          "invariante": "IDCONCEPTO debe existir en CPNT. Sin concepto no hay asiento coherente al aplicar.",
+          "sps": [
+            {
+              "nombre": "SPQ_CPNT_COL",
+              "metodo": "CRUDCPNT (3/3 leído)",
+              "rol": "Catálogo conf.cpnt. Alimenta FNOT.IDCONCEPTO y homologación DIAN."
+            },
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_CRUD",
+              "rol": "Persiste IDCONCEPTO en FNOT. Cuerpo en sql/; ficha leído."
+            }
+          ]
+        },
+        {
+          "id": "tipos-fnt",
+          "nombre": "Tipos de nota (FNT)",
+          "explicacion": "conf.fnt → FNTComponent. MODELO FNT_COL · CRUDFNT (INSERTAR/EDITAR/ELIMINAR). Complementa CPNT con tipo/clase de nota, comprobante y homologación DIAN.",
+          "invariante": "Catálogo maestro; pendiente evidencia SQL (SPQ_FNT_COL).",
+          "sps": [
+            {
+              "nombre": "SPQ_FNT_COL",
+              "metodo": "CRUDFNT (3/3 leído)",
+              "rol": "Catálogo conf.fnt. Tipos de nota con comprobante y homologación DIAN."
+            }
+          ]
+        },
+        {
+          "id": "periodo-pri",
+          "nombre": "Periodos cartera y contable (PRI)",
+          "explicacion": "FNOT_APLICAR valida F_NOTA dentro de PRI con CERRADO_CARTERA=0 y CERRADO=0. Si el periodo está cerrado, no aplica.",
+          "invariante": "Periodo de cartera o contable cerrado → KO al aplicar.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_APLICAR",
+              "rol": "Validación PRI antes de SPK_NOTASCXC. Errores documentados en sql/."
+            }
+          ]
+        },
+        {
+          "id": "resolucion-dian",
+          "nombre": "Facturación electrónica (DIAN / SUNAT)",
+          "explicacion": "Tras aplicar (CERRADA=1) se encola a DIAN (FNOT_ENCOLAR) si la factura padre tiene FACTE=2 o prevalidada FACTE=6. Perú usa FNOT_ENVIARSUNAT → SPK_GENERA_JSON_PERU_NOTADBCR. Resolución y certificado: conf.fdian / conf.firmadigital (mismo ecosistema que Facturación).",
+          "invariante": "No encolar nota abierta o anulada. Factura sin FACTE=2 ni 6 bloquea encolado (salvo FTR_PREVALIDA_ACTIVA=SI en nota sin factura).",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_ENCOLAR / FNOT_DESENCOLAR / FNOT_ENVIARSUNAT",
+              "rol": "Cola FE. Cuerpo en sql/; ficha listado."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Operador filtra por clase (C/D), estado, procedencia (NOTAS, AUDITORIA, CONCILIA), DIAN/SUNAT y factura; crea o edita cabecera FNOT; agrega líneas FNOTD (manual FNOT_CRUDFNOTD o auto por concepto SPK_GENITEMS); aplica la nota; puede anular abierta o aplicada; carga masiva Excel/plano.",
+      "tablasClave": [
+        "FNOT",
+        "FNOTD",
+        "RPDX"
+      ],
+      "gates": [
+        {
+          "id": "crear-nota",
+          "nombre": "Crear o editar cabecera",
+          "explicacion": "Nueva: elige factura FTR (saldo VWK_FTRNDCR), tercero, CNSCXC, concepto CPNT, observación. FNOT_CRUD PROCESO=Nueva genera CNSFNOT (@FNOTC/@FNOTD), CERRADA=0, ESTADO=O, PROCEDENCIA=NOTAS. Solo una nota abierta por factura. Editar actualiza cabecera si CERRADA=0.",
+          "invariante": "Factura debe existir en FTR. Nota abierta duplicada en la misma factura → KO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_CRUD",
+              "rol": "INSERT/UPDATE FNOT; ANULAR marca ESTADO=A si CERRADA=0. Llama SPK_GENCONSECUTIVO, SPK_GENITEMS_NOTACR si NC+CONCEPTO.",
+              "llama": [
+                "SPK_GENCONSECUTIVO",
+                "SPK_GENITEMS_NOTACR"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "detalle-nota",
+          "nombre": "Detalle de la nota (FNOTD)",
+          "explicacion": "Líneas por servicio/cuota (selector de ítems de factura) o generadas por concepto porcentual/valor. FNOT_CRUDFNOTD CRUD; FNOT_ADDDETA/FNOT_DELDETA regeneran ítems vía SPK_GENITEMS_NOTACR / SPK_DESITEMS_NOTACR. FE valida saldo y totales antes de guardar.",
+          "invariante": "Sin FNOTD no se puede aplicar. NC al 100% del valor de factura debe anularse desde Facturación, no por nota parcial.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_CRUDFNOTD / FNOT_ADDDETA / FNOT_DELDETA",
+              "rol": "Detalle FNOTD. Llama SPK_GENITEMS_NOTACR, SPK_DESITEMS_NOTACR.",
+              "llama": [
+                "SPK_GENITEMS_NOTACR",
+                "SPK_DESITEMS_NOTACR"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "aplicar-nota",
+          "nombre": "Aplicar nota",
+          "explicacion": "Botón Aplicar: FNOT_APLICAR valida detalle, PRI, saldo VWK_CXCDIASVTO (NC), estado factura FTR; NC llama SPK_RELIQUIDA_FTR; ejecuta SPK_NOTASCXC → CERRADA=1, mueve CxC y contabiliza (CONTABILIZADA/NROCOMPROBANTE en FNOT).",
+          "invariante": "VR_TOTAL>0. Factura ESTADO=P. NC: saldo neto debe cubrir valor nota. NC 100% → KO (usar anulación factura).",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_APLICAR",
+              "rol": "Orquestador apply. Errores KO visibles en sql/.",
+              "llama": [
+                "SPK_RELIQUIDA_FTR",
+                "SPK_NOTASCXC"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "anular-nota",
+          "nombre": "Anular nota",
+          "explicacion": "Dos caminos: (1) Abierta sin aplicar — FNOT_CRUD PROCESO=ANULAR o botón FE «Anular sin aplicar» (no DIAN). (2) Aplicada — FNOT_ANULANOTA llama SPK_ANULANOTA_CR si FACTE=0; revierte contabilidad y marca ESTADO=A.",
+          "invariante": "Nota con FACTE≠0 (ya procesada electrónicamente) no se anula por FNOT_ANULANOTA. Motivo mínimo 10 caracteres en anulación sin aplicar.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_CRUD (ANULAR) / FNOT_ANULANOTA",
+              "rol": "Anulación según estado. Llama SPK_ANULANOTA_CR en aplicadas.",
+              "llama": [
+                "SPK_ANULANOTA_CR"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "carga-masiva-lote",
+          "nombre": "Carga masiva por lote",
+          "explicacion": "Notas DB/CR → Subir Notas (Excel): plantilla NC (6 cols + VALIDACION) o ND (8 cols en FE; motor SP orientado a NC). Flujo: elegir Clase → descargar plantilla → subir Excel → CARGAR_NOTAS_LOTE (lotes 1500, mismo CNSRPDX) → vista previa RPDX (filas erradas CANTIDAD=1) → confirmar → FNOT_CREARMASIVO → log Excel Log_notas_masivo.xlsx. NC+ANULARFACT=SI → SPQ_FTR_COL/ANULARFAC; resto → SPK_APLICA_FNOT_MASIVA (crea+aplica+contabiliza en un paso). Camino alterno: Recaudos uploadTxt → CARGAR_NOTAS (5 cols, sin ANULARFACT).",
+          "invariante": "Carga masiva aplica de una vez (no queda abierta). NC exige FACTE 2/6. ANULARFACT=SI solo si valor=saldo=VR_TOTAL. FNOT_ADDDETA bloqueado en ND («ingrese detalle individualmente»). Limpiar → FNOT_LIMPIARPDX.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "CARGAR_NOTAS_LOTE / FNOT_CREARMASIVO / FNOT_LIMPIARPDX",
+              "rol": "Staging RPDX y proceso masivo.",
+              "llama": [
+                "SPK_GENCONSECUTIVO",
+                "SPK_APLICA_FNOT_MASIVA",
+                "SPQ_FTR_COL"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Las notas se aplican sobre facturas emitidas (FTR) en cuentas por cobrar (FCXC/CNSCXC). PROCEDENCIA puede ser NOTAS (manual), AUDITORIA (glosas), CONCILIA (conciliaciones). Recaudos puede cargar plano CARGAR_NOTAS al mismo SPQ. Selector de ítems lee servicios de la factura.",
+      "tablasClave": [
+        "FTR",
+        "FCXC",
+        "FCXCD",
+        "VWK_FTRNDCR",
+        "VWK_CXCDIASVTO"
+      ],
+      "gates": [
+        {
+          "id": "desde-factura-cxc",
+          "nombre": "Factura y cuenta por cobrar",
+          "explicacion": "Al crear nota se elige N_FACTURA con saldo (VWK_FTRNDCR). FNOT guarda CNSCXC; APLICADAA=F si sin cuenta, C si radicada. Validaciones de saldo usan VWK_CXCDIASVTO.",
+          "invariante": "Factura inexistente o estado distinto de P (sin anulación parcial configurada) bloquea apply.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_CRUD / FNOT_APLICAR",
+              "rol": "Lee FTR y vistas CxC. SPK_RELIQUIDA_FTR en NC."
+            }
+          ]
+        },
+        {
+          "id": "desde-recaudo",
+          "nombre": "Carga desde Recaudos",
+          "explicacion": "FPAGComponent.uploadTxt con MODELO FNOT_COL / CARGAR_NOTAS sube plano al RPDX (distinto flujo UI al lote de Notas DB/CR).",
+          "invariante": "Mismo SPQ, método distinto al lote masivo de la ventana Notas DB/CR.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "CARGAR_NOTAS",
+              "rol": "Entrada alternativa vía Recaudos."
+            }
+          ]
+        },
+        {
+          "id": "procedencia-audit-conci",
+          "nombre": "Procedencia AUDITORIA / CONCILIA",
+          "explicacion": "Filtro PROCEDENCIA en grilla. Notas originadas en Glosas o Conciliaciones aparecen aquí para seguimiento DIAN; el gate de creación vive en esos procesos hermanos.",
+          "invariante": "Este proceso consume FNOT ya creada con PROCEDENCIA≠NOTAS; no inventar el origen.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Encolado DIAN/SUNAT tras aplicar; anulación masiva de factura vía FTR_COL cuando NC es concepto IDCONCEP_ANULAFTRCE o ANULARFACT=SI. Distinto de notas CxP (FCXPDBCR + catálogo FNT en conf.fnt, ventana CXPComponent).",
+      "tablasClave": [
+        "FTR",
+        "FNOT"
+      ],
+      "gates": [
+        {
+          "id": "encolar-dian",
+          "nombre": "Encolar / desencolar DIAN",
+          "explicacion": "Tras CERRADA=1: FNOT_ENCOLAR pone FACTE en cola (1 o 5 prevalidación); FNOT_DESENCOLAR revierte FACTE=0. FE muestra semáforo ESTDIAN. FNOT_ACTUALIZAR_FECHA ajusta F_NOTA en ventana de reenvío.",
+          "invariante": "Solo notas aplicadas y no anuladas. Reenvío mismo mes vs meses anteriores (≤3) con reglas en SPQ.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_ENCOLAR / FNOT_DESENCOLAR / FNOT_ACTUALIZAR_FECHA",
+              "rol": "Cola electrónica. Proceso DIAN batch es hermano de Facturación."
+            }
+          ]
+        },
+        {
+          "id": "anular-factura-masiva",
+          "nombre": "NC que anula factura (masivo / concepto)",
+          "explicacion": "Variable IDCONCEP_ANULAFTRCE: NC con ese concepto y PROCEDENCIA=FACTURA se tipifica ANULAFACT en grilla. En lote masivo ANULARFACT=SI deriva a SPQ_FTR_COL/ANULARFAC en lugar de SPK_APLICA_FNOT_MASIVA.",
+          "invariante": "Anulación total de factura no pasa por apply parcial de NC.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_CREARMASIVO",
+              "rol": "Deriva a FTR_COL.",
+              "llama": [
+                "SPQ_FTR_COL"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "notas-cxp-distinto",
+          "nombre": "Notas CxP (fuera de alcance)",
+          "explicacion": "CxP usa FCXPDBCR, catálogo FNT (conf.fnt) y CXPComponent — no FNOT/FNOTD. No mezclar dictámenes ni pantallas.",
+          "invariante": "REQ de CxP → proceso distinto; esta ventana es solo CxC.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "Al aplicar, SPK_NOTASCXC genera asiento MCP vía SPK_NC_CONTAB_FNOT (FNOT.CONTABILIZADA, NROCOMPROBANTE). Anular aplicada revierte vía SPK_ANULANOTA_CR según PROCEDENCIA. Cuenta del concepto viene de CPNT.CUENTA. Periodo contable validado en FNOT_APLICAR.",
+      "tablasClave": [
+        "FNOT",
+        "MCP",
+        "CPNT"
+      ],
+      "gates": [
+        {
+          "id": "contabilizar-al-aplicar",
+          "nombre": "Contabilización al aplicar",
+          "explicacion": "No hay pestaña masiva separada como en Caja: el apply dispara contabilidad. Grilla muestra CONTABILIZADA y NROCOMPROBANTE cuando CERRADA=1.",
+          "invariante": "Error contable en SPK_NOTASCXC → nota no queda aplicada (transacción en SPK).",
+          "sps": [
+            {
+              "nombre": "SPK_NOTASCXC",
+              "metodo": "(anidado en FNOT_APLICAR)",
+              "rol": "Efecto contable y cartera. Ficha leída en sps.json (sql/SPK_NOTASCXC.sql)."
+            }
+          ]
+        },
+        {
+          "id": "reverso-anulacion",
+          "nombre": "Reverso al anular aplicada",
+          "explicacion": "FNOT_ANULANOTA pasa NROCOMPROBANTE y PROCEDENCIA a SPK_ANULANOTA_CR antes de marcar ESTADO=A.",
+          "invariante": "Nota ya enviada a DIAN (FACTE≠0) no usa este camino.",
+          "sps": [
+            {
+              "nombre": "SPK_ANULANOTA_CR",
+              "metodo": "(anidado en FNOT_ANULANOTA)",
+              "rol": "Reverso MCP. Ficha leída en sps.json (sql/SPK_ANULANOTA_CR.sql)."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-05T23:24:24"
+}

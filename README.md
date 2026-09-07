@@ -14,6 +14,8 @@ Proyecto de **coordinación técnica**. Recibe requerimientos del cliente, los a
 
 Abrir: **`abrir-app.bat`** → menú central (Analista / Consultas / Documentar) en http://localhost:8765/app/
 
+Servicio Windows (arranca con el equipo): **`instalar-servicio.bat`** (administrador). Después `abrir-app.bat` solo abre el navegador. Quitar: `desinstalar-servicio.bat`.
+
 - **Analista de negocio:** cola, casos, dictámenes.
 - **Consultas:** proceso → capa → gate (p. ej. llamada de caja).
 - **Documentar:** lista de pendientes, indicar el `.sql` de hoy, Chat de proceso. No se guarda el cuerpo del SP.

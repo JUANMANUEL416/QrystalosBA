@@ -1,0 +1,2497 @@
+{
+  "procesoId": "contabilidad",
+  "actualizado": "2026-09-06T16:30:00",
+  "nota": "Cola contabilidad cerrada 2026-09-06. SPQ_CONF_CONTABLE 11/11 + SPQ_PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído sql/. Hueco FE: CREA_PAR/ELIMINA_PAR no están en SPQ_CONF_CONTABLE export.",
+  "sps": [
+    {
+      "nombre": "SPQ_MCP_COL",
+      "tipo": "SPQ",
+      "modelo": "MCP_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_MCP_COL.sql",
+      "metodos": [
+        {
+          "id": "CRUDMCP",
+          "hace": "INSERTAR/EDITAR/ANULAR cabecera MCP; INSERTAR usa SPK_GENCONSECUTIVO @MCP; opcional DUPLICAR_DETALLES desde NROCOMPROBANTE_ORIGEN.",
+          "valida": [
+            "PRI existe",
+            "PRI.CERRADO=0",
+            "FECHACONTABLE parseable"
+          ],
+          "noValida": [
+            "No valida MCH.CUENTA al insertar"
+          ],
+          "errores": [
+            "El periodo … no existe en tabla PRI",
+            "No se puede guardar: el periodo … esta CERRADO",
+            "Comprobante origen no encontrado"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "OK + NROCOMPROBANTE (prefijo sede+consecutivo).",
+          "capaId": "02-operacion",
+          "gateId": "crud-comprobante",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDMCH",
+          "hace": "Wrapper: delega línea MCH a SPQ_MCH_COL y recalcula totales del comprobante.",
+          "valida": [
+            "NROCOMPROBANTE"
+          ],
+          "noValida": [],
+          "errores": [
+            "Errores propagados de SPQ_MCH_COL"
+          ],
+          "llama": [
+            "SPQ_MCH_COL",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "MCH actualizado; ESTADOMCP sincronizado en FE.",
+          "capaId": "02-operacion",
+          "gateId": "detalle-mch",
+          "estado": "leido"
+        },
+        {
+          "id": "RECALCULAR_TOTALES",
+          "hace": "SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR; devuelve ESTADO, totales DB/CR, errores línea.",
+          "valida": [
+            "NROCOMPROBANTE existe en MCP"
+          ],
+          "noValida": [],
+          "errores": [
+            "Numero de comprobante requerido",
+            "Comprobante no encontrado"
+          ],
+          "llama": [
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "MCP.ESTADO 0/1/2 según cuadre y líneas válidas.",
+          "capaId": "02-operacion",
+          "gateId": "detalle-mch",
+          "estado": "leido"
+        },
+        {
+          "id": "SUBIR_DETALLE_COMPROBANTE",
+          "hace": "Carga masiva líneas MCH desde Excel/plano al comprobante.",
+          "valida": [
+            "NROCOMPROBANTE",
+            "parseo filas"
+          ],
+          "noValida": [
+            "Validaciones CUE por fila en SP interno"
+          ],
+          "errores": [
+            "Error procesando detalle: …"
+          ],
+          "llama": [
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "Insert/actualiza MCH masivo.",
+          "capaId": "02-operacion",
+          "gateId": "detalle-mch",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMAR_MASIVO",
+          "hace": "Por comprobante: SPK_NC_CONFIRMAR_CONTAB TAREA=CONTABILIZAR; ESTADO→2; log USLOG.",
+          "valida": [
+            "Comprobante existe",
+            "PRI.CERRADO=0",
+            "MCH.CUENTA tipo Detalle en CUE"
+          ],
+          "noValida": [],
+          "errores": [
+            "Comprobante … no existe",
+            "Periodo Cerrado: …",
+            "Existen en el comprobante … Cuentas que no son de Detalle"
+          ],
+          "llama": [
+            "SPK_NC_CONFIRMAR_CONTAB",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "Comprobante contabilizado (ESTADO=2).",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-comprobante",
+          "estado": "leido"
+        },
+        {
+          "id": "DESCONFIRMAR_MASIVO",
+          "hace": "SPK_NC_CONFIRMAR_CONTAB TAREA=DESCONTABILIZAR; revierte ESTADO.",
+          "valida": [
+            "Comprobante existe",
+            "PRI.CERRADO=0"
+          ],
+          "noValida": [],
+          "errores": [
+            "Comprobante … no existe",
+            "Periodo Cerrado: …"
+          ],
+          "llama": [
+            "SPK_NC_CONFIRMAR_CONTAB",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "ESTADO vuelve a editable.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-comprobante",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIAR_A_CAMBIOS",
+          "hace": "Por comprobante válido: SPK_PASA_A_MCPE (MCP→MCPE+MCHE, borra MCP/MCH).",
+          "valida": [
+            "No anulado",
+            "PRI abierto",
+            "PROCEDENCIA≠MANUAL",
+            "ESTADO≠2",
+            "CERRADO_INV/CARTERA según PROCEDENCIA"
+          ],
+          "noValida": [],
+          "errores": [
+            "Comprobante anulado",
+            "Periodo cerrado",
+            "Procedencia MANUAL no permitida",
+            "Comprobante contabilizado",
+            "Inventario/Cartera cerrada"
+          ],
+          "llama": [
+            "SPK_PASA_A_MCPE",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "OK o PARCIAL con lista errores por comprobante.",
+          "capaId": "02-operacion",
+          "gateId": "enviar-mcpe",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_PERIODOS",
+          "hace": "Lista periodos PRI con CERRADO=0.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset ANO, MES, NOMPERIODO, fechas.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_PERIODO",
+          "hace": "Consulta PRI.CERRADO por ANO/MES; TIPO_RESPUESTA=VALIDACION → KO si cerrado.",
+          "valida": [
+            "ANO y MES requeridos",
+            "periodo existe en PRI"
+          ],
+          "noValida": [],
+          "errores": [
+            "Parametros ANO y MES son requeridos",
+            "El periodo … no existe",
+            "El periodo … esta CERRADO"
+          ],
+          "llama": [],
+          "efecto": "OK/KO + flag CERRADO.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "VALORVARIABLES",
+          "hace": "Devuelve variables USVGS usadas en MCP (tipos comprobante, etc.).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura config.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_COMPROBANTE_CONTABLE",
+          "hace": "Genera comprobante asistido individual (plantilla/auxiliar) con líneas agrupadas.",
+          "valida": [
+            "Parámetros FE"
+          ],
+          "noValida": [
+            "Ficha parcial en alcance ruta"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "Nuevo MCP+MCH.",
+          "capaId": "02-operacion",
+          "gateId": "generar-manual",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_COMPROBANTES_MASIVO_V2",
+          "hace": "Generación masiva de comprobantes desde plantilla V2.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Lote MCP.",
+          "capaId": "02-operacion",
+          "gateId": "generar-manual",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_MCPE_COL",
+      "tipo": "SPQ",
+      "modelo": "MCPE_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_MCPE_COL.sql",
+      "metodos": [
+        {
+          "id": "OBTENER_ERRORES_DETALLE",
+          "hace": "Lista MCHE con CUENTA ∉ CUE (cuenta no existe en plan).",
+          "valida": [
+            "NROCOMPROBANTE"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura diagnóstico.",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        },
+        {
+          "id": "RECONSTRUIR",
+          "hace": "Valida MCPE (no MANUAL, no en MCP, no anulado, periodo/módulo abierto) y reconstruye comprobante a MCP.",
+          "valida": [
+            "Existe en MCPE",
+            "No PROCEDENCIA=MANUAL",
+            "No ya en MCP",
+            "No anulado",
+            "PRI/CERRADO_INV/CARTERA según procedencia"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se pueden reconstruir comprobantes MANUALES",
+            "Comprobante … no existe en MCPE",
+            "El comprobante … ya está contabilizado",
+            "Período cerrado",
+            "Inventario/Cartera cerrada"
+          ],
+          "llama": [],
+          "efecto": "MCPE→MCP; elimina duplicados MCHE.",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        },
+        {
+          "id": "REVISAR_MCPE",
+          "hace": "Ejecuta SPK_NC_REVISAMCPE sobre comprobante errado.",
+          "valida": [
+            "NROCOMPROBANTE ∈ MCPE"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se encontro el comprobante en errados"
+          ],
+          "llama": [
+            "SPK_NC_REVISAMCPE"
+          ],
+          "efecto": "Recalcula validaciones MCPE.",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        },
+        {
+          "id": "DIAGNOSTICAR_ERRORES",
+          "hace": "Wrapper SPK_DIAG_MCPE_ERRORES si existe en BD.",
+          "valida": [
+            "SPK_DIAG_MCPE_ERRORES desplegado"
+          ],
+          "noValida": [],
+          "errores": [
+            "No existe el procedimiento SPK_DIAG_MCPE_ERRORES"
+          ],
+          "llama": [
+            "SPK_DIAG_MCPE_ERRORES"
+          ],
+          "efecto": "Diagnóstico masivo errores MCPE.",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_MCH_COL",
+      "tipo": "SPQ",
+      "modelo": "MCH_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_MCH_COL.sql",
+      "metodos": [
+        {
+          "id": "CRUDMCH",
+          "hace": "INSERTAR/EDITAR/ELIMINAR línea MCH; valida CUE, tercero, periodo MCP.",
+          "valida": [
+            "NROCOMPROBANTE",
+            "CUENTA",
+            "PRI abierto",
+            "MCP no contabilizado"
+          ],
+          "noValida": [
+            "Detalle completo de reglas CUE.CLASE en este valle"
+          ],
+          "errores": [
+            "Json: Formato Erroneo",
+            "Errores CUE/TER/PRI según validación"
+          ],
+          "llama": [],
+          "efecto": "MCH persistido; ESTADOMCP devuelto.",
+          "capaId": "02-operacion",
+          "gateId": "detalle-mch",
+          "estado": "leido"
+        },
+        {
+          "id": "BORRAR_TODO",
+          "hace": "Elimina todas las líneas MCH de un NROCOMPROBANTE.",
+          "valida": [
+            "NROCOMPROBANTE"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE MCH del comprobante.",
+          "capaId": "02-operacion",
+          "gateId": "detalle-mch",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTABILIDAD_3",
+      "tipo": "SPQ",
+      "modelo": "CONTABILIDAD_3",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONTABILIDAD_3.sql",
+      "nota": "18/18 METODOs leido 2026-09-06. OM + conciliaciones contables + depreciacion + CONF_EXOGENA. CXC_FCXC_RESET no esta en export de hoy.",
+      "metodos": [
+        {
+          "id": "ENV_CONTA_OTROS_MODULS",
+          "hace": "Marca ITEMS (MARCACONT) y ejecuta SPK_CONTAB_MASIVA por PROCEDENCIA (CAJA, CXC, CXP, FACTURA, GLOSAS, INV, HPRE…).",
+          "valida": [
+            "PRI abierto",
+            "ITEMS no vacío",
+            "no ya contabilizado",
+            "reglas por PROCEDENCIA (caja, factura, cxc…)"
+          ],
+          "noValida": [],
+          "errores": [
+            "El periodo seleccionado se encuentra cerrado",
+            "Debe enviar al menos un item",
+            "hay factura(s) ya contabilizadas",
+            "No hay recibos pendientes",
+            "No hay item marcado en MARCACONT"
+          ],
+          "llama": [
+            "SPK_CONTAB_MASIVA"
+          ],
+          "efecto": "Asientos masivos desde OM /cont/otrosModulos.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_RECIBOS",
+          "hace": "Lista recibos FCJ pendientes contabilizar para OM Caja.",
+          "valida": [
+            "ANO/MES",
+            "CODCAJA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla OMCaja.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE_RECIBO",
+          "hace": "Detalle FCJ+FCJD+PCJ de un recibo para vista OM.",
+          "valida": [
+            "CNSFACJ"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE_OM_CXC",
+          "hace": "Lista recaudos FPAG pendientes contabilizar periodo.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla OMRecaudos.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE_OM_NOTADBCR",
+          "hace": "Lista notas FNOT pendientes contabilizar.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla OMNotas.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE_OM_GLOSAS",
+          "hace": "Lista FGLO pendientes contabilizar + detalle items.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla OMGlosas.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLE_OM_INVENTARIO",
+          "hace": "Lista movimientos IMOV pendientes contabilizar por bodega.",
+          "valida": [
+            "ANO/MES",
+            "IDBODEGA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla OMInventario.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "FORMAS_PAGO",
+          "hace": "Formas de pago PCJ/FPA de un recibo FCJ por noRecibo.",
+          "valida": [
+            "noRecibo"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe especificar No. Recibo",
+            "Recibo no encontrado"
+          ],
+          "llama": [],
+          "efecto": "Recordset formas pago",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_CAJAS",
+          "hace": "Combo cajas activas CAJ para filtro OM Caja.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "CODCAJA/label",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "BODEGAS",
+          "hace": "Lista bodegas DISTINCT en IMOV para filtro OM Inventario.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Error al consultar bodegas"
+          ],
+          "llama": [],
+          "efecto": "id_bodega/descripcion",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "ITEMS_OM_GLOSAS",
+          "hace": "Detalle items FGLOD de una glosa CNSGLO.",
+          "valida": [
+            "CNSGLO"
+          ],
+          "noValida": [],
+          "errores": [
+            "Consecutivo de glosa es requerido"
+          ],
+          "llama": [],
+          "efecto": "Lineas FGLOD",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "UPDATE_FCJ",
+          "hace": "Marca FCJ.CONTABILIZADA=1 tras conciliar caja (CONCCaja).",
+          "valida": [
+            "CNSFACJ",
+            "CODCAJA",
+            "FCJ existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "Recibo de caja inexistente"
+          ],
+          "llama": [],
+          "efecto": "FCJ.CONTABILIZADA=1",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CORREGIR_Y_CONTABILIZAR_FCJ",
+          "hace": "Reset FCJ: CONTABILIZADA=0, NROCOMPROBANTE=NULL antes de reenviar.",
+          "valida": [
+            "CNSFACJ",
+            "CODCAJA"
+          ],
+          "noValida": [],
+          "errores": [
+            "Recibo de caja inexistente"
+          ],
+          "llama": [],
+          "efecto": "FCJ desmarcado para reenvio",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "DEPRECIACION_ACTIVOS_LISTA",
+          "hace": "Grilla IACTD+IACT depreciacion periodo ANO/MES.",
+          "valida": [
+            "ANO",
+            "MES 1-12",
+            "usuario con COMPANIA"
+          ],
+          "noValida": [],
+          "errores": [
+            "Parametros ANO y MES obligatorios"
+          ],
+          "llama": [],
+          "efecto": "Recordset depreciacion",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DEPR_ACFIJP_ENV_CONTA",
+          "hace": "Envio masivo depreciacion periodo: valida IDCON_TCOM_DEPR, IACT/IACTD; SPK_APL_AJDEPRECIACION.",
+          "valida": [
+            "ANO/MES",
+            "IDCON_TCOM_DEPR",
+            "IACT sin inconsistencias",
+            "IACTD pendientes LOCAL"
+          ],
+          "noValida": [],
+          "errores": [
+            "No hay Activos que Depreciar",
+            "variable IDCON_TCOM_DEPR",
+            "inconsistencias meses depreciar"
+          ],
+          "llama": [
+            "SPK_APL_AJDEPRECIACION"
+          ],
+          "efecto": "Depreciacion contabilizada",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "RESET_CONTABILIZADO",
+          "hace": "Desmarca contabilizado para reenviar: PROCEDENCIA CXC (FPAG) o CXP (FCXP).",
+          "valida": [
+            "ANO/MES",
+            "CNS",
+            "PROCEDENCIA",
+            "item CONTABILIZADO=1"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se encuentra este items contabilizado"
+          ],
+          "llama": [],
+          "efecto": "CONTABILIZADO=0 MARCACONT=0",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "DEPR_IACTD_UNICO",
+          "hace": "Depreciacion una linea IACTD: MARCACONT=1 + SPK_APL_AJDEPRECIACION_UNA_IACTD.",
+          "valida": [
+            "ANO/MES",
+            "IDACTIVO",
+            "ITEM"
+          ],
+          "noValida": [],
+          "errores": [
+            "Parametros invalidos",
+            "Debe enviar IDACTIVO e ITEM"
+          ],
+          "llama": [
+            "SPK_APL_AJDEPRECIACION_UNA_IACTD"
+          ],
+          "efecto": "Una linea IACTD contabilizada",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CONF_EXOGENA",
+          "hace": "CRUD EXOFMT y EXOFMTD (formatos/conceptos exogena). TABLA+PROCESO+REGISTRO.",
+          "valida": [
+            "TABLA EXOFMT/EXOFMTD",
+            "PROCESO INSERTAR/EDITAR/ELIMINAR"
+          ],
+          "noValida": [],
+          "errores": [
+            "Parametros invalidos",
+            "Ya existe IDFORMATO",
+            "tiene conceptos asociados"
+          ],
+          "llama": [],
+          "efecto": "EXOFMT/EXOFMTD persistido",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTABILIDAD_2",
+      "tipo": "SPQ",
+      "modelo": "CONTABILIDAD_2",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONTABILIDAD_2.sql",
+      "nota": "Periodos PRI, ER, exogena, libros aux, circular unica, KPRES, analisis vencimiento. 31 METODOs leido 2026-09-06.",
+      "metodos": [
+        {
+          "id": "OBTENER_PERIODO_A_CERRAR",
+          "hace": "Determina ANOMES del periodo candidato a cerrar en PRI; valida SI unico, secuencia y cierre fiscal.",
+          "valida": [
+            "PRI.SI=1 unico",
+            "secuencia periodos",
+            "CIERREFISCAL si mes cierre",
+            "CONTABGENTRASLACOSTO→CIERRE_TRASCOSTOS"
+          ],
+          "noValida": [
+            "No valida MCPE NIIF"
+          ],
+          "errores": [
+            "NO EXISTE Periodo de Saldos Iniciales",
+            "SI abierto con periodos cerrados",
+            "Periodo cierre fiscal sin cuentas 456",
+            "Comprobantes sin confirmar",
+            "No Se Ha Realizado el Traslado de Costos",
+            "No Existe un Periodo Que Cerrar"
+          ],
+          "llama": [],
+          "efecto": "OK + fila PRI del periodo a cerrar",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_PERIODO_BASICO",
+          "hace": "Pre-validacion antes de cerrar: inventario pendiente, SI unico, periodo no cerrado, MCP sin confirmar, MCPE errados.",
+          "valida": [
+            "ANO/MES",
+            "PRI existe",
+            "VALIDAINVCIERRECONT"
+          ],
+          "noValida": [],
+          "errores": [
+            "MOVIMIENTOS DE INVENTARIO PENDIENTES",
+            "MAS DE UN PERIODO DEFINIDO COMO DE SALDOS INICIALES",
+            "EL PERIODO YA ESTA CERRADO",
+            "FALTAN COMPROBANTES POR CONFIRMAR",
+            "COMPROBANTES CON ERRORES (MCPE)"
+          ],
+          "llama": [],
+          "efecto": "OK/KO + ERRORES_DETALLE JSON",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "EJECUTAR_CIERRE_PERIODO",
+          "hace": "Cierra periodo contable sincrono.",
+          "valida": [
+            "ANO/MES/COMPANIA"
+          ],
+          "noValida": [],
+          "errores": [
+            "Error al ejecutar el cierre"
+          ],
+          "llama": [
+            "SPK_CIERRA_PERIODOCONTABLE",
+            "SPK_GENCONSECUTIVO",
+            "USLOG"
+          ],
+          "efecto": "PRI.CERRADO=1; log USLOG",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "INICIAR_CIERRE_PERIODO",
+          "hace": "Encola cierre async via PROCESO_JOB (TIPO=CIERRE_PERIODO).",
+          "valida": [
+            "No job duplicado PENDIENTE/PROCESANDO mismo periodo"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya existe un cierre de periodo en ejecucion"
+          ],
+          "llama": [
+            "SPQ_PROCESO_JOB · INICIAR_JOB"
+          ],
+          "efecto": "Job encolado",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "EJECUTAR_CIERRE_PERIODO_ASYNC",
+          "hace": "Worker async: SPK_CIERRA_PERIODOCONTABLE + log; actualiza PROCESO_JOB.",
+          "valida": [
+            "CNS job requerido"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNS es requerido"
+          ],
+          "llama": [
+            "SPK_CIERRA_PERIODOCONTABLE",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "PROCESO_JOB COMPLETADO/ERROR",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_PERIODO_A_ABRIR",
+          "hace": "Ultimo periodo PRI con CERRADO=1 para reabrir.",
+          "valida": [
+            "Usuario con COMPANIA",
+            "existe SI",
+            "existe periodo cerrado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Usuario sin compania",
+            "NO EXISTE UN PERIODO DE SALDOS INICIALES",
+            "NO EXISTE PERIODO PENDIENTE POR ABRIR"
+          ],
+          "llama": [],
+          "efecto": "OK + ANO/MES/NOMPERIODO",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_INTEGRIDAD_PERIODO",
+          "hace": "FNK_REVISION_ANTES_CIERRE_PERIODO; opcional EXCLUIR_CIERRE_FISCAL; traslado costos.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [
+            "Se encontraron N errores de integridad"
+          ],
+          "llama": [
+            "FNK_REVISION_ANTES_CIERRE_PERIODO"
+          ],
+          "efecto": "OK + EXISTE_TRASLADO/NROCOMTRASCOSTO",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "EJECUTAR_ABRIR_PERIODO",
+          "hace": "Reabre periodo: SPK_ABRE_PERIODOCONTABLE; opcional anular traslado costos (MCP anulado).",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [
+            "Error transaccion"
+          ],
+          "llama": [
+            "SPK_ABRE_PERIODOCONTABLE",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "PRI.CERRADO=0; log USLOG",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAER_DATOS_ER",
+          "hace": "Defaults periodo/cuentas para pantalla Estado Resultados.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + periodo + rango cuentas NTZ + CNSPRO",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "NUEVA_BUSQUEDA_ER",
+          "hace": "Limpia staging TBALANCETERFAC por CNSPRO.",
+          "valida": [
+            "PROCESO/CNSPRO requerido"
+          ],
+          "noValida": [],
+          "errores": [
+            "PROCESO es requerido"
+          ],
+          "llama": [],
+          "efecto": "DELETE TBALANCETERFAC",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "BUSCAR_ESTADO_RESULTADOS",
+          "hace": "Genera ER en TBALANCETERFAC via SPK_BALANCE tipo ER; devuelve lineas y totales 4/5/6.",
+          "valida": [
+            "periodos y cuentas requeridos"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe especificar los periodos",
+            "Debe especificar las cuentas"
+          ],
+          "llama": [
+            "SPK_BALANCE"
+          ],
+          "efecto": "Recordsets detalle + totales",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "TOMAR_FOTO_MES_ER",
+          "hace": "Snapshot TBALANCEH CLASEH=ESTRES para mes.",
+          "valida": [
+            "CNSPRO",
+            "no foto duplicada mes",
+            "datos en TBALANCETERFAC"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNSPRO requerido",
+            "Ya existe una foto para este mes",
+            "No se encontraron datos"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT TBALANCEH",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "TOMAR_FOTO_ANO_ER",
+          "hace": "Snapshot TBALANCEH MES=13 anual ER.",
+          "valida": [
+            "CNSPRO",
+            "no foto duplicada ano"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNSPRO requerido",
+            "Ya existe una foto para este ano"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT TBALANCEH MES=13",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_CIRUNI",
+          "hace": "CRUD tabla CIRUNI (circular unica DIAN).",
+          "valida": [
+            "INSERT/EDIT/DELETE",
+            "unico ANO+MES"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya existe registro ano/mes"
+          ],
+          "llama": [],
+          "efecto": "CIRUNI persistida",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_CIRCULAR",
+          "hace": "Ejecuta SPK_CIRCULARUNICA; opcional GEN_FILE XML.",
+          "valida": [
+            "CNSCIRUNI existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "No existe el registro"
+          ],
+          "llama": [
+            "SPK_CIRCULARUNICA"
+          ],
+          "efecto": "Circular procesada/XML",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_CIRCULAR_XML",
+          "hace": "Devuelve columnas FT001-FT010/GT010 de CIRUNI para export FE.",
+          "valida": [
+            "CNSCIRUNI"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNSCIRUNI requerido",
+            "No existe registro"
+          ],
+          "llama": [],
+          "efecto": "Recordset XML",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_NATURALEZA",
+          "hace": "CRUD NTZ (naturaleza cuentas PYG/NIIF).",
+          "valida": [
+            "N_INICIAL",
+            "TIPO",
+            "unico N_INICIAL"
+          ],
+          "noValida": [],
+          "errores": [
+            "N. Inicial es requerido",
+            "Ya existe registro"
+          ],
+          "llama": [],
+          "efecto": "NTZ persistida",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_PERIODOS_DISPONIBLES",
+          "hace": "Lista periodos con fotos en TBALANCEH.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset ANO/MES etiqueta",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_DATOS_PERIODO",
+          "hace": "Consulta TBALANCEH con filtros cuenta/tercero/clase.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [
+            "ANO y MES requeridos"
+          ],
+          "llama": [],
+          "efecto": "Lineas balance historico",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_FOTO_BALANCE",
+          "hace": "DELETE TBALANCEH por CNSPRO.",
+          "valida": [
+            "CNSPRO"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNSPRO requerido"
+          ],
+          "llama": [],
+          "efecto": "Registros eliminados",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_BPRUEBA",
+          "hace": "Datos empresa + lineas TBALANCEH para PDF balance prueba historico.",
+          "valida": [
+            "ANO/MES",
+            "IDSEDE usuario"
+          ],
+          "noValida": [],
+          "errores": [
+            "ANO y MES requeridos",
+            "No se encontro IDSEDE"
+          ],
+          "llama": [],
+          "efecto": "Multi recordset impresion",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_ESTRES",
+          "hace": "Datos empresa + cuentas + totales 4/5/6 para PDF ER historico.",
+          "valida": [
+            "ANO/MES",
+            "IDSEDE"
+          ],
+          "noValida": [],
+          "errores": [
+            "Parametros requeridos",
+            "IDSEDE"
+          ],
+          "llama": [],
+          "efecto": "Multi recordset impresion",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_GEN_EXOGENA",
+          "hace": "CRUD EXOFGE: INSERT/EDIT/DELETE/CERRAR_EXOGENA.",
+          "valida": [
+            "ANO/MES",
+            "balance TBALANCEH si CNSPRO",
+            "no cerrado para editar"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ano y mes requerido",
+            "Balance no existe",
+            "Registro cerrado",
+            "Tiene EXOFGEN generados"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "EXOFGE persistida",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_EXOGENA",
+          "hace": "Motor informacion exogena.",
+          "valida": [
+            "CNSEXOFGE",
+            "ESTADO=Nuevo"
+          ],
+          "noValida": [],
+          "errores": [
+            "Consecutivo requerido",
+            "Solo estado Nuevo"
+          ],
+          "llama": [
+            "SPK_NC_GENERA_EXOGENA"
+          ],
+          "efecto": "INSERT EXOFGEN",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_DATOS_EXOGENA",
+          "hace": "Exporta EXOFGEN completo sin paginacion.",
+          "valida": [
+            "CNSEXOFGE",
+            "existen EXOFGEN"
+          ],
+          "noValida": [],
+          "errores": [
+            "Consecutivo requerido",
+            "No hay datos generados"
+          ],
+          "llama": [],
+          "efecto": "Recordset export",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "INICIAR_BUSQUEDA_LIBROS_AUXILIARES",
+          "hace": "Crea CNS en RPDX_JOBS estado PENDIENTE.",
+          "valida": [
+            "Usuario/COMPANIA/IDSEDE"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "CNS job libros aux",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "EJECUTAR_BUSQUEDA_ASYNC",
+          "hace": "Async: NC_SPK_GEN_LIBROAUXILIAR llena RPDX2; job COMPLETADO/ERROR.",
+          "valida": [
+            "CNS",
+            "filtros fecha/cuenta/tercero"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNS requerido"
+          ],
+          "llama": [
+            "NC_SPK_GEN_LIBROAUXILIAR"
+          ],
+          "efecto": "RPDX2 + RPDX_JOBS",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR_ESTADO_JOB",
+          "hace": "Wrapper SPQ_PROCESO_JOB CONSULTAR_ESTADO_JOB por CNS.",
+          "valida": [
+            "CNS"
+          ],
+          "noValida": [],
+          "errores": [
+            "CNS requerido"
+          ],
+          "llama": [
+            "SPQ_PROCESO_JOB"
+          ],
+          "efecto": "Estado job",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTES_PDF_ACUMULADOS_LIBROS_AUX",
+          "hace": "Agrega saldos/movimientos RPDX2 para PDF libros auxiliares.",
+          "valida": [
+            "CNS",
+            "TIPO_REPORTE"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Multi recordset RPDX2",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "ANALISIS_VENCIMIENTO",
+          "hace": "Aging cartera via SPK_NC_ANAVTO en RPDX2.",
+          "valida": [
+            "ANO/MES",
+            "TIPO_REPORTE"
+          ],
+          "noValida": [],
+          "errores": [
+            "ANO y MES requeridos",
+            "TIPO DE REPORTE requerido",
+            "NO SE ENCONTRO INFORMACION"
+          ],
+          "llama": [
+            "SPK_NC_ANAVTO",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "RPDX2 aging + totales",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KPRES",
+          "hace": "CRUD cabecera agrupacion cuentas KPRES.",
+          "valida": [
+            "CODPRES unico",
+            "sin KPRESD al eliminar"
+          ],
+          "noValida": [],
+          "errores": [
+            "Codigo requerido",
+            "Ya existe",
+            "Tiene items KPRESD"
+          ],
+          "llama": [],
+          "efecto": "KPRES persistida",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KPRESD",
+          "hace": "CRUD detalle items KPRES (KPRESD).",
+          "valida": [
+            "CODPRES existe",
+            "ITEM unico"
+          ],
+          "noValida": [],
+          "errores": [
+            "Item duplicado",
+            "Tiene rangos KPRESDR"
+          ],
+          "llama": [],
+          "efecto": "KPRESD persistida",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KPRESDR",
+          "hace": "CRUD rangos cuentas KPRESDR por item.",
+          "valida": [
+            "CODPRES/ITEM/TITULO",
+            "TITULO unico"
+          ],
+          "noValida": [],
+          "errores": [
+            "Titulo requerido",
+            "Ya existe rango"
+          ],
+          "llama": [],
+          "efecto": "KPRESDR persistida",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONFIRMAR_CONTAB",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "listado",
+      "fuente": "sql/SPK_NC_CONFIRMAR_CONTAB.sql",
+      "cola": "TAREA CONTABILIZAR/DESCONTABILIZAR: SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR; valida ESTADO=1, PRI, ANULADO.",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_PASA_A_MCPE",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "listado",
+      "fuente": "sql/SPK_PASA_A_MCPE.sql",
+      "cola": "Copia MCP→MCPE, MCH→MCHE; borra MCP/MCH y MCPNIIF si aplica.",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_REVISAR_COMPROBANTE",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "listado",
+      "fuente": "sql/SPK_REVISAR_COMPROBANTE.sql",
+      "cola": "Valida CUE tipo Detalle, TER, VALOR>0; crea TER desde AFI si falta.",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_SUMA_DBCR",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "listado",
+      "fuente": "sql/SPK_SUMA_DBCR.sql",
+      "cola": "Suma DB/CR; MCP.ESTADO 0/1/2 según cuadre y ESTADO líneas.",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_CONTAB_MASIVA",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_MASIVA.sql",
+      "nota": "Motor OM ENV_CONTA_OTROS_MODULS. Cursor MARCACONT=1 por PROCEDENCIA.",
+      "metodos": [
+        {
+          "id": "(SP)",
+          "hace": "Por PROCEDENCIA itera documentos marcados MARCACONT y llama SPK contable correspondiente.",
+          "valida": [
+            "MARCACONT=1",
+            "CONTABILIZADA=0",
+            "filtro ANO/MES"
+          ],
+          "noValida": [
+            "HPRE comentado en script"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_NC_CONTAB_FTR (FACTURA)",
+            "SPK_NC_CONTAB_CAJA_ING/EGR (CAJA COBRO/PAGO)",
+            "SPK_NC_CONTAB_CXP (CXP)",
+            "SPK_NC_CONTAB_CXC (CXC/recaudos)",
+            "SPK_CONTAB_FGLO (RGLO)",
+            "SPK_NC_CONTAB_INV (INV por bodega REFERENCIA2)",
+            "SPK_NC_CONTAB_FNOT + SPK_REVERSAR_MCP rama LIBERAHADM (NOTDBCR)",
+            "SPK_NC_CONTAB_BMOV (BMOV)"
+          ],
+          "efecto": "MCP por documento; marca CONTABILIZADA segun SPK hijo.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTABILIDAD",
+      "tipo": "SPQ",
+      "modelo": "CONTABILIDAD",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONTABILIDAD.sql",
+      "nota": "Cierre fiscal, balance general, castigo, reclasificar, seguimiento cartera. 28 METODOs. Algunos legacy duplican CONTABILIDAD_2/3.",
+      "metodos": [
+        {
+          "id": "CIERRE_FISCAL",
+          "hace": "Multiples ACCION: DETALLE SDCUEFIS, GENERAR_COMPROBANTE, TRASLADAR, etc. Cierre cuentas 4/5/6.",
+          "valida": [
+            "ANO/MES",
+            "COMPROBANTE en GENERAR",
+            "PRI/cierre fiscal"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe Ingresar el Comprobante de Cierre",
+            "Parametros ANO, MES y CUENTA obligatorios"
+          ],
+          "llama": [
+            "SPK_CIERRA_PERIODOCONTABLE u otros segun ACCION"
+          ],
+          "efecto": "MCP/SDCUEFIS segun accion",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_CIERRE_FISCAL",
+          "hace": "Valida precondiciones cierre fiscal periodo.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK/KO validacion",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR_COMPROBANTES_CIERRE",
+          "hace": "Lista tipos comprobante COM para cierre.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset COM",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR_ULTIMO_PERIODO_CIERRE_FISCAL",
+          "hace": "Ultimo periodo con cierre fiscal.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "ANO/MES",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "BALANCE_GENERAL",
+          "hace": "Consulta SALDOMES por ANO/MES; SF_DB/SF_CR por cuenta CUE.",
+          "valida": [
+            "ANO/MES 1-12"
+          ],
+          "noValida": [],
+          "errores": [
+            "Parametros obligatorios"
+          ],
+          "llama": [],
+          "efecto": "Recordset cuentas",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "BALANCE_GENERAL_ULTIMO_PERIODO",
+          "hace": "TOP 1 SALDOMES con saldo.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "ANO/MES default hoy",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "BALANCE_GENERAL_PERIODOS_DISPONIBLES",
+          "hace": "DISTINCT periodos en SALDOMES.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Lista periodos",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CASTIGO_CARTERA_LISTA",
+          "hace": "Lista facturas/cartera candidatas a castigo (staging RPDX).",
+          "valida": [
+            "filtros periodo/tercero"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla castigo",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CASTIGO_CARTERA_MARCAR",
+          "hace": "Marca/desmarca linea castigo.",
+          "valida": [
+            "CNS/referencia"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "MARCACONT castigo",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CASTIGO_CARTERA_MARCAR_TODOS",
+          "hace": "Marca lote castigo.",
+          "valida": [
+            "periodo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "MARCACONT masivo",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "CASTIGO_CARTERA_PROCESAR",
+          "hace": "Procesa castigo: NC/asientos segun reglas castigo.",
+          "valida": [
+            "items marcados",
+            "PRI"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_NOTASCXC u otros"
+          ],
+          "efecto": "FNOT/MCP castigo",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "RECLASIFICAR_TERCEROS_LISTA",
+          "hace": "Lista MCH con tercero a reclasificar.",
+          "valida": [
+            "periodo cerrado usual"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla reclasif",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "RECLASIFICAR_TERCEROS_PROCESAR",
+          "hace": "Actualiza IDTERCERO en MCH/MCP segun mapeo.",
+          "valida": [
+            "lista procesar"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "MCH actualizado",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "RECLASIFICAR_CUENTAS_LISTA",
+          "hace": "Lista lineas cuenta origen.",
+          "valida": [
+            "periodo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "RECLASIFICAR_CUENTAS_PROCESAR",
+          "hace": "Traslado saldos entre cuentas CUE.",
+          "valida": [
+            "mapeo cuentas"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "MCH reclasificado",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "SEGUIMIENTO_CARTERA",
+          "hace": "Reporte seguimiento cartera contable vs operativo.",
+          "valida": [
+            "ANO/MES/filtros"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset cartera",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_PERIODO_CERRADO",
+          "hace": "Consulta PRI.CERRADO para validar UI reclasificar.",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Flag CERRADO",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_VARIABLE",
+          "hace": "Lee USVGS/variables config contable.",
+          "valida": [
+            "nombre variable"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Valor variable",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_PERIODO_A_CERRAR",
+          "hace": "Legacy periodo cerrar (duplicado parcial CONTABILIDAD_2).",
+          "valida": [
+            "PRI/SI"
+          ],
+          "noValida": [],
+          "errores": [
+            "Inconsistencia cierres"
+          ],
+          "llama": [],
+          "efecto": "Periodo candidato",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_PERIODO_A_ABRIR",
+          "hace": "Legacy abrir periodo.",
+          "valida": [
+            "PRI cerrado"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_ABRE_PERIODOCONTABLE"
+          ],
+          "efecto": "Periodo a abrir",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_INTEGRIDAD_PERIODO",
+          "hace": "FNK_REVISION_ANTES_CIERRE_PERIODO (legacy en este SP).",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [
+            "Errores integridad"
+          ],
+          "llama": [
+            "FNK_REVISION_ANTES_CIERRE_PERIODO"
+          ],
+          "efecto": "OK/KO",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "EJECUTAR_ABRIR_PERIODO",
+          "hace": "Abre periodo PRI (legacy).",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_ABRE_PERIODOCONTABLE"
+          ],
+          "efecto": "PRI.CERRADO=0",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_PERIODO",
+          "hace": "Cierra periodo (legacy; preferir CONTABILIDAD_2).",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_CIERRA_PERIODOCONTABLE"
+          ],
+          "efecto": "PRI cerrado",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CREA_PAR",
+          "hace": "Insert parametro contable PAR (legacy; FE usa CONF_CONTABLE).",
+          "valida": [
+            "codigo PAR"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "PAR insert",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITA_PAR",
+          "hace": "Edita PAR.",
+          "valida": [
+            "codigo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "PAR update",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINA_PAR",
+          "hace": "Elimina PAR.",
+          "valida": [
+            "codigo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "PAR delete",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "DEPRECIACION_ACTIVOS_LISTA",
+          "hace": "Lista depreciacion AF (legacy duplicado CONTABILIDAD_3).",
+          "valida": [
+            "ANO/MES"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla IACTD",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        },
+        {
+          "id": "DEPRECIACION_ACTIVOS_ENVIAR_CONTABILIDAD",
+          "hace": "Envio depreciacion (legacy).",
+          "valida": [
+            "items"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_APL_AJDEPRECIACION"
+          ],
+          "efecto": "MCP depreciacion",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-modulos-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_MCHE_COL",
+      "tipo": "SPQ",
+      "modelo": "MCHE_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_MCHE_COL.sql",
+      "nota": "Lineas erradas MCPE. 3 METODOs. SED en FE usa MODELO SELKRY, no este SP.",
+      "metodos": [
+        {
+          "id": "CRUDMCHE",
+          "hace": "INSERTAR/EDITAR/ELIMINAR linea MCHE en comprobante errado.",
+          "valida": [
+            "NROCOMPROBANTE en MCPE",
+            "PRI",
+            "CUE",
+            "TER"
+          ],
+          "noValida": [
+            "Reglas CLASE CUE parcial"
+          ],
+          "errores": [
+            "Json: Formato Erroneo",
+            "Errores CUE/TER"
+          ],
+          "llama": [],
+          "efecto": "MCHE persistido",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_DESMARCAR_MCHE",
+          "hace": "Toggle marca linea MCHE para procesamiento lote.",
+          "valida": [
+            "NROCOMPROBANTE",
+            "ITEM"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "MCHE.MARCADO",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_MARCADOS",
+          "hace": "Procesa lineas MCHE marcadas (valida/recalcula).",
+          "valida": [
+            "NROCOMPROBANTE"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_NC_REVISAMCPE posible"
+          ],
+          "efecto": "MCPE revisado",
+          "capaId": "02-operacion",
+          "gateId": "mcpe-reconstruir",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_BALANCE_COL",
+      "tipo": "SPQ",
+      "modelo": "BALANCE_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_BALANCE_COL.sql",
+      "nota": "Balance prueba y auxiliar /cont/bac. 11 METODOs.",
+      "metodos": [
+        {
+          "id": "GENERAR_BALANCE",
+          "hace": "SPK_BALANCE tipo BP: llena TBALANCETERFAC/RPDX.",
+          "valida": [
+            "ANO/MES/cuentas"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_BALANCE"
+          ],
+          "efecto": "Staging balance",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_BALANCE",
+          "hace": "Lee balance generado por CNSPRO/proceso.",
+          "valida": [
+            "CNSPRO"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset balance",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_AUXILIAR",
+          "hace": "Detalle auxiliar movimientos por filtros.",
+          "valida": [
+            "fechas/cuenta/tercero"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Lineas auxiliar",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_AUXILIAR_TOTALES",
+          "hace": "Totales auxiliar.",
+          "valida": [
+            "CNS/filtros"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Totales DB/CR",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_RESUMEN",
+          "hace": "Resumen balance/auxiliar.",
+          "valida": [
+            "parametros"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resumen",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "TOMAR_FOTO_MES",
+          "hace": "Snapshot TBALANCEH mes (balance prueba).",
+          "valida": [
+            "CNSPRO",
+            "no duplicado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya existe foto"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "TBALANCEH",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "TOMAR_FOTO_ANO",
+          "hace": "Snapshot anual MES=13.",
+          "valida": [
+            "CNSPRO"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya existe foto ano"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "TBALANCEH",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_ACUMULADO_BP",
+          "hace": "Reporte acumulado balance prueba.",
+          "valida": [
+            "periodo/cuentas"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset reporte",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_ACUMULADO_BP_TERCERO",
+          "hace": "Acumulado BP por tercero.",
+          "valida": [
+            "periodo/cuentas"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "DATOS_EXPORT",
+          "hace": "Export datos balance para Excel.",
+          "valida": [
+            "CNSPRO"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Dataset export",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR",
+          "hace": "Limpia staging TBALANCETERFAC/RPDX proceso.",
+          "valida": [
+            "CNSPRO/PROCESO"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE staging",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_BANCOS_AUXILIAR",
+      "tipo": "SPQ",
+      "modelo": "BANCOS_AUXILIAR",
+      "estado": "leido",
+      "fuente": "sql/SPQ_BANCOS_AUXILIAR.sql",
+      "nota": "Auxiliar bancos contable /cont/auxBancos. 5 METODOs.",
+      "metodos": [
+        {
+          "id": "OBTENER_MOVIMIENTOS",
+          "hace": "Lista MCP/MCH vs BMOV para conciliar auxiliar bancos.",
+          "valida": [
+            "BANCO/SUCURSAL/CTA",
+            "periodo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla conciliacion",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_DESMARCAR_IND",
+          "hace": "Marca par MCP-BMOV.",
+          "valida": [
+            "referencias"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Marca linea",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_DESMARCAR_TODO",
+          "hace": "Marca/desmarca todo el grid.",
+          "valida": [
+            "filtros"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Marca masiva",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "SALVAR_CONCILIACION",
+          "hace": "Persiste conciliacion auxiliar bancos.",
+          "valida": [
+            "pares marcados"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Conciliacion guardada",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR",
+          "hace": "Limpia staging conciliacion bancos.",
+          "valida": [
+            "session/CNS"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Reset grid",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_SEGUI_DOCUMENTO",
+      "tipo": "SPQ",
+      "modelo": "SEGUI_DOCUMENTO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_SEGUI_DOCUMENTO.sql",
+      "nota": "Trazabilidad documentos /cont/trazaDoc. 2 METODOs.",
+      "metodos": [
+        {
+          "id": "CONSULTAR_TRAZA_DOC_RPT",
+          "hace": "Trazabilidad documento contable vs operativo (reporte).",
+          "valida": [
+            "filtros doc/periodo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset traza",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_DETALLE_CUENTAS",
+          "hace": "Detalle cuentas del documento trazado.",
+          "valida": [
+            "NROCOMPROBANTE/doc"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Lineas MCH/detalle",
+          "capaId": "04-unido",
+          "gateId": "conci-contable-modulo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONF_CONTABLE",
+      "tipo": "SPQ",
+      "modelo": "CONF_CONTABLE",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONF_CONTABLE.sql",
+      "nota": "11 METODOs en export. Hub conf/Conta (sedes, áreas, CC, distribución). PAR solo EDITA_PAR. CRUDCUE/CRUDKMCOM en otros SPQ.",
+      "metodos": [
+        {
+          "id": "CRUD_SEDES",
+          "hace": "PROCESO Nueva/Editar tabla SED (datos sede, logos, FHIR, bodegas).",
+          "valida": ["IDSEDE único en alta", "SED existe en edición"],
+          "noValida": ["NIT duplicado entre sedes"],
+          "errores": ["posible error de Duplicidad, el Id.Sede ya existe", "Sede No encontrada. Verifique e intente de nuevo"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE SED",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-sedes",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_SEDUNG",
+          "hace": "PROCESO Nuevo/Editar SEDUNG (IDSEDE+CODUNG+CCOSTO, ESTADO).",
+          "valida": ["Clave compuesta única en alta", "Registro existe en edición"],
+          "noValida": [],
+          "errores": ["ya Existe un Registro con estos datos", "Datos no encontrados, no se puede Actualizar"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE SEDUNG",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-sedes",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_AFU",
+          "hace": "PROCESO Nueva/Editar área funcional AFU (CONTABLE, PRESTACION, AMBITO, CE).",
+          "valida": ["IDAREA único en alta", "AFU existe en edición"],
+          "noValida": [],
+          "errores": ["Ya existe un Area Funcional con este Codigo", "Area Funcional, no Encontrada"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE AFU",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-areas",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_CCOSTO",
+          "hace": "PROCESO Nuevo/Editar centro de costo CEN; exige IDAREA en AFU.",
+          "valida": ["IDAREA obligatorio y en AFU", "CCOSTO único en alta", "Homólogo activo si Inactivo"],
+          "noValida": [],
+          "errores": ["Debe seleccionar un Área Funcional", "El Área Funcional no existe", "Ya Existe un Centro de Costo con este Codigo", "El centro de costo Homologo no existe o no esta activo"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE CEN",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-ccosto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_HARE",
+          "hace": "PROCESO Nuevo/Editar grupo de área HARE.",
+          "valida": ["IDAREA único en alta"],
+          "noValida": [],
+          "errores": ["Grupo de Area ya Existe", "No se encontro grupo de Area"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE HARE",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-areas",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KUNG",
+          "hace": "PROCESO Nuevo/Editar unidad de negocio KUNG (CODUNG, LOGO).",
+          "valida": ["CODUNG único en alta"],
+          "noValida": [],
+          "errores": ["Unidad de Negocio ya Existe", "Unidad de Negocio no Encontrada"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE KUNG",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-ung",
+          "estado": "leido"
+        },
+        {
+          "id": "FDIS_TRAESUMA",
+          "hace": "Suma VALOR de FDISD por CODDISTRIBUCION.",
+          "valida": ["CODDISTRIBUCION"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + VALOR total",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-fdis",
+          "estado": "leido"
+        },
+        {
+          "id": "FDIS_CRUD",
+          "hace": "PROCESO Nuevo/Editar/Borrar cabecera FDIS (CLASE fija FCXP).",
+          "valida": ["CODDISTRIBUCION único", "Sin FDISD al borrar"],
+          "noValida": [],
+          "errores": ["Ya Existe una Distribución de Costo", "Existen Distribuciones detalles asociados"],
+          "llama": [],
+          "efecto": "CRUD FDIS + retorna CODDISTRIBUCION",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-fdis",
+          "estado": "leido"
+        },
+        {
+          "id": "FDISD_CRUD",
+          "hace": "PROCESO Nuevo/Editar/Borrar detalle FDISD (CCOSTO+IDAREA+CUENTA+VALOR).",
+          "valida": ["FDIS existe", "CEN con CCOSTO+IDAREA", "CUE TIPO Detalle"],
+          "noValida": [],
+          "errores": ["El código de Distribución no existe", "Centro de Costo no existe en el Maestro", "Cuenta contable no valida"],
+          "llama": [],
+          "efecto": "CRUD FDISD + OK VALOR suma",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-fdis",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNA_COM",
+          "hace": "Asigna comprobante COM a variable USVGS (IDVARIABLE → DATO=COMPROBANTE).",
+          "valida": ["IDVARIABLE en USVGS", "COMPROBANTE en COM"],
+          "noValida": [],
+          "errores": ["No se Encontro la Variable en la tabla Maestra", "No se encontro el Comprobante en la tabla Maestra"],
+          "llama": [],
+          "efecto": "UPDATE USVGS.DATO",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-com",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITA_PAR",
+          "hace": "Update PAR WHERE COMPANIA='01': CTA_CAJ_REC_NOLEG, MESDECIERRE, CIERRECOSTOS, CIERREIMP, MCUEORDEN_GLOSAS.",
+          "valida": ["CTA_CAJ_REC_NOLEG existe en CUE TIPO Detalle"],
+          "noValida": ["No usa COMPANIA del JSON (fijo '01')", "No persiste MCUEORDEN_CXC/CXP/INGRESOS/EGRESOS del FE ParamsContables"],
+          "errores": ["La cuenta Ingresada no es detella, no se puede continuar"],
+          "llama": [],
+          "efecto": "UPDATE PAR",
+          "capaId": "01-configuracion",
+          "gateId": "parametros-par",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PARN",
+      "tipo": "SPQ",
+      "modelo": "PARN",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PARN.sql",
+      "nota": "2 METODOs. Tablas PARN (cabecera) + PARNI (intervalos NIIF).",
+      "metodos": [
+        {
+          "id": "CRUD_PARN",
+          "hace": "PROCESO INSERTAR_PARN | EDITAR_PARN | ELIMINAR_PARN sobre PARN (PARAMETRO, FECHA, DATO).",
+          "valida": ["PARAMETRO único en INSERT", "PARAMETRO existe en EDIT/DELETE", "Sin PARNI hijos al ELIMINAR"],
+          "noValida": [],
+          "errores": ["El parámetro … ya existe", "No se encontró el registro para actualizar", "No se puede eliminar el parámetro porque tiene intervalos asociados", "Proceso no reconocido en CRUD_PARN"],
+          "llama": [],
+          "efecto": "CRUD PARN; INSERT retorna PARN_ID",
+          "capaId": "01-configuracion",
+          "gateId": "parametros-niif-parn",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_PARNI",
+          "hace": "PROCESO INSERTAR_PARNI | EDITAR_PARNI | ELIMINAR_PARNI sobre PARNI (INICIAL, FINAL, FECHA, DATO).",
+          "valida": ["PARAMETRO padre en PARN", "INICIAL ≤ FINAL", "DATO único por PARAMETRO (excluye registro actual en EDIT)", "PARNI_ID en EDIT/DELETE"],
+          "noValida": [],
+          "errores": ["El parámetro … no existe", "El valor inicial no puede ser mayor que el valor final", "Ya existe un intervalo con el mismo valor de DATO", "No se especificó el ID del intervalo"],
+          "llama": [],
+          "efecto": "CRUD PARNI; INSERT retorna PARNI_ID",
+          "capaId": "01-configuracion",
+          "gateId": "parametros-niif-parn",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CUE_COL",
+      "tipo": "SPQ",
+      "modelo": "CUE_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CUE_COL.sql",
+      "nota": "Plan de cuentas. conf.CueConta CueContaComponent. Sin rama ELIMINAR.",
+      "metodos": [
+        {
+          "id": "CRUDCUE",
+          "hace": "PROCESO INSERTAR/EDITAR cuenta CUE (~40 campos contables, tesorería, NIIF, exógena).",
+          "valida": ["CUENTA única en INSERT"],
+          "noValida": ["ELIMINAR no existe", "CUENTA_SUMA coherente al insertar", "Referencias CUE padre/homóloga"],
+          "errores": ["LA CUENTA YA EXISTE", "ERROR_MESSAGE() del CATCH"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE CUE; INSERT devuelve @IDENTITY como CNS. RUBRO se fuerza = CUENTA en INSERT/EDIT.",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDARCUENTAS",
+          "hace": "Auditoría estructural del plan: CUENTA_SUMA jerárquica, padres tipo Suma, longitud par, NIVEL vs dígitos.",
+          "valida": ["LEFT(CUENTA,LEN-2)=CUENTA_SUMA", "CUENTA_SUMA ∈ CUE TIPO Suma", "LEN(CUENTA) par", "NIVEL vs longitud"],
+          "noValida": ["Cuentas huérfanas sin uso", "Estado Activo/Inactivo"],
+          "errores": ["Cuenta de suma inválida…", "debe estar asociada a cuenta tipo Suma", "longitud debe ser par", "nivel No es Valido"],
+          "llama": [],
+          "efecto": "OK ERROR=0/1 + recordset @CUEERROR si hay fallos.",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPOCUENTAS",
+          "hace": "Exporta plan completo CUE con joins a padre, homóloga, espejo, costos, banco, caja.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + recordset ordenado por CUENTA (Excel FE).",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-detalle",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_KMCOM_COL",
+      "tipo": "SPQ",
+      "modelo": "KMCOM_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_KMCOM_COL.sql",
+      "nota": "Plantillas contables por módulo/tipo. conf.Kmcom KmcomComponent. Tablas KMCOM + KMCOMS.",
+      "metodos": [
+        {
+          "id": "TRAER_KTCO",
+          "hace": "Lista tipos contables KTCO; excluye NIIF_DEPRECIACION/NIIF_INGRESO/PRESTACIONES si IDPROCESOCONTABLE≠MIXTO.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + IDTIPOCONT, DESCRIPCION.",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-kmcom",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAE_CUENTAS",
+          "hace": "Devuelve CUENTADB/CUENTACR ya configuradas para IDTIPOCONT+PREFIJO+CCOSTO; extra VENTAS: IPS/PGP/CAPITA.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + cuentas DB/CR (+ campos VENTAS si aplica).",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-kmcom",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KMCOM",
+          "hace": "PROCESO Nuevo/Editar/Borrar filas KMCOM (DB y CR) por módulo, CC, prefijo/concepto según IDTIPOCONT.",
+          "valida": ["CEN CCOSTO+IDAREA", "CUE Detalle DB/CR (excepciones VENTAS/NOMINA/CXP_*)", "PREFIJO según tipo: PRE, CPCJ, ITAR, FCTSER, IACTT, SER, ITMO, NCON…"],
+          "noValida": ["Duplicados exactos en Nuevo (insert condicional)", "Borrar referencias en MCP"],
+          "errores": ["Centro de Costo no Valido", "Cuenta contable Debito/Credito No Valida", "Prefijo/Concepto/Tipo no Valido", "ERROR_MESSAGE()"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE KMCOM por TIPO DB/CR; VENTAS actualiza IPS/PGP/CAPITA en CR.",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-kmcom",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KMCOMS",
+          "hace": "PROCESO Nuevo/Editar/Borrar excepciones por servicio (KMCOMS) para VENTAS u otros con IDSERVICIO.",
+          "valida": ["CUE Detalle (salvo Borrar)", "SER activo si VENTAS", "Par DB+CR único por IDSERVICIO"],
+          "noValida": [],
+          "errores": ["La cuenta contable no es valida", "El Servicio no existe o esta Inactivo", "Ya existe un registro con esta Exepción"],
+          "llama": [],
+          "efecto": "CRUD KMCOMS pares DB/CR por IDSERVICIO.",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-kmcom",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_CODNOMI",
+          "hace": "Si concepto NCON es Egreso sin VALOR_EMPRESA, sugiere cuenta CR de nómina (IDCONPSALARIO); si no, TIPO Ingreso.",
+          "valida": ["CODCONCEPTO en NCON/NCOND"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + TIPO Egreso/Ingreso (+ CUENTA si Egreso).",
+          "capaId": "01-configuracion",
+          "gateId": "conf-conta-kmcom",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PRI",
+      "tipo": "SPQ",
+      "modelo": "PRI",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PRI.sql",
+      "nota": "Periodos contables. conf.PRI PRIComponent + cierre/apertura submódulos.",
+      "metodos": [
+        {
+          "id": "CRUDPRI",
+          "hace": "PROCESO INSERTAR/EDITAR periodo PRI (COMPANIA fija 01): fechas, flags SI/SINIIF, CERRADO_* iniciales.",
+          "valida": ["ANO+MES único en INSERT", "Solo un periodo SI=1", "Solo un periodo SINIIF=1"],
+          "noValida": ["CERRADO contable general en INSERT (inicia 0)", "Solapamiento fechas"],
+          "errores": ["Periodo insertado ya existe", "Ya existe un periodo de saldos iniciales", "ERROR_MESSAGE()"],
+          "llama": [],
+          "efecto": "INSERT/UPDATE PRI por ANOMES.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_FACTURA",
+          "hace": "Cierra subperiodo FACTURA o CARTERA vía SPK_CIERRA_CARTERA según PROCEDENCIA.",
+          "valida": ["PRI.CERRADO=0", "CERRADO_FAC/CARTERA=0 según PROCEDENCIA", "Sin MCPE errados CXC/FACTURA/NOTDBCR…"],
+          "noValida": [],
+          "errores": ["Periodo Cerrado…", "No se Encontro el Periodo…", "Existen comprobantes con Error…", "ERROR_MESSAGE()"],
+          "llama": ["SPK_CIERRA_CARTERA"],
+          "efecto": "Cierre cartera/factura del mes.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "ABRIR_FACTURA",
+          "hace": "Reabre subperiodo FACTURA, CARTERA o CXP (UPDATE flags; CARTERA borra FCARTH y bloquea si ≥25 días post cierre).",
+          "valida": ["Subperiodo estaba cerrado", "PROCEDENCIA FACTURA/CARTERA/CXP", "CARTERA: máx 25 días desde fin de mes"],
+          "noValida": [],
+          "errores": ["El periodo no está cerrado", "No se encontró el periodo…", "ya no es posible la apertura de la cartera", "Procedencia no válida"],
+          "llama": [],
+          "efecto": "UPDATE PRI CERRADO_FAC/CARTERA/CXP=0; DELETE FCARTH si CARTERA.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-abierto",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

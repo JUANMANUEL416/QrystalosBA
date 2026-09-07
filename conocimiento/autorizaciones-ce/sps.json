@@ -1,0 +1,531 @@
+{
+  "actualizado": "2026-09-06T17:25:00",
+  "procesoId": "autorizaciones-ce",
+  "spkPendientes": [
+    "SPK_COPAGO_AUT_CEHOSP_RELIQ",
+    "SPK_PAGOSCAJA_AUT_CEHOSP"
+  ],
+  "sps": [
+    {
+      "nombre": "SPQ_AUT_COL",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "sql/SPQ_AUT_COL.sql",
+      "metodos": [
+        {
+          "id": "CRUDAUT",
+          "estado": "leido",
+          "hace": "INSERT/EDITAR AUT + AUTD desde JSON (PROCESO Insertar/Editar). Genera IDAUT/NOAUT (SPQ_GENSEQUENCE), inserta detalle, liquida copago por línea (SPK_COPAGO_AUT_CEHOSP), totales, opcional caja (SPK_PAGOSCAJA_AUT*), interfaces LX/RX, enlace SOAT HACTRAND.",
+          "valida": [
+            "AFI activo",
+            "AFIPE activo si programa",
+            "PNUMAUTORIZA_OBL / NUMAUTORIZA",
+            "SOLOUN_CODAUTORIZA único",
+            "No editar si FACTURADA/Procesado/ENLAB",
+            "AUTORIZADOPOR ≤12 chars"
+          ],
+          "errores": [
+            "El afiliado se encuentra inactivo...",
+            "El numero de Autorizacion es Obligatorio",
+            "Ya existe un servicio ambulatorio con este mismo número de Autorización...",
+            "El registro ya se encuentra Facturado.",
+            "Segun el Plan la Autorizacion es obligatoria."
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE",
+            "SPK_COPAGO_AUT_CEHOSP",
+            "SPK_PAGOSCAJA_AUT",
+            "SPK_PAGOSCAJA_AUT_CEHOSP",
+            "SPKI_LX_ENVIO_DATOS",
+            "SPKI_RX_ENVIO_DATOS",
+            "SPK_RELIQ_HACTRAN"
+          ],
+          "efecto": "INSERT/UPDATE AUT, AUTD; UPDATE HACTRAND si SOAT; GENEROCAJA según copago",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "FACTURA_AUT",
+          "estado": "leido",
+          "hace": "Factura individual AUT desde Autorizador. Valida plan/contrato/periodo/copago/KMCOM; delega a SPK_FACTURACE_N (Col) o SPK_FACTURACE_PERU_COPA.",
+          "valida": [
+            "AUT existe con AUTD",
+            "No FACTURADA",
+            "ESTADO≠Anulada",
+            "PPT.PFACTURARIND/TIPOTERCONTABLE",
+            "PRI abierto",
+            "PLN/TER/PPT activos",
+            "Copago recaudado FCJ si VALRECA_COPA_FACTU",
+            "KMCOM si ASI_VAL_CCAF_CARGOS"
+          ],
+          "errores": [
+            "No existe la Autorizacion",
+            "Autorización ya Facturada...",
+            "Esta autorización pertenece a un plan que se factura masivamente ó Inconsistencia Contable...",
+            "El valor del copago no ha sido recuadado en caja...",
+            "El periodo contable no existe o se encuentra cerrado"
+          ],
+          "llama": [
+            "SPK_FACTURACE_N",
+            "SPK_FACTURACE_PERU_COPA",
+            "SPK_PAGOSCAJA_AUT"
+          ],
+          "efecto": "FTR vía SPK; UPDATE AUT FACTURADA/N_FACTURA; OK + N_FACTURA",
+          "gateId": "aut-facturacion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "ANULAR_AUT",
+          "estado": "leido",
+          "hace": "Anula AUT: valida lab/farmacia/caja/facturado; PROCESO=VALIDA solo pre-check. Borra LORD/LING, UPDATE ESTADO=Anulada, revierte HCATD.APLICADA, SOAT→SPK_MOV_ACTRAN.",
+          "valida": [
+            "No facturada",
+            "No resultados lab",
+            "No entrega farmacia IMOV/IZSOL",
+            "No recibo caja cerrado (salvo VALIDA)"
+          ],
+          "errores": [
+            "Orden ya está anulada",
+            "No se puede Anular una autorización con servicios facturados",
+            "Orden no puede ser anulada por que ya fue entregada en farmacia",
+            "Orden no puede ser anulada por que ya fue traida en caja"
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE",
+            "SPK_MOV_ACTRAN",
+            "SPK_RELIQ_HACTRAN"
+          ],
+          "efecto": "UPDATE AUT Anulada; DELETE LORD/LING; UPDATE HCATD.APLICADA=0",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "RELIQUIDAR",
+          "estado": "leido",
+          "hace": "Recalcula copagos/valores AUT vía SPK_COPAGO_AUT_CEHOSP_RELIQ.",
+          "valida": [
+            "AUT no facturada"
+          ],
+          "errores": [
+            "El registro se encuentra Facturado"
+          ],
+          "llama": [
+            "SPK_COPAGO_AUT_CEHOSP_RELIQ"
+          ],
+          "efecto": "UPDATE valores AUT/AUTD",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "RECAUDAR_COPAGO",
+          "estado": "leido",
+          "hace": "Arma/abre recibo caja copago (TFCJ/FCJ) desde AUT.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion",
+          "llama": [
+            "SPK_TRAERECIB_CAJA"
+          ]
+        },
+        {
+          "id": "CONFIRMAR_RECIBO",
+          "estado": "leido",
+          "hace": "Cierra recibo caja AUT: SPK_CIERRERECIBO_CAJA + saldo banco + SPK_NC_CONTAB_CAJA_ING.",
+          "llama": [
+            "SPK_CIERRERECIBO_CAJA",
+            "SPK_ACTUALIZA_SALDO_BANCO",
+            "SPK_NC_CONTAB_CAJA_ING"
+          ],
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "VALIDA_CUOTA",
+          "estado": "leido",
+          "hace": "Consulta QXDING y saldo cuota moderadora vs FTR.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "ABONAR_CUOTA",
+          "estado": "leido",
+          "hace": "Abono cuota; SPK_PAGOSCAJA_AUT_RELACIONADOS o SPK_ABONOFACTURA_AUT_CAJAPART.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "CAMBIA_VALOR",
+          "estado": "leido",
+          "hace": "Cambia valor línea AUTD + reliquida SPK_COPAGO_AUT_CEHOSP.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "NO_COBRABLE",
+          "estado": "leido",
+          "hace": "Toggle NOCOBRABLE AUTD; reliquida copago.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "DESCUENTOS",
+          "estado": "leido",
+          "hace": "Aplica descuento cabecera/detalle; regenera caja si aplica.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "QUITAR_DESCUENTOS",
+          "estado": "leido",
+          "hace": "Revierte descuentos AUT.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "CAMBIA_CONTRATANTE",
+          "estado": "leido",
+          "hace": "Cambia IDTERCEROCA/IDPLAN y reliquida.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "GUARDA_OBS",
+          "estado": "leido",
+          "hace": "UPDATE OBS en AUT.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "VERDATOS_AUT",
+          "estado": "leido",
+          "hace": "Consulta datos autorización (lectura).",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "PEDIR_INVENTARIO_OPTICA",
+          "estado": "leido",
+          "hace": "Pedido farmacia SPK_PEDIDOINVCE.",
+          "llama": [
+            "SPK_PEDIDOINVCE"
+          ],
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "FIRMAR_PRESTACION_SERVICIO",
+          "estado": "leido",
+          "hace": "Registra firma prestación servicio.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "REENVIAR_ITF_RX",
+          "estado": "leido",
+          "hace": "Reenvío interfaz RX pendiente.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "SEPARAR_SER_OPTICA",
+          "estado": "leido",
+          "hace": "SPK_SEPARA_SER_REL_AUT.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "UNIR_SER_OPTICA",
+          "estado": "leido",
+          "hace": "Une servicios óptica relacionados.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "IMPRIMIR_RECIBO",
+          "estado": "leido",
+          "hace": "Datos impresión recibo copago.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "DEVOLVER_RECIBO",
+          "estado": "leido",
+          "hace": "SPK_DEVUELVERECIB_CAJA.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "VER_REPORTE_AUT",
+          "estado": "leido",
+          "hace": "Reporte autorización (PDF/datos).",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "VER_REPORTE_REM_SERV",
+          "estado": "leido",
+          "hace": "Reporte remisión servicios.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "TRAER_DE_AUTE",
+          "estado": "leido",
+          "hace": "Importa autorización desde módulo AUTE.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "LIMPIAR_CITAS_CANCELADAS",
+          "estado": "leido",
+          "hace": "Limpieza citas canceladas vinculadas.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "EXPORTAR_AUTE_EXCEL",
+          "estado": "leido",
+          "hace": "Export Excel AUTE.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "GET_DATOS_COMPSERVICIO_DOCUMENTAL",
+          "estado": "leido",
+          "hace": "Datos documental servicio compuesto.",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_GEN_AUT",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "sql/SPQ_GEN_AUT.sql",
+      "notaFe": "MODELO JSON GEN_AUT → SP SPQ_GEN_AUT",
+      "metodos": [
+        {
+          "id": "AUTORIZAR",
+          "estado": "leido",
+          "hace": "Genera AUT/AUTD desde orden médica (#DATATMP HCATD). Agrupa por prefijo o mismaAut; SPK_GENCONSECUTIVO IDAUT/NOAUT; INSERT AUT estado Pendiente PROCEDENCIA=HC; INSERT AUTD; SPK_CONFIRMAR_AUT; opcional SPK_PEDIDOINVCE; UPDATE HCATD.APLICADA=1.",
+          "valida": [
+            "DATATMP con servicios",
+            "tipoEntrega si AUT_MENTREGA"
+          ],
+          "noValida": [
+            "Copago final (SPK_CONFIRMAR_AUT liquida)"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_CONFIRMAR_AUT",
+            "SPK_PEDIDOINVCE"
+          ],
+          "efecto": "INSERT AUT + AUTD; UPDATE HCATD.APLICADA=1",
+          "gateId": "aut-creacion-gestion",
+          "capaId": "02-operacion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CIT_COL_3",
+      "tipo": "SPQ",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_CIT_COL_3.sql",
+      "nota": "SP grande (~3600 líneas). Gates bandeja CE documentados; resto inventario.",
+      "metodos": [
+        {
+          "id": "AUDITAR_CIT",
+          "estado": "leido",
+          "hace": "Toggle CIT.AUTAUDITADO; actualiza NOAUTORIZACION/fechas; log CITAUD.",
+          "valida": [
+            "CIT existe",
+            "N° autorización único SOLOUN_CODAUTORIZA"
+          ],
+          "errores": [
+            "Cita no encontrada por favor validar",
+            "Nro de autorizacion ya existente en la siguiente Cita:"
+          ],
+          "efecto": "UPDATE CIT; INSERT CITAUD",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "ENVIARA_FACT",
+          "estado": "leido",
+          "hace": "Toggle CIT.ENFACT; valida auditada+atendida; duplicado periodo vs AUTPG.",
+          "valida": [
+            "AUTAUDITADO=1",
+            "CUMPLIDA=1",
+            "autorización o MAUT_ENPROGRAMA=0",
+            "No NO_ENVIAR_FACT"
+          ],
+          "errores": [
+            "Error al validar la autorizacion, no puede enviar a facturacion...",
+            "DUPLICADO_FACTURACION_MISMO_PERIODO"
+          ],
+          "efecto": "UPDATE CIT ENFACT, USUARIO_ENFACT, FECHA_ENFACT",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "ENVIARAPROGRAMA",
+          "estado": "listado",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "ENVIAR_TODO_AFACTURACION",
+          "estado": "listado",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "GENERAR_AUTPG",
+          "estado": "listado",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "HELPER_AUTPG",
+          "estado": "listado",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "PROCESAR_NO_ENV_FACT_MASIVO",
+          "estado": "listado",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CONFIRMAR_AUT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONFIRMAR_AUT.sql",
+      "llamadoDesde": [
+        "SPQ_GEN_AUT · AUTORIZAR",
+        "SPQ_AUT_COL · CRUDAUT (post-insert líneas)"
+      ],
+      "hace": "Confirma AUT recién creada: opcional línea movilidad (PPTMOVI); recorre AUTD actualizando VALOR desde SERTOT; por línea liquida copago (SPK_COPAGO_AUT_CEHOSP Col / SPK_ASIGNACOPAGOS_AUTPE Perú); interfaces LX/RX; SOAT→SPK_RELIQ_HACTRAN; consolida VALORCOPAGO cabecera (por orden o por ítems); COPAGO_FIJO/VARIABLE desde PPTCNT; totales NO_ITEMES/VALORTOTAL; CEHOSP→SPK_PAGOSCAJA_AUT_CEHOSP si TIPOCAJA≠FCJ.",
+      "valida": [
+        "AUT existe (IDAUT)"
+      ],
+      "errores": [
+        "SPK_CONFIRMAR_AUT: No existe autorización con IDAUT=…"
+      ],
+      "llama": [
+        "SPK_COPAGO_AUT_CEHOSP",
+        "SPK_ASIGNACOPAGOS_AUTPE",
+        "SPK_RELIQ_HACTRAN",
+        "SPKI_LX_ENVIO_DATOS",
+        "SPKI_RX_ENVIO_DATOS",
+        "SPK_PAGOSCAJA_AUT_CEHOSP"
+      ],
+      "efecto": "UPDATE AUTD valores/copagos; UPDATE AUT totales; opcional TFCJ/FCJ vía caja",
+      "gateId": "aut-creacion-gestion",
+      "capaId": "02-operacion"
+    },
+    {
+      "nombre": "SPK_COPAGO_AUT_CEHOSP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_COPAGO_AUT_CEHOSP.sql",
+      "llamadoDesde": [
+        "SPK_CONFIRMAR_AUT (loop AUTD)",
+        "SPQ_AUT_COL · CRUDAUT / CAMBIA_VALOR / NO_COBRABLE",
+        "SPQ_AUT_COL · RELIQUIDAR vía SPK_COPAGO_AUT_CEHOSP_RELIQ"
+      ],
+      "hace": "Calcula valor servicio (FNK_VLRAUTORIZACION CE / FNK_VLRCITA CI) y copago según modelo MOCP/MOCC (edad, PyP, alto costo, virtual, plan particular, SOAT). UPDATE AUTD o CIT VALOR/VALORCOPAGO/VALOREXCEDENTE; puede marcar NOCOBRAR/FACTURABLE; dispara SPK_PAGOSCAJA_CIT o SPK_CONCEPTOCAJA_AUT.",
+      "valida": [
+        "PPTD restricciones no cobrables",
+        "CIT PQ/QX no facturable",
+        "COPAGOUNICOMENSUAL duplicado periodo",
+        "VALIDA_CIT_CUMP si cita cumplida"
+      ],
+      "noValida": [
+        "Recaudo previo en FCJ (respeta GENEROCAJA/RECAUDADO)"
+      ],
+      "errores": [
+        "Silencioso: copago=0 si MOCC vacío o VLRSERVICIO=0"
+      ],
+      "llama": [
+        "SPK_PAGOSCAJA_CIT",
+        "SPK_CONCEPTOCAJA_AUT"
+      ],
+      "efecto": "UPDATE AUTD/CIT valores y copago; opcional recibo TFCJ",
+      "gateId": "aut-creacion-gestion",
+      "capaId": "02-operacion"
+    },
+    {
+      "nombre": "SPK_FACTURACE_N",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURACE_N.sql",
+      "llamadoDesde": [
+        "SPQ_AUT_COL · FACTURA_AUT (Col, PROC=CE)"
+      ],
+      "hace": "Motor FTR individual AUT (y rama CI citas). Cursor por tercero/plan: arma #FTRD1 desde AUTD (prefijos PRE1-5 excluidos salvo particular/CEHOSP); valida tope FNK_VALIDA_TOPE_FACTURA; reutiliza FTR liberada (LIBERTER) o genera SPK_GENNUMEROFACTURA+SPK_GENCONSECUTIVO; INSERT FTR/FTRD; IVA SPK_FAC_IMPDEDUC; marca AUT/AUTD o CIT FACTURADA; SOAT→HACTRAND; CxP SPK_CREACXP_CE/CI; contab SPK_NC_CONTAB_FTR; presupuesto SPK_ENTREGA_FACTURA_PTTO.",
+      "valida": [
+        "No FACTURADA previa",
+        "FACTURABLE=1",
+        "FNK_VALIDA_TOPE_FACTURA monto AUTD",
+        "BLOQUEADIAN→resolución FDIAN por sede",
+        "Copago≠servicio si FACTURAPOS_ACTIVA=SI"
+      ],
+      "errores": [
+        "El monto a Facturar Sobrepasa el Valor Autorizado, No se Puede Generar la Factura",
+        "El Valor del copago supera o es Igual al valor del Servicio, no debo Generar Factura"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO",
+        "SPK_INSERT_TERDEAFI",
+        "SPK_FAC_IMPDEDUC",
+        "SPK_NC_CONTAB_FTR",
+        "SPK_CREACXP_CE",
+        "SPK_CREACXP_CI",
+        "SPK_PAGOSCAJA_AUT",
+        "SPK_ENTREGA_FACTURA_PTTO"
+      ],
+      "efecto": "INSERT/UPDATE FTR+FTRD; UPDATE AUT/AUTD/CIT FACTURADA+N_FACTURA; contabiliza",
+      "gateId": "aut-facturacion",
+      "capaId": "02-operacion"
+    },
+    {
+      "nombre": "SPK_PAGOSCAJA_AUT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PAGOSCAJA_AUT.sql",
+      "llamadoDesde": [
+        "SPQ_AUT_COL · CRUDAUT (post-guardar, según copago/particular)",
+        "SPQ_AUT_COL · DESCUENTOS / CAMBIA_VALOR / CAMBIA_CONTRATANTE",
+        "SPQ_AUT_COL · FACTURA_AUT (MABONOAUTORIZA_PARTI + VLRDEPOSITOS)",
+        "SPK_FACTURACE_N (legalizar depósitos particular)"
+      ],
+      "hace": "Genera recibo temporal **TFCJ** (+ TFCJD/TFCJDD) para cobro copago o total particular desde AUT. SPK_GENCONSECUTIVO @TFCJ; INSERT cabecera/detalle; UPDATE AUT GENEROCAJA=1, NORECIBOCAJA, TIPOCAJA=TFCJ. No cierra FCJ — eso es CONFIRMAR_RECIBO → SPK_CIERRERECIBO_CAJA.",
+      "valida": [
+        "GENEROCAJA≠1 (idempotente: si ya generó, RETURN)",
+        "TIPOCOPAGO no vacío (M=orden / C=suma ítems)",
+        "VALORCOPAGO>0 (eps) o VALORTOTAL−descuento>0 (particular)"
+      ],
+      "noValida": [
+        "Caja abierta del usuario (lo valida cierre posterior)",
+        "Recaudo previo en FCJ"
+      ],
+      "errores": [
+        "Silencioso: RETURN si GENEROCAJA=1, TIPOCOPAGO vacío, VALOR≤0",
+        "Óptica MANEJA_ABONO_PART+PART=1: RETURN sin TFCJ",
+        "GENERA_PAGO_PART_FAC=SI y no facturada: RETURN sin TFCJ (particular)"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "efecto": "INSERT TFCJ, TFCJD, TFCJDD; UPDATE AUT GENEROCAJA/NORECIBOCAJA/TIPOCAJA",
+      "gateId": "aut-creacion-gestion",
+      "capaId": "02-operacion",
+      "notaCaja": "Concepto CPCJ: MOCC.CODIGOCPCJ del plan, o USVGS IDCJMODE (TIPOCOPAGO=M) / IDCJCOPA (C) / IDCJPART (planes particular). PROCEDENCIA TFCJ=CE, CLASE_FAC=COBRO."
+    }
+  ]
+}

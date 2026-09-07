@@ -3,6 +3,7 @@
  */
 (function () {
   const STORAGE_KEY = "qrystalos_ba_solicitud";
+  const STORAGE_KEY_LEGACY = "qrys_quatec_solicitud";
   const PATH_SQL = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\";
   const PATH_SQL_REFE = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\";
 
@@ -52,9 +53,12 @@
     checkServerHealth();
     setCriteriosHintAgente();
     refreshHistorico();
-    refreshCorreoEstado();
     const idAlCargar = val("#idCaso");
-    if (idAlCargar) cargarSolicitudCaso(idAlCargar);
+    if (idAlCargar) {
+      cargarSolicitudCaso(idAlCargar);
+    } else {
+      refreshCorreoEstado();
+    }
     showAppReady();
   }
 
@@ -121,7 +125,10 @@
       abrirDesdeCola,
       abrirModalSeleccionReq,
       abrirChatDesdeCola,
-      { filtroReq: val("#filtroColaReq") },
+      {
+        filtroReq: val("#filtroColaReq"),
+        verTerminados: !!$("#chkVerTerminadosCola")?.checked,
+      },
     );
   }
 
@@ -407,6 +414,18 @@
     }
   }
 
+  async function guardarCorreoEnLista(nombre, mail) {
+    nombre = String(nombre || "").trim();
+    mail = String(mail || "").trim();
+    if (!nombre || !mail || !window.QrysDesarrolladores) return false;
+    try {
+      const r = await QrysDesarrolladores.setCorreo(nombre, mail);
+      return !!(r && r.ok !== false);
+    } catch {
+      return false;
+    }
+  }
+
   async function resolverCorreoDestino() {
     let dest = val("#correoDestino");
     if (!dest && window.QrysDesarrolladores) {
@@ -423,12 +442,10 @@
         "Para cerrar Fase 1 hay que enviar el correo. Escriba el correo del desarrollador:",
         "",
       ) || "").trim();
-      if (dest) {
-        setVal("#correoDestino", dest);
-        if (val("#desarrollador") && window.QrysDesarrolladores) {
-          try { await QrysDesarrolladores.setCorreo(val("#desarrollador"), dest); } catch { /* */ }
-        }
-      }
+      if (dest) setVal("#correoDestino", dest);
+    }
+    if (dest) {
+      await guardarCorreoEnLista(val("#desarrollador"), dest);
     }
     return dest;
   }
@@ -446,9 +463,40 @@
       correoEnviado: true,
       fechaEnvioCorreo: r.fechaEnvio,
     });
+    // Al enviar el correo el REQ queda terminado en la cola (como en avalasesor: ya no aparece).
+    const idReq = val("#idReq") || idReqVinculado;
     if (archivoColaVinculado) {
-      QrysCola.updateEstado(archivoColaVinculado, "enviado", {}, val("#idReq") || idReqVinculado);
+      QrysCola.updateEstado(
+        archivoColaVinculado,
+        "terminado",
+        {
+          terminadoEn: new Date().toISOString(),
+          terminadoPor: "correo_enviado",
+          correoEnviado: true,
+          fechaEnvioCorreo: r.fechaEnvio || "",
+        },
+        idReq,
+      );
+    } else if (idReq && window.QrysCola) {
+      const item = QrysCola.loadCola().find(
+        (c) => c.idReqSeleccionado === idReq || c.parsed?.idReq === idReq,
+      );
+      if (item) {
+        QrysCola.updateEstado(
+          item.archivoCola,
+          "terminado",
+          {
+            terminadoEn: new Date().toISOString(),
+            terminadoPor: "correo_enviado",
+            correoEnviado: true,
+            fechaEnvioCorreo: r.fechaEnvio || "",
+          },
+          idReq,
+        );
+      }
     }
+    refreshColaTable();
+    refreshHistorico();
   }
 
   async function parseJsonResponse(resp) {
@@ -588,6 +636,7 @@
       updateCorruptAlert();
     });
     $("#filtroColaReq")?.addEventListener("input", () => refreshColaTable());
+    $("#chkVerTerminadosCola")?.addEventListener("change", () => refreshColaTable());
     $("#btnLimpiarFiltroCola")?.addEventListener("click", () => {
       setVal("#filtroColaReq", "");
       refreshColaTable();
@@ -657,10 +706,19 @@
       updateCorruptAlert();
 
       if (!bulk.registrados.length) {
-        return alert(
-          `Sin REQ nuevos. Se actualizaron los datos de ${bulk.omitidos.length} REQ ya en cola (proyecto, módulo, rama…).\n\n` +
-            bulk.omitidos.map((r) => r.idReq).join(", "),
-        );
+        let msg =
+          `Sin REQ nuevos. Se actualizaron los datos de ${bulk.omitidos.length} REQ ya en cola (proyecto, módulo, rama…).`;
+        if (bulk.terminados?.length) {
+          msg +=
+            `\n\nMarcados como terminados (ya no aparecen en la lista): ${bulk.terminados.length}\n` +
+            bulk.terminados.map((i) => i.idReqSeleccionado || i.parsed?.idReq).join(", ");
+          msg +=
+            `\n\nNota: si la lista tiene varias páginas, registre todas las abiertas; si no, REQ de otras páginas se marcarán terminados.`;
+        }
+        if (bulk.omitidos.length) {
+          msg += `\n\nEn lista: ` + bulk.omitidos.map((r) => r.idReq).join(", ");
+        }
+        return alert(msg);
       }
 
       let msg =
@@ -674,6 +732,14 @@
         msg +=
           `\n\nYa en cola (datos actualizados) ${bulk.omitidos.length}: ` +
           bulk.omitidos.map((r) => r.idReq).join(", ");
+      }
+
+      if (bulk.terminados?.length) {
+        msg +=
+          `\n\nTerminados (ausentes en la lista subida) ${bulk.terminados.length}: ` +
+          bulk.terminados.map((i) => i.idReqSeleccionado || i.parsed?.idReq).join(", ");
+        msg +=
+          `\n\nNota: si avalasesor tiene varias páginas, registre el HTML completo (todas las páginas abiertas); si no, REQ de otras páginas también se marcarán terminados.`;
       }
 
       msg += `\n\nTrabaje uno a uno con **Abrir** en la tabla.${copiarNota}`;
@@ -811,6 +877,7 @@
       updateSqlPath();
       saveToStorage();
       updateAll();
+      await refreshCorreoEstado();
       return true;
     } catch {
       return false;
@@ -1002,15 +1069,21 @@
     const hint = $("#correoEnvioHint");
     const card = $("#cardCorreoDev");
     const ultima = (c.copias && c.copias[0]) || null;
+    const dest = (c.destinatario || val("#correoDestino") || "").trim();
+    const nombre = (c.desarrollador || val("#desarrollador") || "").trim();
     if (hint) {
       if (c.enviado) {
         const extra = c.reenvios ? ` · ${c.reenvios} reenvío(s)` : "";
         const copia = ultima?.carpeta ? ` · copia ${ultima.carpeta}` : "";
-        hint.textContent = `Enviado el ${c.fechaEnvio || "—"}${extra}${copia}.`;
+        hint.textContent = `Enviado el ${c.fechaEnvio || "—"} a ${dest || "—"}${extra}${copia}.`;
       } else if (c.tieneDictamen === false) {
-        hint.textContent = "Aún no hay dictamen HTML para adjuntar.";
+        hint.textContent = "Aún no hay dictamen HTML para adjuntar (dictamenes/{idCaso}.html).";
+      } else if (!dest) {
+        hint.textContent = nombre
+          ? `Dictamen listo. Falta el correo de ${nombre} en la lista — escríbalo arriba y se guarda solo.`
+          : "Dictamen listo. Indique el correo destino del desarrollador.";
       } else {
-        hint.textContent = "Aún no se ha enviado el dictamen.";
+        hint.textContent = `Listo para enviar a ${dest}${nombre ? ` (${nombre})` : ""}. Al enviar se marcan check, fecha y cola Terminado.`;
       }
     }
     if (card) {
@@ -1023,7 +1096,11 @@
   async function refreshCorreoEstado() {
     const idCaso = val("#idCaso");
     if (!window.QrysDesarrolladores || !idCaso) {
-      applyCorreoUI(collectCorreo());
+      applyCorreoUI({
+        ...collectCorreo(),
+        desarrollador: val("#desarrollador"),
+        tieneDictamen: undefined,
+      });
       return;
     }
     try {
@@ -1034,16 +1111,24 @@
           const mail = QrysDesarrolladores.correoDeLista(lista, val("#desarrollador"));
           if (mail) setVal("#correoDestino", mail);
         }
-        applyCorreoUI({ ...collectCorreo(), destinatario: val("#correoDestino") });
+        applyCorreoUI({
+          ...collectCorreo(),
+          destinatario: val("#correoDestino"),
+          desarrollador: val("#desarrollador"),
+        });
         return;
       }
       if (!st.destinatario && val("#desarrollador")) {
         const lista = await QrysDesarrolladores.listar();
         st.destinatario = QrysDesarrolladores.correoDeLista(lista, val("#desarrollador"));
       }
+      if (!st.desarrollador) st.desarrollador = val("#desarrollador");
       applyCorreoUI(st);
     } catch {
-      applyCorreoUI(collectCorreo());
+      applyCorreoUI({
+        ...collectCorreo(),
+        desarrollador: val("#desarrollador"),
+      });
     }
   }
 
@@ -1078,8 +1163,23 @@
       correoEnviado: enviado,
       fechaEnvioCorreo: fecha,
     });
-    if (enviado && archivoColaVinculado) {
-      QrysCola.updateEstado(archivoColaVinculado, "enviado", {}, val("#idReq") || idReqVinculado);
+    if (enviado) {
+      const idReq = val("#idReq") || idReqVinculado;
+      const archivo = archivoColaVinculado;
+      if (archivo) {
+        QrysCola.updateEstado(
+          archivo,
+          "terminado",
+          {
+            terminadoEn: new Date().toISOString(),
+            terminadoPor: "correo_enviado",
+            correoEnviado: true,
+            fechaEnvioCorreo: fecha,
+          },
+          idReq,
+        );
+      }
+      refreshColaTable();
     }
   }
 
@@ -1091,10 +1191,9 @@
       dest = (window.prompt("Correo del desarrollador:", "") || "").trim();
       if (!dest) return;
       setVal("#correoDestino", dest);
-      if (val("#desarrollador") && window.QrysDesarrolladores) {
-        try { await QrysDesarrolladores.setCorreo(val("#desarrollador"), dest); } catch { /* */ }
-      }
     }
+    // Siempre: una sola digitación → queda en desarrolladores.json para el próximo REQ.
+    await guardarCorreoEnLista(val("#desarrollador"), dest);
     const yaEnviado = !!$("#chkCorreoEnviado")?.checked;
     if (!opts.display && yaEnviado && !confirm(`¿Reenviar el dictamen a ${dest}?`)) return;
     const btn = $("#btnEnviarCorreo");
@@ -1108,6 +1207,7 @@
         correo: dest,
         reenviar: yaEnviado,
         display: !!opts.display,
+        desarrollador: val("#desarrollador"),
       });
       if (!r.ok) {
         const extra = r.error || "No se pudo enviar.";
@@ -1120,6 +1220,8 @@
         alert(r.mensaje || "Borrador abierto en Outlook.");
         return;
       }
+      // Refuerzo: el backend también actualiza la lista; si falló, reintentamos aquí.
+      await guardarCorreoEnLista(val("#desarrollador"), dest);
       aplicarResultadoCorreoEnviado(idCaso, r);
       alert(r.mensaje || "Correo enviado.");
     } catch (e) {
@@ -1138,12 +1240,11 @@
     $("#chkCorreoEnviado")?.addEventListener("change", persistMarcarCorreo);
     $("#fechaEnvioCorreo")?.addEventListener("change", persistMarcarCorreo);
     $("#correoDestino")?.addEventListener("change", async () => {
-      const nombre = val("#desarrollador");
-      const mail = val("#correoDestino");
-      if (nombre && mail && window.QrysDesarrolladores) {
-        try { await QrysDesarrolladores.setCorreo(nombre, mail); } catch { /* */ }
-      }
+      await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
       persistMarcarCorreo();
+    });
+    $("#correoDestino")?.addEventListener("blur", async () => {
+      await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
     });
     $("#desarrollador")?.addEventListener("change", () => refreshCorreoEstado());
   }
@@ -1265,23 +1366,31 @@
     }
     box.classList.remove("hidden");
     const cuando = dato.fecha ? ` <small>(${esc(dato.fecha)})</small>` : "";
-    box.innerHTML = `<strong>Qué me falta analizar (para validar el suyo)</strong>${cuando}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
+    box.innerHTML = `<strong>Propuesta del agente (solución)</strong>${cuando}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
   }
 
-  async function pollBrechaAnalisis(idCaso) {
-    const hint = $("#brechaAnalisisHint");
-    for (let i = 0; i < 40; i++) {
+  function solicitudTienePropuesta(sol) {
+    const c = sol?.contenido || {};
+    return !!(
+      (c.criteriosAceptacion && String(c.criteriosAceptacion).trim()) ||
+      (c.alcance && String(c.alcance).trim()) ||
+      (c.restricciones && String(c.restricciones).trim()) ||
+      (c.analisis && String(c.analisis).trim()) ||
+      (c.brechaAnalisis && c.brechaAnalisis.texto)
+    );
+  }
+
+  async function pollBrechaAnalisis(idCaso, hintEl) {
+    const hint = hintEl || $("#brechaAnalisisHint");
+    const snapshot = {
+      ca: val("#criteriosAceptacion"),
+      al: val("#alcance"),
+      re: val("#restricciones"),
+      an: val("#analisis"),
+    };
+    for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 4000));
       try {
-        const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, { cache: "no-store" });
-        const data = await resp.json();
-        const brecha = data.solicitud?.contenido?.brechaAnalisis;
-        if (brecha && brecha.texto) {
-          brechaAnalisis = brecha;
-          renderBrechaAnalisis(brecha);
-          if (hint) hint.textContent = "Listo. El mismo texto quedó en el Chat.";
-          return;
-        }
         const est = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/estado?t=${Date.now()}`, { cache: "no-store" });
         const estado = await est.json();
         const bot = estado.bot || {};
@@ -1289,23 +1398,62 @@
           if (hint) hint.textContent = bot.error || "El agente no pudo terminar. Revise el Chat.";
           return;
         }
-        if (bot.estado === "listo" || bot.estado === "terminado") {
-          const chat = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/chat?t=${Date.now()}`, { cache: "no-store" });
-          const cj = await chat.json();
-          const msgs = (cj.mensajes || []).filter((m) => m.autor === "agente");
-          const last = msgs[msgs.length - 1];
-          if (last && last.texto) {
-            brechaAnalisis = { texto: last.texto, fecha: last.fecha, estado: "listo" };
-            renderBrechaAnalisis(brechaAnalisis);
-            if (hint) hint.textContent = "Listo. El mismo texto quedó en el Chat.";
-            return;
+        const cargada = await cargarSolicitudCaso(idCaso);
+        if (cargada && solicitudTienePropuesta({
+          contenido: {
+            criteriosAceptacion: val("#criteriosAceptacion"),
+            alcance: val("#alcance"),
+            restricciones: val("#restricciones"),
+            analisis: val("#analisis"),
+            brechaAnalisis,
+          },
+        })) {
+          const cambio =
+            val("#criteriosAceptacion") !== snapshot.ca ||
+            val("#alcance") !== snapshot.al ||
+            val("#restricciones") !== snapshot.re ||
+            val("#analisis") !== snapshot.an ||
+            (brechaAnalisis && brechaAnalisis.texto);
+          if (cambio && (bot.estado === "listo" || bot.estado === "terminado" || i >= 2)) {
+            if (hint) {
+              hint.textContent =
+                "Listo: criterios, alcance, restricciones y análisis quedaron en el formulario y en el Chat.";
+            }
+            if (bot.estado === "listo" || bot.estado === "terminado") return;
           }
+        }
+        if (bot.estado === "listo" || bot.estado === "terminado") {
+          await cargarSolicitudCaso(idCaso);
+          if (!brechaAnalisis?.texto) {
+            const chat = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/chat?t=${Date.now()}`, { cache: "no-store" });
+            const cj = await chat.json();
+            const msgs = (cj.mensajes || []).filter((m) => m.autor === "agente");
+            const last = msgs[msgs.length - 1];
+            if (last && last.texto) {
+              brechaAnalisis = { texto: last.texto, fecha: last.fecha, estado: "listo" };
+              renderBrechaAnalisis(brechaAnalisis);
+            }
+          }
+          if (hint) {
+            hint.textContent = solicitudTienePropuesta({
+              contenido: {
+                criteriosAceptacion: val("#criteriosAceptacion"),
+                alcance: val("#alcance"),
+                restricciones: val("#restricciones"),
+                analisis: val("#analisis"),
+                brechaAnalisis,
+              },
+            })
+              ? "Listo: revise criterios, alcance, restricciones y análisis en el formulario."
+              : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
+          }
+          return;
         }
       } catch {
         /* reintento */
       }
     }
-    if (hint) hint.textContent = "Sigue en el Chat si aquí no aparece. Recargue si hace falta.";
+    if (hint) hint.textContent = "Sigue en el Chat si aquí no aparece. Recargue el caso si hace falta.";
   }
 
   async function analizarRequerimiento() {
@@ -1334,8 +1482,11 @@
       if (out.bot && out.bot.ok === false) {
         throw new Error(out.bot.error === "sin_clave" ? "Falta CURSOR_API_KEY en .env" : (out.bot.error || "El bot no arrancó"));
       }
-      if (hint) hint.textContent = "El agente está contrastando el REQ con su análisis. Espere…";
-      pollBrechaAnalisis(idCaso);
+      if (hint) {
+        hint.textContent =
+          "El agente está armando criterios, alcance, restricciones, análisis y SPs. Espere…";
+      }
+      pollBrechaAnalisis(idCaso, hint);
     } catch (e) {
       if (hint) hint.textContent = e.message || "Error al analizar";
       alert(e.message || "No se pudo analizar el requerimiento.");
@@ -1454,11 +1605,15 @@
       if (out.bot && out.bot.ok === false) {
         throw new Error(out.bot.error === "sin_clave" ? "Falta CURSOR_API_KEY en .env" : (out.bot.error || "El bot no arrancó"));
       }
-      if (hintOai) hintOai.textContent = "El agente está proponiendo criterios. Abra el Chat y recargue el formulario al terminar.";
+      if (hintOai) {
+        hintOai.textContent =
+          "El agente está armando criterios, alcance, restricciones y análisis. El formulario se actualizará solo.";
+      }
       if (usarAnalisis) {
         const hint = $("#criteriosRefineHint");
         if (hint) hint.textContent = "El agente actualiza los criterios en el Chat y en este formulario.";
       }
+      pollBrechaAnalisis(idCaso, hintOai);
       abrirChatCaso(idCaso);
     } catch (e) {
       if (hintOai) hintOai.textContent = e.message || "Error al pedir criterios";
@@ -1669,12 +1824,12 @@
       try {
         const data = await fetchJsonKb(`/api/conocimiento/proceso/${encodeURIComponent(procesoId)}`);
         const proc = data.proceso || data;
-        sps = proc.sps || [];
+        sps = proc.sps || proc.procedimientos || [];
         nota = proc.spsNota || "";
         actualizado = proc.spsActualizado || proc.actualizado || "";
       } catch (_) {
         const cat = await fetchJsonKb(`/conocimiento/${encodeURIComponent(procesoId)}/sps.json`);
-        sps = cat.sps || [];
+        sps = cat.sps || cat.procedimientos || [];
         nota = cat.nota || "";
         actualizado = cat.actualizado || "";
       }
@@ -2417,8 +2572,11 @@ Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
 
   function loadFromStorageLocal() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(STORAGE_KEY_LEGACY);
       if (!raw) return;
+      if (!localStorage.getItem(STORAGE_KEY) && localStorage.getItem(STORAGE_KEY_LEGACY)) {
+        localStorage.setItem(STORAGE_KEY, raw);
+      }
       applyStorageData(JSON.parse(raw));
     } catch (e) {
       console.warn(e);

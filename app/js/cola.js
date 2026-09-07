@@ -3,11 +3,17 @@
  */
 window.QrysCola = (function () {
   const STORAGE_COLA = "qrystalos_ba_cola";
+  const STORAGE_COLA_LEGACY = "qrys_quatec_cola";
   const PATH_COLA = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\";
 
   function loadCola() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_COLA) || "[]");
+      const raw = localStorage.getItem(STORAGE_COLA) || localStorage.getItem(STORAGE_COLA_LEGACY) || "[]";
+      const items = JSON.parse(raw);
+      if (!localStorage.getItem(STORAGE_COLA) && localStorage.getItem(STORAGE_COLA_LEGACY)) {
+        localStorage.setItem(STORAGE_COLA, raw);
+      }
+      return Array.isArray(items) ? items : [];
     } catch {
       return [];
     }
@@ -452,9 +458,12 @@ window.QrysCola = (function () {
     const cola = loadCola();
     const registrados = [];
     const omitidos = [];
+    const terminados = [];
+    const idsEnLista = new Set();
 
     (parseResult.filas || []).forEach((row) => {
       if (!filaImportable(row)) return;
+      idsEnLista.add(String(row.idReq || "").trim());
       const existingIdx = cola.findIndex(
         (c) => c.idReqSeleccionado === row.idReq || c.parsed?.idReq === row.idReq,
       );
@@ -462,8 +471,12 @@ window.QrysCola = (function () {
       if (existingIdx >= 0) {
         const parsed = rowToParsed(row, fileName);
         const prev = cola[existingIdx];
+        // Si volvió a aparecer en la lista dinámica, reabre como pendiente
+        // solo cuando estaba marcado terminado (no toca en_analisis/dictamen/…).
+        const reabrir = prev.estado === "terminado" ? { estado: "pendiente" } : {};
         cola[existingIdx] = {
           ...prev,
+          ...reabrir,
           ordenPagina: row.ordenPagina,
           archivoCola: fileName,
           parsed: {
@@ -490,11 +503,28 @@ window.QrysCola = (function () {
       registrados.push(item);
     });
 
+    // Avalasesor es dinámico: lo que ya no aparece en la lista subida → terminado.
+    if (idsEnLista.size) {
+      cola.forEach((item, i) => {
+        const id = String(item.idReqSeleccionado || item.parsed?.idReq || "").trim();
+        if (!id || idsEnLista.has(id)) return;
+        if (item.estado === "terminado") return;
+        cola[i] = {
+          ...item,
+          estado: "terminado",
+          terminadoEn: new Date().toISOString(),
+          terminadoPor: "ausente_en_lista",
+        };
+        terminados.push(cola[i]);
+      });
+    }
+
     saveCola(sortColaItems(cola));
 
     return {
       registrados,
       omitidos,
+      terminados,
       totalEnArchivo: parseResult.filas?.length || 0,
     };
   }
@@ -552,9 +582,18 @@ window.QrysCola = (function () {
         (!idReq || c.idReqSeleccionado === idReq || c.parsed?.idReq === idReq),
     );
     if (i >= 0) {
-      const rank = { pendiente: 0, en_analisis: 1, dictamen: 2, aprobado: 3, enviado: 4 };
+      const rank = {
+        pendiente: 0,
+        en_analisis: 1,
+        dictamen: 2,
+        aprobado: 3,
+        enviado: 4,
+        terminado: 5,
+      };
       const actual = cola[i].estado;
-      const siguiente = (rank[estado] || 0) >= (rank[actual] || 0) ? estado : actual;
+      // "terminado" (ausente en lista) siempre gana; el resto no baja de rango.
+      const siguiente =
+        estado === "terminado" || (rank[estado] || 0) >= (rank[actual] || 0) ? estado : actual;
       cola[i] = { ...cola[i], ...extra, estado: siguiente };
       saveCola(cola);
     }
@@ -595,19 +634,30 @@ window.QrysCola = (function () {
     migrateOrdenPagina();
     const cola = sortColaItems(loadCola());
     const filtro = opts?.filtroReq ?? "";
-    const visibles = cola.filter((item) => coincideFiltroReq(item, filtro));
+    const verTerminados = !!opts?.verTerminados;
+    const activos = cola.filter((item) => item.estado !== "terminado");
+    const base = verTerminados ? cola : activos;
+    const visibles = base.filter((item) => coincideFiltroReq(item, filtro));
+    const nTerm = cola.length - activos.length;
     const hint = document.getElementById("colaFiltroHint");
     if (hint) {
-      hint.textContent = filtro.trim()
-        ? `${visibles.length} de ${cola.length}`
-        : cola.length ? `${cola.length} REQ` : "";
+      const partes = [];
+      if (filtro.trim()) partes.push(`${visibles.length} de ${base.length}`);
+      else partes.push(`${activos.length} activos`);
+      if (nTerm) partes.push(`${nTerm} terminados`);
+      hint.textContent = partes.join(" · ");
     }
     if (!cola.length) {
       tbody.innerHTML = `<tr><td colspan="7" class="empty">Sin items. Copie el .htm a cola/ y regístrelo aquí.</td></tr>`;
       return;
     }
     if (!visibles.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="empty">Ningún REQ coincide con «${esc(filtro.trim())}».</td></tr>`;
+      const vacio = filtro.trim()
+        ? `Ningún REQ coincide con «${esc(filtro.trim())}».`
+        : nTerm && !verTerminados
+          ? `No hay REQ activos. ${nTerm} terminados (ausentes en la lista de avalasesor). Marque «Ver terminados» para listarlos.`
+          : "Sin items visibles.";
+      tbody.innerHTML = `<tr><td colspan="7" class="empty">${vacio}</td></tr>`;
       return;
     }
 
@@ -651,7 +701,7 @@ window.QrysCola = (function () {
           (c) => !(c.archivoCola === btn.dataset.file && (c.idReqSeleccionado || "") === btn.dataset.req),
         );
         saveCola(cola);
-        renderColaTable(tbody, onAbrir, onSeleccionarReq, onChat);
+        renderColaTable(tbody, onAbrir, onSeleccionarReq, onChat, opts);
       });
     });
   }
@@ -664,12 +714,20 @@ window.QrysCola = (function () {
         dictamen: "Dictamen listo",
         aprobado: "Cerrado",
         enviado: "Cerrado · correo enviado",
+        terminado: "Terminado",
       }[e] || e
     );
   }
 
   function estadoClass(e) {
-    return { pendiente: "pending", en_analisis: "progress", dictamen: "done", aprobado: "approved", enviado: "mail-ok" }[e] || "pending";
+    return {
+      pendiente: "pending",
+      en_analisis: "progress",
+      dictamen: "done",
+      aprobado: "approved",
+      enviado: "mail-ok",
+      terminado: "mail-no",
+    }[e] || "pending";
   }
 
   function esc(s) {

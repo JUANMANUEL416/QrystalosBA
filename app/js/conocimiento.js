@@ -4,8 +4,10 @@
 window.QrysConocimiento = (function () {
   const MODE_KEY = "qrystalos_ba_modo";
   let cache = null;
+  let caches = { consultas: null, documentar: null };
   let procesoActual = null;
   let chatPoll = null;
+  let pagePanel = { consultas: "trabajo", documentar: "trabajo" };
 
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
@@ -33,7 +35,12 @@ window.QrysConocimiento = (function () {
     return data;
   }
 
-  async function loadFromDisk() {
+  function canalDe(mode) {
+    if (mode === "consultas") return "consultas";
+    return "documentar";
+  }
+
+  async function loadFromDisk(canal) {
     const indice = await fetchJson("/conocimiento/INDICE.json");
     const pendientes = await fetchJson("/conocimiento/pendientes.json");
     let chat = { mensajes: [] };
@@ -51,19 +58,27 @@ window.QrysConocimiento = (function () {
       pendientes,
       pendientesAbiertos: items.filter((i) => i.estado !== "completado").length,
       tarea,
+      canal: canal || "documentar",
       chat,
+      chats: [],
+      chatSoloLectura: false,
       sqlArchivos: [],
       desdeDisco: true,
     };
   }
 
-  async function loadResumen() {
+  async function loadResumen(canal) {
+    const c = canal || "documentar";
     try {
-      cache = await fetchJson("/api/conocimiento");
-      return cache;
+      const data = await fetchJson(`/api/conocimiento?canal=${encodeURIComponent(c)}`);
+      caches[c] = data;
+      cache = data;
+      return data;
     } catch (_) {
-      cache = await loadFromDisk();
-      return cache;
+      const data = await loadFromDisk(c);
+      caches[c] = data;
+      cache = data;
+      return data;
     }
   }
 
@@ -148,7 +163,7 @@ window.QrysConocimiento = (function () {
     const det = $("#consultaDetalle");
     if (!list) return;
     try {
-      await loadResumen();
+      await loadResumen("consultas");
     } catch (e) {
       list.innerHTML = `<p class="alert alert-warning">No se pudo leer la base. Use abrir-app.bat. ${esc(e.message)}</p>`;
       return;
@@ -178,7 +193,7 @@ window.QrysConocimiento = (function () {
     });
     renderChatBoxes();
     if (det && !procesoActual) {
-      det.innerHTML = `<p class="hint">Elija un proceso a la izquierda. Flujo (capa → gate) o Procedimientos (SP → método). Abajo puede preguntar al agente.</p>`;
+      det.innerHTML = `<p class="hint">Elija un proceso a la izquierda. Flujo (capa → gate) o Procedimientos (SP → método). El Chat está en su pestaña.</p>`;
     }
   }
 
@@ -319,6 +334,69 @@ window.QrysConocimiento = (function () {
     return `${nota}${bloques}`;
   }
 
+  function normSpNombre(raw, comoSql) {
+    let n = String(raw || "").trim();
+    if (!n) return "";
+    n = n.replace(/\.sql$/i, "");
+    return comoSql ? n + ".sql" : n;
+  }
+
+  function spsPendientes(soloValle) {
+    const items = (cache?.pendientes?.items || []).filter((i) => i.estado !== "completado" && i.spNombre);
+    const valleId = cache?.valle?.proceso?.id || "";
+    const filtrados = soloValle && valleId ? items.filter((i) => i.procesoId === valleId) : items;
+    const seen = new Set();
+    const out = [];
+    filtrados.forEach((i) => {
+      const key = String(i.spNombre).trim().toUpperCase().replace(/\.SQL$/, "");
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(String(i.spNombre).trim());
+    });
+    return out;
+  }
+
+  async function copiarTexto(texto) {
+    const t = (texto || "").trim();
+    if (!t) throw new Error("No hay nombres de SP pendientes.");
+    try {
+      await navigator.clipboard.writeText(t);
+      return;
+    } catch (_) {}
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (ok) return;
+    } catch (_) {}
+    window.prompt("Seleccione y copie (Ctrl+C):", t);
+  }
+
+  async function onCopiarSps(comoSql, soloValle) {
+    const hint = $("#docCopiarHint");
+    try {
+      const nombres = spsPendientes(soloValle).map((n) => normSpNombre(n, !!comoSql));
+      await copiarTexto(nombres.join("\n"));
+      if (hint) {
+        hint.hidden = false;
+        hint.textContent = `Copiados ${nombres.length}: ${nombres.join(", ")}`;
+      }
+    } catch (e) {
+      if (hint) {
+        hint.hidden = false;
+        hint.textContent = e.message;
+      } else {
+        alert(e.message);
+      }
+    }
+  }
+
   function renderPendientes() {
     const box = $("#docPendientesLista");
     if (!box || !cache) return;
@@ -339,7 +417,7 @@ window.QrysConocimiento = (function () {
             ${pillEstado(i.estado)}
             <span class="kb-tipo">${esc(i.tipo)}</span>
             <p>${esc(i.detalle || "")}</p>
-            ${i.spNombre ? `<p class="hint compact">SP sugerido: <code>${esc(i.spNombre)}</code></p>` : ""}
+            ${i.spNombre ? `<p class="hint compact">SP sugerido: <code>${esc(i.spNombre)}</code> <button type="button" class="btn btn-ghost btn-sm btn-copiar-sp" data-sp="${esc(i.spNombre)}">Copiar</button></p>` : ""}
           </div>
         </label>`;
       })
@@ -369,9 +447,35 @@ window.QrysConocimiento = (function () {
   }
 
   function renderChatBoxes(forceBottom) {
-    renderChatIn("#docChatMensajes", forceBottom);
-    renderChatIn("#consultaChatMensajes", forceBottom);
+    renderChatIn("#docChatMensajes", caches.documentar, forceBottom);
+    renderChatIn("#consultaChatMensajes", caches.consultas, forceBottom);
+    fillChatSelect("consultas", "#consultaChatSelect");
+    fillChatSelect("documentar", "#docChatSelect");
+    toggleCompose("consultas", "#consultaChatCompose");
+    toggleCompose("documentar", "#docChatCompose");
     renderBotHint();
+  }
+
+  function fillChatSelect(canal, selId) {
+    const sel = $(selId);
+    const data = caches[canal];
+    if (!sel || !data) return;
+    const items = data.chats || [];
+    const actual = data.chatViendoId || data.chatActivoId || "";
+    sel.innerHTML = items
+      .map((c) => {
+        const tag = c.estado === "archivado" ? " (archivado)" : " (activo)";
+        return `<option value="${esc(c.id)}">${esc(c.titulo || c.id)}${tag}</option>`;
+      })
+      .join("");
+    if (actual) sel.value = actual;
+  }
+
+  function toggleCompose(canal, sel) {
+    const box = $(sel);
+    const data = caches[canal];
+    if (!box || !data) return;
+    box.classList.toggle("hidden", !!data.chatSoloLectura);
   }
 
   function botHintText() {
@@ -387,11 +491,24 @@ window.QrysConocimiento = (function () {
     return "";
   }
 
+  function hintDe(canal) {
+    const bot = (caches[canal] || {}).bot || {};
+    if (bot.estado === "trabajando") return "El agente está trabajando. En unos segundos aparece la respuesta aquí.";
+    if (bot.estado === "error" || bot.estado === "sin_clave") {
+      return bot.error ? "El agente no pudo responder: " + bot.error : "El agente no pudo responder este turno.";
+    }
+    if ((caches[canal] || {}).chatSoloLectura) return "Chat archivado (solo lectura). Pulse Nuevo chat para seguir.";
+    return "";
+  }
+
   function renderBotHint() {
-    const text = botHintText();
-    ["#consultaChatBotHint", "#docChatBotHint"].forEach((sel) => {
+    [
+      ["consultas", "#consultaChatBotHint"],
+      ["documentar", "#docChatBotHint"],
+    ].forEach(([canal, sel]) => {
       const el = $(sel);
       if (!el) return;
+      const text = hintDe(canal);
       el.hidden = !text;
       el.textContent = text;
     });
@@ -416,10 +533,10 @@ window.QrysConocimiento = (function () {
     });
   }
 
-  function renderChatIn(sel, forceBottom) {
+  function renderChatIn(sel, data, forceBottom) {
     const box = $(sel);
-    if (!box || !cache) return;
-    const msgs = cache.chat?.mensajes || [];
+    if (!box || !data) return;
+    const msgs = data.chat?.mensajes || [];
     if (!msgs.length) {
       paintChat(
         box,
@@ -438,10 +555,58 @@ window.QrysConocimiento = (function () {
             : m.autor === "sistema"
               ? "chat-msg chat-msg-sistema"
               : "chat-msg chat-msg-coord";
-        return `<div class="${cls}"><div class="chat-msg-head"><strong>${esc(who)}</strong> · ${esc(m.en || "")}</div><div>${esc(m.texto).replace(/\n/g, "<br>")}</div></div>`;
+        return `<div class="${cls}"><div class="chat-msg-head"><strong>${esc(who)}</strong> · ${esc(m.en || m.fecha || "")}</div><div>${esc(m.texto).replace(/\n/g, "<br>")}</div></div>`;
       })
       .join("");
     paintChat(box, html, chatSig(msgs), !!forceBottom);
+  }
+
+  function renderValle() {
+    const el = $("#docValleBox");
+    if (!el || !cache) return;
+    const ruta = cache.rutaDocumentar || {};
+    const pasos = ruta.pasos || [];
+    const vig = cache.vigilante || {};
+    const valle = cache.valle;
+    if (!pasos.length) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    const estadoVig = vig.activo === false ? "Pausado" : "Activo (trabaja solo)";
+    const actual = valle?.proceso?.id || "—";
+    const filas = pasos
+      .map((p) => {
+        const on = p.procesoId === actual ? " kb-valle--on" : "";
+        return `<li class="kb-valle-item${on}"><strong>${esc(p.orden)}.</strong> ${esc(p.nombre || p.procesoId)} <span class="kb-meta">${esc(p.familia || "")}</span></li>`;
+      })
+      .join("");
+    el.innerHTML = `
+      <div class="historico-toolbar" style="margin:0 0 .5rem">
+        <h3 class="kb-h3" style="margin:0;flex:1">Ruta administrativa</h3>
+        <span class="hint compact">${esc(estadoVig)}${actual !== "—" ? " · valle: " + esc(actual) : (cache.rutaEstado?.cerrada ? " · ruta cubierta" : "")}</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnDocVigilante">${vig.activo === false ? "Reanudar agente" : "Pausar agente"}</button>
+      </div>
+      <p class="hint compact">Barrido automático <strong>detenido</strong> por defecto. Use Documentar (Chat) o Analista de negocio cuando encuentre algo nuevo o haya que mejorar un proceso. No hace falta reanudar el agente autónomo.</p>
+      <ol class="kb-valle-list">${filas}</ol>`;
+    $("#btnDocVigilante")?.addEventListener("click", () => onToggleVigilante(!(vig.activo === false)));
+  }
+
+  async function onToggleVigilante(pausar) {
+    try {
+      await fetchJson("/api/conocimiento/vigilante", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activo: !pausar }),
+      });
+      await refreshDocumentar();
+    } catch (e) {
+      const err = $("#docError");
+      if (err) {
+        err.hidden = false;
+        err.textContent = e.message;
+      }
+    }
   }
 
   function renderTarea() {
@@ -460,7 +625,7 @@ window.QrysConocimiento = (function () {
 
   async function refreshDocumentar() {
     try {
-      await loadResumen();
+      await loadResumen("documentar");
     } catch (e) {
       const box = $("#docPendientesLista");
       if (box) box.innerHTML = `<p class="alert alert-warning">${esc(e.message)}</p>`;
@@ -471,6 +636,7 @@ window.QrysConocimiento = (function () {
     fillProcesoSelect();
     renderChatBoxes();
     renderTarea();
+    renderValle();
   }
 
   function startChatPoll() {
@@ -478,7 +644,7 @@ window.QrysConocimiento = (function () {
     chatPoll = setInterval(() => {
       if ($("#view-documentar")?.classList.contains("active")) refreshDocumentar();
       else if ($("#view-consultas")?.classList.contains("active")) {
-        loadResumen()
+        loadResumen("consultas")
           .then(() => renderChatBoxes())
           .catch(() => {});
       }
@@ -599,10 +765,62 @@ window.QrysConocimiento = (function () {
     }
   }
 
-  async function onEnviarChat(fromSel) {
+  function showPagePanel(page, panel) {
+    pagePanel[page] = panel;
+    $$(`[data-kb-page="${page}"]`).forEach((btn) => {
+      btn.classList.toggle("is-on", btn.dataset.kbPanel === panel);
+    });
+    const ids =
+      page === "consultas"
+        ? { trabajo: "#consultaPanelTrabajo", chat: "#consultaPanelChat" }
+        : { trabajo: "#docPanelTrabajo", chat: "#docPanelChat" };
+    Object.entries(ids).forEach(([key, sel]) => {
+      const el = $(sel);
+      if (!el) return;
+      el.classList.toggle("hidden", key !== panel);
+    });
+    if (panel === "chat") {
+      loadResumen(page).then(() => renderChatBoxes(true)).catch(() => {});
+    }
+  }
+
+  async function onChatNuevo(canal) {
+    await fetchJson("/api/conocimiento/chat/nuevo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canal }),
+    });
+    await loadResumen(canal);
+    renderChatBoxes(true);
+  }
+
+  async function onChatArchivar(canal) {
+    const titulo = window.prompt("Nombre para archivar este chat (opcional):", "") || "";
+    await fetchJson("/api/conocimiento/chat/archivar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canal, titulo }),
+    });
+    await loadResumen(canal);
+    renderChatBoxes(true);
+  }
+
+  async function onChatAbrir(canal, sid) {
+    if (!sid) return;
+    await fetchJson("/api/conocimiento/chat/abrir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canal, id: sid }),
+    });
+    await loadResumen(canal);
+    renderChatBoxes(true);
+  }
+
+  async function onEnviarChat(fromSel, canal) {
     const input = $(fromSel || "#docChatInput") || $("#consultaChatInput");
     const texto = input?.value?.trim();
     if (!texto) return;
+    const dest = canal || (fromSel && fromSel.includes("consulta") ? "consultas" : "documentar");
     try {
       await fetchJson("/api/conocimiento/chat", {
         method: "POST",
@@ -610,11 +828,12 @@ window.QrysConocimiento = (function () {
         body: JSON.stringify({
           autor: "coordinador",
           texto,
-          procesoId: procesoActual?.id || cache?.chat?.procesoId || "",
+          canal: dest,
+          procesoId: procesoActual?.id || caches[dest]?.chat?.procesoId || "",
         }),
       });
       if (input) input.value = "";
-      await loadResumen();
+      await loadResumen(dest);
       renderChatBoxes(true);
     } catch (e) {
       const err = $("#docError");
@@ -630,23 +849,50 @@ window.QrysConocimiento = (function () {
   function bind() {
     $("#consultaBuscar")?.addEventListener("input", () => refreshConsultas());
     $("#btnDocRefrescar")?.addEventListener("click", () => refreshDocumentar());
+    $("#btnDocCopiarSps")?.addEventListener("click", () => onCopiarSps(false, false));
+    $("#btnDocCopiarSql")?.addEventListener("click", () => onCopiarSps(true, false));
+    $("#btnDocCopiarValle")?.addEventListener("click", () => onCopiarSps(false, true));
+    $("#docPendientesLista")?.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest(".btn-copiar-sp") : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      copiarTexto(normSpNombre(btn.getAttribute("data-sp"), false))
+        .then(() => {
+          const hint = $("#docCopiarHint");
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = "Copiado: " + btn.getAttribute("data-sp");
+          }
+        })
+        .catch((err) => alert(err.message));
+    });
     $("#btnDocDocumentarSp")?.addEventListener("click", () => onDocumentarSp());
     $("#btnDocCerrarTarea")?.addEventListener("click", () => onCerrarTarea());
     $("#btnDocMarcarHecho")?.addEventListener("click", () => onMarcarHecho());
     $("#btnDocNuevoProceso")?.addEventListener("click", () => onNuevoProceso());
-    $("#btnDocEnviarChat")?.addEventListener("click", () => onEnviarChat("#docChatInput"));
-    $("#btnConsultaEnviarChat")?.addEventListener("click", () => onEnviarChat("#consultaChatInput"));
+    $("#btnDocEnviarChat")?.addEventListener("click", () => onEnviarChat("#docChatInput", "documentar"));
+    $("#btnConsultaEnviarChat")?.addEventListener("click", () => onEnviarChat("#consultaChatInput", "consultas"));
     $("#docChatInput")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.altKey) {
         e.preventDefault();
-        onEnviarChat("#docChatInput");
+        onEnviarChat("#docChatInput", "documentar");
       }
     });
     $("#consultaChatInput")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.altKey) {
         e.preventDefault();
-        onEnviarChat("#consultaChatInput");
+        onEnviarChat("#consultaChatInput", "consultas");
       }
+    });
+    $("#btnConsultaChatNuevo")?.addEventListener("click", () => onChatNuevo("consultas"));
+    $("#btnDocChatNuevo")?.addEventListener("click", () => onChatNuevo("documentar"));
+    $("#btnConsultaChatArchivar")?.addEventListener("click", () => onChatArchivar("consultas"));
+    $("#btnDocChatArchivar")?.addEventListener("click", () => onChatArchivar("documentar"));
+    $("#consultaChatSelect")?.addEventListener("change", (e) => onChatAbrir("consultas", e.target.value));
+    $("#docChatSelect")?.addEventListener("change", (e) => onChatAbrir("documentar", e.target.value));
+    $$(".kb-page-tab").forEach((btn) => {
+      btn.addEventListener("click", () => showPagePanel(btn.dataset.kbPage, btn.dataset.kbPanel));
     });
   }
 

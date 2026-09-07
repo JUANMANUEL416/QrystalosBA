@@ -1,33 +1,49 @@
 {
   "id": "glosas",
-  "nombre": "Glosas",
-  "modulo": "CAR",
-  "estado": "esqueleto",
-  "resumen": "Cartera carga glosas en Recaudos (MOTIVO1/MOTIVO2). Al aplicar nace FGLO. Auditoría responde leyendo FGLOCG. Este REQ: copiar los motivos de recaudo a FGLOCG. Resto de capas incompleto.",
-  "actualizado": "2026-09-01",
-  "notaSql": "SPQ_FPAG_COL y SPQ_FGLO_COL leídos hoy en sql/. No se archivó cuerpo. SPK_PAGOSCXC y SPK_CARGA_MASIVA_FAC_CXC_02 no están en sql/.",
-  "alcanceHasta": "Que los motivos cargados en recaudo (MOTIVO1/MOTIVO2) se vean en Auditoría → Responder Glosas (FGLOCG). No incluye respuesta, conciliación ni contabilidad de glosas.",
+  "nombre": "Cartera · Glosas",
+  "modulo": "FGLO_COL",
+  "familia": "cartera",
+  "prioridad": 5,
+  "estado": "parcial",
+  "resumen": "Cartera registra glosas en Recaudos (INGRESO=GLOSAS, MOTIVO1/MOTIVO2) → al aplicar nace FGLO (SPK_PAGOSCXC). Cartera envía a auditoría (ENVIAR_AUDIT / ENT). Auditoría recibe, responde motivos (FGLOCG/FGLOD), aplica respuesta y devuelve a cartera. Radicación e impresión de respuestas. Contabilidad vía SPK_RESPUESTAGLOSA y módulo OM Glosas (/cont). Gate REQ 6259: copiar MOTIVO1/MOTIVO2 de FPAGD a FGLOCG al aplicar.",
+  "actualizado": "2026-09-06T08:05:00",
+  "notaSql": "SPQ_FGLO_COL 37/37 leído + SPK_RESPUESTAGLOSA + SPK_FINALIDAD_GLOSAS en sql/ — fichas leído 2026-09-06. SPKs anidados opcionales: SPK_CONTAB_FGLO, SPK_GLOSAANULAFTR, SPK_RADICAGLOSAS.",
+  "alcanceHasta": "Ciclo administrativo glosa: origen en recaudo → auditoría responde → devolución/radicación → contabilizar. Conciliaciones (FCONCI) es proceso hermano. No incluye implementación del gate motivos-desde-recaudo.",
   "ventanas": [
     {
-      "uso": "Recaudos (origen: cartera alimenta glosas y motivos)",
+      "uso": "Recaudos — origen de glosas y motivos",
       "ruta": "admin.recaudos",
       "path": "/admin/Recaudos",
       "vue": "RecaudosPage.vue → cartera/FPAGComponent.vue",
-      "entrada": "Administrativo → Cartera → Recaudos. Permiso BEnviarAuditoriaFPAG para enviar. INGRESO=GLOSAS. Plantilla de carga: MOTIVO1, MOTIVO2."
+      "entrada": "Administrativo → Cartera → Recaudos. INGRESO=GLOSAS. Plantilla con MOTIVO1/MOTIVO2. Botón Enviar a auditoría (ENVIAR_AUDIT). Permiso BEnviarAuditoriaFPAG."
     },
     {
-      "uso": "Responder glosas (destino: motivos FGLOCG)",
+      "uso": "Auditoría — ciclo completo de glosas",
       "ruta": "auditoria.glosas",
       "path": "/audit/Glosas",
-      "vue": "AdiGlosasPage.vue pestaña Respuesta → RespGlosasComponent.vue",
-      "entrada": "Auditoría → Glosas → Responder Glosas. Diálogo Motivo de Glosa (CRUD_FGLOCG). Lectura TRAE_MOTIGLO."
+      "vue": "AdiGlosasPage.vue (RecepGlosas, RespGlosas, ImpRespGlo, DevolResGlo, ConfGlo)",
+      "entrada": "Auditoría → Glosas. Pestañas: Recepción, Responder Glosas, Respuestas (imprimir), Devolver, Configurar Glosas."
     },
     {
-      "uso": "Catálogo de códigos de glosa",
+      "uso": "Administración cartera — seguimiento y envíos",
       "ruta": "Admin.Glosas",
       "path": "/admin/AdmGlosas",
-      "vue": "AdminGlosasPage.vue → ConfGloComponent.vue (FCGLO)",
-      "entrada": "Administrativo → Adm. glosas. Maestro FCGLO (CLASE=GLOSA, ESTADO=ACTIVO). Fuera del cambio salvo validar que MOTIVO1/2 existan ahí."
+      "vue": "AdminGlosasPage.vue → AdminGlosasComponent, EnvioRecepGlo, RecepRtasG, RadRptaGlo",
+      "entrada": "Administrativo → Adm. glosas. Grilla FGLO por tercero/estado. Envíos auditoría, recepción respuestas, radicación CxC glosas."
+    },
+    {
+      "uso": "Contabilidad — otros módulos glosas",
+      "ruta": "cont",
+      "path": "/cont",
+      "vue": "OMGlosasComponent (MODELO CONTABILIDAD_3)",
+      "entrada": "Contabilidad → Otros módulos → Glosas. Marca y envía FGLO con CONTABILIZADA=0."
+    },
+    {
+      "uso": "Reportes glosas recibidas",
+      "ruta": "auditoria.reporteGlosasRecibidas",
+      "path": "/audit/reporteGlosasRecibidas",
+      "vue": "ReporteGlosasPage.vue",
+      "entrada": "Auditoría → reporte glosas. REPORTES_GLOSAS / DETALLE_REPORTE_GLOSAS."
     }
   ],
   "capas": [
@@ -35,20 +51,43 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "esqueleto",
-      "explicacion": "Antes de operar: códigos de glosa en FCGLO (clase GLOSA, activos). Variables IDFDEPCARTERA e IDFDEPAUDITORIA para el envío. No se inventó más parametrización.",
-      "tablasClave": ["FCGLO"],
+      "estado": "parcial",
+      "explicacion": "Catálogo FCGLO (códigos de motivo, CLASE=GLOSA o DEVOLUCION, ESTADO=ACTIVO). Variables IDFDEPCARTERA e IDFDEPAUDITORIA para el circuito de entrega ENT. Periodo PRI abierto para aplicar respuesta.",
+      "tablasClave": ["FCGLO", "PRI"],
       "gates": [
         {
           "id": "catalogo-fcglo",
           "nombre": "Catálogo de motivos (FCGLO)",
-          "explicacion": "CODIGO_GLOSA (SPQ_FPAG_COL) lista CNSFCGLO+DESCRIPCION de FCGLO según INGRESO GLOSAS o DEVOLUCION. El diálogo de motivos en Responder busca la misma tabla.",
-          "invariante": "Un código escrito en MOTIVO1/MOTIVO2 o en FGLOCG.CNSFCGLO debe existir en FCGLO y estar ACTIVO.",
+          "explicacion": "ConfGloComponent y AdminGlosas usan CRUD_FCGLO (FGLO_COL). Recaudos usa CODIGO_GLOSA (FPAG_COL) para la plantilla Excel. Un código en MOTIVO1/MOTIVO2 o FGLOCG.CNSFCGLO debe existir en FCGLO activo.",
+          "invariante": "Código de motivo inexistente o inactivo → el FE puede bloquear en diálogo; el SP de carga masiva no valida contra FCGLO.",
           "sps": [
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CRUD_FCGLO",
+              "rol": "Alta/edición maestro FCGLO en Auditoría → Configurar. Inventario FE; ficha pendiente sin .sql de hoy."
+            },
             {
               "nombre": "SPQ_FPAG_COL",
               "metodo": "CODIGO_GLOSA",
-              "rol": "Maestro de códigos para la carga de recaudo. Leído hoy."
+              "rol": "Lista códigos para plantilla de recaudo GLOSAS. Ficha leída (REQ 6259)."
+            }
+          ]
+        },
+        {
+          "id": "departamentos-audit",
+          "nombre": "Departamentos cartera y auditoría",
+          "explicacion": "ENVIAR_AUDIT exige FGLO con ENAUDITORIA=0 e IDDEP=IDFDEPCARTERA. RECIBIR_GLOSA mueve la entrega al departamento auditoría.",
+          "invariante": "Sin variable de departamento configurada el envío/recepción puede fallar.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "ENVIAR_AUDIT",
+              "rol": "Valida departamento cartera. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "RECIBIR_GLOSA",
+              "rol": "Recepción ENT en auditoría. Inventario FE."
             }
           ]
         }
@@ -57,31 +96,100 @@
     {
       "id": "02-operacion",
       "numero": 2,
-      "nombre": "Proceso propio",
-      "estado": "esqueleto",
-      "explicacion": "Auditoría recibe la glosa y responde. Hoy el auditor abre Motivo de Glosa y carga FGLOCG a mano (CRUD_FGLOCG) porque TRAE_MOTIGLO no trae filas si cartera no las escribió.",
-      "tablasClave": ["FGLO", "FGLOCG", "FGLOD", "FCGLO"],
+      "nombre": "Proceso propio (auditoría)",
+      "estado": "parcial",
+      "explicacion": "Auditoría recibe entregas ENT, abre cada FGLO, carga motivos (FGLOCG) y detalle (FGLOD), guarda respuesta (CRUD_FGLO) y aplica (APLICAR_GLOSA). Reversa con DESAPLICAR_GLOSA. Imprime y envía respuestas (IMP_RESPUESTA, ENVIAR_RESPUESTA). Devuelve a cartera (ENT_RPTAGLOSA).",
+      "tablasClave": ["FGLO", "FGLOCG", "FGLOD", "FGLOI", "FGLOID", "ENT", "ENTD"],
       "gates": [
+        {
+          "id": "recepcion-auditoria",
+          "nombre": "Recibir glosas en auditoría",
+          "explicacion": "RecepGlosasComponent: grilla ENT proceso GLOSAS; RECIBIR_GLOSA marca recepción del lote. Detalle ENTD lista FGLO del envío.",
+          "invariante": "Sin recepción la glosa no entra al circuito de respuesta del auditor asignado.",
+          "sps": [
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "RECIBIR_GLOSA",
+              "rol": "Confirma recepción ENT. Inventario FE."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "EXPORTA_GLOSAS",
+              "rol": "Export Excel recepción. Inventario FE."
+            }
+          ]
+        },
         {
           "id": "ver-motivos",
           "nombre": "Ver y editar motivos al responder",
-          "explicacion": "Al seleccionar una glosa, TRAE_MOTIGLO lee FGLOCG+FCGLO. Alta/edición/borrado: CRUD_FGLOCG. Al guardar respuesta tipo T, CRUD_FGLO exige que SUM(FGLOCG.VALOR)=FGLO.VLRGLOSA.",
-          "invariante": "Sin filas en FGLOCG el auditor no ve el motivo que cartera ya digitó. Con filas, la suma de valores debe cuadrar con VLRGLOSA.",
+          "explicacion": "RespGlosasComponent: TRAE_MOTIGLO lee FGLOCG+FCGLO y FGLOD. Alta/edición CRUD_FGLOCG (diálogo Motivo de Glosa). CRUD_FGLOD para ítems. CRUD_FGLO guarda cabecera; si TIPORESPUESTA=T exige SUM(FGLOCG.VALOR)=VLRGLOSA. APLICA=1 llama SPK_RESPUESTAGLOSA.",
+          "invariante": "Sin filas FGLOCG el auditor no ve motivos que cartera digitó (hueco REQ 6259). Con filas, suma debe cuadrar para aplicar tipo T.",
           "sps": [
             {
               "nombre": "SPQ_FGLO_COL",
               "metodo": "TRAE_MOTIGLO",
-              "rol": "Lectura de motivos. Leído hoy."
+              "rol": "Lectura motivos y detalle. Ficha leída."
             },
             {
               "nombre": "SPQ_FGLO_COL",
               "metodo": "CRUD_FGLOCG",
-              "rol": "Alta/edita/borra motivo. Leído hoy."
+              "rol": "Alta/edita/borra motivo. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CRUD_FGLOD",
+              "rol": "Detalle por ítem/servicio. Inventario FE."
             },
             {
               "nombre": "SPQ_FGLO_COL",
               "metodo": "CRUD_FGLO",
-              "rol": "Guarda respuesta; valida suma de motivos si TIPORESPUESTA=T. Leído en ese tramo."
+              "rol": "Guarda respuesta; valida suma motivos. Llama SPK_RESPUESTAGLOSA si APLICA=1. Ficha leída parcial."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "APLICAR_GLOSA / DESAPLICAR_GLOSA",
+              "rol": "Cierra/reabre glosa respondida. Inventario FE."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CARGA_MASIVA_RESPUESTA_GLOSA",
+              "rol": "Carga masiva respuesta por detalle. Inventario FE."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "LIBERAR_PAC",
+              "rol": "Libera factura M CE/CI de cita. Inventario FE."
+            }
+          ]
+        },
+        {
+          "id": "imprimir-respuesta",
+          "nombre": "Imprimir y enviar respuestas",
+          "explicacion": "ImpRespGloComponent: lotes FGLOI/FGLOID, IMP_RESPUESTA, ENVIAR_RESPUESTA, VALIDAR_FGLOID. ABRIR/CERRAR_IMPRESION controla ASIGNADAIMP.",
+          "invariante": "Solo glosas con respuesta aplicada entran al lote de impresión/envío.",
+          "sps": [
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "IMP_RESPUESTA / ENVIAR_RESPUESTA",
+              "rol": "Genera y envía respuesta impresa. Inventario FE."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CRUD_FGLOI / CRUD_FGLOID / FGLOI",
+              "rol": "Lotes de impresión. Inventario FE."
+            }
+          ]
+        },
+        {
+          "id": "devolver-cartera",
+          "nombre": "Devolver respuestas a cartera",
+          "explicacion": "DevolResGloComponent: ENT_RPTAGLOSA, ENT_ADDRESPGLO, ENT_CIERRARPTAGLOSA, ENT_ANULAR, ENTD_BORRARITEM. Cierra entrega de respuestas hacia cartera.",
+          "invariante": "Cartera debe recepcionar en AdminGlosas → Recep.Respuestas antes de radicar.",
+          "sps": [
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "ENT_RPTAGLOSA / ENT_ADDRESPGLO / ENT_CIERRARPTAGLOSA",
+              "rol": "Circuito ENT devolución. Inventario FE."
             }
           ]
         }
@@ -92,52 +200,92 @@
       "numero": 3,
       "nombre": "Lo que llega y completa",
       "estado": "parcial",
-      "explicacion": "Cartera en Recaudos (INGRESO=GLOSAS) carga factura + valor de glosa + MOTIVO1 y MOTIVO2 (plantilla TXT/Excel o PROCESAR_FACTURA). Eso queda en RPDX (ID11/ID12). ASIGNAR llama SPK_CARGA_MASIVA_FAC_CXC_02 (cuerpo no leído) para pasar a FPAGD. APLICARPAGO llama SPK_PAGOSCXC (cuerpo no leído) y crea/actualiza FGLO. SPQ_FPAG_COL no inserta FGLOCG.",
-      "tablasClave": ["FPAG", "FPAGD", "RPDX", "FGLO"],
+      "explicacion": "Principal: Recaudos con INGRESO=GLOSAS. Cartera carga factura + VLRGLOSA + MOTIVO1/MOTIVO2 (RPDX ID11/ID12). ASIGNAR → SPK_CARGA_MASIVA_FAC_CXC_02 deja MOTIVO1/MOTIVO2 en FPAGD. APLICARPAGO → SPK_PAGOSCXC (sql/ de hoy) crea FGLO y, si el código está en FCGLO GLOSA/ACTIVO, inserta FGLOCG. Código inválido o vacío: FGLO sin motivos (solo PRINT). También puede existir FGLO por otros orígenes.",
+      "tablasClave": ["FPAG", "FPAGD", "RPDX", "FGLO", "FCXC", "FTR"],
       "gates": [
         {
           "id": "motivos-desde-recaudo",
-          "nombre": "Motivos de cartera hacia FGLOCG (gate de este REQ)",
-          "explicacion": "Cartera carga MOTIVO1/MOTIVO2; SPK_CARGA_MASIVA_FAC_CXC_02 los deja en FPAGD. SPK_PAGOSCXC crea FGLO si VLRGLOSA>0 pero no inserta FGLOCG (hueco de este REQ). El destino de lectura es FGLOCG.",
-          "invariante": "Si cartera cargó uno o dos códigos válidos, al abrir Responder deben existir filas FGLOCG con esos CNSFCGLO y valores que sumen VLRGLOSA.",
+          "nombre": "Motivos de cartera hacia FGLOCG (gate REQ 6259)",
+          "explicacion": "Cadena: RPDX → ASIGNAR/SPK_CARGA_MASIVA → FPAGD.MOTIVO1/MOTIVO2 → APLICARPAGO/SPK_PAGOSCXC → FGLO + FGLOCG si FCGLO válido. Destino lectura: TRAE_MOTIGLO.",
+          "invariante": "Código FCGLO GLOSA/ACTIVO en MOTIVO1/2 → hay FGLOCG al abrir Responder. Código inválido o vacío → FGLO sin FGLOCG (el SP no aborta).",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
-              "metodo": "PROCESAR_FACTURA / SUBIR_TXT / CARGAR_FACTURAS",
-              "rol": "Captura MOTIVO1/MOTIVO2 en RPDX. Leído hoy."
+              "metodo": "PROCESAR_FACTURA / SUBIR_TXT / CARGAR_FACTURAS / ASIGNAR / APLICARPAGO",
+              "rol": "Cadena recaudo glosas. Fichas leídas (REQ 6259)."
             },
             {
               "nombre": "SPK_CARGA_MASIVA_FAC_CXC_02",
               "metodo": "(ASIGNAR)",
-              "rol": "Pasa lote RPDX a FPAGD. Cuerpo no leído: bajar a sql/."
+              "rol": "RPDX.ID11/ID12 → FPAGD.MOTIVO1/MOTIVO2. Ficha leída."
             },
             {
               "nombre": "SPK_PAGOSCXC",
-              "metodo": "(APLICARPAGO)",
-              "rol": "Aplica recaudo y genera FGLO. Cuerpo no leído: bajar a sql/."
+              "metodo": "(APLICAR)",
+              "rol": "Crea FGLO; no escribe FGLOCG. Ficha leída."
+            },
+            {
+              "nombre": "SPK_FINALIDAD_GLOSAS",
+              "metodo": "(APLICARPAGO FINDEVOL 4/5/6)",
+              "rol": "Variante glosas por finalidad. .sql no en carpeta."
             }
           ]
+        },
+        {
+          "id": "desde-factura-cxc",
+          "nombre": "Factura y CxC radicada",
+          "explicacion": "FGLO referencia CNSCXC, N_FACTURA, CNSFPAG (doc FGLO.md). El recaudo exige factura en CxC con saldo. Facturación (radicar cuenta) es prerrequisito.",
+          "invariante": "Sin CxC radicada el recaudo no asigna la factura.",
+          "sps": []
         }
       ]
     },
     {
-      "id": "04-entrega",
+      "id": "04-unido",
       "numero": 4,
-      "nombre": "Subproceso unido (entrega a auditoría)",
-      "estado": "esqueleto",
-      "explicacion": "ENVIAR_AUDIT arma ENT/ENTD proceso GLOSAS, marca FGLO.CNSENTREGA/ASIGENT y FPAG.ENAUDIT. No escribe FGLOCG.",
-      "tablasClave": ["ENT", "ENTD", "FGLO", "FPAG"],
+      "nombre": "Subproceso unido (entrega cartera ↔ auditoría)",
+      "estado": "parcial",
+      "explicacion": "Ida: FPAG ENVIAR_AUDIT o AdminGlosas EnvioRecepGlo (ENT_ENVGLOSA, ENT_ADDRECAUDO). Vuelta: DevolResGlo → cartera RecepRtasG → RadRptaGlo (FGLOI_RADICA, radicación respuesta CxC). Conciliaciones (FCONCI_COL) comparte FGLO pero es otro proceso.",
+      "tablasClave": ["ENT", "ENTD", "FGLO", "FPAG", "FGLOI"],
       "gates": [
         {
+          "id": "circuito-automatico",
+          "nombre": "Circuito automático (FINDEVOL 4/5/6)",
+          "explicacion": "Tras APLICARPAGO con INGRESO=GLOSAS: SPK_FINALIDAD_GLOSAS encadena ENVIAR_AUDIT → RECIBIR_GLOSA → (opcional FGLOCG/FGLOD desde RPDX) → SPK_RESPUESTAGLOSA → FGLOI → ENVIAR_RESPUESTA → RECIBIR_RPTASGLOSA. FINDEVOL 4=total automático; 5=solo detalle en auditoría; 6=detalle+responder automático.",
+          "invariante": "Si falla auditoría/recepción/respuesta → RAISERROR en apply. DESAPLICAR bloqueado si FGLO.CERRADA=1.",
+          "sps": [
+            { "nombre": "SPK_FINALIDAD_GLOSAS", "metodo": "FINDEVOL 4/5/6", "rol": "Orquestador automático post-apply. sql/ leído." },
+            { "nombre": "SPQ_FPAG_COL", "metodo": "APLICARPAGO", "rol": "Dispara el SPK si FINDEVOL∈{4,5,6}." }
+          ]
+        },
+        {
           "id": "enviar-auditoria",
-          "nombre": "Enviar recaudo a auditoría",
-          "explicacion": "Permiso BEnviarAuditoriaFPAG. Exige glosas del recaudo con ENAUDITORIA=0 y departamento cartera. Error: ya hay envío ENT/ENTD, o no hay glosas pendientes.",
-          "invariante": "Tras enviar, la glosa aparece en el circuito de auditoría. Los motivos no se copian en este método (leído hoy).",
+          "nombre": "Enviar recaudo/glosa a auditoría",
+          "explicacion": "Recaudos: ENVIAR_AUDIT crea ENT proceso GLOSAS, marca FGLO.CNSENTREGA/ASIGENT y FPAG.ENAUDIT. AdminGlosas: ENT_ENVGLOSA/ENT_ADDRECAUDO para envíos adicionales. No copia MOTIVO1/MOTIVO2 a FGLOCG.",
+          "invariante": "Una factura no puede tener dos envíos ENT/ENTD activos.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
               "metodo": "ENVIAR_AUDIT",
-              "rol": "Entrega ENT. Leído hoy. No toca FGLOCG."
+              "rol": "Entrega desde recaudo. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "ENT_ENVGLOSA / ENT_ADDRECAUDO / ENTD_DELITEMENVIO",
+              "rol": "Envíos desde cartera AdminGlosas. Inventario FE."
+            }
+          ]
+        },
+        {
+          "id": "radicar-respuesta",
+          "nombre": "Radicar respuesta de glosa (cartera)",
+          "explicacion": "RadRptaGloComponent: FGLOI_RADICA radica lote de respuestas; IMP_RESPUESTA para impresión. Estados FGLO: SinRadicar → Radicada.",
+          "invariante": "Solo glosas con respuesta cerrada y recepcionada en cartera pueden radicarse.",
+          "sps": [
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "FGLOI_RADICA / IMP_RESPUESTA",
+              "rol": "Radicación CxC glosas. Inventario FE."
             }
           ]
         }
@@ -147,10 +295,36 @@
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "esqueleto",
-      "explicacion": "Este REQ no afecta contabilidad (formulario: afecta=false). No se dictamina asiento de glosas.",
-      "tablasClave": [],
-      "gates": []
+      "estado": "parcial",
+      "explicacion": "Al aplicar respuesta con APLICA=1, CRUD_FGLO llama SPK_RESPUESTAGLOSA (periodo PRI abierto). FGLO.CONTABILIZADA y NROCOMPROBANTE marcan estado (0/1/2). Contabilidad → OM Glosas usa MODELO CONTABILIDAD_3 (DETALLE_OM_GLOSAS, ENV_CONTA_OTROS_MODULS) para glosas pendientes. CONCFGLOComponent en conciliaciones cruza FGLO con MCPE.",
+      "tablasClave": ["FGLO", "MCP", "MCPE"],
+      "gates": [
+        {
+          "id": "contabilizar-respuesta",
+          "nombre": "Contabilizar respuesta de glosa",
+          "explicacion": "CRUD_FGLO con APLICA=1 → SPK_RESPUESTAGLOSA. OMGlosasComponent marca MARCACONT y envía vía ENV_CONTA_OTROS_MODULS. Semáforo CONTABILIZADA igual que recaudos/caja.",
+          "invariante": "Periodo cerrado → KO al aplicar respuesta con contabilización. Glosa no cerrada no contabiliza.",
+          "sps": [
+            {
+              "nombre": "SPK_RESPUESTAGLOSA",
+              "metodo": "(anidado CRUD_FGLO)",
+              "rol": "Asiento MCP al aplicar respuesta. Pendiente bajar .sql."
+            },
+            {
+              "nombre": "SPQ_FGLO_COL",
+              "metodo": "CRUD_FGLO / APLICAR_GLOSA",
+              "rol": "Dispara contabilidad al aplicar. Ficha parcial."
+            },
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "DETALLE_OM_GLOSAS / ENV_CONTA_OTROS_MODULS",
+              "rol": "Contabilización masiva OM desde /cont. Otro SPQ; inventario FE."
+            }
+          ]
+        }
+      ]
     }
-  ]
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-06T04:35:00"
 }

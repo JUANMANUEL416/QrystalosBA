@@ -1,0 +1,661 @@
+CREATE OR ALTER PROCEDURE DBO.SPK_FACTURA_AUTPG
+@NIT      VARCHAR(20),
+@COMPANIA VARCHAR(2),
+@IDSEDEUSU   VARCHAR(5),
+@USUARIO  VARCHAR(12),
+@IDTERCERO VARCHAR(20),
+@IDPLAN VARCHAR(20),
+@ANOMES   VARCHAR(6),
+@F_FACTURA    DATETIME,
+@IDSERVICIOPAQ  VARCHAR(20),
+@VLRPAQUETE     DECIMAL(14,2),
+@MAXAFI_XFTR SMALLINT,
+@OBSERVACIONF VARCHAR(500) = NULL,
+@WITH_MARCA BIT = 0
+WITH ENCRYPTION
+AS
+DECLARE @IDAFILIADO VARCHAR(20)
+DECLARE @NOMBREAFI VARCHAR(70)
+DECLARE @CNSFMAS   VARCHAR(20)
+DECLARE @NPAQUETE   VARCHAR(256)
+DECLARE @IDTERINSTALADO VARCHAR(20)
+DECLARE @CNSFTR      VARCHAR(20)
+DECLARE @N_FACTURA   VARCHAR(16)
+DECLARE @N_FACTURA_AGRUPA   VARCHAR(16)
+DECLARE @IDSEDE   VARCHAR(5)
+DECLARE @SEDE_ANTERIOR VARCHAR(5) = NULL
+DECLARE @ContadorFactura INT = 1
+DECLARE @ContadorPacientes INT = 0
+DECLARE @DV         SMALLINT, @TTEC VARCHAR(20),   @CUENTACXC VARCHAR(20), @NODESCUENTACOPAGO BIT, @CUENTACXC_RAD VARCHAR(20),   @MONEDA  VARCHAR(20) ,@IDDEP  VARCHAR(20)
+    ,@EC BIT,   @OBSERVACION VARCHAR(2048),   @TIPOVENTA VARCHAR(10), @TV VARCHAR(20), @BLOQUEADIAN VARCHAR(5), @FACTSEDE VARCHAR(5), @VALORCOPAGO DECIMAL(14,2), @DESCUENTOS DECIMAL(14,2)
+    ,@TIPOFIN VARCHAR(2), @IDFORMATOFTR VARCHAR(20), @VALORMODERADORA  DECIMAL(14,2), @SINCNT BIT,@SYS_COMPUTERNAME VARCHAR(254), @IDAUTPG INT
+DECLARE @GRUPOACTUAL INT = 0
+
+BEGIN
+    SET NOCOUNT ON
+    PRINT 'EMPIEZO EL SPK DE FACTURA_AUTPG - VERSION OPTIMIZADA V2'
+    PRINT 'VERIFICO VARIABLES'
+    PRINT '@IDTERCERO > '+COALESCE(@IDTERCERO,'NADA TER')
+    SELECT @IDTERINSTALADO=DBO.FNK_VALORVARIABLE('IDTERCEROINSTALADO')
+
+    SELECT @SYS_COMPUTERNAME = SYS_COMPUTERNAME FROM USUSU WITH (NOLOCK) WHERE USUARIO = @USUARIO
+
+    -- ============================================================================
+    -- FASE 1: PREPARACIÓN DE DATOS (SIN TRANSACCIÓN - MINIMIZA BLOQUEOS)
+    -- ============================================================================
+    PRINT '=== FASE 1: PREPARACIÓN DE DATOS (SIN TRANSACCIÓN) ==='
+
+    CREATE TABLE #PacientesPrep (
+        IDAFILIADO VARCHAR(20),
+        IDSEDE VARCHAR(5),
+        IDAUTPG INT,
+        VALORCOPAGO DECIMAL(14,2),
+        GRUPOFACTURA INT,
+        PRIMARY KEY (IDAUTPG)
+    );
+
+    CREATE TABLE #ConsecutivosGrupo (
+        GRUPOFACTURA INT PRIMARY KEY,
+        IDSEDE VARCHAR(5),
+        CNSFCT VARCHAR(20),
+        N_FACTURA VARCHAR(20)
+    );
+
+    CREATE TABLE #FTRD1(CNSFTR VARCHAR(40), N_CUOTA	int IDENTITY, FECHA datetime,
+				DB_CR varchar(2), AREAPRESTACION varchar(20), UBICACION varchar(16),
+				VR_TOTAL float, IMPUTACION varchar(16), CCOSTO varchar (20),
+				PREFIJO varchar(6), ANEXO varchar(1024), REFERENCIA varchar(40), 
+				IDCIRUGIA varchar(20), CANTIDAD smallint, VALOR decimal(14,2),
+				VLR_SERVICI decimal(14,2), VLR_COPAGOS decimal(14,2),
+				VLR_PAGCOMP decimal(14,2), IDPROVEEDOR varchar(20),
+				NOADMISION varchar(16), NOPRESTACION	varchar(16), NOITEM int, IDAFILIADO VARCHAR(20),	
+				AREAFUNCONT varchar(20), N_FACTURA varchar(16),
+				SUBCCOSTO varchar(4), PCOSTO	decimal(14,2), FECHAPREST datetime, IDPLAN VARCHAR(6),
+				IDIMPUESTO VARCHAR(10),IDCLASE    VARCHAR(10),ITEM       INT,VLRIMPUESTO DECIMAL(14,2),
+				PIVA        DECIMAL(14,2),VIVA        DECIMAL(14,2),CUENTA_FIMPDV VARCHAR(20),
+			    PROCEDENCIA VARCHAR(10),PAQUETE SMALLINT, GRUPOFACTURA INT
+	)
+
+    CREATE TABLE #FTRDC1 (
+        CNSFTR VARCHAR(40),N_CUOTA INT,PROCEDENCIA VARCHAR(12),FECHA DATETIME,NOADMISION VARCHAR(16),PACIENTE VARCHAR(100)
+        ,NOPRESTACION VARCHAR(16),NOITEM INT,IDSERVICIO VARCHAR(20),IDAREA VARCHAR(20),IDPLAN VARCHAR(6)  
+		,CCOSTO VARCHAR(20),PREFIJO VARCHAR(6),CANTIDAD DECIMAL(14,2),VALOR DECIMAL(14,2),VALORTOTAL DECIMAL(14,2),VLR_COPAGO DECIMAL(14,2)
+        ,VLR_PAGCOMP DECIMAL(14,2),VALOREXCEDENTE DECIMAL(14,2),DESCUENTO FLOAT,TIPOTERCERO VARCHAR(10)  
+		,CUENTA VARCHAR(16),ENRECAUDOS SMALLINT,IDAFILIADO VARCHAR(20), GRUPOFACTURA INT
+        )
+
+    -- Validación de resoluciones DIAN (SIN TRANSACCIÓN - solo lectura)
+    IF @WITH_MARCA = 1
+    BEGIN
+        PRINT 'Validando sedes - modo con marca'
+        IF EXISTS( 
+            SELECT 1 
+            FROM AUTPG WITH (NOLOCK)
+            WHERE 
+            AUTPG.ANOMES=@ANOMES 
+            AND AUTPG.IDTERCEROCA=@IDTERCERO 
+            AND AUTPG.IDPLAN=@IDPLAN
+            AND (@IDSEDEUSU IS NULL OR @IDSEDEUSU = AUTPG.IDSEDE)
+            AND (AUTPG.FACTURADO = 0 OR AUTPG.FACTURADO IS NULL)
+            AND AUTPG.FACTURABLE=1
+			AND AUTPG.ENFACT=1
+            AND AUTPG.ESTADO IN ('Autorizado','Autorizado Recuperado')
+            AND AUTPG.MARCA = 1 
+            AND AUTPG.USUARIO_MARCA = @USUARIO
+            AND NOT EXISTS (SELECT 1 FROM FDIAN WITH (NOLOCK) WHERE PROCEDENCIA='FTR' AND (VENCIDA = 0 OR VENCIDA IS NULL) AND IDENTIFICADOR = AUTPG.IDSEDE)
+        )
+        BEGIN
+            RAISERROR('Existen sedes en este proceso de facturacion que no cuentan con resolucion vigente. Comuniquese con el Administrador del Sistema.', 16, 1)
+            RETURN
+        END
+    END
+    ELSE
+    BEGIN
+        IF EXISTS( 
+            SELECT 1 
+            FROM AUTPG WITH (NOLOCK)
+            WHERE 
+            AUTPG.ANOMES=@ANOMES 
+            AND AUTPG.IDTERCEROCA=@IDTERCERO 
+            AND AUTPG.IDPLAN=@IDPLAN
+            AND (@IDSEDEUSU IS NULL OR @IDSEDEUSU = AUTPG.IDSEDE)
+            AND (AUTPG.FACTURADO = 0 OR AUTPG.FACTURADO IS NULL)
+            AND AUTPG.FACTURABLE=1 
+			AND AUTPG.ENFACT=1
+            AND AUTPG.ESTADO IN ('Autorizado','Autorizado Recuperado')
+            AND NOT EXISTS (SELECT 1 FROM FDIAN WITH (NOLOCK) WHERE PROCEDENCIA='FTR' AND (VENCIDA = 0 OR VENCIDA IS NULL) AND IDENTIFICADOR = AUTPG.IDSEDE)
+        )
+        BEGIN
+            RAISERROR('Existen sedes en este proceso de facturacion que no cuentan con resolucion vigente. Comuniquese con el Administrador del Sistema.', 16, 1)
+            RETURN
+        END
+    END
+
+    PRINT 'Cargando pacientes y asignando grupos preliminares...'
+    
+    IF @WITH_MARCA = 1
+    BEGIN
+        ;WITH PacientesOrdenados AS (
+            SELECT 
+                IDSEDE, 
+                IDAFILIADO, 
+                ID AS IDAUTPG, 
+                COALESCE(VALORCOPAGO,0) AS VALORCOPAGO,
+                ROW_NUMBER() OVER (PARTITION BY IDSEDE ORDER BY IDAFILIADO) AS RowNum
+            FROM AUTPG WITH (NOLOCK)
+            WHERE 
+                AUTPG.ANOMES=@ANOMES 
+                AND AUTPG.IDTERCEROCA=@IDTERCERO 
+                AND AUTPG.IDPLAN=@IDPLAN
+                AND (@IDSEDEUSU IS NULL OR @IDSEDEUSU = AUTPG.IDSEDE)
+                AND (AUTPG.FACTURADO = 0 OR AUTPG.FACTURADO IS NULL)
+                AND AUTPG.FACTURABLE=1
+                AND AUTPG.ENFACT=1
+                AND AUTPG.ESTADO IN ('Autorizado','Autorizado Recuperado')
+                AND AUTPG.MARCA = 1 
+                AND AUTPG.USUARIO_MARCA = @USUARIO
+        )
+        INSERT INTO #PacientesPrep (IDAFILIADO, IDSEDE, IDAUTPG, VALORCOPAGO, GRUPOFACTURA)
+        SELECT 
+            IDAFILIADO, 
+            IDSEDE, 
+            IDAUTPG, 
+            VALORCOPAGO,
+            DENSE_RANK() OVER (ORDER BY IDSEDE, ((RowNum - 1) / @MAXAFI_XFTR))
+        FROM PacientesOrdenados
+    END
+    ELSE
+    BEGIN
+        ;WITH PacientesOrdenados AS (
+            SELECT 
+                IDSEDE, 
+                IDAFILIADO, 
+                ID AS IDAUTPG, 
+                COALESCE(VALORCOPAGO,0) AS VALORCOPAGO,
+                ROW_NUMBER() OVER (PARTITION BY IDSEDE ORDER BY IDAFILIADO) AS RowNum
+            FROM AUTPG WITH (NOLOCK)
+            WHERE 
+                AUTPG.ANOMES=@ANOMES 
+                AND AUTPG.IDTERCEROCA=@IDTERCERO 
+                AND AUTPG.IDPLAN=@IDPLAN
+                AND (@IDSEDEUSU IS NULL OR @IDSEDEUSU = AUTPG.IDSEDE)
+                AND (AUTPG.FACTURADO = 0 OR AUTPG.FACTURADO IS NULL)
+                AND AUTPG.FACTURABLE=1
+                AND AUTPG.ENFACT=1
+                AND AUTPG.ESTADO IN ('Autorizado','Autorizado Recuperado')
+        )
+        INSERT INTO #PacientesPrep (IDAFILIADO, IDSEDE, IDAUTPG, VALORCOPAGO, GRUPOFACTURA)
+        SELECT 
+            IDAFILIADO, 
+            IDSEDE, 
+            IDAUTPG, 
+            VALORCOPAGO,
+            DENSE_RANK() OVER (ORDER BY IDSEDE, ((RowNum - 1) / @MAXAFI_XFTR))
+        FROM PacientesOrdenados
+    END
+
+    PRINT 'Pacientes cargados: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
+
+    -- Validación DIAN: consecutivos suficientes por sede antes de generar facturas
+    IF UPPER(DBO.FNK_VALORVARIABLE('BLOQUEADIAN')) = 'SI'
+    BEGIN
+        DECLARE @SedeDian VARCHAR(5), @CantFacSede INT, @ContinuaDian SMALLINT
+
+        DECLARE cur_valida_dian CURSOR LOCAL FAST_FORWARD FOR
+            SELECT IDSEDE, CEILING(COUNT(*) * 1.0 / NULLIF(@MAXAFI_XFTR, 0))
+            FROM #PacientesPrep
+            GROUP BY IDSEDE
+
+        OPEN cur_valida_dian
+        FETCH NEXT FROM cur_valida_dian INTO @SedeDian, @CantFacSede
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @ContinuaDian = 1
+            EXEC SPQ_VALIDADIAN2 @SedeDian, NULL, @ContinuaDian OUTPUT, @CantFacSede
+
+            IF @ContinuaDian = 0
+            BEGIN
+                CLOSE cur_valida_dian
+                DEALLOCATE cur_valida_dian
+                RAISERROR('La sede %s agotó la numeración autorizada por la DIAN. No se pueden generar más facturas.', 16, 1, @SedeDian)
+                RETURN
+            END
+            IF @ContinuaDian = 6
+            BEGIN
+                CLOSE cur_valida_dian
+                DEALLOCATE cur_valida_dian
+                RAISERROR('La sede %s no tiene consecutivos DIAN suficientes. Se requieren %d facturas y la resolución vigente no cubre el rango.', 16, 1, @SedeDian, @CantFacSede)
+                RETURN
+            END
+            IF @ContinuaDian = 2
+            BEGIN
+                CLOSE cur_valida_dian
+                DEALLOCATE cur_valida_dian
+                RAISERROR('La resolución DIAN de la sede %s está vencida. No se puede continuar con la facturación.', 16, 1, @SedeDian)
+                RETURN
+            END
+            IF @ContinuaDian = 3
+            BEGIN
+                CLOSE cur_valida_dian
+                DEALLOCATE cur_valida_dian
+                RAISERROR('No existe resolución DIAN disponible para la sede %s.', 16, 1, @SedeDian)
+                RETURN
+            END
+
+            FETCH NEXT FROM cur_valida_dian INTO @SedeDian, @CantFacSede
+        END
+
+        CLOSE cur_valida_dian
+        DEALLOCATE cur_valida_dian
+    END
+
+    -- ============================================================================
+    -- CARGA DE CARGOS OPTIMIZADA: Consulta directa a CIT y AUT sin usar la vista
+    -- VWK_CARGOS_HADMAUTCIT_ART. La vista materializa TODAS las citas/autorizaciones
+    -- del sistema antes de filtrar por los pacientes seleccionados, lo que causa un cuello de botella.
+    -- Aqui consultamos directamente las tablas subyacentes filtrando primero por los pacientes conocidos en #PacientesPrep.
+    -- ============================================================================
+    PRINT 'Cargando cargos - CONSULTA DIRECTA OPTIMIZADA (sin vista)...'
+
+    CREATE NONCLUSTERED INDEX IX_PP_AFI ON #PacientesPrep (IDAFILIADO) INCLUDE (GRUPOFACTURA);
+
+    DECLARE @SOLO_CUMPLIDA BIT = 0
+    IF EXISTS (SELECT 1 FROM USVGS WITH (NOLOCK) WHERE IDVARIABLE = 'RIPS_CITSOLOCUMPLIDA' AND DATO = 'SI')
+        SET @SOLO_CUMPLIDA = 1
+
+    -- ====== PARTE 1: CARGOS DESDE CITAS (CIT) ======
+    PRINT 'Cargando cargos desde CIT...'
+    INSERT INTO #FTRDC1 (CNSFTR, N_CUOTA, PROCEDENCIA, FECHA, NOADMISION, PACIENTE,
+        NOPRESTACION, NOITEM, IDSERVICIO, IDAREA, IDPLAN, CCOSTO, PREFIJO, CANTIDAD,
+        VALOR, VALORTOTAL, VLR_COPAGO, VLR_PAGCOMP, VALOREXCEDENTE, DESCUENTO,
+        TIPOTERCERO, CUENTA, ENRECAUDOS, IDAFILIADO, GRUPOFACTURA)
+    SELECT 
+        NULL, 
+        NULL, 
+        'CIT', 
+        CIT.FECHA, 
+        CIT.CONSECUTIVO,
+        LEFT(CONCAT(
+            RTRIM(ISNULL(AFI.PAPELLIDO,'')), ' ',
+            RTRIM(ISNULL(AFI.SAPELLIDO,'')), ' ',
+            RTRIM(ISNULL(AFI.PNOMBRE,'')),  ' ',
+            RTRIM(ISNULL(AFI.SNOMBRE,''))
+        ), 100),
+        CIT.CONSECUTIVO, 
+        1,
+        CIT.IDSERVICIO, 
+        CIT.IDAREA, 
+        CIT.IDPLAN, 
+        CIT.CCOSTO, 
+        SER.PREFIJO,
+        CASE WHEN COALESCE(CIT.CANTIDADC, 0) = 0 THEN 1 ELSE CIT.CANTIDADC END,
+        ISNULL(CIT.VALORTOTAL, 0),
+        (CASE WHEN COALESCE(CIT.CANTIDADC, 0) = 0 THEN 1 ELSE CIT.CANTIDADC END) * ISNULL(CIT.VALORTOTAL, 0),
+        ISNULL(CIT.VALORCOPAGO, 0),
+        0,
+        CASE ISNULL(CIT.VALOREXEDENTE, 0) 
+            WHEN 0 THEN ISNULL(CIT.VALORTOTAL, 0) - ISNULL(CIT.VALORCOPAGO, 0) 
+            ELSE CIT.VALOREXEDENTE 
+        END,
+        0,
+        PPT.TIPOTERCONTABLE,
+        TTEC.CUENTA,
+        0,
+        P.IDAFILIADO,
+        P.GRUPOFACTURA
+    FROM #PacientesPrep P
+    INNER JOIN CIT WITH (NOLOCK) ON CIT.IDAFILIADO = P.IDAFILIADO
+    INNER JOIN AFI WITH (NOLOCK) ON CIT.IDAFILIADO = AFI.IDAFILIADO
+    LEFT JOIN PPT WITH (NOLOCK) 
+        ON PPT.IDPLAN = CIT.IDPLAN 
+        AND PPT.IDTERCERO = @IDTERCERO
+    LEFT JOIN SER WITH (NOLOCK) ON SER.IDSERVICIO = CIT.IDSERVICIO
+    LEFT JOIN TTEC WITH (NOLOCK) ON TTEC.TIPO = PPT.TIPOTERCONTABLE
+    WHERE CIT.IDAFILIADO IS NOT NULL
+        AND CIT.IDAUTSES IS NULL
+        AND CIT.IDPLAN = @IDPLAN
+        AND (
+            CIT.IDTERCEROCA = @IDTERCERO 
+            OR ((CIT.IDTERCEROCA IS NULL OR CIT.IDTERCEROCA = '') AND CIT.IDCONTRATANTE = @IDTERCERO)
+        )
+        AND (@SOLO_CUMPLIDA = 0 OR CIT.CUMPLIDA = 1)
+
+    PRINT 'Cargos CIT cargados: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
+
+    -- ====== PARTE 2: CARGOS DESDE AUTORIZACIONES DE MEDICAMENTOS (AUT/AUTD) ======
+    DECLARE @PREFIJO_MED VARCHAR(20)
+    SELECT @PREFIJO_MED = DATO FROM USVGS WITH (NOLOCK) WHERE IDVARIABLE = 'PREFIJOMEDICAMENTOS'
+
+    IF COALESCE(@PREFIJO_MED, '') <> ''
+    BEGIN
+        PRINT 'Cargando cargos desde AUT/AUTD (medicamentos)...'
+        INSERT INTO #FTRDC1 (CNSFTR, N_CUOTA, PROCEDENCIA, FECHA, NOADMISION, PACIENTE,
+            NOPRESTACION, NOITEM, IDSERVICIO, IDAREA, IDPLAN, CCOSTO, PREFIJO, CANTIDAD,
+            VALOR, VALORTOTAL, VLR_COPAGO, VLR_PAGCOMP, VALOREXCEDENTE, DESCUENTO,
+            TIPOTERCERO, CUENTA, ENRECAUDOS, IDAFILIADO, GRUPOFACTURA)
+        SELECT 
+            NULL, 
+            NULL, 
+            'AUT', 
+            AUT.FECHA, 
+            AUT.IDAUT,
+            LEFT(CONCAT(
+                RTRIM(ISNULL(AFI.PAPELLIDO,'')), ' ',
+                RTRIM(ISNULL(AFI.SAPELLIDO,'')), ' ',
+                RTRIM(ISNULL(AFI.PNOMBRE,'')),  ' ',
+                RTRIM(ISNULL(AFI.SNOMBRE,''))
+            ), 100),
+            AUT.IDAUT, 
+            AUTD.NO_ITEM,
+            AUTD.IDSERVICIO, 
+            AUT.IDAREA,
+            CASE WHEN AUTD.IDPLAN IS NULL OR AUTD.IDPLAN = '' THEN AUT.IDPLAN ELSE AUTD.IDPLAN END,
+            AUTD.CCOSTO, 
+            SER.PREFIJO,
+            ISNULL(AUTD.CANTIDAD, 0),
+            ISNULL(AUTD.VALOR, 0),
+            ISNULL(AUTD.CANTIDAD, 0) * ISNULL(AUTD.VALOR, 0),
+            COALESCE(AUT.VALORCOPAGO, 0),
+            0,
+            CASE ISNULL(AUTD.VALOREXCEDENTE, 0) 
+                WHEN 0 THEN (ISNULL(AUTD.VALOR, 0) * AUTD.CANTIDAD) 
+                ELSE AUTD.VALOREXCEDENTE 
+            END - COALESCE(AUT.VALORCOPAGO, 0),
+            0,
+            PPT.TIPOTERCONTABLE,
+            TTEC.CUENTA,
+            0,
+            P.IDAFILIADO,
+            P.GRUPOFACTURA
+        FROM #PacientesPrep P
+        INNER JOIN AUT WITH (NOLOCK) ON AUT.IDAFILIADO = P.IDAFILIADO
+        INNER JOIN AUTD WITH (NOLOCK) ON AUTD.IDAUT = AUT.IDAUT
+        INNER JOIN AFI WITH (NOLOCK) ON AFI.IDAFILIADO = AUT.IDAFILIADO
+        LEFT JOIN PPT WITH (NOLOCK) 
+            ON PPT.IDTERCERO = @IDTERCERO
+            AND PPT.IDPLAN = CASE WHEN AUTD.IDPLAN IS NULL OR AUTD.IDPLAN = '' THEN AUT.IDPLAN ELSE AUTD.IDPLAN END
+        LEFT JOIN SER WITH (NOLOCK) ON SER.IDSERVICIO = AUTD.IDSERVICIO
+        LEFT JOIN TTEC WITH (NOLOCK) ON TTEC.TIPO = PPT.TIPOTERCONTABLE
+        WHERE AUT.ESTADO = 'Pendiente' 
+            AND AUT.PREFIJO = @PREFIJO_MED
+            AND (
+                AUTD.IDTERCEROCA = @IDTERCERO 
+                OR ((AUTD.IDTERCEROCA IS NULL OR AUTD.IDTERCEROCA = '') AND AUT.IDCONTRATANTE = @IDTERCERO)
+            )
+            AND (
+                AUTD.IDPLAN = @IDPLAN 
+                OR ((AUTD.IDPLAN IS NULL OR AUTD.IDPLAN = '') AND AUT.IDPLAN = @IDPLAN)
+            )
+
+        PRINT 'Cargos AUT cargados: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
+    END
+
+    DECLARE @TOTAL_CARGOS_FTRDC1 INT
+    SELECT @TOTAL_CARGOS_FTRDC1 = COUNT(1) FROM #FTRDC1
+    PRINT 'Total cargos en #FTRDC1: ' + CAST(@TOTAL_CARGOS_FTRDC1 AS VARCHAR(10))
+
+    -- Obtener parámetros de configuración (SIN TRANSACCIÓN)
+    SELECT @DV = DIASVTO, @TTEC = TIPOTERCONTABLE, @NODESCUENTACOPAGO = NODESCUENTACOPAGO
+	FROM PPT WITH (NOLOCK) WHERE IDTERCERO = @IDTERCERO AND IDPLAN = @IDPLAN
+
+	IF (SELECT SIIF FROM TER WITH (NOLOCK) WHERE IDTERCERO = @IDTERCERO)=1
+		SELECT @OBSERVACION=CONCAT('#$', COALESCE(SIIFCODIGOPCI,''), ';', COALESCE(SIIFCONTRATO,''), ';', COALESCE(SIIFCORREOSUPER,''), '#$')
+		FROM TER WITH (NOLOCK) WHERE IDTERCERO = @IDTERCERO 
+
+    IF COALESCE(@TTEC,'')=''
+    BEGIN
+        SELECT @TTEC=DBO.FNK_VALORVARIABLE('IDTERCONTABLEPART')
+    END
+
+	SELECT @CUENTACXC = CUENTA, @CUENTACXC_RAD=CUENTARAD FROM TTEC WITH (NOLOCK)
+	WHERE TIPO = @TTEC
+
+	IF @DV IS NULL OR @DV = 0
+		SELECT @DV = 30
+
+	SELECT @TV = CASE WHEN @TIPOVENTA IS NOT NULL THEN @TIPOVENTA ELSE 'Credito' END
+	SELECT @EC = ENVIODICAJA FROM TER WITH (NOLOCK) WHERE IDTERCERO = @IDTERCERO
+        
+	IF @EC IS NULL
+		SELECT @EC = 0
+
+	SELECT @MONEDA = DATO FROM USVGS WITH (NOLOCK) WHERE IDVARIABLE = 'IDMONEDABASE'          
+	SELECT @IDDEP = LEFT(DATO,20) FROM USVGS WITH (NOLOCK) WHERE IDVARIABLE = 'IDFDEPFACTURACION' 
+    SELECT @BLOQUEADIAN = DBO.FNK_VALORVARIABLE('BLOQUEADIAN')
+    SELECT @FACTSEDE = DBO.FNK_VALORVARIABLE('FACTSEDE')
+    SELECT @IDFORMATOFTR=IDFORFTRCE FROM PPT WITH (NOLOCK) WHERE IDTERCERO=@IDTERCERO AND IDPLAN=@IDPLAN
+
+    -- ============================================================================
+    -- FASE 2: INSERCIÓN/ACTUALIZACIÓN (CON TRANSACCIÓN CORTA)
+    -- ============================================================================
+    PRINT '=== FASE 2: INSERCIÓN CON TRANSACCIÓN CORTA ==='
+    
+    BEGIN TRY
+        BEGIN TRANSACTION
+
+        DECLARE @GrupoMax INT
+        SELECT @GrupoMax = MAX(GRUPOFACTURA) FROM #PacientesPrep
+
+        DECLARE @GrupoActualLoop INT = 1
+        DECLARE @SedeGrupo VARCHAR(5)
+
+        WHILE @GrupoActualLoop <= @GrupoMax
+        BEGIN
+            SELECT TOP 1 @SedeGrupo = IDSEDE FROM #PacientesPrep WHERE GRUPOFACTURA = @GrupoActualLoop
+
+            SET @N_FACTURA = SPACE(20)
+	        EXEC SPK_GENNUMEROFACTURA @COMPANIA, @SedeGrupo, NULL, @N_FACTURA OUTPUT
+
+            IF NULLIF(LTRIM(RTRIM(@N_FACTURA)), '') IS NULL
+            BEGIN
+                RAISERROR('No se generó el número de factura (N_FACTURA) para la sede %s. Verifique la resolución DIAN y los consecutivos disponibles.', 16, 1, @SedeGrupo)
+            END
+
+	        SET @CNSFTR = SPACE(20)
+	        EXEC SPK_GENCONSECUTIVO @COMPANIA, @SedeGrupo, '@CNSFTR',  @CNSFTR OUTPUT  
+	        SELECT @CNSFTR = @SedeGrupo + REPLACE(SPACE(8 - LEN(@CNSFTR))+LTRIM(RTRIM(@CNSFTR)),SPACE(1),0)
+
+            INSERT INTO #ConsecutivosGrupo (GRUPOFACTURA, IDSEDE, CNSFCT, N_FACTURA)
+            VALUES (@GrupoActualLoop, @SedeGrupo, @CNSFTR, @N_FACTURA)
+
+            SET @GrupoActualLoop = @GrupoActualLoop + 1
+        END
+
+        PRINT 'Consecutivos generados para ' + CAST(@GrupoMax AS VARCHAR(10)) + ' grupos de factura'
+
+        IF EXISTS (
+            SELECT 1 FROM #ConsecutivosGrupo
+            WHERE NULLIF(LTRIM(RTRIM(N_FACTURA)), '') IS NULL
+        )
+        BEGIN
+            RAISERROR('Existen facturas sin número (N_FACTURA vacío o nulo). No se puede continuar con la inserción en FTR.', 16, 1)
+        END
+
+        INSERT INTO #FTRD1(CNSFTR, FECHA, DB_CR, AREAPRESTACION, UBICACION, VR_TOTAL,
+                        IMPUTACION, CCOSTO, PREFIJO, ANEXO, REFERENCIA, IDCIRUGIA, CANTIDAD,
+                        VALOR, VLR_SERVICI, VLR_COPAGOS, VLR_PAGCOMP, IDPROVEEDOR, NOADMISION,
+                        NOPRESTACION, NOITEM, IDAFILIADO, AREAFUNCONT, N_FACTURA, SUBCCOSTO, PCOSTO, PAQUETE, GRUPOFACTURA) 
+        SELECT C.CNSFCT, @F_FACTURA, 'DB', NULL, NULL, @VLRPAQUETE-P.VALORCOPAGO
+                , NULL,'1141011104', SER.PREFIJO, DESCSERVICIO, IDSERVICIO, NULL, 1 
+                ,CONVERT(DECIMAL(14,2),@VLRPAQUETE/1), @VLRPAQUETE, P.VALORCOPAGO, 0, @IDTERCERO, P.IDAUTPG
+                , P.IDAUTPG, 99, P.IDAFILIADO, NULL, C.N_FACTURA, NULL, 0, 0, P.GRUPOFACTURA
+        FROM #PacientesPrep P
+            INNER JOIN #ConsecutivosGrupo C ON C.GRUPOFACTURA = P.GRUPOFACTURA
+            CROSS JOIN SER WITH (NOLOCK)
+        WHERE SER.IDSERVICIO=@IDSERVICIOPAQ
+
+        UPDATE FC
+        SET FC.CNSFTR = C.CNSFCT,
+            FC.N_CUOTA = F.N_CUOTA
+        FROM #FTRDC1 FC
+            INNER JOIN #PacientesPrep P ON P.IDAFILIADO = FC.IDAFILIADO
+            INNER JOIN #ConsecutivosGrupo C ON C.GRUPOFACTURA = P.GRUPOFACTURA
+            INNER JOIN #FTRD1 F ON F.IDAFILIADO = P.IDAFILIADO AND F.CNSFTR = C.CNSFCT
+
+        PRINT 'Insertando en FTR...'
+	    INSERT INTO FTR(CNSFCT, COMPANIA, CLASE, IDTERCERO, N_FACTURA, F_FACTURA, F_VENCE, VR_TOTAL, COBRADOR, VENDEDOR, MONEDA, OCOMPRA, ESTADO, F_CANCELADO,
+					    IDAFILIADO, EMPLEADO, NOREFERENCIA, PROCEDENCIA, TIPOFAC, OBSERVACION, TIPOVENTA, VALORCOPAGO, DESCUENTO, VALORPCOMP, CREDITO, INDCARTERA,
+					    INDCXC, MARCACONT, CONTABILIZADA, NROCOMPROBANTE, MARCA, INDASIGCXC, IMPRESO, VALORSERVICIOS, CLASEANULACION, CNSLOG, USUARIOFACTURA, FECHAFAC,
+					    MIVA, PIVA, VR_ABONOS, IDPLAN, FECHAPASOCXC, TIPOFIN, CNSFMAS, IDAREA_ALTA,
+					    CCOSTO_ALTA, IDDEP, TIPOTTEC, CUENTACXC,CUENTACXC_RAD, CODUNG , CODPRG, PAQUETE,
+					    IDSEDE, RDIAN, CNSRESOL,IDFORMATO,COPAPROPIO,CP_VLR_COPAGOS,CAPITADA,CP_CONVENIO,
+                    CP_MODALIDAD,CP_MES,FECHACAP_INI,FECHACAP_FIN, VALORMODERADORA,SINCNT)
+	    SELECT DISTINCT C.CNSFCT, @COMPANIA, 'C', @IDTERCERO, C.N_FACTURA, CASE WHEN @F_FACTURA IS NOT NULL THEN @F_FACTURA ELSE DBO.FNK_GETDATE() END,
+		    CASE WHEN @F_FACTURA IS NOT NULL THEN @F_FACTURA + @DV ELSE DBO.FNK_GETDATE() + @DV END
+		    ,0, NULL, NULL, @MONEDA, NULL, 'P', NULL, 
+			    NULL, @USUARIO, 'VARIOS', 'AUTPG', 'M', COALESCE(@OBSERVACIONF, REPLACE(COALESCE(@OBSERVACION,''),'@N_FACTURA',C.N_FACTURA)), @TV, 0, 0, 0, 0, 
+		    0, 0, 0, 0, NULL, 0, 0, 0, 0, NULL, NULL, @USUARIO, GETDATE(), 0, 0, 0, 
+		    @IDPLAN, NULL, COALESCE(@TIPOFIN,'C'), NULL, NULL, NULL, @IDDEP, @TTEC,@CUENTACXC,@CUENTACXC_RAD, '' , '', 1, C.IDSEDE,
+		    CASE WHEN @BLOQUEADIAN='SI' THEN
+                CASE WHEN @FACTSEDE='SI' THEN 
+                CASE WHEN EXISTS(SELECT TOP 1 CNSRESOL FROM FDIAN WITH (NOLOCK) WHERE IDENTIFICADOR=C.IDSEDE AND VENCIDA=0 AND PROCEDENCIA = 'FTR') THEN 1 ELSE 0 END
+                ELSE 
+                CASE WHEN EXISTS(SELECT TOP 1 CNSRESOL FROM FDIAN WITH (NOLOCK) WHERE VENCIDA=0 AND PROCEDENCIA = 'FTR') THEN 1 ELSE 0 END
+                END
+            ELSE 0 END, CASE WHEN @BLOQUEADIAN='SI' THEN
+                CASE WHEN @FACTSEDE='SI' THEN 
+                    ISNULL((SELECT TOP 1 CNSRESOL FROM FDIAN WITH (NOLOCK) WHERE IDENTIFICADOR=C.IDSEDE AND VENCIDA=0 AND PROCEDENCIA = 'FTR'), '')
+                ELSE 
+                ISNULL((SELECT TOP 1 CNSRESOL FROM FDIAN WITH (NOLOCK) WHERE VENCIDA=0 AND PROCEDENCIA = 'FTR'), '')
+                END
+            ELSE '' END,@IDFORMATOFTR ,0,0,0,'@CP_CONVENIO','@CP_MODALIDAD','@CP_MES',NULL,NULL, COALESCE(@VALORMODERADORA,0),COALESCE(@SINCNT,0)
+        FROM #ConsecutivosGrupo C
+
+        PRINT 'Insertando en FTRD...'
+        INSERT INTO FTRD(CNSFTR, N_CUOTA, FECHA, DB_CR, AREAPRESTACION, UBICACION, VR_TOTAL,
+                        IMPUTACION, CCOSTO, PREFIJO, ANEXO, REFERENCIA, IDCIRUGIA, CANTIDAD,
+                        VALOR, VLR_SERVICI, VLR_COPAGOS, VLR_PAGCOMP, IDPROVEEDOR, NOADMISION,
+                        NOPRESTACION, NOITEM, IDAFI, AREAFUNCONT, N_FACTURA, SUBCCOSTO, PCOSTO,PAQUETE,PERIODO, PROCEDENCIA) 
+        SELECT CNSFTR, N_CUOTA, FECHA, DB_CR, AREAPRESTACION, UBICACION, VR_TOTAL,
+                        IMPUTACION, CCOSTO, PREFIJO, ANEXO, REFERENCIA, IDCIRUGIA, CANTIDAD,
+                        VALOR, VLR_SERVICI, VLR_COPAGOS, VLR_PAGCOMP, IDPROVEEDOR, NOADMISION,
+                        NOPRESTACION, NOITEM, IDAFILIADO, AREAFUNCONT, N_FACTURA, SUBCCOSTO, PCOSTO,PAQUETE,@ANOMES,'AUTPG'
+        FROM #FTRD1 
+
+        PRINT 'Insertando en FTRDC...'
+        INSERT INTO FTRDC (CNSFTR,N_CUOTA,PROCEDENCIA,FECHA,NOADMISION,PACIENTE,NOPRESTACION,NOITEM,IDSERVICIO,IDAREA,IDPLAN,  
+					    CCOSTO,PREFIJO,CANTIDAD,VALOR,VALORTOTAL,VLR_COPAGO,VLR_PAGCOMP,VALOREXCEDENTE,DESCUENTO,TIPOTERCERO,  
+					    CUENTA,ENRECAUDOS,IDAFILIADO)
+        SELECT CNSFTR,N_CUOTA,PROCEDENCIA,FECHA,NOADMISION,PACIENTE,NOPRESTACION,NOITEM,IDSERVICIO,IDAREA,IDPLAN,  
+					    CCOSTO,PREFIJO,CANTIDAD,VALOR,VALORTOTAL,VLR_COPAGO,VLR_PAGCOMP,VALOREXCEDENTE,DESCUENTO,TIPOTERCERO,  
+					    CUENTA,ENRECAUDOS,IDAFILIADO
+        FROM #FTRDC1
+        WHERE CNSFTR IS NOT NULL
+
+        PRINT 'Actualizando totales de facturas...'
+        UPDATE F
+        SET 
+                F.VALORSERVICIOS = D.VRSERV,
+                F.VALORCOPAGO = D.TotalCopago,
+                F.VALORPCOMP = D.TotalPagComp,
+                F.VR_TOTAL = D.VRTOTAL
+        FROM FTR F 
+        JOIN (
+                SELECT 
+                CNSFTR,
+                COALESCE(SUM(VLR_SERVICI),0) AS VRSERV,
+                COALESCE(SUM(VR_TOTAL),0) AS VRTOTAL,
+                SUM(VLR_COPAGOS) AS TotalCopago,
+                SUM(VLR_PAGCOMP) AS TotalPagComp
+                FROM FTRD
+                WHERE CNSFTR IN (SELECT CNSFCT FROM #ConsecutivosGrupo)
+                GROUP BY CNSFTR
+        ) D ON D.CNSFTR = F.CNSFCT
+        WHERE F.CNSFCT IN (SELECT CNSFCT FROM #ConsecutivosGrupo)
+
+        PRINT 'Actualizando AUTPG como facturado...'
+        UPDATE A
+        SET 
+            A.FACTURADO = 1,
+            A.N_FACTURA = C.N_FACTURA,
+            A.MARCA = 0,
+            A.USUARIO_MARCA=NULL
+        FROM AUTPG A
+        INNER JOIN #PacientesPrep P ON A.ID = P.IDAUTPG
+        INNER JOIN #ConsecutivosGrupo C ON C.GRUPOFACTURA = P.GRUPOFACTURA
+        WHERE A.ANOMES = @ANOMES
+            AND A.IDTERCEROCA = @IDTERCERO
+            AND A.IDPLAN = @IDPLAN
+            AND A.FACTURADO = 0
+		    AND A.ENFACT=1
+            AND A.FACTURABLE=1 
+            AND A.ESTADO IN ('Autorizado','Autorizado Recuperado')
+
+        COMMIT TRANSACTION
+        PRINT '=== TRANSACCIÓN COMPLETADA EXITOSAMENTE ==='
+
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION
+        
+        PRINT '=== ERROR EN LA TRANSACCIÓN - ROLLBACK EJECUTADO ==='
+        PRINT 'Los consecutivos de factura NO se perdieron (fueron revertidos)'
+        
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE()
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY()
+        DECLARE @ErrorState INT = ERROR_STATE()
+        
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState)
+        
+        IF OBJECT_ID('tempdb..#PacientesPrep') IS NOT NULL DROP TABLE #PacientesPrep;
+        IF OBJECT_ID('tempdb..#ConsecutivosGrupo') IS NOT NULL DROP TABLE #ConsecutivosGrupo;
+        IF OBJECT_ID('tempdb..#FTRD1') IS NOT NULL DROP TABLE #FTRD1;
+        IF OBJECT_ID('tempdb..#FTRDC1') IS NOT NULL DROP TABLE #FTRDC1;
+        
+        RETURN
+    END CATCH
+
+    -- ============================================================================
+    -- FASE 3: CONTABILIZACIÓN (FUERA DE TRANSACCIÓN - PROCESO SECUNDARIO)
+    -- ============================================================================
+    PRINT '=== FASE 3: CONTABILIZACIÓN ==='
+    
+    DECLARE @CONTAB_POR_JOB VARCHAR(5) = DBO.FNK_VALORVARIABLE('CONTAB_FTR_JOB')
+    
+    IF @CONTAB_POR_JOB = 'SI'
+    BEGIN
+        PRINT 'Contabilización delegada a JOB - Insertando en FTRCO...'
+        
+        INSERT INTO FTRCO(N_FACTURA, USUARIO, SYS_COMPUTERNAME, COMPANIA, SEDE)
+        SELECT N_FACTURA, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, IDSEDE
+        FROM #ConsecutivosGrupo
+        
+        PRINT 'Facturas encoladas para contabilización por JOB: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
+    END
+    ELSE
+    BEGIN
+        PRINT 'Contabilización directa de facturas...'
+        
+        DECLARE CONTA_FTR_CURSOR CURSOR FOR
+        SELECT N_FACTURA, IDSEDE
+        FROM #ConsecutivosGrupo
+        
+        OPEN CONTA_FTR_CURSOR;
+        FETCH NEXT FROM CONTA_FTR_CURSOR INTO @N_FACTURA, @IDSEDE
+         
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            BEGIN TRY
+                EXEC SPK_NC_CONTAB_FTR @N_FACTURA, @COMPANIA, @USUARIO, @SYS_COMPUTERNAME, @IDSEDE, ''         
+            END TRY
+            BEGIN CATCH
+                PRINT 'Advertencia: Error en contabilización de factura ' + @N_FACTURA + ': ' + ERROR_MESSAGE()
+            END CATCH
+         
+            FETCH NEXT FROM CONTA_FTR_CURSOR INTO @N_FACTURA, @IDSEDE;
+        END
+         
+        CLOSE CONTA_FTR_CURSOR;
+        DEALLOCATE CONTA_FTR_CURSOR;
+    END
+
+    IF OBJECT_ID('tempdb..#PacientesPrep') IS NOT NULL DROP TABLE #PacientesPrep;
+    IF OBJECT_ID('tempdb..#ConsecutivosGrupo') IS NOT NULL DROP TABLE #ConsecutivosGrupo;
+    IF OBJECT_ID('tempdb..#FTRD1') IS NOT NULL DROP TABLE #FTRD1;
+    IF OBJECT_ID('tempdb..#FTRDC1') IS NOT NULL DROP TABLE #FTRDC1;
+
+    PRINT '=== PROCESO COMPLETADO ==='
+END
+

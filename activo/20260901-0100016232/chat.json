@@ -1,0 +1,58 @@
+{
+  "mensajes": [
+    {
+      "id": "20260906195819636554",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste los SP/METODO documentados a usar. No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis).",
+      "fecha": "2026-09-06T19:58:19"
+    },
+    {
+      "id": "20260906195819659796w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-06T19:58:19"
+    },
+    {
+      "id": "20260906200746578122",
+      "autor": "coordinador",
+      "texto": "ven te coloque el check de validar previamente",
+      "fecha": "2026-09-06T20:07:46"
+    },
+    {
+      "id": "20260906200746601984w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-06T20:07:46"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-06T20:17:17"
+    },
+    {
+      "id": "correo-cierre-20260901-0100016232",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a naren.voos@ixcolombia.com.",
+      "fecha": "2026-09-06T20:17:46"
+    },
+    {
+      "id": "20260906200200agente",
+      "autor": "agente",
+      "texto": "**Caso activado — REQ 0100016232 (ÓPTICA CENTRAL)**\n\nAnálisis previo en el formulario (CA-01…CA-08, proceso **autorizaciones-ce**). Dictamen HTML generado.\n\n## Resumen\n**Problema:** Separar Servicios en el Autorizador no factura bien EPS + particular.\n**Causa probable:** FE silencioso en KO + motor **SPK_SEPARA_SER_REL_AUT** (ficha parcial; cuerpo pendiente en sql/).\n**Solución:** Fix SPK (split SERR → AUTD + reliquidación) + notify KO en AutorizadorComponent; validar FTR dual vía SPK_FACTURACE_N.\n**Contabilidad:** No aplica.\n\n## Veredicto sql/\nSeguir sin bloquear Fase 1: wrappers y fichas leídas cubren el alcance. **Al codificar:** bajar `SPK_SEPARA_SER_REL_AUT.sql` a sql/.\n\n## SPs del fix\n| SP | METODO | Estado |\n|----|--------|--------|\n| SPQ_AUT_COL | SEPARAR_SER_OPTICA | leído |\n| SPK_SEPARA_SER_REL_AUT | (SP) | parcial |\n| SPQ_AUT_COL | UNIR_SER_OPTICA | leído |\n| SPQ_AUT_COL | FACTURA_AUT | leído |\n| SPK_FACTURACE_N | (SP) | leído |\n| SPK_COPAGO_AUT_CEHOSP | (SP) | leído |\n\n**Dictamen:** dictamenes/20260901-0100016232.html\n\nRevise el HTML y comente en este Chat. Capturas opcionales (AUT antes/después, FTR EPS vs particular) en aprobados/20260901-0100016232/imagenes/. Al aprobar → Cerrar fase 1.",
+      "fecha": "2026-09-07T01:02:00"
+    },
+    {
+      "id": "20260907020500agente",
+      "autor": "agente",
+      "texto": "**Re-activación — caso listo (REQ 0100016232)**\n\nConfirmé Fase 1 abierta (`activadoEn` 2026-09-06). Formulario completo (CA-01…CA-08). **Contabilidad: no aplica** (validado).\n\n## Novedad: SPK en sql/\nEn esta activación encontré **`sql/SPK_SEPARA_SER_REL_AUT.sql`** y releí el cuerpo. Actualicé el dictamen con la lógica real:\n\n| Hallazgo | Detalle |\n|----------|--------|\n| Split | Con SERR: línea EPS (HOMOLOGO=1, IDSERVICIO→relacionado) + INSERT particular (#TX) con IDTERPART/IDPLANPART; VALOR = tarifa part. − tarifa EPS vía **SERTOT1** |\n| Sin SERR | Toda la línea pasa a particular (sin dual EPS) |\n| Copago | **No** invoca SPK_COPAGO_AUT_CEHOSP; solo SUM(VALORCOPAGO) en cabecera AUT |\n| Tarifas | Si SERTOT1 vacío → VALOR 0 |\n| FE | onSepararSer sigue sin notify KO |\n\n## Solución (sin cambio de enfoque)\n1. **SPK:** reliquidación post-split + validar SERTOT1 + revisar filtro SERR/AQUIENCOBRO.\n2. **FE:** notify KO en Separar/Unificar.\n3. **Validar** FACTURA_AUT → FTR dual (SPK_FACTURACE_N).\n\n**Dictamen actualizado:** dictamenes/20260901-0100016232.html\n\nSiguiente paso suyo: revisar HTML y comentar aquí. Si aprueba → **Cerrar fase 1**. Capturas opcionales en `aprobados/20260901-0100016232/imagenes/`.",
+      "fecha": "2026-09-07T01:05:00"
+    },
+    {
+      "id": "20260907020700agente",
+      "autor": "agente",
+      "texto": "Recibido el check **Validar antes de desarrollar** (`validarAntes.aplica=true`).\n\n## Qué hice\n1. Incorporé en el dictamen la sección **«Validar antes de desarrollar»** (obligatoria) con checklist concreto para ÓPTICA CENTRAL / rama `bugfix/OPCENT12`.\n2. Añadí **CA-00** en `solicitud.contenido.criteriosAceptacion` (reproducir antes de codificar; si ya funciona → sin desarrollo).\n3. Primera prueba del desarrollador en el HTML apunta a esa validación.\n\n## Checklist resumido (desarrollador / coordinador)\n- Autorizador → AUT con SERR + tarifas SERTOT1 vigentes.\n- **Separar Servicios** → revisar HOMOLOGO, IDTERCEROCA, valores y si hay mensaje KO.\n- **Facturar** → ¿FTR EPS y particular separadas?\n- **Si OK:** cerrar sin fix. **Si falla:** aplicar propuesta (SPK + notify FE).\n\n**Dictamen actualizado:** dictamenes/20260901-0100016232.html\n\nCuando tenga resultado de la validación en cliente (funciona / falla + capturas), escríbalo aquí; ajustamos alcance si hace falta antes de Cerrar fase 1.",
+      "fecha": "2026-09-07T01:07:00"
+    }
+  ]
+}

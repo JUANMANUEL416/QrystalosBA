@@ -1,0 +1,275 @@
+{
+  "id": "conciliaciones",
+  "nombre": "Cartera · Conciliaciones",
+  "modulo": "FCONCI_COL",
+  "familia": "cartera",
+  "prioridad": 6,
+  "estado": "parcial",
+  "resumen": "Acuerdo EPS vs cartera: FCONCI+FCONCID por factura FCXCDV. VLRACEPTADO→NC (SPK_NOTASCXC); VLRRECUPERAR→saldo tipo C en FCXCDV. Confirmar=SPK_APLICA_CONCILIACION; anular=SPK_RETIRA_FACTURA_CONCI (ND). /admin/Concilia. OM /cont CONCILIACIONES+CONTABILIDAD_3. No es conciliación bancaria.",
+  "actualizado": "2026-09-06T08:10:00",
+  "notaSql": "Ruta paso 6 cerrado 2026-09-06: SPQ_FCONCI_COL 8/8 + SPQ_CONCILIACIONES 3/3 + SPKs núcleo (APLICA, RETIRA, CONTAB_CONCI, NC_CONTAB_ANULA_CONCI) leídos en sql/.",
+  "alcanceHasta": "Ciclo administrativo: crear conciliación → detalle facturas → confirmar (genera notas y cierra) → imprimir → anular/revertir → contabilizar vía OM Conciliaciones (/cont). No incluye conciliación bancaria ni CONCFGLO de /cont/conciContables.",
+  "ventanas": [
+    {
+      "uso": "Conciliaciones de glosa (cartera)",
+      "ruta": "Admin.Conci",
+      "path": "/admin/Concilia",
+      "vue": "ConciliaPage.vue → Concilia/FconciComponent.vue",
+      "entrada": "Administrativo → Concilia. Grilla FCONCI (AppStore.read) + detalle FCONCID. Botones: confirmar, anular, Excel, escaneo DOCXTPO tipo FCONCI."
+    },
+    {
+      "uso": "Contabilidad — otros módulos conciliaciones",
+      "ruta": "cont",
+      "path": "/cont",
+      "vue": "OMConciliacionesComponent (MODELO CONCILIACIONES / CONTABILIDAD_3)",
+      "entrada": "Contabilidad → Otros módulos → Conciliaciones. Lista FCONCI cerradas con CONTABILIZADA=0; ENV_CONTA_OTROS_MODULS."
+    },
+    {
+      "uso": "Conciliaciones contables (bancos — otro producto)",
+      "ruta": "cont.conciContables",
+      "path": "/cont/conciContables",
+      "vue": "ConciContablesPage → CONCFGLOComponent",
+      "entrada": "Contabilidad → Conciliaciones contables. Cruce MCPE; no es este proceso FCONCI_COL."
+    },
+    {
+      "uso": "Informes cartera — historial conciliación",
+      "ruta": "",
+      "path": "",
+      "vue": "DetaFacxcComponent (muestra CONCI por factura)",
+      "entrada": "Consulta detalle CxC: lista conciliaciones ligadas a la factura."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Concepto NC por defecto (CPNT vía USVGS IDCOPNOTACONCI). Catálogo motivos glosa FCGLO (CNSFCGLO en detalle). Formato Nro.Externo (CONCIGLOSA_NREXTERNO). Variable FNOT_FECHACONCILIA valida PRI al confirmar si valor=CONCILIACION.",
+      "tablasClave": ["CPNT", "FCGLO", "PRI"],
+      "gates": [
+        {
+          "id": "concepto-nc-conci",
+          "nombre": "Concepto de nota en conciliación",
+          "explicacion": "Al crear detalle, FCONCID.CONDCONCEPTO toma IDCOPNOTACONCI (USVGS). El FE exige CONCEPTO (descripción CPNT). CARGA_EXCEL valida CODCONCEPTO ∈ CPNT.",
+          "invariante": "Sin concepto CPNT válido no guarda detalle ni carga Excel.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "CRUD_FCONCID / CARGA_EXCEL_FCONCID",
+              "rol": "CONDCONCEPTO obligatorio en FE; Excel valida CPNT."
+            }
+          ]
+        },
+        {
+          "id": "catalogo-fcglo",
+          "nombre": "Código glosa en detalle (opcional FE, obligatorio Excel tipo G/C/R)",
+          "explicacion": "FCONCID.CNSFCGLO enlaza FCGLO.DESCRIPCION. En manual el FE no exige CNSFCGLO; Excel exige CNSGLO si TIPO ∈ G,C,R.",
+          "invariante": "Tipos glosa/ratificación/conciliación en FCXCDV requieren CNSGLO en carga masiva.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "CARGA_EXCEL_FCONCID",
+              "rol": "Valida CNSGLO y saldo FCXCDV por tipo."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Operador elige tercero → crea FCONCI (Ingresada, TIPO Individual o Porcentaje) → agrega líneas FCONCID (manual, Excel o concepto masivo) → confirma (CONFIRMAR_CONCILIACION → Cerrada) o anula conciliación/item cerrado.",
+      "tablasClave": ["FCONCI", "FCONCID"],
+      "gates": [
+        {
+          "id": "crud-cabecera",
+          "nombre": "Alta/edición/borrado cabecera",
+          "explicacion": "CRUD_FCONCI: Nueva genera IDFCONCI (@CONCI), PROCEDENCIA='CXC', CONTABILIZADA=0. Solo Ingresada edita/borra; borrar cabecera exige sin detalle.",
+          "invariante": "Cabecera cerrada no edita. FE valida tercero, fechas (pago ≥ conciliación), porcentaje si TIPO=P.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "CRUD_FCONCI",
+              "rol": "Alta/edición/borrado FCONCI. Llama SPK_GENCONSECUTIVO."
+            }
+          ]
+        },
+        {
+          "id": "crud-detalle",
+          "nombre": "Detalle por factura",
+          "explicacion": "CRUD_FCONCID: Nueva inserta línea con SALDONETO, VLRACEPTADO, VLRRECUPERAR, CNSGLO, CONDCONCEPTO, CNSFCGLO. FE cap VLRACEPTADO ≤ SALDONETO. Aplicar concepto masivo = varios CRUD_FCONCID Editar.",
+          "invariante": "Solo conciliación Ingresada. No duplicar ITEM_FCXCDV en mismo IDFCONCI.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "CRUD_FCONCID",
+              "rol": "CRUD líneas FCONCID."
+            },
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "LIMPIAR_FCONCID",
+              "rol": "Borra detalle ESTADO=Ingresada de un IDFCONCI."
+            }
+          ]
+        },
+        {
+          "id": "carga-excel",
+          "nombre": "Carga masiva Excel",
+          "explicacion": "CARGA_EXCEL_FCONCID: valida factura en FCXCDV, tercero FTR, saldos, CPNT, duplicados; inserta FCONCID desde FCXCDV.",
+          "invariante": "Conciliación debe estar Ingresada. Devuelve filas con ERROR=1 y SMSERROR.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "CARGA_EXCEL_FCONCID",
+              "rol": "Validaciones Excel + INSERT masivo."
+            }
+          ]
+        },
+        {
+          "id": "split-aceptado-recuperar",
+          "nombre": "Valor aceptado vs valor a recuperar",
+          "explicacion": "Por línea FCONCID: SALDONETO (saldo glosa/factura en FCXCDV). VLRACEPTADO = lo que EPS acepta pagar → genera NC al confirmar. VLRRECUPERAR = SALDONETO − VLRACEPTADO → queda como saldo tipo C en FCXCDV (cuota conciliación). FE cap VLRACEPTADO ≤ SALDONETO.",
+          "invariante": "VLRACEPTADO + VLRRECUPERAR debe cuadrar con el saldo negociado. Solo VLRACEPTADO>0 genera FNOT al confirmar.",
+          "sps": [
+            { "nombre": "SPQ_FCONCI_COL", "metodo": "CRUD_FCONCID", "rol": "Captura valores en conciliación Ingresada." },
+            { "nombre": "SPK_APLICA_CONCILIACION", "metodo": "APLICAR", "rol": "NC si aceptado; FCXCDV tipo C si recuperar." }
+          ]
+        },
+        {
+          "id": "confirmar-conci",
+          "nombre": "Confirmar / cerrar conciliación",
+          "explicacion": "CONFIRMAR_CONCILIACION: asigna CNSFNOT a ítems con VLRACEPTADO>0; llama SPK_APLICA_CONCILIACION; exige ESTADO final Cerrada. Valida PRI si FNOT_FECHACONCILIA=CONCILIACION. SPK crea NC (PROCEDENCIA CONCILIA), aplica NOTASCXC, mueve recuperar a FCXCDV, SPK_CONTAB_CONCI si aplica.",
+          "invariante": "Si SPK no cierra, KO «La Conciliación No se ha aplicado correctamente…». IDCOPNOTACONCI obligatorio.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "CONFIRMAR_CONCILIACION",
+              "rol": "Orquestador cierre. Llama SPK_APLICA_CONCILIACION."
+            },
+            {
+              "nombre": "SPK_APLICA_CONCILIACION",
+              "metodo": "APLICAR",
+              "rol": "Ficha leída sql/."
+            }
+          ]
+        },
+        {
+          "id": "anular-conci",
+          "nombre": "Anular conciliación o ítem",
+          "explicacion": "ANULAR_CONCILIACION: recorre ítems Cerrada, asigna CNSNOTADB si VLRACEPTADO>0, SPK_RETIRA_FACTURA_CONCI, marca Anulada. ANULAR_ITEM: un ítem Cerrada.",
+          "invariante": "Ítem con CNSNOTADB ya asignado no anula de nuevo (KO).",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "ANULAR_CONCILIACION / ANULAR_ITEM",
+              "rol": "Reversos. Llama SPK_RETIRA_FACTURA_CONCI."
+            },
+            {
+              "nombre": "SPK_RETIRA_FACTURA_CONCI",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída sql/. Reverso NC/ND y saldo FCXCDV tipo C."
+            }
+          ]
+        },
+        {
+          "id": "imprimir",
+          "nombre": "Imprimir conciliación",
+          "explicacion": "IMPRIMIR devuelve cabecera + FCONCID JSON. useConci imprime PDF (jsPDF). Comprobante contable: botón Imp.Comp. si Cerrada y NROCOMPROBANTE.",
+          "invariante": "IDFCONCI requerido.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCONCI_COL",
+              "metodo": "IMPRIMIR",
+              "rol": "SELECT para impresión."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Detalle se alimenta de cartera: FCXCDV (saldo por factura/tipo/glosa), FTR (tercero), FGLO (CNSGLO cuando aplica). Prerrequisito: CxC radicada (Facturación). Tras confirmar, el efecto en FNOT/FTR/FGLO ocurre en SPK_APLICA_CONCILIACION (proceso Notas DB/CR hermano).",
+      "tablasClave": ["FCXCDV", "FCXC", "FTR", "FGLO"],
+      "gates": [
+        {
+          "id": "desde-cxc-factura",
+          "nombre": "Selección factura desde cartera",
+          "explicacion": "BuscaFactura lee FCXCDV join FTR filtrado por IDTERCERO de la conciliación. Toma SALDONETO, CNSCXC, CNSGLO, ITEM→ITEM_FCXCDV, TIPO.",
+          "invariante": "Factura debe pertenecer al tercero de FCONCI y tener saldo > 0.",
+          "sps": []
+        },
+        {
+          "id": "desde-glosa",
+          "nombre": "Glosa previa en cartera",
+          "explicacion": "Para TIPO G/C/R en FCXCDV, FCONCID.CNSGLO enlaza glosa FGLO. Proceso Glosas upstream; conciliación acuerda VLRACEPTADO vs SALDONETO.",
+          "invariante": "Sin glosa asociada en FCXCDV, Excel rechaza filas tipo G/C/R sin CNSGLO.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido (notas y devolución)",
+      "estado": "parcial",
+      "explicacion": "Al confirmar, SPK_APLICA_CONCILIACION genera/aplica notas crédito (CNSFNOT prefijo sede+C) por VLRACEPTADO. Anular genera consecutivo ND (CNSNOTADB prefijo sede+D) y revierte. Procedencia FNOT puede ser CONCILIA (Notas DB/CR). Escaneo: DOCXTPO tipo FCONCI.",
+      "tablasClave": ["FNOT", "FNOTD", "FGLO"],
+      "gates": [
+        {
+          "id": "notas-al-confirmar",
+          "nombre": "Notas crédito/débito al cerrar o anular",
+          "explicacion": "CONFIRMAR asigna @FNOTC antes de SPK_APLICA. ANULAR asigna @FNOTD y SPK_RETIRA_FACTURA_CONCI por ítem.",
+          "invariante": "VLRACEPTADO>0 genera NC (CNSFNOT); anular genera ND (CNSNOTADB). Efecto cartera/contable en SPKs núcleo (leído).",
+          "sps": [
+            {
+              "nombre": "SPK_APLICA_CONCILIACION",
+              "metodo": "(confirmar)",
+              "rol": "Puente hacia Notas DB/CR y cartera."
+            },
+            {
+              "nombre": "SPK_RETIRA_FACTURA_CONCI",
+              "metodo": "(anular)",
+              "rol": "Reverso notas y saldos."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "FCONCI.CONTABILIZADA y NROCOMPROBANTE (columnas visibles en FE). Tras confirmar, contabilización vía Contabilidad → OM Conciliaciones: CONCILIACIONES/LISTA filtra por periodo; ENV_CONTA_OTROS_MODULS (CONTABILIDAD_3) con ITEMS=IDFCONCI. Semáforo 0/1/2 como recaudos. /cont/conciContables (CONCFGLO) es otro circuito MCPE.",
+      "tablasClave": ["FCONCI", "MCP", "MCPE"],
+      "gates": [
+        {
+          "id": "contabilizar-om",
+          "nombre": "Contabilizar desde otros módulos",
+          "explicacion": "OMConciliacionesComponent: no reenvía si CONTABILIZADA 1 o 2. ENV_CONTA_OTROS_MODULS recibe lista IDFCONCI.",
+          "invariante": "Solo conciliaciones cerradas pendientes de contabilizar aparecen en LISTA.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONCILIACIONES",
+              "metodo": "LISTA",
+              "rol": "Grilla OM. MODELO CONCILIACIONES (otro SPQ; inventario FE)."
+            },
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "ENV_CONTA_OTROS_MODULS",
+              "rol": "Envío masivo OM. Comparte patrón con Glosas OM."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-06T04:45:00"
+}

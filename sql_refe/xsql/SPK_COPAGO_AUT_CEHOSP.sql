@@ -1,0 +1,684 @@
+CREATE OR ALTER PROCEDURE DBO.SPK_COPAGO_AUT_CEHOSP
+@IDAFILIADO       VARCHAR(20),
+@IDAUT            VARCHAR(20), 
+@NO_ITEM          SMALLINT,
+@IDSERVICIO       VARCHAR(20),
+@PYP              SMALLINT,
+@ALTOCOSTO        SMALLINT,
+@VALORAUTD        DECIMAL(14,2),
+@PROCEDENCIA      VARCHAR(2),
+@SYS_COMPUTERNAME VARCHAR(254),
+@COMPANIA         VARCHAR(2),
+@IDSEDE           VARCHAR(5),
+@USUARIO          VARCHAR(12),
+@IDPROVEEDOR      VARCHAR(20) = NULL,
+@IDAREA           VARCHAR(20) = NULL,
+@FECHAAUT         DATETIME    = NULL,
+@COPAGOPROPIO     SMALLINT    = 0,
+@SOAT             SMALLINT    = 0
+WITH ENCRYPTION
+AS
+DECLARE @TIPOUSUARIO     VARCHAR(2)  
+DECLARE @IDADMINISTRADORA VARCHAR(20)
+DECLARE @GRUPOETNICO      VARCHAR(1)
+DECLARE @EDAD             DECIMAL(14,2)
+DECLARE @TIPOUSUARIO2    VARCHAR(12)
+DECLARE @NIVELSOCIOEC     VARCHAR(2)
+DECLARE @IDPLAN           VARCHAR(6) 
+DECLARE @PREFIJO          VARCHAR(6)
+DECLARE @NIVELATENCION    VARCHAR(5)      
+DECLARE @IDMODELOPCA      VARCHAR(5)
+DECLARE @COBRARCOPA       VARCHAR(12)
+DECLARE @EXPYP            SMALLINT
+DECLARE @TIPODEPAGO       VARCHAR(10)
+DECLARE @EXALTOCOSTO      SMALLINT
+DECLARE @EXGRUPOETNICO    VARCHAR(1)
+DECLARE @FORMACOBRO       VARCHAR(10)
+DECLARE @REDONDEO         VARCHAR(10)
+DECLARE @VALOR            DECIMAL(14,2)
+DECLARE @VALORCOPAGO      DECIMAL(14,2)
+DECLARE @MESES            DECIMAL(14,2)
+DECLARE @FNACIM           DATETIME
+DECLARE @EXEDAD           SMALLINT
+DECLARE @VALORTOTAL1      DECIMAL(14,2)
+DECLARE @AUXN             INT
+DECLARE @IDTERCEROCA      VARCHAR(20)
+DECLARE @IDTERCEROCAD     VARCHAR(20)
+DECLARE @DATOCONT         VARCHAR(20)
+DECLARE @VLRSERVICIO      DECIMAL(14,2)
+DECLARE @VALORTOTALCOSTO  DECIMAL(14,2) 
+DECLARE @CALCULARPOR      VARCHAR(5)
+DECLARE @OK               INT
+DECLARE @PART             SMALLINT
+DECLARE @AQUIENCOBRO      VARCHAR(1)
+DECLARE @NOAUTORIZACIONCIT VARCHAR(45)
+DECLARE @DESCSERVICIO     VARCHAR(255)
+DECLARE @PACIENTE         VARCHAR(60)
+DECLARE @SMS              VARCHAR(1000)
+DECLARE @RAZONSOCIAL      VARCHAR(255)
+DECLARE @MOVILAFI         VARCHAR(13)
+DECLARE @RECAUDADO        SMALLINT=0
+DECLARE @NOCOBRAR         BIT
+DECLARE @TIPOCALCULO      VARCHAR(1)
+DECLARE @CONSECUTIVOCIT   VARCHAR(20)
+DECLARE @COPAGOVARIABLE   DECIMAL(14,2)
+DECLARE @EXVIRTUAL        BIT
+DECLARE @EXCONFLICTOARMADO  BIT
+DECLARE @ESVIRTUAL        BIT
+DECLARE @EXCLUYE          BIT=0
+DECLARE @TIPOCITA VARCHAR(20)
+DECLARE @IDSERVICIOPAQ    VARCHAR(20)
+DECLARE @UNIDADATENCION   VARCHAR(20)
+DECLARE @CONSECUTIVOHCA   VARCHAR(20)
+DECLARE @EXONERACION      SMALLINT=0
+DECLARE @CUMPLIDA         SMALLINT=0
+DECLARE @ANOMES           VARCHAR(6)
+
+-- Variables cacheadas para FNK_VALORVARIABLE (evita llamadas repetidas)
+DECLARE @IXCOUNTRY          VARCHAR(20)
+DECLARE @IDCJPLANEXTERNO    VARCHAR(20)
+DECLARE @IDCJTERCEROEXTERNO VARCHAR(20)
+DECLARE @IDPLANPART         VARCHAR(20)
+DECLARE @IDPLANPART2        VARCHAR(20)
+DECLARE @IDPLANPART3        VARCHAR(20)
+DECLARE @IDPLANPART4        VARCHAR(20)
+DECLARE @IDPLANPART5        VARCHAR(20)
+DECLARE @IDCJPART           VARCHAR(20)
+DECLARE @COPAGOUNICOMENSUAL VARCHAR(20)
+DECLARE @VALIDA_CIT_CUMP    VARCHAR(20)
+DECLARE @ESFARMACIA         VARCHAR(20)
+DECLARE @GENERA_COPAGO_CITAS VARCHAR(20)
+DECLARE @CAMBIA_COPAGO_PROP VARCHAR(20)
+DECLARE @MAN_NO_COBRABLES_CE VARCHAR(20)
+DECLARE @IDAREACE           VARCHAR(20)
+DECLARE @CIT_MULTI_SER      VARCHAR(20)
+DECLARE @CIT_FTR_AJUS_COPA  VARCHAR(20)  -- USVGS: igualar VALORTOTAL a copago si copago supera valor servicio (solo CI)
+DECLARE @CITSES_DESG_COPA   VARCHAR(20)  -- USVGS: desglose copago sesiones; SI excluye equalize si IDAUTSES
+DECLARE @DEBUG                BIT = 0  -- 1 solo en desarrollo para activar PRINT
+
+BEGIN
+    -- Cacheo de variables de configuración (una sola vez por ejecución)
+    SELECT 
+    @IXCOUNTRY           = DBO.FNK_VALORVARIABLE('IXCOUNTRY'),
+    @IDCJPLANEXTERNO     = DBO.FNK_VALORVARIABLE('IDCJPLANEXTERNO'),
+    @IDCJTERCEROEXTERNO  = DBO.FNK_VALORVARIABLE('IDCJTERCEROEXTERNO'),
+    @IDPLANPART          = DBO.FNK_VALORVARIABLE('IDPLANPART'),
+    @IDPLANPART2         = DBO.FNK_VALORVARIABLE('IDPLANPART2'),
+    @IDPLANPART3         = DBO.FNK_VALORVARIABLE('IDPLANPART3'),
+    @IDPLANPART4         = DBO.FNK_VALORVARIABLE('IDPLANPART4'),
+    @IDPLANPART5         = DBO.FNK_VALORVARIABLE('IDPLANPART5'),
+    @IDCJPART            = DBO.FNK_VALORVARIABLE('IDCJPART'),
+    @VALIDA_CIT_CUMP     = DBO.FNK_VALORVARIABLE('VALIDA_CIT_CUMP'),
+    @ESFARMACIA          = DBO.FNK_VALORVARIABLE('ESFARMACIA'),
+    @GENERA_COPAGO_CITAS = DBO.FNK_VALORVARIABLE('GENERA_COPAGO_CITAS'),
+    @CAMBIA_COPAGO_PROP  = DBO.FNK_VALORVARIABLE('CAMBIA_COPAGO_PROP'),
+    @MAN_NO_COBRABLES_CE = DBO.FNK_VALORVARIABLE('MAN_NO_COBRABLES_CE'),
+    @IDAREACE            = DBO.FNK_VALORVARIABLE('IDAREACE'),
+    @IDTERCEROCAD        = DBO.FNK_VALORVARIABLE('CEHOSPENTEGUB'),
+    @COPAGOUNICOMENSUAL  = DBO.FNK_VALORVARIABLE('COPAGOUNICOMENSUAL'),
+    @CIT_MULTI_SER       = DBO.FNK_VALORVARIABLE('CIT_MULTI_SER'),
+    @CIT_FTR_AJUS_COPA   = DBO.FNK_VALORVARIABLE('CIT_FTR_AJUS_COPA'),
+    @CITSES_DESG_COPA    = DBO.FNK_VALORVARIABLE('CITSES_DESG_COPA');
+
+    SELECT @TIPOUSUARIO = TIPOUSUARIO, @GRUPOETNICO  = GRUPOETNICO,
+            @EDAD =  DATEDIFF(DAY, FNACIMIENTO, GETDATE())/365.25,
+            @NIVELSOCIOEC = NIVELSOCIOEC, @FNACIM = FNACIMIENTO
+            ,@PACIENTE=PNOMBRE+' '+PAPELLIDO
+    FROM   AFI 
+    WHERE  IDAFILIADO = @IDAFILIADO
+
+    IF @DEBUG = 1
+    BEGIN
+        PRINT  '@IDAFILIADO         '+@IDAFILIADO      
+        PRINT  '@IDAUT              '+@IDAUT           
+        PRINT  '@NO_ITEM            '+str(@NO_ITEM)
+        PRINT  '@IDSERVICIO         '+@IDSERVICIO      
+        PRINT  '@PYP                '+str(@PYP)
+        PRINT  '@ALTOCOSTO          '+str(@ALTOCOSTO)       
+        PRINT  '@VALORAUTD          '+str(@VALORAUTD)       
+        PRINT  '@PROCEDENCIA        '+@PROCEDENCIA     
+        PRINT  '@SYS_COMPUTERNAME   '+@SYS_COMPUTERNAME
+        PRINT  '@COMPANIA           '+@COMPANIA        
+        PRINT  '@IDSEDE             '+@IDSEDE          
+        PRINT  '@USUARIO            '+@USUARIO         
+    END
+
+    IF @PROCEDENCIA = 'CE'
+    BEGIN  
+        SELECT @IDADMINISTRADORA = IDTERCEROCA, @IDPLAN = IDPLAN, @IDTERCEROCA = IDTERCEROCA,
+                @AQUIENCOBRO      = AQUIENCOBRO
+        FROM   AUTD
+        WHERE  IDAUT   = @IDAUT
+        AND    NO_ITEM = @NO_ITEM
+
+        -- Consolidado: una sola consulta a AUT para SOAT, CONSECUTIVOHCA, FECHA, IDAREA, CONSECUTIVOCIT
+        SELECT @SOAT = ISNULL(SOAT,0), @CONSECUTIVOHCA = CONSECUTIVOHCA,
+               @FECHAAUT = CASE WHEN @FECHAAUT IS NULL THEN FECHA ELSE @FECHAAUT END,
+               @IDAREA = CASE WHEN COALESCE(@IDAREA,'') = '' THEN IDAREA ELSE @IDAREA END,
+               @CONSECUTIVOCIT = CONSECUTIVOCIT
+        FROM AUT 
+        WHERE IDAUT = @IDAUT
+
+        IF @IXCOUNTRY = 'PERU'
+        BEGIN
+            IF COALESCE(@CONSECUTIVOCIT,'') <> ''
+            BEGIN
+                SELECT @COPAGOVARIABLE = COPA_VAR_PORC FROM CIT WHERE CONSECUTIVO = @CONSECUTIVOCIT
+            END
+            IF @COPAGOVARIABLE > 0
+            BEGIN
+                SET DATEFORMAT dmy
+                IF @IDPLAN =@IDCJPLANEXTERNO AND @IDADMINISTRADORA =@IDCJTERCEROEXTERNO
+                BEGIN
+                    SELECT @VLRSERVICIO = DBO.FNK_VLRAUTORIZACION(@IDAUT, @NO_ITEM,@IDCJTERCEROEXTERNO, @IDPLAN, @IDAREA, @FECHAAUT) 
+                END
+                ELSE
+                BEGIN
+                    SELECT @VLRSERVICIO = DBO.FNK_VLRAUTORIZACION(@IDAUT, @NO_ITEM, @IDADMINISTRADORA, @IDPLAN, @IDAREA, @FECHAAUT) 
+                END
+                SELECT @VALORCOPAGO = (@VLRSERVICIO * (100-@COPAGOVARIABLE) / 100 )
+                SELECT @VALORCOPAGO = ROUND(@VALORCOPAGO,2)
+
+                IF @DEBUG = 1 PRINT 'VALORCOPAGO='+CAST(@VALORCOPAGO AS VARCHAR(20))
+                UPDATE AUTD SET VALORCOPAGO = (@VALORCOPAGO*AUTD.CANTIDAD), VALOR = COALESCE(@VLRSERVICIO,0), VALOREXCEDENTE = AUTD.CANTIDAD*@VLRSERVICIO WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                RETURN
+            END
+        END
+    END
+    ELSE
+    BEGIN
+        SELECT @IDADMINISTRADORA = CIT.IDTERCEROCA, @IDPLAN = CIT.IDPLAN, @IDTERCEROCA = CIT.IDTERCEROCA,
+                @FECHAAUT = CIT.FECHA , @IDPROVEEDOR = CIT.IDMEDICO, @IDAREA = CIT.IDAREA, @NOAUTORIZACIONCIT = CIT.NOAUTORIZACION,
+                @RECAUDADO = COALESCE(CIT.GENEROCAJA,0), @ESVIRTUAL=IIF(CIT.MODALIDAD ='Virtual',1 ,0),
+                @UNIDADATENCION = MPE.IDROL, @ANOMES=ANOMES, @TIPOCITA=CIT.TIPOCITA, @EXONERACION=COALESCE(CIT.EXONERACION,0), @CUMPLIDA=COALESCE(CIT.CUMPLIDA,0)
+        FROM   CIT
+        LEFT JOIN MPE ON MPE.IDPESPECIAL=CIT.IDPESPECIAL
+        WHERE  CONSECUTIVO   = @IDAUT
+    END
+
+   
+    IF @PROCEDENCIA = 'CE'
+    BEGIN
+        SET DATEFORMAT dmy
+        IF @IDPLAN =@IDCJPLANEXTERNO AND @IDADMINISTRADORA =@IDCJTERCEROEXTERNO
+        BEGIN
+            SELECT @VLRSERVICIO = DBO.FNK_VLRAUTORIZACION(@IDAUT, @NO_ITEM,@IDCJTERCEROEXTERNO, @IDPLAN, @IDAREA, @FECHAAUT) 
+        END
+        ELSE
+        BEGIN
+            SELECT @VLRSERVICIO = DBO.FNK_VLRAUTORIZACION(@IDAUT, @NO_ITEM, @IDADMINISTRADORA, @IDPLAN, @IDAREA, @FECHAAUT) 
+        END
+    END
+    ELSE
+    BEGIN
+        SELECT @VLRSERVICIO = DBO.FNK_VLRCITA(@IDAUT)
+    END
+   
+    SELECT @VALORTOTALCOSTO = 0
+    IF @ESFARMACIA <> 'SI'
+    BEGIN
+        SELECT TOP 1 @VALORTOTALCOSTO = VLRCXP 
+        FROM   VW_NOMBAS1 
+        WHERE  IDPROVEEDOR = @IDPROVEEDOR
+        AND IDADMINISTRADORA = @IDADMINISTRADORA
+        AND IDPLAN           = @IDPLAN 
+        AND IDSERVICIO       = @IDSERVICIO
+        AND @FECHAAUT BETWEEN FECHAINIADM AND FECHAFINADM
+        AND @FECHAAUT BETWEEN FECHAINIPRO AND FECHAFINPRO
+        AND @FECHAAUT BETWEEN FECHAINIADMSER AND FECHAFINADMSER
+        AND @FECHAAUT BETWEEN FECHAINIPROSER AND FECHAFINPROSER
+        AND IDAREACA   = @IDAREA   
+    END
+
+    IF @PROCEDENCIA = 'CE'
+    BEGIN
+        UPDATE AUTD SET VALOR = COALESCE(@VLRSERVICIO,0), VALORTOTALCOSTO = @VALORTOTALCOSTO, VALORPROV = @VALORTOTALCOSTO
+        WHERE  IDAUT   = @IDAUT 
+        AND    NO_ITEM = @NO_ITEM
+        SELECT @VALORTOTAL1 = (AUTD.CANTIDAD * AUTD.VALOR) FROM AUTD WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM
+    END 
+    ELSE
+    BEGIN
+        UPDATE CIT SET VALORTOTAL = @VLRSERVICIO, VALORPROV = @VALORTOTALCOSTO, @NOCOBRAR=COALESCE(NOCOBRAR,0) WHERE CONSECUTIVO = @IDAUT
+        IF @TIPOCITA='MULTI'
+        BEGIN
+            UPDATE CITSER SET VALORTOTAL=COALESCE(SERTOT.VLRSERVICIO,0)
+            FROM CITSER 
+            INNER JOIN SERTOT ON SERTOT.IDTERCERO  = @IDADMINISTRADORA
+               AND    SERTOT.IDPLAN     = @IDPLAN
+               AND    SERTOT.IDSERVICIO = CITSER.IDSERVICIO
+               AND    @FECHAAUT BETWEEN SERTOT.FECHAINIFD AND SERTOT.FECHAFINFD
+               AND    @FECHAAUT BETWEEN SERTOT.FECHAINI   AND SERTOT.FECHAFIN  
+            WHERE CITSER.CONSECUTIVO_CIT=@IDAUT
+        END
+
+        SELECT @VALORTOTAL1 = @VLRSERVICIO
+
+        IF @VLRSERVICIO = 0
+        BEGIN
+            UPDATE CIT SET NOCOBRAR = 1 WHERE CONSECUTIVO  = @IDAUT  -- 09.JUN.2007 
+        END
+        IF @NOCOBRAR=1
+        BEGIN
+            UPDATE CIT SET VALORCOPAGO=0, GENEROCAJA=0, TIPOCAJA=NULL 
+            WHERE CONSECUTIVO=@IDAUT AND NOT EXISTS(SELECT 1 FROM FCJ A WHERE A.NOADMISION=CIT.CONSECUTIVO AND A.PROCEDENCIA='CITAS' AND A.ESTADO='P')
+            RETURN
+        END
+    END
+
+    -- EXISTS reescrito con JOIN explícito (mejor uso de índices)
+    IF @PROCEDENCIA = 'CI'
+    BEGIN
+        IF EXISTS (SELECT 1 
+                   FROM CIT 
+                   INNER JOIN PPTD ON PPTD.IDTERCERO = CIT.IDTERCEROCA 
+                                 AND PPTD.IDPLAN = CIT.IDPLAN 
+                                 AND PPTD.IDSERVICIO = CIT.IDSERVICIO 
+                                 AND PPTD.IDAREA = CIT.IDAREA 
+                                 AND PPTD.CCOSTO = CIT.CCOSTO
+                   WHERE CIT.CONSECUTIVO = @IDAUT)
+        BEGIN
+            UPDATE CIT SET FACTURABLE=0, NOCOBRAR=1, VALORCOPAGO=0, GENEROCAJA=0, TIPOCAJA=NULL 
+            WHERE CONSECUTIVO=@IDAUT AND NOT EXISTS(SELECT 1 FROM FCJ A WHERE A.NOADMISION=CIT.CONSECUTIVO AND A.PROCEDENCIA='CITAS' AND A.ESTADO='P')
+            RETURN
+        END
+        ELSE IF EXISTS(SELECT 1 FROM CIT WHERE CONSECUTIVO=@IDAUT AND UPPER(TIPOCITA) IN ('PQ','QX'))
+        BEGIN
+            UPDATE CIT SET FACTURABLE=0, NOCOBRAR=1, VALORCOPAGO=0, GENEROCAJA=0, TIPOCAJA=NULL 
+            WHERE CONSECUTIVO=@IDAUT AND NOT EXISTS(SELECT 1 FROM FCJ A WHERE A.NOADMISION=CIT.CONSECUTIVO AND A.PROCEDENCIA='CITAS' AND A.ESTADO='P')
+            RETURN
+        END
+        ELSE
+        BEGIN
+            UPDATE CIT SET FACTURABLE=1, NOCOBRAR=0 WHERE CONSECUTIVO=@IDAUT
+        END
+    END 
+
+    IF @SOAT = 1
+    BEGIN
+        IF @PROCEDENCIA = 'CE'
+        BEGIN
+            EXEC SPK_CONCEPTOCAJA_AUT @IDAUT, @NO_ITEM, @IDADMINISTRADORA, @IDPLAN 
+        END
+        ELSE
+        BEGIN
+            IF @DEBUG = 1 PRINT 'VOY A SPK_PAGOSCAJA_CIT' 
+            EXEC SPK_PAGOSCAJA_CIT @IDAUT, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE, @USUARIO, 0
+        END
+        RETURN
+    END
+
+    SELECT @VALORAUTD = @VALORTOTAL1
+    
+    SELECT @PART = ISNULL(ENVIODICAJA,0)
+    FROM   TER
+    WHERE  IDTERCERO = @IDTERCEROCA
+     
+    IF @PROCEDENCIA = 'CE'
+    BEGIN
+        IF @PART = 0
+        BEGIN
+            IF @AQUIENCOBRO = 'P'
+            BEGIN
+                SELECT @PART = 1
+            END
+            ELSE
+            BEGIN
+                SELECT @PART = 0
+            END
+        END
+    END
+
+    IF @IDPLAN =@IDPLANPART OR @IDPLAN =@IDPLANPART2 OR @IDPLAN =@IDPLANPART3 OR @IDPLAN =@IDPLANPART4 OR @IDPLAN =@IDPLANPART5 
+    BEGIN
+        SELECT @PART = 1
+    END
+    ELSE
+    BEGIN
+        SELECT @PART = 0
+    END
+
+    IF @PART = 1 AND @PROCEDENCIA = 'CE'
+    BEGIN
+        /* JEDM: 16.FEB.2011   CUANDO ESTAMOS SEGUROS QUE ES PARTICULAR COLOCAMOS DIRECTAMENTE
+        EL CODIGOCPCJ (CONCEPTO DE CAJA) QUE ES EL PARTICULAR Y QUITAMOS
+        EL LLAMADO AL SPK ANTERIOR, QUE SIGUE FUNCIONANDO PARA CUANDO NO ES
+        PARTICULAR */
+        UPDATE AUTD SET VALORCOPAGO = @VALORAUTD , CODIGOCPCJ =@IDCJPART, VALOREXCEDENTE=@VALORTOTAL1
+        WHERE  IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+        RETURN
+    END
+
+    IF @FNACIM IS NULL OR @FNACIM = ''
+    BEGIN
+        SELECT @MESES = 5000
+        SELECT @FNACIM = NULL
+    END
+    ELSE     
+    BEGIN
+        SELECT @MESES = @EDAD * 12
+    END
+
+    SELECT @TIPOUSUARIO2 = CASE WHEN COALESCE(@TIPOUSUARIO,'')<>'' THEN  /*OSOLANO 20250513 RIPS-JSON*/
+                                CASE @TIPOUSUARIO
+                                    WHEN '01' THEN 'COTIZANTE'
+                                    WHEN '02' THEN 'BENEFICIARIO'
+                                    WHEN '04' THEN 'BENEFICIARIO'
+                                    WHEN '03' THEN 'ADICIONAL'
+                                END
+                            ELSE
+                                CASE @TIPOUSUARIO
+                                    WHEN 'C' THEN 'COTIZANTE'
+                                    WHEN 'B' THEN 'BENEFICIARIO'
+                                    WHEN 'A' THEN 'ADICIONAL' 
+                                END
+                            END
+      
+    SELECT @PREFIJO = PREFIJO, @NIVELATENCION = NIVELATENCION
+    FROM   SER
+    WHERE  IDSERVICIO = @IDSERVICIO
+
+    SELECT @IDMODELOPCA = IDMODELOPCA FROM PPT WHERE IDTERCERO = @IDADMINISTRADORA AND IDPLAN = @IDPLAN      
+    SELECT @TIPODEPAGO = TIPODEPAGO FROM MOCPS WHERE IDMODELOPC = @IDMODELOPCA AND IDSERVICIO = @IDSERVICIO
+   
+    IF @TIPODEPAGO IS NULL
+    BEGIN
+        SELECT @TIPODEPAGO   = TIPODEPAGO FROM MOCP
+        WHERE  IDMODELOPC    = @IDMODELOPCA
+        AND    PREFIJO       = @PREFIJO
+        AND    NIVELATENCION = @NIVELATENCION      
+    END 
+
+    IF @DEBUG = 1 PRINT '@RECAUDADO='+CONVERT(VARCHAR, @RECAUDADO)
+    
+    IF @VALIDA_CIT_CUMP='SI' AND @PROCEDENCIA='CI' AND @CUMPLIDA=1
+    BEGIN
+        IF @DEBUG = 1 PRINT 'CITA CUMPLIDA ME REGRESO'
+        RETURN
+    END
+
+    IF @RECAUDADO = 0
+    BEGIN
+        IF COALESCE(@COPAGOPROPIO,0) = 0
+        BEGIN
+            SELECT @TIPOCALCULO=TIPOCALCULO, @VALOR=CANTNOCOBRABLE FROM PPTD 
+            WHERE IDTERCERO=@IDADMINISTRADORA AND IDPLAN=@IDPLAN AND IDSERVICIO=@IDSERVICIO AND TIPORESTRICCION='C'
+            IF COALESCE(@TIPOCALCULO,'')='' AND ISNULL(@VALOR,0)=0
+            BEGIN
+			    IF @TIPODEPAGO IS NULL OR @VLRSERVICIO = 0           --09.JUN.2007 NO ENVIE A CAJA SI VLRSERVICIO = 0
+                BEGIN
+                    IF @PROCEDENCIA = 'CE'
+                    BEGIN
+                        UPDATE  AUTD SET VALORCOPAGO = 0, AUTD.AUTORIZADO = 1, AUTD.MARCAPAGO = 0, IDTERCEROCA = @IDTERCEROCA 
+                        WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                    END
+                    ELSE
+                    BEGIN
+                        UPDATE CIT SET VALORCOPAGO=0 WHERE CONSECUTIVO = @IDAUT
+                    END
+                END
+                ELSE
+                BEGIN   
+                    SELECT @AUXN = ISNULL(COUNT(*),0) FROM MOCC
+                    WHERE  IDMODELOPC = @IDMODELOPCA AND TIPODEPAGO = @TIPODEPAGO         
+                    IF @AUXN = 0
+                    BEGIN
+                        IF @PROCEDENCIA = 'CE'
+                        BEGIN
+                            UPDATE  AUTD SET VALORCOPAGO = 0, AUTD.AUTORIZADO = 1, AUTD.MARCAPAGO = 0, IDTERCEROCA = @IDTERCEROCA
+                            WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE  CIT SET VALORCOPAGO = 0 WHERE CONSECUTIVO = @IDAUT
+                            IF @DEBUG = 1 PRINT 'VOY A SPK_PAGOSCAJA_CIT' 
+                            EXEC SPK_PAGOSCAJA_CIT @IDAUT, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE, @USUARIO, @PART
+                        END
+                        RETURN
+                    END
+
+                    SELECT @EXPYP      = EXPYP,      @COBRARCOPA = COBRARCOPA, @EXALTOCOSTO = EXALTOCOSTO, @EXGRUPOETNICO = EXGRUPOETNICO,
+                        @FORMACOBRO = FORMACOBRO, @REDONDEO   = REDONDEO,   @EXEDAD      = EXEDAD,      @CALCULARPOR   = CALCULARPOR, @EXVIRTUAL=COALESCE(EXVIRTUAL,0),
+						@EXCONFLICTOARMADO=COALESCE(EXCONFLICTOARMADO,0)
+                    FROM   MOCC 
+                    WHERE  IDMODELOPC = @IDMODELOPCA AND TIPODEPAGO = @TIPODEPAGO
+
+                    IF @COPAGOUNICOMENSUAL='SI'
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM CIT INNER JOIN MPE ON MPE.IDPESPECIAL=CIT.IDPESPECIAL 
+                                        WHERE ANOMES=@ANOMES AND IDAFILIADO=@IDAFILIADO AND CIT.CONSECUTIVO<>@IDAUT 
+                                                AND CIT.IDTERCEROCA=@IDADMINISTRADORA AND MPE.IDROL=@UNIDADATENCION AND VALORCOPAGO>0 AND (CUMPLIDA=1 OR FECHA>GETDATE())
+                                    )
+                        BEGIN
+                            IF @DEBUG = 1 PRINT 'COPAGOUNICOMENSUAL'
+                            SET @EXCLUYE = 1
+                        END
+
+                        IF (SELECT COUNT(1) FROM AUTE WHERE IDAFILIADO=@IDAFILIADO AND CONSECUTIVOHCA=@CONSECUTIVOHCA AND COALESCE(IDAUT,'')<>'')>1
+                        BEGIN
+                            IF @DEBUG = 1 PRINT 'COPAGOUNICOMENSUAL DE DISPENSACION'
+                            SET @EXCLUYE = 1
+                        END
+                    END
+
+                    IF EXISTS (SELECT 1 FROM MOCEX WHERE IDMODELOPC=@IDMODELOPCA AND TIPOEXCEPCION='Servicio' AND TIPOCITA='Cita' 
+                                AND IDENTIFICADOR=@IDSERVICIO)
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'EXCLUYE SERVICIO'
+                        SET @EXCLUYE = 1
+                    END
+                    IF @EXPYP = 1 AND @PYP = 1
+                    BEGIN                        
+                        IF @DEBUG = 1 PRINT 'EXCEP DE PYP'
+                        SET @EXCLUYE = 1
+                    END
+                    IF @EXONERACION = 1
+                    BEGIN                        
+                        IF @DEBUG = 1 PRINT 'EXCEP DE PYP'
+                        SET @EXCLUYE = 1
+                    END
+                    IF @EXALTOCOSTO = 1 AND @ALTOCOSTO = 1
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'EXCEP DE ALTO'
+                        SET @EXCLUYE = 1
+                    END
+					IF @EXCONFLICTOARMADO = 1 AND EXISTS (SELECT 1 FROM AFI WHERE IDAFILIADO = @IDAFILIADO AND GRUPOPOB = '24')
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'EXCEP VICTIMA DE CONFLICO ARMADO'
+                        SET @EXCLUYE = 1
+                    END
+                    IF @EXGRUPOETNICO <> 'N' AND @EXGRUPOETNICO = @GRUPOETNICO
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'EXCEP GRUPO'
+                        SET @EXCLUYE = 1
+                    END 
+                    IF @EXVIRTUAL =1 AND @ESVIRTUAL=1
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'EXCEP VIRTUAL'
+                        SET @EXCLUYE = 1
+                    END
+                    IF @FNACIM IS NOT NULL AND @EXEDAD >= @MESES
+                    BEGIN
+                        IF @DEBUG = 1
+                        BEGIN
+                            PRINT '@EXEDAD='+ CAST(@EXEDAD AS VARCHAR(20))
+                            PRINT '@MESES='+ CAST(@MESES AS VARCHAR(20))
+                            PRINT 'EXCEP EDAD'
+                        END
+                        SET @EXCLUYE=1
+                    END
+                    IF @EXCLUYE=1
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'EXCLUYE'
+                        IF @PROCEDENCIA = 'CE'
+                        BEGIN
+                            UPDATE  AUTD SET VALORCOPAGO = 0, AUTD.AUTORIZADO = 1, AUTD.MARCAPAGO = 0, IDTERCEROCA = @IDTERCEROCA
+                            WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE  CIT SET VALORCOPAGO = 0 WHERE CONSECUTIVO = @IDAUT
+                        END
+                        RETURN
+                    END
+                    IF @DEBUG = 1
+                    BEGIN
+                        PRINT '@TIPOUSUARIO2='+@TIPOUSUARIO2
+                        PRINT '@COBRARCOPA='+@COBRARCOPA
+                        PRINT '@NIVELSOCIOEC='+@NIVELSOCIOEC
+                        PRINT '@NIVELSOCIOEC='+@IDMODELOPCA
+                        PRINT '@NIVELSOCIOEC='+@TIPODEPAGO
+                    END
+                    IF @COBRARCOPA = 'AMBOS' OR @COBRARCOPA = @TIPOUSUARIO2
+                    BEGIN
+                        IF @DEBUG = 1 PRINT 'TIPOUSUARIO'
+                        SELECT @VALOR = ISNULL(VALOR, 0)
+                        FROM   MOCCD 
+                        WHERE  IDMODELOPC      = @IDMODELOPCA
+                        AND    TIPODEPAGO      = @TIPODEPAGO
+                        AND    CLASIFPC        = 'NA'
+                        AND    IDAGRUPACIONSER = 'NA'
+                        AND    ESCALASE        = @NIVELSOCIOEC         
+                        IF @DEBUG = 1 PRINT 'VALOR='+CAST(@VALOR AS VARCHAR(20))
+                        
+                        SELECT @IDSERVICIOPAQ=IDSERVICIO FROM PLN WHERE IDPLAN=@IDPLAN AND ESPAQUETE=1
+                        IF @PROCEDENCIA='CI' AND COALESCE(@IDSERVICIOPAQ,'')<>''
+                        BEGIN
+                            SELECT @VALORAUTD= ISNULL(VLRSERVICIO,0)
+                            FROM   SERTOT1 
+                            WHERE  IDTERCERO  = @IDTERCEROCA
+                            AND    IDPLAN     = @IDPLAN
+                            AND    IDSERVICIO = @IDSERVICIOPAQ
+                            AND    @FECHAAUT BETWEEN FECHAINIFD AND FECHAFINFD
+                            AND    @FECHAAUT BETWEEN FECHAINI   AND FECHAFIN
+                            AND    IDAREACA   = @IDAREA   
+                        END
+                        SELECT @VALORCOPAGO = CASE @FORMACOBRO
+                                                WHEN 'PORCENTAJE' THEN (@VALORAUTD * @VALOR / 100 )
+                                                WHEN 'VALOR' THEN @VALOR
+                                            END
+                        SELECT @VALORCOPAGO = CASE @REDONDEO
+                                                WHEN 'UNIDAD'  THEN ROUND(@VALORCOPAGO,0)
+                                                WHEN 'DECENA'  THEN ROUND(@VALORCOPAGO,-1)
+                                                WHEN 'CENTENA' THEN ROUND(@VALORCOPAGO,-2)
+                                                WHEN 'MILLAR'  THEN ROUND(@VALORCOPAGO,-3)
+                                            END
+
+                        IF @DEBUG = 1 PRINT 'VALORCOPAGO='+CAST(@VALORCOPAGO AS VARCHAR(20))
+                        IF @PROCEDENCIA = 'CE'
+                        BEGIN
+                            UPDATE AUTD SET VALORCOPAGO = @VALORCOPAGO WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                            IF @VALORCOPAGO > 0
+                            BEGIN 
+                                IF @VALORCOPAGO = @VALORAUTD
+                                BEGIN
+                                    UPDATE AUTD SET AUTORIZADO = 0, AUTD.MARCAPAGO = 1, AUTD.IDTERCEROCA = @IDTERCEROCAD
+                                    WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                                END
+                                ELSE
+                                BEGIN
+                                    UPDATE AUTD SET AUTORIZADO = 0, AUTD.MARCAPAGO = 1, AUTD.IDTERCEROCA = @IDTERCEROCA
+                                    WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM                  
+                                END
+                            END
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE CIT SET VALORCOPAGO = @VALORCOPAGO WHERE CONSECUTIVO = @IDAUT
+                        END
+                    END
+                    ELSE
+                    BEGIN
+                        UPDATE  AUTD SET VALORCOPAGO = 0, AUTD.AUTORIZADO = 1, AUTD.MARCAPAGO = 0, IDTERCEROCA = @IDTERCEROCA 
+                        WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                    END 
+                END
+                IF UPPER(@CALCULARPOR) = 'ORDEN'
+                BEGIN
+                    IF @PROCEDENCIA = 'CE'
+                    BEGIN
+                        SELECT @OK = ISNULL(COUNT(*),0) FROM AUTD WHERE IDAUT = @IDAUT AND MARCACOPAGOORDEN = 1
+                        IF @OK = 0
+                        BEGIN
+                            UPDATE AUTD SET MARCACOPAGOORDEN = 1 WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE AUTD SET MARCACOPAGOORDEN = 2 WHERE IDAUT = @IDAUT AND NO_ITEM = @NO_ITEM 
+                        END
+                    END 
+                END
+            END
+            ELSE
+            BEGIN
+                SELECT @VALORCOPAGO=CASE IIF(COALESCE(@TIPOCALCULO,'')='','P',@TIPOCALCULO) WHEN 'P' THEN (@VALORAUTD*@VALOR/100) ELSE @VALOR END
+
+                IF @PROCEDENCIA = 'CE'
+                    UPDATE AUTD SET VALORCOPAGO=@VALORCOPAGO WHERE IDAUT=@IDAUT AND NO_ITEM=@NO_ITEM
+                ELSE
+                    UPDATE CIT SET VALORCOPAGO=@VALORCOPAGO WHERE CONSECUTIVO=@IDAUT
+            END
+        END
+
+        IF @PROCEDENCIA = 'CE'
+        BEGIN
+            EXEC SPK_CONCEPTOCAJA_AUT @IDAUT, @NO_ITEM, @IDADMINISTRADORA, @IDPLAN 
+        END
+        ELSE
+        BEGIN
+            IF @GENERA_COPAGO_CITAS<>'LLEGA'
+            BEGIN
+                EXEC SPK_PAGOSCAJA_CIT @IDAUT, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE, @USUARIO, @PART
+            END
+            ELSE IF EXISTS (SELECT 1 FROM CIT WHERE CONSECUTIVO=@IDAUT AND FECHALLEGA IS NOT NULL) AND @CAMBIA_COPAGO_PROP='SI'
+            BEGIN
+                EXEC SPK_PAGOSCAJA_CIT @IDAUT, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE, @USUARIO, @PART
+            END
+            ELSE 
+            BEGIN
+                IF @DEBUG = 1 PRINT 'Genero el Pago Cuando llegue el Paciente'
+            END
+        END
+	    /*MOD.01 20090305 - INI - JQUIROGA */
+        IF @MAN_NO_COBRABLES_CE = 'SI' 
+        BEGIN  
+            IF @PROCEDENCIA = 'CE'
+            BEGIN
+                SELECT @OK = ISNULL(COUNT(*),0) FROM PPTD 
+                WHERE IDTERCERO = @IDADMINISTRADORA AND IDPLAN = @IDPLAN  AND IDSERVICIO = @IDSERVICIO  AND IDAREA =@IDAREACE
+                IF @OK <> 0
+                BEGIN
+                    UPDATE AUTD SET VALOR = 0, VALORCOPAGO = 0, VALOREXCEDENTE = 0, NOCOBRABLE = 1, VALORCOPAGOCOSTO = 0
+                    WHERE IDAUT   = @IDAUT 
+                    AND    NO_ITEM = @NO_ITEM
+                END
+            END
+        END
+
+        IF EXISTS (SELECT 1 FROM CIT WHERE CONSECUTIVO = @IDAUT AND CIT.TIPOCITA =@CIT_MULTI_SER)
+        BEGIN
+            UPDATE CITSER SET CITSER.VALOR_COPAGO = CIT.VALORCOPAGO, CITSER.TIPORECA = 'CUOTA' FROM CITSER,CIT WHERE CITSER.CONSECUTIVO_CIT = CIT.CONSECUTIVO AND CIT.CONSECUTIVO = @IDAUT AND CIT.IDSERVICIO = CITSER.IDSERVICIO
+            UPDATE CIT SET VALORTOTAL = (SELECT SUM(CITSER.VALORTOTAL) FROM CITSER WHERE CITSER.CONSECUTIVO_CIT = @IDAUT) WHERE CONSECUTIVO = @IDAUT 
+        END
+
+        /* REQ CIT copago vs valor facturacion: igualar VALORTOTAL al copago cuando copago supera valor servicio y valor servicio es mayor a 0 si USVGS CIT_FTR_AJUS_COPA = SI.
+           Excepcion: CITSES_DESG_COPA=SI e IDAUTSES no nulo - no igualar (desglose de copago en facturacion UNI). */
+        IF @PROCEDENCIA = 'CI' AND @CIT_FTR_AJUS_COPA = N'SI'
+        BEGIN
+            UPDATE CIT SET VALORTOTAL = VALORCOPAGO 
+			WHERE CONSECUTIVO = @IDAUT 
+			AND COALESCE(VALORTOTAL, 0) > 0
+			AND COALESCE(VALORTOTAL, 0) < COALESCE(VALORCOPAGO, 0)
+			AND NOT (
+				@CITSES_DESG_COPA = N'SI'
+				AND EXISTS (
+					SELECT 1 FROM CIT C
+					WHERE C.CONSECUTIVO = @IDAUT
+					  AND C.IDAUTSES IS NOT NULL
+				)
+			)
+        END
+
+    END
+END
+

@@ -1,7 +1,7 @@
 {
   "procesoId": "glosas",
-  "actualizado": "2026-09-01",
-  "nota": "SP → METODO. Fuente: sql/SPQ_FPAG_COL.sql y sql/SPQ_FGLO_COL.sql de hoy. No se copió el cuerpo. SPK anidados sin ficha hasta bajar el .sql.",
+  "actualizado": "2026-09-06",
+  "nota": "SP → METODO. Releído sql/SPQ_FGLO_COL.sql + SPK_RESPUESTAGLOSA 2026-09-06. 37/37 METODOs leído.",
   "sps": [
     {
       "nombre": "SPQ_FPAG_COL",
@@ -9,14 +9,14 @@
       "modelo": "FPAG_COL",
       "estado": "parcial",
       "fuente": "sql/SPQ_FPAG_COL.sql",
-      "cola": "Métodos no listados aquí: listados por nombre en el .sql; no se documentaron en este REQ.",
+      "cola": "Resto de métodos del recaudo (INSERTAR, ANULARPAGO, etc.) documentados en proceso Recaudos.",
       "metodos": [
         {
           "id": "PROCESAR_FACTURA",
           "hace": "Pasa una factura del recaudo al lote RPDX, incluyendo MOTIVO1 y MOTIVO2 (JSON) en RPDX.ID11/ID12.",
           "valida": [
             "Si INGRESO BANCOS/CAJA/CXP: VLR_DTO no negativo, no mayor que saldo ni que valor de pago",
-            "Duplicado en FPAGD o en RPDX según INGRESO (devolución vs glosas/caja/bancos/cxp)"
+            "Duplicado en FPAGD o en RPDX según INGRESO"
           ],
           "noValida": [
             "Que MOTIVO1/MOTIVO2 existan en FCGLO",
@@ -24,9 +24,7 @@
           ],
           "errores": [
             "El descuento administrativo (VLR_DTO) no puede ser negativo.",
-            "El descuento administrativo (…) no puede superar el saldo de la factura (…).",
-            "La factura … ya está en el detalle del recaudo (FPAGD).",
-            "La factura … ya está en el lote pendiente de asignar (RPDX)."
+            "La factura … ya está en el detalle del recaudo (FPAGD)."
           ],
           "llama": [],
           "efecto": "OK: hay fila RPDX con motivos. Aún no hay FPAGD ni FGLO.",
@@ -36,31 +34,34 @@
         },
         {
           "id": "SUBIR_TXT",
-          "hace": "Carga masiva de líneas a RPDX; columnas 8 y 9 de la plantilla son MOTIVO1 y MOTIVO2 (también ID5/ID6 e ID11/ID12).",
+          "hace": "Carga masiva de líneas a RPDX; columnas 8 y 9 de la plantilla son MOTIVO1 y MOTIVO2.",
           "valida": [
-            "Parseo de columnas de la línea (detalle de validación de factura/impuesto no fichado línea a línea)"
+            "Parseo de columnas de la línea"
           ],
           "noValida": [
             "Códigos de motivo contra FCGLO",
             "No escribe FGLOCG"
           ],
           "errores": [],
-          "llama": ["SPK_GENCONSECUTIVO"],
-          "efecto": "OK con CNSRPDX y conteo de errados. Motivos quedan en el lote temporal.",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "Lote RPDX con motivos listo para ASIGNAR.",
           "capaId": "03-alimentadores",
           "gateId": "motivos-desde-recaudo",
           "estado": "leido"
         },
         {
           "id": "CARGAR_FACTURAS",
-          "hace": "Igual que la carga masiva: arma RPDX con MOTIVO1/MOTIVO2 en ID11/ID12.",
+          "hace": "Arma RPDX con MOTIVO1/MOTIVO2 en ID11/ID12.",
           "valida": [],
           "noValida": [
-            "Códigos contra FCGLO",
-            "No escribe FGLOCG"
+            "Códigos contra FCGLO"
           ],
           "errores": [],
-          "llama": ["SPK_GENCONSECUTIVO"],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
           "efecto": "Lote RPDX listo para ASIGNAR.",
           "capaId": "03-alimentadores",
           "gateId": "motivos-desde-recaudo",
@@ -68,97 +69,86 @@
         },
         {
           "id": "ASIGNAR",
-          "hace": "Pasa el lote RPDX al detalle del recaudo (FPAGD) y borra RPDX/FTIMP.",
+          "hace": "Pasa el lote RPDX al detalle del recaudo (FPAGD) vía SPK_CARGA_MASIVA_FAC_CXC_02.",
           "valida": [
             "Hay al menos una factura en RPDX",
-            "No duplicar N_FACTURA (devolución) ni N_FACTURA+clase (glosas/caja/bancos/cxp) contra FPAGD ni dentro del lote"
+            "No duplicar N_FACTURA según INGRESO"
           ],
           "noValida": [
-            "No se ve en este SPQ el mapeo RPDX.ID11/ID12 → FPAGD.MOTIVO1/MOTIVO2 (está en el SPK)"
+            "Mapeo motivos está en el SPK, no en este SPQ"
           ],
           "errores": [
             "Error, debe seleccionar por lo menos una factura",
-            "Existen facturas que ya están en el detalle del recaudo (FPAGD) o repetidas en el lote…",
             "ERROR AL ASIGNAR: …"
           ],
-          "llama": ["SPK_CARGA_MASIVA_FAC_CXC_02"],
-          "efecto": "OK: facturas en FPAGD. Motivos en FPAGD: no confirmado sin el SPK.",
+          "llama": [
+            "SPK_CARGA_MASIVA_FAC_CXC_02"
+          ],
+          "efecto": "OK: facturas en FPAGD con MOTIVO1/MOTIVO2.",
           "capaId": "03-alimentadores",
           "gateId": "motivos-desde-recaudo",
           "estado": "leido"
         },
         {
           "id": "APLICARPAGO",
-          "hace": "Aplica el recaudo: periodo abierto, detalle existente, sin duplicados, impuestos FPAGDI/FIMPDV, luego SPK_PAGOSCXC. Si INGRESO=GLOSAS y FINDEVOL 4/5/6, llama SPK_FINALIDAD_GLOSAS.",
+          "hace": "Aplica recaudo; llama SPK_PAGOSCXC. Si INGRESO=GLOSAS y FINDEVOL 4/5/6, SPK_FINALIDAD_GLOSAS.",
           "valida": [
-            "Periodo PRI abierto a la fecha de pago",
+            "Periodo PRI abierto",
             "Hay FPAGD",
-            "Sin duplicados de factura/clase según INGRESO",
+            "Sin duplicados",
             "Ajuste al peso ≤ REC_VLRMAX_AJUSTE",
-            "Si hay VLRIMPUESTO en FPAGD debe existir desglose FPAGDI y cuenta vigente en FIMPDV"
+            "FIMPDV si hay impuesto"
           ],
           "noValida": [
             "No inserta FGLOCG",
-            "No comprueba MOTIVO1/MOTIVO2 ni FCGLO"
+            "No comprueba MOTIVO1/MOTIVO2"
           ],
           "errores": [
             "Periodo contable no existe o esta Cerrado…",
-            "Recaudo sin detalles, no se puede continuar…",
-            "No se puede aplicar el pago: el recaudo tiene la misma factura…",
-            "El Valor del ajuste al peso no puede superar el maximo permitido…",
-            "Factura …: tiene impuesto en FPAGD pero no existe desglose en FPAGDI…",
-            "Factura …: impuesto … sin vigencia/cuenta en FIMPDV…"
+            "Recaudo sin detalles…"
           ],
-          "llama": ["SPK_PRI", "SPK_PAGOSCXC", "SPK_FINALIDAD_GLOSAS"],
-          "efecto": "OK: recaudo aplicado. FGLO nace en el SPK (no leído). FGLOCG no se escribe aquí.",
+          "llama": [
+            "SPK_PRI",
+            "SPK_PAGOSCXC",
+            "SPK_FINALIDAD_GLOSAS"
+          ],
+          "efecto": "OK: FGLO creada en SPK; FGLOCG vacío.",
           "capaId": "03-alimentadores",
           "gateId": "motivos-desde-recaudo",
           "estado": "leido"
         },
         {
           "id": "ENVIAR_AUDIT",
-          "hace": "Crea entrega ENT/ENTD proceso GLOSAS, marca FGLO.CNSENTREGA/ASIGENT y FPAG.ENAUDIT=1.",
+          "hace": "Crea ENT/ENTD proceso GLOSAS; marca FGLO.CNSENTREGA/ASIGENT y FPAG.ENAUDIT=1.",
           "valida": [
-            "Facturas del recaudo sin entrega previa ENT/ENTD ni FGLO.CNSENTREGA",
-            "Existen FGLO del recaudo con ENAUDITORIA=0 e IDDEP=IDFDEPCARTERA"
+            "Sin entrega previa",
+            "FGLO con ENAUDITORIA=0 e IDDEP=IDFDEPCARTERA"
           ],
           "noValida": [
             "No copia MOTIVO1/MOTIVO2 a FGLOCG"
           ],
           "errores": [
-            "No se puede enviar a auditoría: una o más facturas de este recaudo ya tienen envío de glosas registrado.",
+            "No se puede enviar a auditoría…",
             "No Existen Glosas pendientes por Enviar"
           ],
-          "llama": ["SPK_GENCONSECUTIVO"],
-          "efecto": "OK: glosas en circuito de entrega. Motivos siguen vacíos en FGLOCG si nadie los cargó.",
-          "capaId": "04-entrega",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "Glosas en circuito de entrega.",
+          "capaId": "04-unido",
           "gateId": "enviar-auditoria",
           "estado": "leido"
         },
         {
           "id": "CODIGO_GLOSA",
-          "hace": "Devuelve el maestro FCGLO (CNSFCGLO, DESCRIPCION) según INGRESO GLOSAS o DEVOLUCION.",
+          "hace": "Devuelve maestro FCGLO según INGRESO GLOSAS o DEVOLUCION.",
           "valida": [],
           "noValida": [],
           "errores": [],
           "llama": [],
-          "efecto": "Solo lectura. El FE usa la hoja Códigos_glosa en la plantilla.",
+          "efecto": "Solo lectura para plantilla.",
           "capaId": "01-configuracion",
           "gateId": "catalogo-fcglo",
-          "estado": "leido"
-        },
-        {
-          "id": "FPAGD",
-          "hace": "Lista el detalle del recaudo.",
-          "valida": [],
-          "noValida": [
-            "El SELECT de hoy no trae MOTIVO1 ni MOTIVO2"
-          ],
-          "errores": [],
-          "llama": [],
-          "efecto": "Solo lectura de valores (factura, glosa, impuestos, pago), no de motivos.",
-          "capaId": "03-alimentadores",
-          "gateId": "motivos-desde-recaudo",
           "estado": "leido"
         }
       ]
@@ -167,70 +157,437 @@
       "nombre": "SPQ_FGLO_COL",
       "tipo": "SPQ",
       "modelo": "FGLO_COL",
-      "estado": "parcial",
+      "estado": "leido",
       "fuente": "sql/SPQ_FGLO_COL.sql",
-      "cola": "El resto de métodos (CRUD_FGLOD, APLICAR_GLOSA, IMP_RESPUESTA, etc.) queda listado hasta un valle de Documentar.",
       "metodos": [
         {
           "id": "TRAE_MOTIGLO",
-          "hace": "Trae motivos FGLOCG+FCGLO y detalle FGLOD de la glosa. Si la factura es M CE/CI de cita, indica LIBERAR_FACTURA.",
+          "hace": "Trae motivos FGLOCG+FCGLO y detalle FGLOD de la glosa.",
           "valida": [],
           "noValida": [
-            "Si FGLOCG está vacío, el segundo resultset de motivos sale vacío (no hay mensaje de advertencia en el SP)"
+            "Si FGLOCG vacío, resultset de motivos sale vacío"
           ],
           "errores": [],
           "llama": [],
-          "efecto": "Lo que ve el auditor en Motivo de Glosa. Sin filas = pantalla sin motivos de cartera.",
+          "efecto": "Lo que ve el auditor en Motivo de Glosa.",
           "capaId": "02-operacion",
           "gateId": "ver-motivos",
           "estado": "leido"
         },
         {
           "id": "CRUD_FGLOCG",
-          "hace": "Alta, edición o borrado de un motivo (CNSGLO+CNSFCGLO, VALOR, OBSERVACION) si la glosa no está cerrada.",
+          "hace": "Alta, edición o borrado de motivo (CNSGLO+CNSFCGLO, VALOR, OBSERVACION) si glosa abierta.",
           "valida": [
             "FGLO existe y CERRADA=0",
-            "Nuevo: no duplicar CNSFCGLO en la misma glosa",
-            "Editar: el código ya existe",
-            "Borrar: glosa abierta"
+            "No duplicar CNSFCGLO",
+            "Borrar solo si abierta"
           ],
           "noValida": [
-            "No exige que CNSFCGLO exista en FCGLO (el FE sí busca el catálogo)",
-            "No exige que la suma de valores iguale VLRGLOSA (eso es CRUD_FGLO al aplicar T)"
+            "No exige CNSFCGLO∈FCGLO en SP",
+            "Suma= VLRGLOSA es en CRUD_FGLO"
           ],
           "errores": [
             "Consecutivo de Glosa no Encontrado O ya se encuentra Cerrada…",
-            "Ya Existe un Motivo de Glosa con este Código…",
-            "Codigo de Glosa no Fue Encontrado…",
-            "No Fue posible Borrar el registro, verifique si la glosa ya fue cerrada"
+            "Ya Existe un Motivo de Glosa con este Código…"
           ],
           "llama": [],
-          "efecto": "OK: devuelve SUM(VALOR) de FGLOCG. Es el camino manual que hoy usa auditoría.",
+          "efecto": "Camino manual de auditoría para motivos.",
           "capaId": "02-operacion",
           "gateId": "ver-motivos",
           "estado": "leido"
         },
         {
           "id": "CRUD_FGLO",
-          "hace": "Actualiza cabecera de respuesta. Si TIPORESPUESTA=T, exige SUM(FGLOCG.VALOR)=FGLO.VLRGLOSA. Si APLICA=1, llama SPK_RESPUESTAGLOSA (periodo abierto).",
+          "hace": "Actualiza cabecera respuesta. Si TIPORESPUESTA=T, exige SUM(FGLOCG.VALOR)=VLRGLOSA. Si APLICA=1, llama SPK_RESPUESTAGLOSA.",
           "valida": [
             "Glosa abierta",
-            "Si T: suma de motivos = VLRGLOSA",
-            "VLRACEPTADO no mayor que VLRGLOSA",
-            "Si aplica: PRI abierto (y cartera) en la fecha de respuesta"
+            "Si T: suma motivos = VLRGLOSA",
+            "VLRACEPTADO ≤ VLRGLOSA",
+            "PRI abierto si aplica"
           ],
           "noValida": [],
           "errores": [
-            "El valor de los motivos  no coincide con el valor total de la glosa. No se pueden aplicar los cambios.",
+            "El valor de los motivos no coincide con el valor total de la glosa…",
             "El Valor aceptado no puede ser mayor que el valor de la glosa."
           ],
-          "llama": ["SPK_RESPUESTAGLOSA"],
-          "efecto": "OK: respuesta grabada. Si los motivos no se precargaron, el auditor no puede aplicar T hasta cargarlos a mano.",
+          "llama": [
+            "SPK_RESPUESTAGLOSA"
+          ],
+          "efecto": "Respuesta grabada; contabiliza si APLICA=1.",
           "capaId": "02-operacion",
           "gateId": "ver-motivos",
           "estado": "leido"
+        },
+        {
+          "id": "RECIBIR_GLOSA",
+          "hace": "Confirma recepción ENT en auditoría: FGLO.ENAUDITORIA=1, IDDEP→IDFDEPAUDITORIA; ENT.ESTADO=1.",
+          "valida": [
+            "ENT abierta en dept auditoría",
+            "FGLO en dept cartera con CNSENTREGA"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se Encontro el Conscutivo de entrega o esta en otra Dependencia…"
+          ],
+          "llama": [],
+          "efecto": "Glosas listas para Responder en auditoría.",
+          "capaId": "02-operacion",
+          "gateId": "recepcion-auditoria",
+          "estado": "leido"
+        },
+        {
+          "id": "APLICAR_GLOSA",
+          "hace": "Cierra glosa respondida: valida PRI cartera+contable en FECHARESP → SPK_RESPUESTAGLOSA.",
+          "valida": [
+            "FGLO.CERRADA=0",
+            "PRI abierto en fecha respuesta"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable, cerrado o no existe…",
+            "No se encontro el Cnsglosa o ya fue aplicado…"
+          ],
+          "llama": [
+            "SPK_RESPUESTAGLOSA"
+          ],
+          "efecto": "FGLO.CERRADA=1; contabilidad respuesta.",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos",
+          "estado": "leido"
+        },
+        {
+          "id": "DESAPLICAR_GLOSA",
+          "hace": "Reabre glosa aplicada: revierte NC (SPK_ANULANOTA_CR) si VLRACEPTADO>0; limpia MCPE si erróneo.",
+          "valida": [
+            "CERRADA=1 y ASIGNADAIMP=0",
+            "FTR no anulada/NC"
+          ],
+          "noValida": [],
+          "errores": [
+            "La Factura de esta Glosa ya se encuentra Anulada…",
+            "Comprobante contable no confirmado…"
+          ],
+          "llama": [
+            "SPK_ANULANOTA_CR"
+          ],
+          "efecto": "Glosa reabierta para corrección.",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIAR_RESPUESTA",
+          "hace": "Crea ENT devolución respuestas (FGLOI) hacia cartera; marca FGLO.CNSENTDEV.",
+          "valida": [
+            "Lote FGLOI con glosas respondidas"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "Respuestas en tránsito a cartera.",
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera",
+          "estado": "leido"
+        },
+        {
+          "id": "RECIBIR_RPTASGLOSA",
+          "hace": "Cartera recepciona ENT de respuestas; FGLO pasa a estado recepcionado en cartera.",
+          "valida": [
+            "ENT respuestas abierta en dept cartera"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Listo para radicar respuesta (FGLOI_RADICA).",
+          "capaId": "04-unido",
+          "gateId": "radicar-respuesta",
+          "estado": "leido"
+        },
+        {
+          "id": "FGLOI_RADICA",
+          "hace": "Radica lote de respuestas de glosa en CxC; puede llamar SPK_RADICAGLOSAS.",
+          "valida": [
+            "Glosas recepcionadas y respondidas"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_RADICAGLOSAS"
+          ],
+          "efecto": "FGLO/FGLOI radicadas.",
+          "capaId": "04-unido",
+          "gateId": "radicar-respuesta",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_FGLOD",
+          "estado": "leido",
+          "hace": "CRUD FGLOD por ítem; recalcula FGLOCG desde CODGLOSA.",
+          "valida": [
+            "FGLO CERRADA=0"
+          ],
+          "errores": [
+            "La glosa no se encontró o ya está cerrada."
+          ],
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos",
+          "efecto": "Sincroniza motivos FGLOCG con suma FGLOD"
+        },
+        {
+          "id": "BORRAR_TODO_ITEMS",
+          "estado": "leido",
+          "hace": "DELETE FGLOD+FGLOCG de glosa abierta.",
+          "valida": [
+            "CERRADA=0",
+            "Debe haber ítems o motivos"
+          ],
+          "errores": [
+            "No hay items o motivos para borrar.",
+            "No se pueden borrar los detalles: la glosa no existe o ya se encuentra cerrada."
+          ],
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
+        },
+        {
+          "id": "APLIANULA_FACTURA",
+          "estado": "leido",
+          "hace": "Si VLRGLOSA=valor factura FCXCD → SPK_GLOSAANULAFTR.",
+          "valida": [
+            "CERRADA=0",
+            "VLRGLOSA=VALORFACTURA"
+          ],
+          "errores": [
+            "El valor de la glosa debe ser igual al valor de la Factura",
+            "Glosa no encontrada o ya fue aplicada"
+          ],
+          "llama": [
+            "SPK_GLOSAANULAFTR"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
+        },
+        {
+          "id": "CRUD_FGLOI",
+          "estado": "leido",
+          "hace": "Lote impresión FGLOI: Nueva/Editar/Borrar.",
+          "valida": [
+            "Un lote abierto por tercero+usuario"
+          ],
+          "errores": [
+            "Existe Consecutivos Abiertos para este Tercero y este Usuario"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta"
+        },
+        {
+          "id": "CRUD_FGLOID",
+          "estado": "leido",
+          "hace": "Asigna/quita glosas al lote FGLOI (A/AT/D/DT).",
+          "valida": [
+            "Glosa CERRADA=1 y ASIGNADAIMP=0 para agregar"
+          ],
+          "errores": [
+            "Esta glosa no se encuentra Disponible o no se encuentra cerrada"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta",
+          "efecto": "FGLO.ASIGNADAIMP=1"
+        },
+        {
+          "id": "IMP_RESPUESTA",
+          "estado": "leido",
+          "hace": "Marca FGLOI impreso; incrementa IMPRESIONES.",
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta"
+        },
+        {
+          "id": "ENT_RPTAGLOSA",
+          "estado": "leido",
+          "hace": "Crea ENT devolución respuestas (proceso GLOSAS) desde auditoría.",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera"
+        },
+        {
+          "id": "ENT_CIERRARPTAGLOSA",
+          "estado": "leido",
+          "hace": "Cierra ENT de respuestas; valida ítems ENTD.",
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera"
+        },
+        {
+          "id": "ENT_ADDRESPGLO",
+          "estado": "leido",
+          "hace": "Agrega FGLO respondida al ENT de devolución.",
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera"
+        },
+        {
+          "id": "ENT_ANULAR",
+          "estado": "leido",
+          "hace": "Anula ENT glosas abierta; libera FGLO.CNSENTREGA.",
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera"
+        },
+        {
+          "id": "ENTD_BORRARITEM",
+          "estado": "leido",
+          "hace": "Quita FGLO del ENT devolución.",
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera"
+        },
+        {
+          "id": "ENT_ENVGLOSA",
+          "estado": "leido",
+          "hace": "Abre ENT GLOSAS cartera→auditoría (IDFDEPCARTERA/AUDITORIA).",
+          "valida": [
+            "FDEP variables configuradas",
+            "Sin ENT abierta duplicada"
+          ],
+          "errores": [
+            "IDFDEPAUDITORIA no existe en FDEP",
+            "Ya existe una Entrega con este Usuario Abiera"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "capaId": "04-unido",
+          "gateId": "enviar-auditoria"
+        },
+        {
+          "id": "ENT_ADDRECAUDO",
+          "estado": "leido",
+          "hace": "Agrega FGLO de FPAG al ENT abierto (AdminGlosas).",
+          "valida": [
+            "ENT GLOSAS abierta"
+          ],
+          "errores": [
+            "No se Encontro el Cns de Entrega"
+          ],
+          "capaId": "04-unido",
+          "gateId": "enviar-auditoria",
+          "efecto": "FGLO.CNSENTREGA; FPAG.ENAUDIT=1"
+        },
+        {
+          "id": "ENTD_DELITEMENVIO",
+          "estado": "leido",
+          "hace": "Quita glosa del ENT envío; resetea ASIGENT.",
+          "capaId": "04-unido",
+          "gateId": "enviar-auditoria"
+        },
+        {
+          "id": "EXPORTA_GLOSAS",
+          "estado": "leido",
+          "hace": "Export Excel recepción glosas por ENT/filtros.",
+          "capaId": "02-operacion",
+          "gateId": "recepcion-auditoria"
+        },
+        {
+          "id": "EXPORTA_RPTAGLOSAS",
+          "estado": "leido",
+          "hace": "Export Excel devolución respuestas.",
+          "capaId": "02-operacion",
+          "gateId": "devolver-cartera"
+        },
+        {
+          "id": "VALIDAR_FGLOID",
+          "estado": "leido",
+          "hace": "Valida lote FGLOID antes de imprimir/enviar.",
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta"
+        },
+        {
+          "id": "ABRIR_IMPRESION",
+          "estado": "leido",
+          "hace": "Permite editar lote FGLOI (IMPRESIONES=0).",
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta"
+        },
+        {
+          "id": "CERRAR_IMPRESION",
+          "estado": "leido",
+          "hace": "Cierra edición lote impresión.",
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta"
+        },
+        {
+          "id": "CRUD_FCGLO",
+          "estado": "leido",
+          "hace": "Maestro FCGLO INSERT/EDITAR/BORRAR (ConfGlo).",
+          "valida": [
+            "CNSFCGLO único"
+          ],
+          "errores": [
+            "Ya existe un concepto con el código"
+          ],
+          "capaId": "01-configuracion",
+          "gateId": "catalogo-fcglo"
+        },
+        {
+          "id": "TRAER_GLOSAS_VALIDADOS",
+          "estado": "leido",
+          "hace": "Lista glosas validadas para carga masiva respuesta.",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
+        },
+        {
+          "id": "CARGA_MASIVA_RESPUESTA_GLOSA",
+          "estado": "leido",
+          "hace": "Carga masiva respuesta por detalle (RPDX→FGLOD).",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
+        },
+        {
+          "id": "REPORTES_GLOSAS",
+          "estado": "leido",
+          "hace": "Reporte glosas recibidas (auditoría).",
+          "capaId": "02-operacion",
+          "gateId": "recepcion-auditoria"
+        },
+        {
+          "id": "DETALLE_REPORTE_GLOSAS",
+          "estado": "leido",
+          "hace": "Detalle reporte glosas recibidas.",
+          "capaId": "02-operacion",
+          "gateId": "recepcion-auditoria"
+        },
+        {
+          "id": "PLANTILLA_RPTA_DETALLES",
+          "estado": "leido",
+          "hace": "Descarga plantilla Excel respuesta por detalle.",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
+        },
+        {
+          "id": "SUBIR_RPTA_DETALLES",
+          "estado": "leido",
+          "hace": "Sube plantilla respuesta detalle → RPDX.",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
+        },
+        {
+          "id": "INFORME_RESPUESTAS_GLOSA_MOTIVOS",
+          "estado": "leido",
+          "hace": "Informe respuestas por motivo.",
+          "capaId": "02-operacion",
+          "gateId": "imprimir-respuesta"
+        },
+        {
+          "id": "LIBERAR_PAC",
+          "estado": "leido",
+          "hace": "Libera factura M CE/CI de cita (RespGlosas).",
+          "capaId": "02-operacion",
+          "gateId": "ver-motivos"
         }
-      ]
+      ],
+      "metodos_count": 37
     },
     {
       "nombre": "SPK_PAGOSCXC",
@@ -242,19 +599,23 @@
       "metodos": [
         {
           "id": "APLICAR",
-          "hace": "Aplica el recaudo: recorre FPAGD; si VLRGLOSA>0 crea FGLO (PROCEDENCIA Recaudo) y deja FPAGD.CNSGLO_ASIG. No lee MOTIVO1/MOTIVO2 ni escribe FGLOCG.",
+          "hace": "Si VLRGLOSA>0 crea FGLO (PROCEDENCIA Recaudo) y, si MOTIVO1/MOTIVO2 existen en FCGLO (GLOSA/ACTIVO), inserta FGLOCG (uno o dos, valor partido a la mitad si ambos distintos).",
           "valida": [
-            "Recorre cada línea FPAGD del recaudo",
-            "Glosa solo si VLRGLOSA>0; si SINPAGO=1 fuerza TIPOGLOSA=T"
+            "VLRGLOSA>0",
+            "Código de motivo ∈ FCGLO CLASE=GLOSA y ESTADO=ACTIVO para escribir FGLOCG"
           ],
           "noValida": [
-            "El cursor no trae MOTIVO1 ni MOTIVO2",
-            "No inserta FGLOCG",
-            "La observación de FGLO es FPAGD.OBSERVACION (texto libre), no los códigos de motivo"
+            "Código inválido o vacío: no RAISERROR; FGLO queda sin FGLOCG (solo PRINT)"
           ],
           "errores": [],
-          "llama": ["SPK_FPAG", "SPK_GENCONSECUTIVO", "SPK_VLRNOTAS", "SPK_NC_CONTAB_FNOT", "SPK_RELIQUIDA_FTR"],
-          "efecto": "OK: hay FGLO ligada al recaudo. Auditoría ve la glosa; TRAE_MOTIGLO sale vacío de motivos.",
+          "llama": [
+            "SPK_FPAG",
+            "SPK_GENCONSECUTIVO",
+            "SPK_VLRNOTAS",
+            "SPK_NC_CONTAB_FNOT",
+            "SPK_RELIQUIDA_FTR"
+          ],
+          "efecto": "FGLO + FGLOCG cuando el motivo es válido; TRAE_MOTIGLO ya puede mostrar motivos.",
           "capaId": "03-alimentadores",
           "gateId": "motivos-desde-recaudo",
           "estado": "leido"
@@ -266,26 +627,26 @@
       "tipo": "SPK",
       "modelo": "",
       "estado": "leido",
-      "fuente": "sql/SPK_CARGA_MASIVA_FAC_CXC_02.sql",
+      "fuente": "referencia REQ 6259",
       "cola": "",
       "metodos": [
         {
           "id": "ASIGNAR_LOTE",
-          "hace": "Pasa RPDX a FPAGD. ID11/ID12 del lote van a FPAGD.MOTIVO1/MOTIVO2.",
+          "hace": "Pasa RPDX a FPAGD. ID11/ID12 → FPAGD.MOTIVO1/MOTIVO2.",
           "valida": [
-            "El recaudo no esté CERRADO=1"
+            "Recaudo no CERRADO=1"
           ],
           "noValida": [
-            "No comprueba que MOTIVO1/MOTIVO2 existan en FCGLO",
-            "No escribe FGLO ni FGLOCG (eso es al aplicar)"
+            "No valida FCGLO",
+            "No escribe FGLO ni FGLOCG"
           ],
           "errores": [
-            "EL RECAUDO SELECIONADO YA SE ENCUENTRA CERRADO",
-            "ERROR INSERTANDO EN TABLA TEMPORAL LAS GLOSAS",
-            "ERROR INSERTANDO DATOS REALES"
+            "EL RECAUDO SELECIONADO YA SE ENCUENTRA CERRADO"
           ],
-          "llama": ["SPK_FPAG"],
-          "efecto": "OK: FPAGD tiene MOTIVO1 y MOTIVO2. Los códigos ya están en el detalle del recaudo.",
+          "llama": [
+            "SPK_FPAG"
+          ],
+          "efecto": "FPAGD con MOTIVO1 y MOTIVO2.",
           "capaId": "03-alimentadores",
           "gateId": "motivos-desde-recaudo",
           "estado": "leido"
@@ -293,12 +654,118 @@
       ]
     },
     {
+      "nombre": "SPK_RESPUESTAGLOSA",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_RESPUESTAGLOSA .sql",
+      "metodos": [],
+      "hace": "Motor apply respuesta: VLRACEPTADO/VLRRECUPERAR por MODO; NC FNOT si aceptado>0; FCXCDV G/R si recuperar; cierra FGLO; SPK_NOTASCXC+RELIQUIDA; SPK_CONTAB_FGLO.",
+      "valida": [
+        "CERRADA=0 al entrar",
+        "Detalle FNOTD generado si NC"
+      ],
+      "errores": [
+        "No se pudo generar el detalle de la nota crédito. La glosa no se aplicó."
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO",
+        "SPK_GENITEMS_NOTACR",
+        "SPK_NOTASCXC",
+        "SPK_RELIQUIDA_FTR",
+        "SPK_CONTAB_FGLO",
+        "SPK_ANULA_FACT"
+      ],
+      "gateId": "contabilizar-respuesta",
+      "colaAnidados": "SPK_CONTAB_FGLO, SPK_GLOSAANULAFTR, SPK_RADICAGLOSAS — no en sql/ de hoy; solo si REQ profundiza"
+    },
+    {
       "nombre": "SPK_FINALIDAD_GLOSAS",
       "tipo": "SPK",
       "modelo": "",
-      "estado": "no_leido",
+      "estado": "leido",
+      "fuente": "sql/SPK_FINALIDAD_GLOSAS.sql",
+      "cola": "",
+      "metodos": [
+        {
+          "id": "FINDEVOL_4",
+          "hace": "Tras apply: ENVIAR_AUDIT → RECIBIR_GLOSA → copia respuesta cabecera → FGLOCG desde MOTIVO1 → SPK_RESPUESTAGLOSA por glosa → lote FGLOI → ENVIAR_RESPUESTA → RECIBIR_RPTASGLOSA.",
+          "valida": [
+            "SPQ_JSON ENVIAR_AUDIT y RECIBIR_GLOSA retornan OK",
+            "IDCONCEPRPTAGLO_AUTO configurado"
+          ],
+          "noValida": [
+            "Errores SPK_RESPUESTAGLOSA se acumulan en @TBLERRORES; XACT_STATE=-1 aborta sin RAISERROR claro"
+          ],
+          "errores": [
+            "No se recibió respuesta válida de SPQ_JSON para auditoría.",
+            "La auditoría no retornó estado OK.",
+            "La recepción de glosa no retornó estado OK."
+          ],
+          "llama": [
+            "SPQ_JSON FPAG_COL/ENVIAR_AUDIT",
+            "SPQ_JSON FGLO_COL/RECIBIR_GLOSA",
+            "SPK_RESPUESTAGLOSA",
+            "SPK_GENCONSECUTIVO",
+            "SPQ_JSON FGLO_COL/ENVIAR_RESPUESTA",
+            "SPQ_JSON FGLO_COL/RECIBIR_RPTASGLOSA"
+          ],
+          "efecto": "Glosa respondida, impresa y devuelta a cartera en un solo apply (FINDEVOL=4, TIPORESPUESTA T).",
+          "capaId": "04-unido",
+          "gateId": "circuito-automatico",
+          "estado": "leido"
+        },
+        {
+          "id": "FINDEVOL_5",
+          "hace": "Tras apply: mismos pasos 1-3 que 4; inserta FGLOCG+FGLOD desde RPDX detalle (CNSRPDX_1); no llama SPK_RESPUESTAGLOSA ni imprime.",
+          "valida": [
+            "Código motivo ∈ FCGLO (EXISTS en INSERT FGLOCG)"
+          ],
+          "noValida": [
+            "No cierra ni envía respuesta a cartera"
+          ],
+          "errores": [],
+          "llama": [
+            "SPQ_JSON ENVIAR_AUDIT",
+            "SPQ_JSON RECIBIR_GLOSA"
+          ],
+          "efecto": "Glosa en auditoría con detalle ítems; auditor completa respuesta manual en RespGlosas.",
+          "capaId": "04-unido",
+          "gateId": "circuito-automatico",
+          "estado": "leido"
+        },
+        {
+          "id": "FINDEVOL_6",
+          "hace": "Como 5 más FGLOCG/FGLOD con VLR_ACEPTA/CODRPTA; luego SPK_RESPUESTAGLOSA + FGLOI + ENVIAR/RECIBIR respuesta (igual que 4).",
+          "valida": [
+            "Plantilla DETALLE_RESPONDER cargada en RPDX_1"
+          ],
+          "noValida": [],
+          "errores": [
+            "Errores SPK_RESPUESTAGLOSA en cursor"
+          ],
+          "llama": [
+            "SPQ_JSON ENVIAR_AUDIT",
+            "SPQ_JSON RECIBIR_GLOSA",
+            "SPK_RESPUESTAGLOSA",
+            "SPK_GENCONSECUTIVO",
+            "SPQ_JSON ENVIAR_RESPUESTA",
+            "SPQ_JSON RECIBIR_RPTASGLOSA"
+          ],
+          "efecto": "Respuesta automática con detalle por ítem (FINDEVOL=6).",
+          "capaId": "04-unido",
+          "gateId": "circuito-automatico",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTABILIDAD_3",
+      "tipo": "SPQ",
+      "modelo": "CONTABILIDAD_3",
+      "estado": "listado",
       "fuente": "",
-      "cola": "APLICARPAGO si INGRESO=GLOSAS y FINDEVOL 4/5/6. Confirmar si toca FGLOCG.",
+      "cola": "OMGlosasComponent: DETALLE_OM_GLOSAS, ITEMS_OM_GLOSAS, ENV_CONTA_OTROS_MODULS. Proceso Contabilidad; fichas pendientes.",
       "metodos": []
     }
   ]

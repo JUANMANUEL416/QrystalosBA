@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-07T01:16:49.958Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016232",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260901-0100016232",
+    "idReq": "0100016232",
+    "fecha": "2026-08-31",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ÓPTICA CENTRAL",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": "/ce/autorizador"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "KEVIN RODRIGUEZ",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/OPCENT12",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Problemas en el proceso de división de servicios para facturación\n\nEl proceso de dividir servicios para facturar correctamente los servicios particulares y de EPS en el autorizador no está funcionando adecuadamente. Se requiere que este proceso se ajuste para garantizar una facturación correcta.\n\n1. Acceder al módulo de autorizador.\n2. Intentar dividir un servicio particular y uno de EPS.\n3. Observar el comportamiento del sistema. DETALLE: Problemas en el proceso de división de servicios para facturación. El proceso de dividir servicios para facturar correctamente los servicios particulares y de EPS en el autorizador no está funcionando adecuadamente. Se requiere que este proceso se ajuste para garantizar una facturación",
+    "criteriosAceptacion": "CA-01 · Separación óptica operativa\nDado CLASE_IPS=OPTICA y una AUT con líneas mezcladas (componente EPS + particular vía SERR), al pulsar «Separar Servicios» (AUT_COL · SEPARAR_SER_OPTICA) el sistema responde OK, refresca la grilla y deja AUTD con HOMOLOGO=1 en la porción EPS (IDSERVICIOH, VALORHOMO definidos) y líneas HOMOLOGO=0 para la porción particular, cada una con IDTERCEROCA/IDPLAN coherentes.\n\nCA-02 · Errores visibles\nSi la separación falla (ya separada, sin SERR, SPK error), el operador ve mensaje KO en pantalla (no fallo silencioso). Mensajes documentados del wrapper: «El servicio ya se encuentra separado»; demás vía ERROR_MESSAGE del SPK.\n\nCA-03 · Facturación dual post-separación\nTras separar y recaudar copago si aplica (VALRECA_COPA_FACTU), FACTURA_AUT genera una o más FTR agrupando por AUTD.IDTERCEROCA + AUTD.IDPLAN (SPK_FACTURACE_N): factura EPS al tercero/plan EPS; ítems con prefijo PRE1–PRE5 (particular) excluidos del cursor EPS; porción particular factura al tercero/plan particular (IDPLANPART* / IDTERCEROPARTICULAR).\n\nCA-04 · Valores y copago\nTras separar, VALOR/VALORCOPAGO/VALOREXCEDENTE por línea AUTD son consistentes con SPK_COPAGO_AUT_CEHOSP (reliquidación explícita o automática post-SPK_SEPARA_SER_REL_AUT). Totales cabecera AUT cuadran con suma AUTD.\n\nCA-05 · Respeto «No Separar»\nLíneas AUTD con CITAAUTORIZADA=1 no se dividen; el resto sí cuando aplica relación SERR.\n\nCA-06 · Reversa «Unificar Servicios»\nUNIR_SER_OPTICA revierte el split (elimina HOMOLOGO=0, restaura IDSERVICIO desde IDSERVICIOH) solo si ninguna línea está FACTURADA=1.\n\nCA-07 · Regresión autorizador\nCRUDAUT, RECAUDAR_COPAGO/CONFIRMAR_RECIBO, ANULAR_AUT y facturación masiva (planes PFACTURARIND=0) no se alteran.\n\nCA-08 · Configuración cliente\nEn ÓPTICA CENTRAL quedan validados USVGS: CLASE_IPS=OPTICA, IPS_MAN_OPTICA=SI, PRE1–PRE5 (prefijos particulares), IDPLANPART* e IDTERCEROPARTICULAR; catálogo SERR (servicios relacionados) para los productos del caso de prueba.",
+    "alcance": "Proceso autorizaciones-ce · gates aut-creacion-gestion y aut-facturacion.\n\nIncluye: botones Separar/Unificar en AutorizadorComponent (/ce/autorizador); METODOs SEPARAR_SER_OPTICA / UNIR_SER_OPTICA; motor SPK_SEPARA_SER_REL_AUT; reliquidación copago post-separación; cursor de facturación SPK_FACTURACE_N (rama CE óptica); manejo de errores FE.\n\nFuera: facturación masiva admin (MARCAAUT_FTR); bandeja CIT/AUTPG; contabilidad MCPE; DIAN/RIPS; cambios en catálogo SER/SERR salvo validación de datos faltantes en cliente.",
+    "restricciones": "- sql.procesoId=autorizaciones-ce (no facturacion ni notas-dbcr).\n- Funcionalidad exclusiva CLASE_IPS=OPTICA (USVGS).\n- Ficha SEPARAR_SER_OPTICA leída en sps.json; cuerpo SPK_SEPARA_SER_REL_AUT no está en sql_refe/ — bajar a sql/ al codificar el fix.\n- No inventar columnas AUTD: usar HOMOLOGO, IDSERVICIOH, VALORHOMO, IDTERCEROCA, IDPLAN, AQUIENCOBRO, CITAAUTORIZADA documentadas.\n- qrystalosServer null: cambios SQL vía SPQ existentes.\n- Sin cambio contable (afecta=false).\n- Rama bugfix/OPCENT12.",
+    "analisis": "REQ vs KB (autorizaciones-ce/proceso.json · sps.json · sql_refe/xsql)\n\nEl REQ apunta al Autorizador CE, no al módulo FTR admin. ÓPTICA CENTRAL usa CLASE_IPS=OPTICA: en AutorizadorComponent existen «Separar Servicios» y «Unificar Servicios» (AUT_COL · SEPARAR_SER_OPTICA / UNIR_SER_OPTICA). El wrapper SPQ (sql_refe) valida que no exista HOMOLOGO=1 previo y delega en SPK_SEPARA_SER_REL_AUT, que opera sobre relaciones SERR (tabla documentada en qrystalos.documentacion/t tablas/SERR.md).\n\nFlujo esperado\n1) AUT con servicios compuestos (montura+lente, etc.) configurados en SERR.\n2) Separar → SPK crea líneas AUTD homologadas (EPS) y no homologadas (particular) con tercero/plan por línea.\n3) Reliquidar copago (SPK_COPAGO_AUT_CEHOSP / RELIQUIDAR).\n4) Facturar → FACTURA_AUT → SPK_FACTURACE_N agrupa por AUTD.IDTERCEROCA+IDPLAN; excluye prefijos PRE1–PRE5 del bloque EPS; rama ESOPTICA=SI (IPS_MAN_OPTICA) aplica descuentos óptica.\n\nCausa probable (sin caso repro en disco)\n- FE: onSepararSer/onUnirSer no muestran notify en KO (solo refrescan en OK) → percepción de «no funciona».\n- Motor SPK_SEPARA_SER_REL_AUT sin documentar: riesgo de IDTERCEROCA/IDPLAN/AQUIENCOBRO incorrectos o no reliquidar.\n- Datos: SERR incompleto, CITAAUTORIZADA=1, o USVGS PRE/IDPLANPART mal configurados en cliente.\n- Facturación: mezcla EPS+particular en una sola FTR si el split no asignó IDTERCEROCA distinto por línea.\n\nContabilidad: no aplica (validado).",
+    "opciones": [
+      {
+        "titulo": "Corregir motor + FE (recomendada)",
+        "descripcion": "Releer SPK_SEPARA_SER_REL_AUT; corregir asignación AUTD y reliquidación; añadir notify KO en AutorizadorComponent; validar FACTURA_AUT con AUT mixta."
+      },
+      {
+        "titulo": "Solo FE (notify + refresco)",
+        "descripcion": "Descartada como solución completa: no corrige facturación errónea si el SPK falla o deja datos inconsistentes."
+      }
+    ],
+    "recomendacion": "Opción A. Priorizar lectura de SPK_SEPARA_SER_REL_AUT.sql en sql/ y reproducción con AUT EPS+particular en ÓPTICA CENTRAL. Paralelo: corregir FE para surfacing de errores KO (patrón CRUDAUT). Verificar post-fix que FACTURA_AUT emita FTR separadas por tercero/plan y que copago/particular sigan SPK_PAGOSCAJA_AUT. Documentar ficha SPK en autorizaciones-ce/sps.json al releer.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Separación AUTD y facturación FTR sin asientos MCPE/MCP ni movimiento CON adicional. Mismo patrón contable que FACTURA_AUT existente.",
+        "validadoEn": "2026-09-07T01:05:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de iniciar cualquier desarrollo, valide en el ambiente del cliente que el error no se haya corregido en un trabajo previo. Revise los datos del escenario (documento, montos, procedencia). Si el proceso ya funciona, no aplique la propuesta e informe que está correcto. Solo si el fallo se reproduce, proceda con el desarrollo sugerido."
+    },
+    "imagenesNecesarias": "Capturas en ÓPTICA CENTRAL: (1) AUT antes/después de Separar con detalle AUTD (HOMOLOGO, IDTERCEROCA, AQUIENCOBRO); (2) mensaje de error si falla; (3) FTR resultantes tras FACTURA_AUT (EPS vs particular). Refuerzan el dictamen en fase 2.",
+    "criteriosMeta": {
+      "originales": "CA-01 · Separación óptica operativa\nDado CLASE_IPS=OPTICA y una AUT con líneas mezcladas (componente EPS + particular vía SERR), al pulsar «Separar Servicios» (AUT_COL · SEPARAR_SER_OPTICA) el sistema responde OK, refresca la grilla y deja AUTD con HOMOLOGO=1 en la porción EPS (IDSERVICIOH, VALORHOMO definidos) y líneas HOMOLOGO=0 para la porción particular, cada una con IDTERCEROCA/IDPLAN coherentes.\n\nCA-02 · Errores visibles\nSi la separación falla (ya separada, sin SERR, SPK error), el operador ve mensaje KO en pantalla (no fallo silencioso). Mensajes documentados del wrapper: «El servicio ya se encuentra separado»; demás vía ERROR_MESSAGE del SPK.\n\nCA-03 · Facturación dual post-separación\nTras separar y recaudar copago si aplica (VALRECA_COPA_FACTU), FACTURA_AUT genera una o más FTR agrupando por AUTD.IDTERCEROCA + AUTD.IDPLAN (SPK_FACTURACE_N): factura EPS al tercero/plan EPS; ítems con prefijo PRE1–PRE5 (particular) excluidos del cursor EPS; porción particular factura al tercero/plan particular (IDPLANPART* / IDTERCEROPARTICULAR).\n\nCA-04 · Valores y copago\nTras separar, VALOR/VALORCOPAGO/VALOREXCEDENTE por línea AUTD son consistentes con SPK_COPAGO_AUT_CEHOSP (reliquidación explícita o automática post-SPK_SEPARA_SER_REL_AUT). Totales cabecera AUT cuadran con suma AUTD.\n\nCA-05 · Respeto «No Separar»\nLíneas AUTD con CITAAUTORIZADA=1 no se dividen; el resto sí cuando aplica relación SERR.\n\nCA-06 · Reversa «Unificar Servicios»\nUNIR_SER_OPTICA revierte el split (elimina HOMOLOGO=0, restaura IDSERVICIO desde IDSERVICIOH) solo si ninguna línea está FACTURADA=1.\n\nCA-07 · Regresión autorizador\nCRUDAUT, RECAUDAR_COPAGO/CONFIRMAR_RECIBO, ANULAR_AUT y facturación masiva (planes PFACTURARIND=0) no se alteran.\n\nCA-08 · Configuración cliente\nEn ÓPTICA CENTRAL quedan validados USVGS: CLASE_IPS=OPTICA, IPS_MAN_OPTICA=SI, PRE1–PRE5 (prefijos particulares), IDPLANPART* e IDTERCEROPARTICULAR; catálogo SERR (servicios relacionados) para los productos del caso de prueba.",
+      "originalesEn": "2026-09-07T01:00:23.495Z",
+      "sugeridos": "CA-01 a CA-08 (ver criteriosAceptacion): separación HOMOLOGO, errores visibles, facturación dual SPK_FACTURACE_N, copago, No Separar, unificar, regresión, config USVGS/SERR.",
+      "sugeridosEn": "2026-09-07T01:05:00.000Z",
+      "fuente": "agente",
+      "trasAnalisis": "CA-01 · Separación óptica operativa\nDado CLASE_IPS=OPTICA y una AUT con líneas mezcladas (componente EPS + particular vía SERR), al pulsar «Separar Servicios» (AUT_COL · SEPARAR_SER_OPTICA) el sistema responde OK, refresca la grilla y deja AUTD con HOMOLOGO=1 en la porción EPS (IDSERVICIOH, VALORHOMO definidos) y líneas HOMOLOGO=0 para la porción particular, cada una con IDTERCEROCA/IDPLAN coherentes.\n\nCA-02 · Errores visibles\nSi la separación falla (ya separada, sin SERR, SPK error), el operador ve mensaje KO en pantalla (no fallo silencioso). Mensajes documentados del wrapper: «El servicio ya se encuentra separado»; demás vía ERROR_MESSAGE del SPK.\n\nCA-03 · Facturación dual post-separación\nTras separar y recaudar copago si aplica (VALRECA_COPA_FACTU), FACTURA_AUT genera una o más FTR agrupando por AUTD.IDTERCEROCA + AUTD.IDPLAN (SPK_FACTURACE_N): factura EPS al tercero/plan EPS; ítems con prefijo PRE1–PRE5 (particular) excluidos del cursor EPS; porción particular factura al tercero/plan particular (IDPLANPART* / IDTERCEROPARTICULAR).\n\nCA-04 · Valores y copago\nTras separar, VALOR/VALORCOPAGO/VALOREXCEDENTE por línea AUTD son consistentes con SPK_COPAGO_AUT_CEHOSP (reliquidación explícita o automática post-SPK_SEPARA_SER_REL_AUT). Totales cabecera AUT cuadran con suma AUTD.\n\nCA-05 · Respeto «No Separar»\nLíneas AUTD con CITAAUTORIZADA=1 no se dividen; el resto sí cuando aplica relación SERR.\n\nCA-06 · Reversa «Unificar Servicios»\nUNIR_SER_OPTICA revierte el split (elimina HOMOLOGO=0, restaura IDSERVICIO desde IDSERVICIOH) solo si ninguna línea está FACTURADA=1.\n\nCA-07 · Regresión autorizador\nCRUDAUT, RECAUDAR_COPAGO/CONFIRMAR_RECIBO, ANULAR_AUT y facturación masiva (planes PFACTURARIND=0) no se alteran.\n\nCA-08 · Configuración cliente\nEn ÓPTICA CENTRAL quedan validados USVGS: CLASE_IPS=OPTICA, IPS_MAN_OPTICA=SI, PRE1–PRE5 (prefijos particulares), IDPLANPART* e IDTERCEROPARTICULAR; catálogo SERR (servicios relacionados) para los productos del caso de prueba.",
+      "trasAnalisisEn": "2026-09-07T01:16:45.087Z",
+      "definitivos": "CA-01 · Separación óptica operativa\nDado CLASE_IPS=OPTICA y una AUT con líneas mezcladas (componente EPS + particular vía SERR), al pulsar «Separar Servicios» (AUT_COL · SEPARAR_SER_OPTICA) el sistema responde OK, refresca la grilla y deja AUTD con HOMOLOGO=1 en la porción EPS (IDSERVICIOH, VALORHOMO definidos) y líneas HOMOLOGO=0 para la porción particular, cada una con IDTERCEROCA/IDPLAN coherentes.\n\nCA-02 · Errores visibles\nSi la separación falla (ya separada, sin SERR, SPK error), el operador ve mensaje KO en pantalla (no fallo silencioso). Mensajes documentados del wrapper: «El servicio ya se encuentra separado»; demás vía ERROR_MESSAGE del SPK.\n\nCA-03 · Facturación dual post-separación\nTras separar y recaudar copago si aplica (VALRECA_COPA_FACTU), FACTURA_AUT genera una o más FTR agrupando por AUTD.IDTERCEROCA + AUTD.IDPLAN (SPK_FACTURACE_N): factura EPS al tercero/plan EPS; ítems con prefijo PRE1–PRE5 (particular) excluidos del cursor EPS; porción particular factura al tercero/plan particular (IDPLANPART* / IDTERCEROPARTICULAR).\n\nCA-04 · Valores y copago\nTras separar, VALOR/VALORCOPAGO/VALOREXCEDENTE por línea AUTD son consistentes con SPK_COPAGO_AUT_CEHOSP (reliquidación explícita o automática post-SPK_SEPARA_SER_REL_AUT). Totales cabecera AUT cuadran con suma AUTD.\n\nCA-05 · Respeto «No Separar»\nLíneas AUTD con CITAAUTORIZADA=1 no se dividen; el resto sí cuando aplica relación SERR.\n\nCA-06 · Reversa «Unificar Servicios»\nUNIR_SER_OPTICA revierte el split (elimina HOMOLOGO=0, restaura IDSERVICIO desde IDSERVICIOH) solo si ninguna línea está FACTURADA=1.\n\nCA-07 · Regresión autorizador\nCRUDAUT, RECAUDAR_COPAGO/CONFIRMAR_RECIBO, ANULAR_AUT y facturación masiva (planes PFACTURARIND=0) no se alteran.\n\nCA-08 · Configuración cliente\nEn ÓPTICA CENTRAL quedan validados USVGS: CLASE_IPS=OPTICA, IPS_MAN_OPTICA=SI, PRE1–PRE5 (prefijos particulares), IDPLANPART* e IDTERCEROPARTICULAR; catálogo SERR (servicios relacionados) para los productos del caso de prueba.",
+      "validados": true,
+      "coinciden": true,
+      "validadosEn": "2026-09-07T01:09:08.551Z"
+    },
+    "brechaAnalisis": {
+      "texto": "REQ genérico (división EPS/particular en autorizador) contrastado con KB autorizaciones-ce: circuito SEPARAR_SER_OPTICA → SPK_SEPARA_SER_REL_AUT → FACTURA_AUT/SPK_FACTURACE_N documentado en wrapper y FE. Causa probable: FE silenciosa en KO + motor SPK sin ficha de cuerpo. Solución: corregir SPK y surfacing errores; validar SERR/USVGS en cliente. CA-01..CA-08 redactados. Para codificar: bajar SPK_SEPARA_SER_REL_AUT.sql a sql/.",
+      "fecha": "2026-09-07T01:05:00.000Z",
+      "estado": "listo"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016232\\",
+    "archivosEsperados": [
+      "SPK_SEPARA_SER_REL_AUT.sql"
+    ],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "autorizaciones-ce",
+    "catalogo": "conocimiento/autorizaciones-ce/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_AUT_COL",
+        "metodo": "CRUDAUT",
+        "estado": "leido",
+        "hace": "INSERT/EDITAR AUT + AUTD desde JSON (PROCESO Insertar/Editar). Genera IDAUT/NOAUT (SPQ_GENSEQUENCE), inserta detalle, liquida copago por línea (SPK_COPAGO_AUT_CEHOSP), totales, opcional caja (SPK_PAGOSCAJA_AUT*), interfaces LX/RX, enlace SOAT HACTRAND.",
+        "llama": [
+          "SPQ_GENSEQUENCE",
+          "SPK_COPAGO_AUT_CEHOSP",
+          "SPK_PAGOSCAJA_AUT",
+          "SPK_PAGOSCAJA_AUT_CEHOSP",
+          "SPKI_LX_ENVIO_DATOS",
+          "SPKI_RX_ENVIO_DATOS",
+          "SPK_RELIQ_HACTRAN"
+        ]
+      },
+      {
+        "sp": "SPQ_AUT_COL",
+        "metodo": "FACTURA_AUT",
+        "estado": "leido",
+        "hace": "Factura individual AUT desde Autorizador. Valida plan/contrato/periodo/copago/KMCOM; delega a SPK_FACTURACE_N (Col) o SPK_FACTURACE_PERU_COPA.",
+        "llama": [
+          "SPK_FACTURACE_N",
+          "SPK_FACTURACE_PERU_COPA",
+          "SPK_PAGOSCAJA_AUT"
+        ]
+      },
+      {
+        "sp": "SPQ_AUT_COL",
+        "metodo": "RELIQUIDAR",
+        "estado": "leido",
+        "hace": "Recalcula copagos/valores AUT vía SPK_COPAGO_AUT_CEHOSP_RELIQ.",
+        "llama": [
+          "SPK_COPAGO_AUT_CEHOSP_RELIQ"
+        ]
+      },
+      {
+        "sp": "SPQ_AUT_COL",
+        "metodo": "SEPARAR_SER_OPTICA",
+        "estado": "leido",
+        "hace": "SPK_SEPARA_SER_REL_AUT.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_AUT_COL",
+        "metodo": "UNIR_SER_OPTICA",
+        "estado": "leido",
+        "hace": "Une servicios óptica relacionados.",
+        "llama": []
+      }
+    ],
+    "notas": "Wrapper SEPARAR leído en sql_refe/xsql/SPQ_AUT_COL.sql. Releer SPK_SEPARA_SER_REL_AUT al implementar (no archivado). SPK_FACTURACE_N en sql_refe/xsql."
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260901-0100016232.html",
+    "aprobados": "aprobados/20260901-0100016232/",
+    "imagenes": "aprobados/20260901-0100016232/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-06",
+    "ultimoEnvio": "2026-09-06T20:17:46",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

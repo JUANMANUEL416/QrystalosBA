@@ -1,0 +1,1478 @@
+CREATE OR ALTER PROCEDURE DBO.SPQ_ENT_COL @JSON NVARCHAR(MAX)
+   WITH ENCRYPTION
+AS 
+SET DATEFORMAT dmy
+DECLARE @TBLERRORES TABLE (ERROR VARCHAR(MAX))
+DECLARE @PARAMETROS NVARCHAR(MAX), @MODELO VARCHAR(100), @METODO VARCHAR(100),
+        @USUARIO VARCHAR(12), @COMPANIA VARCHAR(2), @IDSEDE VARCHAR(5),
+        @SYS_COMPUTERNAME VARCHAR(200), @DATOS VARCHAR(MAX)
+DECLARE @CNSENTREGA VARCHAR(20), @PROCESO VARCHAR(20), @REQSEDE BIT,
+        @DEP_RECIBE VARCHAR(20), @IDSEDEF VARCHAR(5), @N_FACTURA VARCHAR(20),
+        @F_INICIAL DATE, @F_FINAL DATE, @IDTERCERO VARCHAR(20),
+        @PROCEDENCIA VARCHAR(20), @IDPLAN VARCHAR(20),
+        @MSEDE BIT, @CNSCXC VARCHAR(20), @OBSERVACION VARCHAR(2048),
+        @COORFACTURACION VARCHAR(20), @COORCARTERA VARCHAR(20), @CNSENTREGAORI VARCHAR(20),
+        @NODOCUMENTO VARCHAR(20), @USUFACTU VARCHAR(20), @ENT_ENTREGA VARCHAR(20),
+        @FCXCR BIT
+BEGIN
+   SELECT *
+   INTO #JSON
+   FROM OPENJSON(@json) WITH (
+      MODELO VARCHAR(100) '$.MODELO',
+      METODO VARCHAR(100) '$.METODO',
+      USUARIO VARCHAR(12) '$.USUARIO',
+      PARAMETROS NVARCHAR(MAX) AS JSON
+   )
+
+   SELECT @MODELO = MODELO, @METODO = METODO,
+          @PARAMETROS = PARAMETROS, @USUARIO = USUARIO
+   FROM #JSON
+
+   IF @METODO='VALIDO_USUARIO'
+   BEGIN
+      SELECT @IDSEDE=COALESCE(UBEQ.IDSEDE,USUSU.IDSEDE), 
+             @COMPANIA=COALESCE(UBEQ.COMPANIA,USUSU.COMPANIA), 
+             @SYS_COMPUTERNAME=COALESCE(USUSU.SYS_ComputerName,HOST_NAME())
+      FROM USUSU 
+      LEFT JOIN UBEQ ON USUSU.SYS_ComputerName=UBEQ.SYS_ComputerName
+      WHERE USUSU.USUARIO=@USUARIO
+
+      DECLARE @XCOUNT INT
+
+      SELECT @XCOUNT=COUNT(*)
+      FROM USUSU
+      WHERE USUARIO<>@USUARIO
+         AND SYS_ComputerName=@SYS_COMPUTERNAME
+         AND ESTADO='Activo'
+
+      SELECT 'OK'OK, @XCOUNT AS CANTIDAD
+      RETURN
+   END
+
+   IF @METODO='CRUD_ENT'
+   BEGIN
+      SELECT @DATOS=DATOS
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         DATOS NVARCHAR(MAX) AS JSON
+      )
+
+      DECLARE @VCONTROL INT
+
+      SELECT @CNSENTREGA=COALESCE(CNSENTREGA,''), 
+             @PROCESO=PROCESO, 
+             @REQSEDE=REQSEDE, 
+             @IDSEDEF=IDSEDEF,
+             @DEP_RECIBE=DEP_RECIBE, 
+             @ENT_ENTREGA=ENT_ENTREGA, 
+             @FCXCR=CASE WHEN COALESCE(FCXCR,'')='True' THEN 1 ELSE 0 END
+      FROM OPENJSON (@DATOS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         PROCESO VARCHAR(20) '$.PROCESO',
+         REQSEDE BIT '$.REQSEDE',
+         FCXCR VARCHAR(10) '$.FCXCR',
+         IDSEDEF VARCHAR(6) '$.IDSEDE',
+         DEP_RECIBE VARCHAR(20) '$.DEP_RECIBE',
+         ENT_ENTREGA VARCHAR(20) '$.ENT_ENTREGA'
+      )
+
+      PRINT 'Valido si es Crear o Editar'
+
+      IF COALESCE(@CNSENTREGA,'')=''
+      BEGIN
+         PRINT 'Empiezo a revisar datos y capturar los nuevos @USUARIO='+COALESCE(@USUARIO,'SIN USUARIO')
+         SELECT @SYS_COMPUTERNAME=COALESCE(SYS_ComputerName,HOST_NAME()) 
+         FROM USUSU 
+         WHERE USUARIO=@USUARIO
+
+         IF COALESCE(@IDSEDEF,'')=''
+         BEGIN
+            PRINT 'busco la sede del usuario'
+            SELECT @IDSEDEF=IDSEDE 
+            FROM UBEQ 
+            WHERE SYS_ComputerName=@SYS_COMPUTERNAME
+         END
+
+         IF COALESCE(@IDSEDEF,'')=''
+         BEGIN
+            SELECT @IDSEDEF= IDSEDE 
+            FROM USUSU 
+            WHERE USUARIO=@USUARIO
+         END
+
+         SELECT @IDSEDE=@IDSEDEF, @COMPANIA='01'
+
+         IF NOT EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE USUARIO=@USUARIO 
+               AND ESTADO=0 
+               AND PROCESO=@PROCESO 
+               AND ENT_RECIBE=CASE WHEN @DEP_RECIBE <> '' THEN @DEP_RECIBE ELSE ENT_RECIBE END
+               AND COALESCE(CERRADO,0)=0 
+               AND IDSEDE=@IDSEDE
+         ) OR @FCXCR=1
+         BEGIN
+            BEGIN TRY
+               PRINT 'AQUI LLAMO A GENCONSECUTIVO @IDSEDE='+COALESCE(@IDSEDE,'SIN SEDE')
+               SELECT @CNSENTREGA=''
+               EXEC SPK_GENCONSECUTIVO @COMPANIA, @IDSEDE, '@ENT', @CNSENTREGA OUTPUT
+               SELECT @CNSENTREGA = @IDSEDE + REPLACE(SPACE(8 - LEN(@CNSENTREGA))+LTRIM(RTRIM(@CNSENTREGA)),SPACE(1),0)
+               PRINT '@CNSFTR='+COALESCE(@CNSENTREGA,'')
+
+               INSERT INTO ENT(CNSENTREGA, PROCESO, USUARIOENTREGA, FECHAENTREGA, USUARIORECIBE, USUARIO, COMPANIA, ESTADO, ENT_ENTREGA, ENT_RECIBE, FECHARECIBE, IDSEDE, CERRADO, IDTERCERO, IDPLAN, MSEDE)
+               SELECT @CNSENTREGA, @PROCESO, @USUARIO, DBO.FNK_GETDATE(), NULL, @USUARIO, '01', 0, 
+                      CASE WHEN COALESCE(@ENT_ENTREGA,'')<>'' THEN @ENT_ENTREGA 
+                           WHEN @PROCESO='FACTURAS' THEN DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION') 
+                           ELSE DBO.FNK_VALORVARIABLE('IDFDEPCARTERA') 
+                      END,
+                      @DEP_RECIBE, NULL, @IDSEDE, NULL, NULL, NULL, @REQSEDE
+            END TRY
+            BEGIN CATCH
+               INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+            END CATCH
+         END
+         ELSE
+         BEGIN
+            SELECT 'KO' KO, 'Existe una Entrega Abierta Para Dependencia de Destino Creada por el Usuario:'+@USUARIO+' Es Necesario Cerrar La Anterior Entrega' AS ERROR
+            RETURN
+         END
+      END
+      ELSE
+      BEGIN
+         UPDATE ENT 
+         SET USUARIOENTREGA=@USUARIO, 
+             IDSEDE=CASE WHEN COALESCE(@IDSEDEF,'')<>'' THEN @IDSEDEF ELSE IDSEDE END
+         WHERE CNSENTREGA=@CNSENTREGA
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK
+         SELECT ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK, @CNSENTREGA AS CNSENTREGA
+      RETURN
+   END
+
+   IF @METODO='MARCAR_ITEM'
+   BEGIN
+      SELECT @N_FACTURA=N_FACTURA, @OBSERVACION=MOTIVO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         N_FACTURA VARCHAR(20) '$.N_FACTURA',
+         MOTIVO VARCHAR(512) '$.MOTIVO'
+      )
+
+      IF COALESCE(@N_FACTURA,'')<>''
+      BEGIN
+         SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+         FROM USUSU 
+         WHERE USUARIO=@USUARIO
+
+         BEGIN TRY
+            UPDATE FTR 
+            SET MARCA=CASE COALESCE(MARCA,0) WHEN 1 THEN 0 ELSE 1 END,
+                EQUIMARCA=CASE COALESCE(MARCA,0) WHEN 1 THEN '' ELSE @SYS_COMPUTERNAME END,
+                RAZONANULACION=CASE COALESCE(MARCA,0) WHEN 1 THEN '' ELSE @OBSERVACION END
+            WHERE N_FACTURA=@N_FACTURA
+         END TRY
+         BEGIN CATCH
+            INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+         END CATCH
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT 'Documento No Encontrado'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK
+         SELECT ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='ASIGNAR_FACT'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA, @PROCESO=PROCESO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         PROCESO VARCHAR(20) '$.PROCESO'
+      )
+
+      PRINT '@CNSENTREGA='+@CNSENTREGA
+      PRINT '@PROCESO='+@PROCESO
+
+      IF COALESCE(@CNSENTREGA,'')<>''
+      BEGIN
+         IF EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND COALESCE(CERRADO,0)=0 
+               AND COALESCE(ESTADO,0)=0
+         )
+         BEGIN
+            SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+            FROM USUSU 
+            WHERE USUARIO=@USUARIO
+
+            IF @PROCESO='FACTURAS'
+            BEGIN
+               INSERT INTO ENTD(CNSENTREGA, NODOCUMENTO, PROCESO, ESTADO, USUARIOVERIFICA, MARCA, VALORENTREGA, OBSERVACION, ENDEVO, CNSDEVOL)
+               SELECT @CNSENTREGA, N_FACTURA, 'FACTURAS', 0, NULL, 0, NULL, 'Asignado desde Quasar', 0, null
+               FROM FTR
+               WHERE MARCA=1
+                  AND COALESCE(EQUIMARCA,'')=@SYS_COMPUTERNAME
+                  AND FTR.ESTADO='P'
+                  AND COALESCE(CLASEANULACION,'')<>'NC'
+                  AND COALESCE(VR_TOTAL,0)>0
+                  AND COALESCE(CONTABILIZADA,0)<>0
+                  AND NOT EXISTS (
+                     SELECT *
+                     FROM ENTD
+                     INNER JOIN ENT ON ENTD.CNSENTREGA = ENT.CNSENTREGA
+                     WHERE ENT.PROCESO = 'FACTURAS'
+                        AND ENT.ENT_ENTREGA = DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION')
+                        AND ENT.CERRADO = 0
+                        AND ENTD.NODOCUMENTO = FTR.N_FACTURA
+                        AND COALESCE(ENDEVO, 0) = 0
+                  )
+                  AND COALESCE(INDCARTERA,0)=0
+                  AND INDCXC=0
+                  AND INDASIGCXC=0
+                  AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION')
+            END
+
+            IF @PROCESO='DEVFACT'
+            BEGIN
+               INSERT INTO ENTD(CNSENTREGA, NODOCUMENTO, PROCESO, ESTADO, USUARIOVERIFICA, MARCA, VALORENTREGA, OBSERVACION, ENDEVO, CNSDEVOL)
+               SELECT @CNSENTREGA, N_FACTURA, 'DEVFACT', 0, NULL, 0, NULL, FTR.RAZONANULACION, 0, null
+               FROM FTR
+               WHERE MARCA=1
+                  AND COALESCE(EQUIMARCA,'')=@SYS_COMPUTERNAME
+                  AND FTR.ESTADO='P'
+                  AND COALESCE(CLASEANULACION,'')<>'NC'
+                  AND COALESCE(VR_TOTAL,0)>0
+                  AND COALESCE(CONTABILIZADA,0)<>0
+                  AND EXISTS(
+                     SELECT * 
+                     FROM ENTD 
+                     WHERE PROCESO='FACTURAS'
+                        AND COALESCE(ENDEVO,0)=0
+                        AND ENTD.NODOCUMENTO=FTR.N_FACTURA
+                  )
+                  AND COALESCE(INDCARTERA,0)=1
+                  AND INDCXC=0
+                  AND INDASIGCXC=0
+                  AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPCARTERA')
+
+               DECLARE ENTDDEV_CURSOR CURSOR FOR
+               SELECT NODOCUMENTO 
+               FROM ENTD 
+               WHERE CNSENTREGA=@CNSENTREGA
+
+               OPEN ENTDDEV_CURSOR
+               FETCH NEXT FROM ENTDDEV_CURSOR INTO @NODOCUMENTO
+
+               WHILE @@FETCH_STATUS = 0
+               BEGIN
+                  SELECT TOP 1 @CNSENTREGAORI=CNSENTREGA 
+                  FROM ENTD 
+                  WHERE NODOCUMENTO=@NODOCUMENTO 
+                     AND PROCESO='FACTURAS' 
+                     AND COALESCE(ENDEVO,0)=0
+
+                  IF COALESCE(@CNSENTREGAORI,'')<>''
+                  BEGIN
+                     UPDATE ENTD 
+                     SET ENDEVO=1, CNSDEVOL=@CNSENTREGA 
+                     WHERE CNSENTREGA=@CNSENTREGAORI 
+                        AND NODOCUMENTO=@NODOCUMENTO
+                  END
+
+                  FETCH NEXT FROM ENTDDEV_CURSOR INTO @NODOCUMENTO
+               END
+
+               CLOSE ENTDDEV_CURSOR
+               DEALLOCATE ENTDDEV_CURSOR
+            END
+
+            UPDATE FTR 
+            SET MARCA=0, EQUIMARCA=NULL, INDASIGENT=0, RAZONANULACION=NULL
+            FROM FTR 
+            INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+            WHERE FTR.MARCA=1 
+               AND EQUIMARCA=@SYS_COMPUTERNAME
+               AND ENTD.CNSENTREGA=@CNSENTREGA
+         END
+         ELSE
+         BEGIN
+            INSERT INTO @TBLERRORES(ERROR) SELECT 'El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+         END
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT 'El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK
+         SELECT ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='LIMPIAR_FACT'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA, @PROCESO=PROCESO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         PROCESO VARCHAR(20) '$.PROCESO'
+      )
+
+      SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+      FROM USUSU 
+      WHERE USUARIO=@USUARIO
+
+      IF @PROCESO='FACTURAS'
+      BEGIN
+         UPDATE FTR 
+         SET MARCA=0, EQUIMARCA=NULL
+         WHERE MARCA=1 
+            AND EQUIMARCA=@SYS_COMPUTERNAME
+            AND FTR.ESTADO='P'
+            AND COALESCE(CLASEANULACION,'')<>'NC'
+            AND COALESCE(VR_TOTAL,0)>0
+            AND COALESCE(CONTABILIZADA,0)<>0
+            AND NOT EXISTS(
+               SELECT * 
+               FROM ENTD 
+               WHERE PROCESO='FACTURAS'
+                  AND COALESCE(ENDEVO,0)=0
+                  AND ENTD.NODOCUMENTO=FTR.N_FACTURA
+            )
+            AND COALESCE(INDCARTERA,0)=0
+            AND INDCXC=0
+            AND INDASIGCXC=0
+            AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION')
+      END
+
+      IF @PROCESO='DEVFACT'
+      BEGIN
+         UPDATE FTR 
+         SET MARCA=0, EQUIMARCA=NULL , RAZONANULACION =NULL
+         WHERE MARCA=1 
+            AND EQUIMARCA=@SYS_COMPUTERNAME
+            AND FTR.ESTADO='P'
+            AND COALESCE(CLASEANULACION,'')<>'NC'
+            AND COALESCE(VR_TOTAL,0)>0
+            AND COALESCE(CONTABILIZADA,0)<>0
+            AND EXISTS(
+               SELECT * 
+               FROM ENTD 
+               WHERE PROCESO='FACTURAS'
+                  AND COALESCE(ENDEVO,0)=0
+                  AND ENTD.NODOCUMENTO=FTR.N_FACTURA
+            )
+            AND COALESCE(INDCARTERA,0)=1
+            AND INDCXC=0
+            AND INDASIGCXC=0
+            AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPCARTERA')
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='MARCAR_TODAS'
+   BEGIN
+      SELECT @DATOS=DATOS, @PROCESO=PROCESO,@OBSERVACION=MOTIVO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         DATOS NVARCHAR(MAX) AS JSON,
+         PROCESO VARCHAR(20) '$.PROCESO',
+          MOTIVO VARCHAR(512) '$.MOTIVO'
+      )
+
+      SELECT @F_INICIAL=F_INICIAL, 
+             @F_FINAL=DATEADD(DAY,1,F_FINAL), 
+             @IDTERCERO=IDTERCERO, 
+             @PROCEDENCIA=PROCEDENCIA,
+             @IDSEDEF=IDSEDEF, 
+             @IDPLAN=IDPLAN, 
+             @USUFACTU=USUFACTU             
+      FROM OPENJSON (@DATOS)
+      WITH (
+         F_INICIAL DATE '$.F_INICIAL',
+         F_FINAL DATE '$.F_FINAL',
+         IDTERCERO VARCHAR(20) '$.IDTERCERO',
+         PROCEDENCIA VARCHAR(20) '$.PROCEDENCIA',
+         IDSEDEF VARCHAR(5) '$.IDSEDE',
+         IDPLAN VARCHAR(6) '$.IDPLAN',
+         USUFACTU VARCHAR(20) '$.USUFACTU'
+      )
+
+      SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+      FROM USUSU 
+      WHERE USUARIO=@USUARIO
+
+      IF @PROCESO='FACTURAS'
+      BEGIN
+         UPDATE FTR 
+         SET MARCA=1, EQUIMARCA=@SYS_COMPUTERNAME
+         WHERE MARCA=0
+            AND COALESCE(EQUIMARCA,'')=''
+            AND F_FACTURA>=@F_INICIAL
+            AND F_FACTURA<@F_FINAL
+            AND IDTERCERO=CASE WHEN COALESCE(@IDTERCERO,'')<>'' THEN @IDTERCERO ELSE IDTERCERO END
+            AND IDPLAN=CASE WHEN COALESCE(@IDPLAN,'')<>'' THEN @IDPLAN ELSE IDPLAN END
+            AND IDSEDE=CASE WHEN COALESCE(@IDSEDEF,'Todas')<>'Todas' THEN @IDSEDEF ELSE IDSEDE END
+            AND PROCEDENCIA=CASE WHEN COALESCE(@PROCEDENCIA,'Todas')<>'Todas' THEN @PROCEDENCIA ELSE PROCEDENCIA END
+            AND FTR.USUARIOFACTURA=CASE WHEN COALESCE(@USUFACTU,'')<>'' THEN @USUFACTU ELSE FTR.USUARIOFACTURA END
+            AND FTR.ESTADO='P'
+            AND COALESCE(FTR.TIPOFIN,'C')<>'N'
+            AND COALESCE(CLASEANULACION,'')<>'NC'
+            AND COALESCE(TIPOANULACION,'')<>'NC'
+            AND COALESCE(VR_TOTAL,0)>0
+            AND COALESCE(CONTABILIZADA,0)<>0
+            AND NOT EXISTS(
+               SELECT * 
+               FROM ENTD 
+               WHERE PROCESO='FACTURAS'
+                  AND COALESCE(ENDEVO,0)=0
+                  AND ENTD.NODOCUMENTO=FTR.N_FACTURA
+            )
+            AND COALESCE(INDCARTERA,0)=0
+            AND INDCXC=0
+            AND INDASIGCXC=0
+            AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION')
+      END
+
+      IF @PROCESO='DEVFACT'
+      BEGIN
+         UPDATE FTR 
+         SET MARCA=1, EQUIMARCA=@SYS_COMPUTERNAME,RAZONANULACION=@OBSERVACION
+         WHERE MARCA=0
+            AND COALESCE(EQUIMARCA,'')=''
+            AND F_FACTURA>=@F_INICIAL
+            AND F_FACTURA<@F_FINAL
+            AND IDTERCERO=CASE WHEN COALESCE(@IDTERCERO,'')<>'' THEN @IDTERCERO ELSE IDTERCERO END
+            AND IDPLAN=CASE WHEN COALESCE(@IDPLAN,'')<>'' THEN @IDPLAN ELSE IDPLAN END
+            AND IDSEDE=CASE WHEN COALESCE(@IDSEDEF,'Todas')<>'Todas' THEN @IDSEDEF ELSE IDSEDE END
+            AND PROCEDENCIA=CASE WHEN COALESCE(@PROCEDENCIA,'Todas')<>'Todas' THEN @PROCEDENCIA ELSE PROCEDENCIA END
+            AND FTR.USUARIOFACTURA=CASE WHEN COALESCE(@USUFACTU,'')<>'' THEN @USUFACTU ELSE FTR.USUARIOFACTURA END
+            AND FTR.ESTADO='P'
+            AND COALESCE(CLASEANULACION,'')<>'NC'
+            AND COALESCE(TIPOANULACION,'')<>'NC'
+            AND COALESCE(VR_TOTAL,0)>0
+            AND COALESCE(CONTABILIZADA,0)<>0
+            AND EXISTS(
+               SELECT * 
+               FROM ENTD 
+               WHERE PROCESO='FACTURAS'
+                  AND COALESCE(ENDEVO,0)=0
+                  AND ENTD.NODOCUMENTO=FTR.N_FACTURA
+            )
+            AND COALESCE(INDCARTERA,0)=1
+            AND INDCXC=0
+            AND INDASIGCXC=0
+            AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPCARTERA')
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='QUITAFACT_ENTD'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA, @N_FACTURA=N_FACTURA
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         N_FACTURA VARCHAR(20) '$.N_FACTURA'
+      )
+
+      IF EXISTS(
+         SELECT * 
+         FROM ENT 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND COALESCE(CERRADO,0)=0 
+            AND COALESCE(ESTADO,0)=0
+      )
+      BEGIN
+         IF EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND PROCESO='DEVFACT'
+         )
+         BEGIN
+            UPDATE ENTD 
+            SET ENDEVO=0, CNSDEVOL=NULL 
+            WHERE CNSDEVOL=@CNSENTREGA 
+               AND ENDEVO=1 
+               AND PROCESO='FACTURAS' 
+               AND NODOCUMENTO=@N_FACTURA
+         END
+
+         DELETE ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND NODOCUMENTO=@N_FACTURA
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT 'El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='QUITARTODO_ENTD'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      IF EXISTS(
+         SELECT * 
+         FROM ENT 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND COALESCE(CERRADO,0)=0 
+            AND COALESCE(ESTADO,0)=0
+      )
+      BEGIN
+         IF EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND PROCESO='DEVFACT'
+         )
+         BEGIN
+            DECLARE ENTDDEV_CURSOR CURSOR FOR
+            SELECT NODOCUMENTO 
+            FROM ENTD 
+            WHERE CNSENTREGA=@CNSENTREGA
+
+            OPEN ENTDDEV_CURSOR
+            FETCH NEXT FROM ENTDDEV_CURSOR INTO @NODOCUMENTO
+
+            WHILE @@FETCH_STATUS = 0
+            BEGIN
+               UPDATE ENTD 
+               SET ENDEVO=0, CNSDEVOL=NULL 
+               WHERE CNSDEVOL=@CNSENTREGA 
+                  AND ENDEVO=1 
+                  AND PROCESO='FACTURAS' 
+                  AND NODOCUMENTO=@NODOCUMENTO
+
+               FETCH NEXT FROM ENTDDEV_CURSOR INTO @NODOCUMENTO
+            END
+
+            CLOSE ENTDDEV_CURSOR
+            DEALLOCATE ENTDDEV_CURSOR
+         END
+
+         DELETE ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT '1.El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='CERRAR_ENT'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      IF EXISTS(
+         SELECT * 
+         FROM ENT 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND ESTADO=0
+      )
+      BEGIN
+         IF EXISTS(
+            SELECT * 
+            FROM ENTD 
+            WHERE CNSENTREGA=@CNSENTREGA
+         )
+         BEGIN
+            UPDATE ENT 
+            SET CERRADO=CASE COALESCE(CERRADO,0) WHEN 1 THEN 0 ELSE 1 END 
+            WHERE CNSENTREGA=@CNSENTREGA
+         END
+         ELSE
+         BEGIN
+            INSERT INTO @TBLERRORES(ERROR) SELECT 'Envio Sin Detalles, Verifique e intente de Nuevo.'
+         END
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT 'Envio  Recibido..., No Se Permiten Cambios.'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='IMPRIMIR_ENT'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      IF EXISTS(
+         SELECT 1 
+         FROM ENT 
+         WHERE CNSENTREGA=@CNSENTREGA
+      )
+      BEGIN
+         SELECT 'OK' OK, 
+                CNSENTREGA, 
+                FDEP.NOMBRE AS ENTREGA, 
+                X.NOMBRE AS RECIBE, 
+                ENT.USUARIOENTREGA+' '+USUSU.NOMBRE AS USUNOMBRE
+                ,COALESCE(ENT.CNSFCXC, (
+                  SELECT TOP 1 FCXCD.CNSCXC
+                  FROM ENTD
+                  INNER JOIN FCXCD ON FCXCD.N_FACTURA = ENTD.NODOCUMENTO
+                  WHERE ENTD.CNSENTREGA = ENT.CNSENTREGA
+                  ORDER BY ENTD.NODOCUMENTO
+                )) AS CNSCXC
+                ,ENT.CNSFCXC
+         FROM ENT 
+         INNER JOIN FDEP ON ENT.ENT_ENTREGA=FDEP.IDDEP
+         INNER JOIN FDEP X ON ENT.ENT_RECIBE=X.IDDEP
+         LEFT JOIN USUSU ON ENT.USUARIOENTREGA=USUSU.USUARIO
+         WHERE ENT.CNSENTREGA=@CNSENTREGA
+
+         IF EXISTS(
+            SELECT 1 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND (PROCESO='FACTURAS' OR PROCESO='DEVFACT')
+         )
+         BEGIN
+            SELECT ENTD.NODOCUMENTO, 
+                   TER.NIT, 
+                   TER.RAZONSOCIAL, 
+                   COALESCE(AFI.NOMBREAFI,'') NOMBREAFI, 
+                   FTR.N_FACTURA, 
+                   FTR.VR_TOTAL,
+                   COALESCE(ENTD.OBSERVACION,'')OBSERVACION
+                   ,(
+                      SELECT TOP 1 FCXCD.CNSCXC
+                      FROM FCXCD
+                      WHERE FCXCD.N_FACTURA = ENTD.NODOCUMENTO
+                    ) AS CNSCXC
+            FROM ENT 
+            INNER JOIN ENTD ON ENT.CNSENTREGA=ENTD.CNSENTREGA
+            INNER JOIN FTR ON ENTD.NODOCUMENTO=FTR.N_FACTURA
+            INNER JOIN TER ON FTR.IDTERCERO=TER.IDTERCERO
+            LEFT JOIN AFI ON FTR.IDAFILIADO=AFI.IDAFILIADO
+            WHERE ENT.CNSENTREGA=@CNSENTREGA
+            ORDER BY LEFT(ENTD.NODOCUMENTO, PATINDEX('%[0-9]%', ENTD.NODOCUMENTO) - 1),
+                     CAST(SUBSTRING(ENTD.NODOCUMENTO, PATINDEX('%[0-9]%', ENTD.NODOCUMENTO), LEN(ENTD.NODOCUMENTO)) AS INT)
+
+            SELECT CONVERT(VARCHAR,MIN(FTR.F_FACTURA),103)MINFECHA, 
+                   CONVERT(VARCHAR,MAX(FTR.F_FACTURA),103)MAXFECHA, 
+                   COUNT(FTR.N_FACTURA)CANT, 
+                   SUM(FTR.VR_TOTAL)VALORTOTAL, 
+                   CONVERT(VARCHAR,DBO.FNK_GETDATE(),103)FECHARP, 
+                   CONVERT(VARCHAR,GETDATE(),108)HORARP
+            FROM ENT 
+            INNER JOIN ENTD ON ENT.CNSENTREGA=ENTD.CNSENTREGA
+            INNER JOIN FTR ON ENTD.NODOCUMENTO=FTR.N_FACTURA
+            WHERE ENT.CNSENTREGA=@CNSENTREGA
+         END
+         ELSE
+         BEGIN
+            SELECT ENTD.NODOCUMENTO, 
+                   TER.NIT, 
+                   TER.RAZONSOCIAL, 
+                   COALESCE(FTR.N_FACTURA,'')NOREFERENCIA, 
+                   FTR.VR_TOTAL,
+                   FGLO.VLRGLOSA, 
+                   FGLO.VLRACEPTADO, 
+                   VLRRECUPERAR, 
+                   FGLO.TIPO
+            FROM ENT 
+            INNER JOIN ENTD ON ENT.CNSENTREGA=ENTD.CNSENTREGA
+            INNER JOIN FGLO ON ENTD.NODOCUMENTO=FGLO.CNSGLO
+            INNER JOIN FTR ON FGLO.N_FACTURA=FTR.N_FACTURA
+            INNER JOIN TER ON FTR.IDTERCERO=TER.IDTERCERO
+            WHERE ENT.CNSENTREGA=@CNSENTREGA
+            ORDER BY LEFT(ENTD.NODOCUMENTO, PATINDEX('%[0-9]%', ENTD.NODOCUMENTO) - 1),
+                     CAST(SUBSTRING(ENTD.NODOCUMENTO, PATINDEX('%[0-9]%', ENTD.NODOCUMENTO), LEN(ENTD.NODOCUMENTO)) AS INT)
+
+            SELECT COUNT(FGLO.CNSGLO)CANT, 
+                   SUM(FTR.VR_TOTAL)VALORTOTAL, 
+                   SUM(FGLO.VLRGLOSA)VALORGLOSAS, 
+                   CONVERT(VARCHAR,DBO.FNK_GETDATE(),103)FECHARP, 
+                   CONVERT(VARCHAR,GETDATE(),108)HORARP
+            FROM ENT 
+            INNER JOIN ENTD ON ENT.CNSENTREGA=ENTD.CNSENTREGA
+            INNER JOIN FGLO ON ENTD.NODOCUMENTO=FGLO.CNSGLO
+            INNER JOIN FTR ON FGLO.N_FACTURA=FTR.N_FACTURA
+            WHERE ENT.CNSENTREGA=@CNSENTREGA
+         END
+
+         IF EXISTS(
+            SELECT 1 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND COALESCE(MSEDE,0)=1
+         )
+         BEGIN
+            SELECT @IDSEDE=IDSEDE 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA
+
+            PRINT 'BUSCO SEDE'
+
+            SELECT TER.RAZONSOCIAL, 
+                   TER.NIT, 
+                   TER.DIRECCION, 
+                   TER.TELEFONOS, 
+                   CIU.NOMBRE CIUDAD, 
+                   TER.EMAIL
+            FROM SED 
+            INNER JOIN TER ON SED.NIT=TER.NIT
+            INNER JOIN CIU ON TER.CIUDAD=CIU.CIUDAD
+            WHERE IDSEDE=@IDSEDE
+         END
+         ELSE
+         BEGIN
+            SELECT NULL AS IDSEDE
+         END
+
+         RETURN
+      END
+      ELSE
+      BEGIN
+         SELECT 'KO' OK, ' Erro al Cargar los Datos'
+         RETURN
+      END
+   END
+
+   IF @METODO='CREARCXC_ENT'
+   BEGIN
+      SELECT @CNSENTREGA=LTRIM(RTRIM(CNSENTREGA))
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      PRINT 'COMIENZO @CNSENTREGA='+@CNSENTREGA
+
+      IF EXISTS(
+         SELECT * 
+         FROM ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA
+            AND NOT EXISTS(
+               SELECT * 
+               FROM FCXCD 
+               WHERE FCXCD.N_FACTURA=ENTD.NODOCUMENTO
+            )
+      )
+      BEGIN
+         IF (
+            SELECT COUNT(*)
+            FROM (
+               SELECT IDTERCERO
+               FROM ENTD 
+               INNER JOIN FTR ON ENTD.NODOCUMENTO=FTR.N_FACTURA
+               WHERE ENTD.CNSENTREGA=@CNSENTREGA
+               GROUP BY FTR.IDTERCERO
+            ) X
+         ) > 1
+         BEGIN
+            SELECT 'KO' KO, 'Existes Mas de un Tercero en las Facturas del Envio, Verifique e Intente de nuevo' ERROR
+            RETURN
+         END
+
+         IF EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND PROCESO<>'FACTURAS'
+         )
+         BEGIN
+            SELECT 'KO'KO, 'Proceso no Valido para Crear Cuenta de Cobro, Verifique e intente de Nuevo' ERROR
+            RETURN
+         END
+
+         IF DBO.FNK_VALORVARIABLE('USUARIOJEFECARTERA')=''
+         BEGIN
+            SELECT 'KO' KO, 'Debe llenar la variable USUARIOJEFECARTERA con el usuario del jefe de Cartera, Verifique e Intente de nuevo' ERROR
+            RETURN
+         END
+
+         IF NOT EXISTS(
+            SELECT * 
+            FROM USUSU 
+            WHERE USUARIO=RTRIM(RTRIM(DBO.FNK_VALORVARIABLE('USUARIOJEFECARTERA')))
+         )
+         BEGIN
+            SELECT 'KO' KO, 'El dato de la Variable USUARIOJEFECARTERA no es Valido, Valide e Intente de nuevo ' ERROR
+            RETURN
+         END
+
+         IF DBO.FNK_VALORVARIABLE('USUARIOJEFEFACTURA')=''
+         BEGIN
+            SELECT 'KO' KO, 'Debe llenar la variable USUARIOJEFEFACTURA con el usuario del jefe de Cartera, Verifique e Intente de nuevo' ERROR
+            RETURN
+         END
+
+         IF NOT EXISTS(
+            SELECT * 
+            FROM USUSU 
+            WHERE USUARIO=RTRIM(RTRIM(DBO.FNK_VALORVARIABLE('USUARIOJEFEFACTURA')))
+         )
+         BEGIN
+            SELECT 'KO' KO, 'El dato de la Variable USUARIOJEFEFACTURA no es Valido, Valide e Intente de nuevo ' ERROR
+            RETURN
+         END
+
+         IF EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE ESTADO=1 
+               AND CNSENTREGA=@CNSENTREGA
+         )
+         BEGIN
+            SELECT 'KO' KO, 'Entrega ya Fue recicibida en Cartera, No se Puede Continuar...' ERROR
+            RETURN
+         END
+
+         IF EXISTS(
+            SELECT 1
+            FROM ENT
+            WHERE CNSENTREGA=@CNSENTREGA
+              AND COALESCE(CNSFCXC,'') <> ''
+         )
+         BEGIN
+            SELECT 'KO' KO, 'La entrega ya tiene Cuenta de Cobro asociada (' +
+                   (SELECT CNSFCXC FROM ENT WHERE CNSENTREGA=@CNSENTREGA) +
+                   '). No se puede crear otra.' ERROR
+            RETURN
+         END
+
+         PRINT 'Creando la CXC'
+
+         SELECT @MSEDE=MSEDE, @IDSEDEF=IDSEDE, @COMPANIA='01' 
+         FROM ENT 
+         WHERE CNSENTREGA=@CNSENTREGA
+
+         SELECT @IDSEDE= COALESCE(UBEQ.IDSEDE,USUSU.IDSEDE) 
+         FROM USUSU 
+         LEFT JOIN UBEQ ON USUSU.SYS_ComputerName=UBEQ.SYS_ComputerName
+         WHERE USUARIO=@USUARIO
+
+         SELECT @OBSERVACION=LTRIM(RTRIM(OBSERVACION)) 
+         FROM USVGS 
+         WHERE IDVARIABLE='FCXC_OBSERVACION_DEF'
+
+         SELECT @COORFACTURACION= DBO.FNK_VALORVARIABLE('USUARIOJEFEFACTURA'), 
+                @COORCARTERA=DBO.FNK_VALORVARIABLE('USUARIOJEFECARTERA')
+
+         SELECT TOP 1 @IDTERCERO=FTR.IDTERCERO 
+         FROM FTR 
+         INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+         WHERE ENTD.CNSENTREGA=@CNSENTREGA
+
+         IF @MSEDE=1 AND COALESCE(@IDSEDEF,'')<>''
+         BEGIN
+            SELECT @IDSEDE=@IDSEDEF
+         END
+
+         BEGIN TRY
+            PRINT 'AQUI LLAMO A GENCONSECUTIVO @IDSEDE='+COALESCE(@IDSEDE,'SIN SEDE')+COALESCE(@COMPANIA,'CIA')
+            SELECT @CNSCXC=''
+            EXEC SPK_GENCONSECUTIVO @COMPANIA, @IDSEDE, '@CXC', @CNSCXC OUTPUT
+            PRINT '@CNSCXC='+COALESCE(@CNSCXC,'')
+            SELECT @CNSCXC = @IDSEDE + REPLACE(SPACE(8 - LEN(@CNSCXC))+LTRIM(RTRIM(@CNSCXC)),SPACE(1),0)
+            PRINT '@CNSCXC='+COALESCE(@CNSCXC,'')
+         END TRY
+         BEGIN CATCH
+            INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+            SELECT ERROR AS ERROR FROM @TBLERRORES
+            RETURN
+         END CATCH
+
+         BEGIN TRY
+            INSERT INTO FCXC(CNSCXC, FECHACXC, IDTERCERO, IDMENSAJERO, F_VENCE, INDRECIBIDO, F_RECIBIDO, QUIENRECIBIO, NOREFERENCIAEXT, USUARIO, COMPANIA, VALORDEVUELTO, CERRADA, TIENEGLOSAS, TIENEDEVOLUCION, CNSANT,
+                             ANTIGUA, VALORCXC, DEDUCCIONES, VALORCXCNETO, VLRPAGOS, VLRNOTADB, VLRNOTACR, SALDO, SALDONETO, VLRGLOSAS, VLRGLOSAS_R, VLREXTRA, OBSERVACION, NROCOMPROBANTE, PROCEDENCIA,
+                             ENPRESUPUESTO, MARCAFAC, ITFC, CNSITFC, CONTABILIZADA, OBSCARTA, IDSEDE, MODALIDAD, ATENCION, MES, ANO, REGIMEN, NROGUIA, USUCIERRA, F_CIERRA, ESTADO, COORFACTURACION, COORCARTERA,
+                             NOPOS, FRADICAEPS, FENVIO, SUCURSAL, MSEDE, CNSENT)
+            SELECT @CNSCXC, DBO.FNK_GETDATE(), @IDTERCERO, NULL, NULL, 0, NULL, NULL, NULL, @USUARIO, @COMPANIA, 0, 0, 0, 0, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, @OBSERVACION, NULL, 'CARTERA',
+                   0, 0, 0, NULL, 0, NULL, @IDSEDE, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Activa', @COORFACTURACION, @COORCARTERA, 0, NULL, NULL, NULL, @MSEDE, @CNSENTREGA
+         END TRY
+         BEGIN CATCH
+            INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+            SELECT ERROR AS ERROR FROM @TBLERRORES
+            RETURN
+         END CATCH
+
+         BEGIN TRY
+            INSERT INTO FCXCD(CNSCXC, N_FACTURA, USUARIO, COMPANIA, VALORFACTURA, DEDUCCIONES, VALORFACTURANETO, VLRPAGOS, VLRNOTADB, VLRNOTACR, SALDO, SALDONETO, CERRADA, TIENEGLOSAS, TIENEDEVOLUCION, MARCAPAGO,
+                              NT_MARCAP, VLRGLOSAS, VLRGLOSAS_R, VLREXTRA, NROCOMPROBANTE, CUENTA, DESCRIPCION, NOREFERENCIAEXT, ENCOBROJUR, IDPLAN, ITFC, CNSITFC, VLRFCES, VLRLEVANTADO, MARCA, USURESP, RESPUESTA,
+                              RAZONDEVOL)
+            SELECT @CNSCXC, N_FACTURA, @USUARIO, @COMPANIA, FTR.VR_TOTAL, 0, FTR.VR_TOTAL, 0, 0, 0, FTR.VR_TOTAL, FTR.VR_TOTAL, 0, 0, 0, 0,
+                   0, 0, 0, 0, NULL, FTR.CUENTACXC, 'Generdada desde Entd Web', null, 0, FTR.IDPLAN, 0, NULL, 0, 0, 0, NULL, NULL, NULL
+            FROM ENTD 
+            INNER JOIN FTR ON ENTD.NODOCUMENTO=FTR.N_FACTURA
+            WHERE ENTD.CNSENTREGA=@CNSENTREGA
+               AND NOT EXISTS(
+                  SELECT * 
+                  FROM FCXCD 
+                  WHERE FCXCD.N_FACTURA=ENTD.NODOCUMENTO
+               )
+         END TRY
+         BEGIN CATCH
+            INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+            SELECT ERROR AS ERROR FROM @TBLERRORES
+            RETURN
+         END CATCH
+
+         UPDATE FTR 
+         SET INDCARTERA=1, 
+             FECHAPASOCXC=DBO.FNK_GETDATE(), 
+             IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPCARTERA'),
+             INDASIGENT=0, 
+             INDASIGCXC=1, 
+             CLASE=CASE WHEN COALESCE(FTR.CLASE,'')<>'C' THEN 'C' ELSE FTR.CLASE END
+         FROM FTR 
+         INNER JOIN FCXCD ON FTR.N_FACTURA=FCXCD.N_FACTURA
+         WHERE FCXCD.CNSCXC=@CNSCXC
+
+         EXEC SPK_RELIQUIDACXCQX @CNSCXC
+
+         UPDATE ENTD 
+         SET ESTADO=1, USUARIOVERIFICA=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA
+
+         UPDATE ENT 
+         SET ESTADO=1,
+             FECHARECIBE=DBO.FNK_GETDATE(),
+             USUARIORECIBE=@USUARIO,
+             CNSFCXC=@CNSCXC
+         WHERE CNSENTREGA=@CNSENTREGA
+
+         SELECT 'OK'OK, @CNSCXC AS CNSCXC, @CNSENTREGA AS CNSENT
+         RETURN
+      END
+      ELSE
+      BEGIN
+         SELECT 'KO' KO, 'No existen Facturas Pendientes de Cuenta de Cobro, Verifique e Intente de nuevo' ERROR
+         RETURN
+      END
+   END
+
+   IF @METODO='PROCESAR_ENVIO'
+   BEGIN
+      SELECT @CNSENTREGA=LTRIM(RTRIM(CNSENTREGA))
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      PRINT 'COMIENZO @CNSENTREGA='+@CNSENTREGA
+      SELECT @PROCESO=PROCESO 
+      FROM ENT 
+      WHERE CNSENTREGA=@CNSENTREGA
+
+      IF NOT EXISTS(
+         SELECT * 
+         FROM ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA
+      )
+      BEGIN
+         SELECT 'KO' KO, 'No existen Facturas En el Envio, Verifique e Intente de nuevo' ERROR
+         RETURN
+      END
+
+      BEGIN TRY
+         UPDATE ENTD 
+         SET ESTADO=1, USUARIOVERIFICA=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND PROCESO=@PROCESO
+
+         UPDATE ENT 
+         SET ESTADO=1, USUARIORECIBE=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA
+
+         IF @PROCESO='FACTURAS'
+         BEGIN
+            UPDATE FTR 
+            SET IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPCARTERA'), 
+                INDCARTERA=1, 
+                INDASIGENT=0
+            FROM FTR 
+            INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+            WHERE ENTD.CNSENTREGA=@CNSENTREGA
+         END
+
+         IF @PROCESO='DEVFACT'
+         BEGIN
+            UPDATE FTR 
+            SET IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION'), 
+                INDCARTERA=0, 
+                INDASIGENT=0
+            FROM FTR 
+            INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+            WHERE ENTD.CNSENTREGA=@CNSENTREGA
+         END
+      END TRY
+      BEGIN CATCH
+         INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+      END CATCH
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='MOTIVO_ENTD'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA, @N_FACTURA=N_FACTURA, @OBSERVACION=MOTIVO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         N_FACTURA VARCHAR(20) '$.N_FACTURA',
+         MOTIVO VARCHAR(2024) '$.MOTIVO'
+      )
+
+      IF EXISTS(
+         SELECT * 
+         FROM ENT 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND COALESCE(CERRADO,0)=0 
+            AND COALESCE(ESTADO,0)=0
+      )
+      BEGIN
+         PRINT 'VOY A ACTUALIZAR....'
+         UPDATE ENTD 
+         SET OBSERVACION=@OBSERVACION 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND NODOCUMENTO=@N_FACTURA
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT 'El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='EXPORT_ENT'
+   BEGIN
+      SELECT @CNSENTREGA=LTRIM(RTRIM(CNSENTREGA)), @PROCESO=PROCESO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         PROCESO VARCHAR(20) '$.PROCESO'
+      )
+
+      IF EXISTS(
+         SELECT * 
+         FROM ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND PROCESO=@PROCESO
+      )
+      BEGIN
+         SELECT 'OK' OK
+
+         SELECT ENTD.CNSENTREGA, 
+                TER.NIT, 
+                TER.RAZONSOCIAL, 
+                FTR.N_FACTURA,
+                DBO.FNK_FECHA_GRINGA(FTR.F_FACTURA) F_FACTURA,
+                FTR.VALORSERVICIOS, 
+                FTR.VALORCOPAGO, 
+                FTR.VR_TOTAL, 
+                ENT.USUARIOENTREGA, 
+                USUSU.NOMBRE N_ENTREGA,
+                DBO.FNK_FECHA_GRINGA(ENT.FECHAENTREGA)FECHAENTREGA, 
+                ENT.USUARIORECIBE, 
+                USU.NOMBRE N_RECIBE,
+                DBO.FNK_FECHA_GRINGA(ENT.FECHARECIBE)FECHARECIBE
+         FROM ENT 
+         INNER JOIN ENTD ON ENT.CNSENTREGA=ENTD.CNSENTREGA
+         INNER JOIN FTR ON ENTD.NODOCUMENTO=FTR.N_FACTURA
+         INNER JOIN TER ON FTR.IDTERCERO=TER.IDTERCERO
+         LEFT JOIN USUSU ON ENT.USUARIOENTREGA=USUSU.USUARIO
+         LEFT JOIN USUSU USU ON ENT.USUARIORECIBE=USU.USUARIO
+         WHERE ENT.CNSENTREGA=@CNSENTREGA
+            AND ENT.PROCESO=@PROCESO
+
+         RETURN
+      END
+      ELSE
+      BEGIN
+         SELECT 'KO' KO, 'No se Encontro el Envio o no Tiene facturas Asociadas' ERROR
+         RETURN
+      END
+   END
+
+   IF @METODO='RECIBIR_AUDIFACTU'
+   BEGIN
+      SELECT @CNSENTREGA=LTRIM(RTRIM(CNSENTREGA))
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      PRINT 'COMIENZO @CNSENTREGA='+@CNSENTREGA
+      SELECT @PROCESO=PROCESO 
+      FROM ENT 
+      WHERE CNSENTREGA=@CNSENTREGA
+
+      IF NOT EXISTS(
+         SELECT * 
+         FROM ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA
+      )
+      BEGIN
+         SELECT 'KO' KO, 'No existen Facturas En el Envio, Verifique e Intente de nuevo' ERROR
+         RETURN
+      END
+
+      BEGIN TRY
+         UPDATE ENTD 
+         SET ESTADO=1, USUARIOVERIFICA=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND PROCESO=@PROCESO
+
+         UPDATE ENT 
+         SET ESTADO=1, USUARIORECIBE=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA
+
+         IF @PROCESO='FACTURAS'
+         BEGIN
+            UPDATE FTR 
+            SET IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA'), 
+                INDCARTERA=0, 
+                INDASIGENT=0
+            FROM FTR 
+            INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+            WHERE ENTD.CNSENTREGA=@CNSENTREGA
+         END
+      END TRY
+      BEGIN CATCH
+         INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+      END CATCH
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='ASIGNAR_AUDIFACT'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA, @PROCESO=PROCESO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         PROCESO VARCHAR(20) '$.PROCESO'
+      )
+
+      PRINT '@CNSENTREGA='+@CNSENTREGA
+      PRINT '@PROCESO='+@PROCESO
+
+      IF COALESCE(@CNSENTREGA,'')<>''
+      BEGIN
+         IF EXISTS(
+            SELECT * 
+            FROM ENT 
+            WHERE CNSENTREGA=@CNSENTREGA 
+               AND COALESCE(CERRADO,0)=0 
+               AND COALESCE(ESTADO,0)=0
+         )
+         BEGIN
+            SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+            FROM USUSU 
+            WHERE USUARIO=@USUARIO
+
+            IF @PROCESO='FACTURAS'
+            BEGIN
+               INSERT INTO ENTD(CNSENTREGA, NODOCUMENTO, PROCESO, ESTADO, USUARIOVERIFICA, MARCA, VALORENTREGA, OBSERVACION, ENDEVO, CNSDEVOL)
+               SELECT @CNSENTREGA, N_FACTURA, 'FACTURAS', 0, NULL, 0, NULL, 'Asignado desde Quasar', 0, null
+               FROM FTR
+               WHERE MARCA=1
+                  AND COALESCE(EQUIMARCA,'')=@SYS_COMPUTERNAME
+                  AND FTR.ESTADO='P'
+                  AND COALESCE(CLASEANULACION,'')<>'NC'
+                  AND COALESCE(VR_TOTAL,0)>0
+                  AND COALESCE(CONTABILIZADA,0)<>0
+                  AND COALESCE(INDCARTERA,0)=0
+                  AND INDCXC=0
+                  AND INDASIGCXC=0
+                  AND NOT EXISTS (
+                     SELECT *
+                     FROM ENTD
+                     INNER JOIN ENT ON ENTD.CNSENTREGA = ENT.CNSENTREGA
+                     WHERE ENT.PROCESO = 'FACTURAS'
+                        AND ENT.ENT_ENTREGA = DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA')
+                        AND ENT.CERRADO = 0
+                        AND ENTD.NODOCUMENTO = FTR.N_FACTURA
+                  )
+                  AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA')
+            END
+
+            UPDATE FTR 
+            SET MARCA=0, EQUIMARCA=NULL, INDASIGENT=0, RAZONANULACION=NULL
+            FROM FTR 
+            INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+            WHERE FTR.MARCA=1 
+               AND EQUIMARCA=@SYS_COMPUTERNAME
+               AND ENTD.CNSENTREGA=@CNSENTREGA
+         END
+         ELSE
+         BEGIN
+            INSERT INTO @TBLERRORES(ERROR) SELECT 'El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+         END
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR) SELECT 'El CnsEntrega esta cerrado o Presenta inconsistencias en su Creacion, Valide e intente de nuevo'
+      END
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK
+         SELECT ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='MARCAR_AUDITODAS'
+   BEGIN
+      SELECT @DATOS=DATOS, @PROCESO=PROCESO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         DATOS NVARCHAR(MAX) AS JSON,
+         PROCESO VARCHAR(20) '$.PROCESO'
+      )
+
+      SELECT @F_INICIAL=F_INICIAL, 
+             @F_FINAL=DATEADD(DAY,1,F_FINAL), 
+             @IDTERCERO=IDTERCERO, 
+             @PROCEDENCIA=PROCEDENCIA,
+             @IDSEDEF=IDSEDEF, 
+             @IDPLAN=IDPLAN, 
+             @USUFACTU=USUFACTU
+      FROM OPENJSON (@DATOS)
+      WITH (
+         F_INICIAL DATE '$.F_INICIAL',
+         F_FINAL DATE '$.F_FINAL',
+         IDTERCERO VARCHAR(20) '$.IDTERCERO',
+         PROCEDENCIA VARCHAR(20) '$.PROCEDENCIA',
+         IDSEDEF VARCHAR(5) '$.IDSEDE',
+         IDPLAN VARCHAR(6) '$.IDPLAN',
+         USUFACTU VARCHAR(20) '$.USUFACTU'
+      )
+
+      SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+      FROM USUSU 
+      WHERE USUARIO=@USUARIO
+
+      IF @PROCESO='FACTURAS'
+      BEGIN
+         UPDATE FTR 
+         SET MARCA=1, EQUIMARCA=@SYS_COMPUTERNAME
+         WHERE MARCA=0
+            AND COALESCE(EQUIMARCA,'')=''
+            AND F_FACTURA>=@F_INICIAL
+            AND F_FACTURA<@F_FINAL
+            AND IDTERCERO=CASE WHEN COALESCE(@IDTERCERO,'')<>'' THEN @IDTERCERO ELSE IDTERCERO END
+            AND IDPLAN=CASE WHEN COALESCE(@IDPLAN,'')<>'' THEN @IDPLAN ELSE IDPLAN END
+            AND IDSEDE=CASE WHEN COALESCE(@IDSEDEF,'Todas')<>'Todas' THEN @IDSEDEF ELSE IDSEDE END
+            AND PROCEDENCIA=CASE WHEN COALESCE(@PROCEDENCIA,'Todas')<>'Todas' THEN @PROCEDENCIA ELSE PROCEDENCIA END
+            AND FTR.USUARIOFACTURA=CASE WHEN COALESCE(@USUFACTU,'')<>'' THEN @USUFACTU ELSE FTR.USUARIOFACTURA END
+            AND FTR.ESTADO='P'
+            AND COALESCE(CLASEANULACION,'')<>'NC'
+            AND COALESCE(VR_TOTAL,0)>0
+            AND COALESCE(CONTABILIZADA,0)<>0
+            AND COALESCE(INDCARTERA,0)=0
+            AND NOT EXISTS (
+               SELECT *
+               FROM ENTD
+               INNER JOIN ENT ON ENTD.CNSENTREGA = ENT.CNSENTREGA
+               WHERE ENT.PROCESO = 'FACTURAS'
+                  AND ENT.ENT_ENTREGA = DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA')
+                  AND ENT.CERRADO = 0
+                  AND ENTD.NODOCUMENTO = FTR.N_FACTURA
+            )
+            AND INDCXC=0
+            AND INDASIGCXC=0
+            AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA')
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='LIMPIAR_AUDIFACT'
+   BEGIN
+      SELECT @CNSENTREGA=CNSENTREGA, @PROCESO=PROCESO
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA',
+         PROCESO VARCHAR(20) '$.PROCESO'
+      )
+
+      SELECT @SYS_COMPUTERNAME=COALESCE(SYS_COMPUTERNAME,HOST_NAME()) 
+      FROM USUSU 
+      WHERE USUARIO=@USUARIO
+
+      IF @PROCESO='FACTURAS'
+      BEGIN
+         UPDATE FTR 
+         SET MARCA=0, EQUIMARCA=NULL
+         WHERE MARCA=1 
+            AND EQUIMARCA=@SYS_COMPUTERNAME
+            AND FTR.ESTADO='P'
+            AND COALESCE(CLASEANULACION,'')<>'NC'
+            AND COALESCE(VR_TOTAL,0)>0
+            AND COALESCE(CONTABILIZADA,0)<>0
+            AND NOT EXISTS (
+               SELECT *
+               FROM ENTD
+               INNER JOIN ENT ON ENTD.CNSENTREGA = ENT.CNSENTREGA
+               WHERE ENT.PROCESO = 'FACTURAS'
+                  AND ENT.ENT_ENTREGA = DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA')
+                  AND ENT.CERRADO = 0
+                  AND ENTD.NODOCUMENTO = FTR.N_FACTURA
+            )
+            AND INDCXC=0
+            AND INDASIGCXC=0
+            AND IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPAUDITORIA')
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+
+   IF @METODO='PROCESAR_AUDENVIO'
+   BEGIN
+      SELECT @CNSENTREGA=LTRIM(RTRIM(CNSENTREGA))
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSENTREGA VARCHAR(20) '$.CNSENTREGA'
+      )
+
+      PRINT 'COMIENZO @CNSENTREGA='+@CNSENTREGA
+      SELECT @PROCESO=PROCESO 
+      FROM ENT 
+      WHERE CNSENTREGA=@CNSENTREGA
+
+      IF NOT EXISTS(
+         SELECT * 
+         FROM ENTD 
+         WHERE CNSENTREGA=@CNSENTREGA
+      )
+      BEGIN
+         SELECT 'KO' KO, 'No existen Facturas En el Envio, Verifique e Intente de nuevo' ERROR
+         RETURN
+      END
+
+      BEGIN TRY
+         UPDATE ENTD 
+         SET ESTADO=1, USUARIOVERIFICA=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA 
+            AND PROCESO=@PROCESO
+
+         UPDATE ENT 
+         SET ESTADO=1, USUARIORECIBE=@USUARIO 
+         WHERE CNSENTREGA=@CNSENTREGA
+
+         UPDATE FTR 
+         SET IDDEP=DBO.FNK_VALORVARIABLE('IDFDEPFACTURACION'), 
+             INDCARTERA=0, 
+             INDASIGENT=0
+         FROM FTR 
+         INNER JOIN ENTD ON FTR.N_FACTURA=ENTD.NODOCUMENTO
+         WHERE ENTD.CNSENTREGA=@CNSENTREGA
+      END TRY
+      BEGIN CATCH
+         INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+      END CATCH
+
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+         RETURN
+      END
+
+      SELECT 'OK' OK
+      RETURN
+   END
+END
+

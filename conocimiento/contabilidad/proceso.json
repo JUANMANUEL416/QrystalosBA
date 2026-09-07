@@ -1,0 +1,355 @@
+{
+  "id": "contabilidad",
+  "nombre": "Contabilidad",
+  "modulo": "MCP_COL",
+  "familia": "contabilidad",
+  "prioridad": 8,
+  "estado": "parcial",
+  "resumen": "MCP/MCHE → CONFIRMAR → ESTADO=2. MCPE+MCHE → RECONSTRUIR. OM ENV_CONTA + SPK_CONTAB_MASIVA. CONTABILIDAD_3 18/18 + conciliaciones CONC*. PRI+CUE.",
+  "actualizado": "2026-09-06T16:30:00",
+  "notaSql": "CONTABILIDAD_3 18/18 + cola cerrada. RUTA-CONFIG paso 5: CONF_CONTABLE 11/11 + PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído 16:30. Huecos: CREA_PAR/ELIMINA_PAR FE≠export; contGenerales sin sql/.",
+  "alcanceHasta": "Ciclo MCP: periodo abierto → armar comprobante → detalle MCH → recalcular/confirmar → contabilizado (ESTADO=2). MCPE: corregir y RECONSTRUIR. OM recibe pendientes de caja/cartera/factura/etc. Reportes y cierre fiscal son pantallas hermanas bajo /cont.",
+  "ventanas": [
+    {
+      "uso": "Menú contabilidad",
+      "ruta": "cont",
+      "path": "/cont",
+      "vue": "IndexPage.vue (USGRUH)",
+      "entrada": "Contabilidad → enlaces MCP, MCPE, reportes, procesos, OM."
+    },
+    {
+      "uso": "Comprobantes contables (MCP)",
+      "ruta": "cont.mcp",
+      "path": "/cont/mcp",
+      "vue": "MCPPage → MCPComponent.vue",
+      "entrada": "Grilla MCP+MCH. MCP_COL: CRUDMCP, CONFIRMAR/DESCONFIRMAR_MASIVO, ENVIAR_A_CAMBIOS, GENERAR_COMPROBANTE, RECALCULAR_TOTALES."
+    },
+    {
+      "uso": "Comprobantes errados (MCPE)",
+      "ruta": "cont.errados",
+      "path": "/cont/mcpe",
+      "vue": "MCPEPage → MCPEComponent.vue",
+      "entrada": "MCPE_COL: RECONSTRUIR, REVISAR_MCPE, OBTENER_ERRORES_DETALLE, DIAGNOSTICAR_ERRORES."
+    },
+    {
+      "uso": "Periodos contables",
+      "ruta": "cont.periodosContables",
+      "path": "/cont/periodosContables",
+      "vue": "PeriodosContablePage",
+      "entrada": "Apertura/cierre PRI. ProcesosContables usa CONTABILIDAD_2."
+    },
+    {
+      "uso": "Otros módulos → contabilidad",
+      "ruta": "cont.otrosModulos",
+      "path": "/cont/otrosModulos",
+      "vue": "OtrosModulosPage → OMCaja, OMRecaudos, OMFacturas, OMGlosas, OMCxP, OMBancos, OMConciliaciones, OMNotas, OMInventario…",
+      "entrada": "CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS (y métodos LISTAR/DETALLE por módulo)."
+    },
+    {
+      "uso": "Conciliaciones contables (vs cartera FCONCI)",
+      "ruta": "cont.conciContables",
+      "path": "/cont/conciContables",
+      "vue": "ConciContablesPage → CONCCaja, CONCCXC, CONCCXP, CONCFGLO…",
+      "entrada": "Cruza MCP/MCPE con módulos operativos; usa MCP_COL y CONTABILIDAD_3."
+    },
+    {
+      "uso": "Parámetros contables por compañía",
+      "ruta": "cont.params_contables",
+      "path": "/cont/params_contables",
+      "vue": "ParametrosContablesPage → ParamsContablesComponent",
+      "entrada": "Tabla PAR (read) + CONF_CONTABLE CREA_PAR/EDITA_PAR/ELIMINA_PAR."
+    },
+    {
+      "uso": "Parámetros NIIF",
+      "ruta": "cont.configuracionesNiff",
+      "path": "/cont/configuracionesNiff",
+      "vue": "ConfiguracionesNIIFPage → ConfiguracionesNIIFComponent",
+      "entrada": "PARN/PARNI (read) + PARN CRUD_PARN / CRUD_PARNI."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Hub conf/Conta (SPQ_CONF_CONTABLE): sedes SED/SEDUNG, áreas AFU/HARE, centros CEN, unidades KUNG, distribución FDIS/FDISD, asignación COM→USVGS (ASIGNA_COM), PAR (EDITA_PAR). Plan CUE vía CUE_COL (sin sql/). KMCOM por módulo (sin sql/). Periodos PRI (conf.PRI, MODELO PRI). Parámetros NIIF PARN/PARNI (/cont/configuracionesNiff, SPQ_PARN). contGenerales: MND, impuestos FIMP, TTEC (sin sql/). ParamsContables /cont/params_contables usa CREA_PAR/ELIMINA_PAR no presentes en export.",
+      "tablasClave": ["PRI", "CUE", "COM"],
+      "gates": [
+        {
+          "id": "periodo-abierto",
+          "nombre": "Periodo contable abierto",
+          "explicacion": "CRUDMCP y CONFIRMAR_MASIVO validan PRI.CERRADO. MCP_COL: GET_PERIODOS, VALIDAR_PERIODO. ProcesosContables: CONTABILIDAD_2 abrir/cerrar.",
+          "invariante": "Periodo cerrado → KO al guardar o confirmar comprobante.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "GET_PERIODOS / VALIDAR_PERIODO / CRUDMCP",
+              "rol": "Consulta y valida PRI. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_PRI",
+              "metodo": "CRUDPRI / CERRAR_FACTURA / ABRIR_FACTURA",
+              "rol": "Alta/edición periodos conf.PRI; cierre/apertura submódulos. Ficha leído 2026-09-06."
+            },
+            {
+              "nombre": "SPQ_CONTABILIDAD_2",
+              "metodo": "(procesos periodo)",
+              "rol": "CerrarPeriodosComponent. Fuera valle paso 8."
+            }
+          ]
+        },
+        {
+          "id": "cuenta-detalle",
+          "nombre": "Cuentas de detalle (CUE)",
+          "explicacion": "CONFIRMAR_MASIVO exige MCH.CUENTA ∈ CUE con TIPO='Detalle'. No usar MCUE (no documentada en INDICE_TABLAS).",
+          "invariante": "Cuenta no detalle → KO al confirmar.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "CONFIRMAR_MASIVO",
+              "rol": "JOIN MCH-CUE. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_CUE_COL",
+              "metodo": "CRUDCUE / VALIDARCUENTAS / EXPOCUENTAS",
+              "rol": "Plan de cuentas conf.CueConta. TIPO Detalle obligatorio al confirmar. Ficha leído 2026-09-06."
+            }
+          ]
+        },
+        {
+          "id": "parametros-par",
+          "nombre": "Parámetros contables (PAR)",
+          "explicacion": "ParamsContablesComponent (/cont/params_contables): read PAR+LEFT JOIN CUE. FE envía CREA_PAR/EDITA_PAR/ELIMINA_PAR; export SPQ solo tiene EDITA_PAR (COMPANIA fija '01', subset campos). ParaContaComponent (conf.conta) usa solo EDITA_PAR — alineado al SP.",
+          "invariante": "CTA_CAJ_REC_NOLEG debe ser CUE TIPO Detalle. FE ParamsContables envía MCUEORDEN_CXC/CXP/ING/EGR que el SP no persiste. CREA_PAR/ELIMINA_PAR: FE sí, SPQ export NO — legacy SPQ_CONTABILIDAD.CREA_PAR documentado aparte.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CONTABLE",
+              "metodo": "EDITA_PAR (+ hub conf/Conta: CRUD_SEDES, CRUD_CCOSTO, FDIS_*, ASIGNA_COM…)",
+              "rol": "11 METODOs leídos sql/SPQ_CONF_CONTABLE.sql."
+            }
+          ]
+        },
+        {
+          "id": "parametros-niif-parn",
+          "nombre": "Parámetros NIIF (PARN / PARNI)",
+          "explicacion": "ConfiguracionesNIIFComponent: read PARN (PARAMETRO, FECHA, DATO). CRUD_PARN con PROCESO INSERTAR/EDITAR/ELIMINAR_PARN. Detalle vigencias: PARNI (INICIAL, FINAL, FECHA, DATO) vía CRUD_PARNI (INSERTAR/EDITAR/ELIMINAR_PARNI).",
+          "invariante": "PARAMETRO es clave lógica PARN. PARNI_ID identity en intervalos. «Nueva vigencia» en FE aún placeholder.",
+          "sps": [
+            {
+              "nombre": "SPQ_PARN",
+              "metodo": "CRUD_PARN / CRUD_PARNI",
+              "rol": "Motor NIIF. 2/2 leído sql/SPQ_PARN.sql."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "MCP: INSERTAR comprobante (SPK_GENCONSECUTIVO @MCP) → líneas MCH (CRUDMCH / SUBIR_DETALLE / Excel) → RECALCULAR_TOTALES (SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR) → CONFIRMAR_MASIVO (ESTADO 1→2) o ENVIAR_A_CAMBIOS (→ MCPE). MCPE: revisar errores y RECONSTRUIR a MCP.",
+      "tablasClave": ["MCP", "MCH", "MCPE", "MCHE"],
+      "gates": [
+        {
+          "id": "crud-comprobante",
+          "nombre": "Alta/edición cabecera MCP",
+          "explicacion": "CRUDMCP INSERTAR/EDITAR/ANULAR. Valida PRI. Opción DUPLICAR_DETALLES desde otro NROCOMPROBANTE. ESTADO semáforo FE: 0 error, 1 preparado, 2 contabilizado.",
+          "invariante": "Sin periodo en PRI → KO. Totales deben cuadrar antes de confirmar.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "CRUDMCP",
+              "rol": "Cabecera MCP. Llama SPK_GENCONSECUTIVO, copia MCH."
+            }
+          ]
+        },
+        {
+          "id": "detalle-mch",
+          "nombre": "Detalle contable MCH",
+          "explicacion": "CRUDMCH (delega SPQ_MCH_COL), SUBIR_DETALLE_COMPROBANTE (Excel/plano). Tras cada cambio: RECALCULAR_TOTALES.",
+          "invariante": "Débitos ≠ créditos → ESTADO 0 hasta recalcular.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "CRUDMCH / SUBIR_DETALLE_COMPROBANTE / RECALCULAR_TOTALES",
+              "rol": "Detalle y totales. Llama SPK_REVISAR_COMPROBANTE, SPK_SUMA_DBCR."
+            },
+            {
+              "nombre": "SPQ_MCH_COL",
+              "metodo": "(anidado CRUDMCH)",
+              "rol": "CRUD líneas MCH. Ficha leída."
+            }
+          ]
+        },
+        {
+          "id": "confirmar-comprobante",
+          "nombre": "Confirmar / desconfirmar masivo",
+          "explicacion": "CONFIRMAR_MASIVO: SPK_NC_CONFIRMAR_CONTAB por comprobante, ESTADO→2, log USLOG. DESCONFIRMAR_MASIVO revierte. Solo si periodo abierto y cuentas detalle.",
+          "invariante": "Ya contabilizado (2) no va a ENVIAR_A_CAMBIOS.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "CONFIRMAR_MASIVO / DESCONFIRMAR_MASIVO",
+              "rol": "Cierra comprobante contable."
+            },
+            {
+              "nombre": "SPK_NC_CONFIRMAR_CONTAB",
+              "metodo": "(anidado)",
+              "rol": "Motor confirmación. En sql/ (listado SPK)."
+            }
+          ]
+        },
+        {
+          "id": "enviar-mcpe",
+          "nombre": "Enviar comprobante a cambios (MCPE)",
+          "explicacion": "ENVIAR_A_CAMBIOS: valida no anulado, periodo abierto, no MANUAL, ESTADO≠2; bloqueos PRI por PROCEDENCIA (INV, CXC, FACTURA…). SPK_PASA_A_MCPE.",
+          "invariante": "Procedencia MANUAL no se envía a MCPE desde este gate.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "ENVIAR_A_CAMBIOS",
+              "rol": "Mueve a MCPE para corrección."
+            },
+            {
+              "nombre": "SPK_PASA_A_MCPE",
+              "metodo": "(anidado)",
+              "rol": "Persiste MCPE+MCHE. En sql/ (listado SPK)."
+            }
+          ]
+        },
+        {
+          "id": "mcpe-reconstruir",
+          "nombre": "Corregir comprobante errado",
+          "explicacion": "MCPEComponent: editar MCHE, REVISAR_MCPE, RECONSTRUIR → devuelve a MCP si válido. OBTENER_ERRORES_DETALLE / DIAGNOSTICAR_ERRORES.",
+          "invariante": "MCPE es staging; destino final sigue siendo MCP confirmado.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCPE_COL",
+              "metodo": "RECONSTRUIR / REVISAR_MCPE / OBTENER_ERRORES_DETALLE",
+              "rol": "Corrección errados. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_MCHE_COL",
+              "metodo": "CRUDMCHE / MARCAR_DESMARCAR_MCHE / PROCESAR_MARCADOS",
+              "rol": "Líneas erradas MCPE. Ficha leída. SED en FE usa SELKRY, no este SP."
+            }
+          ]
+        },
+        {
+          "id": "generar-manual",
+          "nombre": "Generar comprobante manual / masivo",
+          "explicacion": "GENERAR_COMPROBANTE_CONTABLE y GENERAR_COMPROBANTES_MASIVO_V2 en MCPComponent (plantillas/auxiliares).",
+          "invariante": "Complemento a CRUD manual; no reemplaza asientos de módulos.",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "GENERAR_COMPROBANTE_CONTABLE / GENERAR_COMPROBANTES_MASIVO_V2",
+              "rol": "Generación asistida. Ficha leída."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Módulos administrativos escriben MCP vía SPKs al operar (Caja CONFIRMAR, Recaudos APLICAR, Notas FNOT_APLICAR, Facturación, Glosas SPK_RESPUESTAGLOSA, Conciliaciones, Activos…). Campo MCP.PROCEDENCIA identifica origen. OM /cont/otrosModulos centraliza pendientes CONTABILIZADA=0.",
+      "tablasClave": ["MCP", "KMCOM"],
+      "gates": [
+        {
+          "id": "desde-modulos-om",
+          "nombre": "Otros módulos → ENV_CONTA",
+          "explicacion": "OMCaja, OMRecaudos, OMFacturas, OMGlosas, OMCxP, OMBancos, OMConciliaciones, OMNotas, OMInventario, OMMovAct: CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS con PROCEDENCIA e ITEMS.",
+          "invariante": "No reenvía si ya CONTABILIZADA 1/2 (patrón en OM).",
+          "sps": [
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "ENV_CONTA_OTROS_MODULS / DEPRECIACION_ACTIVOS_LISTA / DEPR_ACFIJP_ENV_CONTA",
+              "rol": "Puerta OM. ENV_CONTA + DETALLE_OM_* leídos."
+            }
+          ]
+        },
+        {
+          "id": "procedencia-spk",
+          "nombre": "Asientos automáticos al confirmar operación",
+          "explicacion": "Cada proceso hermano documenta su capa 5. Ejemplos: SPK_NC_CONTAB_CAJA_ING (Caja), SPK_PAGOSCXC (Recaudos), SPK_NOTASCXC (Notas). Llegan a MCP con PROCEDENCIA y NOREFERENCIA del documento.",
+          "invariante": "Este proceso no re-ejecuta el SPK origen; recibe o confirma el MCP generado.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Conciliaciones contables (/cont/conciContables): CONCCaja, CONCCXC, CONCCXP, CONCFGLO cruzan saldos MCP vs operativo. Cierre fiscal, exógena, reclasificar cuentas/terceros, castigo cartera usan MODELO CONTABILIDAD/CONTABILIDAD_2. NIIF (ENVNIIF en MCP).",
+      "tablasClave": ["MCP", "MCPE"],
+      "gates": [
+        {
+          "id": "conci-contable-modulo",
+          "nombre": "Conciliación contable por módulo",
+          "explicacion": "CONCCaja/CXC/CXP/Fact/GLO/Inv/BMOV/CONDAF: cruzan operativo vs MCP. Envio: CONTABILIDAD_3 ENV_CONTA. Caja: UPDATE_FCJ / CORREGIR_Y_CONTABILIZAR_FCJ. CXP: RESET_CONTABILIZADO. AF: DEPR_ACFIJP / DEPR_IACTD_UNICO. Correccion: MCP_COL RECONSTRUIR.",
+          "invariante": "Distinto de conciliaciones de glosa FCONCI (cartera).",
+          "sps": [
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "ENV_CONTA / UPDATE_FCJ / CORREGIR_Y_CONTABILIZAR_FCJ / RESET_CONTABILIZADO / DEPR_*",
+              "rol": "Conciliaciones contables /cont/conciContables. 18/18 leido."
+            },
+            {
+              "nombre": "SPQ_CONTABILIDAD",
+              "metodo": "CIERRE_FISCAL / BALANCE_GENERAL* / CASTIGO_CARTERA_* / RECLASIFICAR_* / SEGUIMIENTO_CARTERA",
+              "rol": "Cierre fiscal, BG, cartera. 28 METODOs leído."
+            },
+            {
+              "nombre": "SPQ_BALANCE_COL",
+              "metodo": "GENERAR/OBTENER_BALANCE / OBTENER_AUXILIAR* / TOMAR_FOTO_*",
+              "rol": "Balance prueba /cont/bac. 11 METODOs leído."
+            },
+            {
+              "nombre": "SPQ_BANCOS_AUXILIAR",
+              "metodo": "OBTENER_MOVIMIENTOS / MARCAR_* / SALVAR_CONCILIACION",
+              "rol": "Auxiliar bancos /cont/auxBancos. 5 METODOs leído."
+            },
+            {
+              "nombre": "SPQ_SEGUI_DOCUMENTO",
+              "metodo": "CONSULTAR_TRAZA_DOC_RPT / GET_DETALLE_CUENTAS",
+              "rol": "Trazabilidad /cont/trazaDoc. 2 METODOs leído."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "Este proceso ES el destino final del asiento. Confirmación = SPK_NC_CONFIRMAR_CONTAB deja MCP.ESTADO=2. Reportes (balance, auxiliares, estado resultados) leen MCP+MCH vía CONTABILIDAD/CONTABILIDAD_2. Cierre fiscal cierra PRI.",
+      "tablasClave": ["MCP", "MCH", "PRI"],
+      "gates": [
+        {
+          "id": "contabilizado-final",
+          "nombre": "Comprobante contabilizado",
+          "explicacion": "ESTADO=2, ANULADO=0. No editable salvo desconfirmar o enviar a MCPE según reglas. NROCOMPROBANTE es PK junto COMPANIA.",
+          "invariante": "Periodo cerrado bloquea desconfirmar y nuevos movimientos.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONFIRMAR_CONTAB",
+              "metodo": "(confirmar)",
+              "rol": "Asiento definitivo en libros."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-06T04:55:00"
+}

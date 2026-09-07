@@ -1,0 +1,306 @@
+{
+  "procesoId": "recaudos",
+  "actualizado": "2026-09-06T07:52:00",
+  "nota": "SP → METODO. SPQ_FPAG_COL 46/46 leído 2026-09-06 (sql/SPQ_FPAG_COL.sql). SPKs núcleo leídos. No copiar cuerpos.",
+  "sps": [
+    {
+      "nombre": "SPQ_FPAG_COL",
+      "tipo": "SPQ",
+      "modelo": "FPAG_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FPAG_COL.sql",
+      "metodos": [
+        { "id": "CREA_RPDX", "estado": "leido", "hace": "Genera consecutivo RPDX para staging de facturas.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "CARGAR_SEDES", "estado": "leido", "hace": "Lista sedes para filtros.", "capaId": "01-configuracion", "gateId": "" },
+        { "id": "PAGOS_ADRES", "estado": "leido", "hace": "Cuenta consignaciones ADRES pendientes de distribuir.", "capaId": "04-unido", "gateId": "adres-peru" },
+        { "id": "TRAE_PAGO", "estado": "leido", "hace": "Trae datos de recibo caja o movimiento banco según INGRESO.", "capaId": "03-alimentadores", "gateId": "desde-caja-banco" },
+        { "id": "TRAE_IMPUESTOS", "estado": "leido", "hace": "Consulta impuestos de una factura para el detalle.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "ADD_FACTURA", "estado": "leido", "hace": "Agrega factura al staging/detalle del recaudo.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "SUBIR_TXT", "estado": "leido", "hace": "Carga plano CSV (hasta 22 cols) → RPDX+FTIMP; reutiliza CNSRPDX del FPAG si existe.", "valida": ["FTR P sin NC", "Saldo FCXCD/FCXCDV", "Duplicados en lote", "Impuestos con FIMPDV vigente", "GLOSAS+TIPO F: sin FGLO previa"], "noValida": ["No valida MOTIVO1/2 contra FCGLO al cargar"], "errores": ["Factura duplicada en el lote", "El Saldo de la Factura es menor que el valor Recaudado", "Esta Factura ya Tiene Asociada una Glosa"], "capaId": "03-alimentadores", "gateId": "carga-masiva", "efecto": "RPDX+FTIMP staging; MOTIVO1/MOTIVO2 en ID11/ID12" },
+        { "id": "CARGAR_FACTURAS", "estado": "leido", "hace": "Carga Excel (mismas cols que SUBIR_TXT + CODRPTA/VLR_ACEPTA + IMP3/IMP4) → RPDX; borra RPDX previo si reenvía.", "valida": ["Duplicados N_FACTURA+TIPO según INGRESO", "Ya en FPAGD", "Saldo FCXCD/FCXCDV incl. impuestos", "DEVOLUCION fuerza TIPO F"], "noValida": ["IDCLASE numérico tolera ceros (Excel 03→3)"], "errores": ["Factura duplicada en el lote de carga", "Impuesto ICA/3/4 incompleto", "No Existe Consecutivo de Glosa"], "capaId": "03-alimentadores", "gateId": "carga-masiva", "llama": ["SPK_GENCONSECUTIVO"], "efecto": "Staging listo para ASIGNAR" },
+        { "id": "DETALLE_RESPONDER", "estado": "leido", "hace": "Plantilla FINDEVOL=6 (responder glosa): RPDX detalle + RPDX_1 resumen; valida FCGLO, CODRPTA, VLR_ACEPTA.", "valida": ["FCGLO existe", "Valor item >0"], "capaId": "03-alimentadores", "gateId": "carga-masiva-findevol-6", "efecto": "Staging especial glosa respondida" },
+        { "id": "INSERTAR", "estado": "leido", "hace": "Crea FPAG (CERRADO=0, ESTADO=Activo), CNSRPDX staging; marca ENPAGOS en FCJ (CAJA) o BMOVD (BANCOS).", "valida": ["Un solo recaudo abierto por usuario+tercero+INGRESO"], "noValida": ["No valida PRI al crear"], "errores": ["Existen Pagos Abiertos para este tercero y este Usuario"], "capaId": "02-operacion", "gateId": "crear-recaudo", "llama": ["SPK_GENCONSECUTIVO"], "efecto": "FPAG+CNSRPDX listos para asignar facturas" },
+        { "id": "ACTUALIZAR", "estado": "leido", "hace": "Edita cabecera abierta; repunta ENPAGOS FCJ/BMOVD si cambia origen.", "capaId": "02-operacion", "gateId": "crear-recaudo" },
+        { "id": "CONSULTACXC", "estado": "leido", "hace": "Consulta CxC/facturas del tercero para asignar.", "capaId": "03-alimentadores", "gateId": "desde-facturacion" },
+        { "id": "RELIQUIDAR", "estado": "leido", "hace": "Reliquida factura en CxC.", "capaId": "03-alimentadores", "gateId": "desde-facturacion", "llama": ["SPK_RELIQUIDA_FTR"] },
+        { "id": "CONSULTARPDX", "estado": "leido", "hace": "Lee staging RPDX del recaudo.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "DEL_FACTURA", "estado": "leido", "hace": "Quita factura del staging.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "IMPUESTOS", "estado": "leido", "hace": "Impuestos cabecera/detalle en staging.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "IMPUESTOSD", "estado": "leido", "hace": "Impuestos detalle.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "FACTOR", "estado": "leido", "hace": "Factor impuesto.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "ADDFTIMP", "estado": "leido", "hace": "Agrega impuesto a factura en staging.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "IMPUESTOSRPDX", "estado": "leido", "hace": "Impuestos desde RPDX.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "DELFTIMP", "estado": "leido", "hace": "Elimina impuesto de staging.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "ASIGNAR", "estado": "leido", "hace": "Cierra staging RPDX→FPAGD vía SPK_CARGA_MASIVA_FAC_CXC_02; borra RPDX/FTIMP.", "valida": ["RPDX no vacío", "Sin duplicados N_FACTURA (+CLASE según INGRESO)", "No repetir factura ya en FPAGD"], "noValida": ["No valida MOTIVO1/2 contra FCGLO en ASIGNAR (solo en apply SPK_PAGOSCXC)"], "errores": ["Error, debe seleccionar por lo menos una factura", "Existen facturas… repetidas en el lote", "ERROR AL ASIGNAR: …"], "capaId": "02-operacion", "gateId": "asignar-facturas", "llama": ["SPK_CARGA_MASIVA_FAC_CXC_02"], "efecto": "FPAGD persistido; SPK_FPAG recalcula cabecera" },
+        { "id": "FPAGD", "estado": "leido", "hace": "CRUD/consulta detalle FPAGD.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "QUITARFPAGD", "estado": "leido", "hace": "Quita línea FPAGD; llama SPK_FPAG.", "capaId": "02-operacion", "gateId": "anular-desaplicar", "llama": ["SPK_FPAG", "SPK_RETIRA_FACTURA_FPAGD"] },
+        { "id": "APLICARPAGO", "estado": "leido", "hace": "Gate apply: PRI abierto, detalle FPAGD, duplicados, ajuste REC_VLRMAX_AJUSTE, FPAGDI/FIMPDV; SPK_PAGOSCXC; si GLOSAS+FINDEVOL 4/5/6 → SPK_FINALIDAD_GLOSAS.", "valida": ["PRI CERRADO=0", "FPAGD existe", "CXP: SUM(VLRCRUCE)=VLRITEMS", "Impuesto FPAGD con FPAGDI y cuenta FIMPDV vigente", "|VLRAJUSTEPESO|≤REC_VLRMAX_AJUSTE"], "noValida": ["Intenta reparar FPAGDI desde FTIMP staging si faltó desglose"], "errores": ["Periodo contable no existe o esta Cerrado", "Recaudo sin detalles", "El valor de los pagos debe ser igual al valor del cruce", "tiene impuesto en FPAGD pero no existe desglose en FPAGDI", "impuesto … sin vigencia/cuenta en FIMPDV", "misma factura … más de una vez"], "capaId": "02-operacion", "gateId": "aplicar-pago", "llama": ["SPK_PRI", "SPK_PAGOSCXC", "SPK_FINALIDAD_GLOSAS"], "efecto": "FPAG.CERRADO=1; CxC+contabilidad; FGLO si glosas" },
+        { "id": "ANULARPAGO", "estado": "leido", "hace": "Anula recaudo aplicado: bloquea si FPAGD Retirada; valida MCP/MCPE; SPK_DESPAGOSCXC acción ANULAR si periodos abiertos.", "valida": ["Sin facturas Retirada", "MCP confirmado o limpia MCPE"], "errores": ["Este Recaudo ya tiene Facturas Retiradas", "El COMPROBANTE Contable esta Con Error"], "capaId": "02-operacion", "gateId": "anular-desaplicar", "llama": ["SPK_DESPAGOSCXC"] },
+        { "id": "DESAPLICARPAGO", "estado": "leido", "hace": "Reabre recaudo: bloquea glosas CERRADA=1, facturas Retirada, NC por VLROTROSDCTOS; SPK_DESPAGOSCXC DESAPLICAR.", "valida": ["GLOSAS: sin FGLO CERRADA=1", "MCP ESTADO=2 si aplica"], "errores": ["Existen Glosas… Contestadas en Auditoria", "Existen notas credito asociadas… No se puede desaplicar"], "capaId": "02-operacion", "gateId": "anular-desaplicar", "llama": ["SPK_DESPAGOSCXC"] },
+        { "id": "BORRARTODO", "estado": "leido", "hace": "Borra recaudo completo.", "capaId": "02-operacion", "gateId": "anular-desaplicar", "llama": ["SPK_BORRAPAGO"] },
+        { "id": "FTIMPRPDX", "estado": "leido", "hace": "Impresión staging.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "INACTIVAR", "estado": "leido", "hace": "Inactiva recaudo abierto.", "capaId": "02-operacion", "gateId": "anular-desaplicar" },
+        { "id": "FPAGDI", "estado": "leido", "hace": "CRUD impuestos detalle FPAGDI.", "capaId": "02-operacion", "gateId": "asignar-facturas" },
+        { "id": "PROCESAR_FACTURA", "estado": "leido", "hace": "Procesa factura en staging.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "NO_PROCESAR", "estado": "leido", "hace": "Marca factura no procesada en staging.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "EXPORT_ERRADOS", "estado": "leido", "hace": "Exporta errores de carga.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "EXPORT_LOG_CARGA", "estado": "leido", "hace": "Exporta log de carga.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "ASIGNA_PLANO", "estado": "leido", "hace": "Asigna desde plano.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "CIERRA_MASIVO", "estado": "leido", "hace": "Cierra proceso masivo RPDX.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "BORRA_PEND", "estado": "leido", "hace": "Borra pendientes RPDX.", "capaId": "03-alimentadores", "gateId": "carga-masiva" },
+        { "id": "ENVIAR_AUDIT", "estado": "leido", "hace": "Crea ENT/ENTD entrega glosas a auditoría; FGLO.CNSENTREGA; FPAG.ENAUDIT=1.", "valida": ["FGLO sin entrega previa ENT/ENTD", "FGLO ENAUDITORIA=0 dept cartera"], "errores": ["No se puede enviar a auditoría: … ya tienen envío de glosas registrado"], "capaId": "04-unido", "gateId": "enviar-auditoria", "llama": ["SPK_GENCONSECUTIVO"], "efecto": "Glosas en tránsito a IDFDEPAUDITORIA" },
+        { "id": "EXPORTA_EXCEL", "estado": "leido", "hace": "Exporta recaudo a Excel.", "capaId": "02-operacion", "gateId": "" },
+        { "id": "CRUD_FPAGDCXP", "estado": "leido", "hace": "CRUD FPAGDCXP (Nuevo/Editar/Borrar) desde FCXP; solo recaudo abierto.", "valida": ["FPAG.CERRADO=0", "CNSFCXP no duplicado en Nuevo"], "errores": ["Cuenta por pagar ya existe en este pago", "Registro de pago no encontrado o ya fue cerrado"], "capaId": "02-operacion", "gateId": "cruce-cxp", "efecto": "Líneas cruce CxP en recaudo INGRESO=CXP" },
+        { "id": "REGRESA_FCXPAGDCXP", "estado": "leido", "hace": "SUM(VLRCRUCE) → actualiza FPAG.VALORPAGO.", "capaId": "02-operacion", "gateId": "cruce-cxp" },
+        { "id": "CARGAR_GLOSAS_DETALLE", "estado": "leido", "hace": "Carga detalle glosas.", "capaId": "04-unido", "gateId": "glosas-al-aplicar" },
+        { "id": "DETALLE_RESPONDER", "estado": "leido", "hace": "Carga masiva FINDEVOL=6 (responder glosa). Ver gate carga-masiva-findevol-6.", "capaId": "03-alimentadores", "gateId": "carga-masiva-findevol-6" },
+        { "id": "CONSULTAR_DETA_GLOSA", "estado": "leido", "hace": "Consulta detalle glosa en CxC.", "capaId": "04-unido", "gateId": "glosas-al-aplicar" },
+        { "id": "CODIGO_GLOSA", "estado": "leido", "hace": "Lista FCGLO activos por INGRESO.", "capaId": "01-configuracion", "gateId": "catalogo-motivos" }
+      ]
+    },
+    {
+      "nombre": "SPK_PAGOSCXC",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_PAGOSCXC.sql",
+      "metodos": [
+        {
+          "id": "APLICAR",
+          "hace": "Aplica el recaudo: recorre FPAGD abierto, mueve CxC, crea FGLO si VLRGLOSA>0 y copia MOTIVO1/MOTIVO2 a FGLOCG si el código existe en FCGLO (CLASE=GLOSA, ESTADO=ACTIVO). DEVPAR genera NC; LEVANTA deriva a SPK_LEVANTA_GLOSA.",
+          "valida": [
+            "USVGS IDFDEPCARTERA con DATO",
+            "Existe FPAG (FECHAPAGO not null)",
+            "FPAG.VLRIMPUESTOS = SUM(FPAGDI) y = SUM(FPAGD.VLRIMPUESTO) (tol 0.01)",
+            "Por factura: FPAGD.VLRIMPUESTO = SUM(FPAGDI) de esa línea",
+            "VLRGLOSA>0 solo si INGRESO ∈ GLOSAS / DEVOLUCION / DEVPAR"
+          ],
+          "noValida": [
+            "Motivo no ∈ FCGLO GLOSA/ACTIVO: solo PRINT, no RAISERROR; FGLO queda sin FGLOCG",
+            "Motivos vacíos: crea FGLO y no inserta FGLOCG",
+            "No exige CERRADO=0 de cabecera al entrar (sí filtra FPAGD.CERRADO=0)"
+          ],
+          "errores": [
+            "No tiene configurado Departamento de Cartera",
+            "No se encontró el recaudo indicado (CNSFPAG).",
+            "Los impuestos del recaudo (FPAG.VLRIMPUESTOS=…) no coinciden con el total del desglose en FPAGDI (…).",
+            "Los impuestos del recaudo … no coinciden con la suma de impuestos en FPAGD (…).",
+            "Los impuestos de la factura … no coinciden: FPAGD.VLRIMPUESTO=…, total FPAGDI=….",
+            "No se permiten glosas en un tipo de recaudo diferente a Glosas. Verifique e intente de nuevo.",
+            "Transacción en estado irreversible. Abortando procesamiento."
+          ],
+          "llama": [
+            "SPK_FPAG",
+            "SPK_LEVANTA_GLOSA",
+            "SPK_RETIRAFTR_DE_CXC",
+            "SPK_GENCONSECUTIVO",
+            "SPK_VLRNOTAS",
+            "SPK_NC_CONTAB_FNOT",
+            "SPK_RELIQUIDA_FTR",
+            "SPK_GENERA_JSON_PERU_NOTADBCR",
+            "SPK_GENERA_XML_PERU_NOTADBCR",
+            "SPK_GENITEMS_NOTACR",
+            "SPK_RECUADO_PPTO_DESDEFTR",
+            "SPK_RECUADO_PPTO",
+            "SPK_FINALIDAD_DEVOL",
+            "SPK_ADMIN_PAGOS",
+            "SPK_CALCULOVALORESCXP",
+            "SPK_NC_CONTAB_CXC"
+          ],
+          "efecto": "FPAGD cerrado; FGLO+FGLOCG si motivos válidos; CxC/FTRCXC actualizado; comprobante si NOCONTABILIZA no aplica.",
+          "capaId": "02-operacion",
+          "gateId": "aplicar-pago",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_DESPAGOSCXC",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_DESPAGOSCXC.sql",
+      "metodos": [
+        {
+          "id": "DESAPLICAR",
+          "hace": "Revierte un recaudo CERRADO=1: borra FGLO/FGLOD (si no hay glosa CERRADA=1), desmarca FPAG/FPAGD si @ACCION=DESAPLICAR, revierte banco/caja/CxP/presupuesto y reliquida factura.",
+          "valida": [
+            "FPAG.CERRADO=1 (si no, RETURN silencioso)",
+            "Si hay FGLO del recaudo fuera de IDFDEPCARTERA y alguna CERRADA=1 → no toca y RETURN"
+          ],
+          "noValida": [
+            "No hay RAISERROR al usuario: fallos son PRINT/RETURN",
+            "No borra FGLOCG explícitamente (solo FGLOD + FGLO)"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_LEVANTA_GLOSA",
+            "SPK_RELIQUIDACXCQX",
+            "SPK_ADMIN_PAGOS",
+            "SPK_CALCULOVALORESCXP",
+            "SPK_REVERSAR_RECUADO",
+            "SPK_RELIQUIDA_FTR",
+            "SPK_COPIA_RECAUDO"
+          ],
+          "efecto": "Recaudo reabierto si DESAPLICAR; glosas del recaudo eliminadas salvo ya respondidas.",
+          "capaId": "02-operacion",
+          "gateId": "anular-desaplicar",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CARGA_MASIVA_FAC_CXC_02",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CARGA_MASIVA_FAC_CXC_02.sql",
+      "metodos": [
+        {
+          "id": "ASIGNAR_LOTE",
+          "hace": "Pasa RPDX a FPAGD (glosas, ratificaciones, conciliaciones, facturas). RPDX.ID11/ID12 → FPAGD.MOTIVO1/MOTIVO2. Recalcula cabecera con SPK_FPAG.",
+          "valida": [
+            "FPAG.CERRADO≠1",
+            "Facturas del lote = tercero del recaudo (salvo TERFU)"
+          ],
+          "noValida": [
+            "No valida MOTIVO1/MOTIVO2 contra FCGLO",
+            "No crea FGLO ni FGLOCG"
+          ],
+          "errores": [
+            "EL RECAUDO SELECIONADO YA SE ENCUENTRA CERRADO",
+            "EXISTEN FACTURAS DE ESTE RECAUDO QUE NO COINCIDEN CON EL TERCERO SELECCIONADO"
+          ],
+          "llama": ["SPK_FPAG"],
+          "efecto": "FPAGD con valores y motivos; FPAG.VLR* actualizados.",
+          "capaId": "02-operacion",
+          "gateId": "asignar-facturas",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_FINALIDAD_GLOSAS",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_FINALIDAD_GLOSAS.sql",
+      "metodos": [
+        {
+          "id": "FINDEVOL",
+          "hace": "Tras aplicar, según FPAG.FINDEVOL: envía a auditoría (SPQ_JSON FPAG_COL/ENVIAR_AUDIT), recibe glosa (FGLO_COL/RECIBIR_GLOSA) y responde en automático. 4=total, 5 y 6=parcial; llama SPK_RESPUESTAGLOSA e imprime/envía lote FGLOI.",
+          "valida": [
+            "ENVIAR_AUDIT y RECIBIR_GLOSA deben devolver OK vía SPQ_JSON"
+          ],
+          "noValida": [
+            "Error de SPK_RESPUESTAGLOSA se traga (comentario: no RAISERROR)"
+          ],
+          "errores": [
+            "No se recibió respuesta válida de SPQ_JSON para auditoría.",
+            "La auditoría no retornó estado OK. Valor: …",
+            "No se recibió respuesta válida de SPQ_JSON para recepción de glosa.",
+            "La recepción de glosa no retornó estado OK. Valor: …"
+          ],
+          "llama": [
+            "SPQ_JSON (FPAG_COL/ENVIAR_AUDIT)",
+            "SPQ_JSON (FGLO_COL/RECIBIR_GLOSA)",
+            "SPK_RESPUESTAGLOSA",
+            "SPK_GENCONSECUTIVO",
+            "SPQ_JSON (FGLO_COL/ENVIAR_RESPUESTA)",
+            "SPQ_JSON (FGLO_COL/RECIBIR_RPTASGLOSA)"
+          ],
+          "efecto": "Circuito auditoría+respuesta automático cuando FINDEVOL es 4/5/6.",
+          "capaId": "04-unido",
+          "gateId": "enviar-auditoria",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_FPAG",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_FPAG.sql",
+      "metodos": [
+        {
+          "id": "RECALCULAR",
+          "hace": "Recalcula FPAG.VLRITEMS/VLRIMPUESTOS/VLRGLOSAS/VLRDTOFINAN/VLRAJUSTEPESO/VLRTOTAL desde FPAGD CLASEPAG=P. Ajuste al peso si AJPESO_CON_IMPUESTOS=SI y |dif|<REC_VLRMAX_AJUSTE.",
+          "valida": ["@CNSFPAG no vacío"],
+          "noValida": ["No valida que el recaudo exista"],
+          "errores": [
+            "El parámetro @CNSFPAG es obligatorio y no puede estar vacío.",
+            "Error en SPK_FPAG: …"
+          ],
+          "llama": [],
+          "efecto": "Cabecera FPAG coherente con el detalle.",
+          "capaId": "02-operacion",
+          "gateId": "asignar-facturas",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CXC",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_CXC.sql",
+      "llamadoDesde": ["SPK_PAGOSCXC"],
+      "hace": "Asiento MCP recaudo: PRI abierto; COMMS por INGRESO (GLOSAS vs OTRAS); líneas CxC, impuestos, glosas, ajuste, banco/caja.",
+      "valida": ["PRI existe y CERRADO=0", "NROCOMPROBANTE generado si vacío"],
+      "errores": ["Período Contable No Existe", "Período Contable Cerrado"],
+      "gateId": "contabilizar-recaudo"
+    },
+    {
+      "nombre": "SPK_RETIRA_FACTURA_FPAGD",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RETIRA_FACTURA_FPAGD.sql",
+      "llamadoDesde": ["QUITARFPAGD (recaudo aplicado)"],
+      "hace": "SPK_REVERSAR_RECUADO por factura; BANCOS ajusta VLRLEGALIZADO; GLOSAS borra FGLO/FGLOD/FGLOCG; SPK_RELIQUIDA_FTR.",
+      "gateId": "anular-desaplicar"
+    },
+    {
+      "nombre": "SPK_BORRAPAGO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_BORRAPAGO.sql",
+      "llamadoDesde": ["BORRARTODO"],
+      "hace": "Desmarca FCXCDV.MARCAPAGO; DELETE FPAGDI/FPAGD abiertos; SPK_FPAG recalcula.",
+      "gateId": "anular-desaplicar"
+    },
+    {
+      "nombre": "SPQ_FCXCR",
+      "tipo": "SPQ",
+      "modelo": "FCXCR",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FCXCR.sql",
+      "metodos": [
+        {
+          "id": "DEFINIR_FACTURA",
+          "estado": "leido",
+          "hace": "PROCESO=editar: guarda COD_RESPUESTA, RESPUESTA, ESTADO (Soportar/Anular), USURESP. PROCESO=liberar: limpia ESTADO.",
+          "valida": ["editar: FCXCR.ESTADO debe estar vacío", "liberar: ESTADO≠''"],
+          "noValida": [],
+          "errores": ["Esta factura ya ha sido procesada.", "Primero debe procesar la factura."],
+          "llama": [],
+          "efecto": "UPDATE FCXCR.",
+          "capaId": "04-unido",
+          "gateId": "respuesta-devoluciones"
+        },
+        {
+          "id": "ENVIAR_FACTURA",
+          "estado": "leido",
+          "hace": "ENVIAR=DEVOL: SPQ_JSON ENT_COL CRUD_ENT PROCESO=DEVFACT FCXCR=True → ENTD DEVFACT → marca ENDEVO en ENT origen. ENVIAR=CXC: GENCONSECUTIVO @CXC → FCXC+FCXCD desde FCXCR/FTR → FTR cartera → SPK_RELIQUIDACXCQX.",
+          "valida": ["DEVOL: respuesta OK de SPQ_JSON y CNSDEVOL no vacío", "CXC: consecutivo @CXC generado", "CXC: FCXCD insertado"],
+          "noValida": ["CXC: CNSPAGO opcional en JSON — IDTERCERO desde FPAG si viene"],
+          "errores": ["No se recibió respuesta válida de SPQ_JSON…", "El campo CNSDEVOL vino vacío…", "No se pudo generar el consecutivo para CXC.", "No se insertaron detalles en FCXCD…"],
+          "llama": ["SPQ_JSON", "SPK_GENCONSECUTIVO", "SPK_RELIQUIDACXCQX"],
+          "efecto": "FCXCR.CNSDEVCXC + ENVIA=DEVOL|CXC.",
+          "capaId": "04-unido",
+          "gateId": "respuesta-devoluciones"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,322 @@
+{
+  "procesoId": "notas-dbcr",
+  "actualizado": "2026-09-06T09:23:00",
+  "nota": "SP → METODO + SPKs anidados. RUTA-CONFIG paso 3: CPNT + FNT config leídos 2026-09-06.",
+  "sps": [
+    {
+      "nombre": "SPQ_CPNT_COL",
+      "tipo": "SPQ",
+      "modelo": "CPNT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CPNT_COL.sql",
+      "cola": "CRUDCPNT INSERTAR/EDITAR/ELIMINAR leído 2026-09-06 RUTA-CONFIG paso 3. conf.cpnt CPNTComponent.",
+      "metodos": [
+        {
+          "id": "CRUDCPNT",
+          "estado": "leido",
+          "hace": "CRUD conceptos de notas CPNT según REGISTRO.PROCESO (INSERTAR/EDITAR/ELIMINAR).",
+          "valida": [
+            "INSERTAR: CODIGO no duplicado",
+            "ELIMINAR: CODIGO obligatorio"
+          ],
+          "noValida": [
+            "Existencia CUENTA en CUE",
+            "Referencias FNOT al eliminar",
+            "ISJSON en INSERT (solo RAISERROR global)"
+          ],
+          "errores": [
+            "EL CONCEPTO DE NOTA YA EXISTE",
+            "EL CODIGO DEL CONCEPTO DE NOTA ES OBLIGATORIO",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE CPNT: CODIGO, DESCRIPCION, CUENTA, MODULO, TIPORESPUESTA (P/T), HOMOLOGODIANDB, HOMOLOGODIANCR.",
+          "capaId": "01-configuracion",
+          "gateId": "catalogo-cpnt"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FNT_COL",
+      "tipo": "SPQ",
+      "modelo": "FNT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FNT_COL.sql",
+      "cola": "CRUDFNT INSERTAR/EDITAR/ELIMINAR leído 2026-09-06 RUTA-CONFIG paso 3. conf.fnt FNTComponent.",
+      "metodos": [
+        {
+          "id": "CRUDFNT",
+          "estado": "leido",
+          "hace": "CRUD tipos de nota FNT según REGISTRO.PROCESO (INSERTAR/EDITAR/ELIMINAR).",
+          "valida": [
+            "INSERTAR: IDNOTA no duplicado",
+            "ELIMINAR: IDNOTA obligatorio"
+          ],
+          "noValida": [
+            "Existencia CUENTA en CUE ni COMPROBANTE en COM",
+            "Referencias FNOT al eliminar"
+          ],
+          "errores": [
+            "EL TIPO DE NOTA YA EXISTE",
+            "EL CODIGO DEL TIPO DE NOTA ES OBLIGATORIO",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE FNT: IDNOTA, DESCRIPCION, TIPO DB/CR, COMPROBANTE, CUENTA, DECRUCES, AFCOSTO, HOMOLOGODIAN.",
+          "capaId": "01-configuracion",
+          "gateId": "tipos-fnt"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FNOT_COL",
+      "tipo": "SPQ",
+      "modelo": "FNOT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FNOT_COL.sql",
+      "metodos": [
+        {
+          "id": "FNOT_CRUD",
+          "estado": "leido",
+          "hace": "Cabecera FNOT: Nueva (GENCONSECUTIVO @FNOTC/@FNOTD), Editar, ANULAR abierta (ESTADO=A, motivo ≥10). NC+CONCEPTO=1 → SPK_GENITEMS_NOTACR.",
+          "valida": ["FTR existe", "Una sola nota abierta por factura", "ANULAR solo CERRADA=0"],
+          "noValida": ["No valida PRI al crear"],
+          "errores": ["Factura no encontrada", "Existe una Nota en proceso para esta Factura", "Solo se pueden anular por este medio notas sin aplicar", "Debe indicar el motivo de anulación (mínimo 10 caracteres)"],
+          "capaId": "02-operacion",
+          "gateId": "crear-nota",
+          "llama": ["SPK_GENCONSECUTIVO", "SPK_GENITEMS_NOTACR"],
+          "efecto": "INSERT/UPDATE FNOT; PROCEDENCIA=NOTAS; APLICADAA F/C según CNSCXC"
+        },
+        {
+          "id": "FNOT_ADDDETA",
+          "estado": "leido",
+          "hace": "Regenera FNOTD por concepto (%/valor) vía SPK_GENITEMS_NOTACR.",
+          "capaId": "02-operacion",
+          "gateId": "detalle-nota",
+          "llama": ["SPK_GENITEMS_NOTACR"]
+        },
+        {
+          "id": "FNOT_DELDETA",
+          "estado": "leido",
+          "hace": "Quita ítems generados por concepto (SPK_DESITEMS_NOTACR).",
+          "capaId": "02-operacion",
+          "gateId": "detalle-nota",
+          "llama": ["SPK_DESITEMS_NOTACR"]
+        },
+        {
+          "id": "FNOT_CRUDFNOTD",
+          "estado": "leido",
+          "hace": "CRUD manual FNOTD: Nuevo (ITEM+1), Editar, Borrar. Recalcula FNOT.VR_TOTAL. Perú: VR_UNITARIO=VR_TOTAL.",
+          "valida": ["FNOT existe ESTADO=O CERRADA=0", "PROCESO Nuevo/Editar/Borrar"],
+          "noValida": ["No valida saldo VWK al guardar línea (FE lo hace antes de enviar)"],
+          "errores": ["Nota No Encontrada, Revise e intente de nuevo"],
+          "capaId": "02-operacion",
+          "gateId": "detalle-nota",
+          "efecto": "INSERT/UPDATE/DELETE FNOTD; ajusta FTRD.VLRNOTACR si hay N_CUOTA en FTRD"
+        },
+        {
+          "id": "FNOT_APLICAR",
+          "estado": "leido",
+          "hace": "Gate apply: valida FNOTD, PRI cartera/contable, saldo VWK_CXCDIASVTO (NC); NC → SPK_RELIQUIDA_FTR; ejecuta SPK_NOTASCXC.",
+          "valida": ["VR_TOTAL>0", "FTR ESTADO=P sin TIPOANULACION", "NC: saldo SINGLO ≥ valor", "PRI CERRADO_CARTERA=0 y CERRADO=0"],
+          "noValida": ["ND no exige reliquida ni VWK saldo igual que NC"],
+          "errores": [
+            "Nota Sin Detalles, no se puede Aplicar",
+            "Periodo de Cartera Cerrado o no Existe",
+            "Periodo de Contable Cerrado o no Existe",
+            "El valor de la nota Credito no Puede ser Menor o Igual a Cero",
+            "No se permite aplicar una nota por el 100% del valor de la factura",
+            "Verique los Saldos, el Saldo de la Factura no cubre el Valor de la Nota",
+            "Inconsistencia en la Factura, Verifique el estado de la Factura"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "aplicar-nota",
+          "llama": ["SPK_RELIQUIDA_FTR", "SPK_NOTASCXC"],
+          "efecto": "CERRADA=1; cartera + CONTABILIZADA vía SPK"
+        },
+        {
+          "id": "FNOT_ANULANOTA",
+          "estado": "leido",
+          "hace": "Anula nota aplicada: bloquea si FACTE≠0; SPK_ANULANOTA_CR; marca ESTADO=A.",
+          "valida": ["FACTE=0 para anular por este camino"],
+          "errores": ["La NOTA no puede ser Anulada porque corresponde a una factura Electronica y ya se ha procesado"],
+          "capaId": "02-operacion",
+          "gateId": "anular-nota",
+          "llama": ["SPK_ANULANOTA_CR"]
+        },
+        {
+          "id": "CARGAR_NOTAS",
+          "estado": "leido",
+          "hace": "Recaudos sube plano TXT (5 columnas CSV por línea) → staging RPDX con CNSRPDX nuevo; valida FTR P, saldo VWK_CXCDIASVTO, CPNT, valor>0.",
+          "valida": ["FTR ESTADO=P sin TIPOANULACION", "Saldo tipo F ≥ valor", "CPNT.CODIGO existe", "VALOR>0"],
+          "noValida": ["No exige FACTE=2 (a diferencia del lote Notas DB/CR)", "No soporta ANULARFACT", "Un solo envío (sin lotes FE)"],
+          "errores": ["Factura no existe o se encuentra anulada", "Factura no tiene Saldo en Cartera en su tipo F", "Id.Concpeto no existe", "Valor de la nota no puede ser menor o igual a cero", "No se encontraron Datos para Procesar"],
+          "capaId": "03-alimentadores",
+          "gateId": "desde-recaudo",
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "INSERT RPDX; CANTIDAD=1 si fila con error; devuelve CNSRPDX + ERRADOS"
+        },
+        {
+          "id": "CARGAR_NOTAS_LOTE",
+          "estado": "leido",
+          "hace": "Notas DB/CR · Subir Notas: valida filas Excel (CSV en LINEAS) en RPDX; 1.er lote crea CNSRPDX, siguientes reutilizan el mismo (hasta 1500 filas/lote FE).",
+          "valida": ["FTR P sin anulación", "Saldo VWK_CXCDIASVTO tipo F ≥ valor", "CPNT/IDSERVICIO col.2", "VALOR>0", "NC: FACTE=2 o 6", "NC: ANULARFACT SI/NO", "NC+ANULARFACT=SI: valor y saldo SINGLO = VR_TOTAL"],
+          "noValida": ["Débito: SP parsea solo 5 columnas — plantilla FE tiene 8 (CCOSTO/IDAREA/PREFIJO no llegan a RPDX); FNOT_ADDDETA bloquea detalle auto en ND", "No valida PRI al cargar (solo al aplicar)"],
+          "errores": ["ANULARFACT debe ser SI o NO", "La factura debe estar notificada (FACTE=2) o prevalidada (FACTE=6)", "Para anular la factura (ANULARFACT=SI) el valor… debe ser iguales al VR_TOTAL", "El CNSRPDX indicado no existe en RPDX"],
+          "capaId": "02-operacion",
+          "gateId": "carga-masiva-lote",
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "INSERT RPDX (ID1=N_FACTURA, ID2=concepto/servicio, ID3=NIT, STRINGMEDIO3=ANULARFACT si NC); devuelve ERRADOS"
+        },
+        {
+          "id": "FNOT_CREARMASIVO",
+          "estado": "leido",
+          "hace": "Confirma lote: arma #LOG_MASIVO, descarta filas CANTIDAD=1, separa NC ANULARFACT=SI → cursor ANULARFAC; resto → SPK_APLICA_FNOT_MASIVA; devuelve resumen + detalle para Excel.",
+          "valida": ["CNSRPDX existe en RPDX", "CLASE C o D"],
+          "noValida": ["Si CATCH global, todas las filas PENDIENTE del bloque quedan ERROR con mismo mensaje"],
+          "errores": ["El Consecutivo no fue encontrado", "Error al anular la factura mediante ANULARFAC", "Mensajes de SPK_APLICA_FNOT_MASIVA / ANULARFAC en MENSAJE por fila"],
+          "capaId": "02-operacion",
+          "gateId": "carga-masiva-lote",
+          "llama": ["SPK_APLICA_FNOT_MASIVA", "SPQ_FTR_COL"],
+          "efecto": "OK/ERROR por fila; DELETE RPDX al terminar sin errores; FE descarga Log_notas_masivo.xlsx"
+        },
+        {
+          "id": "FNOT_LIMPIARPDX",
+          "estado": "leido",
+          "hace": "Botón Limpiar y salir: DELETE RPDX WHERE CNS=CNSRPDX.",
+          "capaId": "02-operacion",
+          "gateId": "carga-masiva-lote",
+          "efecto": "Abandona staging sin crear notas"
+        },
+        {
+          "id": "FNOT_ENCOLAR",
+          "estado": "leido",
+          "hace": "Cola DIAN: FACTE destino 1 (factura FACTE=2) o 5 (prevalidada FACTE=6 / nota sin factura + FTR_PREVALIDA_ACTIVA=SI).",
+          "valida": ["CERRADA=1", "ESTADO≠A", "Factura padre FACTE=2 o 6 si hay N_FACTURA"],
+          "errores": ["Factura … no se ha notificado a la DIAN", "No se puede enviar a la Dian una nota Sin Confirmar/Anulada"],
+          "capaId": "04-unido",
+          "gateId": "encolar-dian"
+        },
+        {
+          "id": "FNOT_DESENCOLAR",
+          "estado": "leido",
+          "hace": "Quita cola DIAN: FACTE→0 si estaba en 1, 3 o 5.",
+          "valida": ["CERRADA=1", "ESTADO≠A", "FACTE ∈ (1,3,5)"],
+          "errores": ["No se puede enviar a la Dian una nota Sin Confirmar/Anulada", "El estado de la nota no permite desencolar , Validar proceso Dian"],
+          "capaId": "04-unido",
+          "gateId": "encolar-dian",
+          "efecto": "UPDATE FNOT SET FACTE=0"
+        },
+        {
+          "id": "FNOT_ACTUALIZAR_FECHA",
+          "estado": "leido",
+          "hace": "Actualiza F_NOTA a hoy y MCP.FECHACONTABLE/MES si hay NROCOMPROBANTE (reenvío DIAN).",
+          "valida": ["CERRADA=1", "FACTE ∈ (0,1,3,5)", "ESTADO≠A"],
+          "errores": ["La nota debe estar cerrada para actualizar la fecha", "El estado de la nota no permite actualizar la fecha", "No se puede actualizar la fecha de una nota anulada"],
+          "capaId": "04-unido",
+          "gateId": "encolar-dian",
+          "efecto": "UPDATE FNOT.F_NOTA; UPDATE MCP si aplica"
+        },
+        {
+          "id": "FNOT_ENVIARSUNAT",
+          "estado": "leido",
+          "hace": "Envía nota a SUNAT (Perú): SPK_GENERA_JSON_PERU_NOTADBCR.",
+          "valida": ["IXCOUNTRY=PERU", "FACTEP≠OK (pendiente envío)"],
+          "errores": ["Variable pais no es Perú", "Nota No esta Pendiente de Enviar"],
+          "capaId": "04-unido",
+          "gateId": "encolar-dian",
+          "llama": ["SPK_GENERA_JSON_PERU_NOTADBCR"]
+        }
+      ]
+    }
+  ],
+  "spksAnidados": [
+    {
+      "nombre": "SPK_NOTASCXC",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NOTASCXC.sql",
+      "llamadoDesde": ["FNOT_APLICAR", "SPK_ANULANOTA_CR (rama ND reversión)"],
+      "hace": "Motor apply: mueve cartera (FCXCD/FCXCDV), LIBERAHADM libera HADM/HPRED; CERRADA=1; contabiliza SPK_NC_CONTAB_FNOT o reversa MCP si LIBERAHADM.",
+      "valida": ["Factura no anulada (PROCEDENCIA NOTAS)", "INDCXC=1 bloquea si LIBERAHADM=1"],
+      "errores": ["la Factura … Anulada", "asignada a una Cuenta de Cobro"],
+      "llama": ["SPK_NC_CONTAB_FNOT", "SPK_REVERSAR_MCP", "SPK_CONTAB_FTR", "SPK_RELIQUIDA_FTR", "SPK_REINTGRA_VENTA_INV", "SPK_GENERA_JSON_PERU_NOTADBCR"],
+      "gateId": "contabilizar-al-aplicar"
+    },
+    {
+      "nombre": "SPK_ANULANOTA_CR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ANULANOTA_CR.sql",
+      "llamadoDesde": ["FNOT_ANULANOTA"],
+      "hace": "Reverso contable: ANULA vs REVERSA según FNOT_ANULA_REVERSA y PRI; si FACTE=2+PROCEDENCIA NOTAS crea ND espejo y SPK_NOTASCXC.",
+      "valida": ["ESTADO≠A", "MCP existe para REVERSA"],
+      "errores": ["Nota Anulada, no se puede generar reversión", "Nota Credio Anulada"],
+      "llama": ["SPK_GENCONSECUTIVO", "SPK_NOTASCXC", "SPK_RELIQUIDA_FTR"],
+      "gateId": "reverso-anulacion"
+    },
+    {
+      "nombre": "SPK_GENITEMS_NOTACR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENITEMS_NOTACR.sql",
+      "llamadoDesde": ["FNOT_CRUD (NC+CONCEPTO)", "FNOT_ADDDETA"],
+      "hace": "Genera FNOTD desde FTRD según concepto %/valor; distribuye sobre líneas factura; respeta COPAPROPIO y saldo VWK.",
+      "valida": ["CONCEPTO=1", "DETGENERADOS=0 antes de regenerar"],
+      "gateId": "detalle-nota"
+    },
+    {
+      "nombre": "SPK_APLICA_FNOT_MASIVA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_APLICA_FNOT_MASIVA.sql",
+      "llamadoDesde": ["FNOT_CREARMASIVO"],
+      "hace": "Por fila RPDX: INSERT FNOT (PROCEDENCIA=NOTAS, CNSMASIVO=CNSRPDX) + FNOTD línea única (NC tipo C / ND tipo S) → SPK_NOTASCXC (apply+contab) → DELETE fila RPDX.",
+      "valida": ["@CNSRPDX/COMPANIA/IDSEDE/USUARIO/CLASE obligatorios", "VALOR1>0", "FTR join por ID1"],
+      "noValida": ["No regenera FNOTD por ítems de factura (una línea plana)", "IDAREA/CCOSTO/PREFIJO de plantilla débito no se usan (RPDX.ID4/ID5 vacíos en carga)"],
+      "errores": ["@CNSRPDX es obligatorio", "No existen registros en RPDX para el consecutivo indicado", "Errores de SPK_NOTASCXC propagan al #LOG_MASIVO vía CATCH en FNOT_CREARMASIVO"],
+      "llama": ["SPK_GENCONSECUTIVO", "SPK_NOTASCXC"],
+      "efecto": "CERRADA=1 + CONTABILIZADA por fila; FNOT queda en grilla principal",
+      "gateId": "carga-masiva-lote"
+    },
+    {
+      "nombre": "SPK_RELIQUIDA_FTR",
+      "tipo": "SPK",
+      "estado": "listado",
+      "fuente": "sql/SPK_RELIQUIDA_FTR.sql",
+      "llamadoDesde": ["FNOT_APLICAR (NC)", "SPK_NOTASCXC", "SPK_ANULANOTA_CR"],
+      "cola": "Compartido con Facturación; ficha en facturacion/sps.json"
+    },
+    {
+      "nombre": "SPK_GENERA_JSON_PERU_NOTADBCR",
+      "tipo": "SPK",
+      "estado": "listado",
+      "fuente": "sql/SPK_GENERA_JSON_PERU_NOTADBCR.sql",
+      "llamadoDesde": ["FNOT_ENVIARSUNAT", "SPK_NOTASCXC Perú"],
+      "cola": "En sql/; ficha pendiente profundidad"
+    },
+    {
+      "nombre": "SPK_DESITEMS_NOTACR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_DESITEMS_NOTACR.sql",
+      "llamadoDesde": ["FNOT_DELDETA"],
+      "hace": "Si CONCEPTO=1 y DETGENERADOS=1: DELETE FNOTD y resetea DETGENERADOS=0, VR_TOTAL=0.",
+      "valida": ["CERRADA=0"],
+      "noValida": ["No toca FTRD.VLRNOTACR (solo ítems generados por concepto)"],
+      "gateId": "detalle-nota"
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_FNOT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_FNOT.sql",
+      "llamadoDesde": ["SPK_NOTASCXC", "SPK_PAGOSCXC", "SPK_CONTAB_MASIVA"],
+      "hace": "Motor asiento MCP al aplicar nota: cabecera MCP/MCH según CPNT, PROCEDENCIA (NOTAS/CONCILIA/AUDITORIA), clase C/D; cartera castigada puede marcar CONTABILIZADA=1 sin MCP.",
+      "valida": ["PRI abierto", "No duplicar NROCOMPROBANTE", "COM/COMMS NOTADBCR configurado"],
+      "errores": ["NOTA YA CONTABILIZADA.", "CONSECUTIVO DE NOTA YA APARECE EN UN COMPROBANTE", "Periodo contable no Existe", "NO EXISTE CONFIGURACION CONTABLE PARA CONCILIACIONES"],
+      "llama": ["SPK_GENCONSECUTIVO", "SPK_REVISAR_COMPROBANTE", "SPK_NC_SUMA_DBCR", "SPK_NC_REVISAMCPE", "SPK_PASA_MCP_MCPNIIF", "SPK_NC_CONTAB_INV"],
+      "gateId": "contabilizar-al-aplicar"
+    }
+  ]
+}

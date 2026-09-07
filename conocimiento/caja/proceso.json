@@ -4,8 +4,8 @@
   "modulo": "CJA · MODULO DE CAJA",
   "estado": "parcial",
   "resumen": "Configuración (CAJ/CJR/CPCJ/FPA/turnos) → abrir sesión → recibos ingreso/egreso → confirmar (cierra recibo, toca banco y dispara contabilidad de ingreso) → procesos (reportes, anulación, contabilización masiva) → cierre de turno. Orquestador FE: MODELO CONF_CAJA (SPQ_CONF_CAJA + cola SPQ_CONF_CAJA_2). Reportes: CAJA_RPT (SPQ_CAJA_RPT).",
-  "actualizado": "2026-08-31",
-  "notaSql": "Flujo leído en Qrystalos2 y en sql_refe/0100015121/SPQ_CONF_CAJA.sql. No se archiva el cuerpo. Para un REQ hay que bajar el SPQ/SPK de hoy a sql/. INSERTA_FCJD e INSERTA_RECIBO no están en ese SPQ: caen en SPQ_CONF_CAJA_2 (pendiente).",
+  "actualizado": "2026-09-06T09:17:00",
+  "notaSql": "Operación SPQ_CONF_CAJA leída. Capa 01 config: 5/6 catálogos SQL completos (CPCJ, FPA, TUR, CJR, CXT). CAJ parcial — CREA/ACTUALIZA/ELIMINAR FE≠export. USVGS/UBEQ manual sin SPQ.",
   "ventanas": [
     {
       "uso": "Operación diaria",
@@ -18,7 +18,8 @@
       "uso": "Procesos / reportes / contabilización masiva",
       "ruta": "admin.procaja",
       "path": "/admin/procaja",
-      "vue": "ProCajaPage.vue → ProCajaComponent.vue"
+      "vue": "ProCajaPage.vue → ProCajaComponent.vue",
+      "entrada": "Menú Administrativo → Procesos de Caja (permiso MENUQ_CAJA). No exige caja abierta ni ser cajero. Distinto de admin.caja (movimientos diarios)."
     },
     {
       "uso": "Catálogo cajas",
@@ -51,27 +52,72 @@
       "numero": 1,
       "nombre": "Configuración",
       "estado": "parcial",
-      "explicacion": "Antes de operar: caja en CAJ, cajero en CJR, vínculo turno CXT+TUR, equipo UBEQ.ESCAJA y UBEQ.CAJA, conceptos CPCJ, formas de pago FPA (por caja en TGEN FORMAPAGO/TIPOEGRESO). Variable USVGS IDCJAPERTURACAJA debe existir en CPCJ (la usa abrir/cerrar). Otras variables de proceso: IDCJ_TRASLADOENCAJAS, IDCJTEDEVOLRECIBO, IDCJDEPOSITO, CAJCONCEPTNOANULABLE.",
-      "tablasClave": ["CAJ", "CJR", "CXT", "TUR", "UBEQ", "CPCJ", "FPA", "USVGS", "USUSU"],
+      "explicacion": "Antes de operar: conceptos CPCJ → formas de pago FPA → turnos TUR → cajas CAJ → cajeros CJR → asignación CXT → variables USVGS (IDCJ*) → equipo UBEQ. **Por qué sigue parcial:** (A) CAJ — export SPQ_CAJ_COL solo tiene CRUDCAJ INSERT/EDIT; FE también usa CREA_CAJ/ACTUALIZA_CAJ (conf.caj) y ELIMINAR (conf.caja) que no están en el script de hoy → escalar L3 re-export. (B) USVGS + UBEQ — configuración manual en conf/sistemas, sin SPQ documentable. (C) TGEN FORMAPAGO/TIPOEGRESO por caja — capa operación (CRUDFPA en CONF_CAJA), no catálogo FPA_COL.",
+      "flujoConfiguracion": [
+        "1. CPCJ — conceptos con CUENTA contable y TIPORECIBO (ingreso/egreso)",
+        "2. FPA — formas de pago globales (conf.fpa)",
+        "3. TUR — turnos horarios",
+        "4. CAJ — cajas (conf.caj o conf.caja); TGEN FORMAPAGO/TIPOEGRESO por caja en CAJComponent",
+        "5. CJR — cajeros",
+        "6. CXT — asignar cajero + caja + turno",
+        "7. USVGS — IDCJAPERTURACAJA y demás variables → códigos CPCJ",
+        "8. UBEQ — equipo del puesto: ESCAJA=1, CAJA=código"
+      ],
+      "tablasClave": [
+        "CAJ",
+        "CJR",
+        "CXT",
+        "TUR",
+        "UBEQ",
+        "CPCJ",
+        "FPA",
+        "USVGS",
+        "USUSU"
+      ],
       "gates": [
         {
-          "id": "catalogos",
-          "nombre": "Catálogos de caja",
-          "explicacion": "conf.caj = CAJ. conf.cpcj = CPCJ (cuenta, NOCONTAB, TIPORECIBO). conf.fpa = FPA. conf.caja = CRUD CAJ_COL y cajeros CJR. Turno cajero-caja en CXT.",
-          "invariante": "No se abre caja si falta IDCJAPERTURACAJA en CPCJ, si no hay turno CXT o si el equipo no es caja.",
+          "id": "catalogos-caj",
+          "nombre": "Catálogo cajas (CAJ)",
+          "explicacion": "conf.caj (`CnfCajPage`) y conf.caja (`CAJComponent`): CAJ_COL · CREA_CAJ / ACTUALIZA_CAJ. Campos sede, tipo, estado, cuentas puente.",
+          "invariante": "Código CAJ único; debe existir antes de asignar cajero CJR o turno CXT.",
           "sps": [
-            {
-              "nombre": "SPQ_CAJ_COL",
-              "metodo": "CRUDCAJ",
-              "rol": "Alta/edición de cajas (MODELO CAJ_COL). Convención SPQ_; verificar script de hoy."
-            }
+            { "nombre": "SPQ_CAJ_COL", "metodo": "CRUDCAJ (leído INSERTAR/EDITAR)", "rol": "conf.caja CAJComponent. CREA_CAJ/ACTUALIZA_CAJ (conf.caj) y ELIMINAR no están en export." }
           ]
         },
         {
-          "id": "conceptos",
+          "id": "cajeros-turnos",
+          "nombre": "Cajeros y turnos (CJR · CXT · TUR)",
+          "explicacion": "conf.caja pestañas: CJRComponent (CJR_COL CRUDCJR), CXTComponent (CXT_COL CRUDCXT), TURComponent (TUR_COL CRUDTUR). Vincula usuario cajero ↔ caja ↔ turno horario.",
+          "invariante": "VALIDA_INGRESO_PANTALLA exige turno CXT activo para el cajero y equipo UBEQ.ESCAJA=1.",
+          "sps": [
+            { "nombre": "SPQ_CJR_COL", "metodo": "CRUDCJR (leído INSERT/EDIT/ELIMINAR)", "rol": "Bloquea DELETE si CXT asignado." },
+            { "nombre": "SPQ_CXT_COL", "metodo": "CRUDCXT (leído INSERT/EDIT/ELIMINAR)", "rol": "Par CODCAJA+CODTURNO único; ELIMINAR exige ambos códigos." },
+            { "nombre": "SPQ_TUR_COL", "metodo": "CRUDTUR (leído INSERT/EDIT/ELIMINAR)", "rol": "ELIMINAR bloquea si hay CXT; hora FE → datetime con fecha de hoy." }
+          ]
+        },
+        {
+          "id": "conceptos-cpcj",
           "nombre": "Conceptos de caja (CPCJ)",
-          "explicacion": "Catálogo que debería clasificar cada línea FCJD.CONCEPTO. FK reales hacia CPCJ: CAJCP, CJTE, MOCM — no FCJD. En CRUDFPA el SP busca CPCJ.CUENTA por concepto+TIPORECIBO para el asiento.",
-          "invariante": "Un concepto operable existe en CPCJ. Abrir caja exige el de IDCJAPERTURACAJA. Confirmar hoy NO exige que todas las líneas FCJD existan en CPCJ (hueco de proceso).",
+          "explicacion": "conf.cpcj (`CnfCpcjPage`) y conf.caja (`CPCJComponent`): CPCJ_COL · CREA_CPCJ / ACTUALIZA_CPCJ / ELIMINAR_CPCJ. Campos CUENTA contable, TIPORECIBO, COMPROBANTE, flags UNICO/DECAJAMENOR/PIDEIMPTO/GENERAFACTURA, HOMOLOGODIAN.",
+          "invariante": "IDCJAPERTURACAJA y demás IDCJ* deben apuntar a CODIGO existente en CPCJ. Confirmar recibo NO exige FCJD.CONCEPTO ∈ CPCJ (hueco operación); contabilidad sí.",
+          "sps": [
+            { "nombre": "SPQ_CPCJ_COL", "metodo": "CREA/ACTUALIZA/ELIMINA_CPCJ (3/3 leído)", "rol": "Catálogo maestro. Sin validación CUE/COM en export." }
+          ]
+        },
+        {
+          "id": "formas-pago-fpa",
+          "nombre": "Formas de pago (FPA)",
+          "explicacion": "conf.fpa (`CnfFpaPage`): FPA_COL · CREA_FPA / ACTUALIZA_FPA. TGEN FORMAPAGO/TIPOEGRESO por caja. Usado en PCJ al confirmar recibo.",
+          "invariante": "Forma de pago debe estar habilitada para la caja antes de registrar PCJ en ingreso.",
+          "sps": [
+            { "nombre": "SPQ_FPA_COL", "metodo": "CREA/ACTUALIZA/ELIMINA_FPA (3/3 leído)", "rol": "Catálogo global conf.fpa. CRUDFPA operación distinto (TGEN por caja)." }
+          ]
+        },
+        {
+          "id": "variables-usvgs",
+          "nombre": "Variables de proceso (USVGS)",
+          "explicacion": "IDCJAPERTURACAJA, IDCJ_TRASLADOENCAJAS, IDCJTEDEVOLRECIBO, IDCJDEPOSITO, CAJCONCEPTNOANULABLE — referencian códigos CPCJ. CompDocu ASIGNA_COM asigna COM a USVGS vía CONF_CONTABLE.",
+          "invariante": "Sin IDCJAPERTURACAJA válida → KO al abrir caja.",
           "sps": []
         }
       ]
@@ -82,7 +128,15 @@
       "nombre": "Proceso propio",
       "estado": "parcial",
       "explicacion": "Pantalla Administrativo → Caja (admin.caja). Pestañas movimiento ingreso y egreso. Recibo FCJ, detalle FCJD, pagos PCJ, sesión ACJ/ACJD. CLASE_FAC COBRO vs PAGO. Procedencia CAJA vs CITAS/CE/otros cambia si se puede editar el documento (REQ 0100015121).",
-      "tablasClave": ["ACJ", "ACJD", "FCJ", "FCJD", "PCJ", "TFCJ", "TFCJD"],
+      "tablasClave": [
+        "ACJ",
+        "ACJD",
+        "FCJ",
+        "FCJD",
+        "PCJ",
+        "TFCJ",
+        "TFCJD"
+      ],
       "gates": [
         {
           "id": "entrar-pantalla",
@@ -187,7 +241,13 @@
       "nombre": "Lo que llega y completa",
       "estado": "parcial",
       "explicacion": "Otros módulos no tienen otro MODELO de caja: llaman CONF_CAJA (sobre todo CRUDFPA y confirmar) con procedencia distinta de CAJA. CONFIRMAR_RECIBO trata CITAS (FCJ.NOADMISION → CIT) y CE (AUT). Si esos orígenes graban FCJD.CONCEPTO que no está en CPCJ, el hueco llega ya armado.",
-      "tablasClave": ["CIT", "AUT", "FCJ", "FCJD", "PCJ"],
+      "tablasClave": [
+        "CIT",
+        "AUT",
+        "FCJ",
+        "FCJD",
+        "PCJ"
+      ],
       "gates": [
         {
           "id": "citas-ce",
@@ -223,7 +283,11 @@
       "nombre": "Subproceso con bancos",
       "estado": "parcial",
       "explicacion": "No es el módulo bancos completo. Al confirmar ingreso, SPQ_CONF_CAJA ejecuta SPK_ACTUALIZA_SALDO_BANCO. Flujo de caja en procaja (FlujoCajaComponent) es reporte CAJA_RPT por caja y FPA, no el movimiento bancario. Formas de pago FPA pueden exigir banco/documento/autorización.",
-      "tablasClave": ["PCJ", "FPA", "BCO"],
+      "tablasClave": [
+        "PCJ",
+        "FPA",
+        "BCO"
+      ],
       "gates": [
         {
           "id": "saldo-banco-al-confirmar",
@@ -246,7 +310,13 @@
       "nombre": "Envío a contabilidad",
       "estado": "parcial",
       "explicacion": "Dos caminos: (A) al confirmar, SPK_NC_CONTAB_CAJA_ING (ingreso) o SPK_NC_CONTAB_CAJA_EGR / SPK_CONTAB_CAJA_ING en anulación. (B) masivo en Procesos de caja → Contabilización: ENVIAR_RECIBOS_CONTABILIDAD marca FCJ.MARCACONT y SPK_CONTAB_MASIVA procedencia CAJA. Periodo PRI debe estar abierto. MCP.PROCEDENCIA=CAJA con REFERENCIA2=CODCAJA y REFERENCIA1=CNSFACJ. CRUDFPA usa CPCJ.CUENTA: si el concepto no está, el asiento sale mal o truena.",
-      "tablasClave": ["MCP", "MCUE", "PRI", "FCJ", "CPCJ"],
+      "tablasClave": [
+        "MCP",
+        "MCUE",
+        "PRI",
+        "FCJ",
+        "CPCJ"
+      ],
       "gates": [
         {
           "id": "contabilizar-al-confirmar",
@@ -296,5 +366,7 @@
         }
       ]
     }
-  ]
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-05T22:57:22"
 }

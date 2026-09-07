@@ -1,0 +1,476 @@
+{
+  "procesoId": "activos-fijos",
+  "actualizado": "2026-09-06T08:15:00",
+  "nota": "Ruta paso 7 profundizado. SPQ núcleo leído en sql/ de hoy. SPK_GEN_DEPRECIACION y SPK_APL_AJDEPRECIACION solo referenciados (llama[]). SPQ_GRUPAC leído (config). No se copió cuerpo.",
+  "sps": [
+    {
+      "nombre": "SPQ_IACT",
+      "tipo": "SPQ",
+      "modelo": "IACT",
+      "estado": "leido",
+      "fuente": "sql/SPQ_IACT.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR o EDITAR registro IACT con todos los campos del formulario (depreciación, mantenimiento, NIIF).",
+          "valida": ["INSERTAR: SERIAL único", "ICODALTERNO único si informado", "CODIGOINTERNO único"],
+          "noValida": ["No valida CUENTA∈CUE en este SPQ"],
+          "errores": ["EL SERIAL YA EXISTE…", "CODALTERNO DUPLICADO…", "CODIGOINTERNO DUPLICADO…"],
+          "llama": ["SPQ_GENSEQUENCE"],
+          "efecto": "OK devuelve IDACTIVO (prefijo ACT).",
+          "capaId": "02-operacion",
+          "gateId": "alta-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "TRE_TIPOACT",
+          "hace": "Devuelve flags PIDELINDEROS, PIDEMODELO, PIDENOESCRITURA, PIDEMARCA, PIDESERIAL, PIDENOPARTES, PIDEREFERENCIA, PIDEMATRICULA desde IACTT.",
+          "valida": ["IDTIPOACTIVO en parámetros"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FE muestra/oculta campos obligatorios del tipo.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_FOTO",
+          "hace": "Trae nombre y blob de ARCHIVOS por IACT.IDFOTO.",
+          "valida": ["IDACTIVO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura imagen activo.",
+          "capaId": "02-operacion",
+          "gateId": "foto-hoja-vida",
+          "estado": "leido"
+        },
+        {
+          "id": "INFO_HV_IACT",
+          "hace": "Cabecera IACT + fabricante TER y listado IACTEQU para hoja de vida.",
+          "valida": ["IDACTIVO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Dos recordsets para impresión/PDF.",
+          "capaId": "02-operacion",
+          "gateId": "foto-hoja-vida",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TIPOAF",
+      "tipo": "SPQ",
+      "modelo": "TIPOAF",
+      "estado": "leido",
+      "fuente": "sql/SPQ_TIPOAF.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR maestro IACTT (tipo activo): flags campos obligatorios, vida útil, base depreciable, clase.",
+          "valida": ["IDTIPOACTIVO único al insertar", "código único al renombrar en editar"],
+          "noValida": ["No valida CUENTA contable en insert (queda vacía)"],
+          "errores": ["EL ID … YA SE ENCUENTRA REGISTRADO", "EL CODIGO … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "IACTT actualizado.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_TIPOACTIVO_USUARIO",
+          "hace": "Asigna usuarios permitidos por tipo en TGEN (TABLA=TIPOACTXUSUARIO).",
+          "valida": ["CODIGO único por IDTIPOACTIVO"],
+          "noValida": [],
+          "errores": ["EL EMPLEADO YA SE ENCUENTRA ASIGNADO AL TIPO DE ACTIVO …"],
+          "llama": [],
+          "efecto": "Restringe quién puede dar de alta activos de ese tipo.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "Borra fila IACTT por IDTIPOACTIVO.",
+          "valida": [],
+          "noValida": ["No valida activos IACT existentes del tipo"],
+          "errores": ["ERROR_MESSAGE SQL si FK"],
+          "llama": [],
+          "efecto": "DELETE IACTT.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_DEP",
+          "hace": "Recalcula DEPRECIABLE y VALORSALVAMENTO de todos los IACT del tipo; borra IACTD no contabilizados de no depreciables; cursor llama SPK_GEN_DEPRECIACION por activo depreciable.",
+          "valida": ["IDTIPOACTIVO, TIPOSALV, BASEDEPRECIABLE"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE del cursor/SPK"],
+          "llama": ["SPK_GEN_DEPRECIACION"],
+          "efecto": "Masivo depreciación operativa por tipo.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_EVENTOAF",
+      "tipo": "SPQ",
+      "modelo": "EVENTOAF",
+      "estado": "leido",
+      "fuente": "sql/SPQ_EVENTOAF.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR catálogo IACTE: PIDEESTADO, PIDEVALOR, PIDECCOSTO, MUEVECONTABILIDAD, COMPROBANTE, TIPO (Entrada/Salida/Traslado), BAJA.",
+          "valida": ["IDEVENTO único"],
+          "noValida": [],
+          "errores": ["EL ID EVENTO … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "Define comportamiento al aplicar IACTH.",
+          "capaId": "01-configuracion",
+          "gateId": "eventos-maestro",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IACTE por IDEVENTO.",
+          "valida": [],
+          "noValida": ["No valida IACTH existentes"],
+          "errores": ["ERROR_MESSAGE SQL"],
+          "llama": [],
+          "efecto": "Elimina evento maestro.",
+          "capaId": "01-configuracion",
+          "gateId": "eventos-maestro",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_GRUPAC",
+      "tipo": "SPQ",
+      "modelo": "GRUPAC",
+      "estado": "leido",
+      "fuente": "sql/SPQ_GRUPAC.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR grupo en TGEN (TABLA=ACTIVOSFIJOS, CAMPO=GRUPOS).",
+          "valida": ["CODIGO único"],
+          "noValida": [],
+          "errores": ["EL CODIGO … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "Catálogo grupos activos.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_SUBGRUP",
+          "hace": "INSERTAR/EDITAR subgrupo en TGEN (CAMPO=SUBGRUPOS, CODIGO compuesto grupo+sub).",
+          "valida": ["CODIGO único en SUBGRUPOS"],
+          "noValida": [],
+          "errores": ["EL CODIGO … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "Subgrupos bajo grupo padre.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE grupo TGEN ACTIVOSFIJOS/GRUPOS.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Elimina grupo.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_SUBGRUP",
+          "hace": "DELETE subgrupo TGEN ACTIVOSFIJOS/SUBGRUPOS.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Elimina subgrupo.",
+          "capaId": "01-configuracion",
+          "gateId": "tipo-activo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IACTEQU",
+      "tipo": "SPQ",
+      "modelo": "IACTEQU",
+      "estado": "leido",
+      "fuente": "sql/SPQ_IACTEQU.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR accesorio IACTEQU (serial, modelo, marca, descripción).",
+          "valida": ["ITEM único por IDACTIVO+IDTIPOACTIVO al insertar"],
+          "noValida": [],
+          "errores": ["EL ITEM … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "Accesorios del activo.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IACTEQU por IDACTIVO+IDTIPOACTIVO+ITEM.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Quita accesorio.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IACTR",
+      "tipo": "SPQ",
+      "modelo": "IACTR",
+      "estado": "leido",
+      "fuente": "sql/SPQ_IACTR.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR responsable IACTR (tercero, fechas, checklist USO_BASI/ALMACENA/REVI_ACCESO/MANUALES).",
+          "valida": ["ITEM+IDTERCERO único al insertar", "IDTERCERO único por activo al editar"],
+          "noValida": [],
+          "errores": ["EL ITEM … YA SE ENCUENTRA REGISTRADO", "EL EMPLEADO … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "Responsables del activo.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IACTR por IDACTIVO+IDTERCERO+ITEM.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Quita responsable.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        },
+        {
+          "id": "RETIRAR",
+          "hace": "Marca responsable retirado: FECHARET=GETDATE(), ESTADO=Retirado.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Cierre lógico asignación.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_VERIF_IACT_PARTIC",
+      "tipo": "SPQ",
+      "modelo": "VERIF_IACT_PARTIC",
+      "estado": "leido",
+      "fuente": "sql/SPQ_VERIF_IACT_PARTIC.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR checklist VERIF del responsable (REFERENCIA1=IDACTIVO, REFERENCIA2=IDTERCERO).",
+          "valida": ["REFERENCIA2 único por REFERENCIA1"],
+          "noValida": [],
+          "errores": ["EL EMPLEADO … YA SE ENCUENTRA REGISTRADO"],
+          "llama": [],
+          "efecto": "Verificación entrega activo.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE VERIF por CNSVERIF.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Quita verificación.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        },
+        {
+          "id": "INFO_VERIF",
+          "hace": "Tres recordsets: IACT+responsable, IACTEQU, VERIF+TER cargo — para impresión verificación.",
+          "valida": ["IDACTIVO, IDTERCERO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura datos verificación.",
+          "capaId": "02-operacion",
+          "gateId": "accesorios-responsables",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IACTH",
+      "tipo": "SPQ",
+      "modelo": "IACTH",
+      "estado": "leido",
+      "fuente": "sql/SPQ_IACTH.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR/EDITAR evento IACTH (novedad, mantenimiento, traslado). INSERTAR usa SPQ_GENSEQUENCE @IACTH.",
+          "valida": [],
+          "noValida": ["No valida CONTABILIZADA=1 al editar", "No valida evento compra"],
+          "errores": ["ERROR_MESSAGE SQL"],
+          "llama": ["SPQ_GENSEQUENCE"],
+          "efecto": "Historial eventos del activo.",
+          "capaId": "02-operacion",
+          "gateId": "eventos-novedades",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IACTH por CNSIACTH.",
+          "valida": [],
+          "noValida": ["No valida CONTABILIZADA ni APLICADA"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Quita evento.",
+          "capaId": "02-operacion",
+          "gateId": "eventos-novedades",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_APLICAR_IACTH",
+      "tipo": "SPQ",
+      "modelo": "APLICAR_IACTH",
+      "estado": "leido",
+      "fuente": "sql/SPQ_APLICAR_IACTH.sql",
+      "metodos": [
+        {
+          "id": "GENERAR",
+          "hace": "Aplica novedad sin asiento MCP según TIPO evento: Traslado (actualiza CCOSTO/IDAREA/CUENTA IACT si MUEVECONTABILIDAD≠No), Salida (ESTADO), Entrada (PRECIOCOMERCIAL+=VALOR). Marca APLICADA=1 y llama SPK_GEN_DEPRECIACION.",
+          "valida": ["CNSIACTH existe"],
+          "noValida": ["No valida PRI abierto", "No valida CONTABILIZADA previa"],
+          "errores": ["ERROR_MESSAGE SQL"],
+          "llama": ["SPK_GEN_DEPRECIACION"],
+          "efecto": "Impacto operativo del evento en IACT.",
+          "capaId": "02-operacion",
+          "gateId": "eventos-novedades",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTAB_IACT",
+      "tipo": "SPQ",
+      "modelo": "CONTAB_IACT",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONTAB_IACT.sql",
+      "metodos": [
+        {
+          "id": "GENERAR",
+          "hace": "Contabiliza IACTH: valida PRI del periodo; crea/reusa MCPE+MCHE según TIPO (Entrada/Salida/Traslado) y flag BAJA; cuentas vía FNK_CUENTA_KMCOM; revisa MCPE y pasa MCP vía SPK_PASA_MCP_MCPNIIF.",
+          "valida": ["PRI existe (EL PERIODO CONTABLE NO EXISTE)", "CNSIACTH"],
+          "noValida": ["FE bloquea compra/contabilizado — no en SP"],
+          "errores": ["EL PERIODO CONTABLE NO EXISTE", "ERROR_MESSAGE SQL"],
+          "llama": ["SPK_GENCONSECUTIVO", "SPQ_NC_REVISAMCPE", "SPK_PASA_MCP_MCPNIIF"],
+          "efecto": "IACTH.CONTABILIZADA=1, NROCOMPROBANTE, APLICADA=1.",
+          "capaId": "04-unido",
+          "gateId": "evento-contable",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_GEN_DEPRECIACION",
+      "tipo": "SPQ",
+      "modelo": "GEN_DEPRECIACION",
+      "estado": "leido",
+      "fuente": "sql/SPQ_GEN_DEPRECIACION.sql",
+      "metodos": [
+        {
+          "id": "GENERAR_DEPRECIACION",
+          "hace": "Wrapper: EXEC SPK_GEN_DEPRECIACION @IDACTIVO — genera línea IACTD y actualiza acumulados IACT.",
+          "valida": ["IDACTIVO"],
+          "noValida": ["Validaciones de negocio están en SPK"],
+          "errores": ["ERROR_MESSAGE del SPK"],
+          "llama": ["SPK_GEN_DEPRECIACION"],
+          "efecto": "Depreciación operativa por activo.",
+          "capaId": "02-operacion",
+          "gateId": "depreciacion-operativa",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_IACT",
+          "hace": "Devuelve DEPRECIABLE, MESESDEPRECIADOS, VALORSALVAMENTO, MESESADEPRECIAR, FECHAULTDEPRECIACION, DEPACUM* de IACT.",
+          "valida": ["IDACTIVO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Refresca panel depreciación en FE.",
+          "capaId": "02-operacion",
+          "gateId": "depreciacion-operativa",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTABILIDAD_3",
+      "tipo": "SPQ",
+      "modelo": "CONTABILIDAD_3",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_CONTABILIDAD_3.sql",
+      "nota": "SP compartido con Contabilidad; aquí solo METODOs depreciación activos.",
+      "metodos": [
+        {
+          "id": "DEPRECIACION_ACTIVOS_LISTA",
+          "hace": "Lista IACTD del periodo ANO/MES join IACT: valores depreciados, acumulados, CONTABILIZADA, NROCOMPROBANTE.",
+          "valida": ["ANO y MES obligatorios", "MES 1-12", "usuario con COMPANIA"],
+          "noValida": [],
+          "errores": ["Parámetros ANO y MES son obligatorios", "El MES debe ser un número entre 1 y 12", "Usuario sin compañía asignada"],
+          "llama": [],
+          "efecto": "Grilla DepreciacionActivosComponent.",
+          "capaId": "05-contabilidad",
+          "gateId": "depreciacion-contabilizar",
+          "estado": "leido"
+        },
+        {
+          "id": "DEPR_ACFIJP_ENV_CONTA",
+          "hace": "Envía depreciación del periodo a contabilidad: valida USVGS IDCON_TCOM_DEPR, activos nuevos sin IACTD, consistencia MESESADEPRECIAR vs líneas LOCAL; EXEC SPK_APL_AJDEPRECIACION.",
+          "valida": ["ANO/MES", "IDCON_TCOM_DEPR configurada", "sin activos comprados 90d sin depreciar", "MESESADEPRECIAR vs IACTD LOCAL", "IACTD pendientes CONTABILIZADA=0 del periodo"],
+          "noValida": [],
+          "errores": ["No se encuentra configurada… IDCON_TCOM_DEPR", "Existen Activos Fijos comprados en los últimos meses…", "Existen inconsistencias entre los meses a depreciar…", "No hay Activos que Depreciar en este Periodo"],
+          "llama": ["SPK_APL_AJDEPRECIACION"],
+          "efecto": "Asiento masivo depreciación periodo.",
+          "capaId": "05-contabilidad",
+          "gateId": "depreciacion-contabilizar",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

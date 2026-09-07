@@ -1,0 +1,622 @@
+CREATE OR ALTER PROCEDURE DBO.SPQ_MCH_COL
+@JSON  NVARCHAR(MAX)
+WITH  
+ENCRYPTION
+AS
+DECLARE @PARAMETROS         NVARCHAR(MAX)  ,@MODELO           VARCHAR(100)    ,@METODO        VARCHAR(100)  ,@USUARIO        VARCHAR(12)
+       ,@GRUPO              VARCHAR(8)     ,@SYS_COMPUTERNAME VARCHAR(254)    ,@SEDE          VARCHAR(5)	   ,@A              INT
+       ,@IDENTITY           INT 
+       ,@PROCESO            VARCHAR(20)    ,@MCH    NVARCHAR(MAX)
+              ,@NROCOMPROBANTE     VARCHAR(20)
+       ,@COMPANIA     VARCHAR(2)
+       ,@NROASIENTO     INT
+       ,@TIPO     VARCHAR(2)
+       ,@CUENTA     VARCHAR(16)
+       ,@IDTERCERO     VARCHAR(20)
+       ,@CCOSTO     VARCHAR(20)
+       ,@DETALLE     VARCHAR(512)
+       ,@VALOR     DECIMAL(14,2)
+       ,@REFERENCIA1     VARCHAR(20)
+       ,@REFERENCIA2     VARCHAR(20)
+       ,@REFERENCIA3     VARCHAR(20)
+       ,@N_FACTURA     VARCHAR(20)
+       ,@F_FACTURAREF     DATETIME
+       ,@F_FACTURAREF_STR VARCHAR(10)
+       ,@F_VENCE     DATETIME
+       ,@F_VENCE_STR VARCHAR(10)
+       ,@GENERA     VARCHAR(10)
+       ,@CLASE_GENERA     VARCHAR(20)
+       ,@CNSPAGO     VARCHAR(20)
+       ,@ITEMREF     INT
+       ,@FECHA     DATETIME
+       ,@FECHA_STR VARCHAR(10)
+       ,@PREFIJO     VARCHAR(20)
+       ,@IDAREA     VARCHAR(20)
+       ,@CLASECONT     VARCHAR(1)
+       ,@ESTADO     VARCHAR(1)
+       ,@VALOR_PORCIMP     DECIMAL(9,5)
+       ,@BASE_IMP     DECIMAL(9,2)
+       ,@PROCEDENCIA     VARCHAR(20)
+       ,@REFERENCIA_PRO     VARCHAR(40)
+       ,@CONCILIADO     SMALLINT
+       ,@CNSFCXCXP     VARCHAR(20)
+       ,@CODUNG     VARCHAR(5)
+       ,@CODPRG     VARCHAR(20)
+       ,@ERROR     VARCHAR(128)
+       ,@IDOPERACION     VARCHAR(20)
+       ,@FECHACONCILIACION     DATETIME
+       ,@FECHACONCILIACION_STR VARCHAR(10)
+       ,@IDPROVEEDOR     VARCHAR(20)
+       ,@ENPRESUPUESTO     SMALLINT
+       ,@ESTADOIMP     VARCHAR(1)
+       ,@IDSEDE     VARCHAR(5)
+       ,@ESTADOMCP SMALLINT
+       ,@CUE_CLASE VARCHAR(10)
+       ,@CUE_TERCERO SMALLINT
+       ,@TAREA_CRUCE VARCHAR(10)
+       ,@SALDO_CRUCE DECIMAL(14,2)
+       ,@ABONO_PREV DECIMAL(14,2)
+       ,@FECHA_MCP DATETIME
+       ,@OBS_PAGO VARCHAR(200)
+BEGIN
+   SET LANGUAGE Spanish
+   SET DATEFORMAT dmy
+   
+   SELECT @A = ISJSON(@JSON)
+   IF @A = 0
+   BEGIN
+     RAISERROR('Json: Formato Erroneo',16,1)
+     RETURN
+   END
+   PRINT 'INGRESE A SPQ_MCH'
+   SELECT *
+   INTO #JSON
+   FROM OPENJSON (@json)
+   WITH (
+     MODELO         VARCHAR(100)     '$.MODELO',
+     METODO         VARCHAR(100)     '$.METODO',
+     USUARIO        VARCHAR(12)      '$.USUARIO',
+     PARAMETROS     NVARCHAR(MAX)     AS JSON
+   )
+   
+   SELECT @MODELO = MODELO , @METODO = METODO , @PARAMETROS = PARAMETROS , @USUARIO = USUARIO
+   FROM #JSON
+   --DEFINICION DE TABLA DE ERRORES
+   DECLARE @TBLERRORES TABLE(ERROR VARCHAR(200))
+   -- TOMA DEL GRUPO, SYS_COMPUTERNAME, SEDE   DE ACUERDO AL USUARIO
+   PRINT 'USUARIO:'+@USUARIO
+   SELECT @SYS_COMPUTERNAME = SYS_COMPUTERNAME FROM USUSU WHERE USUARIO = @USUARIO
+   SELECT @SEDE = IDSEDE FROM UBEQ WHERE SYS_ComputerName = @SYS_COMPUTERNAME
+   IF COALESCE(@SEDE,'') = '' SELECT @SEDE = '01'
+   IF COALESCE(@SYS_COMPUTERNAME,'') = '' SELECT @SYS_COMPUTERNAME = HOST_NAME()
+   PRINT 'SEDE='+@SEDE
+   IF @METODO = 'CRUDMCH'
+   BEGIN
+      PRINT 'CRUDMCH'
+      SELECT @MCH  = REGISTRO
+      FROM OPENJSON (@PARAMETROS)
+      WITH(
+         REGISTRO   NVARCHAR(MAX)     AS JSON
+      )
+      
+      SELECT @PROCESO     = JSON_VALUE(@MCH ,'$.PROCESO')
+      --Leo Campos enviados y los coloco en las variables respectivas
+      SELECT @NROCOMPROBANTE = JSON_VALUE(@MCH , '$.NROCOMPROBANTE' )
+      SELECT @COMPANIA = JSON_VALUE(@MCH , '$.COMPANIA' )
+      SELECT @NROASIENTO = JSON_VALUE(@MCH , '$.NROASIENTO' )
+      SELECT @TIPO = JSON_VALUE(@MCH , '$.TIPO' )
+      SELECT @CUENTA = JSON_VALUE(@MCH , '$.CUENTA' )
+      SELECT @IDTERCERO = JSON_VALUE(@MCH , '$.IDTERCERO' )
+      SELECT @CCOSTO = JSON_VALUE(@MCH , '$.CCOSTO' )
+      SELECT @DETALLE = JSON_VALUE(@MCH , '$.DETALLE' )
+      SELECT @VALOR = JSON_VALUE(@MCH , '$.VALOR' )
+      SELECT @REFERENCIA1 = JSON_VALUE(@MCH , '$.REFERENCIA1' )
+      SELECT @REFERENCIA2 = JSON_VALUE(@MCH , '$.REFERENCIA2' )
+      SELECT @REFERENCIA3 = JSON_VALUE(@MCH , '$.REFERENCIA3' )
+      SELECT @N_FACTURA = JSON_VALUE(@MCH , '$.N_FACTURA' )
+      SELECT @F_FACTURAREF_STR = JSON_VALUE(@MCH , '$.F_FACTURAREF')
+      SELECT @F_FACTURAREF = CONVERT(DATE, SUBSTRING(@F_FACTURAREF_STR,9,2)+'/'+SUBSTRING(@F_FACTURAREF_STR,6,2)+'/'+SUBSTRING(@F_FACTURAREF_STR,1,4))
+      SELECT @F_VENCE_STR = JSON_VALUE(@MCH , '$.F_VENCE')
+      SELECT @F_VENCE = CONVERT(DATE, SUBSTRING(@F_VENCE_STR,9,2)+'/'+SUBSTRING(@F_VENCE_STR,6,2)+'/'+SUBSTRING(@F_VENCE_STR,1,4))
+      SELECT @GENERA = JSON_VALUE(@MCH , '$.GENERA' )
+      SELECT @CLASE_GENERA = JSON_VALUE(@MCH , '$.CLASE_GENERA' )
+      SELECT @CNSPAGO = JSON_VALUE(@MCH , '$.CNSPAGO' )
+      SELECT @ITEMREF = JSON_VALUE(@MCH , '$.ITEMREF' )
+      SELECT @USUARIO = JSON_VALUE(@MCH , '$.USUARIO' )
+      SELECT @FECHA_STR = JSON_VALUE(@MCH , '$.FECHA')
+      SELECT @FECHA = CONVERT(DATE, SUBSTRING(@FECHA_STR,9,2)+'/'+SUBSTRING(@FECHA_STR,6,2)+'/'+SUBSTRING(@FECHA_STR,1,4))
+      SELECT @PREFIJO = JSON_VALUE(@MCH , '$.PREFIJO' )
+      SELECT @IDAREA = JSON_VALUE(@MCH , '$.IDAREA' )
+      SELECT @CLASECONT = JSON_VALUE(@MCH , '$.CLASECONT' )
+      SELECT @ESTADO = JSON_VALUE(@MCH , '$.ESTADO' )
+      SELECT @PROCESO = JSON_VALUE(@MCH , '$.PROCESO' )
+      SELECT @VALOR_PORCIMP = JSON_VALUE(@MCH , '$.VALOR_PORCIMP' )
+      SELECT @BASE_IMP = JSON_VALUE(@MCH , '$.BASE_IMP' )
+      SELECT @PROCEDENCIA = JSON_VALUE(@MCH , '$.PROCEDENCIA' )
+      SELECT @REFERENCIA_PRO = JSON_VALUE(@MCH , '$.REFERENCIA_PRO' )
+      SELECT @CONCILIADO = JSON_VALUE(@MCH , '$.CONCILIADO' )
+      SELECT @CNSFCXCXP = JSON_VALUE(@MCH , '$.CNSFCXCXP' )
+      SELECT @CODUNG = JSON_VALUE(@MCH , '$.CODUNG' )
+      SELECT @CODPRG = JSON_VALUE(@MCH , '$.CODPRG' )
+      SELECT @ERROR = JSON_VALUE(@MCH , '$.ERROR' )
+      SELECT @IDOPERACION = JSON_VALUE(@MCH , '$.IDOPERACION' )
+      SELECT @FECHACONCILIACION_STR = JSON_VALUE(@MCH , '$.FECHACONCILIACION')
+      SELECT @FECHACONCILIACION = CONVERT(DATE, SUBSTRING(@FECHACONCILIACION_STR,9,2)+'/'+SUBSTRING(@FECHACONCILIACION_STR,6,2)+'/'+SUBSTRING(@FECHACONCILIACION_STR,1,4))
+      SELECT @IDPROVEEDOR = JSON_VALUE(@MCH , '$.IDPROVEEDOR' )
+      SELECT @ENPRESUPUESTO = JSON_VALUE(@MCH , '$.ENPRESUPUESTO' )
+      SELECT @ESTADOIMP = JSON_VALUE(@MCH , '$.ESTADOIMP' )
+      SELECT @IDSEDE = JSON_VALUE(@MCH , '$.IDSEDE' )
+      IF UPPER(@PROCESO) = 'INSERTAR'
+      BEGIN
+         PRINT 'INSERTAR'
+         BEGIN TRY
+            INSERT INTO MCH(NROCOMPROBANTE,COMPANIA,TIPO,CUENTA,IDTERCERO,CCOSTO,DETALLE,
+                             VALOR,REFERENCIA1,REFERENCIA2,REFERENCIA3,N_FACTURA,F_FACTURAREF,F_VENCE,
+                             GENERA,CLASE_GENERA,CNSPAGO,ITEMREF,USUARIO,FECHA,PREFIJO,
+                             IDAREA,CLASECONT,ESTADO,PROCESO,VALOR_PORCIMP,BASE_IMP,PROCEDENCIA,
+                             REFERENCIA_PRO,CONCILIADO,CNSFCXCXP,CODUNG,CODPRG,ERROR,IDOPERACION,
+                             FECHACONCILIACION,IDPROVEEDOR,ENPRESUPUESTO,ESTADOIMP,IDSEDE)
+            SELECT @NROCOMPROBANTE,@COMPANIA,@TIPO,@CUENTA,@IDTERCERO,@CCOSTO,@DETALLE,
+                             @VALOR,@REFERENCIA1,@REFERENCIA2,@REFERENCIA3,@N_FACTURA,@F_FACTURAREF,@F_VENCE,
+                             @GENERA,@CLASE_GENERA,@CNSPAGO,@ITEMREF,@USUARIO,@FECHA,@PREFIJO,
+                             @IDAREA,@CLASECONT,@ESTADO,@PROCESO,@VALOR_PORCIMP,@BASE_IMP,@PROCEDENCIA,
+                             @REFERENCIA_PRO,@CONCILIADO,@CNSFCXCXP,@CODUNG,@CODPRG,@ERROR,@IDOPERACION,
+                             @FECHACONCILIACION,@IDPROVEEDOR,@ENPRESUPUESTO,@ESTADOIMP,@IDSEDE
+            SELECT @IDENTITY = SCOPE_IDENTITY()
+         END TRY
+         BEGIN CATCH
+            INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+         END CATCH
+
+         IF (SELECT COUNT(*) FROM @TBLERRORES)> 0
+         BEGIN
+            SELECT 'KO' OK
+            SELECT ERROR FROM @TBLERRORES
+            RETURN
+         END
+
+         -- Clarion GENERA=Cruce: validar saldo + SPK_ADMIN_PAGOS (INSERT)
+         IF UPPER(COALESCE(@GENERA,'')) = 'CRUCE'
+         BEGIN
+            SELECT @CUE_CLASE = UPPER(LTRIM(RTRIM(CLASE))),
+                   @CUE_TERCERO = COALESCE(TERCERO,0)
+              FROM CUE WHERE CUENTA = @CUENTA AND COMPANIA = COALESCE(@COMPANIA,'01')
+
+            SELECT @IDSEDE = COALESCE(NULLIF(@IDSEDE,''), IDSEDE, @SEDE),
+                   @FECHA_MCP = FECHA
+              FROM MCP WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+
+            IF COALESCE(@IDSEDE,'') = '' SELECT @IDSEDE = @SEDE
+            IF @FECHA_MCP IS NULL SELECT @FECHA_MCP = GETDATE()
+
+            IF COALESCE(@N_FACTURA,'') = '' OR COALESCE(@CNSFCXCXP,'') = ''
+               INSERT INTO @TBLERRORES(ERROR) SELECT 'Cruce: falta N_FACTURA o CNSFCXCXP'
+
+            IF (SELECT COUNT(*) FROM @TBLERRORES) = 0 AND @CUE_CLASE = 'CXP' AND @CUE_TERCERO = 1
+            BEGIN
+               SET @SALDO_CRUCE = NULL
+               IF OBJECT_ID('DBO.FNK_SALDO_CUENTA') IS NOT NULL
+                  SELECT @SALDO_CRUCE = ROUND(DBO.FNK_SALDO_CUENTA('CXP', @CNSFCXCXP, @N_FACTURA, @CNSPAGO), 0)
+               ELSE
+                  SELECT @SALDO_CRUCE = ROUND(COALESCE(SALDO,0),0) FROM FCXP WHERE CNSFCXP = @CNSFCXCXP
+
+               IF COALESCE(@VALOR,0) > COALESCE(@SALDO_CRUCE,0)
+                  INSERT INTO @TBLERRORES(ERROR)
+                  SELECT 'El Saldo en CxP es Inferior al Valor a Cruzar. SALDO: ' + CONVERT(VARCHAR(30), COALESCE(@SALDO_CRUCE,0))
+               ELSE
+               BEGIN
+                  SET @TAREA_CRUCE = 'INSERT'
+                  IF OBJECT_ID('DBO.SPK_GENCONSECUTIVO') IS NOT NULL
+                  BEGIN
+                     EXEC SPK_GENCONSECUTIVO @COMPANIA, @IDSEDE, '@FCXPP', @CNSPAGO OUTPUT
+                     IF LEFT(@CNSPAGO, LEN(@IDSEDE)) <> @IDSEDE
+                        SET @CNSPAGO = @IDSEDE + RIGHT('00000000' + LTRIM(RTRIM(@CNSPAGO)), 8)
+                  END
+                  IF COALESCE(@CNSPAGO,'') = ''
+                     INSERT INTO @TBLERRORES(ERROR) SELECT 'No se pudo generar CNSPAGO (FCXPP)'
+                  ELSE IF OBJECT_ID('DBO.SPK_ADMIN_PAGOS') IS NOT NULL
+                  BEGIN
+                     BEGIN TRY
+                        SET @OBS_PAGO = 'ORDEN DE PAGO EMITIDA DE CONTABILIDAD POR ' + COALESCE(@USUARIO,'')
+                        EXEC DBO.SPK_ADMIN_PAGOS
+                             'CXP', @N_FACTURA, @CNSFCXCXP, @CNSPAGO, @TAREA_CRUCE, @VALOR,
+                             @IDTERCERO, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE,
+                             @OBS_PAGO, 'CONTAB', 'P',
+                             NULL, @FECHA_MCP, NULL, NULL, NULL, NULL, NULL
+                        UPDATE MCH SET CNSPAGO = @CNSPAGO WHERE NROASIENTO = @IDENTITY
+                     END TRY
+                     BEGIN CATCH
+                        INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS CXP: ' + ERROR_MESSAGE()
+                     END CATCH
+                  END
+                  ELSE
+                     INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS no existe en la base de datos'
+               END
+            END
+            ELSE IF (SELECT COUNT(*) FROM @TBLERRORES) = 0 AND @CUE_CLASE = 'CXC' AND @CUE_TERCERO = 1
+            BEGIN
+               SET @SALDO_CRUCE = NULL
+               IF OBJECT_ID('DBO.FNK_SALDO_CUENTA') IS NOT NULL
+                  SELECT @SALDO_CRUCE = ROUND(DBO.FNK_SALDO_CUENTA('CXC', @CNSFCXCXP, @N_FACTURA, @CNSPAGO), 0)
+               ELSE
+                  SELECT @SALDO_CRUCE = ROUND(COALESCE(SALDONETO,0),0)
+                    FROM FCXCDV WHERE CNSCXC = @CNSFCXCXP AND N_FACTURA = @N_FACTURA
+
+               IF COALESCE(@VALOR,0) > COALESCE(@SALDO_CRUCE,0)
+                  INSERT INTO @TBLERRORES(ERROR)
+                  SELECT 'El Saldo en CxC es Inferior al Valor a Cruzar. SALDO: ' + CONVERT(VARCHAR(30), COALESCE(@SALDO_CRUCE,0))
+               ELSE
+               BEGIN
+                  SET @TAREA_CRUCE = 'INSERT'
+                  IF OBJECT_ID('DBO.SPK_GENCONSECUTIVO') IS NOT NULL
+                  BEGIN
+                     EXEC SPK_GENCONSECUTIVO @COMPANIA, @IDSEDE, '@FPAG', @CNSPAGO OUTPUT
+                     IF LEFT(@CNSPAGO, LEN(@IDSEDE)) <> @IDSEDE
+                        SET @CNSPAGO = @IDSEDE + RIGHT('00000000' + LTRIM(RTRIM(@CNSPAGO)), 8)
+                  END
+                  IF COALESCE(@CNSPAGO,'') = ''
+                     INSERT INTO @TBLERRORES(ERROR) SELECT 'No se pudo generar CNSPAGO (FPAG)'
+                  ELSE IF OBJECT_ID('DBO.SPK_ADMIN_PAGOS') IS NOT NULL
+                  BEGIN
+                     BEGIN TRY
+                        SET @OBS_PAGO = 'PAGO REALIZADO EN CONTABILIDAD POR ' + COALESCE(@USUARIO,'')
+                        EXEC DBO.SPK_ADMIN_PAGOS
+                             'CXC', @N_FACTURA, @CNSFCXCXP, @CNSPAGO, @TAREA_CRUCE, @VALOR,
+                             @IDTERCERO, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE,
+                             @OBS_PAGO, 'CONTAB', 'P',
+                             NULL, @FECHA_MCP, NULL, NULL, NULL, 'F', ''
+                        UPDATE MCH SET CNSPAGO = @CNSPAGO WHERE NROASIENTO = @IDENTITY
+                     END TRY
+                     BEGIN CATCH
+                        INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS CXC: ' + ERROR_MESSAGE()
+                     END CATCH
+                  END
+                  ELSE
+                     INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS no existe en la base de datos'
+               END
+            END
+
+            IF (SELECT COUNT(*) FROM @TBLERRORES) > 0
+            BEGIN
+               DELETE FROM MCH WHERE NROASIENTO = @IDENTITY
+               SELECT 'KO' OK
+               SELECT ERROR FROM @TBLERRORES
+               RETURN
+            END
+         END
+         
+         -- RECALCULACIÓN AUTOMÝTICA DESPUÉS DE INSERTAR
+         BEGIN TRY
+            EXEC SPK_REVISAR_COMPROBANTE @COMPANIA, @NROCOMPROBANTE
+            PRINT '? SPK_REVISAR_COMPROBANTE ejecutado después de INSERTAR'
+         END TRY
+         BEGIN CATCH
+            PRINT '? Error en SPK_REVISAR_COMPROBANTE después de INSERTAR: ' + ERROR_MESSAGE()
+         END CATCH
+         
+         BEGIN TRY
+            EXEC SPK_SUMA_DBCR @NROCOMPROBANTE
+            PRINT '? SPK_SUMA_DBCR ejecutado después de INSERTAR'
+         END TRY
+         BEGIN CATCH
+            PRINT '? Error en SPK_SUMA_DBCR después de INSERTAR: ' + ERROR_MESSAGE()
+         END CATCH
+         SELECT @ESTADOMCP=ESTADO FROM MCP WHERE NROCOMPROBANTE=@NROCOMPROBANTE
+         SELECT 'OK' OK ,@IDENTITY CNS,@ESTADOMCP AS ESTADOMCP, @CNSPAGO AS CNSPAGO
+         RETURN
+      END
+      IF UPPER(@PROCESO) = 'EDITAR'
+      BEGIN
+         BEGIN TRY
+            UPDATE MCH SET
+                    NROCOMPROBANTE = @NROCOMPROBANTE,COMPANIA = @COMPANIA,TIPO = @TIPO,CUENTA = @CUENTA,IDTERCERO = @IDTERCERO,CCOSTO = @CCOSTO,DETALLE = @DETALLE,
+                             VALOR = @VALOR,REFERENCIA1 = @REFERENCIA1,REFERENCIA2 = @REFERENCIA2,REFERENCIA3 = @REFERENCIA3,N_FACTURA = @N_FACTURA,F_FACTURAREF = @F_FACTURAREF,F_VENCE = @F_VENCE,
+                             GENERA = @GENERA,CLASE_GENERA = @CLASE_GENERA,CNSPAGO = @CNSPAGO,ITEMREF = @ITEMREF,USUARIO = @USUARIO,FECHA = @FECHA,PREFIJO = @PREFIJO,
+                             IDAREA = @IDAREA,CLASECONT = @CLASECONT,ESTADO = @ESTADO,PROCESO = @PROCESO,VALOR_PORCIMP = @VALOR_PORCIMP,BASE_IMP = @BASE_IMP,PROCEDENCIA = @PROCEDENCIA,
+                             REFERENCIA_PRO = @REFERENCIA_PRO,CONCILIADO = @CONCILIADO,CNSFCXCXP = @CNSFCXCXP,CODUNG = @CODUNG,CODPRG = @CODPRG,ERROR = @ERROR,IDOPERACION = @IDOPERACION,
+                             FECHACONCILIACION = @FECHACONCILIACION,IDPROVEEDOR = @IDPROVEEDOR,ENPRESUPUESTO = @ENPRESUPUESTO,ESTADOIMP = @ESTADOIMP,IDSEDE = @IDSEDE
+            WHERE NROASIENTO = @NROASIENTO
+         END TRY
+         BEGIN CATCH
+            INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+         END CATCH
+         IF (SELECT COUNT(*) FROM @TBLERRORES)> 0
+         BEGIN
+            SELECT 'KO' OK
+            SELECT ERROR FROM @TBLERRORES
+            RETURN
+         END
+
+         -- Clarion GENERA=Cruce: CHANGE en SPK_ADMIN_PAGOS
+         IF UPPER(COALESCE(@GENERA,'')) = 'CRUCE' AND COALESCE(@CNSPAGO,'') <> ''
+         BEGIN
+            SELECT @CUE_CLASE = UPPER(LTRIM(RTRIM(CLASE))),
+                   @CUE_TERCERO = COALESCE(TERCERO,0)
+              FROM CUE WHERE CUENTA = @CUENTA AND COMPANIA = COALESCE(@COMPANIA,'01')
+
+            SELECT @IDSEDE = COALESCE(NULLIF(@IDSEDE,''), IDSEDE, @SEDE),
+                   @FECHA_MCP = FECHA
+              FROM MCP WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+            IF COALESCE(@IDSEDE,'') = '' SELECT @IDSEDE = @SEDE
+            IF @FECHA_MCP IS NULL SELECT @FECHA_MCP = GETDATE()
+
+            SET @TAREA_CRUCE = 'CHANGE'
+            SET @ABONO_PREV = 0
+            SET @SALDO_CRUCE = 0
+
+            IF @CUE_CLASE = 'CXP' AND @CUE_TERCERO = 1
+            BEGIN
+               IF OBJECT_ID('DBO.FNK_SALDO_CUENTA') IS NOT NULL
+                  SELECT @SALDO_CRUCE = ROUND(DBO.FNK_SALDO_CUENTA('CXP', @CNSFCXCXP, @N_FACTURA, @CNSPAGO), 0)
+               ELSE
+                  SELECT @SALDO_CRUCE = ROUND(COALESCE(SALDO,0),0) FROM FCXP WHERE CNSFCXP = @CNSFCXCXP
+               SELECT @ABONO_PREV = ROUND(COALESCE(ABONO,0),0) FROM FCXPP WHERE CNSFCXPP = @CNSPAGO
+               IF COALESCE(@VALOR,0) > COALESCE(@SALDO_CRUCE,0) + COALESCE(@ABONO_PREV,0)
+                  INSERT INTO @TBLERRORES(ERROR)
+                  SELECT 'El Saldo en CxP es Inferior al Valor a Cruzar. SALDO: ' + CONVERT(VARCHAR(30), COALESCE(@SALDO_CRUCE,0))
+               ELSE IF OBJECT_ID('DBO.SPK_ADMIN_PAGOS') IS NOT NULL
+               BEGIN
+                  BEGIN TRY
+                     SET @OBS_PAGO = 'ORDEN DE PAGO EMITIDA DE CONTABILIDAD POR ' + COALESCE(@USUARIO,'')
+                     EXEC DBO.SPK_ADMIN_PAGOS
+                          'CXP', @N_FACTURA, @CNSFCXCXP, @CNSPAGO, @TAREA_CRUCE, @VALOR,
+                          @IDTERCERO, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE,
+                          @OBS_PAGO, 'CONTAB', 'P',
+                          NULL, @FECHA_MCP, NULL, NULL, NULL, NULL, NULL
+                  END TRY
+                  BEGIN CATCH
+                     INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS CXP CHANGE: ' + ERROR_MESSAGE()
+                  END CATCH
+               END
+            END
+            ELSE IF @CUE_CLASE = 'CXC' AND @CUE_TERCERO = 1
+            BEGIN
+               IF OBJECT_ID('DBO.FNK_SALDO_CUENTA') IS NOT NULL
+                  SELECT @SALDO_CRUCE = ROUND(DBO.FNK_SALDO_CUENTA('CXC', @CNSFCXCXP, @N_FACTURA, @CNSPAGO), 0)
+               ELSE
+                  SELECT @SALDO_CRUCE = ROUND(COALESCE(SALDONETO,0),0)
+                    FROM FCXCDV WHERE CNSCXC = @CNSFCXCXP AND N_FACTURA = @N_FACTURA
+               SELECT @ABONO_PREV = ROUND(COALESCE(VALORPAGO,0),0) FROM FPAGD WHERE CNSFPAG = @CNSPAGO
+               IF COALESCE(@VALOR,0) > COALESCE(@SALDO_CRUCE,0) + COALESCE(@ABONO_PREV,0)
+                  INSERT INTO @TBLERRORES(ERROR)
+                  SELECT 'El Saldo en CxC es Inferior al Valor a Cruzar. SALDO: ' + CONVERT(VARCHAR(30), COALESCE(@SALDO_CRUCE,0))
+               ELSE IF OBJECT_ID('DBO.SPK_ADMIN_PAGOS') IS NOT NULL
+               BEGIN
+                  BEGIN TRY
+                     SET @OBS_PAGO = 'PAGO REALIZADO EN CONTABILIDAD POR ' + COALESCE(@USUARIO,'')
+                     EXEC DBO.SPK_ADMIN_PAGOS
+                          'CXC', @N_FACTURA, @CNSFCXCXP, @CNSPAGO, @TAREA_CRUCE, @VALOR,
+                          @IDTERCERO, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE,
+                          @OBS_PAGO, 'CONTAB', 'P',
+                          NULL, @FECHA_MCP, NULL, NULL, NULL, 'F', ''
+                  END TRY
+                  BEGIN CATCH
+                     INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS CXC CHANGE: ' + ERROR_MESSAGE()
+                  END CATCH
+               END
+            END
+
+            IF (SELECT COUNT(*) FROM @TBLERRORES) > 0
+            BEGIN
+               SELECT 'KO' OK
+               SELECT ERROR FROM @TBLERRORES
+               RETURN
+            END
+         END
+         
+         -- RECALCULACIÓN AUTOMÝTICA DESPUÉS DE EDITAR
+         BEGIN TRY
+            EXEC SPK_REVISAR_COMPROBANTE @COMPANIA, @NROCOMPROBANTE
+            PRINT '? SPK_REVISAR_COMPROBANTE ejecutado después de EDITAR'
+         END TRY
+         BEGIN CATCH
+            PRINT '? Error en SPK_REVISAR_COMPROBANTE después de EDITAR: ' + ERROR_MESSAGE()
+         END CATCH
+         
+         BEGIN TRY
+            EXEC SPK_SUMA_DBCR @NROCOMPROBANTE
+            PRINT '? SPK_SUMA_DBCR ejecutado después de EDITAR'
+         END TRY
+         BEGIN CATCH
+            PRINT '? Error en SPK_SUMA_DBCR después de EDITAR: ' + ERROR_MESSAGE()
+         END CATCH
+          SELECT @ESTADOMCP=ESTADO FROM MCP WHERE NROCOMPROBANTE=@NROCOMPROBANTE
+         SELECT 'OK' OK,@ESTADOMCP AS ESTADOMCP, @CNSPAGO AS CNSPAGO
+         RETURN
+      END
+
+      IF UPPER(@PROCESO) = 'ELIMINAR'
+        BEGIN
+           PRINT 'ELIMINAR'
+           BEGIN TRY
+              -- Validar que el registro existe
+              IF NOT EXISTS(SELECT 1 FROM MCH WHERE NROASIENTO = @NROASIENTO)
+              BEGIN
+                 INSERT INTO @TBLERRORES(ERROR) SELECT 'El registro no existe'
+              END
+              ELSE
+              BEGIN
+                 IF EXISTS(SELECT 1 FROM MCH WHERE NROASIENTO = @NROASIENTO AND PROCEDENCIA != 'MANUAL')
+                 BEGIN
+                    INSERT INTO @TBLERRORES(ERROR) SELECT 'Solo se pueden eliminar registros de procedencia MANUAL'
+                 END
+                 ELSE
+                 BEGIN
+                    -- Clarion: antes de borrar, DELETE del pago si fue Cruce
+                    SELECT @GENERA = GENERA, @CNSPAGO = CNSPAGO, @CNSFCXCXP = CNSFCXCXP,
+                           @N_FACTURA = N_FACTURA, @VALOR = VALOR, @IDTERCERO = IDTERCERO,
+                           @CUENTA = CUENTA, @COMPANIA = COMPANIA, @NROCOMPROBANTE = NROCOMPROBANTE,
+                           @IDSEDE = IDSEDE
+                      FROM MCH WHERE NROASIENTO = @NROASIENTO
+
+                    IF UPPER(COALESCE(@GENERA,'')) = 'CRUCE' AND COALESCE(@CNSPAGO,'') <> ''
+                       AND OBJECT_ID('DBO.SPK_ADMIN_PAGOS') IS NOT NULL
+                    BEGIN
+                       SELECT @CUE_CLASE = UPPER(LTRIM(RTRIM(CLASE))),
+                              @CUE_TERCERO = COALESCE(TERCERO,0)
+                         FROM CUE WHERE CUENTA = @CUENTA AND COMPANIA = COALESCE(@COMPANIA,'01')
+                       SELECT @FECHA_MCP = FECHA, @IDSEDE = COALESCE(NULLIF(@IDSEDE,''), IDSEDE, @SEDE)
+                         FROM MCP WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+                       SET @TAREA_CRUCE = 'DELETE'
+                       BEGIN TRY
+                          IF @CUE_CLASE = 'CXP' AND @CUE_TERCERO = 1
+                          BEGIN
+                             SET @OBS_PAGO = 'ORDEN DE PAGO EMITIDA DE CONTABILIDAD POR ' + COALESCE(@USUARIO,'')
+                             EXEC DBO.SPK_ADMIN_PAGOS
+                                  'CXP', @N_FACTURA, @CNSFCXCXP, @CNSPAGO, @TAREA_CRUCE, @VALOR,
+                                  @IDTERCERO, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE,
+                                  @OBS_PAGO, 'CONTAB', 'P',
+                                  NULL, @FECHA_MCP, NULL, NULL, NULL, NULL, NULL
+                          END
+                          ELSE IF @CUE_CLASE = 'CXC' AND @CUE_TERCERO = 1
+                          BEGIN
+                             SET @OBS_PAGO = 'PAGO REALIZADO EN CONTABILIDAD POR ' + COALESCE(@USUARIO,'')
+                             EXEC DBO.SPK_ADMIN_PAGOS
+                                  'CXC', @N_FACTURA, @CNSFCXCXP, @CNSPAGO, @TAREA_CRUCE, @VALOR,
+                                  @IDTERCERO, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, @IDSEDE,
+                                  @OBS_PAGO, 'CONTAB', 'P',
+                                  NULL, @FECHA_MCP, NULL, NULL, NULL, 'F', ''
+                          END
+                       END TRY
+                       BEGIN CATCH
+                          INSERT INTO @TBLERRORES(ERROR) SELECT 'SPK_ADMIN_PAGOS DELETE: ' + ERROR_MESSAGE()
+                       END CATCH
+                    END
+
+                    IF (SELECT COUNT(*) FROM @TBLERRORES) = 0
+                       DELETE FROM MCH WHERE NROASIENTO = @NROASIENTO
+
+                 END
+              END
+           END TRY
+           BEGIN CATCH
+              INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+           END CATCH
+   
+           IF (SELECT COUNT(*) FROM @TBLERRORES) > 0
+           BEGIN
+              SELECT 'KO' OK
+              SELECT ERROR FROM @TBLERRORES
+              RETURN
+           END
+   
+           -- RECALCULACIÓN AUTOMÝTICA DESPUÉS DE ELIMINAR
+           BEGIN TRY
+              EXEC SPK_REVISAR_COMPROBANTE @COMPANIA, @NROCOMPROBANTE
+              PRINT '? SPK_REVISAR_COMPROBANTE ejecutado después de ELIMINAR'
+           END TRY
+           BEGIN CATCH
+              PRINT '? Error en SPK_REVISAR_COMPROBANTE después de ELIMINAR: ' + ERROR_MESSAGE()
+           END CATCH
+           
+           BEGIN TRY
+              EXEC SPK_SUMA_DBCR @NROCOMPROBANTE
+              PRINT '? SPK_SUMA_DBCR ejecutado después de ELIMINAR'
+           END TRY
+           BEGIN CATCH
+              PRINT '? Error en SPK_SUMA_DBCR después de ELIMINAR: ' + ERROR_MESSAGE()
+           END CATCH
+           SELECT @ESTADOMCP=ESTADO FROM MCP WHERE NROCOMPROBANTE=@NROCOMPROBANTE
+           SELECT 'OK' OK,@ESTADOMCP AS ESTADOMCP
+           RETURN
+        END
+
+      RETURN
+   END
+   IF @METODO = 'BORRAR_TODO'
+   BEGIN
+	   PRINT 'BORRAR_TODO'
+
+	   SELECT @NROCOMPROBANTE = JSON_VALUE(@PARAMETROS, '$.NROCOMPROBANTE')
+	   SELECT @COMPANIA = JSON_VALUE(@PARAMETROS, '$.COMPANIA')
+
+	   BEGIN TRY
+		  IF ISNULL(@NROCOMPROBANTE, '') = ''
+		  BEGIN
+			 INSERT INTO @TBLERRORES(ERROR) SELECT 'Número de comprobante requerido'
+		  END
+		  ELSE
+		  BEGIN
+			 -- @ESTADO_PADRE VARCHAR(1)
+			 --DECLARE @PROCEDENCIA_PADRE VARCHAR(20)
+			 --DECLARE @COMPANIA_PADRE VARCHAR(2)
+
+			 SELECT @ESTADO = COALESCE(ESTADO, '0'),
+					@PROCEDENCIA = PROCEDENCIA,
+					@COMPANIA = COMPANIA
+			 FROM MCP
+			 WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+
+			 IF @ESTADO IS NULL
+			 BEGIN
+				INSERT INTO @TBLERRORES(ERROR) SELECT 'El comprobante no existe'
+			 END
+			 ELSE IF @PROCEDENCIA <> 'MANUAL'
+			 BEGIN
+				INSERT INTO @TBLERRORES(ERROR) SELECT 'Solo se puede borrar todo el detalle en comprobantes de procedencia MANUAL'
+			 END
+			 ELSE IF @ESTADO = '2'
+			 BEGIN
+				INSERT INTO @TBLERRORES(ERROR) SELECT 'No se puede borrar el detalle de un comprobante contabilizado'
+			 END
+			 ELSE
+			 BEGIN
+				IF ISNULL(@COMPANIA, '') = ''
+				   SELECT @COMPANIA = @COMPANIA
+
+				DELETE FROM MCH
+				WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+
+				UPDATE MCP
+				   SET TOTALDEBITO = 0,
+					   TOTALCREDITO = 0,
+					   ESTADO = '0'
+				 WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+			 END
+		  END
+	   END TRY
+	   BEGIN CATCH
+		  INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+	   END CATCH
+
+	   IF (SELECT COUNT(*) FROM @TBLERRORES) > 0
+	   BEGIN
+		  SELECT 'KO' OK
+		  SELECT ERROR FROM @TBLERRORES
+		  RETURN
+	   END
+
+	   BEGIN TRY
+		  EXEC SPK_REVISAR_COMPROBANTE @COMPANIA, @NROCOMPROBANTE
+		  PRINT '? SPK_REVISAR_COMPROBANTE ejecutado después de BORRAR_TODO'
+	   END TRY
+	   BEGIN CATCH
+		  PRINT '? Error en SPK_REVISAR_COMPROBANTE después de BORRAR_TODO: ' + ERROR_MESSAGE()
+	   END CATCH
+
+	   BEGIN TRY
+		  EXEC SPK_SUMA_DBCR @NROCOMPROBANTE
+		  PRINT '? SPK_SUMA_DBCR ejecutado después de BORRAR_TODO'
+	   END TRY
+	   BEGIN CATCH
+		  PRINT '? Error en SPK_SUMA_DBCR después de BORRAR_TODO: ' + ERROR_MESSAGE()
+	   END CATCH
+
+	   UPDATE MCP
+		  SET TOTALDEBITO = 0,
+			  TOTALCREDITO = 0,
+			  ESTADO = '0'
+		WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+
+	   SELECT @ESTADOMCP = ESTADO
+	   FROM MCP
+	   WHERE NROCOMPROBANTE = @NROCOMPROBANTE
+	     AND COMPANIA = COALESCE(@COMPANIA, '01')
+
+	   SELECT 'OK' OK, 'Todos los detalles del comprobante fueron eliminados correctamente' MENSAJE, @ESTADOMCP AS ESTADOMCP
+	   RETURN
+   END
+
+
+END
+

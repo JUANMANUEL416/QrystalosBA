@@ -1,0 +1,281 @@
+{
+  "id": "activos-fijos",
+  "nombre": "Activos fijos",
+  "modulo": "IACT",
+  "familia": "activos",
+  "prioridad": 7,
+  "estado": "parcial",
+  "resumen": "IACT: config (TIPOAF/EVENTOAF/GRUPAC) → alta GUARDAR → accesorios/responsables → eventos IACTH (APLICAR vs CONTAB) → depreciación GEN_DEPRECIACION → contabilizar periodo CONTABILIDAD_3. SPQ núcleo 26/26 leído 2026-09-06 ruta paso 7. SPKs SPK_GEN_DEPRECIACION y SPK_APL_AJDEPRECIACION opcionales.",
+  "actualizado": "2026-09-06T08:15:00",
+  "notaSql": "Ruta paso 7 profundizado: 11 SPQ leídos en sql/ (26 METODOs en sps.json). Tablas IACT* sin .md en INDICE_TABLAS. AFI en docs = afiliados.",
+  "alcanceHasta": "Ciclo operativo del activo: parametrización → registro → eventos/novedades → depreciación operativa → envío contable masivo. No incluye inventario farmacia ni afiliados (AFI).",
+  "ventanas": [
+    {
+      "uso": "Menú activos fijos",
+      "ruta": "iact",
+      "path": "/iact",
+      "vue": "IndexPage.vue (USGRUH submenús)",
+      "entrada": "Activos Fijos → enlaces a Gestión y configuración."
+    },
+    {
+      "uso": "Gestión de activos (operación)",
+      "ruta": "iact.gestion",
+      "path": "/iact/gestion",
+      "vue": "GestionIACTPage → GestionIACTComponent",
+      "entrada": "Grilla IACT (AppStore.read). Diálogo: Info, Accesorios, Responsables, Depreciación. Expandido: Eventos (IACTH)."
+    },
+    {
+      "uso": "Configuración — tipos, grupos, eventos, artículos",
+      "ruta": "iact.conf_*",
+      "path": "/iact/iacttipoact, /iact/iactevent, /iact/iactgrupos, /iact/iactarticulo, /iact/iacttiparticulo, /iact/iacteqxsec, /iact/conf_notixsec",
+      "vue": "TipoActivoComponent (TIPOAF), EventosComponent (EVENTOAF), GruposComponent (GRUPAC), ArticulosComponent (IART), TipoArticuloComponent (ITAR), EquiposXSectorComponent (EQXSEAF), NotifiParXSectorComponent (NOTIFPARADAAF)",
+      "entrada": "Duplicados bajo conf/ para administradores de config global."
+    },
+    {
+      "uso": "Depreciación contable masiva",
+      "ruta": "cont.depreciacionActivos",
+      "path": "/cont/depreciacion_activos",
+      "vue": "DepreciacionActivosPage → DepreciacionActivosComponent",
+      "entrada": "Contabilidad → Depreciación activos. CONTABILIDAD_3: DEPRECIACION_ACTIVOS_LISTA, DEPR_ACFIJP_ENV_CONTA."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Catálogos previos: tipo activo IACTT (TIPOAF: campos obligatorios PIDEMODELO, PIDESERIAL…), eventos EVENTOAF, grupos GRUPAC, tipo/artículo ITAR+IART (FK IART→IACT), equipos por sector EQXSEAF, notificaciones NOTIFPARADAAF.",
+      "tablasClave": ["IACTT", "IART", "ITAR"],
+      "gates": [
+        {
+          "id": "tipo-activo",
+          "nombre": "Tipo de activo (IACTT)",
+          "explicacion": "TipoActivoComponent: TIPOAF GUARDAR/ELIMINAR, GENERAR_DEP, GUARDAR_TIPOACTIVO_USUARIO. Al elegir tipo en gestión, TRE_TIPOACT devuelve flags de campos obligatorios.",
+          "invariante": "Sin tipo activo no se define qué campos exige el formulario de alta.",
+          "sps": [
+            {
+              "nombre": "SPQ_IACT",
+              "metodo": "TRE_TIPOACT",
+              "rol": "Lee IACTT flags por IDTIPOACTIVO. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_TIPOAF",
+              "metodo": "GUARDAR / ELIMINAR / GENERAR_DEP",
+              "rol": "Maestro tipos. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_GRUPAC",
+              "metodo": "GUARDAR / GUARDAR_SUBGRUP / ELIMINAR*",
+              "rol": "Grupos/subgrupos TGEN. Ficha leída."
+            }
+          ]
+        },
+        {
+          "id": "articulo-inventario",
+          "nombre": "Artículo de inventario ligado al activo",
+          "explicacion": "ArticulosComponent bajo /iact: IART GUARDAR con IDTIPOACTIVO. IART.md: FK_IACT_IACTIDARTICULO. Campo IACT.IDARTICULO en alta.",
+          "invariante": "Opcional según sitio; enlaza inventario con activo fijo.",
+          "sps": [
+            {
+              "nombre": "SPQ_IART",
+              "metodo": "GUARDAR",
+              "rol": "Proceso Inventario compartido; fichas en otro módulo."
+            }
+          ]
+        },
+        {
+          "id": "eventos-maestro",
+          "nombre": "Catálogo de eventos/novedades",
+          "explicacion": "EventosComponent: EVENTOAF GUARDAR/ELIMINAR. Define IDEVENTO usado en IACTH (compra, baja, traslado, etc.).",
+          "invariante": "Evento con MUEVECONTABILIDAD=SI dispara CONTAB_IACT al aplicar.",
+          "sps": [
+            {
+              "nombre": "SPQ_EVENTOAF",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Catálogo eventos IACTE. Ficha leída."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Gestión: filtros avanzados + grilla IACT → INSERTAR/EDITAR (IACT GUARDAR) → pestañas Accesorios (IACTEQU), Responsables (IACTR+VERIF_IACT_PARTIC), Depreciación (GEN_DEPRECIACION). Expandido: EventosIACTComponent (IACTH). Hoja de vida PDF (hojaVidaPrint INFO_HV_IACT).",
+      "tablasClave": ["IACT", "IACTEQU", "IACTR", "IACTH", "IACTD"],
+      "gates": [
+        {
+          "id": "alta-activo",
+          "nombre": "Alta y edición de activo",
+          "explicacion": "GUARDAR INSERTAR: SPQ_GENSEQUENCE @IACT_ACT → IDACTIVO prefijo ACT. Valida SERIAL, ICODALTERNO, CODIGOINTERNO únicos. EDITAR actualiza IACT completo.",
+          "invariante": "Duplicados SERIAL/CODIGOINTERNO/CODALTERNO → KO.",
+          "sps": [
+            {
+              "nombre": "SPQ_IACT",
+              "metodo": "GUARDAR",
+              "rol": "INSERTAR/EDITAR IACT. Llama SPQ_GENSEQUENCE."
+            }
+          ]
+        },
+        {
+          "id": "accesorios-responsables",
+          "nombre": "Accesorios y responsables",
+          "explicacion": "AccesoriosIACTComponent: IACTEQU GUARDAR/ELIMINAR. ResponsablesIACTComponent: IACTR GUARDAR/ELIMINAR/RETIRAR; verificación VERIF_IACT_PARTIC.",
+          "invariante": "Solo en modo EDITAR del activo.",
+          "sps": [
+            {
+              "nombre": "SPQ_IACTEQU",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Tabla IACTEQU. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_IACTR",
+              "metodo": "GUARDAR / ELIMINAR / RETIRAR",
+              "rol": "Tabla IACTR. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_VERIF_IACT_PARTIC",
+              "metodo": "GUARDAR / ELIMINAR / INFO_VERIF",
+              "rol": "Checklist responsable. Ficha leída."
+            }
+          ]
+        },
+        {
+          "id": "eventos-novedades",
+          "nombre": "Eventos del activo (IACTH)",
+          "explicacion": "EventosIACTComponent: IACTH GUARDAR/ELIMINAR. Aplicar novedad: APLICAR_IACTH o CONTAB_IACT · GENERAR según MUEVECONTABILIDAD. No aplica si CONTABILIZADA=1 o evento compra.",
+          "invariante": "IACTH tiene CONTABILIZADA/NROCOMPROBANTE (columnas visibles en FE).",
+          "sps": [
+            {
+              "nombre": "SPQ_IACTH",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Historial eventos. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_APLICAR_IACTH",
+              "metodo": "GENERAR",
+              "rol": "Aplica novedad sin contabilidad. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_CONTAB_IACT",
+              "metodo": "GENERAR",
+              "rol": "Aplica novedad con asiento MCP. Ficha leída."
+            }
+          ]
+        },
+        {
+          "id": "depreciacion-operativa",
+          "nombre": "Depreciación por activo",
+          "explicacion": "DepreciacionIACTComponent: grilla IACTD (read). Botón Generar → GEN_DEPRECIACION · GENERAR_DEPRECIACION (solo si DEPRECIABLE). OBTENER_IACT refresca acumulados.",
+          "invariante": "IACTD registra CLASE, VALORDEPRECIADO, DEPACUM* por ITEM.",
+          "sps": [
+            {
+              "nombre": "SPQ_GEN_DEPRECIACION",
+              "metodo": "GENERAR_DEPRECIACION / OBTENER_IACT",
+              "rol": "Genera línea IACTD vía SPK_GEN_DEPRECIACION. Ficha leída."
+            }
+          ]
+        },
+        {
+          "id": "foto-hoja-vida",
+          "nombre": "Foto e impresión hoja de vida",
+          "explicacion": "OBTENER_FOTO: IACT.IDFOTO → ARCHIVOS. INFO_HV_IACT: cabecera IACT+TER fabricante + detalle IACTEQU. hojaVidaPrint.js usa MODELO IACT.",
+          "invariante": "IDACTIVO requerido.",
+          "sps": [
+            {
+              "nombre": "SPQ_IACT",
+              "metodo": "OBTENER_FOTO / INFO_HV_IACT",
+              "rol": "Consultas impresión. Ficha leída."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Origen datos maestros: TER (fabricante IDTERCERO), CEN/CCOSTO, AFU/IDAREA, CUE/CUENTA contable, HHAB/SECTOR, IART artículo inventario. Grilla join IACTT, CEN, AFU, CUE, IART, HHAB.",
+      "tablasClave": ["TER", "CEN", "AFU", "CUE", "HHAB", "IART"],
+      "gates": [
+        {
+          "id": "desde-inventario",
+          "nombre": "Artículo IART",
+          "explicacion": "IACT.IDARTICULO opcional; IART puede tener IDTIPOACTIVO. Alta desde catálogo /iact/iactarticulo.",
+          "invariante": "No confundir IART (inventario) con IACT (activo fijo).",
+          "sps": []
+        },
+        {
+          "id": "fabricante-tercero",
+          "nombre": "Fabricante / proveedor",
+          "explicacion": "FabricantesIACTComponent usa TER_COL GUARDAR. IACT.IDTERCERO en formulario.",
+          "invariante": "TER compartido con cartera/CxP.",
+          "sps": [
+            {
+              "nombre": "SPQ_TER_COL",
+              "metodo": "GUARDAR",
+              "rol": "Terceros; proceso transversal."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Eventos IACTH con impacto contable (CONTAB_IACT). Equipos por sector (EQXSEAF) y notificaciones mantenimiento (NOTIFPARADAAF) enlazan con sectores HHAB. DOCXTPO en artículos IART (no en IACT directo en este valle).",
+      "tablasClave": ["IACTH", "HHAB"],
+      "gates": [
+        {
+          "id": "evento-contable",
+          "nombre": "Novedad que mueve contabilidad",
+          "explicacion": "Al aplicar IACTH, FE elige CONTAB_IACT vs APLICAR_IACTH según flag del evento maestro.",
+          "invariante": "Ya contabilizado o evento compra → FE bloquea aplicar.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONTAB_IACT",
+              "metodo": "GENERAR",
+              "rol": "Asiento por novedad. Ficha leída."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "Operativo: GEN_DEPRECIACION escribe IACTD y actualiza DEPACUM* en IACT (CUENTA, CUENTA_AJDEPRECIACION en maestro). Masivo: DepreciacionActivosComponent lista por periodo (DEPRECIACION_ACTIVOS_LISTA) y envía DEPR_ACFIJP_ENV_CONTA (CONTABILIDAD_3). IACTH también tiene CONTABILIZADA/NROCOMPROBANTE por evento.",
+      "tablasClave": ["IACTD", "IACT", "IACTH", "MCP"],
+      "gates": [
+        {
+          "id": "depreciacion-contabilizar",
+          "nombre": "Contabilizar depreciación del periodo",
+          "explicacion": "/cont/depreciacion_activos: selecciona PRI → lista depreciaciones pendientes → Contabilizar período.",
+          "invariante": "Botón deshabilitado si depreciacionesPendientes=0.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "DEPRECIACION_ACTIVOS_LISTA / DEPR_ACFIJP_ENV_CONTA",
+              "rol": "OM depreciación AF. METODOs depreciación leídos."
+            },
+            {
+              "nombre": "SPQ_GEN_DEPRECIACION",
+              "metodo": "GENERAR_DEPRECIACION",
+              "rol": "Genera IACTD antes del envío contable masivo."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-06T04:50:00"
+}

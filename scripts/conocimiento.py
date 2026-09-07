@@ -70,15 +70,29 @@ def _now() -> str:
 def _read_json(path: str, default):
     if not os.path.isfile(path):
         return default
-    with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return default
 
 
 def _write_json(path: str, data) -> None:
+    """Escritura atómica: evita chat.json truncado si el proceso muere a mitad."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2)
-        fh.write("\n")
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def indice_path() -> str:
@@ -89,8 +103,247 @@ def pendientes_path() -> str:
     return os.path.join(CONOCIMIENTO, "pendientes.json")
 
 
+def ruta_path() -> str:
+    return os.path.join(CONOCIMIENTO, "RUTA.json")
+
+
+def vigilante_path() -> str:
+    return os.path.join(CONOCIMIENTO, "canales", "documentar", "vigilante.json")
+
+
 def chat_path() -> str:
     return os.path.join(CONOCIMIENTO, "chat.json")
+
+
+CANALES_CHAT = ("consultas", "documentar")
+BOT_IDS = {
+    "consultas": "__consultas__",
+    "documentar": "__documentar__",
+}
+
+
+def bot_id(canal: str) -> str:
+    return BOT_IDS.get(_norm_canal(canal), BOT_IDS["documentar"])
+
+
+def _norm_canal(canal: str) -> str:
+    c = (canal or "").strip().lower()
+    return c if c in CANALES_CHAT else "documentar"
+
+
+def chats_dir(canal: str) -> str:
+    return os.path.join(CONOCIMIENTO, "chats", _norm_canal(canal))
+
+
+def canal_live_dir(canal: str) -> str:
+    return os.path.join(CONOCIMIENTO, "canales", _norm_canal(canal))
+
+
+def _index_path(canal: str) -> str:
+    return os.path.join(chats_dir(canal), "index.json")
+
+
+def _sesion_path(canal: str, sid: str) -> str:
+    return os.path.join(chats_dir(canal), f"{sid}.json")
+
+
+def _titulo_default(canal: str) -> str:
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    nombre = "Consulta" if canal == "consultas" else "Documentar"
+    return f"{nombre} · {stamp}"
+
+
+def _nuevo_sid(canal: str) -> str:
+    canal = _norm_canal(canal)
+    sid = "c" + datetime.now().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:4]
+    if os.path.isfile(_sesion_path(canal, sid)):
+        sid = "c" + datetime.now().strftime("%Y%m%d%H%M%S") + uuid.uuid4().hex[:6]
+    return sid
+
+
+def _sync_live(canal: str, chat: dict) -> None:
+    live = canal_live_dir(canal)
+    os.makedirs(live, exist_ok=True)
+    _write_json(os.path.join(live, "chat.json"), chat)
+    if canal == "documentar":
+        _write_json(chat_path(), chat)
+
+
+def _empty_chat(canal: str, sid: str, titulo: str, proceso_id: str = "") -> dict:
+    return {
+        "id": sid,
+        "canal": canal,
+        "titulo": titulo,
+        "estado": "activo",
+        "procesoId": proceso_id or "",
+        "creadoEn": _now(),
+        "archivadoEn": None,
+        "mensajes": [],
+    }
+
+
+def _ensure_canal(canal: str) -> dict:
+    canal = _norm_canal(canal)
+    os.makedirs(chats_dir(canal), exist_ok=True)
+    os.makedirs(canal_live_dir(canal), exist_ok=True)
+    idx = _read_json(_index_path(canal), {}) or {}
+    idx.setdefault("items", [])
+    if idx.get("activoId") and os.path.isfile(_sesion_path(canal, idx["activoId"])):
+        return idx
+
+    legacy = load_chat_legacy() if canal == "documentar" else {"mensajes": []}
+    msgs = legacy.get("mensajes") or []
+    sid = _nuevo_sid(canal)
+    titulo = "Chat histórico" if msgs else _titulo_default(canal)
+    chat = _empty_chat(canal, sid, titulo, legacy.get("procesoId") or "")
+    chat["mensajes"] = msgs
+    _write_json(_sesion_path(canal, sid), chat)
+    idx = {
+        "activoId": sid,
+        "viendoId": sid,
+        "items": [
+            {
+                "id": sid,
+                "titulo": titulo,
+                "estado": "activo",
+                "creadoEn": chat["creadoEn"],
+                "archivadoEn": None,
+                "mensajes": len(msgs),
+            }
+        ],
+    }
+    _write_json(_index_path(canal), idx)
+    _sync_live(canal, chat)
+    return idx
+
+
+def load_chat_legacy() -> dict:
+    data = _read_json(chat_path(), {"procesoId": "", "mensajes": []})
+    if "mensajes" not in data:
+        data["mensajes"] = []
+    return data
+
+
+def _save_index(canal: str, idx: dict) -> None:
+    _write_json(_index_path(canal), idx)
+
+
+def load_sesion(canal: str, sid: str | None = None) -> dict:
+    canal = _norm_canal(canal)
+    idx = _ensure_canal(canal)
+    sid = sid or idx.get("viendoId") or idx.get("activoId")
+    data = _read_json(_sesion_path(canal, sid), None)
+    if not data:
+        data = _empty_chat(canal, sid or "vacio", _titulo_default(canal))
+    data.setdefault("mensajes", [])
+    if sid and sid == idx.get("activoId"):
+        live = _read_json(os.path.join(canal_live_dir(canal), "chat.json"), None)
+        if live and isinstance(live.get("mensajes"), list):
+            live_msgs = live.get("mensajes") or []
+            if live_msgs != (data.get("mensajes") or []):
+                data["mensajes"] = live_msgs
+                if live.get("procesoId"):
+                    data["procesoId"] = live.get("procesoId")
+                _write_json(_sesion_path(canal, sid), data)
+                _touch_item(idx, data)
+                _save_index(canal, idx)
+    return data
+
+
+def load_chat(canal: str = "documentar") -> dict:
+    return load_sesion(canal)
+
+
+def list_chats(canal: str) -> list[dict]:
+    idx = _ensure_canal(canal)
+    return idx.get("items") or []
+
+
+def _touch_item(idx: dict, chat: dict) -> None:
+    found = False
+    for item in idx.get("items") or []:
+        if item.get("id") == chat.get("id"):
+            item["titulo"] = chat.get("titulo")
+            item["estado"] = chat.get("estado")
+            item["archivadoEn"] = chat.get("archivadoEn")
+            item["mensajes"] = len(chat.get("mensajes") or [])
+            found = True
+            break
+    if not found:
+        idx.setdefault("items", []).insert(
+            0,
+            {
+                "id": chat.get("id"),
+                "titulo": chat.get("titulo"),
+                "estado": chat.get("estado"),
+                "creadoEn": chat.get("creadoEn"),
+                "archivadoEn": chat.get("archivadoEn"),
+                "mensajes": len(chat.get("mensajes") or []),
+            },
+        )
+
+
+def append_chat(autor: str, texto: str, proceso_id: str = "", canal: str = "documentar") -> dict:
+    canal = _norm_canal(canal)
+    idx = _ensure_canal(canal)
+    activo = idx.get("activoId")
+    chat = load_sesion(canal, activo)
+    if proceso_id:
+        chat["procesoId"] = proceso_id
+    chat.setdefault("mensajes", []).append(
+        {
+            "id": str(uuid.uuid4())[:8],
+            "autor": autor,
+            "texto": (texto or "").strip(),
+            "en": _now(),
+        }
+    )
+    _write_json(_sesion_path(canal, chat["id"]), chat)
+    _touch_item(idx, chat)
+    idx["viendoId"] = chat["id"]
+    _save_index(canal, idx)
+    _sync_live(canal, chat)
+    return chat
+
+
+def archivar_chat(canal: str, titulo: str = "") -> dict:
+    canal = _norm_canal(canal)
+    idx = _ensure_canal(canal)
+    actual = load_sesion(canal, idx.get("activoId"))
+    if titulo.strip():
+        actual["titulo"] = titulo.strip()
+    actual["estado"] = "archivado"
+    actual["archivadoEn"] = _now()
+    _write_json(_sesion_path(canal, actual["id"]), actual)
+    _touch_item(idx, actual)
+    sid = _nuevo_sid(canal)
+    nuevo = _empty_chat(canal, sid, _titulo_default(canal), actual.get("procesoId") or "")
+    _write_json(_sesion_path(canal, sid), nuevo)
+    _touch_item(idx, nuevo)
+    idx["activoId"] = sid
+    idx["viendoId"] = sid
+    _save_index(canal, idx)
+    _sync_live(canal, nuevo)
+    return {"ok": True, "archivado": actual, "activo": nuevo, "chats": idx["items"]}
+
+
+def nuevo_chat(canal: str, titulo: str = "") -> dict:
+    return archivar_chat(canal, titulo)
+
+
+def abrir_chat(canal: str, sid: str) -> dict:
+    canal = _norm_canal(canal)
+    idx = _ensure_canal(canal)
+    chat = load_sesion(canal, sid)
+    if not os.path.isfile(_sesion_path(canal, sid)):
+        return {"ok": False, "error": "Chat no encontrado"}
+    idx["viendoId"] = sid
+    _save_index(canal, idx)
+    return {
+        "ok": True,
+        "chat": chat,
+        "soloLectura": chat.get("id") != idx.get("activoId") or chat.get("estado") == "archivado",
+    }
 
 
 def tarea_path() -> str:
@@ -135,6 +388,127 @@ def load_pendientes() -> dict:
     return data
 
 
+def load_ruta() -> dict:
+    data = _read_json(
+        ruta_path(),
+        {"activo": True, "pasos": [], "nota": ""},
+    )
+    data.setdefault("pasos", [])
+    data.setdefault("activo", True)
+    return data
+
+
+def load_vigilante() -> dict:
+    data = _read_json(vigilante_path(), {}) or {}
+    data.setdefault("activo", True)
+    data.setdefault("intervaloMin", 12)
+    data.setdefault("ultimoTurnoEn", None)
+    data.setdefault("ultimoProcesoId", None)
+    data.setdefault("ultimoError", "")
+    return data
+
+
+def save_vigilante(data: dict) -> None:
+    data["actualizadoEn"] = _now()
+    _write_json(vigilante_path(), data)
+
+
+def _capas_incompletas(proc: dict) -> bool:
+    capas = proc.get("capas") or []
+    if not capas:
+        return True
+    for c in capas:
+        est = (c.get("estado") or "pendiente").lower()
+        if est in ("pendiente", "esqueleto", "no_leido"):
+            return True
+        if not (c.get("explicacion") or "").strip():
+            return True
+    return False
+
+
+def marcar_flujo_pasado(pid: str) -> dict:
+    """Marca que Documentar ya pasó por este proceso (flujo + pendientes). No espera el .sql."""
+    proc = load_proceso(pid)
+    if not proc:
+        return {"ok": False, "error": "Proceso no encontrado"}
+    proc["flujoPasado"] = True
+    proc["pasadaEn"] = _now()
+    if (proc.get("estado") or "").lower() == "esqueleto":
+        proc["estado"] = "parcial"
+    save_proceso(pid, proc)
+    return {"ok": True, "proceso": load_proceso(pid)}
+
+
+def proceso_pendiente_ruta(pid: str, abiertos: list | None = None) -> bool:
+    """True si aún no se armó el flujo de este paso. Los pendientes de .sql no detienen la ruta."""
+    proc = load_proceso(pid) or {}
+    estado = (proc.get("estado") or "esqueleto").lower()
+    if estado in ("completo", "listo"):
+        return False
+    if proc.get("flujoPasado"):
+        return False
+    if estado in ("esqueleto", "pendiente"):
+        return True
+    return _capas_incompletas(proc)
+
+
+def siguiente_valle() -> dict | None:
+    """Primer paso de RUTA cuyo flujo o pendientes siguen abiertos."""
+    ruta = load_ruta()
+    if not ruta.get("activo"):
+        return None
+    pendientes = load_pendientes()
+    abiertos = [
+        i
+        for i in pendientes.get("items") or []
+        if i.get("estado") != "completado"
+    ]
+    for paso in sorted(ruta.get("pasos") or [], key=lambda p: p.get("orden") or 99):
+        pid = paso.get("procesoId") or ""
+        if not pid or not proceso_pendiente_ruta(pid, abiertos):
+            continue
+        proc = load_proceso(pid) or {}
+        pend_proc = [i for i in abiertos if i.get("procesoId") == pid]
+        return {
+            "paso": paso,
+            "proceso": {
+                "id": pid,
+                "nombre": proc.get("nombre") or paso.get("nombre") or pid,
+                "estado": (proc.get("estado") or "esqueleto").lower(),
+            },
+            "pendientesAbiertos": len(pend_proc),
+            "sqlArchivos": sql_files(),
+        }
+    return None
+
+
+def ruta_resumen() -> dict:
+    ruta = load_ruta()
+    abiertos = [
+        i
+        for i in (load_pendientes().get("items") or [])
+        if i.get("estado") != "completado"
+    ]
+    hechos = []
+    faltan = []
+    for paso in sorted(ruta.get("pasos") or [], key=lambda p: p.get("orden") or 99):
+        pid = paso.get("procesoId") or ""
+        item = {
+            "orden": paso.get("orden"),
+            "procesoId": pid,
+            "nombre": paso.get("nombre") or pid,
+        }
+        if proceso_pendiente_ruta(pid, abiertos):
+            faltan.append(item)
+        else:
+            hechos.append(item)
+    return {
+        "cerrada": bool(ruta.get("pasos")) and not faltan,
+        "hechos": hechos,
+        "faltan": faltan,
+    }
+
+
 def save_pendientes(data: dict) -> None:
     data["actualizado"] = _now()
     _write_json(pendientes_path(), data)
@@ -148,6 +522,9 @@ def load_sps(proceso_id: str) -> dict:
     if isinstance(data, list):
         return {"procesoId": proceso_id, "sps": data}
     data.setdefault("procesoId", proceso_id)
+    # Alias legacy: algunos catálogos usaron "procedimientos" en vez de "sps".
+    if not data.get("sps") and isinstance(data.get("procedimientos"), list):
+        data["sps"] = data.get("procedimientos") or []
     data.setdefault("sps", [])
     return data
 
@@ -171,28 +548,6 @@ def save_proceso(proceso_id: str, data: dict) -> None:
     data["actualizado"] = _now()[:10]
     to_save = {k: v for k, v in data.items() if k not in ("sps", "spsNota", "spsActualizado")}
     _write_json(proceso_json_path(proceso_id), to_save)
-
-
-def load_chat() -> dict:
-    data = _read_json(chat_path(), {"procesoId": "", "mensajes": []})
-    if "mensajes" not in data:
-        data["mensajes"] = []
-    return data
-
-
-def append_chat(autor: str, texto: str, proceso_id: str = "") -> dict:
-    chat = load_chat()
-    if proceso_id:
-        chat["procesoId"] = proceso_id
-    msg = {
-        "id": str(uuid.uuid4())[:8],
-        "autor": autor,
-        "texto": (texto or "").strip(),
-        "en": _now(),
-    }
-    chat.setdefault("mensajes", []).append(msg)
-    _write_json(chat_path(), chat)
-    return chat
 
 
 def load_tarea() -> dict:
@@ -256,8 +611,12 @@ def sync_pendientes_con_sql() -> list[str]:
     return cerrados
 
 
-def resumen() -> dict:
+def resumen(canal: str = "documentar") -> dict:
     sync_pendientes_con_sql()
+    canal = _norm_canal(canal)
+    idx = _ensure_canal(canal)
+    chat = load_sesion(canal, idx.get("viendoId") or idx.get("activoId"))
+    solo = chat.get("id") != idx.get("activoId") or chat.get("estado") == "archivado"
     indice = load_indice()
     pendientes = load_pendientes()
     abiertos = [i for i in pendientes.get("items", []) if i.get("estado") != "completado"]
@@ -267,9 +626,18 @@ def resumen() -> dict:
         "pendientes": pendientes,
         "pendientesAbiertos": len(abiertos),
         "tarea": load_tarea(),
-        "chat": load_chat(),
+        "canal": canal,
+        "chat": chat,
+        "chats": idx.get("items") or [],
+        "chatActivoId": idx.get("activoId"),
+        "chatViendoId": idx.get("viendoId") or idx.get("activoId"),
+        "chatSoloLectura": solo,
         "sqlArchivos": sql_files(),
         "ruta": CONOCIMIENTO,
+        "rutaDocumentar": load_ruta(),
+        "valle": siguiente_valle(),
+        "vigilante": load_vigilante(),
+        "rutaEstado": ruta_resumen(),
     }
 
 
@@ -347,6 +715,11 @@ def create_proceso(nombre: str, modulo: str = "", proceso_id: str = "") -> dict:
 
 def add_pendiente(item: dict) -> dict:
     data = load_pendientes()
+    pid_fijo = (item.get("id") or "").strip()
+    if pid_fijo:
+        for existente in data.get("items") or []:
+            if existente.get("id") == pid_fijo:
+                return existente
     nuevo = {
         "id": item.get("id") or f"{item.get('procesoId') or 'proc'}-{str(uuid.uuid4())[:8]}",
         "tipo": item.get("tipo") or "sp",

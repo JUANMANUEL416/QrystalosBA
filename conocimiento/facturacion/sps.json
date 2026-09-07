@@ -1,63 +1,969 @@
 {
   "procesoId": "facturacion",
-  "actualizado": "2026-08-31",
-  "nota": "Catálogo SP → METODO visto en el frontend. Fichas leídas (hace/valida/errores) solo cuando se baje el .sql de hoy a sql/ y se pulse Documentar. No se copió ningún cuerpo.",
+  "actualizado": "2026-09-06T18:45:00",
+  "nota": "Fase B + gates 2026-09-06. SPQ_FTR_COL 68/68 fichas. Gate factura-financiera + capita-pgp cerrados SQL (ADD/DEL/TOTAL/ANULA_CAPITADA en sql/).",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
       "tipo": "SPQ",
       "modelo": "FTR_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 FTRComponent (Administrativo → Facturación)",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPQ_FTR_COL.sql",
+      "notaArchivo": "Documentado oleada 2026-09-06. No está en sql/ carpeta fija (archivado post-REQ). Releer sql/ solo si coordinador confirma cambio en SSMS.",
+      "cola": "68/68 fichas leído. Oleada 1 FTR_COL 2026-09-06.",
       "metodos": [
         {
           "id": "CREARFTR",
-          "hace": "Crea la factura.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Crea o edita cabecera FTR manual: INSERT fija PROCEDENCIA=**FINANCIERO**, TIPOFAC=I, IDFORMATOFTRFINANCIE; numeración SPK_GENNUMEROFACTURA/BOLETA; capita/PGP; al final EXEC SPK_TOTALFACTURFIN(@COPAPROPIO_ANT).",
+          "valida": [
+            "F_FACTURA no futura",
+            "PRI abierto (SPK_PRI)",
+            "Secuencia capita: TIPOCAP 1 no dup Inicial; 2 exige Inicial; 3 exige Periodo",
+            "PGPEVE=1+TIPOCAP 0/4 comentado (hosp público/masiva)",
+            "FDIAN sede PROCEDENCIA=FTR",
+            "PPT/TTEC cuenta CxC"
+          ],
+          "noValida": [
+            "Validación TIPOCAP solo si CAPIPGP=1 y PGPEVE=1"
+          ],
+          "errores": [
+            "La Fecha de Emision... superio a la fecha Acutal",
+            "Periodo Contable No Existe o no Esta Abierto",
+            "Ya Existe una Factura de Capita Inicial",
+            "No existe la Factura de Capita Inicial",
+            "No existe la Factura de Capita Periodo... Final",
+            "Sede No habilitada para emitir Facturas"
+          ],
           "capaId": "02-operacion",
-          "gateId": "armar-factura"
+          "gateId": "factura-financiera",
+          "ventanaFe": "FTRComponent · Nueva Factura → takeCompletedFTR → ejecutarGuardadoFTR",
+          "llama": [
+            "SPK_PRI",
+            "SPK_GENCONSECUTIVO",
+            "SPK_GENNUMEROFACTURA",
+            "SPK_GENNUMERO_BOLETA",
+            "SPK_TOTALFACTURFIN"
+          ]
         },
         {
           "id": "CRUDFTRD",
-          "hace": "Agrega o cambia ítems de la factura.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Inserta/actualiza línea FTRD; calcula IVA según SER/PRE y ARSTIPOCONTRATO; recalcula totales.",
+          "valida": [
+            "N_FACTURA obligatorio",
+            "Existe FTR"
+          ],
+          "errores": [
+            "No Se ha Relacionado Ninguna Factura..."
+          ],
           "capaId": "02-operacion",
-          "gateId": "armar-factura"
+          "gateId": "armar-factura",
+          "llama": [
+            "SPK_TOTALFACTURFIN",
+            "SPK_FAC_IMPDEDUC"
+          ]
         },
         {
-          "id": "VALIDAFTR",
-          "hace": "Valida la factura (también se llama desde FTRFE_COL).",
-          "estado": "listado",
+          "id": "DELETEFTRD",
+          "estado": "leido",
+          "hace": "Elimina línea FTRD por CNSFTR+N_CUOTA; recalcula totales e impuesto deducible.",
+          "valida": [
+            "N_FACTURA presente",
+            "FTR CONTABILIZADA=0, FACTE=0, IMPRESO<=0"
+          ],
+          "errores": [
+            "Factura Contabilizada, Notificada a la Dian y/o Impresa, no se permiten Cambios",
+            "N_Factura no Encontrada"
+          ],
           "capaId": "02-operacion",
-          "gateId": "armar-factura"
+          "gateId": "armar-factura",
+          "llama": [
+            "SPK_TOTALFACTURFIN",
+            "SPK_FAC_IMPDEDUC"
+          ]
+        },
+        {
+          "id": "LISTAFTRD",
+          "estado": "leido",
+          "hace": "Consulta líneas FTRD de una factura (N_CUOTA, área, valor, CCOSTO, prefijo, cantidad, VR_TOTAL).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "N_FACTURA en JSON"
+          ]
+        },
+        {
+          "id": "CALCIMP_FTRD",
+          "estado": "leido",
+          "hace": "Vista previa IVA al editar línea: Manual→PRE+F_FACTURA; Contrato→SER/PRE. Perú fija 18%. Capita retorna null.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "N_FACTURA, VALOR>0, CANTIDAD>0",
+            "FIMPDV vigente para impuesto"
+          ],
+          "noValida": [
+            "Capita (CAPITADA=1) no calcula IVA"
+          ],
+          "llama": [
+            "FNK_VALOR_IMPUESTO"
+          ]
+        },
+        {
+          "id": "ADDFTRDC",
+          "estado": "leido",
+          "hace": "Agrega/quita relación capita FTRDC vía SPK_ADDSERCAP o SPK_DELSERCAP (PROCESO ADD/DEL).",
+          "valida": [
+            "CNSFTR y N_CUOTA>0"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "capita-pgp",
+          "llama": [
+            "SPK_ADDSERCAP",
+            "SPK_DELSERCAP"
+          ]
+        },
+        {
+          "id": "ADDFTRDC_MARCA",
+          "estado": "leido",
+          "hace": "Desde marcas masivas: INSERT FTRDC desde VWK_CARGOS_HADMAUTCIT; actualiza CIT/AUTD/HCATDIMOV/IMOV/HADMF.",
+          "valida": [
+            "Marcas del usuario en CNSAGREGAPGP",
+            "Excluye gestión si FTRDC_INCLUYEGESTION=NO"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "capita-pgp"
+        },
+        {
+          "id": "REV_DUP_FTRDC",
+          "estado": "leido",
+          "hace": "Lista grupos duplicados FTRDC si FTR_REV_DUP=SI.",
+          "valida": [
+            "Variable FTR_REV_DUP=SI"
+          ],
+          "errores": [
+            "La revisión de servicios duplicados no está habilitada"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "capita-pgp"
+        },
+        {
+          "id": "APLICAR_REV_DUP_FTRDC",
+          "estado": "leido",
+          "hace": "Elimina duplicados FTRDC marcados en revisión; recalcula CP_VLR_SERVICIOS/COPAGOS en FTR.",
+          "capaId": "02-operacion",
+          "gateId": "capita-pgp",
+          "valida": [
+            "CNSFTR",
+            "Grupos duplicados previamente listados (REV_DUP_FTRDC)"
+          ]
+        },
+        {
+          "id": "QUITAR_FTRDC",
+          "estado": "leido",
+          "hace": "Quita relación capita: DELETE FTRDC y desmarca origen (CIT/AUTD/HADMF/IMOV según PROCEDENCIA).",
+          "capaId": "02-operacion",
+          "gateId": "capita-pgp",
+          "valida": [
+            "CNSFTR",
+            "N_CUOTA o lote seleccionado"
+          ]
+        },
+        {
+          "id": "MARCAITEM_VK",
+          "estado": "leido",
+          "hace": "Marca/desmarca ítem en vista VK (VWK_CARGOS) para facturación masiva.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "PROCEDENCIA + claves origen"
+          ]
+        },
+        {
+          "id": "MARCAPTE_VK",
+          "estado": "leido",
+          "hace": "Marca/desmarca paciente completo en VK masiva.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Identificador paciente/admisión"
+          ]
+        },
+        {
+          "id": "GET_TOTALES",
+          "estado": "leido",
+          "hace": "Agregado dinámico COUNT+SUM(VR_TOTAL) sobre FTR según WHERE_DATA del FE.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "WHERE_DATA SQL seguro"
+          ],
+          "errores": [
+            "KO si sp_executesql falla"
+          ]
         },
         {
           "id": "ANULARFAC",
-          "hace": "Anula la factura.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Anula factura ESTADO=P; si PROCEDENCIA=FINANCIERO y CAPITADA=1 → **SPK_ANULA_FACT_CAPITADA**; si FINANCIERO evento → SPK_ANULA_FACT; resto procedencias → SPK_ANULA_FACT.",
+          "valida": [
+            "ESTADO=P y TIPOANULACION<>NC",
+            "Sin FNOT activas (salvo PART)",
+            "Sin FPAGD recaudo (salvo PART)",
+            "IDDEP facturación o MAD/CMV/PHD",
+            "INDCARTERA/INDCXC=0 salvo excepciones",
+            "PRI no cerrado cont/cart/fac",
+            "FACTE=2 exige MCP contabilizado para NC"
+          ],
+          "noValida": [
+            "PART=1 relaja varias validaciones cartera/departamento"
+          ],
+          "errores": [
+            "Factura Anulada...",
+            "Notas Debito/Credito Asociadas",
+            "Pagos Asociadas",
+            "No esta en el Departamento de Facturacion",
+            "Asignada a una Cuenta por Cobrar",
+            "Periodo Contable... CERRADO",
+            "no se Encuentra correctamente contabilizada... Dian"
+          ],
           "capaId": "02-operacion",
-          "gateId": "armar-factura"
+          "gateId": "armar-factura",
+          "llama": [
+            "SPK_ANULA_FACT",
+            "SPK_ANULA_FACT_CAPITADA"
+          ]
+        },
+        {
+          "id": "ANULARFAC_MASIVO",
+          "estado": "leido",
+          "hace": "Anula lote de facturas vía cursor; mismas reglas que ANULARFAC por fila.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "WHERE_DATA o lista N_FACTURA",
+            "PRI no cerrado por factura"
+          ],
+          "errores": [
+            "Errores acumulados por factura en @TBLERRORES"
+          ],
+          "llama": [
+            "SPK_ANULA_FACT",
+            "SPK_ANULA_FACT_CAPITADA"
+          ]
+        },
+        {
+          "id": "CONTAR_FACTURAS_ANULAR",
+          "estado": "leido",
+          "hace": "Cuenta facturas elegibles para anulación masiva según filtros FE (WHERE_DATA).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Filtro WHERE sin SQL injection"
+          ]
         },
         {
           "id": "LIBERARFAC",
-          "hace": "Libera la factura.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Libera factura de origen (SALUD/CE/CI/MAD/CAJA/FINANCIERO): valida dept/cartera/CxC/pagos/FNOT y llama SPK.",
+          "valida": [
+            "ESTADO=P, TIPOANULACION<>NC",
+            "Sin FNOT activas",
+            "Sin FPAGD (salvo DEVOLUCION)",
+            "IDDEP=IDFDEPFACTURACION o MAD/CMV",
+            "INDCARTERA/INDCXC=0 salvo MAD/CMV",
+            "Referencia origen existe (HADM/AUT/CIT)",
+            "FINANCIERO: CONTABILIZADA=1"
+          ],
+          "noValida": [
+            "MAD/CMV relajan dept/cartera/CxC"
+          ],
+          "errores": [
+            "Factura Anulada...",
+            "Notas Debito/Credito Asociadas no se puede liberar",
+            "Pagos Asociadas no se puede liberar",
+            "No esta en el Departamento de Facturacion",
+            "Asignada a una Cuenta por Cobrar",
+            "en una Cuenta por Cobrar ya Entregada",
+            "No se encontro Nro de Admision/Autorizacion/Cita",
+            "no se ha Enviado a Contabilidad No Es nesesario Liberar"
+          ],
           "capaId": "02-operacion",
-          "gateId": "armar-factura"
+          "gateId": "armar-factura",
+          "llama": [
+            "SPK_LIBERAR_FACT",
+            "SPK_LIBERA_FTR_COMER"
+          ]
+        },
+        {
+          "id": "ASINAR_RESPONSABLE",
+          "estado": "leido",
+          "hace": "Cambia FTR.RESPONSABLE; traza en FTRLR (RESP_ANT→RESP_NVO). Crea columna OBSERVACION si falta.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "N_FACTURA",
+            "RESPONSABLE distinto al actual"
+          ],
+          "errores": [
+            "El usuario X ya es responsable de esta factura."
+          ]
+        },
+        {
+          "id": "ENVIA_CONTAB",
+          "estado": "leido",
+          "hace": "Marca/envía factura a contabilidad; Perú genera JSON integración.",
+          "valida": [
+            "FTR existe",
+            "CONTABILIZADA no 1/2 (no Perú)",
+            "VR_TOTAL>0 y ESTADO=P",
+            "Tiene FTRD",
+            "Capita/PGP con FTRDC o PPT capitado"
+          ],
+          "errores": [
+            "No existe el Documento",
+            "Documento ya Contabilziado o Presenta Errores",
+            "Factura Sin Valor o Anulada",
+            "Factura Sin Detalles",
+            "Capitada/PGP sin relalcion de Capitado"
+          ],
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar",
+          "llama": [
+            "SPK_GENERA_JSON_PERU_FTR_INTEGRA",
+            "SPK_GENERA_JSON_PERU_FACTURA"
+          ]
         },
         {
           "id": "NOTI_DIAN",
-          "hace": "Notifica la factura a la DIAN.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Encola notificación DIAN: FTR.FACTE=1.",
+          "valida": [
+            "FTR existe",
+            "FACTE in (0,3)",
+            "F_FACTURA mismo día si FACTE<>2",
+            "Capita con FTRDC"
+          ],
+          "errores": [
+            "No existe el Documento",
+            "Factura ya fue encolada",
+            "La fecha de la Factura debe ser la Misma de la Actual",
+            "Capitada/PGP sin relalcion de Capitado... Dian"
+          ],
           "capaId": "02-operacion",
           "gateId": "notificar-dian"
         },
         {
-          "id": "ENVIA_CONTAB",
-          "hace": "Envía la factura a contabilidad.",
-          "estado": "listado",
-          "capaId": "05-contabilidad",
-          "gateId": "contabilizar"
+          "id": "ENCOLAR_ITEM",
+          "estado": "leido",
+          "hace": "Encola item DIAN: FACTURA→FTR.FACTE=1; NOTADB/NOTACR→FNOT.FACTE=1.",
+          "valida": [
+            "TIPODOC obligatorio",
+            "Capita/PGP con FTRDC si FACTURA"
+          ],
+          "errores": [
+            "No se ha Espeficiado el Tipo de Documento",
+            "Capitada/PGP sin relalcion de Capitado... Dian"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian"
+        },
+        {
+          "id": "DESCOLA_ITEM",
+          "estado": "leido",
+          "hace": "Desencola: FACTE=0 en FTR o FNOT según TIPODOC.",
+          "valida": [
+            "Documento encolado (FACTE=1)"
+          ],
+          "errores": [
+            "No se ha Espeficiado el Tipo de Documento",
+            "Documento no esta encolado"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian"
+        },
+        {
+          "id": "ENCOLAR_MASIVO",
+          "estado": "leido",
+          "hace": "ACCION=1 encola FACTE=1; ACCION=2 desencola FACTE=0 en FTR/FNOT vía VWK_ESTADODIAN_FTRE y filtros fecha/tercero/plan/sede/procedencia/tipodoc.",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "Rango F_INICIAL/F_FINAL",
+            "TIPODOC Todas|FACTURA|NOTACR|NOTADB"
+          ]
+        },
+        {
+          "id": "LISTAR_FTRE",
+          "estado": "leido",
+          "hace": "Lista documentos FACTE=2 (notificados DIAN) para pestaña Proceso DIAN / reenvío correo.",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "Filtros fecha, ESTDIAN, ESTRIPS, SINENVIO, EXCLUIRPART, USUARIOFACTU"
+          ]
+        },
+        {
+          "id": "TREA_XML",
+          "estado": "leido",
+          "hace": "Devuelve XML/archivo DIAN de factura o nota (CNSFCT+TIPODOC) desde FTRE/almacén.",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "CNSFCT y TIPODOC"
+          ]
+        },
+        {
+          "id": "RESET_NOTIFICADOS",
+          "estado": "leido",
+          "hace": "Reset FTRE notificación correo EPS para una N_FACTURA (NOTIFICADO=0, limpia cola).",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "N_FACTURA obligatoria",
+            "Existe FTRE"
+          ],
+          "errores": [
+            "N_FACTURA es requerida.",
+            "No se encontró FTRE para la factura"
+          ]
+        },
+        {
+          "id": "CONTAR_FACTURAS_REENVIO",
+          "estado": "leido",
+          "hace": "Cuenta FTRE candidatos a reenvío correo según WHERE_DATA dinámico.",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "WHERE_DATA sin ; DROP DELETE INSERT UPDATE EXEC"
+          ],
+          "errores": [
+            "Filtro WHERE no permitido."
+          ]
+        },
+        {
+          "id": "RESET_NOTIFICADOS_MASIVO",
+          "estado": "leido",
+          "hace": "Reset masivo FTRE notificación según WHERE_DATA (misma validación anti-injection).",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "WHERE_DATA"
+          ],
+          "errores": [
+            "Filtro WHERE no permitido."
+          ]
+        },
+        {
+          "id": "MARCAFACT",
+          "estado": "leido",
+          "hace": "Marca/desmarca cargo para facturación masiva (@RPDX CNSFACT). Ramas: HADM/HPRED, CIT, AUT/AUTD, AUT_EVENTO, ONCO, INV.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "CIT FACTURABLE=1",
+            "Consecutivo @RPDX si CNSFACT vacío"
+          ],
+          "errores": [
+            "Cita No Facturable",
+            "No se ha Creado el Consecutivo de Facturacion Masiva"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ]
+        },
+        {
+          "id": "MARCAFACTPTE",
+          "estado": "leido",
+          "hace": "Marca pendientes de facturar (PTE) en staging masiva.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Usuario y filtros masiva"
+          ]
+        },
+        {
+          "id": "MARCATODOMASI",
+          "estado": "leido",
+          "hace": "Marca todos los cargos visibles del usuario en lote masivo (VWK_CARGOS_HADMAUTCIT).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "CNSFACT @RPDX",
+            "Filtros procedencia/fecha"
+          ]
+        },
+        {
+          "id": "MARCATODOMASI_EVENTO",
+          "estado": "leido",
+          "hace": "Marca todos los registros importados/evento en pestaña Evento.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Staging evento del usuario"
+          ]
+        },
+        {
+          "id": "FACTURAR_MASI",
+          "estado": "leido",
+          "hace": "Genera facturas desde marcas RPDX según PROCEDENCIA; delega a SPK masivos.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "llama": [
+            "SPK_FACTURACI_ESCIP",
+            "SPK_FACTURA_MASI_UNIFICAWEB",
+            "SPK_FACTURACE_EVENTO_MASI",
+            "SPK_FACTURACI_ESCMA"
+          ],
+          "valida": [
+            "Marcas del usuario",
+            "PRI abierto",
+            "Tercero facturador"
+          ],
+          "errores": [
+            "Periodo Contable No Existe o no Esta Abierto"
+          ]
+        },
+        {
+          "id": "FACTU_MASIPAQ",
+          "estado": "leido",
+          "hace": "Factura paquete de citas marcadas (servicio paquete SER + CNSFACTPAQ).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "CNSFACTPAQ",
+            "Marcas CIT en VWK_CARGOS"
+          ],
+          "errores": [
+            "No Existe Consecutivo de facturación Masiva",
+            "No hay citas marcadas"
+          ],
+          "llama": [
+            "SPK_FACTURACI_ESCIP"
+          ]
+        },
+        {
+          "id": "RECALCULAR_MASIVO",
+          "estado": "leido",
+          "hace": "Recalcula valores de cargos marcados antes de facturar (tarifas/contrato).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "CNSFACT y usuario"
+          ]
+        },
+        {
+          "id": "ACTUALIZAITEM",
+          "estado": "leido",
+          "hace": "Actualiza fila en staging masiva (valor, cantidad, observación).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Claves origen + CNSFACT"
+          ]
+        },
+        {
+          "id": "MARCANOCOBRABLE",
+          "estado": "leido",
+          "hace": "Marca cargo como no cobrable en masiva (excluye de facturación).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "PROCEDENCIA + claves"
+          ]
+        },
+        {
+          "id": "CONTEO_MARCAS_CIT_USUARIO",
+          "estado": "leido",
+          "hace": "Devuelve conteo de citas marcadas por usuario en lote actual.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "DESMARCAR_MARCAS_CIT_USUARIO",
+          "estado": "leido",
+          "hace": "Desmarca todas las citas del usuario en lote masivo.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "LISTAR_MARCAS_CIT_PAQUETE",
+          "estado": "leido",
+          "hace": "Lista citas marcadas para facturación por paquete.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "EXPORTAR_EXCEL_EVENTO",
+          "estado": "leido",
+          "hace": "Exporta plantilla Excel para importación masiva evento.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "PROCESAR_IMPORTACION_EXCEL_EVENTO",
+          "estado": "leido",
+          "hace": "Importa Excel a staging evento (valida columnas y duplicados).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Archivo/base64 en JSON"
+          ]
+        },
+        {
+          "id": "LIMPIAR_IMPORTACION_EVENTO",
+          "estado": "leido",
+          "hace": "Borra staging importación evento del usuario.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "ELIMINAR_REGISTRO_IMPORTADO_EVENTO",
+          "estado": "leido",
+          "hace": "Elimina una fila del staging evento importado.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "MARCAR_TODOS_IMPORTADOS_EVENTO",
+          "estado": "leido",
+          "hace": "Marca todos los registros importados del evento.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "CONTEO_IMPORTADOS_EVENTO",
+          "estado": "leido",
+          "hace": "Conteo de filas importadas listas para facturar evento.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "FACTURAR_EVENTO_IMPORTADOS",
+          "estado": "leido",
+          "hace": "Genera facturas desde filas importadas/marcadas en pestaña Evento.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Marcas importación",
+            "PRI abierto"
+          ],
+          "llama": [
+            "SPK_FACTURACE_EVENTO_MASI"
+          ]
+        },
+        {
+          "id": "GET_TOTALES_CIT_EVENTO",
+          "estado": "leido",
+          "hace": "Totales valor/cantidad pestaña evento masivo.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "RIPS_JSON",
+          "estado": "leido",
+          "hace": "Wrapper: EXEC SPK_GENERAR_RIPS_JSON (CNSFCT, TIPODOC, GENERAR, SOLO_META).",
+          "capaId": "02-operacion",
+          "gateId": "rips-fev",
+          "valida": [
+            "CNSFCT y TIPODOC"
+          ],
+          "llama": [
+            "SPK_GENERAR_RIPS_JSON"
+          ]
+        },
+        {
+          "id": "INICIAR_RIPS_JSON_JOB",
+          "estado": "leido",
+          "hace": "Encola job asíncrono generación RIPS JSON (SQL Agent / cola).",
+          "capaId": "02-operacion",
+          "gateId": "rips-fev"
+        },
+        {
+          "id": "EJECUTAR_RIPS_JSON_ASYNC",
+          "estado": "leido",
+          "hace": "Ejecuta lote async RIPS pendiente.",
+          "capaId": "02-operacion",
+          "gateId": "rips-fev"
+        },
+        {
+          "id": "CONFIG_FACTUAUTO",
+          "estado": "leido",
+          "hace": "CRUD TGEN TABLA=FACTAUTOHC: reglas facturación automática desde HC.",
+          "capaId": "01-configuracion",
+          "gateId": "pagador-plan",
+          "valida": [
+            "PROCESO Nuevo|Editar|Borrar",
+            "TABLA+CAMPO+CODIGO únicos en Nuevo"
+          ],
+          "errores": [
+            "Ya Existe el Registro,No se puede Continuar..."
+          ]
+        },
+        {
+          "id": "VALIDAR_FTR",
+          "estado": "leido",
+          "hace": "KO si existe FTR del tercero+sede con CONTABILIZADA=0 y FACTEP vacío (bloqueo operación). Distinto de VALIDAFTR en FTRFE_COL.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "IDTERCERO + IDSEDE"
+          ]
+        },
+        {
+          "id": "VALIDADIAN2",
+          "estado": "leido",
+          "hace": "Wrapper FE: obtiene sede/CCOSTO y llama SPQ_VALIDADIAN2; devuelve código CONTINUA.",
+          "valida": [
+            "Sede del usuario"
+          ],
+          "errores": [
+            "No se pudo obtener la sede del usuario"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "llama": [
+            "SPQ_VALIDADIAN2"
+          ]
+        },
+        {
+          "id": "CREA_HADMCOT",
+          "estado": "leido",
+          "hace": "PROCESO=Nueva: crea HADM cotización (CLASEING=C, plan particular) con consecutivo @CHADM.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "PROCESO=Nueva",
+            "IDTERCERO"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ]
+        },
+        {
+          "id": "AGREGA_ITEMCOT",
+          "estado": "leido",
+          "hace": "Agrega ítems cotización: crea HPRE/HPRED por prefijo SER si no existe.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "NOADMISION activa",
+            "IDSERVICIO en SER"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ]
+        },
+        {
+          "id": "BORRAR_ITEMCOT",
+          "estado": "leido",
+          "hace": "Elimina HPRED; recalcula HPRE o borra HPRE si queda vacío.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "NOPRESTACION + NOITEM existen"
+          ]
+        },
+        {
+          "id": "EDITAR_ITEMCOT",
+          "estado": "leido",
+          "hace": "Edita cantidad/valor/descuento línea cotización HPRED.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "NOPRESTACION + NOITEM"
+          ],
+          "errores": [
+            "No se Encontro el Item de la Cotización"
+          ]
+        },
+        {
+          "id": "CERRAR_COTIZA",
+          "estado": "leido",
+          "hace": "Cierra HADM cotización (CERRADA=1, FACTURABLE=1) si tiene HPRE/HPRED.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "HADM CERRADA=0 con detalle"
+          ],
+          "errores": [
+            "No se Encontro cotización Activa o no Tiene detalles"
+          ]
+        },
+        {
+          "id": "ANULAR_COTIZA",
+          "estado": "leido",
+          "hace": "Anula cotización cerrada (FACTURABLE=0).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "HADM CERRADA=1 con detalle"
+          ],
+          "errores": [
+            "No se Encontro cotización Activa o no Tiene detalles"
+          ]
+        },
+        {
+          "id": "ADD_PDF_FTR",
+          "estado": "leido",
+          "hace": "Adjunta/registra PDF en factura (binario o ruta según FE).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "N_FACTURA",
+            "FTR editable"
+          ]
+        },
+        {
+          "id": "LIBERAR_PDF",
+          "estado": "leido",
+          "hace": "Libera flag PDF pendiente / regenera impresión.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "N_FACTURA"
+          ]
+        },
+        {
+          "id": "LISTA_EXPORFTR",
+          "estado": "leido",
+          "hace": "Lista facturas para exportación masiva (filtros fecha, ESTDIAN, SINENVIO).",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "Rango fechas"
+          ]
+        },
+        {
+          "id": "BUSCASED",
+          "estado": "leido",
+          "hace": "Combo sedes distintas usadas en FTR (value/label para filtros).",
+          "capaId": "01-configuracion",
+          "gateId": "pagador-plan"
+        },
+        {
+          "id": "SEDFACUMASI",
+          "estado": "leido",
+          "hace": "Sedes SED + fechas sugeridas masiva + conteo aging DIAN (MENOR5, EN5Y10, EN11Y15 días).",
+          "capaId": "01-configuracion",
+          "gateId": "pagador-plan"
+        },
+        {
+          "id": "ASIGNAR_NROAUT",
+          "estado": "leido",
+          "hace": "Asigna número autorización EPS a factura/cargo.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "N_FACTURA o clave origen"
+          ]
+        },
+        {
+          "id": "COMPARAR_RECAUDO_CAJA",
+          "estado": "leido",
+          "hace": "Compara totales recaudo FPAG vs movimiento caja FCJ para conciliación facturación-caja.",
+          "capaId": "04-unido",
+          "gateId": "armar-factura",
+          "valida": [
+            "Parámetros tercero/fecha/recibo"
+          ]
+        },
+        {
+          "id": "AJUSTAR_TOTALES_DIAN",
+          "estado": "leido",
+          "hace": "Ajuste centavos VR_TOTAL FTR/FTRD para cuadrar con validación DIAN.",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "N_FACTURA",
+            "FTR FACTE pendiente"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FTRFE_COL",
+      "tipo": "SPQ",
+      "modelo": "FTRFE_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTRFE_COL.sql",
+      "cola": "5/5 leído. Oleada 2 2026-09-06.",
+      "metodos": [
+        {
+          "id": "VALIDAFTR",
+          "estado": "leido",
+          "hace": "Antes de confirmar: devuelve OK y flag PARTICULAR (1 si TER.ENVIODICAJA, PROCEDENCIA=CAJA o plan USVGS IDPLANPART%).",
+          "valida": [
+            "FTR existe"
+          ],
+          "noValida": [
+            "No valida detalle, DIAN ni periodo — solo clasifica particular"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "id": "FE_FECHAFTR",
+          "estado": "leido",
+          "hace": "Corre F_FACTURA/F_VENCE al día actual si factura P, FACTE=0 y fecha pasada; toca MCP/MCPE si contabilizada.",
+          "valida": [
+            "FTR P, FACTE=0, F_FACTURA<hoy",
+            "Días diff <= NDIA_CAMBIO_FECHAFAC",
+            "PRI abierto si hay MCP"
+          ],
+          "errores": [
+            "Diferencia de Dias... mayor al valor Permitido",
+            "Period contable Cerrado",
+            "Factura no Encontrada"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "llama": [
+            "MCP",
+            "MCPE"
+          ]
+        },
+        {
+          "id": "FE_DESENCOLAR",
+          "estado": "leido",
+          "hace": "Resetea FTR.FACTE=0 si no está notificada (FACTE<>2).",
+          "valida": [
+            "FTR P, FACTE<>2"
+          ],
+          "errores": [
+            "Factura no Encontrada, verfique e intente de nuevo"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian"
+        },
+        {
+          "id": "FE_ENCOLAR",
+          "estado": "leido",
+          "hace": "Encola FE: FTR.FACTE=1 si ESTADO=P, FACTE<>2 y F_FACTURA es hoy (DATEDIFF<1).",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "N_FACTURA",
+            "F_FACTURA mismo día"
+          ],
+          "errores": [
+            "La fecha de la Factura debe ser la Misma de la Actual, Verifique e intente de Nuevo"
+          ]
+        },
+        {
+          "id": "LISTAR_FTRECXC",
+          "estado": "leido",
+          "hace": "Lista facturas de cuenta (FCXCD) o trama RIPS (MULTICXC) para envío/soportes FE. Perú: N_SOPORTE + PDFs FTR_DOCS.",
+          "capaId": "02-operacion",
+          "gateId": "notificar-dian",
+          "valida": [
+            "CNSCXC+ENVIO o RIPSD con detalle"
+          ],
+          "errores": [
+            "Trama Sin Detalles",
+            "Cuenta de cobro Sin Detalles"
+          ]
         }
       ]
     },
@@ -65,78 +971,731 @@
       "nombre": "SPQ_FTR_MASIVA_COL",
       "tipo": "SPQ",
       "modelo": "FTR_MASIVA_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 FTRMComponent / FTRCITEvento / FTRHADM (pestañas masiva, evento, hospi)",
-      "metodos": [],
-      "cola": "Bajar SPQ_FTR_MASIVA_COL.sql para listar METODOs."
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTR_MASIVA_COL.sql",
+      "metodos": [
+        {
+          "id": "FACTURAR_MASI",
+          "estado": "leido",
+          "hace": "Genera facturas masivas desde RPDX según PROCEDENCIA (AUT/UNI/CE/…); valida PRI y sede.",
+          "valida": [
+            "PRI abierto",
+            "Tercero facturador NIT",
+            "FACTSEDE=SI exige sede ≠ Todas"
+          ],
+          "errores": [
+            "Escogio Todas las Sedes...",
+            "Tercero Facturador No Identificado",
+            "Periodo Contable No Existe o no Esta Abierto"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "llama": [
+            "SPQ_FACTURACE_ESCMA",
+            "SPK_FACTURACI_ESCIP",
+            "SPK_FACTURACE_EVENTO_MASI",
+            "SPK_FACTURA_MASI_UNIFICAWEB"
+          ]
+        },
+        {
+          "id": "MARCAAUT_FTR",
+          "estado": "leido",
+          "hace": "Marca/desmarca AUT o CIT para fact. masiva. ACCION 1/2 lote AUTD; 3 individual AUT; 4 unificada CIT/AUT. CNSFACT=@USUARIO.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "VALORTOTAL>0",
+            "FACTURABLE=1",
+            "No marcada por otro usuario"
+          ],
+          "errores": [
+            "Sin Valor",
+            "Factura Marcada por otro usuario",
+            "No Existen Registros para Marcar/Desmarcar"
+          ]
+        },
+        {
+          "id": "MARCATODO_UNI",
+          "estado": "leido",
+          "hace": "Marca/desmarca masivo CIT+AUT unificados vía VWQ_XFACTURAR_CE y WHERE dinámico (ACCION m/d).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "CONDICION WHERE del FE"
+          ]
+        },
+        {
+          "id": "CONTEOFTRMARCADAS",
+          "estado": "leido",
+          "hace": "Conteo marcas del usuario: CANTIDAD en filtro + CANTIDADFUERA fuera de tercero/plan/fecha/sede. Ramas CIT, AUT, UNI.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "PROCESO, IDTERCERO, IDPLAN, FINI/FFIN, PROCEDENCIA"
+          ]
+        },
+        {
+          "id": "FACTURAR_CITAUT",
+          "estado": "leido",
+          "hace": "Factura una cita: SPK_FACTURACE_CITAUT_COL; opcional OBSERVACION en FTR.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "FDIAN sede habilitada",
+            "CIT no particular",
+            "CIT no facturada"
+          ],
+          "errores": [
+            "Sede ... No habilitada para emitir Facturas",
+            "La atencion ... es Particular",
+            "Cita ya Facturada o con Valores en Cero(0)"
+          ],
+          "llama": [
+            "SPK_FACTURACE_CITAUT_COL"
+          ]
+        },
+        {
+          "id": "MARCA_APLIMF",
+          "estado": "leido",
+          "hace": "Toggle MARCA en APLIMF ítem No POS (PREF_MED_NOPOS, POS=0).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "IDAPLIMF",
+            "SER No POS",
+            "No facturado si marca"
+          ],
+          "errores": [
+            "IDAPLIMF es obligatorio",
+            "Ítem no encontrado o no es medicamento No POS",
+            "No se puede marcar: el ítem ya está facturado"
+          ]
+        },
+        {
+          "id": "FACTURAR_NOPOS_APLIM",
+          "estado": "leido",
+          "hace": "Genera facturas desde APLIMF marcados No POS del evento (autorización previa GEN_AUT_NOPOS_APLIMF).",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "Marcas usuario",
+            "MIPRES",
+            "PRI abierto"
+          ]
+        },
+        {
+          "estado": "leido",
+          "id": "ADDDEL_AUTD",
+          "hace": "Toggle MARCAFAC en AUT por IDAUT (CNSFACT=@USUARIO).",
+          "valida": [
+            "IDAUT"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "MARCAFACT_AUTD",
+          "hace": "Marca/desmarca AUT por paciente (IDAFILIADO+CONSECUTIVO). Valida AUTD lab/apoyo.",
+          "valida": [
+            "ACCION ADD/DEL",
+            "AUTD no facturado"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "NOCOBRAR_AUTD",
+          "hace": "Toggle AUTD.NOCOBRABLE; recalcula AUT.FACTURABLE si todos no cobrables.",
+          "valida": [
+            "IDAUT+NOITEM"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "ASIGNAR_NROAUT",
+          "hace": "Propaga NOAUTORIZACION a AUT/CIT marcados del usuario (MARCAFAC=1, CNSFACT=@USUARIO).",
+          "valida": [
+            "NOAUTORIZACION"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "CONTEOFTRMARCADAS_EVENTO",
+          "hace": "Conteo marcas pestaña Evento (PROCESO 3/4/5); variantes CIT con AFI.IDSEDE.",
+          "valida": [
+            "PROCESO, filtros fecha/tercero/plan"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "INFORME_PREVIO",
+          "hace": "Preview detalle+resumen AUT/CIT marcados antes de facturar masiva unificada.",
+          "valida": [
+            "Plan, tercero, rango fechas obligatorios"
+          ],
+          "errores": [
+            "Debe seleccionar un plan",
+            "Debe seleccionar el rango de fechas",
+            "Debe seleccionar el tercero"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "MARCA_TODO_APLIMF",
+          "hace": "Marca/desmarca todos APLIMF No POS elegibles del evento IDAPLIM.",
+          "valida": [
+            "IDAPLIM",
+            "Ítems pendientes"
+          ],
+          "errores": [
+            "No hay ítems No POS pendientes de facturar en este evento"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "CONTAR_MARCA_APLIMF_USU",
+          "hace": "Cuenta APLIMF No POS marcados por @USUARIO.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "DESMARCAR_APLIMF_USU",
+          "hace": "Desmarca todos APLIMF No POS del usuario.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura"
+        },
+        {
+          "estado": "leido",
+          "id": "GEN_AUT_NOPOS_APLIMF",
+          "hace": "Crea AUT+AUTD desde APLIMF marcados No POS (MIPRES, mismo prefijo).",
+          "valida": [
+            "IDAPLIM, IDTERCERO, IDPLAN, MIPRES",
+            "Marcas disponibles",
+            "Un solo prefijo/MIPRES"
+          ],
+          "errores": [
+            "No hay ítems No POS marcados",
+            "prefijos distintos",
+            "MIPRES es obligatorio"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ]
+        }
+      ],
+      "cola": "17/17 leído. Inventario completo SQL 2026-09-06."
     },
     {
       "nombre": "SPQ_FACT_MASI_COL",
       "tipo": "SPQ",
       "modelo": "FACT_MASI_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 FtrMasivaComponent",
-      "metodos": [],
-      "cola": "Otra pantalla de masiva. Confirmar si convive con FTR_MASIVA_COL."
+      "estado": "leido",
+      "fuente": "sql/SPQ_FACT_MASI_COL.sql",
+      "metodos": [
+        {
+          "id": "MARCAR_AUT",
+          "estado": "leido",
+          "hace": "Toggle MARCAFAC en AUT; CNSFACT en TGEN FTRUSUMARCA o @RPDX nuevo.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "IDAUT"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ]
+        },
+        {
+          "id": "VALIDAR_MARCA",
+          "estado": "leido",
+          "hace": "Recupera CNSFACT del usuario y lista VWK_AUT_FTR marcadas.",
+          "capaId": "02-operacion",
+          "gateId": "armar-factura",
+          "valida": [
+            "CNSFACT o TGEN FTRUSUMARCA"
+          ]
+        }
+      ],
+      "cola": "2/2 leído. Fase B 2026-09-06."
     },
     {
       "nombre": "SPQ_FTR_HADM_COL",
       "tipo": "SPQ",
       "modelo": "FTR_HADM_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 FTRHADMComponent / FTRAComponent (Urg-Hospi-Domi)",
-      "metodos": []
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTR_HADM_COL.sql",
+      "cola": "11/11 leído. Fase B 2026-09-06.",
+      "metodos": [
+        {
+          "id": "PREPARAR_HADM",
+          "estado": "leido",
+          "hace": "Staging RPDX facturación admisión: SPK_ESTADO_ADMI + SPK_AFACTURAR. Devuelve filas pagador/plan/total.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "HADM FACTURABLE=1 CLASEING=A",
+            "CERRADA=1 (alta)",
+            "No capita/PFACTURARIND"
+          ],
+          "errores": [
+            "Numero de Admisión no Encontrado",
+            "Paciente no ha Sido Dado de Alta",
+            "Contrato Capitado O Masivo"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_ESTADO_ADMI",
+            "SPK_AFACTURAR"
+          ]
+        },
+        {
+          "id": "FACTHADM_ITEM",
+          "estado": "leido",
+          "hace": "Factura un ítem RPDX de admisión vía SPK_FACTURA_ASIS.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "PRI abierto (contable+fac)",
+            "HPRED pendientes",
+            "NIT sede/TER"
+          ],
+          "errores": [
+            "Periodo Contable Cerrado",
+            "No hay items para Facturar"
+          ],
+          "llama": [
+            "SPK_FACTURA_ASIS"
+          ]
+        },
+        {
+          "id": "FACTHADM_TODO",
+          "estado": "leido",
+          "hace": "Factura todos los ítems pendientes de la admisión (cursor RPDX).",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "Igual FACTHADM_ITEM"
+          ],
+          "llama": [
+            "SPK_FACTURA_ASIS"
+          ]
+        },
+        {
+          "id": "PREPARAR_HADMCORTE",
+          "estado": "leido",
+          "hace": "Staging corte parcial hospitalización (RPDX corte).",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "HADM admisión válida"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_AFACTURAR"
+          ]
+        },
+        {
+          "id": "FACTHADM_ITEMCORTE",
+          "estado": "leido",
+          "hace": "Factura ítem de corte parcial.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "PRI abierto",
+            "RPDX corte"
+          ],
+          "llama": [
+            "SPK_FACTURA_ASIS"
+          ]
+        },
+        {
+          "id": "HADMAUT_ADD",
+          "estado": "leido",
+          "hace": "Vincula autorización AUT a admisión HADM para facturar.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "NOADMISION + IDAUT"
+          ]
+        },
+        {
+          "id": "HADMAUT_DEL",
+          "estado": "leido",
+          "hace": "Quita autorización vinculada HADM.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura"
+        },
+        {
+          "id": "REORGANIZA_SOAT",
+          "estado": "leido",
+          "hace": "Reorganiza cargos SOAT en admisión antes de facturar.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura"
+        },
+        {
+          "id": "HADM_TIPOADM",
+          "estado": "leido",
+          "hace": "Consulta catálogo tipos admisión (HTAD).",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura"
+        },
+        {
+          "id": "HADM_LISTAAUT",
+          "estado": "leido",
+          "hace": "Lista autorizaciones disponibles para HADM.",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura"
+        },
+        {
+          "id": "GET_HADMF",
+          "estado": "leido",
+          "hace": "Datos cabecera facturación HADM (FTR/HADMF staging).",
+          "capaId": "02-operacion",
+          "gateId": "urg-hosp-factura"
+        }
+      ]
     },
     {
       "nombre": "SPQ_DOCXEMPQ",
       "tipo": "SPQ",
       "modelo": "DOCXEMPQ",
-      "estado": "listado",
-      "fuente": "Runbook empaquetamiento-de-cuentas-medicas + EmpaquetaPage",
+      "estado": "leido",
+      "fuente": "sql/SPQ_DOCXEMPQ.sql",
       "metodos": [
         {
           "id": "GET_ANEXOS",
-          "hace": "Lista anexos de una admisión o factura (empaque individual).",
-          "estado": "listado",
+          "hace": "Anexos individual admisión/factura (empaque).",
+          "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "empaquetar"
         },
         {
-          "id": "GET_CONFIGURACION_ANEXOS",
-          "hace": "Lee la configuración de anexos del pagador.",
-          "estado": "listado",
+          "id": "GET_ANEXOS_MASIVOS_V2",
+          "hace": "Empaque masivo cuentas/facturas v2.",
+          "estado": "leido",
           "capaId": "02-operacion",
+          "gateId": "empaquetar"
+        },
+        {
+          "id": "GET_ANEXOS_MASIVOS_POR_PACIENTE",
+          "hace": "Empaque masivo agrupado por paciente.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_CONFIGURACION_ANEXOS",
+          "hace": "Lee config anexos por pagador/plan.",
+          "estado": "leido",
+          "capaId": "01-configuracion",
+          "gateId": "empaquetar"
+        },
+        {
+          "id": "SAVE_CONFIGURACION_ANEXOS",
+          "hace": "Persiste config anexos TGEN/params.",
+          "estado": "leido",
+          "capaId": "01-configuracion",
           "gateId": "empaquetar"
         },
         {
           "id": "GET_ANEXOS_FTRCXC",
-          "hace": "Anexos de facturas ya en cuenta de cobro.",
-          "estado": "listado",
+          "hace": "Anexos de facturas en cuenta FCXC.",
+          "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "empaquetar"
+        },
+        {
+          "id": "GET_ANEXOS_PRE_FACTURACION",
+          "hace": "Anexos antes de emitir factura.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar"
+        },
+        {
+          "id": "LISTA_DOCS",
+          "hace": "Catálogo documentos empaque.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "CHECK_SOPORTES_CACHE",
+          "hace": "Verifica cache PDF soportes generados.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar"
+        },
+        {
+          "id": "GET_SOPORTE_CACHE",
+          "hace": "Obtiene PDF cacheado por clave.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "SAVE_SOPORTE_CACHE",
+          "hace": "Guarda PDF en cache empaque.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "CLEAR_SOPORTES_CACHE",
+          "hace": "Limpia cache soportes sesión/lote.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_DATOS_COMPFRECUENCIA",
+          "hace": "Datos complemento frecuencia (alto costo).",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_FMED",
+          "hace": "Lista formulaciones médicas para anexo.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_SOPORTES_ALTOCOSTO_MASIVO",
+          "hace": "Genera soportes alto costo masivo.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_FACTURAS_ALTOCOSTO_MASIVO",
+          "hace": "Lista facturas candidatas alto costo masivo.",
+          "capaId": "02-operacion",
+          "gateId": "empaquetar",
+          "estado": "leido"
         }
-      ]
+      ],
+      "cola": "16/16 leído. Fase B 2026-09-06."
     },
     {
       "nombre": "SPQ_ENT_COL",
       "tipo": "SPQ",
       "modelo": "ENT_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 ENTComponent (pestaña Traslados Facturas)",
+      "estado": "leido",
+      "fuente": "sql/SPQ_ENT_COL.sql",
+      "cola": "19/19 leído. Oleada 2b FCXC+ENT 2026-09-06.",
       "metodos": [
         {
-          "id": "CERRAR_ENT",
-          "hace": "Cierra la entrega interna de facturas.",
-          "estado": "listado",
+          "id": "VALIDO_USUARIO",
+          "hace": "Valida usuario puede operar traslados (permiso/depto).",
           "capaId": "02-operacion",
-          "gateId": "armar-cuenta"
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_ENT",
+          "estado": "leido",
+          "hace": "Crea/edita ENT: GENCONSECUTIVO @ENT; PROCESO FACTURAS/DEVFACT/AUDITORIA; ENT_ENTREGA/ENT_RECIBE.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "valida": [
+            "No otra ENT abierta mismo usuario/proceso/sede"
+          ],
+          "errores": [
+            "Existe una Entrega Abierta Para Dependencia de Destino..."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ]
+        },
+        {
+          "id": "MARCAR_ITEM",
+          "hace": "Toggle FTR.MARCA en traslado; guarda MOTIVO en RAZONANULACION.",
+          "valida": [
+            "N_FACTURA"
+          ],
+          "errores": [
+            "Documento No Encontrado"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNAR_FACT",
+          "estado": "leido",
+          "hace": "INSERT ENTD desde FTR marcadas (FACTURAS/DEVFACT/AUDITORIA según PROCESO).",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "valida": [
+            "ENT abierta CERRADO=0 ESTADO=0"
+          ]
+        },
+        {
+          "id": "LIMPIAR_FACT",
+          "hace": "Desmarca FTR del traslado.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_TODAS",
+          "hace": "Marca lote FTR por filtros para ENT.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "QUITAFACT_ENTD",
+          "hace": "Quita línea ENTD; revierte marca FTR.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "QUITARTODO_ENTD",
+          "hace": "Vacía ENTD de la entrega abierta.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_ENT",
+          "estado": "leido",
+          "hace": "Alterna ENT.CERRADO si entrega ESTADO=0 y tiene ENTD.",
+          "valida": [
+            "ENT ESTADO=0",
+            "Tiene líneas ENTD"
+          ],
+          "errores": [
+            "Envio Sin Detalles",
+            "Envio Recibido..., No Se Permiten Cambios"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion"
+        },
+        {
+          "id": "IMPRIMIR_ENT",
+          "estado": "leido",
+          "hace": "Recordsets acta traslado ENT+ENTD.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion"
         },
         {
           "id": "CREARCXC_ENT",
-          "hace": "Crea la cuenta de cobro a partir de la entrega.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Crea FCXC+FCXCD desde traslado FACTURAS; marca FTR cartera y recibe ENT.",
+          "valida": [
+            "Facturas sin FCXCD previo",
+            "Un solo IDTERCERO",
+            "PROCESO=FACTURAS",
+            "USUARIOJEFECARTERA/JEFEFACTURA válidos",
+            "ENT no recibida ni con CNSFCXC"
+          ],
+          "errores": [
+            "Mas de un Tercero",
+            "Proceso no Valido",
+            "Entrega ya Fue recicibida",
+            "ya tiene Cuenta de Cobro asociada",
+            "No existen Facturas Pendientes"
+          ],
           "capaId": "02-operacion",
-          "gateId": "armar-cuenta"
+          "gateId": "envio-cartera-recepcion",
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_RELIQUIDACXCQX"
+          ],
+          "efecto": "FCXC/FCXCD; FTR.INDCARTERA=1; ENT.ESTADO=1, CNSFCXC"
+        },
+        {
+          "id": "PROCESAR_ENVIO",
+          "estado": "leido",
+          "hace": "Recibe envío en cartera: ENT/ENTD ESTADO=1; FACTURAS→FTR IDDEP cartera+INDCARTERA=1; DEVFACT→vuelve a facturación.",
+          "valida": [
+            "Tiene ENTD"
+          ],
+          "errores": [
+            "No existen Facturas En el Envio"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "efecto": "FTR.INDCARTERA=1, IDDEP=IDFDEPCARTERA (FACTURAS)"
+        },
+        {
+          "id": "MOTIVO_ENTD",
+          "hace": "Catálogo/guarda motivo devolución en ENTD.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_ENT",
+          "hace": "Export Excel detalle entrega.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "RECIBIR_AUDIFACTU",
+          "estado": "leido",
+          "hace": "Recibe envío en auditoría: FTR→IDFDEPAUDITORIA, INDCARTERA=0.",
+          "valida": [
+            "Tiene ENTD"
+          ],
+          "errores": [
+            "No existen Facturas En el Envio"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion"
+        },
+        {
+          "id": "ASIGNAR_AUDIFACT",
+          "estado": "leido",
+          "hace": "Asigna FTR marcadas a ENT auditoría.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "valida": [
+            "ENT auditoría abierta"
+          ]
+        },
+        {
+          "id": "MARCAR_AUDITODAS",
+          "hace": "Marca lote para auditoría.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_AUDIFACT",
+          "hace": "Desmarca facturas auditoría.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_AUDENVIO",
+          "estado": "leido",
+          "hace": "Cierra recepción auditoría: FTR→depto auditoría.",
+          "capaId": "02-operacion",
+          "gateId": "envio-cartera-recepcion",
+          "valida": [
+            "ENTD presente"
+          ]
         }
       ]
     },
@@ -144,50 +1703,342 @@
       "nombre": "SPQ_FCXC_COL",
       "tipo": "SPQ",
       "modelo": "FCXC_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 FCXCAComponent (Cuentas por cobrar)",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FCXC_COL.sql",
+      "cola": "32/32 leído. Oleada 2b FCXC+ENT 2026-09-06.",
       "metodos": [
         {
+          "id": "TRAER_DEF",
+          "hace": "Catálogo/defectos para pantalla CxC (combo configuración).",
+          "capaId": "01-configuracion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAER_TTEC",
+          "hace": "Catálogo TTEC (tipo tercero cuenta) para FCXC.",
+          "capaId": "01-configuracion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
           "id": "CRUD_FCXC",
-          "hace": "Crea o edita la cuenta de cobro.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Crea FCXC vacía (GENCONSECUTIVO @CXC) o edita cabecera si no radicada.",
+          "valida": [
+            "Insert: USUARIOJEFECARTERA y USUARIOJEFEFACTURA válidos",
+            "No otra CXC abierta mismo tercero/sede/usuario valor 0",
+            "Update: no cambiar tercero si hay FCXCD",
+            "No editar si INDRECIBIDO=1"
+          ],
+          "errores": [
+            "Debe llenar la variable USUARIOJEFECARTERA...",
+            "Existe una CXC para este Tercero...",
+            "Cuenta de Cobro Radicada...",
+            "con Detalle, No se puede Actualizar el Responsable de Pago"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "FCXC INDRECIBIDO=0 CERRADA=0"
+        },
+        {
+          "id": "MARCAR_FACT",
+          "hace": "Toggle MARCA en FTR o FNOT (TIPOCXC=FNOT) por estación EQUIMARCA.",
+          "valida": [
+            "N_FACTURA o CNSFNOT"
+          ],
+          "errores": [
+            "Documento No Encontrado"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNAR_FACT",
+          "estado": "leido",
+          "hace": "Inserta FCXCD desde FTR marcadas en cartera; recalcula totales.",
+          "valida": [
+            "FCXC abierta no radicada",
+            "FTR P, contabilizada, INDCARTERA=1, IDDEP cartera",
+            "Sin FCXCD previo"
+          ],
+          "errores": [
+            "Facturas no Agregadas...",
+            "Cuenta Cerrada o inconsistencias"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "llama": [
+            "SPK_RELIQUIDACXCQX"
+          ],
+          "efecto": "FCXCD; FTR INDASIGCXC=1 INDCXC=1"
+        },
+        {
+          "id": "MARCAR_TODAS",
+          "estado": "leido",
+          "hace": "Marca facturas cartera por filtros antes de ASIGNAR_FACT.",
+          "valida": [
+            "Mismos criterios cartera que ASIGNAR_FACT"
+          ],
           "capaId": "02-operacion",
           "gateId": "armar-cuenta"
+        },
+        {
+          "id": "MARCAR_TODAS_REMESAS",
+          "hace": "Marca facturas candidatas a remesa según filtros.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_TODAS_FNOT",
+          "hace": "Marca notas FNOT para asignar a cuenta.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_FACT",
+          "hace": "Desmarca FTR marcadas del usuario en cartera.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_FACT_FNOT",
+          "hace": "Desmarca FNOT marcadas.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "QUITAFACT_FCXC",
+          "hace": "Quita FCXCD de cuenta abierta; revierte FTR.INDASIGCXC/INDCXC si aplica.",
+          "valida": [
+            "FCXC no radicada"
+          ],
+          "errores": [
+            "No Fue encontrada la Factura en la Cuenta de Cobro"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "llama": [
+            "SPK_RELIQUIDACXCQX"
+          ],
+          "estado": "leido"
         },
         {
           "id": "CIERRA_FCXC",
-          "hace": "Cierra la cuenta (deja de aceptar facturas).",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Cierra cuenta: FCXC.CERRADA=1 si tiene FCXCD y no radicada.",
+          "valida": [
+            "Tiene FCXCD",
+            "CERRADA=0, INDRECIBIDO=0"
+          ],
+          "errores": [
+            "Sin detalles",
+            "ya Cerrada o Esta Radicada"
+          ],
           "capaId": "02-operacion",
           "gateId": "armar-cuenta"
         },
         {
+          "id": "ABRIR_FCXC",
+          "hace": "Reabre FCXC.CERRADA=0 si no radicada.",
+          "valida": [
+            "CERRADA=1, INDRECIBIDO=0"
+          ],
+          "errores": [
+            "Cuenta de Cobro ya Abierta o Esta Radicada"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
           "id": "RADICA_FCXC",
-          "hace": "Radica la cuenta: fecha, quién recibió, nro. radicado, guía. Marca recibida.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Radica cuenta: valida fechas/PRI/FNOT; puede partir por RPDX; llama SPK_ENTREGA_CXC.",
+          "valida": [
+            "INDRECIBIDO=0",
+            "FECHARAD<=hoy",
+            "PRI contable y cartera abiertos",
+            "Sin FNOT pendientes",
+            "Facturas ESTADO=P sin NC",
+            "FECHARAD >= max F_FACTURA"
+          ],
+          "errores": [
+            "Fecha de Radicación Mayor...",
+            "Periodo Contable Cerrado",
+            "Cartera Cerrada",
+            "Notas Pendientes Por Aplicar",
+            "fecha de radicación es menor...",
+            "deben estar en estado P",
+            "ya Radicada"
+          ],
           "capaId": "02-operacion",
-          "gateId": "radicar-cuenta"
+          "gateId": "radicar-cuenta",
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_ENTREGA_CXC",
+            "SPK_CONTAB_RADICACXC"
+          ],
+          "efecto": "FCXC/FCXCD radicada; INDRECIBIDO=1"
         },
         {
-          "id": "NRORAD_FCXCD",
-          "hace": "Asigna el número de radicado a una factura de la cuenta.",
-          "estado": "listado",
+          "id": "PROCESAR_RADICACION_MULTI_FECHA",
+          "estado": "leido",
+          "hace": "Radica partiendo FCXC por fechas en RPDX (múltiples CNSCXC).",
           "capaId": "02-operacion",
-          "gateId": "radicar-cuenta"
-        },
-        {
-          "id": "IMPORTAR_RADICADO_CXC",
-          "hace": "Carga radicados desde Excel.",
-          "estado": "listado",
-          "capaId": "02-operacion",
-          "gateId": "radicar-cuenta"
+          "gateId": "radicar-cuenta",
+          "valida": [
+            "CNSRPDX con FECHA1 por grupo"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_ENTREGA_CXC"
+          ]
         },
         {
           "id": "CONTAB_FCXC",
-          "hace": "Contabiliza la cuenta de cobro.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Contabiliza cuenta no contabilizada vía SPK_CONTAB_RADICACXC.",
+          "valida": [
+            "FCXC.CONTABILIZADA=0"
+          ],
+          "errores": [
+            "no encontrada o ya esta en contabilidad"
+          ],
           "capaId": "05-contabilidad",
-          "gateId": "contabilizar"
+          "gateId": "contabilizar",
+          "llama": [
+            "SPK_CONTAB_RADICACXC"
+          ]
+        },
+        {
+          "id": "IMPRIMIR_FCXC",
+          "hace": "Recordsets impresión cuenta/radicación.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "NRORAD_FCXCD",
+          "estado": "leido",
+          "hace": "Asigna NRORADICA/NROGUIA por factura en FCXCD.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "valida": [
+            "CNSCXC"
+          ]
+        },
+        {
+          "id": "LISTA_ENTREGA",
+          "hace": "Lista entregas/cuentas para acta.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "BORRAR_MARCADAS",
+          "hace": "Elimina marcas temporales cartera del usuario.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_FACTU",
+          "hace": "Marca facturas en modo facturación/usuario (variante cartera).",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "SALIR_FCXCD",
+          "hace": "Limpia contexto sesión marcas al salir pantalla CxC.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_REMESAS",
+          "hace": "Arma remesas SAP desde facturas marcadas; escribe staging remesa.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIAR_REMESA_SAP",
+          "hace": "Envía remesa generada a integración SAP.",
+          "capaId": "04-unido",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_FORMATO_CxC",
+          "hace": "Export plantilla Excel radicación CxC.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPORTAR_RADICADO_CXC",
+          "estado": "leido",
+          "hace": "Import Excel NRORADICA por factura; actualiza FCXCD.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta"
+        },
+        {
+          "id": "TRAER_CXC_VALIDADOS",
+          "hace": "Lista cuentas validadas para siguiente paso (multi-fecha).",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "MOVER_FACTURAS_FCXC",
+          "hace": "Traslada FCXCD de una CNSCXC a otra abierta.",
+          "valida": [
+            "Ambas cuentas abiertas no radicadas"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "llama": [
+            "SPK_RELIQUIDACXCQX"
+          ],
+          "estado": "leido"
+        },
+        {
+          "id": "FECHA_ENVIO",
+          "hace": "Actualiza fecha envío/guía en FCXC.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR_RPDX_RADICACION",
+          "hace": "Staging RPDX agrupación fechas antes de radicar multi.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "BORRAR_RPDX",
+          "hace": "Limpia RPDX de sesión radicación.",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
+        },
+        {
+          "id": "PRESUPUESTO_FCXC",
+          "hace": "Consulta/control presupuesto al radicar (si aplica cliente).",
+          "capaId": "02-operacion",
+          "gateId": "radicar-cuenta",
+          "estado": "leido"
         }
       ]
     },
@@ -195,17 +2046,1177 @@
       "nombre": "SPQ_SIFTR_COL",
       "tipo": "SPQ",
       "modelo": "SIFTR_COL",
-      "estado": "listado",
-      "fuente": "Qrystalos2 SIFTRColComponent (saldos iniciales)",
+      "estado": "leido",
+      "fuente": "sql/SPQ_SIFTR_COL.sql",
+      "cola": "11/11 METODOs leído 2026-09-06. Staging FTR_SI → FTR/FTRD → FCXC SIFTR → cartera.",
       "metodos": [
         {
+          "id": "INSERTAR_LOTE",
+          "estado": "leido",
+          "hace": "Carga Excel/JSON → FTR_SI (PROCESADO=0). Valida fechas, N_FACTURA, IDTERCERO, SALDO>0; rechaza dup en FTR/FTR_SI/lote.",
+          "valida": [
+            "DATOS array JSON",
+            "F_FACTURA/F_VENCE/F_RADICA fechas válidas",
+            "SALDO>0",
+            "No dup FTR/FTR_SI"
+          ],
+          "noValida": [
+            "Filas con MOTIVO se omiten sin abortar todo el lote"
+          ],
+          "errores": [
+            "PARAMETROS.DATOS no es un arreglo JSON válido",
+            "N_FACTURA vacía",
+            "F_FACTURA requerida",
+            "IDTERCERO requerido",
+            "SALDO requerido y debe ser mayor que cero",
+            "La factura ya existe en FTR",
+            "La factura ya existe en FTR_SI",
+            "N_FACTURA duplicada en el lote"
+          ],
+          "efecto": "INSERT FTR_SI; retorna REGISTROS_INSERTADOS/OMITIDOS + tercer RS errores por línea.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta",
+          "llama": []
+        },
+        {
+          "id": "LIMPIAR_NO_PROCESADOS",
+          "estado": "leido",
+          "hace": "DELETE FTR_SI WHERE PROCESADO=0 (opcional filtro IDLOTE).",
+          "valida": [],
+          "errores": [
+            "KO CATCH SQL"
+          ],
+          "efecto": "REGISTROS_ELIMINADOS.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "CONSULTAR",
+          "estado": "leido",
+          "hace": "Grilla FTR_SI con filtros IDTERCERO, N_FACTURA, PROCESADO.",
+          "valida": [],
+          "efecto": "SELECT staging + OK.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "CONSULTAR_POR_IDS",
+          "estado": "leido",
+          "hace": "Filas FTR_SI por arreglo $.IDS (export corrección Excel).",
+          "valida": [
+            "PARAMETROS.IDS array"
+          ],
+          "errores": [
+            "PARAMETROS.IDS no es un arreglo JSON válido"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "LISTAR_IDS_PENDIENTES",
+          "estado": "leido",
+          "hace": "Pagina IDs FTR_SI PROCESADO=0 (DESDE_ID+TAKE max 5000) para lotes PROCESAR_FTR.",
+          "valida": [],
+          "efecto": "Lista IDs ordenados.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "LISTAR_IDS_CXC",
+          "estado": "leido",
+          "hace": "Pagina candidatas FCXC: PROCESADO=1, CNSFCT, F_RADICA, sin FCXCD; excluye ya en FCXCD.",
+          "valida": [],
+          "efecto": "IDs para PROCESAR_CXC por lotes.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "VALIDAR_PRE_CXC",
+          "estado": "leido",
+          "hace": "Resumen pre-crear cuentas: TOTAL_CANDIDATAS, TOTAL_GRUPOS_CC (IDTERCERO+F_RADICA), bloqueos y agrupación.",
+          "valida": [],
+          "errores": [
+            "Motivos por fila: sin CNSFCT, sin F_RADICA, ya en FCXCD, FTR sin IDTERCERO…"
+          ],
+          "efecto": "3 recordsets diagnóstico.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "PROCESAR_FTR",
+          "estado": "leido",
+          "hace": "Por ID (lote o filtros): crea FTR+ FTRD línea única saldo inicial; CNSFCT prefijo {SEDE}SI; marca FTR_SI PROCESADO=1.",
+          "valida": [
+            "PROCESADO=0",
+            "TER NIT→IDTERCERO",
+            "PPT plan/DIASVTO",
+            "N_FACTURA no en FTR"
+          ],
+          "noValida": [
+            "Comentario periodo contable vacío en script"
+          ],
+          "errores": [
+            "Sin plan (PPT) para el tercero",
+            "N_FACTURA ya existe en FTR",
+            "No se genero CNSFCT",
+            "Error al insertar FTR/FTRD"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_TOTALFACTURFIN"
+          ],
+          "efecto": "FTR SI=1, PROCEDENCIA FINANCIERO, FACTE=2, CONTABILIZADA=1, IDDEP facturación.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
           "id": "PROCESAR_CXC",
-          "hace": "Arma cuentas de cobro agrupando pagador + fecha de radicación.",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Agrupa 1 FCXC por IDTERCERO+F_RADICA+IDSEDE (PROCEDENCIA=SIFTR); INSERT FCXCD; actualiza FTR_SI.CNSCXC; totales FCXC.",
+          "valida": [
+            "FTR_SI PROCESADO=1 con CNSFCT",
+            "F_RADICA obligatoria",
+            "VR_TOTAL>0",
+            "No dup FCXCD"
+          ],
+          "errores": [
+            "La factura ya existe en FCXCD",
+            "Sin fecha de radicación (F_RADICA)",
+            "FTR sin IDTERCERO"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "FCXC FRADICAEPS=F_RADICA; reutiliza FCXC SIFTR abierta mismo grupo.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "FINALIZAR_CXC_SIFTR",
+          "estado": "leido",
+          "hace": "Por FCXC PROCEDENCIA=SIFTR: SPK_RELIQUIDACXCQX → SPK_ENTREGA_CXC (radica) → PROCEDENCIA=CARTERA.",
+          "valida": [
+            "FCXC SIFTR elegible",
+            "FRADICAEPS/FECHACXC"
+          ],
+          "errores": [
+            "No se encontro FCXC con PROCEDENCIA SIFTR",
+            "Sin fecha (FRADICAEPS/FECHACXC)",
+            "Errores SPK reliquida/entrega"
+          ],
+          "llama": [
+            "SPK_RELIQUIDACXCQX",
+            "SPK_ENTREGA_CXC"
+          ],
+          "efecto": "Genera FCXCDV/vencimientos vía ENTREGA_CXC; cuenta pasa a cartera operativa.",
+          "capaId": "02-operacion",
+          "gateId": "armar-cuenta"
+        },
+        {
+          "id": "EXPORTAR_CXC_FACTURAS",
+          "estado": "leido",
+          "hace": "Excel validación: relación CNSCXC↔facturas FTR_SI con totales FCXC (paginado DESDE_ID+TAKE).",
+          "valida": [],
+          "efecto": "Solo lectura export.",
           "capaId": "02-operacion",
           "gateId": "armar-cuenta"
         }
       ]
+    },
+    {
+      "nombre": "SPQ_FTR_RPT_COL",
+      "tipo": "SPQ",
+      "modelo": "FTR_RPT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTR_RPT_COL.sql",
+      "metodos": [
+        {
+          "id": "GENERAR_RPT",
+          "estado": "leido",
+          "hace": "Arma SQL dinámico según PROCESO (Tercero, IdPlan, Usuario, Prefijo, IdArea, Servicio, Rventas, TODO, Cirugía…); filtros fecha/sede/procedencia/particulares.",
+          "valida": [
+            "PROCESO y rango fechas en DATOS"
+          ],
+          "noValida": [
+            "Solo lectura — EXECUTE(@SQL)"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "informes-facturacion",
+          "efecto": "Result set al FE (FTRPTComponent); TODO incluye FCXC.INDRECIBIDO estado cartera"
+        }
+      ],
+      "cola": "1/1 leído. Fase B 2026-09-06."
+    },
+    {
+      "nombre": "SPQ_FDIAN_COL",
+      "tipo": "SPQ",
+      "modelo": "FDIAN_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FDIAN_COL.sql",
+      "cola": "GET_DATOS_FDIAN + CRUDFDIAN + CRUDFTRDIAN leído 2026-09-06 RUTA-CONFIG paso 4. conf.fdian FDIANComponent.",
+      "metodos": [
+        {
+          "id": "GET_DATOS_FDIAN",
+          "estado": "leido",
+          "hace": "Devuelve filas TGEN del facturador electrónico: TABLA=FDIAN, CAMPO in (CONTACTO, SOFTWARE, SOFTWARE_NOMINA).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT TGEN para modal «Datos facturador» (formDataFtrDian en FE).",
+          "capaId": "01-configuracion",
+          "gateId": "dian-firma"
+        },
+        {
+          "id": "CRUDFDIAN",
+          "estado": "leido",
+          "hace": "CRUD resoluciones FDIAN según REGISTRO.PROCESO (INSERTAR/EDITAR/ELIMINAR).",
+          "valida": [
+            "INSERTAR: CNSRESOL no duplicado",
+            "ELIMINAR: CNSRESOL obligatorio",
+            "ELIMINAR: bloquea si FTR.CNSRESOL referencia la resolución"
+          ],
+          "noValida": [
+            "Rango CNSINICIAL/CNSFINAL vs CNSACTUAL",
+            "Vigencia FECHAVEN",
+            "Coherencia IDENTIFICADOR sede / PROCEDENCIA",
+            "EDITAR: filas afectadas"
+          ],
+          "errores": [
+            "LA RESOLUCION DIAN YA EXISTE",
+            "EL CODIGO DE RESOLUCION DIAN ES OBLIGATORIO",
+            "ESTA RESOLUCION YA FUE USADA EN FACTURACION. NO ES POSIBLE ELIMINAR.",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE FDIAN: CNSRESOL, F_RESOLUCION, CNSINICIAL, CNSFINAL, DESCRIPCION, FECHAVEN, TIPO, IDENTIFICADOR (sede), TITULO, VENCIDA, PREFIJO, FECHAINI, CLAVETECNICA, CNSACTUAL, FTRELECTRONICA, LONGFTR, AMBIENTE, TIPO_OPERACION, TIPO_DOCUMENTO, PROCEDENCIA. INSERT devuelve @IDENTITY como CNS.",
+          "capaId": "01-configuracion",
+          "gateId": "dian-firma"
+        },
+        {
+          "id": "CRUDFTRDIAN",
+          "estado": "leido",
+          "hace": "Actualiza parámetros TGEN del facturador electrónico (REGISTRO.DATOS[]). Solo PROCESO=EDITAR.",
+          "valida": [],
+          "noValida": [
+            "Existencia IDTGEN",
+            "Formato email/software"
+          ],
+          "errores": [
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "UPDATE TGEN por IDTGEN; si CODIGO=FVCERTIFICADO actualiza FECHA1 (vencimiento certificado TGEN), demás campos actualizan DESCRIPCION.",
+          "capaId": "01-configuracion",
+          "gateId": "dian-firma"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FDIANCER_COL",
+      "tipo": "SPQ",
+      "modelo": "FDIANCER_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FDIANCER_COL.sql",
+      "nota": "Certificados firma digital. conf.firmadigital FDIANCERComponent + banner Facturación GETVENCIMIENTO.",
+      "metodos": [
+        {
+          "id": "CRUDFDIANCER",
+          "estado": "leido",
+          "hace": "CRUD certificados FDIANCER según REGISTRO.PROCESO (INSERTAR/EDITAR/BORRAR).",
+          "valida": [
+            "ID existe en EDITAR/BORRAR"
+          ],
+          "noValida": [
+            "Referencias FTR al borrar",
+            "Duplicado DESCRIPCION",
+            "Vigencia FECHAVENCE vs FECHAEXPEDICION"
+          ],
+          "errores": [
+            "No se encontró la firma digital",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE FDIANCER: DESCRIPCION, CLAVE, FECHAEXPEDICION, FECHAVENCE, PROVEEDOR. INSERT devuelve @IDENTITY como CNS.",
+          "capaId": "01-configuracion",
+          "gateId": "dian-firma"
+        },
+        {
+          "id": "GETVENCIMIENTO",
+          "estado": "leido",
+          "hace": "Consulta certificado más reciente (TOP 1 ORDER BY FECHAVENCE DESC) si USVGS DIANCERTIFICADO=SI y DIASNOTIFICACERT>0.",
+          "valida": [
+            "FNK_VALORVARIABLE DIANCERTIFICADO=SI",
+            "DIASNOTIFICACERT>0"
+          ],
+          "noValida": [
+            "Si DIANCERTIFICADO≠SI no retorna datos (silencioso)"
+          ],
+          "errores": [
+            "La variable DIASNOTIFICACERT no esta configurada"
+          ],
+          "llama": [],
+          "efecto": "OK + FECHAVENCE, ESTAVENCIDA (0=vigente, 1=vencida, 2=próxima a vencer), DIASXVENCER, NOMBREFIRMA. Usado en FacturacionPage banner.",
+          "capaId": "01-configuracion",
+          "gateId": "dian-firma"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_VALIDADIAN2",
+      "tipo": "SPQ",
+      "modelo": "VALIDADIAN2",
+      "estado": "leido",
+      "fuente": "sql/SPQ_VALIDADIAN2.sql",
+      "hace": "Valida resolución DIAN y certificado antes de numerar; @CONTINUA códigos 0-9.",
+      "valida": [
+        "BLOQUEADIAN=SI",
+        "Rango FDIAN para próximo número (SPK_PROXIMONUMEROFACTURA)",
+        "Resolución no vencida",
+        "Stock números vs cantidad"
+      ],
+      "noValida": [
+        "Si BLOQUEADIAN<>SI sale directo CONTINUA=1"
+      ],
+      "llama": [
+        "SPK_PROXIMONUMEROFACTURA"
+      ],
+      "efecto": "Puede marcar FDIAN.VENCIDA=1; alertas resolución/cert (CONTINUA 4/5/9)"
+    },
+    {
+      "nombre": "SPK_LIBERAR_FACT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_LIBERAR_FACT.sql",
+      "llamadoDesde": [
+        "FTR_COL · LIBERARFAC"
+      ],
+      "hace": "Motor liberación: revierte origen (HADM/CIT/AUT/MAD), anula MCP si contabilizada, desmarca cargos.",
+      "valida": [
+        "PROCEDENCIA in SALUD/CE/CI/MAD",
+        "PRI periodo factura y actual no cerrados (salvo FTR_ANULAEJERCANT)"
+      ],
+      "errores": [
+        "FACTURA DE UN EJERCICIO ANTERIOR...",
+        "EL PERIODO DE LA FACTURA ESTA CERRADO",
+        "PERIODO ACTUAL ESTAN CERRADOS"
+      ]
+    },
+    {
+      "nombre": "SPK_TOTALFACTURFIN",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_TOTALFACTURFIN.sql",
+      "llamadoDesde": [
+        "FTR_COL · CREARFTR (post guardar cabecera)",
+        "FTR_COL · CRUDFTRD / DELETEFTRD",
+        "FTR_COL · ADDFTRDC (ADD/DEL relación capita)",
+        "SIFTR_COL · PROCESAR_FTR (saldo inicial)"
+      ],
+      "hace": "Recálculo central de totales FTR/FTRD tras crear/editar líneas o cambiar copago propio. Rama **capita/PGP** (CAPITADA=1): sincroniza FTRDC↔VWK_CARGOS, FTRD.VLR_COPAGOS por cuota, CP_VLR_* y VR_TOTAL con/sin COPAPROPIO; transición @COPAPROPIO_ANT al editar check. Rama **financiero/evento**: agrega SUM(FTRD) → VALORSERVICIOS, copagos, IVA; separa moderadora si CUOTMODE_ENFACTFINAN.",
+      "valida": [
+        "FTR existe (N_FACTURA)",
+        "CNSFTR presente en rama capita"
+      ],
+      "noValida": [
+        "Existencia mínima de FTRD (agrega ceros si vacío)"
+      ],
+      "errores": [
+        "Silencioso si FTR no existe (sin UPDATE)"
+      ],
+      "llama": [],
+      "efecto": "UPDATE FTR (VALORSERVICIOS, VALORCOPAGO, VALORMODERADORA, CP_VLR_*, VR_TOTAL, VIVA, PIVA); UPDATE FTRD/FTRDC en rama capita",
+      "gateId": "factura-financiera",
+      "capaId": "02-operacion",
+      "notaUsvgs": "REDONDEOFTRFINANC, SOLO_COPA_RECAUDADO, CUOTMODE_ENFACTFINAN"
+    },
+    {
+      "nombre": "SPK_ADDSERCAP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ADDSERCAP.sql",
+      "llamadoDesde": [
+        "FTR_COL · ADDFTRDC (PROCESO=ADD)"
+      ],
+      "hace": "Relaciona cargos no facturados del periodo capita/PGP a la factura: INSERT **FTRDC** desde **VWK_CARGOS_HADMAUTCIT** (filtros fecha, tercero, plan, procedencia, clase orden, especialidad, riesgo, admisión, sede). Marca origen facturado: **HPRED**/HADMF (HADM), **AUTD**/AUT, **CIT**, **HCATDIMOV** (ONCO), **IMOV** (INV). Si **COPAPROPIO=1** pone VLR_COPAGO=0 en FTRDC no-HADM con TCOPAGO moderadora (02/MOCCD). Al cierre **EXEC SPK_TOTALFACTURFIN**.",
+      "valida": [
+        "FTR existe (CNSFCT=@CNSFTR)",
+        "Cargos FACTURADA=0 en vista",
+        "NOT EXISTS duplicado FTRDC misma clave (CNSFTR, N_CUOTA, PROCEDENCIA, NOADMISION, NOPRESTACION, NOITEM)"
+      ],
+      "noValida": [
+        "RAISERROR explícito — errores vía TRY/CATCH del METODO ADDFTRDC"
+      ],
+      "errores": [],
+      "llama": [
+        "SPK_TOTALFACTURFIN"
+      ],
+      "efecto": "INSERT FTRDC; UPDATE HPRED/AUTD/AUT/CIT/HCATDIMOV/IMOV FACTURADA=1 N_FACTURA; INSERT HADMF capita; UPDATE FTRDC copago propio; recálculo totales",
+      "gateId": "capita-pgp",
+      "capaId": "02-operacion",
+      "notaUsvgs": "SOLO_COPA_RECAUDADO (copago 0 si ENCAJA=0), FTRDC_INCLUYEGESTION, FTRDC_EXCUYSERPLAN",
+      "procedencias": [
+        "HADM",
+        "AUT",
+        "CIT",
+        "ONCO",
+        "APLIM",
+        "INV",
+        "TODA"
+      ]
+    },
+    {
+      "nombre": "SPK_DELSERCAP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_DELSERCAP.sql",
+      "llamadoDesde": [
+        "FTR_COL · ADDFTRDC (PROCESO=DEL)"
+      ],
+      "hace": "Quita relación capita/PGP: revierte **FACTURADA=0** y **N_FACTURA** en orígenes (HPRED/HADMF HADM, AUTD/AUT, CIT, HCATDIMOV ONCO, IMOV INV) según @PROCEDENCIA; **DELETE FTRDC** del rango fecha/cuota/filtros; recalcula **FTRD.VLR_COPAGOS** y cabecera **CP_VLR_***, **VALORCOPAGO**, **VR_TOTAL** (rama **DESCCOP_CAPI=SI**).",
+      "valida": [
+        "FTR existe (CNSFCT=@CNSFTR)"
+      ],
+      "noValida": [
+        "RAISERROR — silencioso salvo CATCH en ADDFTRDC"
+      ],
+      "errores": [],
+      "llama": [],
+      "efecto": "DELETE FTRDC; UPDATE orígenes desfactura; UPDATE FTRD/FTR totales capita; IMOV limpia NODOCUMENTO si era @N_FACTURA",
+      "gateId": "capita-pgp",
+      "capaId": "02-operacion",
+      "notaUsvgs": "REDONDEOFTRFINANC, DESCCOP_CAPI",
+      "procedencias": [
+        "HADM",
+        "AUT",
+        "CIT",
+        "ONCO",
+        "APLIM",
+        "INV",
+        "TODA"
+      ]
+    },
+    {
+      "nombre": "SPK_ANULA_FACT_CAPITADA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ANULA_FACT_CAPITADA.sql",
+      "llamadoDesde": [
+        "FTR_COL · ANULARFAC (PROCEDENCIA=FINANCIERO y CAPITADA=1)",
+        "ANULARFAC_MASIVO (misma rama)"
+      ],
+      "hace": "Anula factura **financiera capita/PGP** (variante de SPK_ANULA_FACT sin parámetro PART). Valida PRI ejercicio anterior (**FTR_ANULAEJERCANT**) y periodos cerrados. **@ESTACONTAB** = CONTABILIZADA salvo **FACTE=2** (DIAN) → trata como contabilizada. Rama no contab: FTR ESTADO=A, desfactura **HPRED**, **HADM**/HADMF, limpia SOAT (HADM_S/T). Rama contab periodo abierto: **MCP.ANULADO=1** + desfactura. Rama periodo cerrado: genera **NC** (FNOT clase C → **SPK_GENITEMS_NOTACR** → **SPK_NOTASCXC**). Rama contab con errores: migra **MCPE→MCP**, borra MCHE. Siempre: desfactura **AUT/AUTD/CIT**, borra **FXP/FXPD** CE, **DELETE FTRDC**, log **USLOG**.",
+      "valida": [
+        "FTR existe (N_FACTURA)",
+        "PRI ejercicio anterior cerrado → exige FTR_ANULAEJERCANT=SI",
+        "No ambos periodos (factura y actual) cerrados simultáneamente"
+      ],
+      "noValida": [
+        "Validaciones cartera/pagos/DIAN las hace ANULARFAC antes de invocar"
+      ],
+      "errores": [
+        "FACTURA DE UN EJERCICIO ANTERIOR DEBE CONFIGURARSE DE ACUERDO AL ARTÍCULO 106 DEL DECRETO 2649",
+        "EL PERIODO DE LA FACTURA Y EL PERIODO ACTUAL ESTAN CERRADOS."
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO (@FNOTC, @LOG)",
+        "SPK_GENITEMS_NOTACR",
+        "SPK_NOTASCXC"
+      ],
+      "efecto": "UPDATE FTR ESTADO=A; desfactura orígenes; DELETE FTRDC; DELETE FTR_DOCS; NC automática si periodo fac cerrado; USLOG anulación",
+      "gateId": "capita-pgp",
+      "capaId": "02-operacion",
+      "notaUsvgs": "FTR_ANULAEJERCANT, IDTARIFASOAT"
+    },
+    {
+      "nombre": "SPK_ANULA_FACT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ANULA_FACT.sql",
+      "llamadoDesde": [
+        "FTR_COL · ANULARFAC",
+        "ANULARFAC_MASIVO"
+      ],
+      "hace": "Anula FTR ESTADO=A: valida periodos, DIAN/FACTE, cartera, pagos; revierte origen y contabilidad; PART desaplica FPAG.",
+      "valida": [
+        "TIPOANULACION<>NC, ESTADO<>A",
+        "Sin FNOT clase C activa",
+        "PRI periodos (FTR_ANULAEJERCANT)",
+        "FACTE<>0 fuerza NC si periodo fac abierto"
+      ],
+      "errores": [
+        "Factura anulada o con nota credito",
+        "Factura con nota de crédito existente",
+        "EJERCICIO ANTERIOR... DECRETO 2649",
+        "PERIODO DE LA FACTURA Y EL PERIODO ACTUAL ESTAN CERRADOS"
+      ],
+      "llama": [
+        "SPK_DESPAGOSCXC",
+        "SPK_NC_CONTAB_FTR"
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_FTR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_FTR.sql",
+      "llamadoDesde": [
+        "Contabilización factura",
+        "SPK_ANULA_FACT reverso"
+      ],
+      "hace": "Genera/ajusta asiento MCP/MCH de factura; valida DIAN post-notificación si CONTAB_FTR_POSTDIAN=SI.",
+      "valida": [
+        "FTR no anulada (o anula MCPE)",
+        "FACTE=2 si CONTAB_FTR_POSTDIAN",
+        "Copago POS vía FCJ.N_FACTURAPOS"
+      ],
+      "noValida": [
+        "RETURN silencioso si no cumple post-DIAN"
+      ],
+      "llama": [
+        "MCPE",
+        "MCP",
+        "MCH"
+      ]
+    },
+    {
+      "nombre": "SPK_FACTURACI_ESCMA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURACI_ESCMA.sql",
+      "llamadoDesde": [
+        "FTR_COL/FTR_MASIVA_COL · FACTURAR_MASI PROCEDENCIA AUT/UNI/CE"
+      ],
+      "hace": "Motor factura masiva desde RPDX/CIT marcadas: numeración, cabecera FTR, detalle FTRD, totales.",
+      "valida": [
+        "PPT/TTEC",
+        "CIT MARCAFAC=1 en CNSRPDX",
+        "VALORTOTAL>0 salvo CLASEFACTURA CUE"
+      ]
+    },
+    {
+      "nombre": "SPK_GENNUMEROFACTURA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENNUMEROFACTURA.sql",
+      "llamadoDesde": [
+        "CREARFTR",
+        "SPK_FACTURACI_ESCMA"
+      ],
+      "hace": "Asigna N_FACTURA según FDIAN/resolución (BLOQUEADIAN, FACTSEDE); valida rango vigente.",
+      "errores": [
+        "No Existe Resolucion de Facturas Vigente, No se Puede Continuar"
+      ]
+    },
+    {
+      "nombre": "SPK_ENTREGA_CXC",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ENTREGA_CXC.sql",
+      "llamadoDesde": [
+        "FCXC_COL · RADICA_FCXC",
+        "PROCESAR_RADICACION_MULTI_FECHA"
+      ],
+      "hace": "Al radicar: FCXC F_RECIBIDO/QUIENRECIBIO/NOREFERENCIAEXT; INDRECIBIDO=1; FTR.INDCXC=1; genera FCXCDV por factura.",
+      "valida": [
+        "No duplicar FCXCDV existente para CNSCXC+N_FACTURA"
+      ],
+      "efecto": "Vencimientos: PLANDEPAGO=1 → cuotas FTRPP; else F_VENCE=F_RECIBIDO+PPT.DIASVTO; fallback +30 días. Presupuesto opcional SPK_ENTREGA_CXC_PTTO.",
+      "llama": [
+        "SPK_ENTREGA_CXC_PTTO"
+      ],
+      "gateId": "vencimientos-cartera"
+    },
+    {
+      "nombre": "SPK_RELIQUIDACXCQX",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RELIQUIDACXCQX.sql",
+      "llamadoDesde": [
+        "FCXC_COL · ASIGNAR_FACT",
+        "CREARCXC_ENT",
+        "borrado FCXCD",
+        "SPK_DESPAGOSCXC",
+        "SPK_ANULA_FACT"
+      ],
+      "hace": "Recalcula FCXCD/FCXCDV y totales FCXC: resetea saldos, agrega ND/NC (FNOT), pagos (FPAGD/FLEGD), glosas (FGLO), deducciones y cesiones; actualiza SALDO/SALDONETO cabecera.",
+      "valida": [
+        "Variables USVGS: IDTIPOCXP_DEFAULT (rama ARS), PERMITESALDONEGATIVO, ANTIPO_IMP_RESTA_FTR"
+      ],
+      "noValida": [
+        "No bloquea saldo negativo explícito en cabecera (solo recalcula)"
+      ],
+      "errores": [
+        "RAISERROR genérico vía CATCH si falla UPDATE"
+      ],
+      "efecto": "FCXCD + FCXCDV + FCXC.VALORCXC/SALDO/SALDONETO coherentes con cartera.",
+      "gateId": "vencimientos-cartera"
+    },
+    {
+      "nombre": "SPK_CONTAB_RADICACXC",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_RADICACXC.sql",
+      "llamadoDesde": [
+        "FCXC_COL · RADICA_FCXC (CONTABCXC=SI)",
+        "CONTAB_FCXC",
+        "MCPE_COL reconstrucción"
+      ],
+      "hace": "Genera MCP/MCPE procedencia RAD CXC: DB cuenta radicada / CR cuenta CxC por FCXCD con SALDO>0; revisa y pasa a MCP definitivo.",
+      "valida": [
+        "PRI del mes F_RECIBIDO existe y no cerrado",
+        "Completa FTR.CUENTACXC y CUENTACXC_RAD vía TTEC/PPT si vacías"
+      ],
+      "errores": [
+        "EL PERIODO CONTABLE NO EXISTEN",
+        "EL PERIODO ACTUAL CERRADO"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO",
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "efecto": "MCPE+MCH asiento radicación; FCXC queda contabilizable al confirmar MCP.",
+      "gateId": "radicar-cuenta"
+    },
+    {
+      "nombre": "SPK_GENERA_JSON_PERU_FACTURA",
+      "tipo": "SPK",
+      "estado": "listado",
+      "fuente": "sql/SPK_GENERA_JSON_PERU_FACTURA.sql",
+      "llamadoDesde": [
+        "ENVIA_CONTAB Perú"
+      ],
+      "cola": "En sql/. Ficha pendiente leído completo."
+    },
+    {
+      "nombre": "SPK_RELIQUIDA_FTR",
+      "tipo": "SPK",
+      "estado": "listado",
+      "fuente": "sql/SPK_RELIQUIDA_FTR.sql",
+      "llamadoDesde": [
+        "FNOT_APLICAR",
+        "Notas DB/CR"
+      ],
+      "cola": "En sql/. Compartido con cartera."
+    },
+    {
+      "nombre": "SPQ_RIPS",
+      "tipo": "SPQ",
+      "modelo": "RIPS",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RIPS.sql",
+      "cola": "10/10 METODOs leído 2026-09-06. Orquestador MODELO RIPS.",
+      "metodos": [
+        {
+          "id": "GET_DATOS",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Devuelve CUV, FRADICA_RIPS, JSON_RESPUESTA, JSON_ENVIO desde FTRJSON (FV) o FNOTJSON (NC/ND/NA). URLBASE pruebas si BD≠BDATA_PRODUCCION.",
+          "valida": ["TIPODOC + CNSDOC"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "GET_MARCADOS",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Lista FTR marcadas MARCAFEVRIPS=1 del usuario sin CUV.",
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "SET_DATOS",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Persiste respuesta SISPRO: CUV + FRADICA_RIPS en FTR/FNOT/FGLO y FTRJSON/FNOTJSON. ISVALIDACUV=1 solo actualiza CUV ya validado. KO: guarda JSON_RESPUESTA en FTR_MAS_LOG (FEVRIPS).",
+          "valida": ["ResultState=1 para éxito", "TIPODOC FV/NC/ND/NA"],
+          "errores": ["KO + fila ERROR si excepción SQL"],
+          "efecto": "FTR.CUV, FTR.FRADICA_RIPS; FNOT/FGLO en NC/ND/NA; limpia FTR_MAS_LOG FEVRIPS",
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "GET_DATOS_XML",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "XML_Base64 FEV desde FDIANR (SendBillSync) para paquete ZIP.",
+          "valida": ["CNSDOC + TIPODOC"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "GET_DATOS_XML_ATTACHEDDOCUMENT",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "AttachedDocument DIAN vía FNK_AttachedDocument; parche NUMERO_CONTRATO (PPT/CNT) y tipo usuario subs 04/05. FV y NC/ND.",
+          "llama": ["FNK_AttachedDocument", "FNK_VALORVARIABLE SINTAGXMLVERSION"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "MARCAFAC",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Toggle MARCAFEVRIPS/USUARIO_MARCAFEVRIPS en FTR por CNSFCT.",
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "MARCATODO",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "UPDATE dinámico FTR por FILTROS SQL (ACCION 1=marca / 0=desmarca). Join FDIAN+TER+PLN.",
+          "valida": ["FILTROS no vacío — SQL dinámico"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "MARCATODO_VALIDADO",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "SELECT CNSFCT,N_FACTURA por FILTROS (preview antes de marcar masivo).",
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "MARCAFCXC",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Desmarca previas del usuario; marca facturas FCXCD de CNSCXC con FACTE=2, contabilizada, CUV vacío, no caja.",
+          "valida": ["FACTE=2", "CONTABILIZADA<>0", "CUV vacío", "PROCEDENCIA<>CAJA"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "GET_CONFIG_EXPORT_RIPS",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Nomenclatura export ZIP: PPT.RIPS_NOMBRE_* , CUVTXT, NIT, prefijo/num factura, CUV. FV o NC/ND vía FNOT.",
+          "capaId": "04-bancos"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FEVRIPS_COLA",
+      "tipo": "SPQ",
+      "modelo": "FEVRIPS_COLA",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FEVRIPS_COLA.sql",
+      "cola": "7/7 METODOs leído 2026-09-06. Tabla DBO.FEVRIPS_COLA. Activo si FEVRIPS_MODO=MICROSERVICIO.",
+      "metodos": [
+        {
+          "id": "APTITUD",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Veredicto worker: MODO, ES_PRODUCCION, URL efectiva (prod vs URL_SERV_RIPS_PRUEBA), NIT prestador, existe FEVRIPS_COLA. Opcional CONTAR_PENDIENTES.",
+          "errores": ["KO: MODO_INACTIVO, SIN_COLA, SIN_NIT, SIN_URL_PRODUCCION, SIN_URL_PRUEBA"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "TOMAR_LOTE",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "MERGE candidatas FV (mismo predicado que masivo) → ESTADO=1 reclamado por WORKER. Fase 1 solo facturas.",
+          "valida": ["WORKER obligatorio", "FACTE=2, no caja, CUV vacío, FDIAN FTRELECTRONICA"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "SET_ESTADO",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Avance pipeline cola: ESTADO 2=generando, 3=enviando, 4=error técnico (reintento), 5=validación (no auto). LIBERAR suelta WORKER.",
+          "valida": ["WORKER debe coincidir si se envía"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "TOMAR_MANUAL",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Reserva doc ESTADO=9 BLOQUEO_HASTA antes envío manual; evita doble radicación con worker.",
+          "errores": ["KO EN_PROCESO si worker u otro manual activo"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "LIBERAR_MANUAL",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Suelta reserva MANUAL:usuario. ESTADO_FINAL=0 pendiente o 5 error validación.",
+          "valida": ["Solo WORKER=MANUAL:usuario"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "ENCOLAR",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "REPROCESAR=1, INTENTOS=0; PRIORIDAD opcional. Única salida de ESTADO 5.",
+          "errores": ["KO EN_PROCESO si colgada en 1-3 o manual vivo"],
+          "capaId": "04-bancos"
+        },
+        {
+          "id": "ESTADOS",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Polling grilla: ESTADO 0-9 + desc + MINUTOS + WORKER + MENSAJE por lista DOCUMENTOS.",
+          "capaId": "04-bancos"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FEVRIPS_COL",
+      "tipo": "SPQ",
+      "modelo": "FEVRIPS_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FEVRIPS_COL.sql",
+      "cola": "1/1 METODO leído 2026-09-06.",
+      "metodos": [
+        {
+          "id": "NOTA_AJUSTE",
+          "estado": "leido",
+          "gateId": "rips-fev",
+          "hace": "Devuelve JSON_QUERY(JSON_ENVIO,'$.rips') + CUV desde FTRJSON por CNSFCT (factura base NA-RIPS).",
+          "errores": ["KO: No se Encontro el dato buscado..."],
+          "valida": ["Existe FTRJSON para CNSFCT"],
+          "capaId": "04-bancos"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENERAR_RIPS_JSON",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENERAR_RIPS_JSON.sql",
+      "llamadoDesde": [
+        "FTR_COL · RIPS_JSON",
+        "ValidacionesFEVRipsComponent",
+        "useRipsJsonAsync",
+        "useNotaAjusteJsonEnvio"
+      ],
+      "gateId": "rips-fev",
+      "hace": "Genera o devuelve RIPSJSON + XML FEV por TIPODOC: FACTURA, AJUSTE (glosa CNSGLO o FTR), NOTACR, NOTADB. SOLO_META=SI sin payload. GENERAR=NO reutiliza FTRJSON salvo vacío.",
+      "valida": [
+        "FACTE=2 en factura base",
+        "AJUSTE: factura base debe tener CUV en SISPRO",
+        "NOTACR/NOTADB: FNOT.FACTE=2"
+      ],
+      "errores": [
+        "La Factura … No esta Registrada en el SISPRO",
+        "La Nota DB-CR no Existe o no se ha Notificado a la Dian",
+        "La factura … no esta notificada a la DIAN (FACTE<>2)",
+        "No se encontro factura ni glosa para CNSFCT"
+      ],
+      "llama": [
+        "FNK_AttachedDocument",
+        "SPK_PERSISTIR_RIPSJSON_ENVIO",
+        "SPK_RIPS_JSON_FTR_IND",
+        "SPK_RIPS_JSON_FTR_MAS",
+        "SPK_RIPS_JSON_FTR_CAPI",
+        "SPK_RIPS_JSON_FTR_CAPMASI",
+        "SPK_RIPS_JSON_FTR_PGP",
+        "SPK_RIPS_JSON_FTR_AUTPG",
+        "SPK_RIPS_JSON_FTR_CITPAQ",
+        "SPK_RIPS_JSON_AJUSTE_IND",
+        "SPK_RIPS_JSON_AJUSTE_PGP",
+        "SPK_RIPS_JSON_NOTAAJUSTE_*",
+        "SPK_RIPS_JSON_NDBCR_IND"
+      ],
+      "efecto": "Persiste JSON_ENVIO en FTRJSON/FNOTJSON vía SPK_PERSISTIR_RIPSJSON_ENVIO",
+      "cola": "SPKs anidados SPK_RIPS_JSON_* no están en sql/ — opcional hasta REQ."
+    },
+    {
+      "nombre": "SPQ_AUTPG",
+      "tipo": "SPQ",
+      "modelo": "AUTPG",
+      "estado": "leido",
+      "fuente": "sql/SPQ_AUTPG.sql",
+      "nota": "Pestaña Facturación Programa (FTRCITPGComponent). Tabla AUTPG. 24 METODOs leídos 2026-09-06.",
+      "metodos": [
+        {
+          "id": "INSERTAR_PACIENTE",
+          "estado": "leido",
+          "hace": "Alta paciente en AUTPG para periodo/tercero/plan/unidad. Valida duplicado mismo periodo.",
+          "valida": ["IDAFILIADO, ANOMES, IDTERCEROCA, IDPLAN, UNIDAD_ATENCION", "No duplicado AUTPG mismo periodo"],
+          "errores": ["Paciente ya existe en el periodo", "Variables obligatorias no suministradas"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "INSERT AUTPG estado Autorizado"
+        },
+        {
+          "id": "ENVIARA_FACT",
+          "estado": "leido",
+          "hace": "Envía o retira registro a cola de facturación (ENFACT 1/0). ACCION ENVIAR|RETIRAR. Log AUTPG_LOG.",
+          "valida": ["Estado Autorizado/Autorizado Recuperado", "VALORPAQ>0", "No facturado", "No duplicado facturación mismo periodo (ENVIAR)"],
+          "errores": ["DUPLICADO_FACTURACION_MISMO_PERIODO", "El registro no admite esta acción", "Variables obligatorias"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG ENFACT, USUENVIA_AFACT, FECHAENVIO_AFACT, VALORCOPAGO"
+        },
+        {
+          "id": "ENVIARA_FACT_TODOS",
+          "estado": "leido",
+          "hace": "Envío masivo a facturación por tercero/unidad/periodo/sede. Recalcula copago desde VWK_CARGOS_HADMAUTCIT_ART.",
+          "valida": ["IDTERCEROCA, UNIDAD_ATENCION, ANOMES obligatorios", "Estado autorizado, ENFACT=0, FACTURABLE=1, no facturado"],
+          "errores": ["Variables obligatorias no suministradas"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "INSERT AUTPG_LOG + UPDATE AUTPG masivo ENFACT=1"
+        },
+        {
+          "id": "RECHAZAR_FACTURACION",
+          "estado": "leido",
+          "hace": "Rechaza facturación individual o masiva. CAU IDCLASE=RECHAZO_FTR obligatorio.",
+          "valida": ["CAU en TGEN RECHAZO_FTR", "Estado admite rechazo", "No facturado"],
+          "errores": ["Causal de rechazo no válida", "El registro no admite rechazo"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG ESTADO=Rechazado Facturacion, MOTIVORECHAZO, log"
+        },
+        {
+          "id": "EXPORTAR_EXCEL",
+          "estado": "leido",
+          "hace": "Exporta grilla AUTPG filtrada a Excel (dataset SELECT).",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "Solo lectura / salida Excel"
+        },
+        {
+          "id": "EXPORTAR_FORMATO_AUTPG",
+          "estado": "leido",
+          "hace": "Genera plantilla Excel para importación masiva AUTPG.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "Solo lectura / plantilla"
+        },
+        {
+          "id": "PROCESAR_IMPORTACION_EXCEL",
+          "estado": "leido",
+          "hace": "Procesa archivo importado: valida filas, inserta/actualiza AUTPG staging importados.",
+          "valida": ["Formato columnas", "Paciente existe", "Periodo/tercero/plan coherentes"],
+          "errores": ["Errores por fila en @TBLERRORES"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "Persiste registros importados pendientes facturar"
+        },
+        {
+          "id": "MARCAR_TODOS_IMPORTADOS",
+          "estado": "leido",
+          "hace": "Marca todos los registros importados del usuario para facturación.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE MARCA en importados"
+        },
+        {
+          "id": "LIMPIAR_IMPORTACION",
+          "estado": "leido",
+          "hace": "Elimina staging de importación del usuario.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "DELETE registros importados no facturados"
+        },
+        {
+          "id": "ELIMINAR_REGISTRO_IMPORTADO",
+          "estado": "leido",
+          "hace": "Elimina un registro importado individual.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "DELETE registro importado"
+        },
+        {
+          "id": "VALIDADIAN_AUTPG",
+          "estado": "leido",
+          "hace": "Pre-validación resolución DIAN: cuenta facturas por sede según MAXAFI_XFTR (PPT) y pacientes ENFACT. Si BLOQUEADIAN≠SI retorna CONTINUA=1.",
+          "valida": ["IDTERCEROCA, IDPLAN, PERIODO", "Pacientes ENFACT facturables"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "llama": ["SPQ_VALIDADIAN2"],
+          "efecto": "Retorna CONTINUA y detalle por sede; no persiste FTR"
+        },
+        {
+          "id": "CONTEOAUTORIZADO",
+          "estado": "leido",
+          "hace": "Conteo registros autorizados listos vs marcados (WITHMARCA) para facturar en filtro.",
+          "valida": ["IDTERCEROCA, IDPLAN, PERIODO, IDSEDE"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "Solo lectura conteos"
+        },
+        {
+          "id": "ENVIARA_EVENTO",
+          "estado": "leido",
+          "hace": "Marca citas relacionadas como enviadas a evento (UPDATE CIT CLASEORDEN).",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE CIT.CLASEORDEN"
+        },
+        {
+          "id": "RETIRAR_COPAGO",
+          "estado": "leido",
+          "hace": "Pone VALORCOPAGO=0 en AUTPG seleccionados ENFACT.",
+          "valida": ["ENFACT=1", "No facturado"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG.VALORCOPAGO=0"
+        },
+        {
+          "id": "FACTURAR_AUTPG",
+          "estado": "leido",
+          "hace": "Orquesta facturación programa: valida filtros en SPQ y delega a SPK_FACTURA_AUTPG (WITH_MARCA=0).",
+          "valida": ["PRI abierto", "Tercero facturador NIT", "Items marcados ENFACT", "VALORPAQ>0", "FACTSEDE"],
+          "errores": ["No se encontraron items para facturar", "Tercero facturador no identificado", "Valor del Paquete no puede ser menor o igual a cero", "Periodo Contable No Existe o no Esta Abierto"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "llama": ["SPK_FACTURA_AUTPG"],
+          "efecto": "Crea FTR/FTRD; UPDATE AUTPG FACTURADO=1"
+        },
+        {
+          "id": "FACTURAR_AUTPG_IMPORTADOS",
+          "estado": "leido",
+          "hace": "Igual FACTURAR_AUTPG; SPK con WITH_MARCA=1 (solo importados marcados).",
+          "valida": ["Mismas que FACTURAR_AUTPG", "Origen importación"],
+          "errores": ["No se encontraron items para facturar"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "llama": ["SPK_FACTURA_AUTPG"],
+          "efecto": "Crea FTR desde importados"
+        },
+        {
+          "id": "FACTURAR_EVENTO_PAQ",
+          "estado": "leido",
+          "hace": "Orquesta factura paquete evento: valida marcas en VWK_CARGOS_HADMAUTCIT_ART y delega a SPK_FACTURACI_EVENTO_PAQ.",
+          "valida": ["Marcas MARCAFAC=1 usuario (USUMARCA)", "NIT tercero instalado", "IDSERPAQ en SER", "VALORPAQ>0", "MAX_AFILIADOS_FACTURA>0", "FACTSEDE"],
+          "errores": ["No se encontraron items para facturar.", "Escogio Todas las Sedes y esta IPS Tiene configurado Facturación por Sede", "Tercero facturador no identificado...", "El paquete asociado no existe en el Maestro de Servicios...", "Valor del Paquete no puede ser menor o igual a cero(0)", "Nro. de afiliados por factura no puede ser menor o igual a cero(0)"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-evento-paq",
+          "llama": ["SPK_FACTURACI_EVENTO_PAQ"],
+          "efecto": "Crea FTR PROCEDENCIA=CI paquete; UPDATE CIT FACTURADA=1",
+          "ventanaFe": "FTRCITEventoComponent · facturarEventoPaq() · tab Facturación Evento (no pestaña Programa)"
+        },
+        {
+          "id": "RECALCULAR_COPAGOS",
+          "estado": "leido",
+          "hace": "Recalcula VALORCOPAGO desde VWK_CARGOS_HADMAUTCIT_ART para registros ENFACT.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG.VALORCOPAGO"
+        },
+        {
+          "id": "ACTUALIZAR_FECHAATENCION",
+          "estado": "leido",
+          "hace": "Actualiza FECHAATENCION masiva en AUTPG filtrados ENFACT.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG.FECHAATENCION"
+        },
+        {
+          "id": "LISTAR_CAUSALES_NO_FACT",
+          "estado": "leido",
+          "hace": "Lista causales TGEN TABLA=AUTPG CAMPO=NO_ENV_FACT_CAUSAL.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "Solo lectura combo causales"
+        },
+        {
+          "id": "MARCAR_NO_ENVIAR_FACT",
+          "estado": "leido",
+          "hace": "Excluye registro de facturación con causal (NO_ENVIAR_FACT=1, FACTURABLE=0). Log AUTPG_LOG.",
+          "valida": ["IDCAUSAL en TGEN", "Estado autorizado, ENFACT=0, no facturado, VALORPAQ>0"],
+          "errores": ["Debe indicar la causal", "Causal no registrada", "El registro no admite esta acción"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG NO_ENVIAR_FACT, guarda FACTURABLE_ANTES_NOFACT"
+        },
+        {
+          "id": "REVERTIR_NO_ENVIAR_FACT",
+          "estado": "leido",
+          "hace": "Revierte exclusión NO_ENVIAR_FACT restaurando FACTURABLE.",
+          "valida": ["NO_ENVIAR_FACT=1", "No facturado"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG revierte flags exclusión + log"
+        },
+        {
+          "id": "PROCESAR_NO_ENV_FACT_MASIVO",
+          "estado": "leido",
+          "hace": "Aplica MARCAR_NO_ENVIAR_FACT masivo por filtro JSON (IDs o criterio).",
+          "valida": ["IDCAUSAL obligatoria"],
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "UPDATE AUTPG masivo exclusión"
+        },
+        {
+          "id": "CONSULTAR_LOG",
+          "estado": "leido",
+          "hace": "Consulta historial AUTPG_LOG por IDAUTPG.",
+          "capaId": "02-operacion",
+          "gateId": "facturacion-programa-autpg",
+          "efecto": "Solo lectura log"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_FACTURA_AUTPG",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURA_AUTPG.sql",
+      "llamadoDesde": [
+        "SPQ_AUTPG · FACTURAR_AUTPG (WITH_MARCA=0)",
+        "SPQ_AUTPG · FACTURAR_AUTPG_IMPORTADOS (WITH_MARCA=1)"
+      ],
+      "hace": "Motor FTR programa AUTPG (V2 optimizada). Agrupa pacientes AUTPG por sede y MAXAFI_XFTR; genera una FTR por grupo con línea paquete (IDSERVICIOPAQ/VLRPAQUETE) + relación FTRDC (cargos CIT y AUT medicamentos). 3 fases: prep sin TX → insert FTR/FTRD/FTRDC + marca AUTPG en TX corta → contabiliza fuera de TX.",
+      "valida": [
+        "AUTPG: ANOMES, IDTERCEROCA, IDPLAN, ENFACT=1, FACTURABLE=1, ESTADO Autorizado/Autorizado Recuperado, no facturado",
+        "WITH_MARCA=1 exige MARCA=1 y USUARIO_MARCA=@USUARIO",
+        "Resolución FDIAN vigente por sede (PROCEDENCIA=FTR)",
+        "BLOQUEADIAN=SI → SPQ_VALIDADIAN2 por sede (consecutivos suficientes)",
+        "PPT: TIPOTERCONTABLE, DIASVTO; SER paquete existe"
+      ],
+      "noValida": [
+        "PRI abierto (lo valida SPQ_AUTPG antes de EXEC)"
+      ],
+      "errores": [
+        "Existen sedes en este proceso de facturacion que no cuentan con resolucion vigente...",
+        "La sede %s agotó la numeración autorizada por la DIAN...",
+        "La sede %s no tiene consecutivos DIAN suficientes...",
+        "La resolución DIAN de la sede %s está vencida...",
+        "No existe resolución DIAN disponible para la sede %s.",
+        "No se generó el número de factura (N_FACTURA) para la sede %s...",
+        "Existen facturas sin número (N_FACTURA vacío o nulo)..."
+      ],
+      "llama": [
+        "SPQ_VALIDADIAN2",
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT FTR (PROCEDENCIA=AUTPG, PAQUETE=1, TIPOFAC=M) + FTRD línea paquete + FTRDC cargos CIT/AUT; UPDATE AUTPG FACTURADO=1, N_FACTURA; contab directa SPK_NC_CONTAB_FTR o encola FTRCO si CONTAB_FTR_JOB=SI",
+      "cola": "Cargos CIT/AUT consultados directo (no VWK_CARGOS_HADMAUTCIT_ART). AUT medicamentos: PREFIJOMEDICAMENTOS + ESTADO=Pendiente.",
+      "gateId": "facturacion-programa-autpg",
+      "capaId": "02-operacion"
+    },
+    {
+      "nombre": "SPK_FACTURACI_EVENTO_PAQ",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURACI_EVENTO_PAQ.sql",
+      "llamadoDesde": [
+        "SPQ_AUTPG · FACTURAR_EVENTO_PAQ"
+      ],
+      "hace": "Motor FTR paquete evento (V2 optimizada). Toma citas **CIT** marcadas (MARCAFAC=1, ENFACT=1, FACTURABLE=1) — no AUTPG. Agrupa por sede y MAXAFI_XFTR; genera FTR con línea paquete única (IDSERVICIOPAQ/VLRPAQUETE − copago). Sin FTRDC. 3 fases: prep sin TX → insert FTR/FTRD + marca CIT en TX corta → contabiliza fuera de TX.",
+      "valida": [
+        "CIT: IDTERCEROCA, IDPLAN, FACTURADA=0, FACTURABLE=1, ENFACT=1, MARCAFAC=1, USUARIONOFACTURABLE=@USUARIO",
+        "Resolución FDIAN vigente por sede CIT (PROCEDENCIA=FTR)",
+        "FACTSEDEPACIENTE=SI → sede desde AFI.IDSEDE; si no, CIT.IDSEDE",
+        "PPT: TIPOTERCONTABLE, DIASVTO; SER paquete existe; IVA vía FNK_VALOR_IMPUESTO si SER.IVA=SER"
+      ],
+      "noValida": [
+        "PRI abierto (no lo valida el SPK; SPQ no lo exige explícitamente en FACTURAR_EVENTO_PAQ)",
+        "VALIDADIAN2 / consecutivos DIAN (solo verifica existencia resolución, no agotamiento)"
+      ],
+      "errores": [
+        "Existen sedes en este proceso de facturacion que no cuentan con resolucion vigente. Comuniquese con el Administrador del Sistema.",
+        "No existen pacientes agrupados por facturas. Comuniquese con el Administrador del Sistema.",
+        "No existe detalle de facturas. Comuniquese con el Administrador del Sistema."
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT FTR (PROCEDENCIA=CI, PAQUETE=1, TIPOFAC=M, NOREFERENCIA=VARIOS) + FTRD línea paquete; UPDATE CIT FACTURADA=1, N_FACTURA, MARCAFAC=0, CNSFCT; contab directa SPK_NC_CONTAB_FTR o encola FTRCO si CONTAB_FTR_JOB=SI",
+      "cola": "Origen CIT directo (no AUTPG). Marcado previo vía FTR_COL · MARCAFACT/MARCAFACTPTE en FTRCITEventoComponent. Grilla VWK_CARGOS_HADMAUTCIT_ART.",
+      "gateId": "facturacion-evento-paq",
+      "capaId": "02-operacion"
     }
   ]
 }

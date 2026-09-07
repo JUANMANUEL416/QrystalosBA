@@ -1,0 +1,766 @@
+{
+  "procesoId": "bancos",
+  "actualizado": "2026-09-06T09:17:00",
+  "nota": "SPQ_BMOV 17/17 + config: BCO 6/6, BCTC 16/16, OFIN_COL CRUDOFIN leído 2026-09-06 RUTA-CONFIG paso 2.",
+  "sps": [
+    {
+      "nombre": "SPQ_BCO",
+      "tipo": "SPQ",
+      "modelo": "BCO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_BCO.sql",
+      "cola": "6/6 METODOs leído 2026-09-06. conf.bancos BCOComponent.",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Inserta entidad bancaria BCO con BANCO, DESCRIPCION, CODACH, IDTERCERO.",
+          "valida": [
+            "BANCO no duplicado",
+            "IDTERCERO no duplicado en BCO"
+          ],
+          "noValida": [
+            "Existencia del tercero en TER",
+            "Formato CODACH"
+          ],
+          "errores": [
+            "CODIGO DE BANCO YA EXISTE",
+            "TERCERO YA SE ENCUENTRA REGISTRADP"
+          ],
+          "llama": [],
+          "efecto": "INSERT BCO; DESCRIPCION en UPPER.",
+          "capaId": "01-configuracion",
+          "gateId": "maestro-bco",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITAR",
+          "hace": "Actualiza DESCRIPCION, CODACH e IDTERCERO de un BCO existente.",
+          "valida": [
+            "BANCO existe"
+          ],
+          "noValida": [
+            "Unicidad IDTERCERO al editar",
+            "Existencia del tercero"
+          ],
+          "errores": [
+            "CODIGO DE BANCO NO EXISTE"
+          ],
+          "llama": [],
+          "efecto": "UPDATE BCO por BANCO.",
+          "capaId": "01-configuracion",
+          "gateId": "maestro-bco",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "Elimina entidad BCO si no tiene sucursales BSU.",
+          "valida": [
+            "BANCO existe",
+            "Sin filas BSU para ese BANCO"
+          ],
+          "noValida": [
+            "Referencias BCT/BMOV"
+          ],
+          "errores": [
+            "Código de banco no existe.",
+            "No se puede eliminar un banco con sucursales"
+          ],
+          "llama": [],
+          "efecto": "DELETE BCO.",
+          "capaId": "01-configuracion",
+          "gateId": "maestro-bco",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDARBSU",
+          "hace": "Inserta sucursal BSU de un banco.",
+          "valida": [
+            "Par BANCO+SUCURSAL no duplicado"
+          ],
+          "noValida": [
+            "Existencia BCO padre (no valida explícitamente)",
+            "Formato teléfonos"
+          ],
+          "errores": [
+            "Sucursal ya existe."
+          ],
+          "llama": [],
+          "efecto": "INSERT BSU; DESCRIPCION y DIRECCION en UPPER.",
+          "capaId": "01-configuracion",
+          "gateId": "maestro-bco",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITARBSU",
+          "hace": "Actualiza datos de contacto y descripción de sucursal BSU.",
+          "valida": [
+            "BANCO+SUCURSAL existe"
+          ],
+          "noValida": [
+            "DESCRIPCION/DIRECCION no se fuerzan UPPER en UPDATE"
+          ],
+          "errores": [
+            "Sucursal no existe."
+          ],
+          "llama": [],
+          "efecto": "UPDATE BSU por BANCO y SUCURSAL.",
+          "capaId": "01-configuracion",
+          "gateId": "maestro-bco",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINARBSU",
+          "hace": "Elimina sucursal BSU.",
+          "valida": [
+            "BANCO+SUCURSAL existe"
+          ],
+          "noValida": [
+            "Referencias BCT u otras tablas"
+          ],
+          "errores": [
+            "Sucursal no existe."
+          ],
+          "llama": [],
+          "efecto": "DELETE BSU.",
+          "capaId": "01-configuracion",
+          "gateId": "maestro-bco",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_BCTC",
+      "tipo": "SPQ",
+      "modelo": "BCTC",
+      "estado": "leido",
+      "fuente": "sql/SPQ_BCTC.sql",
+      "cola": "16/16 METODOs leído 2026-09-06. admin.Cuentas BCTComponent + conciliación BCTC.",
+      "metodos": [
+        {
+          "id": "GUARDARBCT",
+          "hace": "Alta cuenta bancaria BCT; SALDO inicia en 0.",
+          "valida": ["Par BANCO+SUCURSAL+CTA_BCO no duplicado"],
+          "noValida": ["Existencia BCO/BSU", "COD_CONTABLE en CUE"],
+          "errores": ["Ya hay un registro de ese Banco, sucursal y N. Cuenta."],
+          "llama": [],
+          "efecto": "INSERT BCT (25 campos incl. TARCRED, CUPODISP, IDSEDE).",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-bct",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZABCT",
+          "hace": "Edita cuenta BCT existente (no cambia SALDO).",
+          "valida": ["Cuenta existe"],
+          "noValida": ["No valida CUE/COM"],
+          "errores": ["Ya hay un registro de ese Banco, sucursal y N. Cuenta. (mensaje incorrecto si no existe)"],
+          "llama": [],
+          "efecto": "UPDATE BCT por BANCO+SUCURSAL+CTA_BCO.",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-bct",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINABCT",
+          "hace": "Elimina BCT si no tiene movimientos BMOV.",
+          "valida": ["Cuenta existe", "Sin BMOV en la cuenta"],
+          "noValida": [],
+          "errores": ["Cuenta con movimientos no se puede eliminar.", "No existe un registro…"],
+          "llama": [],
+          "efecto": "DELETE BCT. FE no invoca ELIMINABCT (solo sql/ documentado).",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-bct",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDACONCILIACION",
+          "hace": "Abre conciliación bancaria BCTC con consecutivo SPK_GENCONSECUTIVO.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "INSERT BCTC ESTADO Abierta.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "GETCONCILIACIONES",
+          "hace": "Lista conciliaciones BCTC de una cuenta.",
+          "valida": ["BANCO/SUCURSAL/CTA_BCO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset BCTC+BCO+BSU+USUSU.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZACONCILIACION",
+          "hace": "Edita saldos y observación de conciliación abierta.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE BCTC por CNSBCTC.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "CIERRACONCILIACION",
+          "hace": "Cierra conciliación BCTC.",
+          "valida": ["Existe", "No ya Cerrada"],
+          "noValida": [],
+          "errores": ["No existe la conciliación indicada.", "La conciliación ya se encuentra cerrada."],
+          "llama": [],
+          "efecto": "ESTADO=Cerrada.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAOPERACION",
+          "hace": "Catálogo TGEN GENERAL/BCTC para tipos operación conciliación.",
+          "valida": ["No duplicado CODIGO+DESCRIPCION"],
+          "noValida": [],
+          "errores": ["Ya existe un registro con ese código y descripción."],
+          "llama": [],
+          "efecto": "INSERT TGEN.",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-bct",
+          "estado": "leido"
+        },
+        {
+          "id": "OPERACIONES",
+          "hace": "Lista TGEN GENERAL/BCTC.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Combo operaciones conciliación.",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-bct",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAOPERACION",
+          "hace": "Elimina TGEN GENERAL/BCTC.",
+          "valida": [],
+          "noValida": ["Referencias BCTCD"],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE TGEN.",
+          "capaId": "01-configuracion",
+          "gateId": "cuenta-bct",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDABCTCD",
+          "hace": "Inserta renglón detalle conciliación BCTCD.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "ITEM autoincrementado por CNSBCTC.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "GETBCTCD",
+          "hace": "Lista detalle BCTCD de una conciliación.",
+          "valida": ["CNSBCTC"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset BCTCD+TER+TGEN.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZABCTCD",
+          "hace": "Edita renglón BCTCD.",
+          "valida": ["CNSBCTC+ITEM existe"],
+          "noValida": [],
+          "errores": ["No se encuentra registro"],
+          "llama": [],
+          "efecto": "UPDATE BCTCD.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_CONSIGNACIONES",
+          "hace": "JSON consignaciones BMOVD por cuenta/tercero/fechas (legalizadas o no).",
+          "valida": ["BANCO/SUCURSAL/CTA_BCO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset JSON anidado para reporte.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "RELIQUIDAR",
+          "hace": "Recalcula saldo cuenta vía SPK_RECALCULO_BANCOS.",
+          "valida": ["BANCO/SUCURSAL/CTA_BCO"],
+          "noValida": [],
+          "errores": [],
+          "llama": ["SPK_RECALCULO_BANCOS"],
+          "efecto": "UPDATE BCT.SALDO.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_CONCILIACION",
+          "hace": "3 recordsets: cabecera, totales por operación, detalle BCTCD.",
+          "valida": ["CNSBCTC"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Datos impresión conciliación bancaria.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_OFIN_COL",
+      "tipo": "SPQ",
+      "modelo": "OFIN_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_OFIN_COL.sql",
+      "cola": "CRUDOFIN INSERTAR/EDITAR/ELIMINAR leído 2026-09-06. conf.ofin OFINComponent.",
+      "metodos": [
+        {
+          "id": "CRUDOFIN",
+          "hace": "CRUD operaciones financieras OFIN según REGISTRO.PROCESO.",
+          "valida": [
+            "INSERTAR: IDOPERACION no duplicado",
+            "ELIMINAR: IDOPERACION obligatorio"
+          ],
+          "noValida": [
+            "Referencias BMOV al eliminar",
+            "Existencia CUE/COM/BCT en INSERT"
+          ],
+          "errores": [
+            "LA OPERACION FINANCIERA YA EXISTE",
+            "EL CODIGO DE LA OPERACION FINANCIERA ES OBLIGATORIO",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE OFIN: IDOPERACION, NOMOPERACION, TIPO DB/CR, COMPROBANTE, CUENTA, flags RECAUDO/MCCOSTO/GENCXP/RNOMI/TRASLADO, BANCO/SUCURSAL/CTA_BCO destino, HOMOLOGO.",
+          "capaId": "01-configuracion",
+          "gateId": "operacion-ofin",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_BMOV",
+      "tipo": "SPQ",
+      "modelo": "BMOV",
+      "estado": "leido",
+      "fuente": "sql/SPQ_BMOV.sql",
+      "cola": "17/17 METODOs leido 2026-09-06.",
+      "metodos": [
+        {
+          "id": "GUARDABMOV",
+          "hace": "Crea cabecera BMOV ESTADO P; asigna ITEM; valida PRI en FECHAOK.",
+          "valida": [
+            "PRI existe y no cerrado en FECHAOK"
+          ],
+          "noValida": [
+            "VLROPERACION inicia en 0 hasta tener BMOVD"
+          ],
+          "errores": [
+            "No existe periodo contable",
+            "Periodo contable está cerrado…"
+          ],
+          "llama": [],
+          "efecto": "BMOV P; devuelve ITEM y flags RECAUDO/NOMINA de OFIN.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDABMOVD",
+          "hace": "Inserta renglón BMOVD; recalcula BMOV.VLROPERACION = SUM(VLRITEM).",
+          "valida": [
+            "BMOV abierto"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Detalle con tercero, forma pago, RECAUDO/RNOMI flags.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMARBMOV",
+          "hace": "Orquesta confirmación: EXEC SPK_OK_BMOV con banco/cuenta/ITEM y NROCOMPROBANTE del FE.",
+          "valida": [
+            "Parámetros BANCO, SUCURSAL, CTA_BCO, ITEM"
+          ],
+          "noValida": [
+            "Detalle contable (delegado a SPK_OK_BMOV → SPK_NC_CONTAB_BMOV)"
+          ],
+          "errores": [
+            "ERROR_MESSAGE del CATCH (ya confirmado, PRI cerrado, etc.)"
+          ],
+          "llama": [
+            "SPK_OK_BMOV"
+          ],
+          "efecto": "OK/KO; BMOV pasa a ESTADO O si SPK_OK_BMOV exitoso.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "DESCONFIRMAVAL",
+          "hace": "Pre-validación desconfirmar: bloquea si BMOVD.ENPAGOS=1; avisa PRI cerrado.",
+          "valida": [
+            "Sin líneas en Recaudos (ENPAGOS=1)"
+          ],
+          "noValida": [],
+          "errores": [
+            "Este Recaudo ya se Encuentra En Pagos En Cartera…"
+          ],
+          "llama": [],
+          "efecto": "OK o PREGUNTA si periodo cerrado.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "DESCONFIRMABMOV",
+          "hace": "Revierte confirmación; valida MCPE/MCP del NROCOMPROBANTE.",
+          "valida": [
+            "ESTADO O",
+            "Sin ENPAGOS en detalle"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Vuelve a ESTADO P.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULARBMOV",
+          "hace": "Anula movimiento ESTADO P.",
+          "valida": [
+            "ESTADO P"
+          ],
+          "noValida": [],
+          "errores": [
+            "Datos incompletos para anular…"
+          ],
+          "llama": [],
+          "efecto": "ESTADO A.",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "DISTRUYE_ADRES",
+          "hace": "Reparte valor de BMOVD a otro tercero (ADRES Perú).",
+          "valida": [
+            "BMOV ESTADO O",
+            "VALORDISTRI>0",
+            "IDTERCERONVO"
+          ],
+          "noValida": [],
+          "errores": [
+            "Datos incompletos…",
+            "El movimiento no existe o no está en estado operativo…"
+          ],
+          "llama": [],
+          "efecto": "Nuevo renglón o ajuste distribución.",
+          "capaId": "03-alimentadores",
+          "gateId": "adres-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "GENCXPBMOV",
+          "hace": "Genera FCXP desde BMOV con GENCXP=1 (confirmado/contabilizado).",
+          "valida": [
+            "ESTADO O o CONTABILIZADA=1",
+            "GENCXP=1 sin CNSFCXP previo"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya se Genero la Cxp para este Movimiento Bancario",
+            "No se puede contabilizar."
+          ],
+          "llama": [
+            "SPK_GENCXP_MOVIN_BANCO"
+          ],
+          "efecto": "CNSFCXP en BMOV",
+          "capaId": "02-operacion",
+          "gateId": "generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZABMOV",
+          "hace": "Edita cabecera BMOV (fecha, operacion, descripcion, GENCXP…).",
+          "valida": [
+            "ITEM, cuenta"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "BMOV actualizado",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "GETFORMAPAGOS",
+          "hace": "Combo formas de pago FPA para detalle BMOVD.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FORMAPAGO/DESCRIPCION/CUENTA",
+          "capaId": "01-configuracion",
+          "gateId": "operacion-ofin",
+          "estado": "leido"
+        },
+        {
+          "id": "TERCONTABLE",
+          "hace": "Cuentas contables TTEC/PPT del tercero en BMOVD.",
+          "valida": [
+            "IDTERCERO"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "CUENTA/DETALLE/CANTIDAD",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLESMOV",
+          "hace": "Lista renglones BMOVD de un movimiento.",
+          "valida": [
+            "BANCO/SUCURSAL/CTA_BCO/ITEM"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Grilla detalle",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZABMOVD",
+          "hace": "Edita renglon BMOVD; recalcula VLROPERACION.",
+          "valida": [
+            "BMOV abierto"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "BMOVD update + total",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINABMOVD",
+          "hace": "Elimina renglon BMOVD; recalcula total.",
+          "valida": [
+            "BMOV abierto"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE BMOVD",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "GENCXPBCTTAR",
+          "hace": "Genera CXP desde tarjeta BCT (variante GENCXP).",
+          "valida": [
+            "BMOV confirmado/contabilizado segun reglas"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya se Genero la Cxp",
+            "No se puede contabilizar"
+          ],
+          "llama": [
+            "SPK_GENCXP_MOVIN_BANCO u homologo tarjeta"
+          ],
+          "efecto": "FCXP desde banco",
+          "capaId": "02-operacion",
+          "gateId": "generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_LISTADO_MOVIMIENTOS",
+          "hace": "Reporte movimientos BMOV+BMOVD filtrado por cuenta/fechas/estado.",
+          "valida": [
+            "BANCO/SUCURSAL/CTA_BCO"
+          ],
+          "noValida": [],
+          "errores": [
+            "Datos incompletos BANCO/SUCURSAL/CTA_BCO"
+          ],
+          "llama": [],
+          "efecto": "Recordset reporte",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZA_TERCERO",
+          "hace": "Actualiza IDTERCERO en BMOVD de un movimiento.",
+          "valida": [
+            "BANCO/SUCURSAL/CTA_BCO/ITEM/RENGLON",
+            "IDTERCERONVO"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "BMOVD.IDTERCERO",
+          "capaId": "02-operacion",
+          "gateId": "crud-movimiento",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_OK_BMOV",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_OK_BMOV.sql",
+      "cola": "CONFIRMARBMOV (BMOV). También SPK_CIERRERECIBO_CAJA al cerrar recibo con consignación bancaria.",
+      "metodos": [
+        {
+          "id": "CONFIRMAR",
+          "hace": "Valida PRI (FECHAOK o FECHAOPERACION); BMOV→ESTADO O. Si ANTIGUA=0: SPK_RECALCULO_BANCOS. Si PROCEDENCIA BANCOS/CONTAB y hay BMOVD: SPK_NC_CONTAB_BMOV. Si OFIN.TRASLADO=1 y cuenta destino distinta: clona BMOV+BMOVD en cuenta homóloga y recalcula saldo destino.",
+          "valida": [
+            "BMOV no ESTADO O",
+            "PRI existe y no cerrado"
+          ],
+          "noValida": [
+            "Contabiliza solo si PROCEDENCIA IN (BANCOS, CONTAB) y COUNT(BMOVD)>0"
+          ],
+          "errores": [
+            "Este Movimiento ya se Encuentra Confirmado",
+            "Periodo Contable NO Existe",
+            "Periodo Contable Cerrado"
+          ],
+          "llama": [
+            "SPK_RECALCULO_BANCOS",
+            "SPK_NC_CONTAB_BMOV"
+          ],
+          "efecto": "Movimiento operativo; posible asiento MCP vía SPK_NC_CONTAB_BMOV; saldo BCT recalculado.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-movimiento",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ACTUALIZA_SALDO_BANCO",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_ACTUALIZA_SALDO_BANCO.sql",
+      "cola": "Invocado desde Caja CONFIRMAR_RECIBO (PCJ→BCT), no desde BMOV.",
+      "metodos": [
+        {
+          "id": "ACTUALIZAR",
+          "hace": "Por cada PCJ del recibo: si FPA.USAR_CUENTACAJA, toma CAJ.CUENTA; else FPA.CUENTA → UPDATE BCT.SALDO.",
+          "valida": [
+            "CODCAJA+CNSFACJ"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Saldo BCT incrementado al confirmar recibo caja.",
+          "capaId": "03-alimentadores",
+          "gateId": "desde-caja",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_BMOV",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_BMOV.sql",
+      "cola": "SPK_OK_BMOV (confirmar), SPK_CONTAB_MASIVA, ENV_CONTA_OTROS_MODULS (OM Bancos / CONCBMOV).",
+      "metodos": [
+        {
+          "id": "CONTABILIZAR",
+          "hace": "Genera o reconstruye MCPE/MCH del movimiento BMOV: DB cuenta BCT (COD_CONTABLE), CR cuenta OFIN o TTEC/PPT; PROCEDENCIA MCP='BMOV'.",
+          "valida": [
+            "PRI existe y no cerrado (FECHAOK o FECHAOPERACION)",
+            "CUENTA_OFIN resuelta (OFIN, BMOVD o TTEC/PPT)",
+            "COM/COMMS tipo BMOV"
+          ],
+          "noValida": [
+            "No valida ENPAGOS en Recaudos (bloqueo está en DESCONFIRMAVAL del SPQ)"
+          ],
+          "errores": [
+            "Periodo Contable NO Existe",
+            "Periodo Contable Cerrado"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_PASA_A_MCPE"
+          ],
+          "efecto": "BMOV.CONTABILIZADA=1, NROCOMPROBANTE asignado; asiento en MCPE pendiente confirmar.",
+          "capaId": "05-contabilidad",
+          "gateId": "contabilizar-bmov",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_RECALCULO_BANCOS",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_RECALCULO_BANCOS.sql",
+      "cola": "SPK_OK_BMOV (ANTIGUA=0) y traslado OFIN.TRASLADO=1 a cuenta destino.",
+      "metodos": [
+        {
+          "id": "RECALCULAR",
+          "hace": "Recalcula BCT.SALDO = SUM(BMOV operativos DB) − SUM(CR); corrige ESTADO C→O en movimientos PROCEDENCIA CAJA.",
+          "valida": [
+            "Cuenta BCT existe"
+          ],
+          "noValida": [
+            "No bloquea si saldo negativo (tarjeta crédito usa CUPODISP)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE BCT.SALDO; tarjeta crédito: (CUPO + DB) − CR.",
+          "capaId": "02-operacion",
+          "gateId": "confirmar-movimiento",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

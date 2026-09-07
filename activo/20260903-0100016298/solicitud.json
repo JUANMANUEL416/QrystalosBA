@@ -1,0 +1,130 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-06T23:10:06.690Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016298",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260903-0100016298",
+    "idReq": "0100016298",
+    "fecha": "2026-09-02",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "SAN LUIS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CARTERA · Cartera",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Yineth Carrillo",
+    "desarrollador": "GUILLERMO GARCIA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CSANLU232",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CARTERA · Cartera",
+    "requerimiento": "Problema con fechas de Notas de Crédito en conciliaciones\n\nAl realizar una conciliación en el módulo administrativo el 24 de agosto y aplicar las respectivas Notas de Crédito (NC) el 27 de agosto, las fechas de las NC se registran con la fecha de la conciliación (24 de agosto) en lugar de la fecha en que se aplican (27 de agosto). Esto provoca que las NC queden sin notificar ante la DIAN.\n\n1. Acceder al módulo administrativo.\n2. Ir a la sección de conciliación.\n3. Realizar una conciliación el 24 de agosto.\n4. Aplicar las NC correspondientes el 27 de agosto. DETALLE: Las NC de conciliación (PROCEDENCIA = CONCILIA) quedan con F_NOTA = FECHACONC (fecha del acta) y no con la fecha de cierre/aplicación. Eso bloquea el encolado DIAN. No es soporte: es bug en SPQ_FCONCI_COL / CONFIRMAR_CONCILIACION. Fix: asignar FNOT.F_NOTA = GETDATE() al generar/aplicar la NC. Caso: conciliación 0100000735, NC 01C00101881.",
+    "criteriosAceptacion": "1. Al Confirmar conciliación, NC con PROCEDENCIA=CONCILIA queda con FNOT.F_NOTA = fecha actual (día de confirmación), no FECHACONC.\n2. NC encolable ante DIAN desde Notas DB/CR sin workaround manual (confirmaciones posteriores al despliegue).\n3. Regresión: conciliación creada y confirmada el mismo día sigue funcionando.\n4. Escenario bug: acta 24/08, confirmación 27/08 → F_NOTA = 27/08.\n5. Sin cambio en pantallas Vue ni contrato JSON; ajuste en SPK_APLICA_CONCILIACION.",
+    "alcance": "Corrección de FNOT.F_NOTA al generar NC en confirmación de conciliación de glosa (SPK_APLICA_CONCILIACION). Fuera de alcance: NC históricas (01C00101881), cambio de variable FNOT_FECHACONCILIA, SPK_CONTAB_CONCI, frontend y API.",
+    "restricciones": "Desplegar en SAN LUIS (rama bugfix/CSANLU232). Validar en preversión antes de producción.",
+    "analisis": "Causa raíz en SPK_APLICA_CONCILIACION: cuando USVGS FNOT_FECHACONCILIA='CONCILIACION', el INSERT de NC asigna F_NOTA=@FECHACONCILIA (=FCONCI.FECHACONC) en lugar de GETDATE(). Si la conciliación se crea un día y se confirma días después, la NC queda con fecha del acta y el encolado DIAN falla. El FE (FconciComponent CONFIRMAR_CONCILIACION) no envía fecha; el bug es 100% SQL. SPK_RETIRA_FACTURA_CONCI ya usa @HOY para ND — inconsistencia solo en NC.",
+    "opciones": [
+      "A) Fix en SP: F_NOTA=@HOY siempre al insertar NC de conciliación (recomendada, acordada con coordinador).",
+      "B) Cambiar USVGS FNOT_FECHACONCILIA ≠ CONCILIACION — impacto en PRI y contabilidad conciliación; descartada.",
+      "C) Workaround manual FNOT_ACTUALIZAR_FECHA antes de encolar — no corrige origen; solo para NC existentes."
+    ],
+    "recomendacion": "Opción A: en SPK_APLICA_CONCILIACION, reemplazar en INSERT FNOT la expresión CASE WHEN @FNOT_FECHACONCILIA='CONCILIACION' THEN @FECHACONCILIA ELSE @HOY END por @HOY. Sin cambios en Qrystalos2 ni qrystalos.server. Corregir manualmente NC 01C00101881 del caso reportado.",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contenido.contabilidad.afecta=false. La ventana opera sobre flujos FTR existentes (AUT/AUTD, APLIMF); la numeración usa FDIAN/CNSRESOL vía SPK_FACTURACE_N. No se modifican MCPE, MCP, MCHE ni comprobantes en este alcance; el ingreso contable sigue el post-factura estándar de FTR, igual que FacMasiva y NOPOS actuales.",
+        "validadoEn": "2026-09-06T22:25:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "criteriosMeta": {
+      "originales": "Las NC de conciliación (PROCEDENCIA = CONCILIA) quedan con F_NOTA = FECHACONC (fecha del acta) y no con la fecha de cierre/aplicación. Eso bloquea el encolado DIAN. No es soporte: es bug en SPQ_FCONCI_COL / CONFIRMAR_CONCILIACION. Fix: asignar FNOT.F_NOTA = GETDATE() al generar/aplicar la NC. Caso: conciliación 0100000735, NC 01C00101881.",
+      "originalesEn": "2026-09-06T23:06:34.546Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "",
+      "trasAnalisis": "Las NC de conciliación (PROCEDENCIA = CONCILIA) quedan con F_NOTA = FECHACONC (fecha del acta) y no con la fecha de cierre/aplicación. Eso bloquea el encolado DIAN. No es soporte: es bug en SPQ_FCONCI_COL / CONFIRMAR_CONCILIACION. Fix: asignar FNOT.F_NOTA = GETDATE() al generar/aplicar la NC. Caso: conciliación 0100000735, NC 01C00101881.",
+      "trasAnalisisEn": "2026-09-06T23:07:08.610Z",
+      "definitivos": "1. Al Confirmar conciliación, NC con PROCEDENCIA=CONCILIA queda con FNOT.F_NOTA = fecha actual (día de confirmación), no FECHACONC.\n2. NC encolable ante DIAN desde Notas DB/CR sin workaround manual (confirmaciones posteriores al despliegue).\n3. Regresión: conciliación creada y confirmada el mismo día sigue funcionando.\n4. Escenario bug: acta 24/08, confirmación 27/08 → F_NOTA = 27/08.\n5. Sin cambio en pantallas Vue ni contrato JSON; ajuste en SPK_APLICA_CONCILIACION.",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "**Brecha de análisis REQ 0100016298** — dictamen propuesto 06/09/2026\n\n**Cerrado por agente:**\n- Ventana: Conciliaciones de Glosa (/admin/Concilia, FconciComponent).\n- Proceso: crear acta → confirmar días después → NC PROCEDENCIA=CONCILIA.\n- Backend: CONFIRMAR_CONCILIACION → SPK_APLICA_CONCILIACION · APLICAR.\n- Causa: INSERT FNOT usa FECHACONC cuando FNOT_FECHACONCILIA=CONCILIACION.\n- Fix: F_NOTA=@HOY en SPK_APLICA_CONCILIACION (sin FE/API).\n- SQL: no requiere sql/ del día; evidencia en sql_refe/xsql y sps.json leido.\n- Contabilidad: no_aplica.\n\n**Pendiente coordinador:** revisar dictamenes/20260903-0100016298.html y cerrar Fase 1.",
+      "fecha": "2026-09-06T23:23:00.000Z",
+      "estado": "dictamen_propuesto"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016298\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "conciliaciones",
+    "catalogo": "conocimiento/conciliaciones/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FCONCI_COL",
+        "metodo": "CONFIRMAR_CONCILIACION",
+        "estado": "leido",
+        "hace": "Asigna CNSFNOT a ítems con VLRACEPTADO>0 y ejecuta SPK_APLICA_CONCILIACION.",
+        "llama": ["SPK_GENCONSECUTIVO", "SPK_APLICA_CONCILIACION"]
+      },
+      {
+        "sp": "SPK_APLICA_CONCILIACION",
+        "metodo": "APLICAR",
+        "estado": "leido",
+        "hace": "Crea NC PROCEDENCIA CONCILIA, aplica cartera vía SPK_NOTASCXC, cierra FCONCID/FCONCI.",
+        "llama": ["SPK_GENCONSECUTIVO", "SPK_GENITEMS_NOTACR", "SPK_NOTASCXC", "SPK_RELIQUIDA_FTR", "SPK_CONTAB_CONCI"]
+      }
+    ],
+    "notas": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260903-0100016298.html",
+    "aprobados": "aprobados/20260903-0100016298/",
+    "imagenes": "aprobados/20260903-0100016298/imagenes/"
+  },
+  "correo": {
+    "enviado": false,
+    "fechaEnvio": "",
+    "destinatario": ""
+  }
+}

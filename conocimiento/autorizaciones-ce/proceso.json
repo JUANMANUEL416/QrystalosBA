@@ -1,0 +1,111 @@
+{
+  "id": "autorizaciones-ce",
+  "nombre": "Consulta externa · Autorizaciones",
+  "modulo": "AUT_COL",
+  "estado": "parcial",
+  "resumen": "SPQ núcleo + SPKs CONFIRMAR/COPAGO/FACTURACE/PAGOSCAJA leídos 2026-09-06. Gates creación/facturación cerrados SQL. Pendiente resto SPQ_CIT_COL_3.",
+  "actualizado": "2026-09-06T17:08:00",
+  "notaSql": "SPQ_AUT_COL, SPQ_GEN_AUT, SPQ_CIT_COL_3 (parcial) y SPKs núcleo+caja en sql/. Opcional: SPK_PAGOSCAJA_AUT_CEHOSP.",
+  "ventanas": [
+    {
+      "uso": "Bandeja administrativa CE",
+      "ruta": "/ce/autcit",
+      "name": "ce.autcit",
+      "vue": "AutorizacionPage.vue → AutorizacionesCitasComponent.vue",
+      "entrada": "Consulta Externa → Autorizaciones. Pestañas Evento (CIT), Programa (AUTPG), Soportes, Reporte."
+    },
+    {
+      "uso": "Autorizador clínico (AUT)",
+      "ruta": "/ce/autorizador",
+      "name": "ce.autorizador",
+      "vue": "AutorizadorPage.vue → AutorizadorComponent.vue",
+      "entrada": "Consulta Externa → Autorizador. Grilla AUT + detalle AUTD por afiliado."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "esqueleto",
+      "explicacion": "Variables USVGS del autorizador (AUT_IDSOLICITA_OBLI, AUT_OBLI_IDPROVEEDOR, AUT_MENTREGA, AUT_OBS_FACTURA…), prefijos PRE, planes PPT, CAUT (conf.ce). Sin sql/ leído.",
+      "tablasClave": ["PRE", "PPT", "USVGS", "CAUT"],
+      "gates": []
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "esqueleto",
+      "explicacion": "Creación y gestión de AUT/AUTD; bandeja CE envía CIT/AUTPG a facturación; facturación admin consume marcas.",
+      "tablasClave": ["AUT", "AUTD", "CIT", "AUTPG"],
+      "gates": [
+        {
+          "id": "aut-creacion-gestion",
+          "nombre": "Creación y gestión AUT (Autorizador)",
+          "explicacion": "Desde orden médica (HCATD) o manual: **GEN_AUT · AUTORIZAR** arma AUT/AUTD desde servicios temporales; **AUT_COL · CRUDAUT** persiste cabecera+detalle (INSERT/EDITAR). FE valida (`validaAUT`): médico solicitante, proveedor, CCOSTO, MENTREGA, clase contrato, tipo afiliado, DX, al menos un AUTD. Copago: **SPK_PAGOSCAJA_AUT** genera TFCJ temporal; **RECAUDAR_COPAGO**/**CONFIRMAR_RECIBO** cierran FCJ (caja). Auxiliares: RELIQUIDAR, CAMBIA_VALOR, ANULAR_AUT, NO_COBRABLE.",
+          "invariante": "Sin AUTD no guarda. ESTADO Anulada bloquea edición/factura. Plan masivo → FACTURA_AUT KO «factura masivamente».",
+          "ventanasFe": "/ce/autorizador · AutorizadorComponent",
+          "sps": [
+            { "nombre": "SPQ_AUT_COL", "metodo": "CRUDAUT, FACTURA_AUT, ANULAR_AUT, RELIQUIDAR…", "rol": "✅ 28/28 leído. CRUDAUT→SPK_COPAGO; FACTURA_AUT→SPK_FACTURACE_N." },
+            { "nombre": "SPQ_GEN_AUT", "metodo": "AUTORIZAR", "rol": "✅ Leído. POST INSERT → SPK_CONFIRMAR_AUT." },
+            { "nombre": "SPK_CONFIRMAR_AUT", "metodo": "(SP)", "rol": "✅ Liquida valores/copago al crear AUT." },
+            { "nombre": "SPK_COPAGO_AUT_CEHOSP", "metodo": "(SP)", "rol": "✅ Motor copago por línea AUTD/CIT." },
+            { "nombre": "SPK_PAGOSCAJA_AUT", "metodo": "(SP)", "rol": "✅ TFCJ copago/particular post-CRUDAUT." }
+          ]
+        },
+        {
+          "id": "ce-bandeja-envio-ftr",
+          "nombre": "Bandeja CE → envío a facturación (CIT / AUTPG)",
+          "explicacion": "Pestaña **Evento**: grilla **CIT** → AUDITAR_CIT → **CIT_COL_3 · ENVIARA_FACT** (ENFACT=1) o reversa ACCION=0. Validación duplicado periodo (ERROR_CODE DUPLICADO_FACTURACION_MISMO_PERIODO). Pestaña **Programa**: grilla **AUTPG** → ENVIARA_FACT / ENVIARA_FACT_TODOS / ENVIARA_EVENTO vía **AUTPG** o **CIT_COL_3**. Exclusión: MARCAR_NO_ENVIAR_FACT (AUTPG/CIT).",
+          "invariante": "CIT/AUTPG con ENFACT=1 aparecen en Facturación admin. No confundir con AUT clínica (tabla AUT).",
+          "ventanasFe": "/ce/autcit · AutorizacionesCitasComponent",
+          "sps": [
+            { "nombre": "SPQ_CIT_COL_3", "metodo": "ENVIARA_FACT, AUDITAR_CIT, GENERAR_AUTPG…", "rol": "🔶 AUDITAR_CIT+ENVIARA_FACT leídos; resto inventario." },
+            { "nombre": "SPQ_AUTPG", "metodo": "ENVIARA_FACT, ENVIARA_EVENTO, INSERTAR_PACIENTE…", "rol": "Leído 2026-09-06 en facturacion/sps.json." }
+          ]
+        },
+        {
+          "id": "aut-facturacion",
+          "nombre": "Facturación de autorizaciones (AUT)",
+          "explicacion": "Tres circuitos ya parcialmente documentados en **facturacion**: (1) **Directo desde Autorizador**: AUT_COL · **FACTURA_AUT** → FTR individual (KO si plan es masivo). (2) **Masiva admin**: VWK_AUT_FTR → MARCAAUT_FTR → FACTURAR_MASI PROCEDENCIA=AUT (gate facturacion-masiva-aut). (3) **Evento paquete CIT**: MARCAFACT → FACTURAR_EVENTO_PAQ (gate facturacion-evento-paq). Copago previo puede ir por RECAUDAR_COPAGO/CONFIRMAR_RECIBO en Autorizador.",
+          "invariante": "AUT.FACTURADA=1 tiene N_FACTURA. Plan configurado masivo debe ir por Facturación masiva, no FACTURA_AUT.",
+          "ventanasFe": "Autorizador (FACTURA_AUT) · /admin/facturacion masiva/evento/programa",
+          "sps": [
+            { "nombre": "SPQ_AUT_COL", "metodo": "FACTURA_AUT", "rol": "✅ Orquesta → SPK_FACTURACE_N (PROC=CE)." },
+            { "nombre": "SPK_FACTURACE_N", "metodo": "(SP)", "rol": "✅ Motor FTR individual AUT/CIT." },
+            { "nombre": "SPQ_FTR_MASIVA_COL", "metodo": "MARCAAUT_FTR / FACTURAR_MASI", "rol": "Leído — facturacion/sps.json." },
+            { "nombre": "SPK_FACTURACE_CITAUT_COL", "metodo": "(SP)", "rol": "Invocado en FACTURAR_MASI rama AUT. En sql/." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "esqueleto",
+      "explicacion": "Órdenes médicas HCATD, citas CIT, programas AUTPG, agenda, farmacia/inventario (PEDIR_INVENTARIO_OPTICA), interfaces RX (REENVIAR_ITF_RX).",
+      "tablasClave": ["HCATD", "CIT", "HCA"],
+      "gates": []
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "esqueleto",
+      "explicacion": "Caja (copago autorizador): TFCJ vía SPK_PAGOSCAJA_AUT → FCJ vía RECAUDAR_COPAGO/CONFIRMAR_RECIBO. DIAN/RIPS post-FTR, empaque anexos, cartera.",
+      "tablasClave": ["FCJ", "FTR"],
+      "gates": []
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "AUT.CONTABILIZADA / FTR contab vía SPK_NC_CONTAB_FTR o job FTRCO (mismo patrón facturación).",
+      "tablasClave": ["FTR", "MCP"],
+      "gates": []
+    }
+  ]
+}

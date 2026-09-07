@@ -1,0 +1,733 @@
+CREATE OR ALTER PROCEDURE DBO.SPK_RELIQUIDA_FTR
+    @CNSCXC    VARCHAR(20),
+    @N_FACTURA VARCHAR(16)
+WITH ENCRYPTION
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE
+        @TOTALND      DECIMAL(14,2) = 0,
+        @TOTALNC      DECIMAL(14,2) = 0,
+        @TOTALNC1     DECIMAL(14,2) = 0,
+        @TOTALPAGOS   DECIMAL(14,2) = 0,
+        @DEDUCCIONES  DECIMAL(14,2) = 0,
+        @TOTALCXC     DECIMAL(14,2) = 0,
+        @VLRGLOSAS_A  DECIMAL(14,2) = 0,
+        @VLRGLOSAS_R  DECIMAL(14,2) = 0,
+        @DEDUCCIONES1 DECIMAL(14,2) = 0,
+        @VLREXTRA     DECIMAL(14,2) = 0,
+        @VLRCESIONES  DECIMAL(14,2) = 0,
+        @VLRCESION    DECIMAL(14,2) = 0,
+        @SALDONETOFCXCD DECIMAL(14,2) = 0,
+        @VLRLEVANTADO DECIMAL(14,2) = 0,
+        @VR_CONCI     DECIMAL(14,2) = 0,
+        @NTDBAJUSTE   DECIMAL(14,2) = 0,
+        @ES_ARS       VARCHAR(3) = '',
+        @PERMITE_SALDO_NEG VARCHAR(2) = '',
+        @RESTA_ANTICIPOS  VARCHAR(2) = '';
+
+    BEGIN TRY
+        -- ========================================
+        -- CONFIGURACI?N DE VARIABLES DE SISTEMA
+        -- ========================================
+        SELECT 
+            @ES_ARS = dbo.FNK_VALORVARIABLE('IDTIPOCXP_DEFAULT'),
+            @PERMITE_SALDO_NEG = dbo.FNK_VALORVARIABLE('PERMITESALDONEGATIVO'),
+            @RESTA_ANTICIPOS = dbo.FNK_VALORVARIABLE('ANTIPO_IMP_RESTA_FTR');
+
+        -- ========================================
+        -- ? CORRECCI?N CR?TICA: SOLO RESET DE LA FACTURA ESPEC?FICA
+        -- ? ANTES: Resetear toda la cuenta (p?rdida de datos)
+        -- ? AHORA: Solo resetear la factura que se va a reliquidar
+        -- ========================================
+        UPDATE FCXCD 
+        SET DEDUCCIONES = 0, VALORFACTURANETO = 0, VLRPAGOS = 0, VLRNOTADB = 0,
+            VLRNOTACR = 0, VLRGLOSAS = 0, SALDO = 0, SALDONETO = 0, VLRGLOSAS_R = 0,
+            VLREXTRA  = 0, VLRLEVANTADO = 0
+        WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA;
+
+        -- ========================================
+        -- 2. C?LCULOS AGREGADOS INICIALES (solo para esta factura)
+        -- ========================================
+        SELECT 
+            @TOTALND = COALESCE(SUM(CASE WHEN FNOT.CLASE = 'D' AND FNOT.CERRADA = 1 AND COALESCE(FNOT.ESTADO,'') <> 'A' THEN FNOT.VR_TOTAL ELSE 0 END), 0),
+            @TOTALNC = COALESCE(SUM(CASE WHEN FNOT.CLASE = 'C' AND FNOT.CERRADA = 1 AND COALESCE(FNOT.ESTADO,'') = 'O' AND FNOT.PROCEDENCIA <> 'CARTERA' THEN FNOT.VR_TOTAL ELSE 0 END), 0),
+            @TOTALNC1 = COALESCE(SUM(CASE WHEN FNOT.CLASE = 'C' AND FNOT.CERRADA = 1 AND COALESCE(FNOT.ESTADO,'') = 'O' AND FNOT.PROCEDENCIA = 'CARTERA' THEN FNOT.VR_TOTAL ELSE 0 END), 0)
+        FROM FNOT
+        WHERE FNOT.N_FACTURA = @N_FACTURA AND FNOT.CNSCXC = @CNSCXC;
+
+        SET @TOTALNC = @TOTALNC + @TOTALNC1;
+
+        -- PAGOS (diferenciado por ARS)
+        IF @ES_ARS = 'ARS'
+        BEGIN 
+            SELECT @TOTALPAGOS = COALESCE(SUM(VALORPAGO), 0)
+            FROM FLEGD
+            WHERE N_FACTURA = @N_FACTURA AND ESTADO = 1;
+            
+            SELECT @VLRCESIONES = COALESCE(SUM(VALORCESION), 0)
+            FROM FCESCXC
+            WHERE N_FACTURA = @N_FACTURA AND ESTADO = 1;
+        END
+        ELSE
+        BEGIN
+            SELECT 
+                @TOTALPAGOS = COALESCE(SUM(FPAGD.VALORPAGO), 0),
+                @VLREXTRA = COALESCE(SUM(FPAGD.VLREXTRA), 0),
+                @DEDUCCIONES = COALESCE(SUM(FPAGD.VLRIMPUESTO), 0),
+                @DEDUCCIONES1 = COALESCE(SUM(COALESCE(FPAGD.VLRDTOFIN,0) + COALESCE(FPAGD.VLROTROSDCTOS,0)), 0)
+            FROM FPAGD 
+            INNER JOIN FPAG ON FPAGD.CNSFPAG = FPAG.CNSFPAG
+            WHERE FPAGD.N_FACTURA = @N_FACTURA 
+              AND FPAGD.CNSCXC = @CNSCXC
+              AND FPAGD.CERRADO = 1
+              AND COALESCE(FPAG.ESTADO,'') <> 'Inactivo'  
+              AND COALESCE(FPAGD.ESTADO,'') <> 'Retirada';
+        END
+
+        IF @RESTA_ANTICIPOS = 'SI'
+        BEGIN
+            SELECT @DEDUCCIONES = COALESCE(@DEDUCCIONES,0) + COALESCE(SUM(VALOR),0) 
+            FROM FTRI 
+            WHERE N_FACTURA = @N_FACTURA;
+        END
+
+        SET @DEDUCCIONES = @DEDUCCIONES + @DEDUCCIONES1;
+
+        -- GLOSAS EN AUDITORIA
+        SELECT @VLRGLOSAS_A = COALESCE(SUM(VLRGLOSA), 0)
+        FROM FGLO 
+        WHERE N_FACTURA = @N_FACTURA  
+          AND CNSCXC = @CNSCXC   
+          AND CERRADA = 0
+          AND ESTADO <> 'A';
+
+        -- ========================================
+        -- 3. ACTUALIZACI?N MASIVA DE GLOSAS CERRADAS (solo para esta factura)
+        -- ========================================
+        ;WITH PagosPorGlosa AS (
+            SELECT 
+                FPAGD.CNSGLO COLLATE DATABASE_DEFAULT AS CNSGLO,
+                SUM(COALESCE(FPAGD.VALORPAGO,0) + COALESCE(FPAGD.VLRGLOSA,0) + COALESCE(FPAGD.VLRIMPUESTO,0) 
+                    + COALESCE(FPAGD.VLRDTOFIN,0) + COALESCE(FPAGD.VLROTROSDCTOS,0)) AS TotalPagos
+            FROM FPAGD 
+            INNER JOIN FPAG ON FPAGD.CNSFPAG = FPAG.CNSFPAG
+            WHERE FPAGD.N_FACTURA = @N_FACTURA      
+              AND FPAGD.CNSCXC = @CNSCXC
+              AND FPAGD.CERRADO = 1
+              AND COALESCE(FPAG.ESTADO,'') <> 'Inactivo' 
+              AND COALESCE(FPAGD.ESTADO,'') <> 'Retirada'
+              AND COALESCE(FPAGD.CNSGLO,'') <> ''
+            GROUP BY FPAGD.CNSGLO COLLATE DATABASE_DEFAULT
+        ),
+        ConciliacionesPorGlosa AS (
+            SELECT 
+                CNSGLO COLLATE DATABASE_DEFAULT AS CNSGLO,
+                SUM(VLRACEPTADO) AS GLOCONCIACEP
+            FROM FCONCID 
+            WHERE N_FACTURA = @N_FACTURA 
+              AND ESTADO = 'Cerrada'
+            GROUP BY CNSGLO COLLATE DATABASE_DEFAULT
+        )
+        UPDATE G
+        SET 
+            ABONADO = G.VLRACEPTADO + COALESCE(P.TotalPagos, 0) + COALESCE(C.GLOCONCIACEP, 0),
+            SALDO = CASE 
+                WHEN G.VLRGLOSA - (G.VLRACEPTADO + COALESCE(P.TotalPagos, 0) + COALESCE(C.GLOCONCIACEP, 0)) < 0 
+                THEN 0 
+                ELSE G.VLRGLOSA - (G.VLRACEPTADO + COALESCE(P.TotalPagos, 0) + COALESCE(C.GLOCONCIACEP, 0)) 
+            END
+        FROM FGLO G
+        LEFT JOIN PagosPorGlosa P ON G.CNSGLO COLLATE DATABASE_DEFAULT = P.CNSGLO
+        LEFT JOIN ConciliacionesPorGlosa C ON G.CNSGLO COLLATE DATABASE_DEFAULT = C.CNSGLO
+        WHERE G.CERRADA = 1 
+          AND G.N_FACTURA = @N_FACTURA 
+          AND G.CNSCXC = @CNSCXC;
+
+        -- ========================================
+        -- 4. C?LCULO DE GLOSAS A RECUPERAR (solo para esta factura)
+        -- ========================================
+        SELECT @VLRGLOSAS_R = COALESCE(SUM(CASE WHEN SALDO <= 0 THEN 0 ELSE SALDO END), 0)
+        FROM FGLO 
+        WHERE N_FACTURA = @N_FACTURA
+          AND CNSCXC = @CNSCXC   
+          AND CERRADA = 1
+          AND ESTADO <> 'A'
+          AND NOT EXISTS (SELECT 1 FROM FCONCID WHERE CNSGLO COLLATE DATABASE_DEFAULT = FGLO.CNSGLO COLLATE DATABASE_DEFAULT AND N_FACTURA = FGLO.N_FACTURA)
+          AND EXISTS (SELECT 1 FROM FGLOI INNER JOIN FGLOID ON FGLOI.CNSGLOI = FGLOID.CNSGLOI 
+                      WHERE FGLOID.CNSGLO COLLATE DATABASE_DEFAULT = FGLO.CNSGLO COLLATE DATABASE_DEFAULT AND FGLOI.RADICADO = 1);
+
+        SELECT @VLRGLOSAS_R = COALESCE(@VLRGLOSAS_R, 0) + COALESCE(SUM(VLRRECUPERAR), 0)
+        FROM FCONCID
+        WHERE N_FACTURA = @N_FACTURA
+          AND CNSCXC = @CNSCXC
+          AND ESTADO = 'Cerrada'
+          AND EXISTS (SELECT 1 FROM FGLO WHERE CNSGLO COLLATE DATABASE_DEFAULT = FCONCID.CNSGLO COLLATE DATABASE_DEFAULT AND N_FACTURA = FCONCID.N_FACTURA);
+
+        -- VALOR LEVANTADO
+        SELECT @VLRLEVANTADO = COALESCE(SUM(VLRLEVANTADO), 0)
+        FROM FCXCDV 
+        WHERE N_FACTURA = @N_FACTURA 
+          AND CNSCXC = @CNSCXC 
+          AND TIPO <> 'F';
+
+        -- ========================================
+        -- 5. ACTUALIZACI?N DE FCXCD (solo esta factura)
+        -- ========================================
+        UPDATE FCXCD 
+        SET 
+            DEDUCCIONES = @DEDUCCIONES, 
+            VLRPAGOS = @TOTALPAGOS, 
+            VLRNOTADB = @TOTALND,
+            VLRNOTACR = @TOTALNC, 
+            VLRGLOSAS = @VLRGLOSAS_A, 
+            VLRGLOSAS_R = @VLRGLOSAS_R,
+            VLREXTRA = @VLREXTRA,
+            VLRFCES = @VLRCESIONES,
+            VLRLEVANTADO = @VLRLEVANTADO,
+            VALORFACTURANETO = VALORFACTURA - @DEDUCCIONES,
+            SALDO = VALORFACTURA - @TOTALNC - @VLRGLOSAS_A + @TOTALND - @TOTALPAGOS - @VLRCESIONES,
+            SALDONETO = VALORFACTURA - @TOTALNC - @VLRGLOSAS_A + @TOTALND - @DEDUCCIONES - @TOTALPAGOS - @VLRCESIONES
+        WHERE N_FACTURA = @N_FACTURA AND CNSCXC = @CNSCXC;
+
+        -- Validaci?n de saldo negativo
+        SELECT @SALDONETOFCXCD = COALESCE(SALDONETO, 0)
+        FROM FCXCD
+        WHERE N_FACTURA = @N_FACTURA AND CNSCXC = @CNSCXC;
+
+        IF @SALDONETOFCXCD < 0 AND @PERMITE_SALDO_NEG <> 'SI'
+        BEGIN
+            UPDATE FCXCD SET SALDONETO = 0 WHERE N_FACTURA = @N_FACTURA AND CNSCXC = @CNSCXC;
+            SET @SALDONETOFCXCD = 0;
+        END
+
+        -- Anulaciones totales
+        IF EXISTS (SELECT 1 FROM FTR WHERE N_FACTURA = @N_FACTURA AND ESTADO = 'A')
+        BEGIN
+            UPDATE FCXCD SET SALDONETO = 0, SALDO = 0 WHERE N_FACTURA = @N_FACTURA AND CNSCXC = @CNSCXC;
+            SET @SALDONETOFCXCD = 0;
+        END
+
+        -- ========================================
+        -- 6. TABLA TEMPORAL PARA FCXCDV (solo esta factura)
+        -- ========================================
+        IF OBJECT_ID('tempdb..#ValoresFCXCDV') IS NOT NULL DROP TABLE #ValoresFCXCDV;
+        
+        CREATE TABLE #ValoresFCXCDV (
+            ITEM INT PRIMARY KEY,
+            TIPO VARCHAR(1) COLLATE DATABASE_DEFAULT,
+            CNSGLO VARCHAR(20) COLLATE DATABASE_DEFAULT,
+            SALDOINICIAL DECIMAL(14,2),
+            VLRLEVANTADO DECIMAL(14,2),
+            LEVANTADO INT,
+            VRNOTAS DECIMAL(14,2),
+            VRNOTASD DECIMAL(14,2),
+            VRPAGOS DECIMAL(14,2),
+            VRDEDUC DECIMAL(14,2),
+            VRGLOSAS DECIMAL(14,2),
+            VRGLOSAS_R DECIMAL(14,2),
+            VLRCESION DECIMAL(14,2),
+            IDFCONCI_PARTIDA VARCHAR(20) COLLATE DATABASE_DEFAULT,
+            NTDBAJUSTE DECIMAL(14,2),
+            VRNOTAS_AJUSTE_C DECIMAL(14,2),
+            VLRRECUPERAR_AJUS DECIMAL(14,2)
+        );
+
+        INSERT INTO #ValoresFCXCDV (ITEM, TIPO, CNSGLO, SALDOINICIAL, VLRLEVANTADO, LEVANTADO
+            -- 13-02-2026: EEMC78 , LOS VALORES NULL NO PERMITEN CALCULAR CORRECTAMENTE POR LO QUE SE COLOCA 0 PARA QUE PUEDA REALIZAR LAS OPERACIONES
+            , VRNOTAS, VRNOTASD, VRPAGOS, VRDEDUC, VRGLOSAS, VRGLOSAS_R, VLRCESION, IDFCONCI_PARTIDA, NTDBAJUSTE, VRNOTAS_AJUSTE_C, VLRRECUPERAR_AJUS
+                    )
+        SELECT 
+            ITEM, 
+            TIPO COLLATE DATABASE_DEFAULT, 
+            CNSGLO COLLATE DATABASE_DEFAULT, 
+            SALDOINICIAL, 
+            VLRLEVANTADO, 
+            LEVANTADO,
+             -- 13-02-2026: EEMC78
+            [VRNOTAS] =0,
+            [VRNOTASD] =0,
+            [VRPAGOS] =0,
+            [VRDEDUC] =0,
+            [VRGLOSAS] =0,
+            [VRGLOSAS_R] =0,
+            [VLRCESION] =0,
+            [IDFCONCI_PARTIDA] =0,
+            [NTDBAJUSTE] =0,
+            [VRNOTAS_AJUSTE_C] =0,
+            [VLRRECUPERAR_AJUS] =0
+             -- 13-02-2026: EEMC78
+        FROM FCXCDV 
+        WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA;
+
+        -- Actualizaciones segmentadas (igual que versi?n anterior, omitidas por brevedad)
+        -- ... [Mismo c?digo de actualizaciones con COLLATE que versi?n anterior] ...
+        
+        -- NOTAS CR?DITO para tipo 'F'
+        UPDATE V
+        SET VRNOTAS = COALESCE((
+            SELECT SUM(FNOT.VR_TOTAL) 
+            FROM FNOT 
+            WHERE FNOT.N_FACTURA = @N_FACTURA  
+              AND FNOT.CNSCXC = @CNSCXC   
+              AND FNOT.CERRADA = 1 
+              AND FNOT.CLASE = 'C'    
+              AND FNOT.PROCEDENCIA IN ('NOTAS','CONCILIA','CARTERA')
+              AND FNOT.ESTADO <> 'A'
+              AND (V.TIPO = 'F' OR COALESCE(FNOT.CNSGLO COLLATE DATABASE_DEFAULT, '') = COALESCE(V.CNSGLO COLLATE DATABASE_DEFAULT, ''))
+        ), 0) +
+        COALESCE((
+            SELECT SUM(FNOT.VR_TOTAL)
+            FROM FNOT
+            INNER JOIN FGLO ON FGLO.CNSGLO COLLATE DATABASE_DEFAULT = FNOT.CNSGLO COLLATE DATABASE_DEFAULT
+            WHERE FNOT.N_FACTURA = @N_FACTURA  
+              AND FNOT.CNSCXC = @CNSCXC   
+              AND FNOT.CERRADA = 1 
+              AND FNOT.CLASE = 'C'    
+              AND FNOT.PROCEDENCIA = 'AUDITORIA'
+              AND FNOT.ESTADO <> 'A'
+              AND (FGLO.CNSGLO_O COLLATE DATABASE_DEFAULT IS NULL OR FGLO.CNSGLO_O COLLATE DATABASE_DEFAULT = '')
+              AND FGLO.N_FACTURA = @N_FACTURA
+              AND FGLO.CNSCXC = @CNSCXC
+        ), 0) +
+        COALESCE((
+            SELECT CASE 
+                     WHEN EXISTS (
+                         SELECT 1 
+                         FROM FCXCDV CP 
+                         WHERE CP.CNSCXC = @CNSCXC 
+                           AND CP.N_FACTURA = @N_FACTURA 
+                           AND CP.TIPO COLLATE DATABASE_DEFAULT = 'C'
+                           AND CP.IDFCONCI COLLATE DATABASE_DEFAULT = FCI.IDFCONCI COLLATE DATABASE_DEFAULT
+                     ) THEN FCI.SALDONETO - FCI.VLRACEPTADO
+                     WHEN FCI.VLRACEPTADO > 0 THEN FCI.SALDONETO - FCI.VLRACEPTADO
+                     ELSE 0 
+                   END
+            FROM FCONCID FCI
+            WHERE FCI.ITEM_FCXCDV = V.ITEM 
+              AND FCI.ESTADO = 'Cerrada' 
+              AND FCI.TIPO COLLATE DATABASE_DEFAULT = V.TIPO COLLATE DATABASE_DEFAULT
+              AND FCI.TIPO COLLATE DATABASE_DEFAULT <> 'C'
+              AND FCI.N_FACTURA = @N_FACTURA
+        ), 0) +
+        COALESCE((
+            SELECT SUM(FCI.SALDONETO - FCI.VLRACEPTADO)
+            FROM FCONCID FCI
+            WHERE FCI.N_FACTURA = @N_FACTURA
+              AND FCI.CNSCXC = @CNSCXC
+              AND FCI.ESTADO = 'Cerrada'
+              AND FCI.TIPO COLLATE DATABASE_DEFAULT IN ('G','R')
+              AND EXISTS (
+                  SELECT 1
+                  FROM FCXCDV CP
+                  WHERE CP.CNSCXC = @CNSCXC
+                    AND CP.N_FACTURA = @N_FACTURA
+                    AND CP.TIPO COLLATE DATABASE_DEFAULT = 'C'
+                    AND CP.IDFCONCI COLLATE DATABASE_DEFAULT = FCI.IDFCONCI COLLATE DATABASE_DEFAULT
+              )
+        ), 0)
+        FROM #ValoresFCXCDV V
+        WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'F';
+
+        -- NOTAS D?BITO para tipo 'F'
+        UPDATE V
+        SET VRNOTASD = COALESCE((
+            SELECT SUM(FNOT.VR_TOTAL) 
+            FROM FNOT 
+            WHERE FNOT.N_FACTURA = @N_FACTURA  
+              AND FNOT.CNSCXC = @CNSCXC   
+              AND FNOT.CERRADA = 1 
+              AND FNOT.CLASE = 'D'
+              AND FNOT.ESTADO <> 'A'
+              AND FNOT.PROCEDENCIA IN ('NOTAS','CARTERA','CONCILIA')
+              AND COALESCE(FNOT.CNSGLO COLLATE DATABASE_DEFAULT, '') = ''
+        ), 0) +
+        COALESCE((
+            SELECT SUM(FNOT.VR_TOTAL)
+            FROM FNOT 
+            WHERE FNOT.N_FACTURA = @N_FACTURA  
+              AND FNOT.CNSCXC = @CNSCXC
+              AND FNOT.CERRADA = 1 
+              AND FNOT.CLASE = 'D'    
+              AND FNOT.PROCEDENCIA = 'AJUSTE' 
+              AND FNOT.ESTADO <> 'A'
+        ), 0)
+        FROM #ValoresFCXCDV V
+        WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'F';
+
+        -- PAGOS (ARS vs normal)
+        IF @ES_ARS = 'ARS'
+        BEGIN
+            UPDATE V
+            SET 
+                VRPAGOS = COALESCE((SELECT SUM(VALORPAGO) FROM FLEGD WHERE N_FACTURA = @N_FACTURA AND ESTADO = 1), 0),
+                VLRCESION = COALESCE((SELECT SUM(VALORCESION) FROM FCESCXC WHERE N_FACTURA = @N_FACTURA AND ESTADO = 1), 0)
+            FROM #ValoresFCXCDV V
+            WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'F';
+        END
+        ELSE
+        BEGIN
+            -- Pagos para tipo 'F'
+            UPDATE V
+            SET VRPAGOS = COALESCE((
+                SELECT SUM(FPAGD.VALORPAGO + COALESCE(FPAGD.VLROTROSDCTOS,0)) 
+                FROM FPAGD 
+                INNER JOIN FPAG ON FPAGD.CNSFPAG = FPAG.CNSFPAG
+                WHERE FPAGD.CERRADO = 1
+                  AND COALESCE(FPAG.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Inactivo' 
+                  AND (FPAGD.CLASE COLLATE DATABASE_DEFAULT = 'F' OR FPAGD.CLASE IS NULL)
+                  AND FPAGD.CNSCXC = @CNSCXC  
+                  AND FPAGD.N_FACTURA = @N_FACTURA
+                  AND COALESCE(FPAGD.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Retirada'
+            ), 0)
+            FROM #ValoresFCXCDV V
+            WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'F';
+
+            -- Pagos para tipos 'G'/'R'
+            UPDATE V
+            SET VRPAGOS = COALESCE((
+                SELECT SUM(COALESCE(FPAGD.VALORPAGO,0) + COALESCE(FPAGD.VLROTROSDCTOS,0)) 
+                FROM FPAGD 
+                INNER JOIN FPAG ON FPAGD.CNSFPAG = FPAG.CNSFPAG
+                WHERE FPAGD.CERRADO = 1
+                  AND FPAGD.CLASE COLLATE DATABASE_DEFAULT = V.TIPO COLLATE DATABASE_DEFAULT
+                  AND FPAGD.CNSCXC = @CNSCXC   
+                  AND FPAGD.N_FACTURA = @N_FACTURA
+                  AND COALESCE(FPAGD.CNSGLO COLLATE DATABASE_DEFAULT,'') = COALESCE(V.CNSGLO COLLATE DATABASE_DEFAULT,'')
+                  AND COALESCE(FPAG.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Inactivo'
+                  AND COALESCE(FPAGD.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Retirada'
+            ), 0)
+            FROM #ValoresFCXCDV V
+            WHERE V.TIPO COLLATE DATABASE_DEFAULT NOT IN ('F','C');
+
+            -- Pagos para tipo 'C'
+            UPDATE V
+            SET VRPAGOS = COALESCE((
+                SELECT SUM(FPAGD.VALORPAGO + COALESCE(FPAGD.VLROTROSDCTOS,0)) 
+                FROM FPAGD 
+                INNER JOIN FPAG ON FPAGD.CNSFPAG = FPAG.CNSFPAG
+                WHERE FPAGD.CNSCXC = @CNSCXC
+                  AND FPAGD.N_FACTURA = @N_FACTURA
+                  AND FPAGD.CLASE COLLATE DATABASE_DEFAULT = 'C'
+                  AND FPAGD.CERRADO = 1
+                  AND COALESCE(FPAG.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Inactivo' 
+                  AND COALESCE(FPAGD.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Retirada'
+                  AND COALESCE(FPAGD.CNSGLO COLLATE DATABASE_DEFAULT,'') = COALESCE(V.CNSGLO COLLATE DATABASE_DEFAULT,'')
+            ), 0)
+            FROM #ValoresFCXCDV V
+            WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'C';
+        END
+
+        -- DEDUCCIONES
+        UPDATE V
+        SET VRDEDUC = COALESCE((
+            SELECT SUM(COALESCE(FPAGD.VLRIMPUESTO,0) + COALESCE(FPAGD.VLRDTOFIN,0)) 
+            FROM FPAGD 
+            INNER JOIN FPAG ON FPAGD.CNSFPAG = FPAG.CNSFPAG
+            WHERE FPAGD.CERRADO = 1
+              AND ((FPAGD.CLASE COLLATE DATABASE_DEFAULT = 'F' OR FPAGD.CLASE IS NULL) AND V.TIPO COLLATE DATABASE_DEFAULT = 'F'
+                   OR FPAGD.CLASE COLLATE DATABASE_DEFAULT = V.TIPO COLLATE DATABASE_DEFAULT AND V.TIPO COLLATE DATABASE_DEFAULT NOT IN ('F','C')
+                   OR FPAGD.CLASE COLLATE DATABASE_DEFAULT = 'C' AND V.TIPO COLLATE DATABASE_DEFAULT = 'C')
+              AND FPAGD.CNSCXC = @CNSCXC  
+              AND FPAGD.N_FACTURA = @N_FACTURA
+              AND (V.TIPO COLLATE DATABASE_DEFAULT IN ('F','C') OR COALESCE(FPAGD.CNSGLO COLLATE DATABASE_DEFAULT,'') = COALESCE(V.CNSGLO COLLATE DATABASE_DEFAULT,''))
+              AND COALESCE(FPAGD.ESTADO COLLATE DATABASE_DEFAULT,'') <> 'Retirada'
+        ), 0)
+        FROM #ValoresFCXCDV V;
+
+        -- GLOSAS para tipo 'F'
+        UPDATE V
+        SET 
+            VRGLOSAS = COALESCE((
+                SELECT SUM(COALESCE(FGLO.VLRGLOSA,0)) 
+                FROM FGLO 
+                WHERE FGLO.N_FACTURA = @N_FACTURA
+                  AND FGLO.CNSCXC = @CNSCXC   
+                  AND FGLO.CERRADA = 0
+                  AND COALESCE(FGLO.CNSGLO_O COLLATE DATABASE_DEFAULT,'') = ''
+                  AND FGLO.ESTADO COLLATE DATABASE_DEFAULT <> 'A'
+                  AND FGLO.PROCEDENCIA COLLATE DATABASE_DEFAULT <> 'Recaudo'
+            ), 0) +
+            COALESCE((
+                SELECT SUM(FGLO.VLRGLOSA) 
+                FROM FGLO 
+                WHERE FGLO.N_FACTURA = @N_FACTURA
+                  AND FGLO.CERRADA = 0
+                  AND COALESCE(FGLO.CNSGLO_O COLLATE DATABASE_DEFAULT,'') = ''
+                  AND FGLO.ESTADO COLLATE DATABASE_DEFAULT <> 'A'
+                  AND FGLO.PROCEDENCIA COLLATE DATABASE_DEFAULT = 'Recaudo'
+            ), 0),
+            VRGLOSAS_R = COALESCE((
+                SELECT SUM(FGLO.VLRRECUPERAR) 
+                FROM FGLO 
+                WHERE FGLO.N_FACTURA = @N_FACTURA
+                  AND FGLO.CNSCXC = @CNSCXC   
+                  AND FGLO.CERRADA = 1
+                  AND COALESCE(FGLO.CNSGLO_O COLLATE DATABASE_DEFAULT,'') = ''
+                  AND FGLO.ESTADO COLLATE DATABASE_DEFAULT <> 'A'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM FCXCDV GF
+                      WHERE GF.CNSCXC = @CNSCXC
+                        AND GF.N_FACTURA = @N_FACTURA
+                        AND GF.TIPO COLLATE DATABASE_DEFAULT IN ('G','R')
+                        AND GF.CNSGLO COLLATE DATABASE_DEFAULT = FGLO.CNSGLO COLLATE DATABASE_DEFAULT
+                  )
+            ), 0)
+        FROM #ValoresFCXCDV V
+        WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'F';
+
+        -- Valores para tipo 'C'
+        UPDATE V
+        SET 
+            IDFCONCI_PARTIDA = (SELECT TOP 1 IDFCONCI COLLATE DATABASE_DEFAULT FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND ITEM = V.ITEM),
+            NTDBAJUSTE = COALESCE((
+                SELECT SUM(FNOT.VR_TOTAL) 
+                FROM FNOT 
+                WHERE FNOT.N_FACTURA = @N_FACTURA  
+                  AND FNOT.CERRADA = 1 
+                  AND FNOT.CLASE = 'D'    
+                  AND FNOT.PROCEDENCIA = 'AJUSTE' 
+                  AND FNOT.ESTADO = 'O'
+            ), 0),
+            VRNOTAS_AJUSTE_C = COALESCE((
+                SELECT SUM(FNOT.VR_TOTAL) 
+                FROM FNOT 
+                WHERE FNOT.N_FACTURA = @N_FACTURA  
+                  AND FNOT.CERRADA = 1 
+                  AND FNOT.CLASE = 'C'    
+                  AND FNOT.PROCEDENCIA = 'AJUSTE' 
+                  AND FNOT.ESTADO = 'O'
+                  AND FNOT.APLICADAA COLLATE DATABASE_DEFAULT = CASE WHEN COALESCE(FNOT.APLICADAA COLLATE DATABASE_DEFAULT,'') <> 'C' THEN V.TIPO COLLATE DATABASE_DEFAULT ELSE FNOT.APLICADAA COLLATE DATABASE_DEFAULT END
+                  AND COALESCE(FNOT.CNSGLO COLLATE DATABASE_DEFAULT,'') = CASE WHEN COALESCE(V.CNSGLO COLLATE DATABASE_DEFAULT,'') = '' THEN COALESCE(FNOT.CNSGLO COLLATE DATABASE_DEFAULT,'') ELSE V.CNSGLO COLLATE DATABASE_DEFAULT END
+            ), 0)
+        FROM #ValoresFCXCDV V
+        WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'C';
+
+        UPDATE V
+        SET VLRRECUPERAR_AJUS = COALESCE((
+            SELECT FCI.VLRRECUPERAR + V.NTDBAJUSTE 
+            FROM FCONCID FCI
+            INNER JOIN FCXCDV CX ON CX.CNSCXC = @CNSCXC AND CX.N_FACTURA = @N_FACTURA AND CX.ITEM = V.ITEM
+            WHERE FCI.CNSCXC = @CNSCXC 
+              AND FCI.N_FACTURA = @N_FACTURA 
+              AND FCI.IDFCONCI COLLATE DATABASE_DEFAULT = CX.IDFCONCI COLLATE DATABASE_DEFAULT
+              AND FCI.ESTADO COLLATE DATABASE_DEFAULT = 'Cerrada'
+              AND (
+                  COALESCE(FCI.CNSGLO COLLATE DATABASE_DEFAULT,'') = COALESCE(V.CNSGLO COLLATE DATABASE_DEFAULT,'')
+                  OR FCI.TIPO COLLATE DATABASE_DEFAULT IN ('G','R')
+              )
+        ), 0)
+        FROM #ValoresFCXCDV V
+        WHERE V.TIPO COLLATE DATABASE_DEFAULT = 'C';
+
+--        SELECT *   FROM #ValoresFCXCDV
+--RETURN
+        -- ACTUALIZACI?N FINAL DE SALDONETO
+        UPDATE F
+        SET SALDONETO = CASE 
+            WHEN V.TIPO COLLATE DATABASE_DEFAULT = 'F' THEN 
+                COALESCE(V.SALDOINICIAL,0) 
+                - COALESCE(V.VRNOTAS,0) 
+                - COALESCE(V.VRPAGOS,0) 
+                - COALESCE(V.VRGLOSAS,0) 
+                - COALESCE(V.VRGLOSAS_R,0) 
+                - COALESCE(V.VRDEDUC,0) 
+                + COALESCE(V.VRNOTASD,0) 
+                - COALESCE(V.VLRCESION,0) 
+                + COALESCE(V.VLRLEVANTADO,0)
+            WHEN V.TIPO COLLATE DATABASE_DEFAULT <> 'C' THEN 
+                COALESCE(V.SALDOINICIAL,0) 
+                - COALESCE(V.VRNOTAS,0) 
+                - COALESCE(V.VRPAGOS,0) 
+                - COALESCE(V.VRGLOSAS,0) 
+                - COALESCE(V.VRGLOSAS_R,0) 
+                - COALESCE(V.VRDEDUC,0) 
+                + COALESCE(V.VRNOTASD,0) 
+                - COALESCE(V.VLRCESION,0) 
+                + COALESCE(V.VLRLEVANTADO,0) 
+                - (CASE ISNULL(V.LEVANTADO,0) WHEN 1 THEN ISNULL(V.VLRLEVANTADO,0) ELSE 0 END)
+                - COALESCE((
+                    SELECT FCI.VLRACEPTADO + FCI.VLRRECUPERAR
+                    FROM FCONCID FCI
+                    WHERE FCI.ITEM_FCXCDV = V.ITEM
+                      AND FCI.N_FACTURA = @N_FACTURA
+                      AND FCI.CNSCXC = @CNSCXC
+                      AND FCI.ESTADO = N'Cerrada'
+                ), 0)
+            WHEN V.TIPO COLLATE DATABASE_DEFAULT = 'C' THEN 
+                CASE
+                    WHEN COALESCE(V.VLRRECUPERAR_AJUS, 0) > 0 THEN V.VLRRECUPERAR_AJUS
+                    WHEN COALESCE((
+                        SELECT FCI.VLRRECUPERAR
+                        FROM FCONCID FCI
+                        WHERE FCI.CNSCXC = @CNSCXC
+                          AND FCI.N_FACTURA = @N_FACTURA
+                          AND FCI.IDFCONCI COLLATE DATABASE_DEFAULT = F.IDFCONCI COLLATE DATABASE_DEFAULT
+                          AND FCI.ESTADO COLLATE DATABASE_DEFAULT = 'Cerrada'
+                    ), 0) > 0 THEN (
+                        SELECT FCI.VLRRECUPERAR
+                        FROM FCONCID FCI
+                        WHERE FCI.CNSCXC = @CNSCXC
+                          AND FCI.N_FACTURA = @N_FACTURA
+                          AND FCI.IDFCONCI COLLATE DATABASE_DEFAULT = F.IDFCONCI COLLATE DATABASE_DEFAULT
+                          AND FCI.ESTADO COLLATE DATABASE_DEFAULT = 'Cerrada'
+                    )
+                    ELSE F.SALDOINICIAL
+                END - (V.VRPAGOS + V.VRDEDUC + V.VRNOTAS_AJUSTE_C)
+        END
+        FROM FCXCDV F
+        INNER JOIN #ValoresFCXCDV V ON F.ITEM = V.ITEM
+        WHERE F.CNSCXC = @CNSCXC AND F.N_FACTURA = @N_FACTURA;
+
+        -- ========================================
+        -- 7. AJUSTES FINALES DE SALDOS (solo esta factura)
+        -- ========================================
+        UPDATE FCXCDV SET SALDONETO = 0 
+        WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO < 0;
+
+        IF @SALDONETOFCXCD = 0
+            UPDATE FCXCDV SET SALDONETO = 0 
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA;
+
+        DECLARE @SALDONETOFCXCDV DECIMAL(14,2);
+        SELECT @SALDONETOFCXCDV = COALESCE(SUM(SALDONETO), 0) 
+        FROM FCXCDV 
+        WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA;
+
+        IF @SALDONETOFCXCDV > @SALDONETOFCXCD
+            AND (SELECT COUNT(*) FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO > 0) = 1
+        BEGIN
+            UPDATE FCXCDV SET SALDONETO = @SALDONETOFCXCD 
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO > 0;
+        END
+        ELSE IF @SALDONETOFCXCDV > @SALDONETOFCXCD
+            AND EXISTS (SELECT 1 FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND TIPO COLLATE DATABASE_DEFAULT = 'C' AND SALDONETO > 0)
+            AND EXISTS (SELECT 1 FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND TIPO COLLATE DATABASE_DEFAULT = 'F' AND SALDONETO > 0)
+        BEGIN
+            UPDATE FCXCDV SET SALDONETO = SALDONETO - (@SALDONETOFCXCDV - @SALDONETOFCXCD)
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND TIPO COLLATE DATABASE_DEFAULT = 'F'
+              AND SALDONETO >= (@SALDONETOFCXCDV - @SALDONETOFCXCD);
+        END
+
+        SELECT @SALDONETOFCXCDV = COALESCE(SUM(SALDONETO), 0) 
+        FROM FCXCDV 
+        WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA;
+
+        IF (SELECT COUNT(*) FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO < 0 AND TIPO COLLATE DATABASE_DEFAULT = 'C') = 1
+           AND (SELECT COUNT(*) FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO > 0 AND TIPO COLLATE DATABASE_DEFAULT <> 'C') = 1
+           AND @SALDONETOFCXCD > 0
+        BEGIN
+            DECLARE @ITEM_POS INT, @SALDONEG DECIMAL(14,2), @SALDOPOS DECIMAL(14,2);
+            
+            SELECT TOP 1 @ITEM_POS = ITEM, @SALDOPOS = SALDONETO 
+            FROM FCXCDV 
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO > 0 AND TIPO COLLATE DATABASE_DEFAULT <> 'C';
+            
+            SELECT TOP 1 @SALDONEG = ABS(SALDONETO) 
+            FROM FCXCDV 
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO < 0 AND TIPO COLLATE DATABASE_DEFAULT = 'C';
+            
+            UPDATE FCXCDV SET SALDONETO = SALDONETO + @SALDOPOS 
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND SALDONETO < 0 AND TIPO COLLATE DATABASE_DEFAULT = 'C';
+            
+            UPDATE FCXCDV SET SALDONETO = CASE WHEN SALDONETO > @SALDONEG THEN 0 ELSE SALDONETO - @SALDONEG END
+            WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND ITEM = @ITEM_POS;
+        END
+
+        IF EXISTS (SELECT 1 FROM FTR WHERE N_FACTURA = @N_FACTURA AND ESTADO COLLATE DATABASE_DEFAULT = 'A')
+            UPDATE FCXCDV SET SALDONETO = 0 
+            WHERE N_FACTURA = @N_FACTURA AND CNSCXC = @CNSCXC AND TIPO COLLATE DATABASE_DEFAULT = 'F';
+
+        -- Conciliacion en fragmento G/R: saldo recuperable en partida C
+        IF EXISTS (
+            SELECT 1
+            FROM FCONCID FCI
+            INNER JOIN FCXCDV CP ON CP.IDFCONCI COLLATE DATABASE_DEFAULT = FCI.IDFCONCI COLLATE DATABASE_DEFAULT
+                AND CP.N_FACTURA = FCI.N_FACTURA AND CP.CNSCXC = FCI.CNSCXC AND CP.TIPO COLLATE DATABASE_DEFAULT = 'C'
+            WHERE FCI.N_FACTURA = @N_FACTURA AND FCI.CNSCXC = @CNSCXC
+              AND FCI.ESTADO COLLATE DATABASE_DEFAULT = 'Cerrada'
+              AND FCI.TIPO COLLATE DATABASE_DEFAULT IN ('G','R')
+        )
+        BEGIN
+            UPDATE CP
+            SET SALDONETO = CASE 
+                WHEN COALESCE(FCI.VLRRECUPERAR, 0) > 0 THEN FCI.VLRRECUPERAR 
+                ELSE CP.SALDOINICIAL 
+            END
+            FROM FCXCDV CP
+            INNER JOIN FCONCID FCI ON FCI.IDFCONCI COLLATE DATABASE_DEFAULT = CP.IDFCONCI COLLATE DATABASE_DEFAULT
+                AND FCI.N_FACTURA = CP.N_FACTURA AND FCI.CNSCXC = CP.CNSCXC
+            WHERE CP.N_FACTURA = @N_FACTURA AND CP.CNSCXC = @CNSCXC AND CP.TIPO COLLATE DATABASE_DEFAULT = 'C'
+              AND FCI.ESTADO COLLATE DATABASE_DEFAULT = 'Cerrada'
+              AND FCI.TIPO COLLATE DATABASE_DEFAULT IN ('G','R');
+
+            UPDATE FCXCDV SET SALDONETO = 0
+            WHERE N_FACTURA = @N_FACTURA AND CNSCXC = @CNSCXC AND TIPO COLLATE DATABASE_DEFAULT IN ('G','R');
+
+            SELECT @SALDONETOFCXCDV = COALESCE(SUM(SALDONETO), 0)
+            FROM FCXCDV WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA;
+
+            IF @SALDONETOFCXCD > 0 AND @SALDONETOFCXCDV <> @SALDONETOFCXCD
+            BEGIN
+                UPDATE FCXCDV
+                SET SALDONETO = @SALDONETOFCXCD - COALESCE((
+                    SELECT SUM(SALDONETO) FROM FCXCDV X
+                    WHERE X.CNSCXC = @CNSCXC AND X.N_FACTURA = @N_FACTURA AND X.TIPO COLLATE DATABASE_DEFAULT <> 'F'
+                ), 0)
+                WHERE CNSCXC = @CNSCXC AND N_FACTURA = @N_FACTURA AND TIPO COLLATE DATABASE_DEFAULT = 'F';
+            END
+        END
+
+        -- ========================================
+        -- ? CORRECCI?N CR?TICA: RECALCULAR TOTALES DE LA CUENTA AL FINAL
+        -- ? ANTES: Sumaba solo la factura procesada (p?rdida de datos)
+        -- ? AHORA: Suma TODAS las facturas de la cuenta (correcto)
+        -- ========================================
+        SELECT 
+            @TOTALCXC = COALESCE(SUM(VALORFACTURA), 0),
+            @DEDUCCIONES = COALESCE(SUM(DEDUCCIONES), 0), 
+            @TOTALPAGOS = COALESCE(SUM(VLRPAGOS), 0),
+            @TOTALND = COALESCE(SUM(VLRNOTADB), 0),
+            @TOTALNC = COALESCE(SUM(VLRNOTACR), 0),     
+            @VLRGLOSAS_A = COALESCE(SUM(VLRGLOSAS), 0),
+            @VLRGLOSAS_R = COALESCE(SUM(VLRGLOSAS_R), 0),
+            @VLREXTRA = COALESCE(SUM(VLREXTRA) + SUM(VLRFCES), 0)
+        FROM FCXCD
+        WHERE CNSCXC = @CNSCXC;  -- ?? ?TODAS las facturas de la cuenta!
+
+        -- Solo actualizar FCXC si hay facturas en la cuenta
+        IF EXISTS (SELECT 1 FROM FCXCD WHERE CNSCXC = @CNSCXC)
+        BEGIN
+            UPDATE FCXC 
+            SET  
+                VALORCXC = @TOTALCXC,
+                VALORCXCNETO = @TOTALCXC - @DEDUCCIONES,
+                VLRPAGOS = @TOTALPAGOS,
+                VLRNOTADB = @TOTALND,  
+                VLRNOTACR = @TOTALNC,   
+                DEDUCCIONES = @DEDUCCIONES, 
+                VLRGLOSAS = @VLRGLOSAS_A,
+                VLRGLOSAS_R = @VLRGLOSAS_R,   
+                VLREXTRA = @VLREXTRA,
+                SALDO = VALORCXC + @TOTALND - @TOTALNC - @TOTALPAGOS - @VLRGLOSAS_A,  
+                SALDONETO = VALORCXCNETO + @TOTALND - @TOTALNC - @TOTALPAGOS - @VLRGLOSAS_A 
+            WHERE CNSCXC = @CNSCXC;
+        END
+
+        -- Limpiar recursos
+        IF OBJECT_ID('tempdb..#ValoresFCXCDV') IS NOT NULL DROP TABLE #ValoresFCXCDV;
+
+    END TRY
+    BEGIN CATCH
+        IF OBJECT_ID('tempdb..#ValoresFCXCDV') IS NOT NULL DROP TABLE #ValoresFCXCDV;
+        
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END
+

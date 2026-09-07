@@ -1,0 +1,210 @@
+{
+  "id": "reportes-cartera",
+  "nombre": "Cartera · Reportes e informes",
+  "modulo": "CARTERA_RPT",
+  "familia": "cartera",
+  "prioridad": 15,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "Consultas y reportes de cartera: vencimientos (aging), cuentas de cobro, radicación, recaudos, facturas en CxC. Pantalla principal ConsRptCarteraPage (14 informes). Orquestador SPQ: CARTERA_RPT; impresiones PDF: CARTERA_IMPRESION. Muchos informes usan vistas VWK_* vía AppStore.read.",
+  "actualizado": "2026-09-06T08:44:00",
+  "notaSql": "Hub 14 informes + satélites trazados FE 2026-09-06. SPQ 17/17 en export sql/. EXECUTE_SPK y TRAER_DETALLE_HISTORICO: FE los llama pero SSMS=NO en BD — pendientes L3. FSEG+FCXCR+ajuste NC documentados.",
+  "alcanceHasta": "Consultas e informes de cartera (solo lectura / export Excel-PDF). No incluye operación Recaudos, Notas, Glosas ni cierre de periodo (CierreCarteraPage → PRI.CERRADO_CARTERA).",
+  "ventanas": [
+    {
+      "uso": "Consultas y reportes (hub principal)",
+      "ruta": "admin.ConsRptCartera",
+      "path": "/admin/ConsRptCartera",
+      "vue": "ConsRptCarteraPage.vue",
+      "entrada": "Administrativo → Consultas y Reportes. Rejilla de 14 informes (pestañas)."
+    },
+    {
+      "uso": "Seguimiento cartera (gestión)",
+      "ruta": "admin.SeguiCartera",
+      "path": "/admin/SeguiCartera",
+      "vue": "SeguiCarteComponent.vue → MODELO FSEG_COL",
+      "entrada": "Administrativo → Seguimiento Cartera. CRUD seguimiento por factura/tercero."
+    },
+    {
+      "uso": "Cierre periodo cartera",
+      "ruta": "admin.CierreCartera",
+      "path": "/admin/CierreCartera",
+      "vue": "CerrarProceAdmComponent PROCEDENCIA=CARTERA",
+      "entrada": "Marca PRI.CERRADO_CARTERA. No es un reporte."
+    },
+    {
+      "uso": "Seguimiento / castigo (contabilidad)",
+      "ruta": "cont",
+      "path": "/cont/SeguimientoCartera, /cont/CastigoCartera",
+      "vue": "SeguimientoCarteraComponent, CastigoCarteraComponent",
+      "entrada": "Contabilidad → procesos cartera contable (fuera del hub administrativo)."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Filtros comunes: periodo (año/mes), tercero, sede, incluir particulares. Vencimientos dependen de FCXCDV generada al radicar (SPK_ENTREGA_CXC upstream). Variable FACTSEDE afecta logo en PDF CARTERA_IMPRESION.",
+      "gates": [
+        {
+          "id": "vistas-vwk",
+          "nombre": "Vistas de consulta (VWK_*)",
+          "explicacion": "La mayoría de informes leen vistas: VWK_VCTOS, VWK_CXCDIASVTO (aging DM0_30…), VWK_FACTURAS_ENCXC, VWK_RC_P_RS (resumen recaudos), VWK_RAD_P_RS (resumen radicación), VWK_PAGOS_BCO, VWK_CXCDV_REGIMEN, etc. Sin SPQ propio.",
+          "invariante": "Los saldos reflejan operación upstream (radicar, recaudos, notas, conciliaciones).",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Informes operativos",
+      "estado": "parcial",
+      "explicacion": "14 informes en ConsRptCarteraPage. Mix: AppStore.read (vistas) + CARTERA_RPT (cálculos/agregados) + jsPDF frontend.",
+      "gates": [
+        {
+          "id": "hub-consultas-reportes",
+          "nombre": "Hub Consultas y Reportes",
+          "explicacion": "14 informes ConsRptCarteraPage (2026-09-06). Mix read VWK_* / tablas + CARTERA_RPT + jsPDF frontend. Ver trazabilidad en Chat Documentar.",
+          "invariante": "Solo lectura salvo RELIQUIDA_FTR, EJECUTAR_AJUSTE_NC_FCXCDV y acciones FCXCR (Devoluciones).",
+          "sps": [
+            {
+              "nombre": "SPQ_CARTERA_RPT",
+              "metodo": "TRAE_DETALLES",
+              "rol": "Detalle factura: FCXCR, FNOT, FPAGD, FGLO, FCONCID (DetaFacxcComponent)."
+            },
+            {
+              "nombre": "SPQ_CARTERA_RPT",
+              "metodo": "EJECUTAR_AJUSTE_NC_FCXCDV",
+              "rol": "Ajuste NC desde vencimientos (ítem FCXCDV tipo C/G). Llama SPK_AJUSTE_FCXCDV_NC."
+            }
+          ]
+        },
+        {
+          "id": "vencimientos-aging",
+          "nombre": "Vencimientos y aging",
+          "explicacion": "Pestaña Vencimientos → VtosCxcComponent: Actual, Actual-Total, Histórico, por Régimen, Tipo tercero contable, Por plan. Vistas VWK_VCTOS / VWK_CXCDIASVTO + CARTERA_RPT TRAER_TTEC, TRAER_TOTAL*, ACTUALIZAR_DATOS_ACTUAL_TOTAL.",
+          "invariante": "Aging por F_VENCE de FCXCDV; Actual-Total refresca snapshot vía SPQ antes de mostrar.",
+          "sps": [
+            {
+              "nombre": "SPQ_CARTERA_RPT",
+              "metodo": "TRAER_TOTAL1",
+              "rol": "Totales vencimientos actual por tercero."
+            },
+            {
+              "nombre": "SPQ_CARTERA_RPT",
+              "metodo": "ACTUALIZAR_DATOS_ACTUAL_TOTAL",
+              "rol": "Refresca datos agregados Actual-Total."
+            }
+          ]
+        },
+        {
+          "id": "varios-por-mes",
+          "nombre": "Varios x mes / Estado admisiones",
+          "explicacion": "ReportesComponent y EstadoAdmisiones: EXECUTE_SPK_REPORTES_VARIOS_CARTERA → staging RPDX → grilla/export PDF. 5 sub-informes (radicación/recaudo por régimen, cartera x fact rad, etc.).",
+          "invariante": "Requiere rango fechas + CNSID base; SPK_REPORTES_VARIOS_CARTERA → RPDX _01.._05. ⚠ SSMS 2026-09-06: EXECUTE_SPK no existe en SPQ_CARTERA_RPT de BD — informe posiblemente no funcional en este ambiente.",
+          "sps": [
+            {
+              "nombre": "SPQ_CARTERA_RPT",
+              "metodo": "EXECUTE_SPK_REPORTES_VARIOS_CARTERA",
+              "rol": "Orquesta SPK_REPORTES_VARIOS_CARTERA (referencia FE; no en sql_refe parcial)."
+            }
+          ]
+        },
+        {
+          "id": "resumenes-pdf",
+          "nombre": "Resúmenes radicación y recaudos",
+          "explicacion": "ResumenRadicacionComponent → VWK_RD_RS + composable RptResumenRadicacion (jsPDF). ResumenRecaudosComponent → VWK_RC_P_RS + RptResumenRecaudos.",
+          "invariante": "Filtro año/mes + opción incluir particulares.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Datos upstream",
+      "estado": "documentado",
+      "explicacion": "Los reportes reflejan operación ya documentada: Facturación (FTR→FCXC→radicar), Recaudos (FPAG), Notas (FNOT), Glosas (FGLO), Conciliaciones (FCONCI), Bancos (VWK_PAGOS_BCO).",
+      "gates": []
+    },
+    {
+      "id": "04-union-modulos",
+      "numero": 4,
+      "nombre": "Unión con otros módulos",
+      "estado": "parcial",
+      "explicacion": "FactEnCxc puede RELIQUIDA_FTR. Devoluciones FCXCR (informe #3) es operación vía SPQ_FCXCR. Seguimiento FSEG es gestión aparte. CARTERA_IMPRESION alimenta PDFs desde useCartera.",
+      "gates": [
+        {
+          "id": "devoluciones-fcxcr",
+          "nombre": "Devoluciones (FCXCR)",
+          "explicacion": "ConsRptCartera informe #3 → FCXCRComponent. Listado AppStore.read FCXCR. DEFINIR_FACTURA (EDITAR/LIBERAR) y ENVIAR_FACTURA (DEVOL→ENT_COL DEVFACT | CXC→FCXC+SPK_RELIQUIDACXCQX). Ficha en recaudos/sps.json.",
+          "invariante": "EDITAR exige ESTADO vacío; LIBERAR exige ESTADO informado. ENVIAR=DEVOL crea ENT DEVFACT y marca ENDEVO en ENT origen.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXCR",
+              "metodo": "DEFINIR_FACTURA",
+              "rol": "Editar/liberar respuesta devolución."
+            },
+            {
+              "nombre": "SPQ_FCXCR",
+              "metodo": "ENVIAR_FACTURA",
+              "rol": "Devolver a facturación o crear nueva CXC."
+            }
+          ]
+        },
+        {
+          "id": "seguimiento-fseg",
+          "nombre": "Seguimiento cartera (FSEG)",
+          "explicacion": "SeguiCarteraPage (/admin/SeguiCartera) → FSEG_COL: TRAE_DATOS, FSEG_CRUD (Nuevo), PROCESO_FSEG (cerrar=1 / borrar=3). Gestión de seguimiento por FCXC/factura, no informe de saldos.",
+          "invariante": "Alta exige FCXC existente; PROCESO_FSEG solo sobre CERRADA=0.",
+          "sps": [
+            {
+              "nombre": "SPQ_FSEG_COL",
+              "metodo": "FSEG_CRUD",
+              "rol": "Alta seguimiento con GENCONSECUTIVO @FSEG."
+            },
+            {
+              "nombre": "SPQ_FSEG_COL",
+              "metodo": "TRAE_DATOS",
+              "rol": "Lista FSEG por CNSCXC/N_FACTURA."
+            },
+            {
+              "nombre": "SPQ_FSEG_COL",
+              "metodo": "PROCESO_FSEG",
+              "rol": "Cerrar o eliminar ítem abierto."
+            }
+          ]
+        },
+        {
+          "id": "impresiones-cartera",
+          "nombre": "PDF impresiones (CARTERA_IMPRESION)",
+          "explicacion": "useCartera → MODELO CARTERA_IMPRESION: FPAG (recaudo), FGLOI/FGLOI_IND (glosas), BUSCA_FACTURA. También ImpRespGloComponent y BuscaFacturaComponent.",
+          "invariante": "FACTSEDE (USVGS) afecta logo en PDF. FGLOI_IND validado en FE si falta método en servidor.",
+          "sps": [
+            {
+              "nombre": "SPQ_CARTERA_IMPRESION",
+              "metodo": "FPAG",
+              "rol": "Comprobante recaudo PDF."
+            },
+            {
+              "nombre": "SPQ_CARTERA_IMPRESION",
+              "metodo": "FGLOI_IND",
+              "rol": "Respuesta glosa individual."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad / cierre",
+      "estado": "parcial",
+      "explicacion": "CierreCarteraPage marca PRI.CERRADO_CARTERA. Cont → Seguimiento/Castigo cartera usa cuentas CUE. Informes contables de vencimientos: TRAER_TOTAL_HISTORICO_CONTABLE (CARTERA_RPT).",
+      "gates": []
+    }
+  ]
+}

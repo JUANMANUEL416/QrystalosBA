@@ -590,10 +590,12 @@ class QuatecHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Analiza el requerimiento (y mi análisis si ya lo escribí). "
-                        "Dime qué te falta revisar para validar contra el mío. "
-                        "No hagas el dictamen completo. Deja el resultado en este Chat "
-                        "y en solicitud.contenido.brechaAnalisis."
+                        "Analiza el requerimiento contrastándolo con la base de conocimiento "
+                        "(proceso/sps). Proponga solución, criterios de aceptación, alcance, "
+                        "restricciones y análisis; liste los SP/METODO documentados a usar. "
+                        "No haga el dictamen completo. Deje el resultado en este Chat y en "
+                        "solicitud.contenido (criterios, alcance, restricciones, analisis, "
+                        "brechaAnalisis)."
                     ),
                     "fecha": ahora,
                 },
@@ -603,7 +605,7 @@ class QuatecHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está analizando el requerimiento. El resultado aparece en el paso 2 y en el Chat.",
+                    "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
                     "fecha": ahora,
                 },
             )
@@ -631,11 +633,13 @@ class QuatecHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Proponga los criterios de aceptación de este REQ con base en Qrystalos2"
+                        "Proponga criterios, alcance, restricciones y análisis contrastando el REQ "
+                        "con la base de conocimiento (proceso/sps) y Qrystalos2"
                         + con_analisis
-                        + ". Descarte textos genéricos. Escríbalos en solicitud.contenido.criteriosAceptacion "
-                        "y en criteriosMeta (fuente: agente). Organice analisis y recomendacion si están vacíos "
-                        "o vienen de OpenAI. Resuma en este Chat. No haga el dictamen completo."
+                        + ". Liste los SP/METODO documentados a usar. Escriba en "
+                        "solicitud.contenido.criteriosAceptacion, alcance, restricciones, analisis, "
+                        "recomendacion y criteriosMeta (fuente: agente). Resuma en este Chat. "
+                        "No haga el dictamen completo."
                     ),
                     "fecha": ahora,
                 },
@@ -645,7 +649,7 @@ class QuatecHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está proponiendo criterios. El resultado queda en el formulario y en este Chat.",
+                    "texto": "El agente está armando criterios/alcance/análisis desde el REQ y conocimiento/. Resultado en formulario y Chat.",
                     "fecha": ahora,
                 },
             )
@@ -853,8 +857,11 @@ class QuatecHandler(SimpleHTTPRequestHandler):
         return self._json({"error": f"Acción desconocida: {accion}"}, 400)
 
     def _get_desarrolladores(self):
-        cola = get_db().get_cola()
-        return self._json(devs.sync_all(cola))
+        try:
+            cola = get_db().get_cola()
+            return self._json(devs.sync_all(cola))
+        except OSError as e:
+            return self._json({"ok": False, "error": f"No se pudo leer/guardar desarrolladores: {e}"}, 500)
 
     def _post_desarrolladores(self):
         try:
@@ -863,28 +870,30 @@ class QuatecHandler(SimpleHTTPRequestHandler):
             return self._json({"error": "JSON inválido"}, 400)
 
         accion = (body.get("accion") or "sync").strip().lower()
-        if accion == "correo":
-            try:
-                data, dev, _ = devs.set_correo(body.get("nombre"), body.get("correo"))
-            except ValueError as e:
-                return self._json({"ok": False, "error": str(e)}, 400)
-            return self._json({
-                "ok": True,
-                "desarrollador": dev,
-                "pendientesCorreo": devs.pendientes_correo(data),
-                **data,
-            })
-        if accion == "upsert":
-            data, dev, creado = devs.upsert(
-                body.get("nombre"),
-                caso=body.get("caso"),
-                correo=body.get("correo"),
-            )
-            return self._json({"ok": True, "creado": creado, "desarrollador": dev, **data})
+        try:
+            if accion == "correo":
+                try:
+                    data, dev, _ = devs.set_correo(body.get("nombre"), body.get("correo"))
+                except ValueError as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({
+                    "ok": True,
+                    "desarrollador": dev,
+                    "pendientesCorreo": devs.pendientes_correo(data),
+                    **data,
+                })
+            if accion == "upsert":
+                data, dev, creado = devs.upsert(
+                    body.get("nombre"),
+                    caso=body.get("caso"),
+                    correo=body.get("correo"),
+                )
+                return self._json({"ok": True, "creado": creado, "desarrollador": dev, **data})
 
-        cola = body.get("items") if isinstance(body.get("items"), list) else get_db().get_cola()
-        return self._json(devs.sync_all(cola))
-
+            cola = body.get("items") if isinstance(body.get("items"), list) else get_db().get_cola()
+            return self._json(devs.sync_all(cola))
+        except OSError as e:
+            return self._json({"ok": False, "error": f"No se pudo guardar desarrolladores: {e}"}, 500)
     def _get_cola(self):
         get_db().reconciliar_cerrados()
         return self._json({"items": get_db().get_cola()})

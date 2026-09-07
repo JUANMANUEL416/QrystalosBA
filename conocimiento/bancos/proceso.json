@@ -1,0 +1,217 @@
+{
+  "id": "bancos",
+  "nombre": "Tesorería · Bancos",
+  "modulo": "BMOV",
+  "familia": "tesoreria",
+  "prioridad": 20,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "BCT→BMOV/BMOVD (PROCEDENCIA BANCOS). Confirmar→SPK_OK_BMOV (saldo BCT + SPK_NC_CONTAB_BMOV). Recaudos legaliza BMOVD. CONCBMOV/OM cruzan BMOV vs MCP (PROCEDENCIA BMOV). Distinto de FCONCI glosa.",
+  "actualizado": "2026-09-06T09:17:00",
+  "notaSql": "SPQ_BMOV 17/17 + config RUTA-CONFIG paso 2: BCO 6/6, BCTC 16/16, OFIN_COL leído 2026-09-06.",
+  "alcanceHasta": "Operación tesorería + enlace cartera/caja + conciliación contable bancaria + OM contabilidad. No incluye configuración contable de cuentas CUE ni conciliación glosa FCONCI.",
+  "ventanas": [
+    {
+      "uso": "Cuentas bancarias y movimientos",
+      "ruta": "admin.Cuentas",
+      "path": "/admin/Cuentas",
+      "vue": "CuentasPage.vue → BCTComponent → BMOVComponent",
+      "entrada": "Administrativo → Tesorería → Cuentas. Grilla BCT; pestaña movimientos BMOV/BMOVD por cuenta."
+    },
+    {
+      "uso": "Configuración maestro bancos",
+      "ruta": "conf.financiero.bancos",
+      "path": "/conf/financiero/Bancos",
+      "vue": "BancosPage.vue",
+      "entrada": "Configuración → Financiero → Bancos (catálogo entidades)."
+    },
+    {
+      "uso": "Recaudos desde consignación",
+      "ruta": "admin.recaudos",
+      "path": "/admin/Recaudos",
+      "vue": "FPAGComponent INGRESO=BANCOS",
+      "entrada": "Recaudo enlaza BMOVD (banco/sucursal/cuenta/ítem/renglón); ENPAGOS=1 al aplicar."
+    },
+    {
+      "uso": "Conciliación contable bancaria",
+      "ruta": "cont.conciContables",
+      "path": "/cont/conciContables",
+      "vue": "ConciContablesPage → CONCBMOVComponent",
+      "entrada": "Contabilidad → Conciliaciones contables. Cruce BMOV confirmados vs MCPE/MCP."
+    },
+    {
+      "uso": "OM — enviar movimientos a contabilidad",
+      "ruta": "cont",
+      "path": "/cont",
+      "vue": "OMBancosComponent",
+      "entrada": "Contabilidad → Otros módulos → Bancos. ENV_CONTA_OTROS_MODULS."
+    },
+    {
+      "uso": "Auxiliar de bancos",
+      "ruta": "cont.auxBancos",
+      "path": "/cont/auxBancos",
+      "vue": "AuxiliarBancosComponent",
+      "entrada": "Reporte saldos/movimientos por cuenta contable bancaria."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Orden config: (1) BCO+BSU entidades/sucursales conf.bancos → (2) BCT cuentas admin.Cuentas → (3) OFIN operaciones conf.ofin → (4) PRI periodo abierto. FPA alimenta detalle BMOVD.",
+      "tablasClave": ["BCO", "BSU", "BCT", "OFIN", "FPA", "PRI"],
+      "gates": [
+        {
+          "id": "maestro-bco",
+          "nombre": "Entidad bancaria y sucursales (BCO/BSU)",
+          "explicacion": "conf.bancos → BCOComponent. Listar: AppStore.read BCO+TER. CRUD: MODELO BCO → SPQ_BCO (GUARDAR/EDITAR/ELIMINAR + GUARDARBSU/EDITARBSU/ELIMINARBSU). Cada banco exige IDTERCERO único.",
+          "invariante": "Sin BCO+BSU no se crea cuenta BCT. ELIMINAR BCO bloqueado si hay sucursales.",
+          "sps": [
+            { "nombre": "SPQ_BCO", "metodo": "GUARDAR / EDITAR / ELIMINAR", "rol": "Catálogo entidades BCO." },
+            { "nombre": "SPQ_BCO", "metodo": "GUARDARBSU / EDITARBSU / ELIMINARBSU", "rol": "Sucursales BSU por banco." }
+          ]
+        },
+        {
+          "id": "cuenta-bct",
+          "nombre": "Cuenta bancaria (BCT)",
+          "explicacion": "admin.Cuentas → BCTComponent. Alta/edición: MODELO BCTC → GUARDARBCT/ACTUALIZABCT. Campos: BANCO+SUCURSAL+TIPO_CUENTA+CTA_BCO+COD_CONTABLE+SALDO+formatos+TARCRED/CUPODISP. SALDO recalculado en operación (SPK_RECALCULO_BANCOS).",
+          "invariante": "Sin cuenta BCT activa no hay movimientos BMOV.",
+          "sps": [
+            { "nombre": "SPQ_BCTC", "metodo": "GUARDARBCT / ACTUALIZABCT / ELIMINABCT", "rol": "Alta/edición cuenta BCT. ELIMINABCT bloquea si hay BMOV." }
+          ]
+        },
+        {
+          "id": "operacion-ofin",
+          "nombre": "Tipo de operación (OFIN)",
+          "explicacion": "conf.ofin → OFINComponent. CRUD: MODELO OFIN_COL → CRUDOFIN (INSERTAR/EDITAR/ELIMINAR). Define TIPO DB/CR, RECAUDO, RNOMI, TRASLADO, GENCXP, CUENTA contable, cuenta BCT destino si traslado.",
+          "invariante": "Operación define si BMOVD alimenta Recaudos, nómina o traslado entre cuentas.",
+          "sps": [
+            { "nombre": "SPQ_OFIN_COL", "metodo": "CRUDOFIN (3/3 leído)", "rol": "Catálogo operaciones financieras." },
+            { "nombre": "SPQ_BMOV", "metodo": "GUARDABMOV", "rol": "Lee OFIN.RECAUDO/RNOMI." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio (movimientos)",
+      "estado": "parcial",
+      "explicacion": "Por cuenta: crear BMOV (ESTADO P) → líneas BMOVD (tercero, valor, forma pago, RECAUDO) → confirmar CONFIRMARBMOV → ESTADO O vía SPK_OK_BMOV. Reversos: DESCONFIRMABMOV (bloqueado si BMOVD.ENPAGOS=1). Anular: ANULARBMOV.",
+      "tablasClave": ["BMOV", "BMOVD"],
+      "gates": [
+        {
+          "id": "crud-movimiento",
+          "nombre": "Alta/edición movimiento y detalle",
+          "explicacion": "GUARDABMOV/ACTUALIZABMOV cabecera; GUARDABMOVD/ACTUALIZABMOVD/ELIMINABMOVD renglones. VLROPERACION = SUM(BMOVD.VLRITEM).",
+          "invariante": "Solo ESTADO P edita. PRI abierto en FECHAOK.",
+          "sps": [
+            { "nombre": "SPQ_BMOV", "metodo": "GUARDABMOV / ACTUALIZABMOV / ANULARBMOV", "rol": "Cabecera BMOV." },
+            { "nombre": "SPQ_BMOV", "metodo": "GUARDABMOVD / ACTUALIZABMOVD / ELIMINABMOVD", "rol": "Detalle BMOVD." }
+          ]
+        },
+        {
+          "id": "confirmar-movimiento",
+          "nombre": "Confirmar movimiento bancario",
+          "explicacion": "CONFIRMARBMOV → SPK_OK_BMOV: valida PRI, ESTADO O, recalcula saldo BCT (SPK_RECALCULO_BANCOS). Si PROCEDENCIA BANCOS/CONTAB → SPK_NC_CONTAB_BMOV (asiento). Traslados OFIN duplican movimiento en cuenta destino.",
+          "invariante": "DESCONFIRMAVAL bloquea si BMOVD.ENPAGOS=1. Ya confirmado → KO.",
+          "sps": [
+            { "nombre": "SPQ_BMOV", "metodo": "CONFIRMARBMOV / DESCONFIRMABMOV / DESCONFIRMAVAL", "rol": "Orquestador confirmación." },
+            { "nombre": "SPK_OK_BMOV", "metodo": "CONFIRMAR", "rol": "Motor: ESTADO O + recálculo + contabilidad condicional." }
+          ]
+        },
+        {
+          "id": "generar-cxp",
+          "nombre": "Generar CxP desde movimiento",
+          "explicacion": "GENCXPBMOV / GENCXPBCTTAR crean FCXP desde movimiento confirmado (pagos a proveedor / tarjetas).",
+          "invariante": "Flag GENCXP en cabecera.",
+          "sps": [
+            { "nombre": "SPQ_BMOV", "metodo": "GENCXPBMOV / GENCXPBCTTAR", "rol": "Puente a CxP." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "Recaudos legaliza consignaciones (BMOVD.RECAUDO=1). Caja actualiza saldo BCT vía SPK_ACTUALIZA_SALDO_BANCO (PCJ→BCT, no BMOV). ADRES: DISTRUYE_ADRES reparte consignación.",
+      "tablasClave": ["FPAG", "FCJ", "PCJ", "BCT"],
+      "gates": [
+        {
+          "id": "desde-recaudos",
+          "nombre": "Recaudo cartera (consignación)",
+          "explicacion": "FPAG INGRESO=BANCOS enlaza BMOVD; INSERTAR marca ENPAGOS; APLICARPAGO legaliza VLRLEGALIZADO en BMOVD y BMOV.",
+          "invariante": "Línea BMOVD no puede estar en dos recaudos abiertos.",
+          "sps": [
+            { "nombre": "SPQ_FPAG_COL", "metodo": "INSERTAR / TRAE_PAGO / APLICARPAGO", "rol": "Proceso Recaudos." },
+            { "nombre": "SPK_PAGOSCXC", "metodo": "BANCOS", "rol": "Actualiza ENPAGOS/VLRLEGALIZADO BMOVD." }
+          ]
+        },
+        {
+          "id": "desde-caja",
+          "nombre": "Depósito desde caja",
+          "explicacion": "SPK_ACTUALIZA_SALDO_BANCO: al confirmar recibo caja, suma PCJ a BCT.COD_CONTABLE según FPA.",
+          "invariante": "No pasa por BMOV; es saldo contable de caja en banco.",
+          "sps": [
+            { "nombre": "SPK_ACTUALIZA_SALDO_BANCO", "metodo": "(CONFIRMAR_RECIBO caja)", "rol": "sql/ leído en Caja." }
+          ]
+        },
+        {
+          "id": "adres-peru",
+          "nombre": "Distribución ADRES (Perú)",
+          "explicacion": "DISTRUYE_ADRES en SPQ_BMOV: reparte BMOVD a otro tercero (Recaudos DistribuyeAdresComponent).",
+          "invariante": "Movimiento ESTADO O.",
+          "sps": [
+            { "nombre": "SPQ_BMOV", "metodo": "DISTRUYE_ADRES", "rol": "Ficha leída." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido (conciliación contable)",
+      "estado": "parcial",
+      "explicacion": "CONCBMOVComponent (/cont/conciContables): periodo PRI + cuenta BCT. Lista BMOV PROCEDENCIA=BANCOS del mes. Cruza con MCP/MCPE (PROCEDENCIA BMOV) por NROCOMPROBANTE, REFERENCIA1=ITEM o NOREFERENCIA=NODOCUMENTO. Semáforo CONTABILIZADA 0/1/2; filtro valor BMOV vs MCP.TOTALDEBITO (±0,01). Re-envío: ENV_CONTA_OTROS_MODULS ITEMS. OMBancos: mismo patrón sin cruce detallado.",
+      "tablasClave": ["BMOV", "MCPE", "MCP", "MCH", "MCHE"],
+      "gates": [
+        {
+          "id": "conci-contable-bmov",
+          "nombre": "Conciliación contable BMOV vs libro",
+          "explicacion": "Operador elige periodo + BCT → grilla BMOV vs existencia MCP/MCPE → corrige pendientes (ENV_CONTA) o detecta diferencias de valor. Export Excel CONC*/NO CONC*.",
+          "invariante": "Listado tesorería: PROCEDENCIA BANCOS. Comprobante contable: PROCEDENCIA BMOV. Envío exige ESTADO O.",
+          "sps": [
+            { "nombre": "SPQ_CONTABILIDAD_3", "metodo": "ENV_CONTA_OTROS_MODULS", "rol": "PROCEDENCIA BMOV, ITEMS=ITEM BMOV." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "Al confirmar (PROCEDENCIA BANCOS/CONTAB): SPK_OK_BMOV → SPK_NC_CONTAB_BMOV genera MCP (NROCOMPROBANTE). BMOV.CONTABILIZADA: 0 pendiente · 1 enviado · 2 errores. OM Bancos y CONCBMOV re-envían vía ENV_CONTA_OTROS_MODULS (PROCEDENCIA BMOV). SPK_CONTAB_MASIVA también itera BMOV MARCACONT=1.",
+      "tablasClave": ["BMOV", "MCP", "MCPE", "MCH"],
+      "gates": [
+        {
+          "id": "contabilizar-bmov",
+          "nombre": "Contabilizar movimiento bancario",
+          "explicacion": "Primario: SPK_NC_CONTAB_BMOV (desde SPK_OK_BMOV al confirmar). Secundario: OM/CONCBMOV ENV_CONTA_OTROS_MODULS para pendientes o reconstruir.",
+          "invariante": "PRI abierto en FECHAOK/FECHAOPERACION. PROCEDENCIA contable MCP = BMOV (no confundir con BMOV.PROCEDENCIA fila = BANCOS).",
+          "sps": [
+            { "nombre": "SPK_OK_BMOV", "metodo": "CONFIRMAR", "rol": "Dispara SPK_NC_CONTAB_BMOV si aplica." },
+            { "nombre": "SPK_NC_CONTAB_BMOV", "metodo": "(anidado)", "rol": "Motor asiento MCP. Pendiente .sql." },
+            { "nombre": "SPQ_CONTABILIDAD_3", "metodo": "ENV_CONTA_OTROS_MODULS", "rol": "OM Bancos / CONCBMOV." }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujoPasado": true,
+  "pasadaEn": "2026-09-06T06:42:00"
+}

@@ -5,10 +5,11 @@ import os
 import re
 import shutil
 import sys
+import time
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -16,6 +17,8 @@ if SCRIPT_DIR not in sys.path:
 
 from cursor_bot import (  # noqa: E402
     CONOCIMIENTO_ID,
+    CONSULTAS_ID,
+    DOCUMENTAR_ID,
     lanzar_bot,
     leer_estado_bot,
     load_api_key,
@@ -143,10 +146,11 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 - **Dictamen:** dictamenes/{id_caso}.html
 
 ## Fase 1 — su tarea ahora
-1. Analizar requerimiento + (fichas SP en conocimiento/ y/o SQL de hoy) + código Qrystalos2 + documentación.
-2. Generar **propuesta** en `dictamenes/{id_caso}.html`.
-3. Resumir propuesta en `activo/{id_caso}/chat.json` (autor: agente) o indicar al coordinador que abra el dictamen.
-4. Si usó métodos documentados: deje en el Chat el veredicto de **releer o no** el .sql de hoy.
+1. **REQ → conocimiento** (INDICE, proceso.json, sps.json; sql_refe si hace falta).
+2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO documentados a usar.
+3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
+4. Cuando el coordinador lo pida: dictamen en `dictamenes/{id_caso}.html`.
+5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
 
 ## Chat
 El coordinador escribe **solo** en la app (pestaña Chat → `chat.json`).
@@ -293,6 +297,13 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "configurado": bool(load_api_key()),
                     "modelo": os.environ.get("CURSOR_BOT_MODEL", "composer-2.5"),
                 },
+                "agentes": {
+                    "analista": "por caso en activo/",
+                    "consultas": leer_estado_bot(CONSULTAS_ID),
+                    "documentar": leer_estado_bot(DOCUMENTAR_ID),
+                    "vigilante": kb.load_vigilante(),
+                    "valle": kb.siguiente_valle(),
+                },
             })
 
         if len(parts) == 2 and parts[0] == "api" and parts[1] == "openai":
@@ -321,8 +332,10 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._get_borrador()
 
         if parts[:2] == ["api", "conocimiento"] and (len(parts) == 2 or (len(parts) == 3 and not parts[2])):
-            data = kb.resumen()
-            data["bot"] = leer_estado_bot(CONOCIMIENTO_ID)
+            qs = parse_qs(parsed.query)
+            canal = (qs.get("canal") or ["documentar"])[0]
+            data = kb.resumen(canal)
+            data["bot"] = leer_estado_bot(kb.bot_id(canal))
             return self._json(data)
 
         if len(parts) >= 4 and parts[0] == "api" and parts[1] == "conocimiento" and parts[2] == "proceso":
@@ -403,8 +416,20 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if parts == ["api", "conocimiento", "pendiente"]:
             return self._post_conocimiento_pendiente()
 
+        if parts == ["api", "conocimiento", "vigilante"]:
+            return self._post_conocimiento_vigilante()
+
         if parts == ["api", "conocimiento", "chat"]:
             return self._post_conocimiento_chat()
+
+        if parts == ["api", "conocimiento", "chat", "archivar"]:
+            return self._post_conocimiento_chat_accion("archivar")
+
+        if parts == ["api", "conocimiento", "chat", "nuevo"]:
+            return self._post_conocimiento_chat_accion("nuevo")
+
+        if parts == ["api", "conocimiento", "chat", "abrir"]:
+            return self._post_conocimiento_chat_accion("abrir")
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "solicitud":
             return self._post_solicitud(unquote(parts[2]))
@@ -470,6 +495,22 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "tarea": kb.cerrar_tarea()})
         return self._json({"error": "Indique accion=cerrar o abierta=false"}, 400)
 
+    def _post_conocimiento_vigilante(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        vig = kb.load_vigilante()
+        if "activo" in body:
+            vig["activo"] = bool(body.get("activo"))
+        if body.get("intervaloMin"):
+            try:
+                vig["intervaloMin"] = max(5, int(body["intervaloMin"]))
+            except (TypeError, ValueError):
+                pass
+        kb.save_vigilante(vig)
+        return self._json({"ok": True, "vigilante": vig, "valle": kb.siguiente_valle()})
+
     def _post_conocimiento_pendiente(self):
         try:
             body = self._read_json_body()
@@ -497,23 +538,49 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if autor not in ("coordinador",):
             autor = "coordinador"
         proceso_id = body.get("procesoId") or ""
-        kb.append_chat(autor, texto, proceso_id)
+        canal = body.get("canal") or "documentar"
+        chat_info = kb.resumen(canal)
+        if chat_info.get("chatSoloLectura"):
+            return self._json({"error": "Este chat está archivado. Cree uno nuevo o ábralo solo para leer."}, 409)
+        kb.append_chat(autor, texto, proceso_id, canal)
         kb.append_chat(
             "sistema",
             "El agente está trabajando. En unos segundos responde aquí (autor agente).",
             proceso_id,
+            canal,
         )
-        bot = lanzar_bot(CONOCIMIENTO_ID, "conocimiento")
+        bot = lanzar_bot(kb.bot_id(canal), canal)
         if not bot.get("ok"):
-            kb.append_chat(
-                "sistema",
-                "El agente no pudo arrancar ("
-                + str(bot.get("error") or "error")
-                + "). Reinicie abrir-app.bat o escriba de nuevo en Cursor.",
-                proceso_id,
-            )
-        chat = kb.load_chat()
-        return self._json({"ok": True, "chat": chat, "bot": bot})
+            time.sleep(2)
+            st = leer_estado_bot(kb.bot_id(canal))
+            if st.get("estado") == "trabajando" and st.get("pidVivo"):
+                bot = {"ok": True, "pid": st.get("pid"), "yaCorria": True}
+            else:
+                kb.append_chat(
+                    "sistema",
+                    "El agente no pudo arrancar ("
+                    + str(bot.get("error") or "error")
+                    + "). Reinicie abrir-app.bat o escriba de nuevo en Cursor.",
+                    proceso_id,
+                    canal,
+                )
+        chat = kb.load_chat(canal)
+        return self._json({"ok": True, "chat": chat, "bot": bot, "canal": canal})
+
+    def _post_conocimiento_chat_accion(self, accion: str):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        canal = body.get("canal") or "documentar"
+        if accion in ("archivar", "nuevo"):
+            result = kb.nuevo_chat(canal, body.get("titulo") or "")
+            return self._json(result)
+        sid = (body.get("id") or "").strip()
+        if not sid:
+            return self._json({"error": "Falta id del chat"}, 400)
+        result = kb.abrir_chat(canal, sid)
+        return self._json(result, 200 if result.get("ok") else 404)
 
     def _organizar_texto(self):
         try:
@@ -590,10 +657,12 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Analiza el requerimiento (y mi análisis si ya lo escribí). "
-                        "Dime qué te falta revisar para validar contra el mío. "
-                        "No hagas el dictamen completo. Deja el resultado en este Chat "
-                        "y en solicitud.contenido.brechaAnalisis."
+                        "Analiza el requerimiento contrastándolo con la base de conocimiento "
+                        "(proceso/sps). Proponga solución, criterios de aceptación, alcance, "
+                        "restricciones y análisis; liste los SP/METODO documentados a usar. "
+                        "No haga el dictamen completo. Deje el resultado en este Chat y en "
+                        "solicitud.contenido (criterios, alcance, restricciones, analisis, "
+                        "brechaAnalisis)."
                     ),
                     "fecha": ahora,
                 },
@@ -603,7 +672,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está analizando el requerimiento. El resultado aparece en el paso 2 y en el Chat.",
+                    "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
                     "fecha": ahora,
                 },
             )
@@ -631,11 +700,13 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Proponga los criterios de aceptación de este REQ con base en Qrystalos2"
+                        "Proponga criterios, alcance, restricciones y análisis contrastando el REQ "
+                        "con la base de conocimiento (proceso/sps) y Qrystalos2"
                         + con_analisis
-                        + ". Descarte textos genéricos. Escríbalos en solicitud.contenido.criteriosAceptacion "
-                        "y en criteriosMeta (fuente: agente). Organice analisis y recomendacion si están vacíos "
-                        "o vienen de OpenAI. Resuma en este Chat. No haga el dictamen completo."
+                        + ". Liste los SP/METODO documentados a usar. Escriba en "
+                        "solicitud.contenido.criteriosAceptacion, alcance, restricciones, analisis, "
+                        "recomendacion y criteriosMeta (fuente: agente). Resuma en este Chat. "
+                        "No haga el dictamen completo."
                     ),
                     "fecha": ahora,
                 },
@@ -645,7 +716,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está proponiendo criterios. El resultado queda en el formulario y en este Chat.",
+                    "texto": "El agente está armando criterios/alcance/análisis desde el REQ y conocimiento/. Resultado en formulario y Chat.",
                     "fecha": ahora,
                 },
             )
@@ -843,6 +914,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     correo=body.get("correo") or body.get("destinatario"),
                     reenviar=accion == "reenviar" or bool(body.get("reenviar")),
                     display=bool(body.get("display")),
+                    desarrollador=body.get("desarrollador") or body.get("nombre"),
                 ))
         except ValueError as e:
             return self._json({"ok": False, "error": str(e)}, 400)
@@ -853,8 +925,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         return self._json({"error": f"Acción desconocida: {accion}"}, 400)
 
     def _get_desarrolladores(self):
-        cola = get_db().get_cola()
-        return self._json(devs.sync_all(cola))
+        try:
+            cola = get_db().get_cola()
+            return self._json(devs.sync_all(cola))
+        except OSError as e:
+            return self._json({"ok": False, "error": f"No se pudo leer/guardar desarrolladores: {e}"}, 500)
 
     def _post_desarrolladores(self):
         try:
@@ -863,28 +938,30 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"error": "JSON inválido"}, 400)
 
         accion = (body.get("accion") or "sync").strip().lower()
-        if accion == "correo":
-            try:
-                data, dev, _ = devs.set_correo(body.get("nombre"), body.get("correo"))
-            except ValueError as e:
-                return self._json({"ok": False, "error": str(e)}, 400)
-            return self._json({
-                "ok": True,
-                "desarrollador": dev,
-                "pendientesCorreo": devs.pendientes_correo(data),
-                **data,
-            })
-        if accion == "upsert":
-            data, dev, creado = devs.upsert(
-                body.get("nombre"),
-                caso=body.get("caso"),
-                correo=body.get("correo"),
-            )
-            return self._json({"ok": True, "creado": creado, "desarrollador": dev, **data})
+        try:
+            if accion == "correo":
+                try:
+                    data, dev, _ = devs.set_correo(body.get("nombre"), body.get("correo"))
+                except ValueError as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({
+                    "ok": True,
+                    "desarrollador": dev,
+                    "pendientesCorreo": devs.pendientes_correo(data),
+                    **data,
+                })
+            if accion == "upsert":
+                data, dev, creado = devs.upsert(
+                    body.get("nombre"),
+                    caso=body.get("caso"),
+                    correo=body.get("correo"),
+                )
+                return self._json({"ok": True, "creado": creado, "desarrollador": dev, **data})
 
-        cola = body.get("items") if isinstance(body.get("items"), list) else get_db().get_cola()
-        return self._json(devs.sync_all(cola))
-
+            cola = body.get("items") if isinstance(body.get("items"), list) else get_db().get_cola()
+            return self._json(devs.sync_all(cola))
+        except OSError as e:
+            return self._json({"ok": False, "error": f"No se pudo guardar desarrolladores: {e}"}, 500)
     def _get_cola(self):
         get_db().reconciliar_cerrados()
         return self._json({"items": get_db().get_cola()})
@@ -1018,7 +1095,13 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         db = get_db()
         estado = db.cerrar_fase1(id_caso)
-        solicitud = db.get_solicitud(id_caso)
+        solicitud = db.get_solicitud(id_caso) or {}
+        nombre_dev = ((solicitud.get("personas") or {}).get("desarrollador") or "").strip()
+        if dest and nombre_dev:
+            try:
+                devs.set_correo(nombre_dev, dest)
+            except (ValueError, OSError) as exc:
+                print(f"WARN set_correo al cerrar fase 1: {exc}", flush=True)
         id_req = (
             (estado.get("idReq") or "")
             or ((solicitud.get("identificacion") or {}).get("idReq") or "")
@@ -1034,6 +1117,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 id_caso,
                 correo=dest or None,
                 reenviar=bool(prev.get("enviado")),
+                desarrollador=nombre_dev or None,
             )
         except Exception as e:
             correo = {"ok": False, "enviado": False, "error": str(e)}
@@ -1235,6 +1319,12 @@ def main():
     print(f"Activos: activo/{{id-caso}}/", flush=True)
     print(f"SQL:     sql/", flush=True)
     print(f"Procesos: conocimiento/", flush=True)
+    try:
+        import documentar_vigilante as docvig
+
+        docvig.start_background(45)
+    except Exception as exc:
+        print(f"Documentar vigilante no arrancó: {exc}", flush=True)
     server.serve_forever()
 
 

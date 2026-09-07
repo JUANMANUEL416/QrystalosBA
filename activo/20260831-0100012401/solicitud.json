@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-07T01:26:28.478Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100012401",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260831-0100012401",
+    "idReq": "0100012401",
+    "fecha": "2025-12-26",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ART MEDICA S.A.S",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": "/admin/facturacion · Log Facturas"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "OMAR SOLANO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/ARTMED493",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "FACTURACION\n\nProceso DIAN – seguimiento de facturas y XML.\n\nSe requiere poder generar un informe en cualquier momento que muestre las facturas que estén o no enviando el XML al asegurador, incluyendo la respuesta registrada en el log de facturación (Mailtrap u otro medio).\n\nNota para Paula: Fila 55",
+    "criteriosAceptacion": "CA-01 · Informe bajo demanda\nDesde Administrativo → Facturación → pestaña Log Facturas (permiso LogFacturas), el operador filtra por rango de fechas de factura, tercero (asegurador/pagador), N° factura y estado de notificación, y obtiene un listado paginado + exportación Excel con una fila por documento (FV y, si aplica en la misma grilla, NC/ND).\n\nCA-02 · Columnas mínimas del informe\nCada fila incluye: N_FACTURA, TIPODOC, adquiriente (TER), F_FACTURA, FACTE, ESTDIAN, estado envío XML al asegurador (FTRE.ESTADO_NOTIFICACION / NOTICLIENTE de VWK_ESTADODIAN_FTRE), email destino (TER.EMAILRECIBOFE o TER.EMAIL), FECHA_NOTIFICADO, INTENTOS_ENVIO, MENSAJE_ERROR, QRY_ENVIOS.ESTADO, QRY_ENVIOS.RESPONSE, QRY_ENVIOS.FECHA_ENVIO, último evento Mailtrap (event + date) o cadena JSON de eventos cuando CANAL=Mailtrap.\n\nCA-03 · Filtro «enviado / no enviado»\nEl informe permite ver documentos con XML al asegurador pendiente (ESTADO_NOTIFICACION=0 o NOTICLIENTE='SinEnviar'), en proceso (1), con error (2) y notificados (3), sin cambiar datos.\n\nCA-04 · Trazabilidad Mailtrap\nSi existe QRY_ENVIOS vinculado vía FTRE.IDPROCESO, se muestra RESPONSE y eventos MAILTRAP (message_id = QRY_ENVIOS.MESSAGEID), mismo patrón que MailsComponent. Si el canal no es Mailtrap, se muestra RESPONSE/CANAL de QRY_ENVIOS.\n\nCA-05 · Performance\nConsulta consolidada en servidor (METODO dedicado SPQ_FTR_COL); rango de fechas obligatorio; paginación server-side; export Excel sobre el filtro activo sin bloquear la UI más de 30 s en un rango de 31 días con ≤5.000 filas (referencia ART MEDICA).\n\nCA-06 · Solo lectura\nEl informe no modifica FTRE, QRY_ENVIOS ni dispara reenvíos; los botones Reenviar existentes siguen operando como hoy (RESET_NOTIFICADOS / MASIVO).\n\nCA-07 · Regresión\nProceso DIAN (FTREComponent), encolado DIAN (NOTI_DIAN, LISTAR_FTRE) y worker de correo FTRE no cambian de comportamiento.",
+    "alcance": "Proceso facturacion · gate notificar-dian.\n\nIncluye: informe consolidado envío XML por correo al asegurador/pagador; ampliación pestaña Log Facturas (LOGFacturas.vue) o acción «Exportar informe completo» en la misma ventana; nuevo METODO SPQ_FTR_COL (p. ej. INFORME_LOG_ENVIO_XML_ASEGURADOR) con join FTRE+FTR+TER LEFT JOIN QRY_ENVIOS LEFT JOIN MAILTRAP; export Excel.\n\nFuera: circuito DIAN (encolar/servicio externo/CUFE); FEVRIPS/CUV; radicación CXC; contabilidad MCPE/MCP; envío automático de correos (worker); pestaña Proceso DIAN salvo reutilizar filtros NOTICLIENTE/SINENVIO como referencia UX.",
+    "restricciones": "Solo lectura en BD. No ejecutar SQL en producción desde BA. Reutilizar permiso LogFacturas (ADMINQ_FACTURAS). Enlace FTRE↔QRY_ENVIOS vía FTRE.IDPROCESO (confirmar tipo ID vs CONSECUTIVO al implementar contra worker ftre_model.js referenciado en sql_refe/xsql/SPQ_FTR_COL.sql). Rango de fechas obligatorio en el informe. No inventar columnas: usar FTRE, FTR, TER, QRY_ENVIOS, MAILTRAP documentadas. Tipo Performance: evitar N+1 en FE; no duplicar lógica de MailsComponent en el cliente.",
+    "analisis": "REQ vs KB (conocimiento/facturacion · gate notificar-dian)\n\nEl REQ pide un informe on-demand del envío de XML al asegurador (pagador EPS) con la respuesta del log de correo (Mailtrap u otro), en el contexto del tab Proceso DIAN / seguimiento FTRE.\n\nEstado actual en Qrystalos2:\n· Proceso DIAN (FTREComponent): grilla VWK_ESTADODIAN_FTRE con columna NOTICLIENTE (p. ej. SinEnviar), filtro SINENVIO, export Excel vía AppStore.read; cubre FV/NC/ND notificados DIAN (FACTE=2) pero sin RESPONSE ni Mailtrap.\n· Log Facturas (LOGFacturas.vue): trazabilidad FTRE del correo al adquiriente — ESTADO_NOTIFICACION (0 Pendiente … 3 Notificada), NOTIFICADO, MENSAJE_ERROR, INTENTOS_ENVIO, email TER.EMAILRECIBOFE; export Excel; reenvío RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO / RESET_NOTIFICADOS_MASIVO. Hoy solo join FTR (no FNOT para NC/ND) y sin QRY_ENVIOS/MAILTRAP.\n· MailsComponent / HistorialMensajes: QRY_ENVIOS + subquery JSON eventos MAILTRAP por MESSAGEID — patrón probado, no integrado en facturación.\n\nCausa del gap (Performance): el operador debe cruzar manualmente Log Facturas, Proceso DIAN y/o historial de correos para saber si el XML salió al asegurador y qué respondió Mailtrap. Tres consultas UI distintas, sin join optimizado.\n\nDatos clave (documentación viva + sql_refe/xsql/SPQ_FTR_COL.sql): FTRE persiste ESTADO_NOTIFICACION, IDPROCESO (cola correo), MENSAJE_ERROR; RESET_NOTIFICADOS limpia IDPROCESO; LISTAR_FTRE filtra NOTICLIENTE/SINENVIO sobre VWK_ESTADODIAN_FTRE; QRY_ENVIOS guarda ESTADO, RESPONSE, MESSAGEID, CANAL; MAILTRAP registra callbacks por message_id.\n\nContabilidad: no aplica — informe de lectura, sin MCUE/CON/MCPE.",
+    "opciones": [
+      {
+        "titulo": "METODO SPQ_FTR_COL + ampliar Log Facturas (recomendada)",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Solo FE: ampliar columnas_visibles en LOGFacturas con subquery MAILTRAP",
+        "descripcion": ""
+      }
+    ],
+    "recomendacion": "Opción A. Nuevo METODO INFORME_LOG_ENVIO_XML_ASEGURADOR (o ampliación documentada de LISTAR_FTRE) en SPQ_FTR_COL: SELECT optimizado FTRE↔FTR/FNOT↔TER LEFT JOIN QRY_ENVIOS ON FTRE.IDPROCESO = QE.ID LEFT JOIN MAILTRAP agregado por MESSAGEID; mismos filtros que LOGFacturas + estado NOTICLIENTE. FE: extender LOGFacturas.vue (columnas RESPONSE, EVENTOS_MAILTRAP, CANAL; export Excel existente). Reutilizar fichas leídas; releer SPQ_FTR_COL.sql al codificar el METODO. No releer sql/ para este análisis.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Informe de solo lectura sobre FTRE/QRY_ENVIOS/MAILTRAP. No genera ni modifica asientos MCPE, MCP, CON ni comprobantes. contabilidad.afecta=false confirmado.",
+        "validadoEn": "2026-09-07T01:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "Capturas en ART MEDICA: (1) tab Log Facturas con facturas pendientes/error/notificadas; (2) ejemplo fila con MENSAJE_ERROR; (3) MailsComponent o QRY_ENVIOS con eventos Mailtrap de la misma factura — para validar join en dictamen fase 2.",
+    "criteriosMeta": {
+      "originales": "CA-01 · Informe bajo demanda\nDesde Administrativo → Facturación → pestaña Log Facturas (permiso LogFacturas), el operador filtra por rango de fechas de factura, tercero (asegurador/pagador), N° factura y estado de notificación, y obtiene un listado paginado + exportación Excel con una fila por documento (FV y, si aplica en la misma grilla, NC/ND).\n\nCA-02 · Columnas mínimas del informe\nCada fila incluye: N_FACTURA, TIPODOC, adquiriente (TER), F_FACTURA, FACTE, ESTDIAN, estado envío XML al asegurador (FTRE.ESTADO_NOTIFICACION / NOTICLIENTE de VWK_ESTADODIAN_FTRE), email destino (TER.EMAILRECIBOFE o TER.EMAIL), FECHA_NOTIFICADO, INTENTOS_ENVIO, MENSAJE_ERROR, QRY_ENVIOS.ESTADO, QRY_ENVIOS.RESPONSE, QRY_ENVIOS.FECHA_ENVIO, último evento Mailtrap (event + date) o cadena JSON de eventos cuando CANAL=Mailtrap.\n\nCA-03 · Filtro «enviado / no enviado»\nEl informe permite ver documentos con XML al asegurador pendiente (ESTADO_NOTIFICACION=0 o NOTICLIENTE='SinEnviar'), en proceso (1), con error (2) y notificados (3), sin cambiar datos.\n\nCA-04 · Trazabilidad Mailtrap\nSi existe QRY_ENVIOS vinculado vía FTRE.IDPROCESO, se muestra RESPONSE y eventos MAILTRAP (message_id = QRY_ENVIOS.MESSAGEID), mismo patrón que MailsComponent. Si el canal no es Mailtrap, se muestra RESPONSE/CANAL de QRY_ENVIOS.\n\nCA-05 · Performance\nConsulta consolidada en servidor (METODO dedicado SPQ_FTR_COL); rango de fechas obligatorio; paginación server-side; export Excel sobre el filtro activo sin bloquear la UI más de 30 s en un rango de 31 días con ≤5.000 filas (referencia ART MEDICA).\n\nCA-06 · Solo lectura\nEl informe no modifica FTRE, QRY_ENVIOS ni dispara reenvíos; los botones Reenviar existentes siguen operando como hoy (RESET_NOTIFICADOS / MASIVO).\n\nCA-07 · Regresión\nProceso DIAN (FTREComponent), encolado DIAN (NOTI_DIAN, LISTAR_FTRE) y worker de correo FTRE no cambian de comportamiento.",
+      "originalesEn": "2026-09-07T01:26:10.543Z",
+      "sugeridos": "CA-01 a CA-07 (ver criteriosAceptacion): informe bajo demanda, columnas FTRE+QRY_ENVIOS+Mailtrap, filtros enviado/no enviado, performance servidor, solo lectura, regresión DIAN.",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "CA-01 · Informe bajo demanda\nDesde Administrativo → Facturación → pestaña Log Facturas (permiso LogFacturas), el operador filtra por rango de fechas de factura, tercero (asegurador/pagador), N° factura y estado de notificación, y obtiene un listado paginado + exportación Excel con una fila por documento (FV y, si aplica en la misma grilla, NC/ND).\n\nCA-02 · Columnas mínimas del informe\nCada fila incluye: N_FACTURA, TIPODOC, adquiriente (TER), F_FACTURA, FACTE, ESTDIAN, estado envío XML al asegurador (FTRE.ESTADO_NOTIFICACION / NOTICLIENTE de VWK_ESTADODIAN_FTRE), email destino (TER.EMAILRECIBOFE o TER.EMAIL), FECHA_NOTIFICADO, INTENTOS_ENVIO, MENSAJE_ERROR, QRY_ENVIOS.ESTADO, QRY_ENVIOS.RESPONSE, QRY_ENVIOS.FECHA_ENVIO, último evento Mailtrap (event + date) o cadena JSON de eventos cuando CANAL=Mailtrap.\n\nCA-03 · Filtro «enviado / no enviado»\nEl informe permite ver documentos con XML al asegurador pendiente (ESTADO_NOTIFICACION=0 o NOTICLIENTE='SinEnviar'), en proceso (1), con error (2) y notificados (3), sin cambiar datos.\n\nCA-04 · Trazabilidad Mailtrap\nSi existe QRY_ENVIOS vinculado vía FTRE.IDPROCESO, se muestra RESPONSE y eventos MAILTRAP (message_id = QRY_ENVIOS.MESSAGEID), mismo patrón que MailsComponent. Si el canal no es Mailtrap, se muestra RESPONSE/CANAL de QRY_ENVIOS.\n\nCA-05 · Performance\nConsulta consolidada en servidor (METODO dedicado SPQ_FTR_COL); rango de fechas obligatorio; paginación server-side; export Excel sobre el filtro activo sin bloquear la UI más de 30 s en un rango de 31 días con ≤5.000 filas (referencia ART MEDICA).\n\nCA-06 · Solo lectura\nEl informe no modifica FTRE, QRY_ENVIOS ni dispara reenvíos; los botones Reenviar existentes siguen operando como hoy (RESET_NOTIFICADOS / MASIVO).\n\nCA-07 · Regresión\nProceso DIAN (FTREComponent), encolado DIAN (NOTI_DIAN, LISTAR_FTRE) y worker de correo FTRE no cambian de comportamiento.",
+      "trasAnalisisEn": "2026-09-07T01:26:20.447Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ claro: informe consolidado envío XML al asegurador con log Mailtrap. KB confirma datos en FTRE + QRY_ENVIOS + MAILTRAP pero UI fragmentada (Log Facturas / Proceso DIAN / Mails). Solución: METODO SPQ_FTR_COL + ampliar LOGFacturas. Criterios CA-01..CA-07 en formulario. Sin bloqueo funcional; confirmar en implementación enlace FTRE.IDPROCESO ↔ QRY_ENVIOS.",
+      "fecha": "2026-09-07T01:30:00.000Z",
+      "estado": "listo"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100012401\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "LISTAR_FTRE",
+        "estado": "leido",
+        "hace": "Lista documentos FACTE=2 (notificados DIAN) para pestaña Proceso DIAN / reenvío correo.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "TREA_XML",
+        "estado": "leido",
+        "hace": "Devuelve XML/archivo DIAN de factura o nota (CNSFCT+TIPODOC) desde FTRE/almacén.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "RESET_NOTIFICADOS",
+        "estado": "leido",
+        "hace": "Reset FTRE notificación correo EPS para una N_FACTURA (NOTIFICADO=0, limpia cola).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "CONTAR_FACTURAS_REENVIO",
+        "estado": "leido",
+        "hace": "Cuenta FTRE candidatos a reenvío correo según WHERE_DATA dinámico.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "RESET_NOTIFICADOS_MASIVO",
+        "estado": "leido",
+        "hace": "Reset masivo FTRE notificación según WHERE_DATA (misma validación anti-injection).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "LISTA_EXPORFTR",
+        "estado": "leido",
+        "hace": "Lista facturas para exportación masiva (filtros fecha, ESTDIAN, SINENVIO).",
+        "llama": []
+      }
+    ],
+    "notas": "Fichas leídas en sps.json; cuerpo SPQ_FTR_COL en sql_refe/xsql/. Releer .sql al implementar INFORME_LOG_ENVIO_XML_ASEGURADOR. AppStore.read genérico en LOGFacturas hoy — no es METODO documentado."
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260831-0100012401.html",
+    "aprobados": "aprobados/20260831-0100012401/",
+    "imagenes": "aprobados/20260831-0100012401/imagenes/"
+  },
+  "correo": {
+    "enviado": false,
+    "fechaEnvio": "",
+    "destinatario": "omar.solano@ixcolombia.com"
+  }
+}
