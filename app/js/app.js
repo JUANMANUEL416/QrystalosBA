@@ -878,6 +878,7 @@
       saveToStorage();
       updateAll();
       await refreshCorreoEstado();
+      await listarCapturasAnalisis();
       return true;
     } catch {
       return false;
@@ -1019,6 +1020,7 @@
     bindCorreoDev();
     bindCriterios();
     $("#btnAnalizarRequerimiento")?.addEventListener("click", () => analizarRequerimiento());
+    bindCapturasAnalisis();
 
     $$(".step").forEach((btn) => {
       btn.addEventListener("click", () => goStep(Number(btn.dataset.step)));
@@ -1454,6 +1456,138 @@
       }
     }
     if (hint) hint.textContent = "Sigue en el Chat si aquí no aparece. Recargue el caso si hace falta.";
+  }
+
+  function idCasoCapturas() {
+    return val("#idCaso");
+  }
+
+  function renderCapturasLista(archivos) {
+    const ul = $("#capturasLista");
+    if (!ul) return;
+    if (!archivos?.length) {
+      ul.innerHTML = "";
+      return;
+    }
+    ul.innerHTML = archivos
+      .map((f) => {
+        const url = escAttr(f.url || "");
+        const nombre = esc(f.nombre || "");
+        const ruta = esc(f.ruta || "");
+        return `<li class="captura-item">
+          <img src="${url}" alt="${nombre}">
+          <div class="doc-meta">
+            <div class="doc-title">${nombre}</div>
+            <div class="doc-path">${ruta}</div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm btn-quitar-captura" data-nombre="${escAttr(f.nombre)}">Quitar</button>
+        </li>`;
+      })
+      .join("");
+    ul.querySelectorAll(".btn-quitar-captura").forEach((btn) => {
+      btn.addEventListener("click", () => quitarCapturaAnalisis(btn.dataset.nombre));
+    });
+  }
+
+  async function listarCapturasAnalisis() {
+    const idCaso = idCasoCapturas();
+    const hint = $("#capturasHint");
+    if (!idCaso) {
+      renderCapturasLista([]);
+      if (hint) hint.textContent = "Indique el ID caso (paso 1) para guardar capturas.";
+      return;
+    }
+    if (location.protocol === "file:") {
+      if (hint) hint.textContent = "Use abrir-app.bat para subir capturas al disco.";
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/imagenes?t=${Date.now()}`, { cache: "no-store" });
+      const out = await parseJsonResponse(resp);
+      if (!resp.ok) throw new Error(out.error || "No se pudieron listar las capturas");
+      renderCapturasLista(out.archivos || []);
+      if (hint) {
+        hint.textContent = (out.archivos || []).length
+          ? `Carpeta: ${out.carpeta}`
+          : `Aún no hay capturas. Se guardarán en ${out.carpeta || "activo/" + idCaso + "/imagenes/"}`;
+      }
+    } catch (e) {
+      if (hint) hint.textContent = e.message || "No se pudieron leer las capturas.";
+    }
+  }
+
+  async function subirCapturaAnalisis(file) {
+    const idCaso = idCasoCapturas();
+    const hint = $("#capturasHint");
+    if (!idCaso) return alert("Indique el ID caso (paso 1) para guardar la captura.");
+    if (!file || !String(file.type || "").startsWith("image/")) {
+      return alert("Elija una imagen (PNG, JPG, GIF o WebP).");
+    }
+    if (location.protocol === "file:") {
+      return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
+    }
+    if (hint) hint.textContent = `Guardando ${file.name}…`;
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+        reader.readAsDataURL(file);
+      });
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/imagenes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: file.name, contenido: dataUrl }),
+      });
+      const out = await parseJsonResponse(resp);
+      if (!resp.ok) throw new Error(out.error || "No se pudo guardar la captura");
+      renderCapturasLista(out.archivos || []);
+      if (hint) hint.textContent = out.mensaje || "Captura guardada.";
+    } catch (e) {
+      if (hint) hint.textContent = e.message || "Error al guardar";
+      alert(e.message || "No se pudo guardar la captura.");
+    }
+  }
+
+  async function quitarCapturaAnalisis(nombre) {
+    const idCaso = idCasoCapturas();
+    if (!idCaso || !nombre) return;
+    try {
+      const resp = await fetch(
+        `/api/caso/${encodeURIComponent(idCaso)}/imagenes/${encodeURIComponent(nombre)}`,
+        { method: "DELETE" },
+      );
+      const out = await parseJsonResponse(resp);
+      if (!resp.ok) throw new Error(out.error || "No se pudo quitar");
+      renderCapturasLista(out.archivos || []);
+    } catch (e) {
+      alert(e.message || "No se pudo quitar la captura.");
+    }
+  }
+
+  function bindCapturasAnalisis() {
+    const input = $("#inputImagenAnalisis");
+    $("#btnElegirImagenAnalisis")?.addEventListener("click", () => input?.click());
+    input?.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      input.value = "";
+      if (file) subirCapturaAnalisis(file);
+    });
+    const drop = $("#capturasDrop");
+    if (drop) {
+      drop.addEventListener("paste", (e) => {
+        const items = [...(e.clipboardData?.items || [])];
+        const img = items.find((it) => it.type && it.type.startsWith("image/"));
+        if (!img) return;
+        e.preventDefault();
+        const file = img.getAsFile();
+        if (file) subirCapturaAnalisis(file);
+      });
+      drop.addEventListener("focus", () => drop.classList.add("is-on"));
+      drop.addEventListener("blur", () => drop.classList.remove("is-on"));
+    }
+    $("#idCaso")?.addEventListener("change", () => listarCapturasAnalisis());
+    $("#idCaso")?.addEventListener("blur", () => listarCapturasAnalisis());
   }
 
   async function analizarRequerimiento() {
