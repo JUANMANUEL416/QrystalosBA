@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Servidor Qrystalos BA: estáticos + API sql + SQLite (casos, chat, histórico, cola)"""
+import base64
 import json
 import os
 import re
@@ -7,6 +8,8 @@ import shutil
 import sys
 import time
 from datetime import datetime
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, unquote, urlparse
@@ -37,6 +40,34 @@ DICTAMENES_ROOT = os.path.join(ROOT, "dictamenes")
 APROBADOS_ROOT = os.path.join(ROOT, "aprobados")
 COLA_ROOT = os.path.join(ROOT, "cola")
 PORT = 8765
+IMAGEN_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+IMAGEN_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+IMAGEN_MAX = 10 * 1024 * 1024
+
+
+def _safe_id_caso(id_caso):
+    s = unquote(id_caso or "").strip()
+    return s if re.fullmatch(r"[A-Za-z0-9._-]{3,80}", s) else ""
+
+
+def _safe_imagen_nombre(nombre):
+    base = os.path.basename(unquote(nombre or "")).strip()
+    base = re.sub(r"[^\w.\-]", "_", base)
+    ext = os.path.splitext(base)[1].lower()
+    if not base or base.startswith(".") or ext not in IMAGEN_EXT:
+        return ""
+    return base
+
+
+def _imagenes_dir(id_caso):
+    return os.path.join(ACTIVO_ROOT, id_caso, "imagenes")
 
 
 def _sql_files_in_dir(directory):
@@ -291,7 +322,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "ok": True,
                 "version": 4,
                 "db": db.db_path,
-                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente"],
+                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente", "imagenes"],
                 "openai": {"configurado": False, "deshabilitado": True, "motivo": "Los textos del formulario los escribe el agente (Cursor)."},
                 "cursorBot": {
                     "configurado": bool(load_api_key()),
@@ -362,11 +393,20 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "dictamen":
             return self._serve_dictamen(unquote(parts[2]))
 
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("imagenes", "imagen", "capturas"):
+            return self._list_imagenes(unquote(parts[2]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("imagenes", "imagen", "capturas"):
+            return self._serve_imagen(unquote(parts[2]), unquote(parts[4]))
+
         if parsed.path in ("", "/"):
             self.send_response(302)
             self.send_header("Location", "/app/")
             self.end_headers()
             return
+
+        if parts and parts[0] == "api":
+            return self._json({"error": f"Ruta no encontrada: GET {parsed.path}"}, 404)
 
         return super().do_GET()
 
@@ -440,7 +480,156 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "cerrar-fase1":
             return self._cerrar_fase1(unquote(parts[2]))
 
-        return self._json({"error": "Ruta no encontrada"}, 404)
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("imagenes", "imagen", "capturas"):
+            return self._post_imagenes(unquote(parts[2]))
+
+        return self._json({"error": f"Ruta no encontrada: POST {parsed.path}"}, 404)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("imagenes", "imagen", "capturas"):
+            return self._delete_imagen(unquote(parts[2]), unquote(parts[4]))
+        return self._json({"error": f"Ruta no encontrada: DELETE {parsed.path}"}, 404)
+
+    def _imagenes_payload(self, id_caso):
+        carpeta = _imagenes_dir(id_caso)
+        os.makedirs(carpeta, exist_ok=True)
+        archivos = []
+        for name in sorted(os.listdir(carpeta)):
+            ruta = os.path.join(carpeta, name)
+            if not os.path.isfile(ruta):
+                continue
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in IMAGEN_EXT:
+                continue
+            archivos.append({
+                "nombre": name,
+                "ruta": f"activo/{id_caso}/imagenes/{name}",
+                "url": f"/api/caso/{id_caso}/imagenes/{name}",
+                "bytes": os.path.getsize(ruta),
+            })
+        return {
+            "ok": True,
+            "idCaso": id_caso,
+            "carpeta": f"activo/{id_caso}/imagenes/",
+            "archivos": archivos,
+        }
+
+    def _list_imagenes(self, id_caso):
+        id_caso = _safe_id_caso(id_caso)
+        if not id_caso:
+            return self._json({"error": "ID caso inválido"}, 400)
+        return self._json(self._imagenes_payload(id_caso))
+
+    def _serve_imagen(self, id_caso, nombre):
+        id_caso = _safe_id_caso(id_caso)
+        nombre = _safe_imagen_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Ruta de imagen inválida"}, 400)
+        path = os.path.join(_imagenes_dir(id_caso), nombre)
+        if not os.path.isfile(path):
+            return self._json({"error": "Imagen no encontrada", "ruta": f"activo/{id_caso}/imagenes/{nombre}"}, 404)
+        ext = os.path.splitext(nombre)[1].lower()
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", IMAGEN_MIME.get(ext, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_upload_imagen(self):
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            raise ValueError("No vino contenido.")
+        if length > IMAGEN_MAX + 8192:
+            raise ValueError("La captura supera 10 MB.")
+        raw = self.rfile.read(length)
+        ctype = (self.headers.get("Content-Type") or "").lower()
+        if "multipart/form-data" in ctype:
+            header = f"Content-Type: {self.headers.get('Content-Type')}\r\n\r\n".encode("utf-8")
+            msg = BytesParser(policy=email_policy).parsebytes(header + raw)
+            for part in msg.iter_parts():
+                fn = part.get_filename()
+                if not fn:
+                    continue
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return fn, payload
+            raise ValueError("No vino archivo en el formulario.")
+        if "json" in ctype or raw[:1] in (b"{", b"["):
+            data = json.loads(raw.decode("utf-8"))
+            nombre = data.get("nombre") or data.get("filename") or data.get("fileName") or ""
+            b64 = data.get("contenido") or data.get("data") or data.get("base64") or ""
+            if isinstance(b64, str) and b64.startswith("data:") and "," in b64:
+                b64 = b64.split(",", 1)[1]
+            if not b64:
+                raise ValueError("Falta el contenido de la imagen.")
+            return nombre, base64.b64decode(b64)
+        raise ValueError("Use JSON o multipart para subir la captura.")
+
+    def _post_imagenes(self, id_caso):
+        id_caso = _safe_id_caso(id_caso)
+        if not id_caso:
+            return self._json({"error": "Indique un ID caso válido (paso 1) para guardar la captura."}, 400)
+        try:
+            nombre_in, payload = self._read_upload_imagen()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        except Exception as exc:
+            return self._json({"error": f"No se pudo leer la captura: {exc}"}, 400)
+
+        nombre = _safe_imagen_nombre(nombre_in)
+        if not nombre:
+            return self._json({"error": "Use PNG, JPG, GIF o WebP."}, 400)
+        if len(payload) > IMAGEN_MAX:
+            return self._json({"error": "La captura supera 10 MB."}, 400)
+
+        carpeta = _imagenes_dir(id_caso)
+        os.makedirs(carpeta, exist_ok=True)
+        dest = os.path.join(carpeta, nombre)
+        if os.path.isfile(dest):
+            stem, ext = os.path.splitext(nombre)
+            n = 2
+            while os.path.isfile(os.path.join(carpeta, f"{stem}_{n}{ext}")):
+                n += 1
+            nombre = f"{stem}_{n}{ext}"
+            dest = os.path.join(carpeta, nombre)
+        with open(dest, "wb") as fh:
+            fh.write(payload)
+
+        try:
+            get_db().append_chat(
+                id_caso,
+                {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                    "autor": "sistema",
+                    "texto": f"Captura guardada: activo/{id_caso}/imagenes/{nombre}",
+                    "fecha": datetime.now().isoformat(timespec="seconds"),
+                },
+            )
+        except Exception:
+            pass
+
+        data = self._imagenes_payload(id_caso)
+        data["nombre"] = nombre
+        data["mensaje"] = f"Guardada en activo/{id_caso}/imagenes/{nombre}"
+        return self._json(data)
+
+    def _delete_imagen(self, id_caso, nombre):
+        id_caso = _safe_id_caso(id_caso)
+        nombre = _safe_imagen_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Ruta de imagen inválida"}, 400)
+        path = os.path.join(_imagenes_dir(id_caso), nombre)
+        if os.path.isfile(path):
+            os.remove(path)
+        return self._json(self._imagenes_payload(id_caso))
 
     def _read_json_body(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -1060,6 +1249,22 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "ruta": instruccion_rel,
                 "estado": "interno",
             })
+
+        img_dir = os.path.join(ROOT, "activo", id_caso, "imagenes")
+        if os.path.isdir(img_dir):
+            for name in sorted(os.listdir(img_dir)):
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in IMAGEN_EXT:
+                    continue
+                if not os.path.isfile(os.path.join(img_dir, name)):
+                    continue
+                docs.append({
+                    "tipo": "imagen",
+                    "titulo": name,
+                    "ruta": f"activo/{id_caso}/imagenes/{name}",
+                    "url": f"/api/caso/{id_caso}/imagenes/{name}",
+                    "estado": "interno",
+                })
 
         return self._json({"idCaso": id_caso, "documentos": docs})
 
