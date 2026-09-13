@@ -1,0 +1,715 @@
+{
+  "procesoId": "presupuesto",
+  "actualizado": "2026-09-12T09:43:00",
+  "nota": "2026-09-12: SPK_REVISANOMINA_ANTES, SPK_ENVIARNOMI_PPTO_MASIVO y SPK_GENERA_PAC_G leídos. CRUDPTNOT no desarrollado. PRESUPUESTO_FCXC sin rama. ENVIA_NOTADBCR_PPTO y SPK_ENTREGA_CXP_PTTO / FNK_PAC_G_CONSEC solo referenciados.",
+  "sps": [
+    {
+      "nombre": "SPQ_PPTO_PTCDP",
+      "tipo": "SPQ",
+      "modelo": "PPTO_PTCDP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PPTO_PTCDP.sql",
+      "cola": "8/8 leído. SPK_GENCONSECUTIVO_PPTO fichado (TABLA CDP). Variable PPTO_CDP_DESCONFMOV en DESCONFIRMAR CDP.",
+      "metodos": [
+        {
+          "id": "CRUDPTCDP",
+          "hace": "Cabecera CDP: INSERTAR (consecutivo CDP vía SPK_GENCONSECUTIVO_PPTO), EDITAR, ANULAR, CONFIRMAR, DESCONFIRMAR sobre PTCDP.",
+          "valida": ["PROCESO y CONSECUTIVO obligatorios", "INSERTAR: CCOSTO y FECHAEXPEDICION", "CDP único por presupuesto", "No operar sobre CDP anulado", "ANULAR/DESCONFIRMAR: sin saldo usado en PTCDPD (VALOR_RP o VLR_LIBERADO) salvo PPTO_CDP_DESCONFMOV=SI"],
+          "noValida": ["Periodo PRI cerrado", "Saldo rubro vs presupuesto en cabecera"],
+          "errores": ["El METODO es requerido en el JSON", "El USUARIO es requerido en el JSON", "El proceso no puede estar vacío", "El consecutivo del presupuesto es requerido", "El centro de costo es requerido", "La fecha de expedicion es requerida", "El CDP … ya existe para este presupuesto", "No se puede editar/anular/confirmar/desconfirmar un CDP anulado", "No se puede anular/desconfirmar un CDP con saldos utilizados en detalles", "Proceso no valido: …", "Método no reconocido: …"],
+          "llama": ["SPK_GENCONSECUTIVO_PPTO", "FNK_VALORVARIABLE(PPTO_CDP_DESCONFMOV)"],
+          "efecto": "PTCDP queda insertado/actualizado; estados NoConfirmado, Confirmado, Anulado. DESCONFIRMAR con variable SI baja Confirmado en PTRP/PTCXP/PTPAG del mismo CDP.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTCDPD",
+          "hace": "Detalle rubros del CDP (PTCDPD): altas, edición, baja, liberación de saldo y consultas por rubro.",
+          "valida": ["CDP existente", "Rubro, RUBRO_ID, IDTIPOMOV, valor>0, solicitante en INSERTAR", "Rubro no duplicado en CDP", "No editar/eliminar si CDP anulado", "No bajar valor bajo VLR_LIBERADO", "Liberación: motivo, fecha y saldo disponible"],
+          "noValida": ["Tope presupuestal global fuera de mensajes dinámicos del script"],
+          "errores": ["El CDP es requerido", "El rubro ya existe en este CDP", "No se puede reducir el valor por debajo del valor liberado del rubro", "No se puede eliminar un detalle con saldo utilizado", "El motivo de liberación es requerido", "No hay saldo disponible para liberar"],
+          "llama": [],
+          "efecto": "Líneas PTCDPD y saldos del CDP coherentes con RP posteriores.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRP",
+          "hace": "Registro presupuestal (PTRP) por CDP: CRUD y CONFIRMAR/DESCONFIRMAR/eliminar.",
+          "valida": ["CDP existente", "INSERTAR: FECHARP", "RP único por CDP", "No tocar RP si CDP anulado", "Eliminar RP sin valores usados en detalle"],
+          "noValida": [],
+          "errores": ["La fecha RP es requerida", "El RP … ya existe para este CDP", "No se puede eliminar un RP con valores utilizados en detalles", "No se puede confirmar/desconfirmar un RP de un CDP anulado"],
+          "llama": [],
+          "efecto": "PTRP en estados NoConfirmado/Confirmado; enlaza cadena hacia CxP.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRPD",
+          "hace": "Detalle PTRP (rubro por ítem CDPD): asignar valor del RP a líneas del CDP.",
+          "valida": ["RP y CDP existentes", "INSERTAR: rubro, RUBRO_ID, valor>0, ítem CDPD asociado", "Detalle único por ítem RP", "No editar/eliminar con valores utilizados"],
+          "noValida": [],
+          "errores": ["No Existe item Asociado a este Rp, no se puede continuar", "El detalle con item … ya existe para este RP", "No se puede editar/eliminar un detalle con valores utilizados"],
+          "llama": [],
+          "efecto": "PTRPD distribuye el RP sobre rubros del CDP.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTCXP",
+          "hace": "Obligación presupuestal PTCXP ligada a CDP/RP: alta, edición, baja, anular, confirmar, desconfirmar.",
+          "valida": ["CDP existente", "INSERTAR: fecha", "CNSCXP único", "No operar si CDP anulado", "Anular/eliminar sin uso en detalle"],
+          "noValida": [],
+          "errores": ["El CXP … ya existe para este RP", "No se puede eliminar/anular un CXP con valores utilizados en detalles"],
+          "llama": [],
+          "efecto": "PTCXP lista para pagos presupuestales.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTCXPD",
+          "hace": "Detalle de obligación (PTCXPD) por rubro/ítem RP.",
+          "valida": ["CNSCXP y RP requeridos", "RUBRO_ID, Item CDPD, valor>0 en INSERTAR", "Sin duplicar ítem en mismo CXP"],
+          "noValida": [],
+          "errores": ["El CNSCXP es requerido", "El detalle con item … ya existe para este CXP", "No se puede editar/eliminar un detalle con valores utilizados"],
+          "llama": [],
+          "efecto": "Desglose de la obligación por rubro.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTPAG",
+          "hace": "Pago presupuestal PTPAG contra CxP: CRUD y estados (incluye datos caja/banco opcionales).",
+          "valida": ["CDP y CNSCXP existentes", "INSERTAR: fecha", "CNSPAGO único por CxP"],
+          "noValida": ["Conciliación bancaria operativa"],
+          "errores": ["El Pago … ya existe para este CXP", "El CXP … no existe"],
+          "llama": [],
+          "efecto": "PTPAG registra el pago en la cadena gastos.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTPAGD",
+          "hace": "Detalle de pago (PTPAGD) por rubro/ítem de CxP.",
+          "valida": ["CNSPAGO y CxP existentes", "Valores>0", "Sin uso cruzado inconsistente"],
+          "noValida": [],
+          "errores": ["Patrón análogo a PTCXPD: ítem inexistente, valor cero, detalle con valores utilizados"],
+          "llama": [],
+          "efecto": "Distribución del pago por rubro.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PRESUPUESTO",
+      "tipo": "SPQ",
+      "modelo": "PRESUPUESTO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PRESUPUESTO.sql",
+      "cola": "Maestros + PTPTO + periodo + NPER/NCOND/NPLTCO/PLN + ENVIAR + HELPER. Todos leídos.",
+      "metodos": [
+        {
+          "id": "CAMBIAR_ESTADO_PPTO",
+          "hace": "Cierra o reabre periodo presupuestal en PRI (CERRADO_PPTO) para COMPANIA/ANO/MES.",
+          "valida": ["Cerrar: no hay meses anteriores del mismo año con CERRADO_PPTO=0", "Reabrir: no hay meses posteriores cerrados", "Cierre llama FNK_CIERRE_PERIODO_PPTO"],
+          "noValida": ["No documenta asiento contable en este script"],
+          "errores": ["Existen periodos presupuestales abiertos antes que el periodo a cerrar. Debe cerrar en orden.", "No se puede reabrir este periodo presupuestal porque existen periodos posteriores ya cerrados.", "KO devuelto por FNK_CIERRE_PERIODO_PPTO"],
+          "llama": ["FNK_CIERRE_PERIODO_PPTO(@CCION cierre)", "SPK_GEN_HISTORICO_PPTO", "SPK_DEL_HISTORICO_PPTO"],
+          "efecto": "PRI.CERRADO_PPTO 1 al cerrar (snapshot *H + PTPTOI/GH); 0 al reabrir (SPK_DEL_HISTORICO_PPTO). FNK debe devolver OK.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRUB",
+          "hace": "CRUD rubros presupuestales PTRUB.",
+          "valida": ["Unicidad al insertar", "PROCESO Insertar/Editar/Eliminar"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE() de motor en catch"],
+          "llama": [],
+          "efecto": "Catálogo PTRUB actualizado.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTREC",
+          "hace": "CRUD recursos PTREC.",
+          "valida": ["No duplicar RECURSO por COMPANIA al insertar"],
+          "noValida": ["Referencias en movimientos al eliminar"],
+          "errores": ["El recurso ya existe para esta compañia."],
+          "llama": [],
+          "efecto": "PTREC mantenido.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTCLA",
+          "hace": "CRUD clasificaciones PTCLA.",
+          "valida": ["Unicidad CLASIFICACION por compañía"],
+          "noValida": [],
+          "errores": ["Mensajes de duplicado/validación en bloque INSERTAR del script"],
+          "llama": [],
+          "efecto": "PTCLA actualizado.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTTMOV",
+          "hace": "CRUD tipos de movimiento PTTMOV.",
+          "valida": ["Reglas de duplicado y campos obligatorios en INSERTAR/EDITAR"],
+          "noValida": [],
+          "errores": ["Errores explícitos en validaciones del método"],
+          "llama": [],
+          "efecto": "PTTMOV actualizado.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTDIV",
+          "hace": "CRUD divisiones PTDIV.",
+          "valida": ["CRUD estándar por PROCESO"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE en catch"],
+          "llama": [],
+          "efecto": "PTDIV actualizado.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "COPIAR_RUBROS",
+          "hace": "Subproceso BUSCAR/GUARDAR copia de rubros entre presupuestos o años.",
+          "valida": ["Ramas BUSCAR y GUARDAR en PARAMETROS"],
+          "noValida": ["Detalle de reglas de copia sin releer bloque GUARDAR completo"],
+          "errores": ["KO según validaciones del bloque GUARDAR"],
+          "llama": [],
+          "efecto": "Rubros replicados según criterios del front.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTPTO",
+          "hace": "Maestro presupuesto PTPTO: Insertar/Editar/Eliminar cabecera y flags (MSALDOXMES, MCCOSTO, etc.).",
+          "valida": ["No eliminar si hay PTPTODG", "CONSECUTIVO único al insertar"],
+          "noValida": [],
+          "errores": ["Existes registros en Distribución por Rubros con este Presupuesto", "Ya existe un registro con ese Presupuesto"],
+          "llama": [],
+          "efecto": "Fila PTPTO creada o actualizada.",
+          "capaId": "02-operacion",
+          "gateId": "maestro-ptpto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTPTODG",
+          "hace": "Distribución por rubros PTPTODG del presupuesto.",
+          "valida": ["PROCESO CRUD sobre PTPTODG"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE en catch"],
+          "llama": [],
+          "efecto": "Detalle de distribución guardado.",
+          "capaId": "02-operacion",
+          "gateId": "maestro-ptpto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDNPER",
+          "hace": "Edita en NPER el vínculo de un período de nómina (CNSPAGO) con presupuesto (CNSPPTO) y CDP (CNSCDP).",
+          "valida": ["PROCESO Editar"],
+          "noValida": ["Insertar/eliminar NPER", "Que el CDP o PTPTO existan"],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPER.CNSPPTO y NPER.CNSCDP actualizados. Devuelve OK siempre (sin catch).",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDNCOND",
+          "hace": "Asocia un concepto de nómina (NCOND) a un rubro presupuestal (RUBRO_ID).",
+          "valida": ["PROCESO EDITAR", "Existe NCOND por CODCONCEPTO+ITEM"],
+          "noValida": ["Insertar/borrar condición", "Que el RUBRO_ID exista en PTRUB"],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCOND.RUBRO_ID actualizado. OK aunque no exista la fila (no actualiza).",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDNPLTCO",
+          "hace": "Asocia un concepto de plantilla (NPLTCO) a RUBRO_ID.",
+          "valida": ["PROCESO EDITAR"],
+          "noValida": ["Existencia de plantilla/concepto", "RUBRO_ID válido"],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPLTCO.RUBRO_ID por CODCONCEPTO+IDPLANTILLA.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPLN",
+          "hace": "Edita el plan de beneficios PLN: descripción, estado y rubros (RUBRO, RUBROANT, RUBRORECART, RUBROCOPA, NORECOCOPA).",
+          "valida": ["PROCESO EDITAR", "IDPLAN"],
+          "noValida": ["Insertar/eliminar plan", "Que los rubros existan en PTRUB"],
+          "errores": [],
+          "llama": [],
+          "efecto": "PLN actualizado. Usado luego por TRAER_FACTURA_PPTO / PRESUPUESTO_FPAG (rubro del plan).",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIAR",
+          "hace": "Envía una nómina (CNSPAGO) a presupuesto: revisa rubros y dispara el envío masivo.",
+          "valida": ["NPER del CNSPAGO tiene CNSCDP y CNSPPTO", "NPER.ENPPTO no es 1", "SPK_REVISANOMINA_ANTES no deja filas en RPDX"],
+          "noValida": ["Periodo PRI cerrado", "Saldos CDP"],
+          "errores": ["No ha Asignado el CDP para esta nómina.", "Este presupuesto ya fue previamente enviado", "Existen errores en los rubros de la nómina. Revise antes de enviar.", "Error en SPK_REVISANOMINA_ANTES / SPK_ENVIARNOMI_PPTO_MASIVO: …"],
+          "llama": ["SPK_GENCONSECUTIVO (@RPDX)", "SPK_REVISANOMINA_ANTES", "SPK_ENVIARNOMI_PPTO_MASIVO"],
+          "efecto": "Si RPDX queda vacío, llama SPK_ENVIARNOMI_PPTO_MASIVO. NPER.ENPPTO=1 solo si ese SPK deja todas las FCXP de la nómina en presupuesto.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "HELPER",
+          "hace": "Consulta auxiliar. Si PARAMETROS.TABLA=PTPTO lista CONSECUTIVO y ESTADO de presupuestos.",
+          "valida": ["TABLA = PTPTO"],
+          "noValida": ["Otras tablas (cae al final del SP sin rama)"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset de PTPTO para combos (copia de rubros / envío).",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PPTO_RECO",
+      "tipo": "SPQ",
+      "modelo": "PPTO_RECO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PPTO_RECO.sql",
+      "cola": "CRUDPTNOT no está en este .sql. Confirmar/anular nota vía SPK_APLICA_NOTA_PPTO (ACCION CONF u opuesta). PTMOV usa SPK_GENCONSECUTIVO (nombre distinto al _PPTO del CDP).",
+      "metodos": [
+        {
+          "id": "CRUDPTRECO",
+          "hace": "Reconocimientos PTRECO: INSERTAR/EDITAR/ANULAR/CONFIRMAR/DESCONFIRMAR.",
+          "valida": ["COMPANIA y CONSECUTIVO", "RECO requerido en operaciones distintas de insertar"],
+          "noValida": [],
+          "errores": ["COMPANIA y CONSECUTIVO son requeridos", "No se encontró el reconocimiento a …", "Proceso no válido: …"],
+          "llama": [],
+          "efecto": "PTRECO con estados alineados al front.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRECOD",
+          "hace": "Detalle de reconocimiento PTRECOD por rubro.",
+          "valida": ["RECO y rubro existen", "COMPANIA, CONSECUTIVO, RECO"],
+          "noValida": [],
+          "errores": ["El reconocimiento especificado no existe", "El rubro especificado no existe", "El registro de detalle no existe"],
+          "llama": [],
+          "efecto": "Líneas de reconocimiento por rubro.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRECA",
+          "hace": "Recaudos presupuestales PTRECA ligados a RECO.",
+          "valida": ["COMPANIA, CONSECUTIVO, RECO", "Existencia de RECO y filas PTRECA en editar/anular/confirmar"],
+          "noValida": [],
+          "errores": ["El reconocimiento especificado no existe", "El registro de recaudo no existe"],
+          "llama": [],
+          "efecto": "PTRECA operativo contra reconocimiento.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRECAD",
+          "hace": "Detalle de recaudo PTRECAD (rubro por pago).",
+          "valida": ["COMPANIA, CNSPAGO, RUBRO_ID"],
+          "noValida": [],
+          "errores": ["El recaudo especificado no existe", "El registro de detalle de recaudo no existe"],
+          "llama": [],
+          "efecto": "Desglose del recaudo.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTRES",
+          "hace": "Resoluciones PTRES asociadas al flujo de ingresos.",
+          "valida": ["CRUD por PROCESO"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE en catch"],
+          "llama": [],
+          "efecto": "PTRES mantenido.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTMOV",
+          "hace": "Movimientos presupuestales PTMOV (cabecera) con estados y consecutivo SPK_GENCONSECUTIVO.",
+          "valida": ["INSERTAR genera CNSMOV si vacío"],
+          "noValida": ["Validaciones de negocio finas en confirmar"],
+          "errores": ["ERROR_MESSAGE en catch"],
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "PTMOV insertado/actualizado; estados Anulado/Confirmado/NoConfirmado.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTMOVD",
+          "hace": "Detalle PTMOVD por rubro/tipo movimiento del CNSMOV.",
+          "valida": ["ITEM autogenerado en INSERTAR", "RECURSO desde PTRUB por RUBRO_ID"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE en catch"],
+          "llama": [],
+          "efecto": "Líneas de movimiento presupuestal.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPTNOT",
+          "hace": "No desarrollado (acuerdo coordinador 2026-09-12). El FE cita el METODO; no hay rama en SPQ_PPTO_RECO ni otro .sql. El efecto de aplicar/revertir nota sí existe en SPK_APLICA_NOTA_PPTO.",
+          "valida": [],
+          "noValida": ["CRUD de cabecera PTNOT (alta/edición desde pantalla)"],
+          "errores": [],
+          "llama": ["SPK_APLICA_NOTA_PPTO (cuando exista el CRUD)"],
+          "efecto": "Sin METODO. No fichar hasta que se desarrolle.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PPTO_REP",
+      "tipo": "SPQ",
+      "modelo": "PPTO_REP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PPTO_REP.sql",
+      "cola": "TRAER_FACTURA_PPTO, PRESUPUESTO_FPAG, PRESUPUESTO_FNOT y EXPORT_* leídos. PRESUPUESTO_FCXC no está en el script. ENVIA_NOTADBCR_PPTO y FNK_PAC_G_CONSEC solo referenciados.",
+      "metodos": [
+        {
+          "id": "TRAER_FACTURA_PPTO",
+          "hace": "Lleva factura FTR a presupuesto (PTRECO/relacionados) cuando PRESUP_TIPORECO=CUENTAC y PRESUP_CXC_ACTIVADO=SI.",
+          "valida": ["N_FACTURA e IDSEDE", "Factura existe y ENPRESUPUESTO=0", "PTPTO vigente para fecha factura", "PLN con RUBRO y RUBRO_ID", "PRESUP_CCOSTO configurada"],
+          "noValida": ["Otros modos PRESUP_TIPORECO distintos de CUENTAC"],
+          "errores": ["Presupuesto CxC no activado (PRESUP_CXC_ACTIVADO)", "TRAER_FACTURA_PPTO solo inserta cuando PRESUP_TIPORECO = CUENTAC", "La factura ya está en presupuesto", "No hay presupuesto (PTPTO) vigente para la fecha de la factura", "Factura no encontrada"],
+          "llama": ["FNK_VALORVARIABLE"],
+          "efecto": "Reconocimiento/ marcas ENPRESUPUESTO según lógica del bloque (inserta en cadena ingresos).",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "PRESUPUESTO_FPAG",
+          "hace": "Envía recaudo FPAG a presupuesto (PTRECA/relacionados) validando planes y reconocimientos confirmados.",
+          "valida": ["CNSFPAG existe", "ENPRESUPUESTO=0", "IDSEDE y COMPANIA", "PRESUP_CCOSTO", "No GLOSAS/DEVOLUCION", "Reconocimientos confirmados si factura ya en presupuesto", "PLN con rubros"],
+          "noValida": ["Vigencia distinta al año actual solo advierte"],
+          "errores": ["Debe indicar CNSFPAG", "Recaudo no encontrado", "El recaudo ya fue enviado a presupuesto", "Los Reconocimientos Para este Recaudo No estan Confirmados…", "Los recaudos de glosas o devolución no se envían a presupuesto por este proceso"],
+          "llama": ["FNK_VALORVARIABLE(PRESUP_TIPORECO, PRESUP_CCOSTO)"],
+          "efecto": "FPAG.ENPRESUPUESTO y registros presupuestales de ingreso.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "PRESUPUESTO_FCXC",
+          "hace": "Citado en FE (cartera → presupuesto).",
+          "valida": [],
+          "noValida": ["No hay rama IF @METODO = 'PRESUPUESTO_FCXC' en sql/SPQ_PPTO_REP.sql"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Posible alias obsoleto o otro script; usar TRAER_FACTURA_PPTO si CUENTAC.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "listado"
+        },
+        {
+          "id": "PRESUPUESTO_FNOT",
+          "hace": "Envía una nota FNOT (CNSFNOT) al presupuesto destino (CONSECUTIVOPPTO) vía ENVIA_NOTADBCR_PPTO.",
+          "valida": ["CNSFNOT y CONSECUTIVOPPTO", "FNOT existe", "ENPRESUPUESTO=0", "Tras el EXEC, FNOT.ENPRESUPUESTO=1"],
+          "noValida": ["Cuerpo de ENVIA_NOTADBCR_PPTO (no está en sql/)"],
+          "errores": ["Debe indicar CNSFNOT", "Debe indicar el presupuesto destino (CONSECUTIVOPPTO)", "Nota no encontrada", "La nota ya fue enviada a presupuesto", "La nota no quedó en presupuesto. Revise la factura relacionada y la vigencia del presupuesto.", "ERROR_MESSAGE del EXEC"],
+          "llama": ["ENVIA_NOTADBCR_PPTO"],
+          "efecto": "FNOT.ENPRESUPUESTO=1 si el envío cuaja. No es CRUDPTNOT (notas internas PPTO).",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_FPAG_DETALLADO",
+          "hace": "Exporta recaudos FPAG cerrados/activos (cabecera + detalle FPAGD/FCXC/FTR) por CNSFPAG o rango de fechas.",
+          "valida": ["Si no hay CNSFPAG: F_INICIAL y F_FINAL", "Al menos un FPAG con los filtros"],
+          "noValida": [],
+          "errores": ["Las fechas inicial y final son requeridas", "No hay recaudos para exportar con los filtros indicados"],
+          "llama": [],
+          "efecto": "Dos resultsets de lectura. No escribe presupuesto.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_FNOT",
+          "hace": "Listado de notas FNOT cerradas (ESTADO=O) en rango de fechas, con rubro del plan y flag ENPRESUPUESTO.",
+          "valida": ["F_INICIAL y F_FINAL", "Hay filas tras filtros"],
+          "noValida": [],
+          "errores": ["Las fechas inicial y final son requeridas", "No hay notas para exportar con los filtros indicados"],
+          "llama": [],
+          "efecto": "Solo lectura / Excel. No envía la nota.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_LISTADO_RECO_TER",
+          "hace": "Agrega reconocimientos Confirmados por tercero/mes (VLR_RECO, RECA, notas, saldo).",
+          "valida": ["CONSECUTIVO presupuesto", "Fechas", "Hay PTRECO confirmados en el rango"],
+          "noValida": [],
+          "errores": ["El presupuesto (CONSECUTIVO) es requerido", "Las fechas inicial y final son requeridas", "No hay registros para los filtros indicados"],
+          "llama": [],
+          "efecto": "Informe de ingresos por tercero. Solo lectura.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_EJECUCION_PAC",
+          "hace": "Arma o reusa RPDX de ejecución PAC del mes (SPK_GENERA_PAC_G) y lo devuelve por rubro.",
+          "valida": ["CONSECUTIVO", "MES 1-12", "Consecutivo RPDX si no es SOLO_FILTRO"],
+          "noValida": ["Cuerpo de FNK_PAC_G_CONSEC (no está en sql/)"],
+          "errores": ["CONSECUTIVO requerido", "MES requerido (1-12)", "No se pudo generar consecutivo RPDX"],
+          "llama": ["SPK_GENCONSECUTIVO (@RPDX)", "SPK_GENERA_PAC_G"],
+          "efecto": "Staging RPDX + grilla PAC. Si SOLO_FILTRO=1 reusa CNSRPDX previo.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_LISTA_EGRESOS",
+          "hace": "Lista egresos de caja (FCJ CLASE_FAC=PAGO, CERRADA=1) por CODCAJA y fechas.",
+          "valida": ["CODCAJA", "F_INICIAL y F_FINAL"],
+          "noValida": ["Que el egreso esté en presupuesto"],
+          "errores": ["CODCAJA requerido", "Las fechas inicial y final son requeridas"],
+          "llama": [],
+          "efecto": "Informe de caja. Solo lectura.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_LISTA_FTR_ANU",
+          "hace": "Lista facturas FTR con notas (CR/DB) en el rango, rubro del plan y flags ENPRESUPUESTO / anulación.",
+          "valida": ["F_INICIAL y F_FINAL"],
+          "noValida": [],
+          "errores": ["Las fechas inicial y final son requeridas"],
+          "llama": [],
+          "efecto": "Informe facturas/notas. Solo lectura.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENCONSECUTIVO_PPTO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_GENCONSECUTIVO_PPTO.sql",
+      "cola": "Invocado desde CRUDPTCDP INSERTAR (TABLA=CDP). También RP, CXP, PAGOS, RECO, RECA.",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Incrementa CONTADOR_* en PTPTO según @TABLA y devuelve @CONSECUTIVONVO = COMPANIA(2)+secuencia(8).",
+          "valida": ["@COMPANIA y @TABLA no vacíos", "TABLA en CDP|RP|CXP|PAGOS|RECO|RECA", "PTPTO existe para COMPANIA+CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["Compania es requeridad", "Tabla de destino es requeridad", "Contador no Encontrado, verfique la tabla de destino", "no se encontro el contador asociado"],
+          "llama": [],
+          "efecto": "Actualiza PTPTO.CONTADOR_* y OUTPUT consecutivo formateado.",
+          "capaId": "02-operacion",
+          "gateId": "cadena-gastos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_CIERRE_PERIODO_PPTO",
+      "tipo": "FNK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/FNK_CIERRE_PERIODO_PPTO.sql",
+      "cola": "Prevalidación antes de CAMBIAR_ESTADO_PPTO cierre (@CCION distinto de A).",
+      "metodos": [
+        {
+          "id": "(funcion)",
+          "hace": "Retorna OK o mensaje concatenado si hay documentos NoConfirmado en el mes (RECO, RECA, CDP, RP, CXP, PTPAG). @CCION=A valida periodo abierto en PRI.",
+          "valida": ["Cierre: ningún contador NoConfirmado en tablas operativas del mes"],
+          "noValida": ["Notas PTNOT", "Movimientos PTMOV"],
+          "errores": ["NO SE A ABIERTO EL PERIODO PRESUPUESTAL", "EXISTEN RECONOCIMIENTOS|RECUADOS|CDP´s|RP´s|CXP|PAGOSCXP SIN CONFIRMAR..."],
+          "llama": [],
+          "efecto": "String OK permite continuar cierre; otro valor bloquea en SPQ.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GEN_HISTORICO_PPTO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_GEN_HISTORICO_PPTO.sql",
+      "cola": "Tras cierre exitoso de periodo (CAMBIAR_ESTADO_PPTO).",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Resuelve PTPTO vigente para mes/año; borra *H del mes; copia operación a tablas históricas PTRECOH…PTPAGDH y snapshot PTPTOIH/PTPTOGH.",
+          "valida": ["Presupuesto PTPTO cubre el día 1 del mes"],
+          "noValida": [],
+          "errores": ["Sin RAISERROR explícito; fallos por DELETE/INSERT de motor"],
+          "llama": ["FNK_DIA_DEL_MES"],
+          "efecto": "Histórico mensual listo para consultas de cierre.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_DEL_HISTORICO_PPTO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_DEL_HISTORICO_PPTO.sql",
+      "cola": "Reapertura de periodo (CAMBIAR_ESTADO_PPTO).",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Elimina filas *H del COMPANIA+CONSECUTIVO+MES (ingresos, gastos, PTPTOIH/GH).",
+          "valida": ["Mismo criterio de CONSECUTIVO que GEN_HISTORICO"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Histórico del mes borrado al reabrir PRI.",
+          "capaId": "01-configuracion",
+          "gateId": "maestros-ppto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_APLICA_NOTA_PPTO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_APLICA_NOTA_PPTO.sql",
+      "cola": "Efecto contable de nota PTNOT sobre ejecución (DISRECO) y saldos RECO; enlace FNOT.",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Lee PTNOT; si CLASE=DB retorna sin cambios. @ACCION=CONF: ajusta PTPTOI DISRECO01-12, PTRECOD/PTRECO, PTNOT Confirmado, FNOT ENPRESUPUESTO=1. Else revierte (Anulada, FNOT limpia).",
+          "valida": ["Fila PTNOT por COMPANIA+CONSECUTIVON+RECO+CNSNOTA", "Rubro desde PTNOT o PTRECOD"],
+          "noValida": ["Coherencia RECO mismo año que nota (solo PRINT vigencias)"],
+          "errores": ["Sin RAISERROR; updates silenciosos si no hay fila"],
+          "llama": ["Trigger TK_PTRECOD_UPDATE deshabilitado temporalmente"],
+          "efecto": "Ejecución presupuestal de ingresos refleja notas CR (y no-DB).",
+          "capaId": "02-operacion",
+          "gateId": "cadena-ingresos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_REVISANOMINA_ANTES",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_REVISANOMINA_ANTES.sql",
+      "cola": "Pre-chequeo de ENVIAR (SPQ_PRESUPUESTO). No RAISERROR: llena RPDX.",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Por CNSPAGO, busca PTPTO vigente y escribe en RPDX los conceptos sin rubro o con rubro fuera de PTRUB de esa vigencia. Fuente del rubro: NCOND (default) o NPLTCO si TOMA_RUBROENVIO_NOMI≠NCOND.",
+          "valida": ["NPER del CNSPAGO", "Campo RUBRO (no RUBRO_ID) en NCOND/NPLTCO"],
+          "noValida": ["RUBRO_ID que edita CRUDNCOND/CRUDNPLTCO", "Saldo CDP", "Periodo PRI"],
+          "errores": ["Textos en RPDX: «No tiene Rubro Asociado», «Rubro No Pertenece a la Vigencia de la Nomina»"],
+          "llama": ["FNK_VALORVARIABLE(TOMA_RUBROENVIO_NOMI)"],
+          "efecto": "Si RPDX tiene filas, ENVIAR aborta. Observación: el chequeo de vigencia del rubro queda anidado dentro del EXISTS de rubro vacío.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ENVIARNOMI_PPTO_MASIVO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_ENVIARNOMI_PPTO_MASIVO.sql",
+      "cola": "Efecto de ENVIAR: CxP de nómina → PTRP/PTRPD y entrega a presupuesto.",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Toma FCXP de la nómina (PROCEDENCIA=Nomina, ENPRESUPUESTO=0), alinea CNSPPTO/CNSCDP, exige saldo CDP ≥ suma de esas CxP, arma PTRP/PTRPD por rubro (NCOND o NPLTCO) y llama SPK_ENTREGA_CXP_PTTO. Si ya no queda FCXP fuera, NPER.ENPPTO=1.",
+          "valida": ["NPER.CNSPPTO y CNSCDP", "PTCDP existe", "Saldo CDP vs SUM(FCXP.SALDO) pendientes"],
+          "noValida": ["Cuerpo de SPK_ENTREGA_CXP_PTTO (no está en sql/)", "COMPANIA distinta de 01 (va fija)"],
+          "errores": ["Sin RAISERROR. Si no hay saldo CDP: PRINT y RETURN (la nómina no se marca ENPPTO). Línea sin RUBRO: CONTINUE."],
+          "llama": ["SPK_CALCULOVALORESCXP", "FNK_VALORVARIABLE(PRESUP_CCOSTO, TOMA_RUBROENVIO_NOMI, JEFE_PRESUPUESTO_USU)", "SPK_ENTREGA_CXP_PTTO"],
+          "efecto": "RP presupuestal de la CxP de nómina. Contador RP lo incrementa a mano (no usa SPK_GENCONSECUTIVO_PPTO).",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENERA_PAC_G",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_GENERA_PAC_G.sql",
+      "cola": "Staging del informe EXPORT_EJECUCION_PAC.",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Inserta en RPDX el PAC del mes agregado desde FNK_PAC_G_CONSEC (PAC_INI, rezago, débitos/créditos, RP/CxP/pagos, saldo).",
+          "valida": ["@CNSRPDX, @CONSECUTIVO, @MES"],
+          "noValida": ["Cuerpo de FNK_PAC_G_CONSEC (no está en sql/)"],
+          "errores": ["Sin RAISERROR propio"],
+          "llama": ["FNK_PAC_G_CONSEC"],
+          "efecto": "Solo llena RPDX. No escribe PTPTO ni documentos.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

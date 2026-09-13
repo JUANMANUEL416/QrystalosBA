@@ -1,0 +1,390 @@
+{
+  "procesoId": "dian-xml",
+  "actualizado": "2026-09-12T22:20:00",
+  "nota": "Cola FACTE + resolución/certificado copiados de facturacion/sps.json. El XML lo escribe el facturador externo.",
+  "sps": [
+    {
+      "nombre": "SPQ_FTR_COL",
+      "tipo": "SPQ",
+      "modelo": "FTR_COL",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPQ_FTR_COL.sql",
+      "notaArchivo": "Slim: no documenta armar FTR ni RIPS ni Perú.",
+      "cola": "Solo METODOs de cola/XML DIAN. El resto vive en facturacion/sps.json.",
+      "metodos": [
+        {
+          "id": "NOTI_DIAN",
+          "estado": "leido",
+          "hace": "Encola notificación DIAN: FTR.FACTE=1.",
+          "valida": [
+            "FTR existe",
+            "FACTE in (0,3)",
+            "F_FACTURA mismo día si FACTE<>2",
+            "Capita con FTRDC"
+          ],
+          "errores": [
+            "No existe el Documento",
+            "Factura ya fue encolada",
+            "La fecha de la Factura debe ser la Misma de la Actual",
+            "Capitada/PGP sin relalcion de Capitado... Dian"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian"
+        },
+        {
+          "id": "ENCOLAR_ITEM",
+          "estado": "leido",
+          "hace": "Encola item DIAN: FACTURA→FTR.FACTE=1; NOTADB/NOTACR→FNOT.FACTE=1.",
+          "valida": [
+            "TIPODOC obligatorio",
+            "Capita/PGP con FTRDC si FACTURA"
+          ],
+          "errores": [
+            "No se ha Espeficiado el Tipo de Documento",
+            "Capitada/PGP sin relalcion de Capitado... Dian"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian"
+        },
+        {
+          "id": "DESCOLA_ITEM",
+          "estado": "leido",
+          "hace": "Desencola: FACTE=0 en FTR o FNOT según TIPODOC.",
+          "valida": [
+            "Documento encolado (FACTE=1)"
+          ],
+          "errores": [
+            "No se ha Espeficiado el Tipo de Documento",
+            "Documento no esta encolado"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian"
+        },
+        {
+          "id": "ENCOLAR_MASIVO",
+          "estado": "leido",
+          "hace": "ACCION=1 encola FACTE=1; ACCION=2 desencola FACTE=0 en FTR/FNOT vía VWK_ESTADODIAN_FTRE y filtros fecha/tercero/plan/sede/procedencia/tipodoc.",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "Rango F_INICIAL/F_FINAL",
+            "TIPODOC Todas|FACTURA|NOTACR|NOTADB"
+          ]
+        },
+        {
+          "id": "LISTAR_FTRE",
+          "estado": "leido",
+          "hace": "Lista documentos FACTE=2 (notificados DIAN) para pestaña Proceso DIAN / reenvío correo.",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "Filtros fecha, ESTDIAN, ESTRIPS, SINENVIO, EXCLUIRPART, USUARIOFACTU"
+          ]
+        },
+        {
+          "id": "TREA_XML",
+          "estado": "leido",
+          "hace": "Devuelve XML/archivo DIAN de factura o nota (CNSFCT+TIPODOC) desde FTRE/almacén.",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "CNSFCT y TIPODOC"
+          ]
+        },
+        {
+          "id": "RESET_NOTIFICADOS",
+          "estado": "leido",
+          "hace": "Reset FTRE notificación correo EPS para una N_FACTURA (NOTIFICADO=0, limpia cola).",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "N_FACTURA obligatoria",
+            "Existe FTRE"
+          ],
+          "errores": [
+            "N_FACTURA es requerida.",
+            "No se encontró FTRE para la factura"
+          ]
+        },
+        {
+          "id": "CONTAR_FACTURAS_REENVIO",
+          "estado": "leido",
+          "hace": "Cuenta FTRE candidatos a reenvío correo según WHERE_DATA dinámico.",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "WHERE_DATA sin ; DROP DELETE INSERT UPDATE EXEC"
+          ],
+          "errores": [
+            "Filtro WHERE no permitido."
+          ]
+        },
+        {
+          "id": "RESET_NOTIFICADOS_MASIVO",
+          "estado": "leido",
+          "hace": "Reset masivo FTRE notificación según WHERE_DATA (misma validación anti-injection).",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "WHERE_DATA"
+          ],
+          "errores": [
+            "Filtro WHERE no permitido."
+          ]
+        },
+        {
+          "id": "VALIDADIAN2",
+          "estado": "leido",
+          "hace": "Wrapper FE: obtiene sede/CCOSTO y llama SPQ_VALIDADIAN2; devuelve código CONTINUA.",
+          "valida": [
+            "Sede del usuario"
+          ],
+          "errores": [
+            "No se pudo obtener la sede del usuario"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "llama": [
+            "SPQ_VALIDADIAN2"
+          ]
+        },
+        {
+          "id": "LISTA_EXPORFTR",
+          "estado": "leido",
+          "hace": "Lista facturas para exportación masiva (filtros fecha, ESTDIAN, SINENVIO).",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "Rango fechas"
+          ]
+        },
+        {
+          "id": "SEDFACUMASI",
+          "estado": "leido",
+          "hace": "Sedes SED + fechas sugeridas masiva + conteo aging DIAN (MENOR5, EN5Y10, EN11Y15 días).",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian"
+        },
+        {
+          "id": "AJUSTAR_TOTALES_DIAN",
+          "estado": "leido",
+          "hace": "Ajuste centavos VR_TOTAL FTR/FTRD para cuadrar con validación DIAN.",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "N_FACTURA",
+            "FTR FACTE pendiente"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FTRFE_COL",
+      "tipo": "SPQ",
+      "modelo": "FTRFE_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTRFE_COL.sql",
+      "cola": "Solo FE_ENCOLAR / DESENCOLAR / FECHAFTR / LISTAR_FTRECXC.",
+      "metodos": [
+        {
+          "id": "FE_FECHAFTR",
+          "estado": "leido",
+          "hace": "Corre F_FACTURA/F_VENCE al día actual si factura P, FACTE=0 y fecha pasada; toca MCP/MCPE si contabilizada.",
+          "valida": [
+            "FTR P, FACTE=0, F_FACTURA<hoy",
+            "Días diff <= NDIA_CAMBIO_FECHAFAC",
+            "PRI abierto si hay MCP"
+          ],
+          "errores": [
+            "Diferencia de Dias... mayor al valor Permitido",
+            "Period contable Cerrado",
+            "Factura no Encontrada"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "llama": [
+            "MCP",
+            "MCPE"
+          ]
+        },
+        {
+          "id": "FE_DESENCOLAR",
+          "estado": "leido",
+          "hace": "Resetea FTR.FACTE=0 si no está notificada (FACTE<>2).",
+          "valida": [
+            "FTR P, FACTE<>2"
+          ],
+          "errores": [
+            "Factura no Encontrada, verfique e intente de nuevo"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian"
+        },
+        {
+          "id": "FE_ENCOLAR",
+          "estado": "leido",
+          "hace": "Encola FE: FTR.FACTE=1 si ESTADO=P, FACTE<>2 y F_FACTURA es hoy (DATEDIFF<1).",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "N_FACTURA",
+            "F_FACTURA mismo día"
+          ],
+          "errores": [
+            "La fecha de la Factura debe ser la Misma de la Actual, Verifique e intente de Nuevo"
+          ]
+        },
+        {
+          "id": "LISTAR_FTRECXC",
+          "estado": "leido",
+          "hace": "Lista facturas de cuenta (FCXCD) o trama RIPS (MULTICXC) para envío/soportes FE. Perú: N_SOPORTE + PDFs FTR_DOCS.",
+          "capaId": "02-operacion",
+          "gateId": "encolar-dian",
+          "valida": [
+            "CNSCXC+ENVIO o RIPSD con detalle"
+          ],
+          "errores": [
+            "Trama Sin Detalles",
+            "Cuenta de cobro Sin Detalles"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FDIAN_COL",
+      "tipo": "SPQ",
+      "modelo": "FDIAN_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FDIAN_COL.sql",
+      "cola": "GET_DATOS_FDIAN + CRUDFDIAN + CRUDFTRDIAN leído 2026-09-06 RUTA-CONFIG paso 4. conf.fdian FDIANComponent.",
+      "metodos": [
+        {
+          "id": "GET_DATOS_FDIAN",
+          "estado": "leido",
+          "hace": "Devuelve filas TGEN del facturador electrónico: TABLA=FDIAN, CAMPO in (CONTACTO, SOFTWARE, SOFTWARE_NOMINA).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT TGEN para modal «Datos facturador» (formDataFtrDian en FE).",
+          "capaId": "01-configuracion",
+          "gateId": "config-dian"
+        },
+        {
+          "id": "CRUDFDIAN",
+          "estado": "leido",
+          "hace": "CRUD resoluciones FDIAN según REGISTRO.PROCESO (INSERTAR/EDITAR/ELIMINAR).",
+          "valida": [
+            "INSERTAR: CNSRESOL no duplicado",
+            "ELIMINAR: CNSRESOL obligatorio",
+            "ELIMINAR: bloquea si FTR.CNSRESOL referencia la resolución"
+          ],
+          "noValida": [
+            "Rango CNSINICIAL/CNSFINAL vs CNSACTUAL",
+            "Vigencia FECHAVEN",
+            "Coherencia IDENTIFICADOR sede / PROCEDENCIA",
+            "EDITAR: filas afectadas"
+          ],
+          "errores": [
+            "LA RESOLUCION DIAN YA EXISTE",
+            "EL CODIGO DE RESOLUCION DIAN ES OBLIGATORIO",
+            "ESTA RESOLUCION YA FUE USADA EN FACTURACION. NO ES POSIBLE ELIMINAR.",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE FDIAN: CNSRESOL, F_RESOLUCION, CNSINICIAL, CNSFINAL, DESCRIPCION, FECHAVEN, TIPO, IDENTIFICADOR (sede), TITULO, VENCIDA, PREFIJO, FECHAINI, CLAVETECNICA, CNSACTUAL, FTRELECTRONICA, LONGFTR, AMBIENTE, TIPO_OPERACION, TIPO_DOCUMENTO, PROCEDENCIA. INSERT devuelve @IDENTITY como CNS.",
+          "capaId": "01-configuracion",
+          "gateId": "config-dian"
+        },
+        {
+          "id": "CRUDFTRDIAN",
+          "estado": "leido",
+          "hace": "Actualiza parámetros TGEN del facturador electrónico (REGISTRO.DATOS[]). Solo PROCESO=EDITAR.",
+          "valida": [],
+          "noValida": [
+            "Existencia IDTGEN",
+            "Formato email/software"
+          ],
+          "errores": [
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "UPDATE TGEN por IDTGEN; si CODIGO=FVCERTIFICADO actualiza FECHA1 (vencimiento certificado TGEN), demás campos actualizan DESCRIPCION.",
+          "capaId": "01-configuracion",
+          "gateId": "config-dian"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FDIANCER_COL",
+      "tipo": "SPQ",
+      "modelo": "FDIANCER_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FDIANCER_COL.sql",
+      "nota": "Certificados firma digital. conf.firmadigital FDIANCERComponent + banner Facturación GETVENCIMIENTO.",
+      "metodos": [
+        {
+          "id": "CRUDFDIANCER",
+          "estado": "leido",
+          "hace": "CRUD certificados FDIANCER según REGISTRO.PROCESO (INSERTAR/EDITAR/BORRAR).",
+          "valida": [
+            "ID existe en EDITAR/BORRAR"
+          ],
+          "noValida": [
+            "Referencias FTR al borrar",
+            "Duplicado DESCRIPCION",
+            "Vigencia FECHAVENCE vs FECHAEXPEDICION"
+          ],
+          "errores": [
+            "No se encontró la firma digital",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE/DELETE FDIANCER: DESCRIPCION, CLAVE, FECHAEXPEDICION, FECHAVENCE, PROVEEDOR. INSERT devuelve @IDENTITY como CNS.",
+          "capaId": "01-configuracion",
+          "gateId": "config-dian"
+        },
+        {
+          "id": "GETVENCIMIENTO",
+          "estado": "leido",
+          "hace": "Consulta certificado más reciente (TOP 1 ORDER BY FECHAVENCE DESC) si USVGS DIANCERTIFICADO=SI y DIASNOTIFICACERT>0.",
+          "valida": [
+            "FNK_VALORVARIABLE DIANCERTIFICADO=SI",
+            "DIASNOTIFICACERT>0"
+          ],
+          "noValida": [
+            "Si DIANCERTIFICADO≠SI no retorna datos (silencioso)"
+          ],
+          "errores": [
+            "La variable DIASNOTIFICACERT no esta configurada"
+          ],
+          "llama": [],
+          "efecto": "OK + FECHAVENCE, ESTAVENCIDA (0=vigente, 1=vencida, 2=próxima a vencer), DIASXVENCER, NOMBREFIRMA. Usado en FacturacionPage banner.",
+          "capaId": "01-configuracion",
+          "gateId": "config-dian"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_VALIDADIAN2",
+      "tipo": "SPQ",
+      "modelo": "VALIDADIAN2",
+      "estado": "leido",
+      "fuente": "sql/SPQ_VALIDADIAN2.sql",
+      "hace": "Valida resolución DIAN y certificado antes de numerar; @CONTINUA códigos 0-9.",
+      "valida": [
+        "BLOQUEADIAN=SI",
+        "Rango FDIAN para próximo número (SPK_PROXIMONUMEROFACTURA)",
+        "Resolución no vencida",
+        "Stock números vs cantidad"
+      ],
+      "noValida": [
+        "Si BLOQUEADIAN<>SI sale directo CONTINUA=1"
+      ],
+      "llama": [
+        "SPK_PROXIMONUMEROFACTURA"
+      ],
+      "efecto": "Puede marcar FDIAN.VENCIDA=1; alertas resolución/cert (CONTINUA 4/5/9)"
+    }
+  ]
+}

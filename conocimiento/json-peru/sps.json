@@ -1,0 +1,506 @@
+{
+  "procesoId": "json-peru",
+  "actualizado": "2026-09-12T22:45:00",
+  "nota": "Hojas JSON leídas en sql_refe. SPQ_FTR_PERU + SPK_CONSULTA_DOCUMENTO_ELECTRONICA + SPK_JSON_FTR_PERU_INTERFAX + SPK_JSON_FTR_PERU_INTERFAX_FNOT leídos 2026-09-12 (sql/).",
+  "sps": [
+    {
+      "nombre": "SPQ_FTR_COL",
+      "tipo": "SPQ",
+      "modelo": "FTR_COL",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPQ_FTR_COL.sql",
+      "notaArchivo": "Slim: solo ENVIA_CONTAB (dispara JSON Perú). El resto en facturacion.",
+      "cola": "1 metodo.",
+      "metodos": [
+        {
+          "id": "ENVIA_CONTAB",
+          "estado": "leido",
+          "hace": "Marca/envía factura a contabilidad; Perú genera JSON integración.",
+          "valida": [
+            "FTR existe",
+            "CONTABILIZADA no 1/2 (no Perú)",
+            "VR_TOTAL>0 y ESTADO=P",
+            "Tiene FTRD",
+            "Capita/PGP con FTRDC o PPT capitado"
+          ],
+          "errores": [
+            "No existe el Documento",
+            "Documento ya Contabilziado o Presenta Errores",
+            "Factura Sin Valor o Anulada",
+            "Factura Sin Detalles",
+            "Capitada/PGP sin relalcion de Capitado"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr",
+          "llama": [
+            "SPK_GENERA_JSON_PERU_FTR_INTEGRA",
+            "SPK_GENERA_JSON_PERU_FACTURA"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FNOT_COL",
+      "tipo": "SPQ",
+      "modelo": "FNOT_COL",
+      "estado": "leido",
+      "fuente": "notas-dbcr/sps.json",
+      "notaArchivo": "Slim: solo FNOT_ENVIARSUNAT.",
+      "metodos": [
+        {
+          "id": "FNOT_ENVIARSUNAT",
+          "estado": "leido",
+          "hace": "Envía nota a SUNAT (Perú): SPK_GENERA_JSON_PERU_NOTADBCR.",
+          "valida": [
+            "IXCOUNTRY=PERU",
+            "FACTEP≠OK (pendiente envío)"
+          ],
+          "errores": [
+            "Variable pais no es Perú",
+            "Nota No esta Pendiente de Enviar"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-nota",
+          "llama": [
+            "SPK_GENERA_JSON_PERU_NOTADBCR"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENERA_JSON_PERU_FACTURA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_GENERA_JSON_PERU_FACTURA.sql",
+      "llamadoDesde": [
+        "FTR_COL · ENVIA_CONTAB"
+      ],
+      "hace": "Arma JSON MiFact/SUNAT de una FTR y lo POST. Tipo 03 si TIPOFIN=N (boleta, FDIAN BOLE) o 01 factura (FDIAN FTR). Si ya hay FTRE de esa N_FACTURA, RETURN. Suma FTRD PAQUETE<>2 (afecto/inafecto/copago). Token URLFACT_ELE_* + TOKEN_FACTU_ELE_PERU. Respuesta: FTR.FACTEP, LINKFACTURA, INSERT FTRE + FTRAPILOG.",
+      "valida": [
+        "FDIAN.CNSRESOL + PROCEDENCIA FTR|BOLE",
+        "afecto+inafecto > 0",
+        "TOKEN length >= 20",
+        "URL length >= 30",
+        "No existe FTRE previa"
+      ],
+      "noValida": [
+        "No es cola FACTE Colombia",
+        "Líneas PAQUETE=2 no suman"
+      ],
+      "errores": [
+        "Ya fue enviada mi factura (RETURN)",
+        "Sin valores Me devuelvo (RETURN)",
+        "No existe el token de seguridad (RETURN)",
+        "No existe api valida para el envio (RETURN)",
+        "Factura no Recibida en MiFact, Error de estructura"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
+        "FNK_DE_VALORES_A_LETRAS"
+      ],
+      "efecto": "POST API; FACTEP=ESTDOC o 104A; FTRE.SOLICITUDJSON; FTRAPILOG METODO envío.",
+      "capaId": "02-operacion",
+      "gateId": "enviar-sunat-ftr"
+    },
+    {
+      "nombre": "SPK_GENERA_JSON_PERU_FTR_INTEGRA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_GENERA_JSON_PERU_FTR_INTEGRA.sql",
+      "llamadoDesde": [
+        "FTR_COL · ENVIA_CONTAB"
+      ],
+      "hace": "Gemelo de SPK_GENERA_JSON_PERU_FACTURA (mismos RETURNS, token, POST, FTRE). Lo llama ENVIA_CONTAB junto con FACTURA. No hay rama distinta documentada en el script.",
+      "valida": [
+        "Mismas precondiciones que FACTURA"
+      ],
+      "noValida": [
+        "No se vio un IF que lo reserve a SAP/N_FACT_EXTERNO"
+      ],
+      "errores": [
+        "Mismos RETURN silenciosos que FACTURA"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO"
+      ],
+      "efecto": "Mismo destino FACTEP/FTRE/FTRAPILOG.",
+      "capaId": "02-operacion",
+      "gateId": "enviar-sunat-ftr"
+    },
+    {
+      "nombre": "SPK_GENERA_JSON_PERU_NOTADBCR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_GENERA_JSON_PERU_NOTADBCR.sql",
+      "llamadoDesde": [
+        "FNOT_ENVIARSUNAT",
+        "SPK_NOTASCXC Perú"
+      ],
+      "hace": "JSON de NC/ND. Si FNOT.FACTEP=OK RETURN. Cuerpo útil solo si ENVIA_NOTAS_ACEPTA=SI. CLASE C→07, D→08; padre boleta 03 o factura 01; prefijo NCB/NCF o NDB/NDF. ENVIAR_A_SUNAT=true. Log FTRAPILOG.",
+      "valida": [
+        "FACTEP≠OK",
+        "ENVIA_NOTAS_ACEPTA=SI para armar",
+        "Observación >= 7",
+        "FNOTD VR_TOTAL>0"
+      ],
+      "errores": [
+        "Nota ya fue Recibida (RETURN)",
+        "JSON no fue generado Correctamente"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO"
+      ],
+      "efecto": "POST nota; FTRAPILOG; actualiza CNSDIANFE si aplica.",
+      "capaId": "02-operacion",
+      "gateId": "enviar-sunat-nota"
+    },
+    {
+      "nombre": "SPQ_FTR_PERU",
+      "tipo": "SPQ",
+      "modelo": "FTR_PERU",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTR_PERU.sql",
+      "notaArchivo": "Leído 2026-09-12. Circuito SUNAT: LIBERAR_SUNAT, QUITAR_ERROR_API, NOTIFICA_BOLETAS, MARCA_ENVIO, ENVIAR_FACTURA_SAP. El resto es facturar/calificar MAD-PHD-CIT (listado).",
+      "cola": "5 METODOs SUNAT leídos. ~22 METODOs MAD/PHD/soportes listados.",
+      "metodos": [
+        {
+          "id": "LIBERAR_SUNAT",
+          "estado": "leido",
+          "hace": "Si ESTADO=P, TIPOANULACION≠NC y FACTEP no es 101/102: llama SPK_CONSULTA_DOCUMENTO_ELECTRONICA y luego pone FACTEP=NULL solo si después de la consulta FACTEP sigue sin ser 101/102. El FE muestra Sin Notificar. Si MiFact respondió 101/102, CONSULTA deja ese estado y Liberar no lo borra.",
+          "valida": [
+            "N_FACTURA",
+            "ESTADO=P",
+            "TIPOANULACION≠NC",
+            "FACTEP not in (101,102)"
+          ],
+          "errores": [
+            "Estado de la Factura no Valido para liberar, Verifique e intente de nuevo"
+          ],
+          "llama": [
+            "SPK_CONSULTA_DOCUMENTO_ELECTRONICA"
+          ],
+          "efecto": "Puede quedar FACTEP nulo (reintento) o 101/102 si MiFact ya lo tenía. No borra FTRE. CONSULTA puede INSERT FTRE si el documento ya existe en MiFact.",
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr",
+          "ventanaFe": "FTRPeComponent · liberarSunat"
+        },
+        {
+          "id": "QUITAR_ERROR_API",
+          "estado": "leido",
+          "hace": "Solo si FACTEP=104A: pone FACTEP=NULL (limpia rechazo-api). Si no es 104A → KO.",
+          "valida": [
+            "N_FACTURA",
+            "FACTEP=104A"
+          ],
+          "errores": [
+            "No se fue encontrado el error, Verifique  e intente de nuevo"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr",
+          "ventanaFe": "FTRPeComponent · Quitar Error"
+        },
+        {
+          "id": "NOTIFICA_BOLETAS",
+          "estado": "leido",
+          "hace": "Marca boletas (TIPOFIN=N) con FTRE.NOTIFICADO=0 para envío de correo. Libera marcas de más de 10 min. PROCESO=FRONTEND devuelve el lote del usuario; si no, TOP 1. Fuera de BDATA_PRODUCCION: OK y no envía.",
+          "valida": [
+            "BD = BDATA_PRODUCCION para marcar"
+          ],
+          "noValida": [
+            "NOTIFICA_BOLETAS_DEBUG es el mismo cuerpo (filtro debug comentado)"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr"
+        },
+        {
+          "id": "NOTIFICA_BOLETAS_DEBUG",
+          "estado": "leido",
+          "hace": "Misma rama que NOTIFICA_BOLETAS.",
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr"
+        },
+        {
+          "id": "MARCA_ENVIO",
+          "estado": "leido",
+          "hace": "Si hay FTRE: NOTIFICADO=1 y limpia MARCA/EQUIMARCA/FECHA_PP de la FTR. Cierra el ciclo de NOTIFICA_BOLETAS.",
+          "valida": [
+            "N_FACTURA",
+            "Existe FTRE"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr"
+        },
+        {
+          "id": "ENVIAR_FACTURA_SAP",
+          "estado": "leido",
+          "hace": "Si IXCOUNTRY=PERU y PROVEEDOR_FACTUELECT=INTER_SAP → SPK_JSON_FTR_PERU_INTERFAX. JSON SAP/Interfax (EPrefactura), no MiFact/SUNAT.",
+          "valida": [
+            "FTR existe",
+            "VR_TOTAL>0 y ESTADO=P",
+            "Tiene FTRD"
+          ],
+          "errores": [
+            "No existe el Documento En Facturacion",
+            "Factura Sin Valor o Anulada, No se Puede Enviar",
+            "Factura Sin Detalles, No se Puede Enviar"
+          ],
+          "llama": [
+            "SPK_JSON_FTR_PERU_INTERFAX"
+          ],
+          "capaId": "02-operacion",
+          "gateId": "enviar-sunat-ftr"
+        },
+        {
+          "id": "FACTURAR_CITAUT",
+          "estado": "listado",
+          "hace": "Factura cita CE Perú (SPK_FACTURACE_PERU_CITAUT). No es el JSON SUNAT.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "FACTURAR_CITPAQ",
+          "estado": "listado",
+          "hace": "Factura cita paquete (SPK_FACTURACE_PERU_CITAUT_PAQ).",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "FACTURAR_MAD",
+          "estado": "listado",
+          "hace": "Factura encuentro MAD (SPK_FACTURAMAD_PERU). Precio SERTOT.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "FACTURAR_PHD",
+          "estado": "listado",
+          "hace": "Factura PHD (SPK_AFACTURAR + SPK_FACTURAPHD_PERU). Precio SERTOT dos ventanas.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "FACTURAR_MASI",
+          "estado": "listado",
+          "hace": "Masiva: MAD encola SPK_ENCOLAR_FTRMASI_PE; PHD SPK_FACTURAPHD_MASI_PERU.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "LISTOS_FACTURA",
+          "estado": "listado",
+          "hace": "Marca AUT.LISTOFACT (OK/PEND/NOFACT) por prefijo medicamentos/lab/consulta.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "MARCAFACT_MAD",
+          "estado": "listado",
+          "hace": "Marca o aprueba MAD para facturar.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "MARCAFACT_PHD",
+          "estado": "listado",
+          "hace": "Marca o aprueba HADM PHD.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "MARCATODOMASI",
+          "estado": "listado",
+          "hace": "Marca masiva MAD (PPS/CPM) o PHD. Respeta FTR_MASI_COLA.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "CONTEOFTRMARCADAS",
+          "estado": "listado",
+          "hace": "Cuenta MAD/HADM marcadas del usuario (en filtro y fuera).",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "CALIFICAR_ENCUENTRO",
+          "estado": "listado",
+          "hace": "Califica todos los servicios del encuentro MAD (MADSERCAL) o uno PHD (PHDSERCAL).",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "CALIFICAR_SERVICIO",
+          "estado": "listado",
+          "hace": "Califica un servicio MAD/PHD + log.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "CALIFICAR_TODOS_SERVICIOS",
+          "estado": "listado",
+          "hace": "Aprueba masivo servicios MAD en rango (labs NA/CERRADO).",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "RESET_CALIFICACION",
+          "estado": "listado",
+          "hace": "Vuelve calificación a PENDIENTE.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "NOFACTURABLE_MAD",
+          "estado": "listado",
+          "hace": "MAD.FACTURABLE=0 o REVERTIR=1.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "GET_GARANTE_LOG",
+          "estado": "listado",
+          "hace": "Lee MADSERCAL_LOG / PHDSERCAL_LOG.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "RELIQUIDAR_CITAUT",
+          "estado": "listado",
+          "hace": "Recalcula VALORTOTAL cita (FNK_VLR_SERTOT) y copagos AUTD.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "RELIQUIDAR_CRONICO",
+          "estado": "listado",
+          "hace": "Igual sobre citas no facturadas de una HADM.",
+          "capaId": "03-alimentadores"
+        },
+        {
+          "id": "SOPORTES_FTREPE",
+          "estado": "listado",
+          "hace": "Devuelve consecutivo HCA / SITEDS según procedencia CI/CE/SALUD.",
+          "capaId": "04-unido"
+        },
+        {
+          "id": "SOPORTES_FTREPE_DOMI",
+          "estado": "listado",
+          "hace": "Paquete de soportes MAD/CMV/SALUD (HCA, boletas N_FACT_EXTERNO, SITEDS, labs).",
+          "capaId": "04-unido"
+        },
+        {
+          "id": "SOPORTES_BOLETAS",
+          "estado": "listado",
+          "hace": "Lista N_FACT_EXTERNO de boletas ligadas al MAD.",
+          "capaId": "04-unido"
+        },
+        {
+          "id": "SOPORTES_HCATD",
+          "estado": "listado",
+          "hace": "Órdenes médicas HCATD de un HCA.",
+          "capaId": "04-unido"
+        },
+        {
+          "id": "SOPORTES_APDX_DOCS",
+          "estado": "listado",
+          "hace": "PDF lab/MAD/PHD (DOCS o BD documental).",
+          "capaId": "04-unido"
+        },
+        {
+          "id": "SOPORTES_APDX_DOCS__DESCONTINUADO",
+          "estado": "listado",
+          "hace": "Versión vieja de soportes lab. No usar.",
+          "capaId": "04-unido"
+        },
+        {
+          "id": "SOPORTES_APDX",
+          "estado": "listado",
+          "hace": "Órdenes LORD de AUT filtradas por APDX_AMB_SOPORTES.",
+          "capaId": "04-unido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CONSULTA_DOCUMENTO_ELECTRONICA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONSULTA_DOCUMENTO_ELECTRONICA.sql",
+      "llamadoDesde": [
+        "FTR_PERU · LIBERAR_SUNAT"
+      ],
+      "hace": "Solo si PROVEEDOR_FACTUELECT=MIFACT: consulta estado en MiFact (GetEstatusInvoice). Sin CNSFNOT = factura (03 si TIPOFIN=N, si no 01; serie LEFT N_FACTURA 4, correlativo RIGHT 8). Con CNSFNOT = nota (C→07, D→08; serie/correlativo de CNSDIANFE). POST JSON {TOKEN, NUM_NIF_EMIS, COD_TIP_CPE, NUM_SERIE_CPE, NUM_CORRE_CPE, FEC_EMIS}. HTTP: MSXML2.ServerXMLHttp. Log FTRAPILOG METODO=CONSULTA.",
+      "valida": [
+        "PROVEEDOR_FACTUELECT=MIFACT (si no, no hace nada)",
+        "TOKEN ≥ 20 (prod: TOKEN_FACTU_ELE_PERU; no-prod: token de prueba)",
+        "URL ≥ 30 (URLFACT_ELE_PRODJSON o URLFACT_ELE_PRUEJSON; reemplaza SendInvoice→GetEstatusInvoice)",
+        "JSON ≥ 10 caracteres"
+      ],
+      "noValida": [
+        "INTER_SAP: el IF MIFACT no entra; Liberar igual puede poner FACTEP=NULL",
+        "No exige FACTEP previo"
+      ],
+      "errores": [
+        "PRINT No existe el token de seguridad (RETURN)",
+        "PRINT No existe api valida para el envio (RETURN)",
+        "PRINT NO TENGO DATOS (RETURN)"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE"
+      ],
+      "efecto": "Si ESTDOC in 101/102/103: factura — actualiza FACTEP=ESTDOC y ULRPTAAPI si FACTEP actual está en '',101,102,103,104A (con 102 solo si FTR.ESTADO≠102); INSERT FTRE si no hay (CUFE=cadena QR, inventa QR si viene vacío). Nota — FNOT.FACTEP=OK si no era OK. Si ESTDOC no es 101/102/103: FTR.FACTEP=ERROR + RAZONANULACION, o FNOT.FACTEP=ERROR + RAZONANU. Fuera de BDATA_PRODUCCION: RUC emisor 20100100100 y token de prueba.",
+      "capaId": "02-operacion",
+      "gateId": "enviar-sunat-ftr"
+    },
+    {
+      "nombre": "SPK_JSON_FTR_PERU_INTERFAX",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_JSON_FTR_PERU_INTERFAX.sql",
+      "llamadoDesde": [
+        "FTR_PERU · ENVIAR_FACTURA_SAP"
+      ],
+      "hace": "Arma JSON SAP Interfax (EPrefactura + EPrefacturaDetalle) y lo envía con SPK_ENVIA_TRAMAS_CIPERU. Boleta o factura-paciente → /FacturacionPaciente/PreFacturaPacienteEM. Factura garante (01 + procedencia MAD/SALUD/CMV) → /FacturacionGarante/PreFacturaGaranteEM. No es el JSON MiFact/SUNAT.",
+      "valida": [
+        "Garante: NU_REME obligatorio (si no y MODO_PRUEBAS=0 → log KO y RETURN)",
+        "Afecto+inafecto > 0 (PAQUETE≠2)",
+        "MNT_PENDIENTE > 0 (si no FACTEP=104A)",
+        "JSON no vacío (si no FACTEP=104A)"
+      ],
+      "noValida": [
+        "MODO_PRUEBAS=1: arma JSON, lo SELECT y RETURN (no envía)",
+        "ENVIO_PORLOTE=1: devuelve el body y no envía"
+      ],
+      "errores": [
+        "FACTURA NO ESTA RELACIONADA EN NINGUNA REMESA. POR FAVOR VALIDE.",
+        "Sin valores, Revisar montos.",
+        "FACTURA CON VALOR 0, NO SE PUEDE NOTIFICAR A SUNAT.",
+        "NO SE HA GENERADO LA TRAMA PARA ESTA PRE-FACTURA, COMUNIQUESE CON EL DPTO DE SISTEMAS."
+      ],
+      "llama": [
+        "SPK_ENVIA_TRAMAS_CIPERU",
+        "SPK_DEL_TRANSIENT",
+        "FNK_VALORVARIABLE",
+        "FNQ_VAL_SERTOT_PERU"
+      ],
+      "efecto": "OK codigo 0 → FTR.FACTEP=102 + FTRAPILOG INTER_FTR OK. Otro código → FACTEP=104. KO de envío → solo log. TokenExpiredError: borra JWT_QRYSTALOS y reintenta 1 vez. Usuarios caja: USR_CAJ_*/USR_VCAJ_* (MAD/PHD/CMV). SAP fijo en script: sede 1008, sociedad CI10, org venta CI16, región LIMA.",
+      "capaId": "02-operacion",
+      "gateId": "enviar-sunat-ftr",
+      "ventanaFe": "FTRPeComponent · ENVIAR_FACTURA_SAP"
+    },
+    {
+      "nombre": "SPK_JSON_FTR_PERU_INTERFAX_FNOT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_JSON_FTR_PERU_INTERFAX_FNOT.sql",
+      "llamadoDesde": [
+        "SPQ_FCXC_COL (sql_refe)",
+        "SPK_NOTASCXC (sql_refe)"
+      ],
+      "hace": "JSON SAP de nota (EPreabono + EPreabonoDetalle). Si FNOT.CNSDIANFE vacío: SPK_GENNUMEROFACTURA (NCB/NCF o NDB/NDF) y escribe CNSDIANFE. Paciente/boleta → /FacturacionPaciente/AbonoPacienteEM. Garante → /FacturacionGarante/AbonoGaranteEM. Envía SPK_ENVIA_TRAMAS_CIPERU.",
+      "valida": [
+        "FNOT + FTR existen (lee CLASE, TIPOFIN, procedencia)",
+        "JSON ≥ 10 caracteres"
+      ],
+      "noValida": [
+        "MODO_PRUEBAS=1: RETURN sin enviar"
+      ],
+      "errores": [
+        "PRINT NO TENGO DATOS (RETURN)",
+        "FNOT.FACTEP=104 + RESPUESTAJSON si codigo ≠ 0"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_ENVIA_TRAMAS_CIPERU",
+        "FNK_VALORVARIABLE"
+      ],
+      "efecto": "Codigo 0 → FNOT.FACTEP=102. Otro → FACTEP=104. KO envío → FTRAPILOG INTER_FNOT. Garante toma remesa de FCXC/FCXCD (NU_REME = Q + año + CNSCXC).",
+      "capaId": "02-operacion",
+      "gateId": "enviar-sunat-nota"
+    }
+  ]
+}

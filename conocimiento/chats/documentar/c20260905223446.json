@@ -1,11 +1,11 @@
 {
   "id": "c20260905223446",
   "canal": "documentar",
-  "titulo": "Chat histórico",
-  "estado": "activo",
-  "procesoId": "facturacion",
+  "titulo": "Histórico mixto (varios módulos)",
+  "estado": "archivado",
+  "procesoId": "",
   "creadoEn": "2026-09-05T22:34:46",
-  "archivadoEn": null,
+  "archivadoEn": "2026-09-07T05:41:23",
   "mensajes": [
     {
       "id": "caja-flujo-20260831",
@@ -2046,6 +2046,24 @@
       "autor": "agente",
       "en": "2026-09-06T18:50:00",
       "texto": "**Continuamos — gate notificar-dian (post-NOTI_DIAN)** ✅\n\nConfirmé su **«continuemos»** (18:37). Tras cerrar **capita-pgp**, avanzo el gate natural siguiente: **notificar-dian**. Releí fichas en `facturacion/sps.json`, `proceso.json` y tracé Qrystalos2 (`FTRComponent.vue`, `FTREComponent.vue`). **No hace falta .sql nuevo** — METODOs ya documentados en SPQ_FTR_COL / FTRFE_COL.\n\n---\n\n## Ventanas\n\n| Pantalla | Ruta / tab | Rol |\n|----------|------------|-----|\n| **Facturas** | `/admin/facturacion` → tab Facturas | Grilla FTR, filtro **ESTADOFACTE**, botón **NotificaDian** |\n| **Proceso DIAN** | misma ruta → tab **NotiDian** | `FTREComponent` — seguimiento, encolar/desencolar masivo, XML |\n| Masiva / Salud | tabs FacMasiva, FactSalud | También embeben `FTREComponent` |\n\nPermiso seguimiento DIAN: **NOTIDIAN**.\n\n---\n\n## Estados FACTE (FTR · grilla FE)\n\n| FACTE | ESTDIAN (FE) | Significado operativo |\n|-------|--------------|------------------------|\n| **0** | Sin Notificar | Pendiente encolar |\n| **1** | En Cola | Encolada — espera servicio DIAN |\n| **2** | Notificada | **CUFE OK** — documento aceptado DIAN |\n| **3** | Con Errores | Reintento posible (NOTI_DIAN admite 0,3) |\n| **4** | Procesando / Por Consultar | En vuelo |\n| **5** | Por prevalidar | Prevalidación DIAN |\n| **6** | Prevalidada | Aceptada en prevalidación |\n| **7** | Rechazada en pruebas | Ambiente pruebas |\n\nPerú: columna adicional **FACTEP** (distinto circuito).\n\n---\n\n## Flujo operador (paso a paso)\n\n```\n PRE-requisitos\n   · Factura ESTADO=P\n   · Capita/PGP → FTRDC relacionado (gate capita-pgp cerrado)\n   · CONTAB_FTR_POSTDIAN=SI → contabilizar después de FACTE=2\n\n 1. Encolar (individual)\n    Tab Facturas → NotificaDian(n_factura)\n    → FTR_COL · NOTI_DIAN { N_FACTURA }\n    OK: FACTE=1, ESTDIAN='En Cola'\n    KO frecuentes:\n      · «Factura ya fue encolada»\n      · «fecha de la Factura debe ser la Misma de la Actual»\n      · «Capitada/PGP sin relación de Capitado… Dian»\n\n 2. Encolar (alternativas)\n    · FTRFE_COL · FE_ENCOLAR (confirmar FE, F_FACTURA=hoy)\n    · FTREComponent → ENCOLAR_ITEM { TIPODOC, CNSFCT }\n    · ENCOLAR_MASIVO { ACCION:1, filtros fecha/tercero/plan/sede/procedencia }\n\n 3. Runtime externo (fuera SPQ)\n    Servicio facturador electrónico lee FACTE=1\n    → genera XML, envía DIAN, recibe CUFE\n    → UPDATE FTR FACTE=2 + filas FTRE\n\n 4. Seguimiento post-notificación\n    Tab Proceso DIAN → filtros (fecha, Es.DIAN, procedencia, tipo doc.)\n    → LISTAR_FTRE (documentos FACTE=2)\n    → TREA_XML (descarga XML / reenvío)\n    → RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO (correo EPS)\n    → DESCOLA_ITEM / ENCOLAR_MASIVO ACCION:2 (desencolar)\n\n 5. Validación previa (FE)\n    fnvalidaftr() → FTRFE_COL · VALIDAFTR\n    Solo clasifica PARTICULAR — no valida DIAN ni detalle\n\n 6. Después de FACTE=2\n    · Anular: ANULARFAC valida contab si FACTE=2\n    · RIPS/FEV: gate rips-fev exige FACTE=2\n    · Cartera: RADICA_FCXC es gate distinto (no sustituye DIAN)\n```\n\n---\n\n## Trazabilidad FE → MODELO → METODO\n\n| Paso | Vue | MODELO | METODO | Fuente |\n|------|-----|--------|--------|--------|\n| Encolar individual | EnviarFacturaDian | FTR_COL | **NOTI_DIAN** | sps.json ✅ |\n| Encolar item | MarcarItem | FTR_COL | ENCOLAR_ITEM | sps.json ✅ |\n| Desencolar | DesencolarFacte | FTR_COL | DESCOLA_ITEM | sps.json ✅ |\n| Masivo enc/des | MarcaDesmarcaMasivo | FTR_COL | ENCOLAR_MASIVO | sps.json ✅ |\n| Grilla seguimiento | LISTAR_FTRE | FTR_COL | LISTAR_FTRE | sps.json ✅ |\n| Descarga XML | TREA_XML | FTR_COL | TREA_XML | sps.json ✅ |\n| Pre-check FE | fnvalidaftr | FTRFE_COL | VALIDAFTR | sps.json ✅ |\n| Encolar al confirmar | — | FTRFE_COL | FE_ENCOLAR | sps.json ✅ |\n| Resolución FDIAN | numeración | — | SPQ_VALIDADIAN2 | sps.json ✅ |\n\n**Veredicto releer:** no — fichas 68/68 SPQ_FTR_COL archivadas; profundidad aquí es **FE + estados FACTE**, no otro SP.\n\n---\n\nActualicé `facturacion/proceso.json` (gate notificar-dian: ventanas, flujoOperador, estados FACTE completos) e `INDICE.json`. **Ctrl+F5** · Consultas → Facturación → gate **Notificar a la DIAN**.\n\n**Gate notificar-dian documentado** (SQL ya cubierto; runtime DIAN externo declarado).\n\n**Siguiente sugerido:** ¿**ce-bandeja-envio-ftr** (resto **SPQ_CIT_COL_3** — ¿está en `sql/`?), **rips-fev** (post FACTE=2), o **envío-cartera-recepcion** (PROCESAR_ENVIO)?"
+    },
+    {
+      "id": "tokens-kb-bajo-demanda-20260907",
+      "autor": "agente",
+      "en": "2026-09-07T05:20:00",
+      "texto": "El barrido automático de Documentar ya no corre (era lo que gastaba tokens de madrugada, cada ~1 min).\n\nConsultas y Documentar solo arrancan cuando usted pregunta en el Chat o pulsa Documentar SP. Un turno y se detienen.\n\nModelo: Composer 2.5 estándar (sin Fast, que cobra ~6 veces más). No reanuda el agente anterior, para no inflar el contexto.\n\nReinicie el servidor (abrir-app.bat o el servicio) y Ctrl+F5 en la app."
+    },
+    {
+      "id": "tokens-kb-validado-reinicio-20260907",
+      "autor": "agente",
+      "en": "2026-09-07T05:18:30",
+      "texto": "Servicio QrystalosBA reiniciado y validado.\n\n• Health: Composer 2.5, fast=false, modeloKb=composer-2.5.\n• Vigilante activo=false. Reanudar barrido ya no existe en la UI (Pausado bajo demanda).\n• Intentar reactivar el barrido responde 400.\n• Ningún cursor_bot vivo. Documentar/Consultas en estado listo, sin relanzar solos.\n• Log: «Documentar: sin barrido — solo Chat bajo demanda».\n\nApp: http://localhost:8765/app/ — Ctrl+F5 si tenía la pestaña abierta."
+    },
+    {
+      "id": "tokens-kb-sin-chat-entero-20260907",
+      "autor": "agente",
+      "en": "2026-09-07T05:30:00",
+      "texto": "Consultas y Documentar ya no leen el chat.json entero (~339 KB). El bot pega solo el último mensaje del coordinador (máx. 6.000 caracteres) y, si hay tarea, el nombre del .sql.\n\nTampoco carga las reglas grandes del proyecto en esos turnos. La fuente es conocimiento/{proceso}/ (proceso.json + sps.json). Qrystalos2 y qrystalos.documentacion solo si esa ficha no cubre el pedido.\n\nEl Chat de la app sigue guardando el historial para usted; el agente no lo relee."
     }
   ]
 }

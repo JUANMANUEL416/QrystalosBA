@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Servidor Qrystalos BA: estáticos + API sql + SQLite (casos, chat, histórico, cola)"""
+import base64
 import json
 import os
 import re
@@ -22,11 +23,14 @@ from cursor_bot import (  # noqa: E402
     lanzar_bot,
     leer_estado_bot,
     load_api_key,
+    modelo_report,
 )
 from qrystalos_ba_db import get_db  # noqa: E402
 import desarrolladores as devs  # noqa: E402
 import correo as mailer  # noqa: E402
 import conocimiento as kb  # noqa: E402
+import diagrama_flujo as diagflujo  # noqa: E402
+import solicitud_req as solreq  # noqa: E402
 
 ROOT = os.path.dirname(SCRIPT_DIR)
 SQL_ROOT = os.path.join(ROOT, "sql")
@@ -83,6 +87,481 @@ def _write_json_file(path, data):
         json.dump(data, fh, ensure_ascii=False, indent=2)
 
 
+def _sanitize_imagen_nombre(nombre):
+    base = os.path.basename((nombre or "").strip())
+    base = re.sub(r"[^\w.\-]", "_", base)
+    return base[:180] if base else ""
+
+
+def _mime_to_ext(mime):
+    return {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+    }.get((mime or "").lower(), ".png")
+
+
+def _imagenes_analisis_dir(id_caso):
+    return os.path.join(_caso_dir(id_caso), "imagenes")
+
+
+ARCHIVO_EXTS = {".pdf", ".txt", ".md", ".html", ".htm", ".docx", ".doc"}
+ARCHIVO_MAX_BYTES = 20 * 1024 * 1024
+EXTRACTO_MAX_CHARS = 250_000
+
+
+def _archivos_analisis_dir(id_caso):
+    return os.path.join(_caso_dir(id_caso), "archivos")
+
+
+def _sanitize_archivo_nombre(nombre):
+    base = os.path.basename((nombre or "").strip())
+    base = re.sub(r"[^\w.\-]", "_", base)
+    return base[:180] if base else ""
+
+
+def _ext_archivo(nombre, mime=""):
+    ext = os.path.splitext(nombre or "")[1].lower()
+    if ext in ARCHIVO_EXTS:
+        return ext
+    mime = (mime or "").lower()
+    return {
+        "application/pdf": ".pdf",
+        "text/plain": ".txt",
+        "text/markdown": ".md",
+        "text/html": ".html",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/msword": ".doc",
+    }.get(mime, "")
+
+
+def _extracto_nombre(nombre):
+    stem, _ext = os.path.splitext(nombre or "")
+    return f"{stem}.extracto.txt"
+
+
+def _extraer_texto_archivo(path):
+    """Devuelve (texto, aviso). aviso si no se pudo extraer o es parcial."""
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext in (".txt", ".md"):
+            raw = open(path, "rb").read()
+            for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+                try:
+                    return raw.decode(enc)[:EXTRACTO_MAX_CHARS], None
+                except UnicodeDecodeError:
+                    continue
+            return raw.decode("utf-8", errors="replace")[:EXTRACTO_MAX_CHARS], None
+        if ext in (".html", ".htm"):
+            raw = open(path, "rb").read()
+            text = raw.decode("utf-8", errors="replace")
+            text = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.I)
+            text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.I)
+            text = re.sub(r"<[^>]+>", " ", text)
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n{3,}", "\n\n", text)
+            return text.strip()[:EXTRACTO_MAX_CHARS], None
+        if ext == ".docx":
+            import zipfile
+            from xml.etree import ElementTree as ET
+
+            with zipfile.ZipFile(path) as zf:
+                xml = zf.read("word/document.xml")
+            root = ET.fromstring(xml)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            partes = [t.text or "" for t in root.findall(".//w:t", ns)]
+            return " ".join(p for p in partes if p).strip()[:EXTRACTO_MAX_CHARS], None
+        if ext == ".pdf":
+            return _extraer_texto_pdf(path)
+        if ext == ".doc":
+            return "", "DOC binario: no se extrae texto. Convierta a PDF o DOCX."
+    except Exception as exc:
+        return "", f"No se pudo extraer texto: {exc}"
+    return "", "Tipo no extraíble"
+
+
+def _extraer_texto_pdf(path):
+    reader = None
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(path)
+    except ImportError:
+        try:
+            from PyPDF2 import PdfReader
+
+            reader = PdfReader(path)
+        except ImportError:
+            return "", "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original."
+    paginas = []
+    for i, page in enumerate(reader.pages or []):
+        try:
+            t = page.extract_text() or ""
+        except Exception:
+            t = ""
+        if t.strip():
+            paginas.append(f"--- página {i + 1} ---\n{t.strip()}")
+    if not paginas:
+        return "", "PDF sin texto extraíble (puede ser escaneo)."
+    return "\n\n".join(paginas)[:EXTRACTO_MAX_CHARS], None
+
+
+def _guardar_archivo_analisis(id_caso, data_url, nombre_sugerido="", tipo="", solicitud_base=None):
+    """Guarda normativa/archivo en activo/{id}/archivos/ + extracto.txt y actualiza solicitud."""
+    data_url = (data_url or "").strip()
+    m = re.match(r"data:([^;,]+)(?:;[^,]*)?;base64,(.+)", data_url, re.DOTALL | re.IGNORECASE)
+    if not m:
+        raise ValueError("dataUrl inválido (se espera archivo base64)")
+    mime, b64 = m.group(1), m.group(2)
+    nombre = _sanitize_archivo_nombre(nombre_sugerido or "")
+    ext = _ext_archivo(nombre, mime)
+    if not ext:
+        raise ValueError("Solo se admiten PDF, TXT, MD, HTML o DOCX.")
+    if not nombre:
+        nombre = f"normativa-{datetime.now().strftime('%Y%m%d-%H%M%S')}{ext}"
+    if not os.path.splitext(nombre)[1]:
+        nombre += ext
+    dest_dir = _archivos_analisis_dir(id_caso)
+    os.makedirs(dest_dir, exist_ok=True)
+    path = os.path.join(dest_dir, nombre)
+    if os.path.exists(path):
+        base, ext2 = os.path.splitext(nombre)
+        nombre = f"{base}-{int(time.time())}{ext2}"
+        path = os.path.join(dest_dir, nombre)
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except Exception as exc:
+        raise ValueError("Base64 inválido") from exc
+    if len(raw) > ARCHIVO_MAX_BYTES:
+        raise ValueError("Archivo demasiado grande (máx. 20 MB)")
+    with open(path, "wb") as fh:
+        fh.write(raw)
+    texto, aviso = _extraer_texto_archivo(path)
+    extracto = _extracto_nombre(nombre)
+    extracto_path = os.path.join(dest_dir, extracto)
+    encabezado = (
+        f"Extracto de {nombre}\n"
+        f"Caso: {id_caso}\n"
+        f"Tipo: {(tipo or 'normativa').strip() or 'normativa'}\n"
+        f"{'Aviso: ' + aviso if aviso else 'Texto extraído para citar en el dictamen.'}\n"
+        f"{'=' * 60}\n\n"
+    )
+    with open(extracto_path, "w", encoding="utf-8") as fh:
+        fh.write(encabezado)
+        fh.write(texto or "(sin texto extraíble — abra el archivo original)\n")
+    ruta_rel = f"activo/{id_caso}/archivos/{nombre}"
+    meta = {
+        "nombre": nombre,
+        "ruta": ruta_rel,
+        "extracto": extracto,
+        "extractoRuta": f"activo/{id_caso}/archivos/{extracto}",
+        "tipo": (tipo or "normativa").strip() or "normativa",
+        "mime": mime,
+        "bytes": len(raw),
+        "charsExtracto": len(texto or ""),
+        "avisoExtracto": aviso or "",
+        "subidaEn": datetime.now().isoformat(timespec="seconds"),
+        "url": f"/api/caso/{id_caso}/archivo/{nombre}",
+        "urlExtracto": f"/api/caso/{id_caso}/archivo/{extracto}",
+    }
+    db = get_db()
+    solicitud = dict(solicitud_base) if isinstance(solicitud_base, dict) else (db.get_solicitud(id_caso) or {})
+    contenido = dict(solicitud.get("contenido") or {})
+    items = [a for a in (contenido.get("archivosAnalisis") or []) if a.get("nombre") != nombre]
+    items.append({k: meta[k] for k in (
+        "nombre", "ruta", "extracto", "extractoRuta", "tipo", "mime", "bytes",
+        "charsExtracto", "avisoExtracto", "subidaEn", "url", "urlExtracto",
+    )})
+    contenido["archivosAnalisis"] = items
+    solicitud["contenido"] = contenido
+    if not solicitud.get("identificacion"):
+        solicitud["identificacion"] = {"idCaso": id_caso}
+    db.guardar_solicitud(id_caso, solicitud)
+    return meta
+
+
+def _fmt_archivos_analisis(id_caso, solicitud):
+    items = ((solicitud or {}).get("contenido") or {}).get("archivosAnalisis") or []
+    if not items:
+        return ""
+    lines = []
+    for a in items:
+        nombre = (a.get("nombre") or "").strip()
+        if not nombre:
+            continue
+        extracto = (a.get("extracto") or _extracto_nombre(nombre)).strip()
+        tipo = (a.get("tipo") or "normativa").strip()
+        lines.append(
+            f"   - {tipo}: activo/{id_caso}/archivos/{nombre}"
+            f" — lea el extracto `activo/{id_caso}/archivos/{extracto}`"
+        )
+    if not lines:
+        return ""
+    return (
+        f"4. **Normativa / archivos** — resolución, circular o anexo técnico. "
+        f"Léalos, contrastelos con lo que genera Qrystalos y **cite apartes** en el dictamen (sección 4.6):\n"
+        + "\n".join(lines)
+        + "\n   No invente artículos: solo lo que esté en el extracto o en el PDF."
+    )
+
+
+def _sanitize_diagrama_nombre(nombre):
+    base = os.path.basename((nombre or "").strip())
+    base = re.sub(r"[^\w.\-]", "_", base)
+    if base and not base.lower().endswith(".html"):
+        base = f"{base}.html"
+    if not base:
+        base = "flujo.html"
+    return base[:180]
+
+
+def _diagramas_dir(id_caso):
+    return os.path.join(_caso_dir(id_caso), "diagramas")
+
+
+def _guardar_diagrama_flujo(
+    id_caso, contenido_html, nombre_sugerido="", solicitud_base=None, reemplazar=False
+):
+    """Guarda HTML del diagrama en activo/{id}/diagramas/ y actualiza solicitud.contenido.diagramaFlujo."""
+    raw = (contenido_html or "").strip()
+    if not raw:
+        raise ValueError("Contenido HTML vacío")
+    if len(raw.encode("utf-8")) > 6 * 1024 * 1024:
+        raise ValueError("Diagrama demasiado grande (máx. 6 MB)")
+    if "<" not in raw:
+        raise ValueError("El archivo no parece HTML")
+    nombre = _sanitize_diagrama_nombre(nombre_sugerido)
+    diag_dir = _diagramas_dir(id_caso)
+    os.makedirs(diag_dir, exist_ok=True)
+    path = os.path.join(diag_dir, nombre)
+    if os.path.exists(path) and not reemplazar:
+        base, ext = os.path.splitext(nombre)
+        nombre = f"{base}-{int(time.time())}{ext}"
+        path = os.path.join(diag_dir, nombre)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(raw)
+    ruta_rel = f"activo/{id_caso}/diagramas/{nombre}"
+    meta = {
+        "nombre": nombre,
+        "ruta": ruta_rel,
+        "subidaEn": datetime.now().isoformat(timespec="seconds"),
+        "url": f"/api/caso/{id_caso}/diagrama/{nombre}",
+    }
+    db = get_db()
+    solicitud = dict(solicitud_base) if isinstance(solicitud_base, dict) else (db.get_solicitud(id_caso) or {})
+    contenido = dict(solicitud.get("contenido") or {})
+    notas_prev = (contenido.get("diagramaFlujo") or {}).get("notas") or ""
+    meta["notas"] = notas_prev
+    contenido["diagramaFlujo"] = meta
+    solicitud["contenido"] = contenido
+    if not solicitud.get("identificacion"):
+        solicitud["identificacion"] = {"idCaso": id_caso}
+    db.guardar_solicitud(id_caso, solicitud)
+    return meta
+
+
+def _guardar_imagen_analisis(id_caso, data_url, nombre_sugerido="", solicitud_base=None):
+    """Guarda imagen en activo/{id}/imagenes/ y actualiza solicitud.contenido.imagenesAnalisis."""
+    data_url = (data_url or "").strip()
+    m = re.match(r"data:(image/[\w+.\-]+);base64,(.+)", data_url, re.DOTALL | re.IGNORECASE)
+    if not m:
+        raise ValueError("dataUrl inválido (se espera imagen base64)")
+    mime, b64 = m.group(1), m.group(2)
+    ext = _mime_to_ext(mime)
+    nombre = _sanitize_imagen_nombre(nombre_sugerido or "")
+    if not nombre:
+        nombre = f"captura-{datetime.now().strftime('%Y%m%d-%H%M%S')}{ext}"
+    if not os.path.splitext(nombre)[1]:
+        nombre += ext
+    img_dir = _imagenes_analisis_dir(id_caso)
+    os.makedirs(img_dir, exist_ok=True)
+    path = os.path.join(img_dir, nombre)
+    if os.path.exists(path):
+        base, ext2 = os.path.splitext(nombre)
+        nombre = f"{base}-{int(time.time())}{ext2}"
+        path = os.path.join(img_dir, nombre)
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except Exception as exc:
+        raise ValueError("Base64 inválido") from exc
+    if len(raw) > 8 * 1024 * 1024:
+        raise ValueError("Imagen demasiado grande (máx. 8 MB)")
+    with open(path, "wb") as fh:
+        fh.write(raw)
+    ruta_rel = f"activo/{id_caso}/imagenes/{nombre}"
+    meta = {
+        "nombre": nombre,
+        "ruta": ruta_rel,
+        "subidaEn": datetime.now().isoformat(timespec="seconds"),
+        "url": f"/api/caso/{id_caso}/imagen/{nombre}",
+    }
+    db = get_db()
+    solicitud = dict(solicitud_base) if isinstance(solicitud_base, dict) else (db.get_solicitud(id_caso) or {})
+    contenido = dict(solicitud.get("contenido") or {})
+    imgs = [i for i in (contenido.get("imagenesAnalisis") or []) if i.get("nombre") != nombre]
+    imgs.append({k: meta[k] for k in ("nombre", "ruta", "subidaEn", "url")})
+    contenido["imagenesAnalisis"] = imgs
+    solicitud["contenido"] = contenido
+    if not solicitud.get("identificacion"):
+        solicitud["identificacion"] = {"idCaso": id_caso}
+    db.guardar_solicitud(id_caso, solicitud)
+    return meta
+
+
+def _fmt_diagrama_flujo(id_caso, solicitud):
+    diag = ((solicitud or {}).get("contenido") or {}).get("diagramaFlujo") or {}
+    nombre = (diag.get("nombre") or "").strip()
+    if not nombre:
+        return ""
+    return (
+        f"5. **Diagrama de flujo** — ya generado en `activo/{id_caso}/diagramas/{nombre}`. "
+        f"**Incruste el mapa en la sección 4.5** del dictamen (no solo un enlace). "
+        f"Copia suelta: `dictamenes/{id_caso}-flujo.html`."
+    )
+
+
+def _seccion_dictamen_diagrama(id_caso, nombre, fragmento=""):
+    extra = (fragmento or "").strip()
+    if extra:
+        cuerpo = (
+            f'<div class="diagrama-flujo-block diagrama-incrustado">\n{extra}\n</div>'
+        )
+    else:
+        cuerpo = (
+            f'<div class="diagrama-flujo-block">'
+            f"<p>Hay diagrama en <code>dictamenes/{id_caso}-flujo.html</code> "
+            f"y <code>activo/{id_caso}/diagramas/{nombre}</code>.</p></div>"
+        )
+    return (
+        f'  <section id="diagrama-flujo">\n'
+        f"    <h2>4.5 Diagrama de flujo</h2>\n"
+        f"    {cuerpo}\n"
+        f"  </section>"
+    )
+
+
+def _copiar_diagrama_junto_al_dictamen(id_caso, nombre):
+    src = os.path.join(_diagramas_dir(id_caso), nombre)
+    if not os.path.isfile(src):
+        return ""
+    dest = os.path.join(DICTAMENES_ROOT, f"{id_caso}-flujo.html")
+    shutil.copy2(src, dest)
+    return f"dictamenes/{id_caso}-flujo.html"
+
+
+def _actualizar_dictamen_diagrama(id_caso, nombre, proceso_id="", fragmento=""):
+    path = os.path.join(DICTAMENES_ROOT, f"{id_caso}.html")
+    sidecar = _copiar_diagrama_junto_al_dictamen(id_caso, nombre)
+    if not os.path.isfile(path):
+        return False
+    with open(path, encoding="utf-8") as fh:
+        html = fh.read()
+    seccion = _seccion_dictamen_diagrama(id_caso, nombre, fragmento)
+
+    def _repl(_m):
+        return seccion
+
+    nuevo, n = re.subn(
+        r'<section id="diagrama-flujo">[\s\S]*?</section>',
+        _repl,
+        html,
+        count=1,
+    )
+    if not n:
+        # Insertar antes de normativa o de cambios si el dictamen aún no tiene 4.5
+        insertado, n2 = re.subn(
+            r'(<section id="normativa">)',
+            seccion + "\n\n  \\1",
+            html,
+            count=1,
+        )
+        if n2:
+            nuevo, n = insertado, n2
+        else:
+            insertado, n3 = re.subn(
+                r'(<section id="cambios">)',
+                seccion + "\n\n  \\1",
+                html,
+                count=1,
+            )
+            if n3:
+                nuevo, n = insertado, n3
+    if n:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(nuevo)
+        return True
+    return bool(sidecar)
+
+
+def _generar_y_guardar_diagrama_caso(id_caso, notas=""):
+    db = get_db()
+    solicitud = db.get_solicitud(id_caso)
+    if not solicitud:
+        raise ValueError("No hay solicitud en disco para este caso. Active el análisis (Fase 1) primero.")
+    html, ctx = diagflujo.html_caso(solicitud, notas=notas)
+    meta = _guardar_diagrama_flujo(
+        id_caso,
+        html,
+        "flujo.html",
+        solicitud_base=solicitud,
+        reemplazar=True,
+    )
+    solicitud = db.get_solicitud(id_caso) or solicitud
+    contenido = solicitud.get("contenido") or {}
+    diag = contenido.get("diagramaFlujo") or meta
+    if notas:
+        diag["notas"] = notas
+        meta["notas"] = notas
+    diag["fuente"] = "conocimiento+analisis"
+    contenido["diagramaFlujo"] = diag
+    solicitud["contenido"] = contenido
+    db.guardar_solicitud(id_caso, solicitud)
+    meta["fuente"] = "conocimiento+analisis"
+    meta["procesoId"] = ctx.get("procesoId")
+    meta["aviso"] = ctx.get("aviso")
+    fragmento = diagflujo.render_fragmento(ctx)
+    incrustado = _actualizar_dictamen_diagrama(
+        id_caso, meta["nombre"], ctx.get("procesoId") or "", fragmento=fragmento
+    )
+    meta["dictamenIncrustado"] = bool(incrustado)
+    meta["sidecar"] = f"dictamenes/{id_caso}-flujo.html"
+    ahora = datetime.now().isoformat(timespec="seconds")
+    db.append_chat(
+        id_caso,
+        {
+            "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "d",
+            "autor": "sistema",
+            "texto": (
+                f"Diagrama de flujo generado desde conocimiento/{ctx.get('procesoId')}/ "
+                f"y el análisis del REQ. Quedó **adjunto en el dictamen** (sección 4.5) "
+                f"y en dictamenes/{id_caso}-flujo.html."
+            ),
+            "fecha": ahora,
+        },
+    )
+    return meta, ctx
+
+
+def _fmt_imagenes_analisis(id_caso, solicitud):
+    imgs = ((solicitud or {}).get("contenido") or {}).get("imagenesAnalisis") or []
+    if not imgs:
+        return ""
+    lines = []
+    for img in imgs:
+        nombre = (img.get("nombre") or "").strip()
+        if nombre:
+            lines.append(f"   - activo/{id_caso}/imagenes/{nombre}")
+    if not lines:
+        return ""
+    return (
+        f"4. **Capturas para análisis** — lea las imágenes en:\n"
+        + "\n".join(lines)
+        + "\n   Contraste pantallazos con Qrystalos2 y el REQ."
+    )
+
+
 def _fmt_metodos_documentados(metodos):
     lines = []
     for m in metodos or []:
@@ -107,8 +586,15 @@ def _build_instruccion(solicitud):
     proceso_id = (sql.get("procesoId") or "").strip()
     proceso_path = f"conocimiento/{proceso_id}/sps.json" if proceso_id else "conocimiento/<proceso>/sps.json"
 
+    img_bloque = _fmt_imagenes_analisis(id_caso, solicitud)
+    arch_bloque = _fmt_archivos_analisis(id_caso, solicitud)
+    diag_bloque = _fmt_diagrama_flujo(id_caso, solicitud)
+    extras = sum(1 for b in (img_bloque, arch_bloque) if b)
+    paso_sql = 4 + extras
+    paso_q2 = paso_sql + 1
+
     if usar_doc and metodos:
-        sql_bloque = f"""4. **SQL — métodos documentados** (no exigir `sql/` de entrada)
+        sql_bloque = f"""{paso_sql}. **SQL — métodos documentados** (no exigir `sql/` de entrada)
    - Catálogo: `{proceso_path}`
    - Métodos del formulario:
 {_fmt_metodos_documentados(metodos)}
@@ -118,13 +604,17 @@ def _build_instruccion(solicitud):
      - Todos `leido` y el alcance no sale de lo documentado → seguir sin pedir el script.
      - Alguno `listado` / `no_leido` / `parcial`, o el REQ toca validaciones no documentadas → **pedir** el .sql en `sql/` (los SP se actualizan a diario).
    - No invente METODOs que no estén en `sps.json`.
-5. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
+{paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
         detener = "Si falta cola, aclaración, o el Chat concluye que hay que releer el SP: **DETENER y pedir** el .sql en `sql/`."
     else:
         lista = ", ".join(sql_list) if sql_list else "(ver manifest)"
-        sql_bloque = f"""4. `sql/` — scripts: {lista}
-5. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
+        sql_bloque = f"""{paso_sql}. `sql/` — scripts: {lista}
+{paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
         detener = "Si falta algún SQL, imagen, HTML en cola o aclaración: **DETENER y pedirla**."
+
+    img_seccion = f"{img_bloque}\n" if img_bloque else ""
+    arch_seccion = f"{arch_bloque}\n" if arch_bloque else ""
+    diag_seccion = f"{diag_bloque}\n" if diag_bloque else ""
 
     return f"""# Caso activo — INSTRUCCIÓN PARA EL AGENTE
 
@@ -134,7 +624,7 @@ Lea **del disco** en este orden:
 1. `activo/{id_caso}/solicitud.json` — formulario completo
 2. `activo/{id_caso}/chat.json` — mensajes del coordinador (releer en cada turno)
 3. `{cola}` — HTML avalasesor (cola)
-{sql_bloque}
+{img_seccion}{arch_seccion}{diag_seccion}{sql_bloque}
 
 Usted (agente en Cursor) hace el análisis técnico y también escribe los textos del formulario (criterios, análisis organizado, recomendación). OpenAI no interviene.
 
@@ -147,7 +637,7 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 
 ## Fase 1 — su tarea ahora
 1. **REQ → conocimiento** (INDICE, proceso.json, sps.json; sql_refe si hace falta).
-2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO documentados a usar.
+2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO **de este cambio** (no el catálogo del módulo).
 3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
 4. Cuando el coordinador lo pida: dictamen en `dictamenes/{id_caso}.html`.
 5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
@@ -159,7 +649,8 @@ No pida que pegue el mismo texto en Cursor. Relea `chat.json` en cada turno y re
 ## Contabilidad
 Si `solicitud.json` → `contenido.contabilidad.afecta` es true, valide cómoAfecta y desarrollo
 contra Qrystalos2 (MCUE, CON, MCPE) y documentación. Escriba el veredicto en el Chat y en
-`contenido.contabilidad.validacion`.
+`contenido.contabilidad.validacion`. Si **no afecta**, en el dictamen HTML deje solo
+«Afecta contabilidad: No». No ponga Cómo lo afecta, Desarrollo contable ni Validación del agente.
 
 ## Cierre fase 1
 Cuando el coordinador apruebe → botón **Cerrar fase 1** en la app.
@@ -291,11 +782,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "ok": True,
                 "version": 4,
                 "db": db.db_path,
-                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente"],
+                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente", "imagenesAnalisis", "archivosAnalisis", "diagramaFlujo", "solicitarReq"],
                 "openai": {"configurado": False, "deshabilitado": True, "motivo": "Los textos del formulario los escribe el agente (Cursor)."},
                 "cursorBot": {
                     "configurado": bool(load_api_key()),
-                    "modelo": os.environ.get("CURSOR_BOT_MODEL", "composer-2.5"),
+                    **modelo_report(),
                 },
                 "agentes": {
                     "analista": "por caso en activo/",
@@ -312,6 +803,24 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "deshabilitado": True,
                 "motivo": "OpenAI retirado del formulario. Criterios y textos los escribe el agente.",
             })
+
+        if parts == ["api", "solicitar"]:
+            return self._json({"ok": True, "items": solreq.listar()})
+
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "solicitar":
+            sid = unquote(parts[2])
+            data = solreq.load(sid)
+            if not data:
+                return self._json({"error": "Solicitud no encontrada"}, 404)
+            return self._json({
+                "ok": True,
+                "solicitud": data,
+                "chat": solreq.load_chat(sid),
+                "bot": leer_estado_bot(sid),
+            })
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "documento":
+            return self._serve_solicitar_documento(unquote(parts[2]))
 
         if len(parts) == 2 and parts[0] == "api" and parts[1] == "historico":
             return self._get_historico()
@@ -334,7 +843,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if parts[:2] == ["api", "conocimiento"] and (len(parts) == 2 or (len(parts) == 3 and not parts[2])):
             qs = parse_qs(parsed.query)
             canal = (qs.get("canal") or ["documentar"])[0]
-            data = kb.resumen(canal)
+            proceso = (qs.get("procesoId") or [""])[0]
+            data = kb.resumen(canal, proceso)
             data["bot"] = leer_estado_bot(kb.bot_id(canal))
             return self._json(data)
 
@@ -362,6 +872,15 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "dictamen":
             return self._serve_dictamen(unquote(parts[2]))
 
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "imagen":
+            return self._serve_imagen(unquote(parts[2]), unquote(parts[4]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "archivo":
+            return self._serve_archivo(unquote(parts[2]), unquote(parts[4]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("diagrama", "diagramas"):
+            return self._serve_diagrama(unquote(parts[2]), unquote(parts[4]))
+
         if parsed.path in ("", "/"):
             self.send_response(302)
             self.send_header("Location", "/app/")
@@ -376,6 +895,18 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if parts == ["api", "sql", "archivar"]:
             return self._archivar_sql()
+
+        if parts == ["api", "solicitar"]:
+            return self._post_solicitar()
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "analizar":
+            return self._post_solicitar_analizar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "documento":
+            return self._post_solicitar_documento(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "chat":
+            return self._post_solicitar_chat(unquote(parts[2]))
 
         if parts == ["api", "caso", "activar"]:
             return self._activar_caso()
@@ -431,6 +962,15 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if parts == ["api", "conocimiento", "chat", "abrir"]:
             return self._post_conocimiento_chat_accion("abrir")
 
+        if parts == ["api", "conocimiento", "faq"]:
+            return self._post_conocimiento_faq()
+
+        if parts == ["api", "conocimiento", "diagrama"]:
+            return self._post_conocimiento_diagrama()
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("diagrama", "diagramas") and parts[4] == "generar":
+            return self._post_diagrama_generar(unquote(parts[2]))
+
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "solicitud":
             return self._post_solicitud(unquote(parts[2]))
 
@@ -440,6 +980,26 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "cerrar-fase1":
             return self._cerrar_fase1(unquote(parts[2]))
 
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "imagen":
+            return self._post_imagen(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "archivo":
+            return self._post_archivo(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("diagrama", "diagramas"):
+            return self._post_diagrama(unquote(parts[2]))
+
+        return self._json({"error": "Ruta no encontrada"}, 404)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "imagen":
+            return self._delete_imagen(unquote(parts[2]), unquote(parts[4]))
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "archivo":
+            return self._delete_archivo(unquote(parts[2]), unquote(parts[4]))
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("diagrama", "diagramas"):
+            return self._delete_diagrama(unquote(parts[2]), unquote(parts[4]))
         return self._json({"error": "Ruta no encontrada"}, 404)
 
     def _read_json_body(self):
@@ -484,6 +1044,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             body.get("notas") or "",
             body.get("procesoId") or "",
         )
+        if result.get("ok"):
+            result["bot"] = lanzar_bot(DOCUMENTAR_ID, "documentar")
         return self._json(result, 200 if result.get("ok") else 400)
 
     def _post_conocimiento_tarea(self):
@@ -500,15 +1062,26 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             body = self._read_json_body()
         except json.JSONDecodeError:
             return self._json({"error": "JSON inválido"}, 400)
+        # Barrido eliminado: siempre inactivo. Documentar solo por Chat.
         vig = kb.load_vigilante()
-        if "activo" in body:
-            vig["activo"] = bool(body.get("activo"))
+        vig["activo"] = False
+        vig["motivoPausa"] = (
+            "Barrido eliminado. Composer 2.5 estándar, sin Fast. "
+            "Pregunte en Chat o pulse Documentar SP; el agente responde un turno y se detiene."
+        )
         if body.get("intervaloMin"):
             try:
                 vig["intervaloMin"] = max(5, int(body["intervaloMin"]))
             except (TypeError, ValueError):
                 pass
+        vig["actualizadoEn"] = datetime.now().isoformat(timespec="seconds")
         kb.save_vigilante(vig)
+        if body.get("activo") is True:
+            return self._json({
+                "ok": False,
+                "error": "El barrido automático ya no está disponible. Use el Chat de Documentar cuando lo necesite.",
+                "vigilante": vig,
+            }, 400)
         return self._json({"ok": True, "vigilante": vig, "valle": kb.siguiente_valle()})
 
     def _post_conocimiento_pendiente(self):
@@ -539,7 +1112,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             autor = "coordinador"
         proceso_id = body.get("procesoId") or ""
         canal = body.get("canal") or "documentar"
-        chat_info = kb.resumen(canal)
+        chat_info = kb.resumen(canal, proceso_id)
         if chat_info.get("chatSoloLectura"):
             return self._json({"error": "Este chat está archivado. Cree uno nuevo o ábralo solo para leer."}, 409)
         kb.append_chat(autor, texto, proceso_id, canal)
@@ -573,14 +1146,28 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({"error": "JSON inválido"}, 400)
         canal = body.get("canal") or "documentar"
+        proceso = body.get("procesoId") or ""
         if accion in ("archivar", "nuevo"):
-            result = kb.nuevo_chat(canal, body.get("titulo") or "")
+            result = kb.nuevo_chat(canal, body.get("titulo") or "", proceso)
             return self._json(result)
         sid = (body.get("id") or "").strip()
         if not sid:
             return self._json({"error": "Falta id del chat"}, 400)
         result = kb.abrir_chat(canal, sid)
         return self._json(result, 200 if result.get("ok") else 404)
+
+    def _post_conocimiento_faq(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        result = kb.aceptar_faq(
+            body.get("canal") or "consultas",
+            body.get("procesoId") or "",
+            body.get("mensajeId") or "",
+            body.get("chatId") or "",
+        )
+        return self._json(result, 200 if result.get("ok") else 400)
 
     def _organizar_texto(self):
         try:
@@ -592,6 +1179,87 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "error": "openai_retirado",
             "mensaje": "OpenAI ya no organiza textos. El agente (Cursor) asume criterios, análisis y recomendación.",
         }, 410)
+
+    def _post_solicitar(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        sol = solreq.guardar(body)
+        return self._json({"ok": True, "solicitud": sol})
+
+    def _post_solicitar_analizar(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        if body:
+            body["id"] = id_sr
+            solreq.guardar(body)
+        try:
+            prep = solreq.preparar_analisis(id_sr)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        solreq.append_chat(
+            id_sr,
+            "coordinador",
+            "Analiza esta necesidad contra conocimiento/ (proceso/sps). Complete analisis, alcance, "
+            "restricciones, criterios y recomendación para el comité. Liste SOLO los SP/METODO de este "
+            "cambio. No genere dictamen de implementación. Deje el resultado en este Chat y en solicitud.json.",
+        )
+        bot = lanzar_bot(id_sr, "solicitar-req")
+        return self._json({"ok": True, **prep, "bot": bot})
+
+    def _post_solicitar_documento(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        if body:
+            body["id"] = id_sr
+            solreq.guardar(body)
+        try:
+            result = solreq.generar_documento(id_sr)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        solreq.append_chat(
+            id_sr,
+            "sistema",
+            f"Documento de comité generado: solicitudes/{id_sr}/documento.html (copia dictamenes/{id_sr}.html).",
+        )
+        return self._json(result)
+
+    def _post_solicitar_chat(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        texto = (body.get("texto") or "").strip()
+        if not texto:
+            return self._json({"error": "Falta el mensaje"}, 400)
+        if not solreq.load(id_sr):
+            return self._json({"error": "Guarde la solicitud primero"}, 400)
+        solreq.append_chat(id_sr, "coordinador", texto)
+        bot = lanzar_bot(id_sr, "solicitar-req")
+        return self._json({"ok": True, "chat": solreq.load_chat(id_sr), "bot": bot})
+
+    def _serve_solicitar_documento(self, id_sr):
+        path = os.path.join(solreq.caso_dir(id_sr), "documento.html")
+        if not os.path.isfile(path):
+            copia = os.path.join(DICTAMENES_ROOT, f"{id_sr}.html")
+            if os.path.isfile(copia):
+                path = copia
+            else:
+                return self._json({"error": "Documento no generado todavía"}, 404)
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     def _activar_caso(self):
         try:
@@ -645,12 +1313,65 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if not solicitud:
             return self._json({"error": "Falta solicitud"}, 400)
         db = get_db()
-        db.guardar_solicitud(id_caso, solicitud)
+        imagen_subida = None
+        archivo_subido = None
+        subir = body.get("subirImagen") if isinstance(body.get("subirImagen"), dict) else None
+        subir_arch = body.get("subirArchivo") if isinstance(body.get("subirArchivo"), dict) else None
+        if subir and (subir.get("dataUrl") or "").strip():
+            try:
+                imagen_subida = _guardar_imagen_analisis(
+                    id_caso,
+                    subir.get("dataUrl"),
+                    subir.get("nombre") or "",
+                    solicitud,
+                )
+                solicitud = db.get_solicitud(id_caso) or solicitud
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
+        elif subir_arch and (subir_arch.get("dataUrl") or "").strip():
+            try:
+                archivo_subido = _guardar_archivo_analisis(
+                    id_caso,
+                    subir_arch.get("dataUrl"),
+                    subir_arch.get("nombre") or "",
+                    subir_arch.get("tipo") or "",
+                    solicitud,
+                )
+                solicitud = db.get_solicitud(id_caso) or solicitud
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
+        else:
+            db.guardar_solicitud(id_caso, solicitud)
         bot = {}
         if body.get("validarContabilidad"):
             bot = lanzar_bot(id_caso, "contabilidad")
         if body.get("analizarRequerimiento"):
             ahora = datetime.now().isoformat(timespec="seconds")
+            imgs = ((solicitud.get("contenido") or {}).get("imagenesAnalisis") or [])
+            archs = ((solicitud.get("contenido") or {}).get("archivosAnalisis") or [])
+            img_nota = ""
+            if imgs:
+                nombres = ", ".join(
+                    (i.get("nombre") or "").strip()
+                    for i in imgs
+                    if (i.get("nombre") or "").strip()
+                )
+                if nombres:
+                    img_nota = (
+                        f" Hay capturas en activo/{id_caso}/imagenes/ ({nombres}). "
+                        "Léalas y contrástelas con el REQ."
+                    )
+            if archs:
+                anombres = ", ".join(
+                    (a.get("nombre") or "").strip()
+                    for a in archs
+                    if (a.get("nombre") or "").strip()
+                )
+                if anombres:
+                    img_nota += (
+                        f" Hay normativa/archivos en activo/{id_caso}/archivos/ ({anombres}). "
+                        "Lea el .extracto.txt, compare con lo que genera el sistema y cite apartes en el dictamen (sección 4.6)."
+                    )
             db.append_chat(
                 id_caso,
                 {
@@ -659,10 +1380,10 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "texto": (
                         "Analiza el requerimiento contrastándolo con la base de conocimiento "
                         "(proceso/sps). Proponga solución, criterios de aceptación, alcance, "
-                        "restricciones y análisis; liste los SP/METODO documentados a usar. "
+                        "restricciones y análisis; liste SOLO los SP/METODO de este cambio "
                         "No haga el dictamen completo. Deje el resultado en este Chat y en "
                         "solicitud.contenido (criterios, alcance, restricciones, analisis, "
-                        "brechaAnalisis)."
+                        f"brechaAnalisis).{img_nota}"
                     ),
                     "fecha": ahora,
                 },
@@ -735,7 +1456,12 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                         "fecha": ahora,
                     },
                 )
-        return self._json({"ok": True, "bot": bot})
+        out = {"ok": True, "bot": bot}
+        if imagen_subida:
+            out["imagen"] = imagen_subida
+        if archivo_subido:
+            out["archivo"] = archivo_subido
+        return self._json(out)
 
     def _get_solicitud(self, id_caso):
         disk = _read_json_file(os.path.join(ACTIVO_ROOT, id_caso, "solicitud.json"), {})
@@ -871,7 +1597,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         proyecto = solicitud.get("proyecto") or {}
         gestion = solicitud.get("gestion") or {}
         id_caso = ident.get("idCaso") or ""
-        devs.upsert(nombre, caso={
+        dest = ((solicitud.get("correo") or {}).get("destinatario") or "").strip()
+        caso = {
             "idReq": ident.get("idReq") or "",
             "idCaso": id_caso,
             "cliente": proyecto.get("nombre") or "",
@@ -879,7 +1606,10 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "rama": gestion.get("rama") or "",
             "dictamen": f"dictamenes/{id_caso}.html" if id_caso else "",
             "fase1": fase1 or "abierta",
-        })
+        }
+        if dest:
+            caso["destinatario"] = dest
+        devs.upsert(nombre, caso=caso, correo=dest or None)
 
     def _get_correo(self):
         parsed = urlparse(self.path)
@@ -926,8 +1656,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
     def _get_desarrolladores(self):
         try:
-            cola = get_db().get_cola()
-            return self._json(devs.sync_all(cola))
+            return self._json(devs.snapshot())
         except OSError as e:
             return self._json({"ok": False, "error": f"No se pudo leer/guardar desarrolladores: {e}"}, 500)
 
@@ -1025,6 +1754,245 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         get_db().save_borrador(id_caso, data)
         return self._json({"ok": True, "idCaso": id_caso})
 
+    def _serve_imagen(self, id_caso, nombre):
+        nombre = _sanitize_imagen_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Parámetros inválidos"}, 400)
+        path = os.path.join(_imagenes_analisis_dir(id_caso), nombre)
+        if not os.path.isfile(path):
+            return self._json({"error": "Imagen no encontrada"}, 404)
+        ext = os.path.splitext(nombre)[1].lower()
+        ctype = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }.get(ext, "application/octet-stream")
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _post_imagen(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            meta = _guardar_imagen_analisis(
+                id_caso,
+                body.get("dataUrl"),
+                body.get("nombre") or "",
+            )
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._json({"ok": True, "imagen": meta})
+
+    def _delete_imagen(self, id_caso, nombre):
+        nombre = _sanitize_imagen_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Parámetros inválidos"}, 400)
+        path = os.path.join(_imagenes_analisis_dir(id_caso), nombre)
+        if os.path.isfile(path):
+            os.remove(path)
+        db = get_db()
+        solicitud = db.get_solicitud(id_caso) or {}
+        contenido = solicitud.get("contenido") or {}
+        imgs = [i for i in (contenido.get("imagenesAnalisis") or []) if i.get("nombre") != nombre]
+        contenido["imagenesAnalisis"] = imgs
+        solicitud["contenido"] = contenido
+        db.guardar_solicitud(id_caso, solicitud)
+        return self._json({"ok": True, "nombre": nombre})
+
+    def _serve_archivo(self, id_caso, nombre):
+        nombre = _sanitize_archivo_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Parámetros inválidos"}, 400)
+        path = os.path.join(_archivos_analisis_dir(id_caso), nombre)
+        if not os.path.isfile(path):
+            aprob = os.path.join(APROBADOS_ROOT, id_caso, "archivos", nombre)
+            if os.path.isfile(aprob):
+                path = aprob
+            else:
+                return self._json({"error": "Archivo no encontrado"}, 404)
+        ext = os.path.splitext(nombre)[1].lower()
+        ctype = {
+            ".pdf": "application/pdf",
+            ".txt": "text/plain; charset=utf-8",
+            ".md": "text/plain; charset=utf-8",
+            ".html": "text/html; charset=utf-8",
+            ".htm": "text/html; charset=utf-8",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc": "application/msword",
+        }.get(ext, "application/octet-stream")
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'inline; filename="{nombre}"')
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _post_archivo(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            meta = _guardar_archivo_analisis(
+                id_caso,
+                body.get("dataUrl"),
+                body.get("nombre") or "",
+                body.get("tipo") or "",
+            )
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._json({"ok": True, "archivo": meta})
+
+    def _delete_archivo(self, id_caso, nombre):
+        nombre = _sanitize_archivo_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Parámetros inválidos"}, 400)
+        dest_dir = _archivos_analisis_dir(id_caso)
+        path = os.path.join(dest_dir, nombre)
+        if os.path.isfile(path):
+            os.remove(path)
+        extracto = _extracto_nombre(nombre)
+        ext_path = os.path.join(dest_dir, extracto)
+        if os.path.isfile(ext_path):
+            os.remove(ext_path)
+        db = get_db()
+        solicitud = db.get_solicitud(id_caso) or {}
+        contenido = solicitud.get("contenido") or {}
+        items = [a for a in (contenido.get("archivosAnalisis") or []) if a.get("nombre") != nombre]
+        contenido["archivosAnalisis"] = items
+        solicitud["contenido"] = contenido
+        db.guardar_solicitud(id_caso, solicitud)
+        return self._json({"ok": True, "nombre": nombre})
+
+    def _serve_diagrama(self, id_caso, nombre):
+        nombre = _sanitize_diagrama_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Parámetros inválidos"}, 400)
+        path = os.path.join(_diagramas_dir(id_caso), nombre)
+        if not os.path.isfile(path):
+            aprob = os.path.join(APROBADOS_ROOT, id_caso, "diagramas", nombre)
+            if os.path.isfile(aprob):
+                path = aprob
+            else:
+                return self._json({"error": "Diagrama no encontrado"}, 404)
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _post_diagrama_generar(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            meta, ctx = _generar_y_guardar_diagrama_caso(id_caso, (body.get("notas") or "").strip())
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        except FileNotFoundError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._json({"ok": True, "diagrama": meta, "procesoId": ctx.get("procesoId")})
+
+    def _post_conocimiento_diagrama(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        proceso_id = (body.get("procesoId") or "").strip()
+        pregunta = (body.get("pregunta") or body.get("notas") or "").strip()
+        try:
+            html, ctx = diagflujo.html_proceso(proceso_id, pregunta=pregunta, notas=pregunta)
+            meta = diagflujo.guardar_html_proceso(proceso_id, html, "flujo.html")
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._json({
+            "ok": True,
+            "diagrama": meta,
+            "procesoId": ctx.get("procesoId"),
+            "procesoNombre": ctx.get("procesoNombre"),
+        })
+
+    def _post_diagrama(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            meta = _guardar_diagrama_flujo(
+                id_caso,
+                body.get("contenido") or body.get("html") or "",
+                body.get("nombre") or "",
+            )
+            notas = (body.get("notas") or "").strip()
+            if notas:
+                db = get_db()
+                solicitud = db.get_solicitud(id_caso) or {}
+                contenido = solicitud.get("contenido") or {}
+                diag = contenido.get("diagramaFlujo") or meta
+                diag["notas"] = notas
+                contenido["diagramaFlujo"] = diag
+                solicitud["contenido"] = contenido
+                db.guardar_solicitud(id_caso, solicitud)
+                meta["notas"] = notas
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        try:
+            solicitud = get_db().get_solicitud(id_caso) or {}
+            _, ctx = diagflujo.html_caso(solicitud, notas=(meta.get("notas") or ""))
+            fragmento = diagflujo.render_fragmento(ctx)
+        except Exception:
+            fragmento = (
+                f'<p>Diagrama adjunto. Copia junto al dictamen: '
+                f'<a href="/dictamenes/{id_caso}-flujo.html">{id_caso}-flujo.html</a></p>'
+            )
+        _actualizar_dictamen_diagrama(id_caso, meta.get("nombre") or "flujo.html", fragmento=fragmento)
+        return self._json({"ok": True, "diagrama": meta})
+
+    def _delete_diagrama(self, id_caso, nombre):
+        nombre = _sanitize_diagrama_nombre(nombre)
+        if not id_caso or not nombre:
+            return self._json({"error": "Parámetros inválidos"}, 400)
+        path = os.path.join(_diagramas_dir(id_caso), nombre)
+        if os.path.isfile(path):
+            os.remove(path)
+        db = get_db()
+        solicitud = db.get_solicitud(id_caso) or {}
+        contenido = solicitud.get("contenido") or {}
+        diag = contenido.get("diagramaFlujo") or {}
+        if diag.get("nombre") == nombre:
+            contenido["diagramaFlujo"] = None
+        solicitud["contenido"] = contenido
+        db.guardar_solicitud(id_caso, solicitud)
+        return self._json({"ok": True, "nombre": nombre})
+
     def _get_documentos(self, id_caso):
         db = get_db()
         solicitud = db.get_solicitud(id_caso)
@@ -1059,6 +2027,41 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "titulo": "Instrucción agente",
                 "ruta": instruccion_rel,
                 "estado": "interno",
+            })
+
+        for img in ((solicitud.get("contenido") or {}).get("imagenesAnalisis") or []):
+            nombre = (img.get("nombre") or "").strip()
+            if not nombre:
+                continue
+            docs.append({
+                "tipo": "imagen",
+                "titulo": f"Captura: {nombre}",
+                "ruta": f"activo/{id_caso}/imagenes/{nombre}",
+                "url": f"/api/caso/{id_caso}/imagen/{nombre}",
+                "estado": "analisis",
+            })
+
+        for arch in ((solicitud.get("contenido") or {}).get("archivosAnalisis") or []):
+            nombre = (arch.get("nombre") or "").strip()
+            if not nombre:
+                continue
+            docs.append({
+                "tipo": "archivo",
+                "titulo": f"{(arch.get('tipo') or 'Normativa')}: {nombre}",
+                "ruta": f"activo/{id_caso}/archivos/{nombre}",
+                "url": f"/api/caso/{id_caso}/archivo/{nombre}",
+                "estado": "normativa",
+            })
+
+        diag = ((solicitud.get("contenido") or {}).get("diagramaFlujo") or {})
+        diag_nombre = (diag.get("nombre") or "").strip()
+        if diag_nombre:
+            docs.append({
+                "tipo": "diagrama",
+                "titulo": f"Diagrama de flujo: {diag_nombre}",
+                "ruta": f"activo/{id_caso}/diagramas/{diag_nombre}",
+                "url": f"/api/caso/{id_caso}/diagrama/{diag_nombre}",
+                "estado": "flujo",
             })
 
         return self._json({"idCaso": id_caso, "documentos": docs})
@@ -1175,7 +2178,30 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         _, src = self._dictamen_path(id_caso)
         dest_dir = os.path.join(APROBADOS_ROOT, id_caso)
         os.makedirs(dest_dir, exist_ok=True)
-        os.makedirs(os.path.join(dest_dir, "imagenes"), exist_ok=True)
+        dest_img = os.path.join(dest_dir, "imagenes")
+        os.makedirs(dest_img, exist_ok=True)
+        src_img_dir = _imagenes_analisis_dir(id_caso)
+        if os.path.isdir(src_img_dir):
+            for nombre in os.listdir(src_img_dir):
+                src_img = os.path.join(src_img_dir, nombre)
+                if os.path.isfile(src_img):
+                    shutil.copy2(src_img, os.path.join(dest_img, nombre))
+        dest_arch = os.path.join(dest_dir, "archivos")
+        os.makedirs(dest_arch, exist_ok=True)
+        src_arch_dir = _archivos_analisis_dir(id_caso)
+        if os.path.isdir(src_arch_dir):
+            for nombre in os.listdir(src_arch_dir):
+                src_a = os.path.join(src_arch_dir, nombre)
+                if os.path.isfile(src_a):
+                    shutil.copy2(src_a, os.path.join(dest_arch, nombre))
+        dest_diag = os.path.join(dest_dir, "diagramas")
+        os.makedirs(dest_diag, exist_ok=True)
+        src_diag_dir = _diagramas_dir(id_caso)
+        if os.path.isdir(src_diag_dir):
+            for nombre in os.listdir(src_diag_dir):
+                src_d = os.path.join(src_diag_dir, nombre)
+                if os.path.isfile(src_d) and nombre.lower().endswith(".html"):
+                    shutil.copy2(src_d, os.path.join(dest_diag, nombre))
         if not os.path.isfile(src):
             return {"ok": False, "error": "Dictamen no encontrado", "ruta": None}
         dest = os.path.join(dest_dir, f"{id_caso}.html")
@@ -1322,9 +2348,9 @@ def main():
     try:
         import documentar_vigilante as docvig
 
-        docvig.start_background(45)
+        docvig.start_background()  # solo marca inactivo; no arranca hilo
     except Exception as exc:
-        print(f"Documentar vigilante no arrancó: {exc}", flush=True)
+        print(f"Documentar vigilante: {exc}", flush=True)
     server.serve_forever()
 
 

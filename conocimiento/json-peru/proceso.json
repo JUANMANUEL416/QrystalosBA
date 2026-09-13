@@ -1,0 +1,205 @@
+{
+  "id": "json-peru",
+  "nombre": "Facturación · JSON Perú / SUNAT",
+  "modulo": "JSON_PERU",
+  "estado": "parcial",
+  "resumen": "Factura electrónica Perú: ENVIA_CONTAB → JSON MiFact (FACTEP). Liberar consulta GetEstatusInvoice. Rama INTER_SAP: Interfax/SAP (EPrefactura). Notas: FNOT_ENVIARSUNAT o INTERFAX_FNOT.",
+  "actualizado": "2026-09-12T22:45:00",
+  "notaSql": "SPK JSON leídos en sql_refe. SPQ_FTR_PERU, SPK_CONSULTA_DOCUMENTO_ELECTRONICA, SPK_JSON_FTR_PERU_INTERFAX y SPK_JSON_FTR_PERU_INTERFAX_FNOT leídos sql/ 2026-09-12.",
+  "alcanceHasta": "JSON enviado a API MiFact + FACTEP + FTRE/FTRAPILOG. No es DIAN Colombia ni CUV RIPS.",
+  "hermanoDe": "facturacion",
+  "ventanas": [
+    {
+      "uso": "Facturación Perú",
+      "ruta": "admin.facturacionPe",
+      "path": "/admin/facturacionPe",
+      "vue": "FacturacionPePage.vue · FTRPeComponent.vue",
+      "entrada": "Administrativo → Facturación Perú. Enviar a contabilidad dispara el JSON SUNAT. Columna Est.Sunat = FACTEP."
+    },
+    {
+      "uso": "Notas DB/CR · enviar SUNAT",
+      "ruta": "admin.notasdbcr",
+      "path": "/admin/notasdbcr",
+      "vue": "NotasDBCRComponent.vue",
+      "entrada": "Tras aplicar la nota: FNOT_ENVIARSUNAT (IXCOUNTRY=PERU)."
+    },
+    {
+      "uso": "Calificación PHD (alimenta, no es el JSON)",
+      "ruta": "admin.facturacionPe",
+      "path": "/admin/facturacionPe",
+      "vue": "PHDCalificacionComponent.vue",
+      "entrada": "Precios/presupuesto (HPREP, FNQ_VAL_SERTOT_PERU). No envía SUNAT."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "IXCOUNTRY=PERU. Resolución FDIAN: PROCEDENCIA=FTR (factura) o BOLE (boleta TIPOFIN=N). Variables URLFACT_ELE_PRODJSON / URLFACT_ELE_PRUEJSON, TOKEN_FACTU_ELE_PERU, BDATA_PRODUCCION, IDTERCEROINSTALADO, NOMBRE_COMERCIAL. Notas: ENVIA_NOTAS_ACEPTA=SI.",
+      "tablasClave": [
+        "FDIAN",
+        "USVGS",
+        "TER",
+        "TGEN"
+      ],
+      "controles": [
+        {
+          "id": "config-sunat",
+          "nombre": "Resolución, token y API MiFact",
+          "explicacion": "Misma pantalla /conf/fdian (ayuda habla DIAN/SUNAT). Token < 20 caracteres → el SP se devuelve sin enviar. URL < 30 → 'No existe api valida'. Fuera de BDATA_PRODUCCION usa RUC/token de prueba.",
+          "invariante": "Sin prefijo FDIAN coherente (FTR vs BOLE) no arma correlativo. No es BLOQUEADIAN de Colombia.",
+          "ventanasFe": "/conf/fdian · Facturación Perú",
+          "sps": [
+            {
+              "nombre": "SPK_GENERA_JSON_PERU_FACTURA",
+              "metodo": "(SP)",
+              "rol": "Lee FDIAN + variables. Leído sql_refe."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Contabilizar en Perú genera y envía el JSON (no hay cola FACTE). MiFact: ENVIA_CONTAB + Liberar (consulta GetEstatusInvoice). INTER_SAP: ENVIAR_FACTURA_SAP → Interfax (otro JSON).",
+      "tablasClave": [
+        "FTR",
+        "FNOT",
+        "FTRE",
+        "FTRAPILOG"
+      ],
+      "controles": [
+        {
+          "id": "enviar-sunat-ftr",
+          "nombre": "Enviar factura a SUNAT (JSON)",
+          "explicacion": "FE: EnviarContabilidad → FTR_COL · ENVIA_CONTAB → SPK_GENERA_JSON_PERU_*. Si ya hay FTRE, RETURN. Liberar: consulta MiFact (GetEstatusInvoice) y pone FACTEP=NULL solo si tras la consulta no quedó 101/102; puede INSERT FTRE si MiFact ya tenía el documento. INTER_SAP: SPK_JSON_FTR_PERU_INTERFAX (EPrefactura → CIPERU). Garante sin remesa no envía. Valor 0 → 104A. OK Interfax → FACTEP=102; error → 104.",
+          "invariante": "TIPOFIN=N → 03 boleta; si no → 01. MiFact: FTRE bloquea reenvío. Liberar no borra FTRE. INTER_SAP no usa TOKEN_FACTU_ELE_PERU.",
+          "ventanasFe": "/admin/facturacionPe · FTRPeComponent",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "ENVIA_CONTAB",
+              "rol": "Leído. Llama los dos SPK Perú."
+            },
+            {
+              "nombre": "SPK_GENERA_JSON_PERU_FACTURA",
+              "metodo": "(SP)",
+              "rol": "Leído sql_refe."
+            },
+            {
+              "nombre": "SPK_GENERA_JSON_PERU_FTR_INTEGRA",
+              "metodo": "(SP)",
+              "rol": "Leído sql_refe. Cuerpo gemelo."
+            },
+            {
+              "nombre": "SPQ_FTR_PERU",
+              "metodo": "LIBERAR_SUNAT / QUITAR_ERROR_API / NOTIFICA_BOLETAS / MARCA_ENVIO / ENVIAR_FACTURA_SAP",
+              "rol": "Leído sql/ 2026-09-12."
+            },
+            {
+              "nombre": "SPK_CONSULTA_DOCUMENTO_ELECTRONICA",
+              "metodo": "(SP)",
+              "rol": "Leído sql/. GetEstatusInvoice MiFact."
+            },
+            {
+              "nombre": "SPK_JSON_FTR_PERU_INTERFAX",
+              "metodo": "(SP)",
+              "rol": "Leído sql/. JSON SAP Interfax."
+            }
+          ]
+        },
+        {
+          "id": "enviar-sunat-nota",
+          "nombre": "Enviar nota a SUNAT",
+          "explicacion": "MiFact: FNOT_ENVIARSUNAT → SPK_GENERA_JSON_PERU_NOTADBCR. INTER_SAP / cartera: SPK_JSON_FTR_PERU_INTERFAX_FNOT (EPreabono; lo llama FCXC/NOTASCXC). Si CNSDIANFE vacío, numera NCB/NCF o NDB/NDF.",
+          "invariante": "Si FNOT.FACTEP=OK no reenvía. Observación corta (<7) bloquea.",
+          "ventanasFe": "/admin/notasdbcr",
+          "sps": [
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_ENVIARSUNAT",
+              "rol": "Leído en notas-dbcr."
+            },
+            {
+              "nombre": "SPK_GENERA_JSON_PERU_NOTADBCR",
+              "metodo": "(SP)",
+              "rol": "Leído sql_refe."
+            },
+            {
+              "nombre": "SPK_JSON_FTR_PERU_INTERFAX_FNOT",
+              "metodo": "(SP)",
+              "rol": "Leído sql/. Nota Interfax."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "FTR/FTRD (líneas PAQUETE≠2). Afiliado AFI, tercero TER (RUC/NIT, TGEN TIPOIDSUNAT). Paquete: HADM.OBS / IDSERVICIOPAQUETE. PHD/HPREP solo fija precios (REQ 6352); no arma este JSON.",
+      "tablasClave": [
+        "FTRD",
+        "AFI",
+        "TER",
+        "HADM",
+        "PPT"
+      ],
+      "controles": [
+        {
+          "id": "valores-y-tipo",
+          "nombre": "Valores afectos e identidad",
+          "explicacion": "Suma FTRD: afecto (PIVA>0) e inafecto. Copago resta. Si afecto+inafecto≤0 → RETURN. DNI afiliado a 8 dígitos. Código postal emisor/receptor fijo 150101 en el script leído.",
+          "invariante": "Sin detalle con valor no envía.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Se une a Facturación (la FTR debe existir) y a Notas DB/CR. No se une a RIPS Colombia ni a cola FACTE.",
+      "tablasClave": [
+        "FNOT",
+        "FNOTD"
+      ],
+      "controles": [
+        {
+          "id": "no-rips-no-dian",
+          "nombre": "No es DIAN ni RIPS",
+          "explicacion": "Campo de estado: FACTEP (no FACTE). Proveedor visto en script: MiFact (invoiceService). Representación impresa FE cita SUNAT / mifact.net.",
+          "invariante": "IXCOUNTRY=PERU. Colombia usa dian-xml.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "parcial",
+      "explicacion": "En Perú el mismo ENVIA_CONTAB que marca contabilidad dispara el JSON. ENVIA_CONTAB valida CONTABILIZADA no 1/2 en la rama «no Perú»; la ficha no detalla el IF de país. El asiento (OM) no está en estos SPK JSON.",
+      "tablasClave": [
+        "FTR"
+      ],
+      "controles": [
+        {
+          "id": "contab-dispara-json",
+          "nombre": "Contab dispara el envío",
+          "explicacion": "No hay cola FACTE=1. Liberar SUNAT (leído) deja FACTEP nulo; no borra FTRE ni genera asiento.",
+          "invariante": "El JSON no es el asiento MCP.",
+          "sps": []
+        }
+      ]
+    }
+  ]
+}

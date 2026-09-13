@@ -1,0 +1,205 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-11T17:38:21.177Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016329",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260907-0100016329",
+    "idReq": "0100016329",
+    "fecha": "2026-09-07",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "BCO · BANCOS TESORERIA",
+    "rutaPantalla": "/admin/Cuentas · BCTCComponent (conciliación bancaria tesorería)"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "hotfix/ASOCAB181",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "BCO · BANCOS TESORERIA",
+    "requerimiento": "Incluir opción para generar auxiliar de saldos bancarios al finalizar mes\n\nSe solicita la inclusión de una opción en el sistema que permita generar un auxiliar con los saldos en banco al finalizar el mes. Esto facilitará el control y la conciliación de las cuentas bancarias.\n\n DETALLE: Incluir opción para generar auxiliar de saldos bancarios al finalizar mes\n\nSe solicita la inclusión de una opción en el sistema que permita generar un auxiliar con los saldos en banco al finalizar el mes. Esto facilitará el control y la conciliación de las cuentas bancarias.\n\nlo que se pretende es tener totalizador por mes por cada banco es decir una tabla que guarde los valores de cada banco por mes es decir una vez se haga la concilacion bancaria el sistema genere un registro por banco, cuenta y mes los saldos inicial, db,cr, sf, se podria pensar en una tabla detalle con los movimientos  del banco",
+    "criteriosAceptacion": "1) En Tesorería → Cuentas → conciliación bancaria (BCTC), el usuario puede generar o consolidar el auxiliar de saldos del mes para la cuenta (banco + sucursal + número de cuenta) una vez la conciliación del periodo queda cerrada, sin recalcular manualmente en Excel.\n2) Por cada combinación banco / sucursal / cuenta / año / mes queda un registro de totalización con saldo inicial (SI), débitos (DB), créditos (CR) y saldo final (SF) del mes, coherente con movimientos BMOV confirmados (ESTADO O) del periodo y con los saldos de cierre de la conciliación (SALDOB / SALDOCONT en BCTC cuando aplique).\n3) El sistema impide duplicar el totalizador del mismo mes y cuenta si ya fue generado (salvo acción explícita de regenerar con permiso), o deja trazabilidad de la versión anterior.\n4) Consulta o reporte: el usuario puede listar y exportar (PDF/Excel alineado al estándar BCTC) los totalizadores por rango de meses y por cuenta o por banco.\n5) Detalle (si se incluye en alcance): movimientos del mes asociados al totalizador — reutilizando BCTCD de la conciliación cerrada o copia desde BMOV/BMOVD del mes — consultables desde la misma ventana.\n6) No se altera el flujo de conciliación cartera (FCONCI) ni el auxiliar contable MCP↔BMOV en /cont/auxBancos, salvo decisión explícita de unificar reportes.\n7) Pruebas: cuenta con conciliación cerrada en mes N; cuenta sin conciliación (mensaje claro); mes sin movimientos (SI=SF si DB=CR=0); re-apertura o anulación de BMOV posterior al cierre del auxiliar (comportamiento documentado).",
+    "alcance": "Proceso conocimiento/bancos (tesorería). Ventana principal: admin.Cuentas → BCTComponent → BCTCComponent (conciliación bancaria operativa BCTC/BCTCD). Backend: extender SPQ_BCTC (MODELO BCTC) con persistencia de totalizador mensual y METODOs de consulta/exportación; cálculo de DB/CR desde BMOV/BMOVD confirmados en el mes (OFIN tipo débito/crédito). Punto de disparo preferido: al cerrar conciliación (CIERRACONCILIACION) y/o botón «Generar auxiliar del mes» visible con conciliación en estado Cerrada para el periodo. Nuevas tablas de persistencia (cabecera mensual por cuenta + detalle opcional): diseño a validar con arquitectura BD — no existe hoy un objeto documentado equivalente a «BCT por mes» con SI/DB/CR/SF; BCTC guarda por CNSBCTC (evento de conciliación), no un índice único mes×cuenta. Fuera de alcance inicial: conciliaciones EPS/cartera (FCONCI_COL), CONCBMOV, SPQ_BANCOS_AUXILIAR (/cont/auxBancos), cierre fiscal PRI masivo, y población de SALDOMES contable por COD_CONTABLE.",
+    "restricciones": "Rama hotfix/ASOCAB181. Prioridad alta / tipo Performance: priorizar consulta por tabla totalizadora frente a agregaciones ad hoc en cada reporte. No modificar SPK_NC_CONTAB_BMOV ni generar comprobantes MCP nuevos por este feature (contabilidad.afecta=false). Respetar periodo PRI abierto en fechas de movimiento. Usar convenciones Qrystalos: SPQ_BCTC, MODELO BCTC en FE. Releer SPQ_BCTC.sql del día antes de implementar cambios en CIERRACONCILIACION (ficha en conocimiento/bancos/sps.json es de 2026-09-06; referencia sql_refe/xsql no sustituye export actual). Permisos: reutilizar USGRUH de tesorería/cuentas bancarias. Nombres físicos de tablas nuevas deben acordarse con L3/DBA (no inventar en dictamen sin script de creación).",
+    "analisis": "REQ (cola IX OnLine.htm + formulario): auxiliar de saldos bancarios al cierre de mes, totalizador por banco/cuenta/mes (SI, DB, CR, SF) y opcional detalle de movimientos, disparado tras la conciliación bancaria de tesorería.\n\nContraste conocimiento/: el gate correcto es bancos (no conciliaciones/FCONCI ni notas-dbcr). En proceso.json la conciliación operativa es BCTC en /admin/Cuentas; la conciliación contable MCP↔BMOV es otra ventana (/cont/auxBancos, SPQ_BANCOS_AUXILIAR). Hoy BCTC almacena cabecera (SALDOB, SALDOCONT, FECHACON, ESTADO) y BCTCD el detalle de partidas no conciliadas del extracto; IMPRIMIR_CONCILIACION ya arma reporte por CNSBCTC. CIERRACONCILIACION (SPQ_BCTC, ficha leída) solo hace UPDATE ESTADO='Cerrada' — no genera histórico mensual ni SI/DB/CR/SF agregados (evidencia sql_refe/xsql/SPQ_BCTC.sql). BCT.SALDO es saldo corriente vía SPK_RECALCULO_BANCOS; SALDOMES en contabilidad es por CUENTA contable, no por tríada banco/sucursal/cta_bco.\n\nCausa de brecha: el cliente necesita foto mensual consultable y comparable entre bancos; el modelo actual guarda eventos de conciliación (BCTC) pero no un registro único mes×cuenta con movimientos agregados para control y conciliación posterior sin reprocesar.\n\nSolución propuesta: (1) Tabla cabecera mensual (p. ej. diseño BCTM: ANO, MES, BANCO, SUCURSAL, CTA_BCO, SI, DB, CR, SF, CNSBCTC origen, USUARIO, FECHA_GEN) con unicidad mes×cuenta; (2) al cerrar conciliación o al pulsar «Generar auxiliar», calcular DB/CR del mes desde BMOV confirmados en rango del mes calendario o FECHACON de la conciliación (definición a fijar en desarrollo: alinear con criterio ya usado en BMOV listados); SI = SF mes anterior o saldo inicial derivado; SF coherente con SI+CR−DB y con SALDOCONT/SALDOB de cierre; (3) detalle opcional: enlazar BCTCD existente o insertar snapshot BMOV del mes; (4) FE: acciones en BCTCComponent + grilla histórico mensual + export; (5) nuevos METODOs en SPQ_BCTC: GENERAR_AUXILIAR_MES, LISTAR_AUXILIAR_MES, OBTENER_DETALLE_AUXILIAR_MES (nombres tentativos). Tipo Performance se atiende con persistencia indexada por año/mes/cuenta.",
+    "opciones": [
+      {
+        "titulo": "Hook en CIERRACONCILIACION + tabla mensual (recomendada)",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Solo botón manual «Generar auxiliar mes»",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Reutilizar solo BCTC histórico sin tabla nueva",
+        "descripcion": ""
+      }
+    ],
+    "recomendacion": "Opción A con posibilidad de regeneración controlada (opción B como acción explícita en UI). Implementar cabecera mensual nueva + METODOs en SPQ_BCTC; FE en BCTCComponent. Opción C solo si el comité acepta no persistir SI/DB/CR y vivir de consultas sobre BCTC/BMOV. Antes de codificar: releer SPQ_BCTC.sql de hoy y validar con cliente si el mes es calendario (1–último día) o el mes de FECHACON de la conciliación. Detalle de movimientos: fase 1 = totalizador; fase 2 = detalle enlazado a BCTCD/BMOV si el tiempo apremia.",
+    "cambioPropuestoSimple": "Hoy, al cerrar la conciliación del banco en Tesorería, el sistema solo marca la conciliación como cerrada y no guarda un resumen mensual por cuenta con saldos inicial, movimientos y saldo final. Se propone que, al terminar la conciliación del mes (o con un botón dedicado), el sistema guarde ese resumen por banco y cuenta y permita consultarlo e imprimirlo después, para facilitar el control sin armar hojas de cálculo.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "El auxiliar de saldos bancarios de tesorería persiste totales y movimientos operativos (BCTC/BMOV); no crea cuentas MCPE, no modifica MCP/MCPE existentes ni dispara nuevos asientos. Afecta contabilidad: No.",
+        "validadoEn": "2026-09-11T17:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Tesorería → Cuentas → conciliación bancaria (BCTC), el usuario puede generar o consolidar el auxiliar de saldos del mes para la cuenta (banco + sucursal + número de cuenta) una vez la conciliación del periodo queda cerrada, sin recalcular manualmente en Excel.\n2) Por cada combinación banco / sucursal / cuenta / año / mes queda un registro de totalización con saldo inicial (SI), débitos (DB), créditos (CR) y saldo final (SF) del mes, coherente con movimientos BMOV confirmados (ESTADO O) del periodo y con los saldos de cierre de la conciliación (SALDOB / SALDOCONT en BCTC cuando aplique).\n3) El sistema impide duplicar el totalizador del mismo mes y cuenta si ya fue generado (salvo acción explícita de regenerar con permiso), o deja trazabilidad de la versión anterior.\n4) Consulta o reporte: el usuario puede listar y exportar (PDF/Excel alineado al estándar BCTC) los totalizadores por rango de meses y por cuenta o por banco.\n5) Detalle (si se incluye en alcance): movimientos del mes asociados al totalizador — reutilizando BCTCD de la conciliación cerrada o copia desde BMOV/BMOVD del mes — consultables desde la misma ventana.\n6) No se altera el flujo de conciliación cartera (FCONCI) ni el auxiliar contable MCP↔BMOV en /cont/auxBancos, salvo decisión explícita de unificar reportes.\n7) Pruebas: cuenta con conciliación cerrada en mes N; cuenta sin conciliación (mensaje claro); mes sin movimientos (SI=SF si DB=CR=0); re-apertura o anulación de BMOV posterior al cierre del auxiliar (comportamiento documentado).",
+      "originalesEn": "2026-09-11T17:36:38.193Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Tesorería → Cuentas → conciliación bancaria (BCTC), el usuario puede generar o consolidar el auxiliar de saldos del mes para la cuenta (banco + sucursal + número de cuenta) una vez la conciliación del periodo queda cerrada, sin recalcular manualmente en Excel.\n2) Por cada combinación banco / sucursal / cuenta / año / mes queda un registro de totalización con saldo inicial (SI), débitos (DB), créditos (CR) y saldo final (SF) del mes, coherente con movimientos BMOV confirmados (ESTADO O) del periodo y con los saldos de cierre de la conciliación (SALDOB / SALDOCONT en BCTC cuando aplique).\n3) El sistema impide duplicar el totalizador del mismo mes y cuenta si ya fue generado (salvo acción explícita de regenerar con permiso), o deja trazabilidad de la versión anterior.\n4) Consulta o reporte: el usuario puede listar y exportar (PDF/Excel alineado al estándar BCTC) los totalizadores por rango de meses y por cuenta o por banco.\n5) Detalle (si se incluye en alcance): movimientos del mes asociados al totalizador — reutilizando BCTCD de la conciliación cerrada o copia desde BMOV/BMOVD del mes — consultables desde la misma ventana.\n6) No se altera el flujo de conciliación cartera (FCONCI) ni el auxiliar contable MCP↔BMOV en /cont/auxBancos, salvo decisión explícita de unificar reportes.\n7) Pruebas: cuenta con conciliación cerrada en mes N; cuenta sin conciliación (mensaje claro); mes sin movimientos (SI=SF si DB=CR=0); re-apertura o anulación de BMOV posterior al cierre del auxiliar (comportamiento documentado).",
+      "trasAnalisisEn": "2026-09-11T17:37:06.769Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso bancos (BCTC). Brecha: falta persistencia mes×cuenta con SI/DB/CR/SF; CIERRACONCILIACION solo cierra estado. Implementación requiere diseño de tabla(s) nueva(s) + extensión SPQ_BCTC; releer script SPQ_BCTC del día al desarrollar (ficha sps.json leída 2026-09-06).",
+      "fecha": "2026-09-11T17:45:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_BCTC: releer .sql de hoy antes de tocar CIERRACONCILIACION o agregar GENERAR_AUXILIAR_MES / LISTAR_* (sql_refe/xsql es referencia). SPK_RECALCULO_BANCOS: solo si se valida SI/SF contra BCT.SALDO en regeneración."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260907-0100016329/diagramas/flujo.html",
+      "subidaEn": "2026-09-11T12:37:43",
+      "url": "/api/caso/20260907-0100016329/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "bancos",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260907-0100016329-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016329\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "bancos",
+    "catalogo": "conocimiento/bancos/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "GETCONCILIACIONES",
+        "estado": "leido",
+        "hace": "Lista conciliaciones BCTC de una cuenta.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "ACTUALIZACONCILIACION",
+        "estado": "leido",
+        "hace": "Edita saldos y observación de conciliación abierta.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "CIERRACONCILIACION",
+        "estado": "leido",
+        "hace": "Cierra conciliación BCTC.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "GUARDABCTCD",
+        "estado": "leido",
+        "hace": "Inserta renglón detalle conciliación BCTCD.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "GETBCTCD",
+        "estado": "leido",
+        "hace": "Lista detalle BCTCD de una conciliación.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "RELIQUIDAR",
+        "estado": "leido",
+        "hace": "Recalcula saldo cuenta vía SPK_RECALCULO_BANCOS.",
+        "llama": [
+          "SPK_RECALCULO_BANCOS"
+        ]
+      },
+      {
+        "sp": "SPQ_BCTC",
+        "metodo": "IMPRIMIR_CONCILIACION",
+        "estado": "leido",
+        "hace": "3 recordsets: cabecera, totales por operación, detalle BCTCD.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_BMOV",
+        "metodo": "CONFIRMARBMOV",
+        "estado": "leido",
+        "hace": "Orquesta confirmación: EXEC SPK_OK_BMOV con banco/cuenta/ITEM y NROCOMPROBANTE del FE.",
+        "llama": [
+          "SPK_OK_BMOV"
+        ]
+      }
+    ],
+    "notas": "METODOs nuevos (GENERAR_AUXILIAR_MES, LISTAR_*, etc.) no están en sps.json; se documentarán al bajar SPQ_BCTC actualizado a sql/.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260907-0100016329.html",
+    "aprobados": "aprobados/20260907-0100016329/",
+    "imagenes": "aprobados/20260907-0100016329/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-11",
+    "ultimoEnvio": "2026-09-11T12:41:25",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

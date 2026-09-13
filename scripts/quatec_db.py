@@ -644,17 +644,22 @@ class QuatecDB:
                 try:
                     import desarrolladores as devs
 
+                    dest = ((sol.get("correo") or {}).get("destinatario") or "").strip()
+                    nombre = (sol.get("personas") or {}).get("desarrollador") or ""
                     if mail["enviado"]:
-                        devs.marcar_envio_caso(
-                            id_caso,
+                        devs.registrar_envio(
+                            nombre,
+                            dest,
+                            id_caso=id_caso,
                             correo_enviado=True,
                             fecha_envio=mail.get("fecha") or None,
+                            destinatario=dest or None,
                         )
-                    nombre = (sol.get("personas") or {}).get("desarrollador") or ""
-                    if nombre:
+                    elif nombre:
                         devs.upsert(
                             nombre,
                             caso={"idReq": id_req, "idCaso": id_caso, "fase1": "cerrada"},
+                            correo=dest or None,
                         )
                 except Exception:
                     pass

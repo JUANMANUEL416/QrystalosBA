@@ -1,0 +1,132 @@
+{
+  "id": "inventario",
+  "nombre": "Inventario · Movimientos",
+  "modulo": "IMOV",
+  "familia": "inventario",
+  "prioridad": 25,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "Gate periodo-inv-abierto leído 2026-09-11. Insertar mira PRI a medias; confirmar/anular IMOV no consulta CERRADO ni CERRADO_INV. No hay CERRAR_INV.",
+  "actualizado": "2026-09-11T19:12:00",
+  "notaSql": "Fichas en sps.json desde sql/SPQ_IMOV.sql, SPQ_IZSOL.sql y SPQ_PRI.sql (2026-09-11). No se leyó el catálogo ni los SPK anidados.",
+  "alcanceHasta": "Gate de periodo (PRI.CERRADO + CERRADO_INV) en confirmación/anulación de IMOV. No se documentó el circuito completo de existencias ni compras.",
+  "ventanas": [
+    {
+      "uso": "Movimientos de inventario",
+      "ruta": "inv.imov",
+      "path": "/inv/ges",
+      "vue": "GestionLotePage → GestionTempComponent / IMOVComponent",
+      "entrada": "Inventario → Movimientos. Entrada/salida IMOV; tránsito ITRA."
+    },
+    {
+      "uso": "Periodos (bandera inventario)",
+      "ruta": "cont.periodosContables / conf.PRI",
+      "path": "/cont/periodosContables",
+      "vue": "PRIComponent + ProcesosContables",
+      "entrada": "PRI.CERRADO_INV. Cierre contable: CONTABILIDAD_2 · VALIDAR_PERIODO_BASICO (VALIDAINVCIERRECONT)."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Bodegas IBOD, tipos ITMO, periodo PRI (CERRADO y CERRADO_INV). Gate periodo-inv-abierto leído en sql/ 2026-09-11.",
+      "tablasClave": [
+        "IBOD",
+        "ITMO",
+        "PRI"
+      ],
+      "controles": [
+        {
+          "id": "periodo-inv-abierto",
+          "nombre": "Periodo inventario / contable abierto",
+          "explicacion": "SR20260911-001. Confirmado en sql/ 2026-09-11: CRUD_IMOV NUEVO KO si CERRADO_INV=1; CRUD_IMOV_SAL KO si CERRADO=1 (no mira CERRADO_INV). CONFIRMA_SALIDA, CONFIRMA_ENTREGA, ANULAR_SALIDA, CONF_ENTRADA y ANULAR_ENTRADA no consultan PRI. CRUDPRI puede marcar CERRADO_INV desde el formulario sin listar pendientes. Cierre contable (VALIDAR_PERIODO_BASICO) y OM/ENV_CONTA sí bloquean el asiento.",
+          "invariante": "Propuesta (aún no implementada): con PRI.CERRADO=1 o CERRADO_INV=1 no se inserta, confirma ni anula IMOV del mes. Hoy solo el insert aplica un flag (distinto en entrada vs salida).",
+          "sps": [
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CRUD_IMOV",
+              "rol": "Inserta entrada: valida CERRADO_INV, no CERRADO."
+            },
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CRUD_IMOV_SAL",
+              "rol": "Inserta salida: valida CERRADO, no CERRADO_INV."
+            },
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CONFIRMA_SALIDA / CONFIRMA_ENTREGA / ANULAR_SALIDA",
+              "rol": "No valida PRI. Hueco del REQ."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "CONF_ENTRADA / ANULAR_ENTRADA",
+              "rol": "No valida PRI. Hueco del REQ."
+            },
+            {
+              "nombre": "SPQ_CONTABILIDAD_2",
+              "metodo": "VALIDAR_PERIODO_BASICO",
+              "rol": "Ya KO «MOVIMIENTOS DE INVENTARIO PENDIENTES» al cierre contable."
+            },
+            {
+              "nombre": "SPQ_PRI",
+              "metodo": "CRUDPRI / CERRAR_FACTURA / ABRIR_FACTURA",
+              "rol": "CERRADO_INV se edita a mano. No hay CERRAR_INV/ABRIR_INV."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "esqueleto",
+      "explicacion": "Crear IMOV (ESTADO 0) → detalle IMOVH → entrega ISAL si salida → CONFIRMA_SALIDA o CONF_ENTRADA (ESTADO 1, IEXI). Anular ESTADO 2. Tránsito: ITRA. Fuente: runbook, no cuerpos SQL.",
+      "tablasClave": [
+        "IMOV",
+        "IMOVH",
+        "ISAL",
+        "ITRA"
+      ],
+      "controles": []
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "esqueleto",
+      "explicacion": "Farmacia/CE/compras pueden generar IMOV (fuera de este esqueleto). No inventado.",
+      "tablasClave": [
+        "IZSOL"
+      ],
+      "controles": []
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "esqueleto",
+      "explicacion": "Tránsito ITRA/ITRAH. Fuera del gate de periodo salvo IMOV ESTADO=0 que bloquea cierre.",
+      "tablasClave": [
+        "ITRA",
+        "ITRAH"
+      ],
+      "controles": []
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "OM Inventario CONTABILIDAD_3 · ENV_CONTA / DETALLE_OM_INVENTARIO. PROCEDENCIA INV. Ya bloquea con periodo/INV cerrado; no es el hueco de confirmación.",
+      "tablasClave": [
+        "IMOV",
+        "MCP"
+      ],
+      "controles": []
+    }
+  ]
+}

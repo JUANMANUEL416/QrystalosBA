@@ -1,0 +1,140 @@
+{
+  "id": "dian-xml",
+  "nombre": "Facturación · XML DIAN / FEV",
+  "modulo": "DIAN_XML",
+  "estado": "parcial",
+  "resumen": "Factura electrónica Colombia: encolar (FACTE), servicio facturador (XML + CUFE), FTRE y descarga TREA_XML. No es RIPS/CUV ni JSON Perú/SUNAT ni radicar CXC.",
+  "actualizado": "2026-09-12T22:20:00",
+  "notaSql": "SPQ de cola, resolución y certificado leídos 2026-09-06. El XML/CUFE lo escribe el servicio facturador (FACTE 1→2), no un SPQ de Qrystalos.",
+  "alcanceHasta": "FACTE=2 + FTRE (CUFE/XML). No genera RIPS ni radica FCXC.",
+  "hermanoDe": "facturacion",
+  "ventanas": [
+    {
+      "uso": "Facturas · notificar DIAN",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "FTRComponent.vue · NotificaDian",
+      "entrada": "Administrativo → Facturación → pestaña Facturas. Encolar una FV (NOTI_DIAN)."
+    },
+    {
+      "uso": "Proceso DIAN",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "FTREComponent.vue",
+      "entrada": "Pestaña Proceso DIAN (permiso NOTIDIAN): cola masiva, LISTAR_FTRE, TREA_XML, reenvío correo, aging SEDFACUMASI."
+    },
+    {
+      "uso": "Resolución y firma",
+      "ruta": "conf.fdian",
+      "path": "/conf/fdian",
+      "vue": "FDIANComponent · FDIANCERComponent",
+      "entrada": "Configuración → Resolución DIAN y Certificado digital. Banner Facturación: VALIDADIAN2 / GETVENCIMIENTO."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Resolución FDIAN (rango, prefijo, ambiente, sede), certificado FDIANCER, TGEN facturador (CONTACTO/SOFTWARE). BLOQUEADIAN=SI activa VALIDADIAN2 al numerar. CONTAB_FTR_POSTDIAN=SI exige FACTE=2 antes de ENVIA_CONTAB.",
+      "tablasClave": ["FDIAN", "FDIANCER", "TGEN", "USVGS", "SED"],
+      "controles": [
+        {
+          "id": "config-dian",
+          "nombre": "Resolución, certificado y bloqueo",
+          "explicacion": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN. Certificado: CRUDFDIANCER + GETVENCIMIENTO (DIANCERTIFICADO=SI). VALIDADIAN2: CONTINUA 0=rango agotado, 2=vencida, 3=sin resolución, 4/5/9=alertas. Si BLOQUEADIAN≠SI sale CONTINUA=1.",
+          "invariante": "No emitir si la resolución venció o el consecutivo salió del rango. Firma vencida alerta o bloquea en el banner.",
+          "ventanasFe": "/conf/fdian · /conf/firmadigital · banner Facturación",
+          "sps": [
+            { "nombre": "SPQ_FDIAN_COL", "metodo": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN", "rol": "Leído." },
+            { "nombre": "SPQ_FDIANCER_COL", "metodo": "CRUDFDIANCER / GETVENCIMIENTO", "rol": "Leído." },
+            { "nombre": "SPQ_VALIDADIAN2", "metodo": "(SP)", "rol": "Leído. Wrapper FTR_COL · VALIDADIAN2." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Encolar (FACTE=1) → servicio facturador arma XML y CUFE → FACTE=2 + FTRE. Qrystalos no genera el XML en un SPQ: TREA_XML lo lee de FTRE/almacén. Distinto de RIPS JSON y de SUNAT Perú.",
+      "tablasClave": ["FTR", "FNOT", "FTRE", "FDIANR"],
+      "controles": [
+        {
+          "id": "encolar-dian",
+          "nombre": "Encolar / desencolar (FACTE)",
+          "explicacion": "Facturas: NOTI_DIAN o FTRFE_COL · FE_ENCOLAR. Pestaña Proceso DIAN: ENCOLAR_ITEM / DESCOLA_ITEM / ENCOLAR_MASIVO (VWK_ESTADODIAN_FTRE). Notas: FNOT_ENCOLAR si la FV tiene FACTE=2 o 6.",
+          "invariante": "FACTE ∈ (0,3). F_FACTURA=hoy si aún no notificada. Capita/PGP sin FTRDC → KO. FE_DESENCOLAR no toca FACTE=2.",
+          "ventanasFe": "Facturas · Proceso DIAN · Notas DB/CR",
+          "sps": [
+            { "nombre": "SPQ_FTR_COL", "metodo": "NOTI_DIAN / ENCOLAR_ITEM / DESCOLA_ITEM / ENCOLAR_MASIVO", "rol": "Leído." },
+            { "nombre": "SPQ_FTRFE_COL", "metodo": "FE_ENCOLAR / FE_DESENCOLAR / FE_FECHAFTR", "rol": "Leído." }
+          ]
+        },
+        {
+          "id": "seguimiento-xml",
+          "nombre": "Seguimiento FTRE y XML",
+          "explicacion": "Servicio externo: FACTE 1→2, inserta/actualiza FTRE (CUFE, XML). LISTAR_FTRE (solo FACTE=2). TREA_XML descarga. RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO reenvío correo. AJUSTAR_TOTALES_DIAN centavos. SEDFACUMASI aging.",
+          "invariante": "FACTE=2 no es radicado FCXC ni CUV RIPS. El XML del paquete FEVRIPS (FNK_AttachedDocument / FDIANR) se usa en el módulo rips-json.",
+          "ventanasFe": "FTREComponent · Paquete FEVRIPS",
+          "sps": [
+            { "nombre": "SPQ_FTR_COL", "metodo": "LISTAR_FTRE / TREA_XML / RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO / AJUSTAR_TOTALES_DIAN / SEDFACUMASI", "rol": "Leído." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "La factura ya armada (FTR/FTRD y FTRDC si capita/PGP). Notas FNOT aplicadas. Resolución de la sede.",
+      "tablasClave": ["FTRD", "FTRDC", "FNOT"],
+      "controles": [
+        {
+          "id": "factura-lista",
+          "nombre": "Factura o nota lista para encolar",
+          "explicacion": "Sin FTRD no encola. Capita/PGP exige FTRDC. VALIDAFTR (FTRFE_COL) solo clasifica particular; no valida DIAN.",
+          "invariante": "Armar FTR vive en el módulo Facturación.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Tras FACTE=2 puede seguir RIPS JSON (módulo rips-json) o cartera (INDCARTERA). El XML FEV se reusa en el sobre RIPS. No es JSON Perú.",
+      "tablasClave": ["FDIANR", "FTRJSON"],
+      "controles": [
+        {
+          "id": "despues-cufe",
+          "nombre": "Después del CUFE",
+          "explicacion": "RIPS exige FACTE=2. Empaque de anexos y Radicar CXC son otros controles de Facturación.",
+          "invariante": "CUFE ≠ CUV ≠ radicado.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "parcial",
+      "explicacion": "Este módulo no genera OM. Si CONTAB_FTR_POSTDIAN=SI, ENVIA_CONTAB exige FACTE=2 (SPK_NC_CONTAB_FTR). El asiento es de Facturación.",
+      "tablasClave": ["FTR", "MCP"],
+      "controles": [
+        {
+          "id": "post-dian-contab",
+          "nombre": "Contab después de DIAN (opcional)",
+          "explicacion": "Variable CONTAB_FTR_POSTDIAN. Anular FACTE=2 exige contab OK para NC.",
+          "invariante": "Encolar no contabiliza.",
+          "sps": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "mensajes": [
+    {
+      "id": "20260910093224659959",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste los SP/METODO documentados a usar. No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis).",
+      "fecha": "2026-09-10T09:32:24"
+    },
+    {
+      "id": "20260910093224685516w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-10T09:32:24"
+    },
+    {
+      "id": "2026091014400016362a",
+      "autor": "agente",
+      "texto": "**REQ 0100016362 — Análisis orientado a solución (sin dictamen HTML)**\n\n**Problema:** En formatos de factura **03GS** y **03G**, la columna «código» del detalle muestra **IDSERVICIO** (código interno Qrystalos) en lugar del **CODCUM** exigido por el pagador, en varias **procedencias** de facturación.\n\n**Causa (código + KB):** Ya existe la utilidad `getCodigoItemFtr` (`FmtFtr/fmtFtrCodigoHelper.js`), gobernada por USVGS **FTR_IMPR_CODCUM=SI** y el campo **CODCUM** del detalle que entrega **FTR_IMPRESION · DATOSFTR** (`RptFtr.js`). En **fmt03GS.js** y **fmt03G.js** esa utilidad solo se activa cuando `procedencia === 'SALUD'`; el resto de orígenes sigue imprimiendo IDSERVICIO. La rama **FINANCIERO** además escribe IDSERVICIO directo, sin helper. Proceso **facturacion** en `conocimiento/`; el SP de impresión no está fichado en `sps.json` (no bloquea el fix FE).\n\n**Solución propuesta:** (1) En **fmt03GS.js** y **fmt03G.js**, reemplazar usos de IDSERVICIO en detalle por `getCodigoItemFtr(s, variables, true)` en **todas** las ramas (incl. FINANCIERO). (2) Verificar **FTR_IMPR_CODCUM=SI** en USVGS del cliente COESME. (3) Prueba cruzada por procedencia; si CODCUM llega vacío en algún origen, entonces releer **SPQ_FTR_IMPRESION · DATOSFTR** (estado **no_leido** en KB) y ajustar el SELECT del detalle — no anticipar cambio SQL sin evidencia.\n\n**Criterios / alcance / restricciones:** Quedaron en el formulario (`solicitud.contenido`). Resumen: solo 03GS/03G; medicamentos con CUM cuando exista en catálogo; sin cambio de totales, DIAN ni contabilidad.\n\n**SP · METODO · estado · rol en el fix**\n| SP | METODO | estado | rol |\n| SPQ_FTR_IMPRESION | DATOSFTR | no_leido | Provee ftrDet; validar CODCUM/MEDICAMENTOS si FE no alcanza |\n| (FE RptFtr.js) | FormatoFactura / ImprimeFormatoFtr | código vivo | Carga USVGS y dispara formato por IDFORMATO |\n| (FE fmt03GS / fmt03G) | jsPDF detalle | código vivo | **Cambio principal:** columna código |\n\n**Contabilidad:** no_aplica (solo PDF impreso).\n\nSiguiente paso sugerido: su opinión en Chat; si aprueba la línea A, armamos dictamen HTML en fase posterior.",
+      "fecha": "2026-09-10T09:40:00"
+    },
+    {
+      "id": "20260910094137905606",
+      "autor": "coordinador",
+      "texto": "ven no tienes el spq_ftr_impresion",
+      "fecha": "2026-09-10T09:41:37"
+    },
+    {
+      "id": "20260910094137925944w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T09:41:37"
+    },
+    {
+      "id": "20260910094410376107",
+      "autor": "coordinador",
+      "texto": "listo ya te lo adicione",
+      "fecha": "2026-09-10T09:44:10"
+    },
+    {
+      "id": "20260910094410398904w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T09:44:10"
+    },
+    {
+      "id": "2026091009450016362b",
+      "autor": "agente",
+      "texto": "Correcto: **no tengo** `SPQ_FTR_IMPRESION.sql` en disco para este caso.\n\n**Estado verificado ahora:** carpeta fija `sql/` vacía (`manifest.json` sin archivos). No hay copia en `sql_refe/0100016362/`. En `conocimiento/facturacion/sps.json` tampoco está fichado **DATOSFTR** (por eso en el análisis anterior quedó **no_leido**).\n\n**Qué implica:** La hipótesis de solución en **frontend** (`fmt03GS.js` / `fmt03G.js` + `getCodigoItemFtr` para todas las procedencias y USVGS `FTR_IMPR_CODCUM=SI`) sigue siendo la línea principal y no depende del script para dictaminar ese cambio. **Sí necesitamos el SP** para cerrar el tercer escenario del análisis: confirmar que **DATOSFTR** ya devuelve `CODCUM` y `MEDICAMENTOS` en el recordset de detalle para CI, CE, hospitalización, FINANCIERO, etc., o si hay que ajustar el SELECT en servidor.\n\n**Pedido concreto:** coloque el script del día **`SPQ_FTR_IMPRESION.sql`** en `sql/` (misma carpeta fija del formulario) y marque confirmación SQL en el paso 4, **o** indique en Chat que ya quedó en disco para que relea en el siguiente turno. Con el archivo leo el METODO **DATOSFTR**, actualizo recomendación (FE vs FE+SQL) y, si aplica, notas en `solicitud.sql`.\n\nMientras tanto puede seguir validando en la app la propuesta FE; no genero dictamen HTML hasta que definamos si el backend entra o no.",
+      "fecha": "2026-09-10T09:45:00"
+    },
+    {
+      "id": "20260910094523151902",
+      "autor": "coordinador",
+      "texto": "geneneremos el documento",
+      "fecha": "2026-09-10T09:45:23"
+    },
+    {
+      "id": "20260910094523177066w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T09:45:23"
+    },
+    {
+      "id": "2026091009480016362c",
+      "autor": "agente",
+      "texto": "Recibido: **`sql/SPQ_FTR_IMPRESION.sql`** ya está en disco (gracias por el aviso 09:44). Releí **DATOSFTR**.\n\n**Veredicto backend:** Para facturas Colombia (no Perú), el detalle que consume el PDF **ya expone columnas aparte** `CODCUM` y `MEDICAMENTOS` (p. ej. join FTRD/SER/IART e ítems vía `SPK_RPT_ANEXO_PREFAC` → RPDX, líneas ~1309–1315 y ~1573–1574 del script). La columna **`IDSERVICIO`** del recordset sigue siendo often `FTRD.REFERENCIA` o código según **`PPT.IMPRIMEIDALTERNA`** (`@IMPRIMEIDALTERNA` en cabecera); con valor **0** imprime referencia interna — coherente con el bug en PDF cuando el FE no usa `getCodigoItemFtr`.\n\n**Conclusión integrada REQ + SP + FE:**\n1. **Cambio principal (Qrystalos2):** en **fmt03GS.js** y **fmt03G.js**, usar `getCodigoItemFtr(s, variables, true)` en **todas** las procedencias y ramas (incl. FINANCIERO), no solo `procedencia === 'SALUD'`, con **USVGS FTR_IMPR_CODCUM=SI**.\n2. **SQL (SPQ_FTR_IMPRESION):** **no propongo modificar DATOSFTR** para este REQ si el detalle ya trae `CODCUM`; el FE debe leer esa columna. Revisar en COESME que medicamentos tengan **SER.CODCUM / IART.CODCUM** cargado.\n3. **Parametrización alterna (sin tocar SP):** en plan pagador, **IMPRIMEIDALTERNA=2** ya remapea medicamentos a CUM en la columna IDSERVICIO del SP; es redundante si aplicamos el fix FE y puede afectar otros formatos — **no** lo recomiendo como única solución para 03GS/03G.\n\n**SP · METODO · estado · rol**\n| SPQ_FTR_IMPRESION | DATOSFTR | leido (sql/ hoy) | Recordsets impresión; CODCUM/MEDICAMENTOS ya en detalle |\n| (FE fmt03GS/03G) | jsPDF | código vivo | **Fix obligatorio** |\n\nActualicé **solicitud.contenido** y **solicitud.sql** con este cierre. Si está de acuerdo, siguiente paso: dictamen HTML para desarrollo en rama `bugfix/COESME606`.",
+      "fecha": "2026-09-10T09:48:00"
+    },
+    {
+      "id": "2026091014500016362d",
+      "autor": "agente",
+      "texto": "**Dictamen generado** — REQ 0100016362 (formatos **03GS** y **03G**, código **CUM** en detalle).\n\nDocumento para desarrollo en rama `bugfix/COESME606`:\n\n→ [dictamenes/20260910-0100016362.html](dictamenes/20260910-0100016362.html)\n\n**Resumen:** cambio principal en **fmt03GS.js** y **fmt03G.js** (`getCodigoItemFtr` con `true` en todas las procedencias + rama **FINANCIERO**); **USVGS FTR_IMPR_CODCUM=SI** en COESME; **SPQ_FTR_IMPRESION · DATOSFTR** releído — **sin modificación SQL** en este alcance. Contabilidad **no_aplica**.\n\nActualicé **solicitud.contenido** (criterios CA-01…CA-06, alcance, análisis, recomendación) y **solicitud.sql** (proceso facturacion, script confirmado).\n\nRevise el HTML en la app; si aprueba, **Cerrar fase 1** y archive SQL a `sql_refe/0100016362/`. Capturas de PDF antes/después en `aprobados/.../imagenes/` refuerzan soporte.",
+      "fecha": "2026-09-10T09:50:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-10T09:51:42"
+    },
+    {
+      "id": "correo-cierre-20260910-0100016362",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a elan.bravo@ixcolombia.com.",
+      "fecha": "2026-09-10T09:52:00"
+    },
+    {
+      "id": "202609101021006362e",
+      "autor": "agente",
+      "texto": "Ajuste de formato (regla nueva): como este REQ no afecta contabilidad, la sección 3 del dictamen quedó solo «Afecta contabilidad: No». Se quitaron Cómo lo afecta, Desarrollo contable y Validación del agente. Copias: dictamenes/20260910-0100016362.html y aprobados/20260910-0100016362/.",
+      "fecha": "2026-09-10T10:21:00"
+    }
+  ]
+}

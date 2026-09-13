@@ -1,0 +1,199 @@
+{
+  "id": "rips-json",
+  "nombre": "Facturación · RIPS JSON / FEVRIPS",
+  "modulo": "RIPS_JSON",
+  "estado": "parcial",
+  "resumen": "Generación del JSON RIPS / FEV para SISPRO. Árbol cerrado 2026-09-12: FTR_COL → SPK_GENERAR_RIPS_JSON → hojas + persistir + CUV. No es DIAN (FACTE) ni radicar CXC.",
+  "actualizado": "2026-09-12T22:05:00",
+  "notaSql": "Hojas y FNK leídos 2026-09-12. El despachador vive en sql_refe/xsql y Qrystalos2/sql. Circuito CUV (SPQ_RIPS / FEVRIPS_COLA) leído 2026-09-06.",
+  "alcanceHasta": "JSON persistido (FTRJSON/FNOTJSON) + CUV ministerio. No radica FCXC ni contabiliza.",
+  "hermanoDe": "facturacion",
+  "ventanas": [
+    {
+      "uso": "FEV / RIPS masivo",
+      "ruta": "admin.fevripsmasivo",
+      "path": "/admin/FEVRIPSMasivo",
+      "vue": "FEVRIPSMasivoPage.vue",
+      "entrada": "Administrativo → Facturación → FEVRIPS masivo. Generar o revalidar JSON y enviar a SISPRO."
+    },
+    {
+      "uso": "Validaciones FEVRIPS",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "ValidacionesFEVRipsComponent.vue · useRipsJsonAsync",
+      "entrada": "Facturación → validar / generar RIPS JSON (síncrono o job CONFIG_GENE_FEV)."
+    },
+    {
+      "uso": "Proceso DIAN · paquete FEVRIPS",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "FTREComponent.vue",
+      "entrada": "Pestaña Proceso DIAN: descarga ZIP (XML + JSON) cuando hay CUV."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Antes de generar: factura notificada DIAN (FACTE=2), resolución FDIAN, homologaciones TGEN RIPS_JSON (conceptoRecaudo ICI/ICE), USVGS CONFIG_GENE_FEV (async), FEVRIPS_MODO, EPI_MEDICODEFAULT, IDTERCEROINSTALADO, IDPLANPART*, IDMATERIALESRIPS, FACTSEDE, FEVRIPS_INC_SINVLR. Plan PPT.PGP / capita define la hoja.",
+      "tablasClave": [
+        "USVGS",
+        "TGEN",
+        "FDIAN",
+        "PPT",
+        "TER",
+        "SED"
+      ],
+      "controles": [
+        {
+          "id": "config-fevrips",
+          "nombre": "Variables y homologación RIPS",
+          "explicacion": "CONFIG_GENE_FEV (JSON: valorMinimoAsync, procedenciasSinAsync) decide cola vs síncrono. FEVRIPS_MODO=MICROSERVICIO activa SPQ_FEVRIPS_COLA. TGEN TABLA=RIPS_JSON campo conceptoRecaudo. Prestador: TER.IDALTERNA2 o SED.CODHABILITA si FACTSEDE=SI.",
+          "invariante": "Sin FACTE=2 el motor no genera. Sin CUV en la FV no hay AJUSTE.",
+          "ventanasFe": "/admin/FEVRIPSMasivo · ConfAsyncRipsDialog",
+          "sps": [
+            {
+              "nombre": "FNK_RIPS_JSON_USAR_ASYNC",
+              "metodo": "(función)",
+              "rol": "Leído. 0 = FE cae a RIPS_JSON síncrono."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Generar JSON (FTR_COL · RIPS_JSON o job async) → persistir FTRJSON/FNOTJSON → marcar lote (SPQ_RIPS) → enviar SISPRO → CUV. Distinto de encolar DIAN.",
+      "tablasClave": [
+        "FTR",
+        "FTRJSON",
+        "FNOTJSON",
+        "FNOT",
+        "PROCESO_JOB"
+      ],
+      "controles": [
+        {
+          "id": "generar-json",
+          "nombre": "Generar RIPS JSON",
+          "explicacion": "FE: useRipsJsonAsync. Síncrono RIPS_JSON o INICIAR_RIPS_JSON_JOB → EJECUTAR_RIPS_JSON_ASYNC. Motor SPK_GENERAR_RIPS_JSON despacha la hoja según CAPITADA+TIPOCAP+TIPOFAC+PROCEDENCIA+PPT.PGP.",
+          "invariante": "FACTE=2. GENERAR=NO reusa JSON_ENVIO si existe. SOLO_META no arma payload. AJUSTE capita no-PGP no regenera.",
+          "ventanasFe": "ValidacionesFEVRips · FEVRIPSMasivo · notas NA",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "RIPS_JSON / INICIAR_RIPS_JSON_JOB / EJECUTAR_RIPS_JSON_ASYNC",
+              "rol": "Wrapper. No arma nodos."
+            },
+            {
+              "nombre": "SPK_GENERAR_RIPS_JSON",
+              "metodo": "(SP)",
+              "rol": "Despachador. Leído."
+            }
+          ]
+        },
+        {
+          "id": "enviar-cuv",
+          "nombre": "Marcar, enviar y CUV",
+          "explicacion": "MODELO RIPS: MARCAFAC/MARCATODO/MARCAFCXC → GET_DATOS/SET_DATOS (CUV + FRADICA_RIPS). Cola opcional FEVRIPS_COLA. ZIP: GET_DATOS_XML + GET_CONFIG_EXPORT_RIPS.",
+          "invariante": "CUV no es radicado FCXC. Marca masiva exige FACTE=2, contabilizada, CUV vacío, no caja.",
+          "ventanasFe": "/admin/FEVRIPSMasivo · FTREComponent",
+          "sps": [
+            {
+              "nombre": "SPQ_RIPS",
+              "metodo": "GET/SET_DATOS / MARCA* / GET_DATOS_XML*",
+              "rol": "10/10 leído."
+            },
+            {
+              "nombre": "SPQ_FEVRIPS_COLA",
+              "metodo": "APTITUD / TOMAR_* / ENCOLAR / ESTADOS",
+              "rol": "7/7 leído. Solo si MICROSERVICIO."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "El JSON come la factura ya armada (FTR/FTRD/FTRDC) y la atención: HADM, CIT, AUT, AUTPG, HPRE/HPRED, HCA/DX, QXRCN (recién nacido), medicamentos IART/IUNI.",
+      "tablasClave": [
+        "FTRD",
+        "FTRDC",
+        "HADM",
+        "CIT",
+        "AUT",
+        "HPRED",
+        "QXRCN",
+        "AFI"
+      ],
+      "controles": [
+        {
+          "id": "atencion-a-rips",
+          "nombre": "Atención y afiliado hacia el JSON",
+          "explicacion": "Usuario: AFI (TIPOUSUARIO o mapa TIPOAFILIADO). Servicios según procedencia de cada hoja. Recién nacido: FNK_RIPS_JSON_RECIENNACIDOS (1 QXRCN) o #RECIEN en masivas.",
+          "invariante": "Sin DOCIDAFILIADO IND no arma. Particular sí se reporta.",
+          "sps": [
+            {
+              "nombre": "FNK_RIPS_JSON_RECIENNACIDOS",
+              "metodo": "(función)",
+              "rol": "Leído. Un objeto o vacío."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Se une a Facturación (la FTR debe existir y estar en DIAN) y a Glosas (AJUSTE por CNSGLO). El XML FEV sale de FNK_AttachedDocument / FDIANR. No es empaque de anexos ni radicación.",
+      "tablasClave": [
+        "FDIANR",
+        "FTRE",
+        "FGLO"
+      ],
+      "controles": [
+        {
+          "id": "dian-xml-fev",
+          "nombre": "XML FEV de la DIAN",
+          "explicacion": "El sobre {rips, xmlFevFile} lleva el AttachedDocument en base64. Doble encode provoca FEV001. AJUSTE exige CUV de la FV.",
+          "invariante": "FACTE=2 en FV; FNOT.FACTE=2 en NC/ND.",
+          "sps": [
+            {
+              "nombre": "SPK_GENERAR_RIPS_JSON",
+              "metodo": "(SP)",
+              "rol": "Arma XML + despacha hoja."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "parcial",
+      "explicacion": "Este módulo no genera OM. La marca masiva exige factura ya contabilizada. El asiento es del proceso Facturación (ENVIA_CONTAB), no de RIPS.",
+      "tablasClave": [
+        "FTR"
+      ],
+      "controles": [
+        {
+          "id": "sin-om-rips",
+          "nombre": "Sin asiento propio",
+          "explicacion": "No hay SPK_NC_CONTAB desde las hojas RIPS. CONTABILIZADA≠0 es precondición de MARCAFCXC, no un efecto de generar JSON.",
+          "invariante": "Generar JSON no contabiliza.",
+          "sps": []
+        }
+      ]
+    }
+  ]
+}

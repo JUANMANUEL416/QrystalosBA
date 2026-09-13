@@ -16,12 +16,13 @@ Coordinador experto en:
 
 ## Flujo por requerimiento
 
-1. Usuario elige **Analista de negocio** en el menú central y completa el formulario (métodos documentados o SQL en `sql/`).
+1. Usuario elige **Analista de negocio** (REQ ya en cola) o **Solicitar requerimiento** (necesidad para el comité, con o sin aval técnico). En Analista completa el formulario (métodos documentados o SQL en `sql/`).
 2. Ubicar el proceso en `conocimiento/INDICE.json`. Si no existe, esqueleto + pendientes.
 3. Agente verifica solicitud; si hay `sql.usarDocumentacion`, usa `sps.json` y en el Chat valida si hay que releer. Si falta algo no documentado, **se detiene y lo pide**.
-4. Investiga Qrystalos2, documentación de tablas **viva** y el flujo en `conocimiento/`.
-5. Genera `dictamenes/<ID>.html`.
-6. Responde con resumen + ruta del archivo.
+4. **Paso 0:** ¿el sistema ya lo hace? Contrastar texto del REQ vs captura vs todos los caminos del control (botones, ayuda, `necesidadesYaCubiertas`). Clasificar: capacitación | defecto | hueco. No proponer desarrollo si es desconocimiento del proceso.
+5. Investiga Qrystalos2, documentación de tablas **viva** y el flujo en `conocimiento/`.
+6. Genera `dictamenes/<ID>.html`.
+7. Responde con resumen + ruta del archivo.
 
 Los SP **no se archivan** en la base de procesos. Se bajan a `sql/` el día que hay que documentarlos o releerlos.
 
@@ -35,6 +36,7 @@ Los SP **no se archivan** en la base de procesos. Se bajan a `sql/` el día que 
 config/rutas.json          # Rutas configurables
 plantillas/dictamen.html   # Plantilla HTML
 dictamenes/                # Salida de dictámenes
+solicitudes/               # Solicitudes de requerimiento para comité (BA)
 conocimiento/              # Flujos de proceso + pendientes
 .cursor/rules/             # Reglas del coordinador
 ```

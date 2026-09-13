@@ -1,0 +1,1401 @@
+IF EXISTS(SELECT NAME FROM SYSOBJECTS WHERE NAME='FNK_CALCULO_VALORCONCEPTO_NOM' AND XTYPE='TF')
+BEGIN
+   DROP FUNCTION FNK_CALCULO_VALORCONCEPTO_NOM
+END   
+
+GO
+CREATE FUNCTION DBO.FNK_CALCULO_VALORCONCEPTO_NOM(     
+    @NUMDOC      VARCHAR(20),  
+    @CODCONCEPTO VARCHAR(20),     
+    @FECHAINI    DATETIME,     
+    @FECHAFIN    DATETIME,  
+    @CNSPAGO     VARCHAR(20),  
+    @VALHORASLAB SMALLINT,  
+    @HORAS_COMP   INT,  
+    @DIAS_LAB     INT)     
+RETURNS @TABLA    
+ TABLE (DETALLE           VARCHAR(10)  COLLATE database_default,  
+        CANTIDAD          DECIMAL(15,6),  
+        VALOR_EMPLEADO    DECIMAL(15,6),   
+        VALOR_EMPRESA     DECIMAL(15,6),  
+        VALOR100P         DECIMAL(15,6),  
+        FILA              INT IDENTITY,   
+        IDTRANSPRESTAMO   VARCHAR(6)   COLLATE database_default,   
+        NUMDOCPRESTAMO    VARCHAR(20)  COLLATE database_default,   
+        NUMCUOTA          SMALLINT,  
+        CODPRF            VARCHAR(20)  COLLATE database_default,  
+        IDTERCERO         VARCHAR(20)  COLLATE database_default,  
+        BASE_PRESTACIONES VARCHAR(2)   COLLATE database_default,  
+        ITEMCONCEPTO      DECIMAL(14,0),  
+        GENERANOVEFU      SMALLINT,   
+        CODNOVEFU         VARCHAR(10)  COLLATE database_default,   
+        BASE_CALCULO      DECIMAL(15,6),  
+        MOSTRARHORAS      VARCHAR(12)   COLLATE database_default)   
+AS      
+BEGIN      
+   DECLARE @CODCARGO              VARCHAR(20)     
+   DECLARE @NIVEL                 VARCHAR(10)  
+   DECLARE @GRADO                 VARCHAR(10)      
+   DECLARE @CODPLANTA             VARCHAR(20)      
+   DECLARE @BASE                  VARCHAR(20)     
+   DECLARE @BASICO                DECIMAL(15,6)    
+   DECLARE @HORASXCARGO           DECIMAL(15,6)    
+   DECLARE @HORAS_SUMARESTA       DECIMAL(15,6)  
+   DECLARE @HORAS_LABORADAS       DECIMAL(15,6)  
+   DECLARE @TIPOCALCULO           VARCHAR(10)    
+   DECLARE @VALOR                 DECIMAL(15,6)    
+   DECLARE @VALOR_EMPRESA         DECIMAL(15,6)    
+   DECLARE @VALOR_CALCULO         DECIMAL(15,6)    
+   DECLARE @VALOR_CALCULOMAX      DECIMAL(15,6)    
+   DECLARE @VALOR_HORA            DECIMAL(15,6)    
+   DECLARE @CONCEPTO_CON_EVENTO   SMALLINT    
+   DECLARE @CONDICION             VARCHAR(2)    
+   DECLARE @EVALUAR               VARCHAR(20)    
+   DECLARE @ITEM_NCOND            SMALLINT    
+   DECLARE @TIPODEPENDENCIA       VARCHAR(20)    
+   DECLARE @CODDEPENDENCIA        VARCHAR(20)    
+   DECLARE @FACTOR                DECIMAL(15,6)    
+   DECLARE @FACTORMAX             DECIMAL(15,6)  
+   DECLARE @VALORMAXIMO           DECIMAL(14,2)  
+   DECLARE @OPERACION             VARCHAR(2)    
+   DECLARE @VALOR_DEPENDENCIA     DECIMAL(15,6)    
+   DECLARE @VALOR_EVALUAR         DECIMAL(15,6)    
+   DECLARE @PORCLABORADO          DECIMAL(15,6)    
+   DECLARE @CANTIDAD  DECIMAL(15,6)  
+   DECLARE @MOSTRARHORAS  VARCHAR(12)  
+   DECLARE @CODPRF  VARCHAR(20)  
+   DECLARE @IDTERCERO  VARCHAR(20)  
+   DECLARE @GENERA_CXP  VARCHAR(2)  
+   DECLARE @IDTERCERO_DEFAULT VARCHAR(20)  
+   DECLARE @DETALLE  VARCHAR(10)  
+   DECLARE @CLASE   VARCHAR(20)  
+   DECLARE @IDPARENTESCO  VARCHAR(20)  
+   DECLARE @SEXO   VARCHAR(12)  
+   DECLARE @EDADMIN  DECIMAL(15,6)  
+   DECLARE @EDADMAX  DECIMAL(15,6)  
+   DECLARE @ESTADO_PARIENTE VARCHAR(20)  
+   DECLARE @MAXIMO  DECIMAL(15,6)  
+   DECLARE @VALOR_PARIENTES DECIMAL(15,6)  
+   DECLARE @CANT_PARIENTES DECIMAL(15,6)  
+   DECLARE @NIVELESTUDIOS  VARCHAR(12)  
+   DECLARE @ESTUDIANTE  VARCHAR(2)  
+   DECLARE @VALOR100P  DECIMAL(15,6)  
+   DECLARE @CVALOR100P  VARCHAR(2)  
+   DECLARE @VALOR_CALCULO100P  DECIMAL(15,6)  
+   DECLARE @TIPO   VARCHAR(20)  
+   DECLARE @TIPOLIQ  VARCHAR(12)  
+   DECLARE @DIASXPERIODO  DECIMAL(15,6)  
+   DECLARE @DIASXCARGO  DECIMAL(15,6)  
+   DECLARE @HORAS_A_LABORAR DECIMAL(15,6)  
+   DECLARE @BASE_PRESTACIONES VARCHAR(2)  
+   DECLARE @CODNOMINA  VARCHAR(2)   
+   DECLARE @CODCONCEPTO_CUR VARCHAR(20)  
+   DECLARE @CNSPAGO_CUR  VARCHAR(20)  
+   DECLARE @FECHAINI_CUR  DATETIME  
+   DECLARE @FECHAFIN_CUR  DATETIME  
+   DECLARE @PRIORIDAD_CUR  INT  
+   DECLARE @VALOR_CONCEPTO DECIMAL(15,6)  
+   --DECLARE @FORMULA  VARCHAR(2048)  
+   DECLARE @FACTOR_CUR  DECIMAL(15,6)  
+   DECLARE @FECHAING  DATETIME  
+   DECLARE @PARAMETRO  VARCHAR(20)  
+   DECLARE @VALOR_PARAMETRO DECIMAL(15,6)  
+   DECLARE @MESES   INT  
+   DECLARE @DIAS   INT  
+   DECLARE @FECHA   DATETIME  
+   --- VARIABLES PARA PRESTAMOS    
+   DECLARE @CUOTASPGR             SMALLINT    
+   DECLARE @NUMDOCPRESTAMO_CUR    VARCHAR(29)    
+   DECLARE @IDTRANSPRESTAMO_CUR   VARCHAR(29)    
+   DECLARE @NUMCUOTA_CUR          VARCHAR(29)    
+   DECLARE @VLRCUOTA_CUR          DECIMAL(15,6)    
+   DECLARE @DIAS1                 INT  
+   DECLARE @DIAS2                 INT  
+   DECLARE @BASICO1               DECIMAL(15,6)  
+   DECLARE @BASICO2               DECIMAL(15,6)  
+   DECLARE @VF                    VARCHAR(20)  
+   DECLARE @VALOR_TABLA           DECIMAL(15,6)  
+   DECLARE @FACTOR_NEMPT          DECIMAL(15,6)  
+   DECLARE @VALIDA_ANTIGUEDAD     VARCHAR(2)  
+   DECLARE @DIAS_ANTIGUEDAD       INT  
+   DECLARE @CONDICION_ANTIGUEDAD  VARCHAR(2)  
+   DECLARE @VALIDA_FINGRESO       VARCHAR(2)  
+   DECLARE @FINGRESO              DATETIME  
+   DECLARE @CONDICION_FINGRESO    VARCHAR(2)  
+   DECLARE @SW                    INT  
+   DECLARE @SOLICITA_CNSPAGO      VARCHAR(2)  
+   DECLARE @SALARIOBASICO         DECIMAL(15,6)  
+   DECLARE @VALIDATABLA           VARCHAR(20)  
+   DECLARE @DMATABLA              VARCHAR(1)  
+   DECLARE @DMAANTIGUEDAD         VARCHAR(1)  
+   DECLARE @VALOR_A               DECIMAL(15,6)  
+   DECLARE @VALOR_B               DECIMAL(15,6)  
+   DECLARE @VALOR_C               DECIMAL(15,6)  
+   DECLARE @EDAD                  DECIMAL(15,6)  
+   DECLARE @ANTIGUEDAD            DECIMAL(15,6)  
+   DECLARE @FNACIMIENTO           DATETIME  
+   DECLARE @TIPOCALCULO2          VARCHAR(12)  
+   DECLARE @FRECUENCIA            VARCHAR(12)  
+   DECLARE @VALORFRECUENCIA       INT   
+   DECLARE @DMAFRECUENCIA         VARCHAR(1)  
+   DECLARE @RELFREQFECHA          VARCHAR(12)   
+   DECLARE @FECHABASEFREQ         DATETIME   
+   DECLARE @FECHA_BASE            DATETIME  
+   DECLARE @REQUIERELIQ_NCONDF    SMALLINT  
+   DECLARE @VALHORASLAB_NCONDF    SMALLINT  
+   DECLARE @REQUIERELIQ_NCONDD    SMALLINT   
+   DECLARE @VALHORASLAB_NCONDD    SMALLINT
+   DECLARE @HORAS_NCONDD          SMALLINT 
+   DECLARE @DIAS_NCONDD           SMALLINT
+   DECLARE @HORAS_NCONDF          SMALLINT
+   DECLARE @DIAS_NCONDF           SMALLINT
+   DECLARE @CONT                  INT  
+   DECLARE @REDONDEO              DECIMAL(14,2)  
+   DECLARE @HORAS_NPPAG           INT  
+   DECLARE @DIAS_NPPAG            INT  
+   DECLARE @GENERANOVEFU          SMALLINT  
+   DECLARE @CODNOVEFU             VARCHAR(10)  
+   DECLARE @ANT DECIMAL(14,2)  
+
+   DECLARE @VALIDA_TLABORADOPER VARCHAR(2)
+   DECLARE @CONDICION_TLABORADOPER VARCHAR(2)
+   DECLARE @HORAS_TLABORADOPER SMALLINT
+   DECLARE @DMATLABORADOPER VARCHAR(1)
+   DECLARE @HORAS_TCOMPLETO SMALLINT
+   DECLARE @FTL SMALLINT
+   DECLARE @HORASLAB INT
+   DECLARE @FECHAINGSIGMES DATETIME
+   DECLARE @FECHAINISIGMES DATETIME
+   ---------------
+   --VARIABLE PARA SABER COMO SE CALCULA EL VALOR HORA MES SI POR EL NUMERO DE HORAS QUE TIENE EL CARGO  O POR EL DE UN MES NORMAL (240)
+   DECLARE @TIPOVALORHORA VARCHAR(10)
+   -------------------------------------------------------------------------------------------    
+   --- INICIO     
+   -------------------------------------------------------------------------------------------    
+   SELECT @DIAS_LAB  = ISNULL(@DIAS_LAB,0)  
+               
+   SELECT  @FNACIMIENTO = FNACIMIENTO  
+   FROM NEMP 
+   WHERE NUMDOC=@NUMDOC  
+  
+   SELECT @BASICO      = H.BASICO,    
+          @HORASXCARGO = H.HORASXCARGO,  
+          @DIASXCARGO  = H.DIASXCARGO,  
+          @FECHAING    = H.FECHAING,  
+          @CODCARGO    = H.CODCARGO,  
+          @NIVEL       = H.NIVEL,  
+          @GRADO       = H.GRADO,  
+          @CODPLANTA   = H.CODPLANTA  
+   FROM FNK_INFO_NEMPHIS_NEMP(@FECHAFIN,@NUMDOC) AS H
+  
+   SELECT @SALARIOBASICO  = @BASICO  
+   SELECT @ANTIGUEDAD     = DATEDIFF(DAY,@FECHAING,@FECHAFIN)  
+   SELECT @EDAD           = DATEDIFF(DAY,@FNACIMIENTO,@FECHAFIN)  
+  
+   IF @FECHAING>@FECHAFIN  
+   BEGIN  
+      INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+      SELECT @DETALLE,0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+      RETURN    
+   END  
+  
+   SELECT @TIPOLIQ       = NPER.TIPOLIQ,   
+          @HORAS_NPPAG   = NPPAG.HORASDELABOR,  
+          @DIAS_NPPAG    = NPPAG.DIAS,  
+          @CODNOMINA     = NPER.CODNOMINA  
+   FROM NPER INNER JOIN NPPAG ON NPER.CNSPAGO=@CNSPAGO AND NPER.CODPPAG=NPPAG.CODPPAG   
+  
+   IF @BASICO IS NULL OR @BASICO = 0  
+   BEGIN  
+      INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+      SELECT 'BASICO=0',0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+      RETURN    
+   END  
+  
+   SELECT TOP 1 @VALOR                = NCOND.VALOR,    
+         @VALOR_EMPRESA        = NCOND.VALOR_EMPRESA,    
+         @TIPOCALCULO          = NCOND.TIPOCALCULO,    
+         @BASE                 = NCOND.BASE,    
+         @CONDICION            = NCOND.CONDICION,    
+         @EVALUAR              = NCOND.EVALUAR,    
+         @ITEM_NCOND           = NCOND.ITEM,  
+         @CODPRF               = NCOND.CODPRF,  
+         @GENERA_CXP           = NCOND.GENERA_CXP,  
+         @IDTERCERO_DEFAULT    = NCOND.IDTERCERO,  
+         @DETALLE              = NCOND.DETALLE,  
+         @BASE_PRESTACIONES    = NCOND.BASE_PRESTACIONES,  
+         @CLASE                = NCON.CLASE,  
+         @CVALOR100P           = NCON.CVALOR100P,  
+         @TIPO                 = NCON.TIPO,  
+         @MOSTRARHORAS         = NCON.MOSTRARHORAS,  
+         @VALIDA_ANTIGUEDAD    = NCOND.VALIDA_ANTIGUEDAD,  
+         @DIAS_ANTIGUEDAD      = NCOND.DIAS_ANTIGUEDAD,  
+         @CONDICION_ANTIGUEDAD = NCOND.CONDICION_ANTIGUEDAD,  
+         @DMAANTIGUEDAD        = NCOND.DMAANTIGUEDAD,  
+         @VALIDA_FINGRESO      = NCOND.VALIDA_FINGRESO,  
+         @FINGRESO             = NCOND.FINGRESO,  
+         @CONDICION_FINGRESO   = NCOND.CONDICION_FINGRESO,  
+         @VALIDATABLA          = NCOND.VALIDATABLA,  
+         @DMATABLA               = NCOND.DMATABLA,   
+         @FRECUENCIA             = NCOND.FRECUENCIA,  
+         @VALORFRECUENCIA        = NCOND.VALORFRECUENCIA,  
+         @DMAFRECUENCIA          = NCOND.DMAFRECUENCIA,  
+         @RELFREQFECHA           = NCOND.RELFREQFECHA,  
+         @FECHABASEFREQ          = NCOND.FECHABASEFREQ,  
+         @REDONDEO               = NCOND.REDONDEO,  
+         @VALIDA_TLABORADOPER    = NCOND.VALIDA_TLABORADOPER,
+         @CONDICION_TLABORADOPER = NCOND.CONDICION_TLABORADOPER,
+         @HORAS_TLABORADOPER     = NCOND.HORAS_TLABORADOPER,
+         @DMATLABORADOPER        = NCOND.DMATLABORADOPER,
+         @HORAS_TCOMPLETO      = CASE WHEN ISNULL(@HORAS_COMP,0) > 0 THEN @HORAS_COMP ELSE ISNULL(NCOND.HORAS,0) END, 
+         @DIASXPERIODO         = CASE WHEN @DIAS_LAB  = -1 THEN   
+                                 CASE WHEN ISNULL(NCOND.DIAS,0)=0  THEN @DIAS_NPPAG ELSE NCOND.DIAS END   
+                                 ELSE   
+                                 CASE WHEN @DIAS_LAB>0  THEN @DIAS_LAB ELSE   
+                                    CASE WHEN ISNULL(NCOND.DIAS,0)=0 THEN @DIAS_NPPAG ELSE NCOND.DIAS END   
+                                 END   
+                                 END,  
+         @GENERANOVEFU          = NCOND.GENERANOVEFU,  
+         @CODNOVEFU             = NCOND.CODNOVEFU,
+         @TIPOVALORHORA         = NCOND.TIPOVALORHORA
+   FROM NCOND INNER JOIN  NCON ON  NCOND.CODCONCEPTO=NCON.CODCONCEPTO
+                               AND NCON.CODCONCEPTO=@CODCONCEPTO 
+                               AND NCOND.FECHAINI<=@FECHAFIN 
+   ORDER BY FECHAINI DESC
+        
+   -- Validar Frecuencia  
+   SELECT @FECHA_BASE = CASE WHEN @RELFREQFECHA = 'Ingreso' THEN @FECHAING ELSE @FECHABASEFREQ END  
+   IF @FRECUENCIA = 'Periodica' AND @VALHORASLAB = 1  
+   BEGIN  
+      SELECT @CONT = 0  
+      WHILE @FECHA_BASE < @FECHAFIN  
+      BEGIN   
+         SET @CONT = @CONT + @VALORFRECUENCIA  
+         SET @FECHA_BASE =   
+         CASE @DMAFRECUENCIA   
+            WHEN 'D' THEN DATEADD(DAY, @VALORFRECUENCIA, @FECHA_BASE )  
+            WHEN 'M' THEN DATEADD(MONTH, @VALORFRECUENCIA, @FECHA_BASE)  
+            WHEN 'A' THEN DATEADD(YEAR, @VALORFRECUENCIA, @FECHA_BASE)  
+         END  
+      END  
+      IF @FECHA_BASE > @FECHAFIN  
+      BEGIN   
+         SELECT @FECHA_BASE = CASE @DMAFRECUENCIA   
+                              WHEN 'D' THEN DATEADD(DAY, @VALORFRECUENCIA*-1, @FECHA_BASE )  
+                              WHEN 'M' THEN DATEADD(MONTH, @VALORFRECUENCIA*-1, @FECHA_BASE)  
+                              WHEN 'A' THEN DATEADD(YEAR, @VALORFRECUENCIA*-1, @FECHA_BASE)  
+                           END  
+      END  
+      IF NOT (@FECHA_BASE BETWEEN @FECHAINI AND @FECHAFIN) OR @CONT<@VALORFRECUENCIA OR @FECHAING>=@FECHAINI
+      BEGIN  
+         INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+         SELECT CONVERT(VARCHAR(10),@FECHA_BASE,103),0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+         RETURN    
+      END  
+   END  
+   ELSE --Frecuencia <> periodica
+   BEGIN  
+      IF @FRECUENCIA = 'UnaVez' AND @VALHORASLAB = 1  
+      BEGIN  
+         SELECT @FECHA_BASE = CASE @DMAFRECUENCIA   
+                                   WHEN 'D' THEN DATEADD(DAY, @VALORFRECUENCIA, @FECHA_BASE )  
+                                   WHEN 'M' THEN DATEADD(MONTH, @VALORFRECUENCIA, @FECHA_BASE)  
+                                   WHEN 'A' THEN DATEADD(YEAR, @VALORFRECUENCIA, @FECHA_BASE)  
+                              END  
+         IF NOT @FECHA_BASE BETWEEN @FECHAINI AND @FECHAFIN  
+         BEGIN  
+            INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+            SELECT CONVERT(VARCHAR(10),@FECHA_BASE,103),0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+            RETURN    
+         END    
+      END     
+      -- Validar Antiguedad  
+      SELECT @SW = 0  
+      IF @VALIDA_ANTIGUEDAD = 'Si'  
+      BEGIN  
+         SELECT @ANT = DBO.FNK_ANTIGUEDAD(@FECHAING,@FECHAFIN+1,@DMAANTIGUEDAD)
+         SELECT @SW = CASE @CONDICION_ANTIGUEDAD  
+                           WHEN '<'  THEN (CASE WHEN @ANT <  @DIAS_ANTIGUEDAD THEN 1 ELSE 0 END)  
+                           WHEN '<=' THEN (CASE WHEN @ANT <= @DIAS_ANTIGUEDAD THEN 1 ELSE 0 END)  
+                           WHEN '='  THEN (CASE WHEN @ANT =  @DIAS_ANTIGUEDAD THEN 1 ELSE 0 END)  
+                           WHEN '>'  THEN (CASE WHEN @ANT >  @DIAS_ANTIGUEDAD THEN 1 ELSE 0 END)  
+                           WHEN '>=' THEN (CASE WHEN @ANT >= @DIAS_ANTIGUEDAD THEN 1 ELSE 0 END)  
+                           WHEN '<>' THEN (CASE WHEN @ANT <> @DIAS_ANTIGUEDAD THEN 1 ELSE 0 END)  
+                      END  
+         IF @SW = 0  
+         BEGIN  
+            INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+            SELECT 'ANTIGUEDAD',@ANT,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+            RETURN    
+         END    
+      END  
+
+      -- Validar Fecha Ingreso del Empleado  
+      SELECT @SW = 0  
+      IF @VALIDA_FINGRESO = 'Si'  
+      BEGIN  
+         SELECT @SW = CASE @CONDICION_FINGRESO  
+                           WHEN '<'  THEN (CASE WHEN @FECHAING <  @FINGRESO THEN 1 ELSE 0 END)  
+                           WHEN '<=' THEN (CASE WHEN @FECHAING <= @FINGRESO THEN 1 ELSE 0 END)  
+                           WHEN '='  THEN (CASE WHEN @FECHAING =  @FINGRESO THEN 1 ELSE 0 END)  
+                           WHEN '>'  THEN (CASE WHEN @FECHAING >  @FINGRESO THEN 1 ELSE 0 END)  
+                           WHEN '>=' THEN (CASE WHEN @FECHAING >= @FINGRESO THEN 1 ELSE 0 END)  
+                           WHEN '<>' THEN (CASE WHEN @FECHAING <> @FINGRESO THEN 1 ELSE 0 END)  
+                        END  
+         IF @SW = 0  
+         BEGIN  
+            INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+            SELECT 'FECHA ING.',0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+            RETURN    
+         END    
+      END  
+   END--frecuencia = siempre
+   -- BUSCAR SALARIO BASICO  
+   DECLARE CUR_NCONDB CURSOR FOR    
+   SELECT PRIORIDAD, DIAS1, DIAS2, CONDICION  
+   FROM NCONDB  
+   WHERE CODCONCEPTO=@CODCONCEPTO AND ITEM=@ITEM_NCOND  
+   ORDER BY PRIORIDAD  
+  
+   OPEN CUR_NCONDB    
+  
+   FETCH NEXT FROM CUR_NCONDB  
+   INTO @PRIORIDAD_CUR, @DIAS1, @DIAS2, @OPERACION  
+   SET @VF = 'Falso'  
+   WHILE @@FETCH_STATUS = 0 AND @VF = 'Falso'  
+   BEGIN      
+      -- Busca El valor del Basico No 1 en la fecha correspondiente a Actual menos Dias1  
+      SELECT @MESES = @DIAS1/30  
+      SELECT @DIAS  = @DIAS1 - (@MESES*30)  
+      SELECT @FECHA = DATEADD(MONTH,@MESES*-1,@FECHAFIN+1)  
+      SELECT @FECHA = DATEADD(DAY,@DIAS*-1,@FECHA)  
+      SELECT @BASICO1 = 0  
+      SELECT TOP 1 @BASICO1=BASICO   
+      FROM NEMPHIS WHERE NUMDOC=@NUMDOC AND FECHAMOV>=@FECHA ORDER BY FECHAMOV ASC  
+      -- Busca El valor del Basico No 2 en la fecha correspondiente a Actual menos Dias2  
+      SELECT @MESES = @DIAS2/30  
+      SELECT @DIAS  = @DIAS2 - (@MESES*30)  
+      SELECT @FECHA = DATEADD(MONTH,@MESES*-1,@FECHAFIN+1)  
+      SELECT @FECHA = DATEADD(DAY,@DIAS*-1,@FECHA)  
+      SELECT @BASICO2 = 0  
+      SELECT TOP 1 @BASICO2=BASICO   
+      FROM NEMPHIS WHERE NUMDOC=@NUMDOC AND FECHAMOV>=@FECHA ORDER BY FECHAMOV ASC  
+      -- Hace la respectiva comparación entre Basico1 y Basico2  
+      SELECT @VF =  CASE @OPERACION    
+                  WHEN '<'  THEN (SELECT CASE WHEN @BASICO1 <  @BASICO2 THEN 'Verdadero' Else 'Falso' END)  
+                  WHEN '<=' THEN (SELECT CASE WHEN @BASICO1 <= @BASICO2 THEN 'Verdadero' Else 'Falso' END)  
+                  WHEN '='  THEN (SELECT CASE WHEN @BASICO1 =  @BASICO2 THEN 'Verdadero' Else 'Falso' END)  
+                  WHEN '>=' THEN (SELECT CASE WHEN @BASICO1 >= @BASICO2 THEN 'Verdadero' Else 'Falso' END)  
+                  WHEN '>'  THEN (SELECT CASE WHEN @BASICO1 >  @BASICO2 THEN 'Verdadero' Else 'Falso' END)  
+                  WHEN '<>' THEN (SELECT CASE WHEN @BASICO1 <> @BASICO2 THEN 'Verdadero' Else 'Falso' END)  
+                  WHEN 'DE' THEN 'Verdadero'   
+               END  
+      IF @VF = 'Verdadero'  
+      BEGIN  
+         -- Calcula El Basico Segun parametros de Calculo  
+         DECLARE CUR_NCONDBD CURSOR FOR    
+         SELECT FACTOR, OPERACION, PARAMETRO, VALOR   
+         FROM NCONDBD  
+         WHERE CODCONCEPTO=@CODCONCEPTO AND ITEM=@ITEM_NCOND AND PRIORIDAD_CONDICION=@PRIORIDAD_CUR  
+         ORDER BY PRIORIDAD  
+         OPEN CUR_NCONDBD    
+         FETCH NEXT FROM CUR_NCONDBD  
+         INTO @FACTOR, @OPERACION, @PARAMETRO, @VALOR_PARAMETRO  
+         SET @VALOR_DEPENDENCIA=0    
+         WHILE @@FETCH_STATUS = 0     
+         BEGIN      
+            IF @OPERACION = '*' AND @VALOR_DEPENDENCIA=0
+            BEGIN
+               SELECT @VALOR_DEPENDENCIA = 1
+            END
+                  
+            IF @PARAMETRO='Dias'  
+            BEGIN  
+               SELECT @MESES = @VALOR_PARAMETRO/30  
+               SELECT @DIAS  = @VALOR_PARAMETRO - (@MESES*30)  
+               SELECT @FECHA = DBO.FNK_DIA_DEL_MES(YEAR(@FECHAFIN),MONTH(@FECHAFIN),'ULTIMO')   --DATEADD(MONTH,@MESES*-1,@FECHAFIN+1)  
+               SELECT @FECHA = DATEADD(MONTH, @MESES*-1, @FECHA)                                        -- DATEADD(DAY,@DIAS*-1,@FECHA)  
+               SELECT @VALOR_PARAMETRO = 0  
+
+               SELECT @VALOR_PARAMETRO = X.BASICO FROM FNK_INFO_NEMPHIS_NEMP(@FECHA,@NUMDOC) X 
+
+               IF ISNULL(@VALOR_PARAMETRO,0) = 0
+               BEGIN
+                  SELECT @VALOR_PARAMETRO=@BASICO  
+               END
+            END  
+      
+            IF @VALOR_PARAMETRO<>0
+            BEGIN  
+               SELECT @VALOR_DEPENDENCIA = CASE @OPERACION    
+                                                WHEN '+' THEN @VALOR_DEPENDENCIA+(@VALOR_PARAMETRO*@FACTOR)  
+                                                WHEN '-' THEN @VALOR_DEPENDENCIA-(@VALOR_PARAMETRO*@FACTOR)  
+                                                WHEN '*' THEN @VALOR_DEPENDENCIA*(@VALOR_PARAMETRO*@FACTOR)  
+                                                WHEN '/' THEN @VALOR_DEPENDENCIA/(@VALOR_PARAMETRO*@FACTOR)  
+                                          END
+            END    
+            
+            FETCH NEXT FROM CUR_NCONDBD  
+            INTO @FACTOR, @OPERACION, @PARAMETRO, @VALOR_PARAMETRO  
+         END    
+         CLOSE CUR_NCONDBD  
+         DEALLOCATE CUR_NCONDBD  
+      END  
+      FETCH NEXT FROM CUR_NCONDB  
+      INTO @PRIORIDAD_CUR, @DIAS1, @DIAS2, @OPERACION  
+   END  
+   CLOSE CUR_NCONDB  
+   DEALLOCATE CUR_NCONDB  
+  
+   IF @VALOR_DEPENDENCIA>0  
+   BEGIN
+      SELECT @BASICO=@VALOR_DEPENDENCIA  
+   END
+   
+   -- Verifica que el Concepto No se Liquida por Empleado, si no tiene el empleado lo busca por el Cargo.  
+   IF @BASE=NULL OR EXISTS(SELECT CODCONCEPTO FROM NEMPE WHERE NUMDOC=@NUMDOC AND CODCONCEPTO=@CODCONCEPTO)  
+   BEGIN    
+      INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+      SELECT @DETALLE,0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+      RETURN    
+   END    
+   ELSE 
+   BEGIN 
+      IF EXISTS(SELECT CODCONCEPTO FROM NCARNGE WHERE CODCARGO=@CODCARGO AND NIVEL=@NIVEL AND GRADO=@GRADO AND CODCONCEPTO=@CODCONCEPTO)  
+      BEGIN  
+         INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+         SELECT @DETALLE,0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+         RETURN    
+      END  
+   END
+   -- Estableciendo Tercero...  
+   -- Asigna El Tercero segun el que tiene Empleado asignado con el concepto de Aporte
+   SELECT TOP 1 @IDTERCERO = IDTERCERO  FROM NPRFED WHERE NUMDOC=@NUMDOC AND CODPRF=@CODPRF AND FECHAINI<=@FECHAFIN ORDER BY FECHAINI DESC  
+   IF @CLASE = 'Aporte' AND @IDTERCERO IS NULL
+   BEGIN
+      INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+      SELECT 'Ap.No.Conf',0,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+      RETURN      
+   END
+   -- Asigna El Tercero segun el que tiene el concepto por default  
+   IF COALESCE(@IDTERCERO,'')='' 
+   BEGIN 
+      SELECT @IDTERCERO = @IDTERCERO_DEFAULT
+   END  
+   -- Asigna El Tercero segun el que tiene el grupo de concepto por default  
+   IF COALESCE(@IDTERCERO,'')=''
+   BEGIN  
+      SELECT TOP 1 @IDTERCERO = IDTERCERO    
+      FROM NPRFD WHERE CODPRF=@CODPRF AND FECHAINI<=@FECHAFIN ORDER BY FECHAINI DESC  
+   END
+   -- Asigna El Tercero como el Empleado  
+   IF COALESCE(@IDTERCERO,'')='' 
+   BEGIN 
+      SELECT @IDTERCERO = @NUMDOC --NULL  
+   END
+   SELECT @IDTRANSPRESTAMO_CUR = ''    
+   SELECT @NUMDOCPRESTAMO_CUR  = ''    
+   SELECT @NUMCUOTA_CUR        = 0    
+   SELECT @CUOTASPGR           = 0    
+   SELECT @CONCEPTO_CON_EVENTO = (SELECT COUNT(*) FROM NEVE WHERE CODCONCEPTO=@CODCONCEPTO)  
+   --  SET @HORAS_A_LABORAR     = @HORASXCARGO * (@DIASXPERIODO/@DIASXCARGO)  
+   SELECT @HORAS_A_LABORAR     = @HORASXCARGO * (@DIAS_NPPAG/@DIASXCARGO)  
+ 
+   /*JEDM  CALCULO DE VALOR HORA DE ACUERDO A NUEVO CAMPO EN NCOND TIPOVALORHORA*/
+
+   IF @TIPOVALORHORA = 'Mes'
+   BEGIN
+      SET @VALOR_HORA          = @BASICO / 240.00    
+   END
+   ELSE
+   BEGIN
+      SET @VALOR_HORA          = @BASICO / @HORASXCARGO    
+   END
+
+   SELECT @VALOR_CALCULO100P   = @HORASXCARGO*@VALOR_HORA  
+   SELECT @HORAS_SUMARESTA     = 0  
+  
+   -- Determinando las Horas Laboradas  
+   IF @VALHORASLAB = 1  
+   BEGIN 
+      SELECT @DETALLE=@DETALLE+'Val_HLAB' 
+      IF @TIPOLIQ='PorNomina'
+      BEGIN  
+         SELECT @HORAS_SUMARESTA = SUM(V.HORAS_DESCONTADAS)  
+         FROM   
+            ( SELECT DISTINCT NEDIA.ITEM, HORAS_DESCONTADAS =   
+                        CASE WHEN NOT NOMIEVE.AFECTAHORAS IS NULL 
+                              THEN   
+                                 (NEDIA.HORAS+((NEDIA.MINUTOS+0.00)/60))*NOMIEVE.AFECTAHORAS
+                              ELSE  
+                                 (NEDIA.HORAS+((NEDIA.MINUTOS+0.00)/60))*NEVE.AFECTAHORAS
+                        END  
+               FROM NEDIA INNER JOIN  NEVE ON NEDIA.IDEVENTO=NEVE.IDEVENTO 
+                                           AND NEDIA.NUMDOC=@NUMDOC 
+                                           AND ((NEDIA.CNSPAGO=@CNSPAGO 
+                                           AND NEDIA.FORMALIQUIDACION='PorPago')
+                                           OR  (NEDIA.FECHAINI>=@FECHAINI 
+                                           AND NEDIA.FECHAFIN<@FECHAFIN+1 
+                                           AND NEDIA.FORMALIQUIDACION='PorFecha'))
+                          LEFT JOIN NOMIEVE ON NOMIEVE.IDEVENTO=NEVE.IDEVENTO 
+                                            AND NOMIEVE.CODNOMINA=@CODNOMINA  
+               ) AS V
+      END  
+      ELSE
+      BEGIN  
+         SELECT @HORAS_SUMARESTA = SUM(V.HORAS_DESCONTADAS)  
+         FROM   
+            ( SELECT DISTINCT NEDIA.ITEM, HORAS_DESCONTADAS = 
+                     CASE WHEN NOT NOMIEVE.AFECTAHORAS IS NULL 
+                        THEN  (NEDIA.HORAS+((NEDIA.MINUTOS+0.00)/60))*NOMIEVE.AFECTAHORAS
+                        ELSE  (NEDIA.HORAS+((NEDIA.MINUTOS+0.00)/60))*NEVE.AFECTAHORAS
+                     END  
+              FROM NPER INNER JOIN NEDIA ON NPER.FECHAINI>=@FECHAINI 
+                                         AND NPER.FECHAFIN<@FECHAFIN+1 
+                                         AND NEDIA.NUMDOC=@NUMDOC 
+                                         AND ((NEDIA.CNSPAGO=NPER.CNSPAGO AND NEDIA.FORMALIQUIDACION='PorPago') 
+                                         OR  (NEDIA.FECHAINI>=NPER.FECHAINI AND NEDIA.FECHAFIN<NPER.FECHAFIN+1 
+                                         AND NEDIA.FORMALIQUIDACION='PorFecha'))
+                        INNER JOIN NEVE ON NEDIA.IDEVENTO=NEVE.IDEVENTO 
+                        LEFT JOIN NOMIEVE ON NOMIEVE.IDEVENTO=NEVE.IDEVENTO 
+                                          AND NOMIEVE.CODNOMINA=@CODNOMINA  
+            ) AS V   
+      END
+      IF @HORAS_SUMARESTA IS NULL
+      BEGIN   
+         SELECT @HORAS_SUMARESTA=0    
+      END
+
+	   -- IF @FECHAING>@FECHAFIN
+	   -- BEGIN
+	   --  SET @HORASLAB = 0
+	   --  RETURN
+	   -- END
+
+	   IF @FECHAING>=@FECHAINI
+	   BEGIN
+	      SELECT @FECHAINGSIGMES = DATEADD(MONTH,1,@FECHAING)
+	      SELECT @FECHAINISIGMES = CAST('01/'+STR(MONTH(@FECHAINGSIGMES))+'/'+STR(YEAR(@FECHAINGSIGMES)) AS DATETIME)
+	      IF @FECHAINISIGMES > @FECHAFIN
+         BEGIN
+	         SELECT @HORASLAB = (30-(DAY(@FECHAING)-1))*8
+         END
+	      ELSE
+         BEGIN
+	         SELECT @HORASLAB = (30-(DAY(@FECHAING)-1) + ((DATEDIFF(MONTH, @FECHAINISIGMES, @FECHAFIN)+1)*30))*8
+         END
+      END
+      ELSE
+      BEGIN
+	      SELECT @HORASLAB = @HORAS_A_LABORAR
+	      
+	      IF @HORAS_A_LABORAR - @HORASLAB > 0
+         BEGIN
+	         SELECT @HORAS_SUMARESTA = @HORAS_SUMARESTA - @HORAS_A_LABORAR + @HORASLAB 
+         END
+         --   IF @HORAS_A_LABORAR - (((((DATEDIFF(MONTH,@FECHAING,@FECHAFIN))*30)) + DATEDIFF(DAY,DATEADD(MONTH,DATEDIFF(MONTH,@FECHAING,@FECHAFIN),@FECHAING),@FECHAFIN)+1)*8) > 0
+         --    SET @HORAS_SUMARESTA = @HORAS_SUMARESTA - @HORAS_A_LABORAR + (((((DATEDIFF(MONTH,@FECHAING,@FECHAFIN))*30)) + DATEDIFF(DAY, DATEADD(MONTH,DATEDIFF(MONTH,@FECHAING,@FECHAFIN),@FECHAING),@FECHAFIN)+1)*8)
+      END
+   END      
+   SELECT @HORAS_LABORADAS = @HORAS_A_LABORAR + @HORAS_SUMARESTA
+      
+   IF @HORAS_LABORADAS < 0
+   BEGIN
+      SET @HORAS_LABORADAS = 0
+   END
+   IF @HORAS_TCOMPLETO>0
+   BEGIN
+      SELECT @HORAS_LABORADAS = CAST(@HORAS_LABORADAS / @HORAS_TCOMPLETO AS SMALLINT)*@HORAS_TCOMPLETO
+   END
+   IF @BASE = 'Laborado'
+   BEGIN
+      SELECT @PORCLABORADO  = (100*@HORAS_LABORADAS)/(@HORAS_NPPAG/(@HORAS_NPPAG/@HORAS_A_LABORAR))
+   END
+   ELSE
+   BEGIN
+      SELECT @PORCLABORADO  = 100
+   END
+
+   --    INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+   --    SELECT 'Laborado',@PORCLABORADO,@HORAS_LABORADAS,@HORAS_NPPAG,NULL,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+   --    RETURN    
+         
+   -- Validar Tiempo Laborado del Periodo
+   SELECT @SW = 0  
+   IF @VALIDA_TLABORADOPER = 'Si'  
+   BEGIN  
+      SELECT @FTL = CASE @DMATLABORADOPER
+                     WHEN 'H' THEN 1
+                     WHEN 'D' THEN 8
+                     WHEN 'M' THEN 240
+                     WHEN 'A' THEN 2880
+      END
+      SELECT @SW = CASE @CONDICION_TLABORADOPER
+                     WHEN '<'  THEN (CASE WHEN @HORAS_LABORADAS <  @HORAS_TLABORADOPER*@FTL THEN 1 ELSE 0 END)  
+                     WHEN '<=' THEN (CASE WHEN @HORAS_LABORADAS <= @HORAS_TLABORADOPER*@FTL THEN 1 ELSE 0 END)  
+                     WHEN '='  THEN (CASE WHEN @HORAS_LABORADAS =  @HORAS_TLABORADOPER*@FTL THEN 1 ELSE 0 END)  
+                     WHEN '>'  THEN (CASE WHEN @HORAS_LABORADAS >  @HORAS_TLABORADOPER*@FTL THEN 1 ELSE 0 END)  
+                     WHEN '>=' THEN (CASE WHEN @HORAS_LABORADAS >= @HORAS_TLABORADOPER*@FTL THEN 1 ELSE 0 END)  
+                     WHEN '<>' THEN (CASE WHEN @HORAS_LABORADAS <> @HORAS_TLABORADOPER*@FTL THEN 1 ELSE 0 END)  
+                  END  
+      IF @SW = 0  
+      BEGIN  
+         INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+         SELECT 'T.Laborado',@ANT,0,0,0,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+         RETURN    
+      END    
+   END  
+   --  INSERT INTO @TABLA(DETALLE, CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+   --       NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES)    
+   --  SELECT 'HORAS', @HORAS_LABORADAS, @HORAS_A_LABORAR ,@HORAS_SUMARESTA, 0, 0, 0, 0, 0, 0, 0  
+   --  RETURN   
+  
+   --CALCULA EL VALOR SEGUN CLASE Y BASE  
+   IF @CLASE='Manual'  
+   BEGIN  
+      INSERT INTO @TABLA(DETALLE, CANTIDAD, VALOR_EMPLEADO, VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+                           NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES, ITEMCONCEPTO, BASE_CALCULO,   
+                           GENERANOVEFU, CODNOVEFU, MOSTRARHORAS)    
+      SELECT V.DETALLE+' Manual ', V.CANTIDAD, ROUND(SUM(V.VALOR),@REDONDEO), ROUND(SUM(V.VALOR_EMPRESA),@REDONDEO),  
+               CASE WHEN @TIPO='Ingreso' THEN ROUND(SUM(V.VALOR100P),@REDONDEO) ELSE 0 END,   
+            V.IDTRANSPRESTAMO, V.NUMDOCPRESTAMO, V.NUMCUOTA, V.CODPRF, @IDTERCERO, @BASE_PRESTACIONES, @ITEM_NCOND,   
+               ROUND(SUM(V.VALOR),@REDONDEO), @GENERANOVEFU, @CODNOVEFU, @MOSTRARHORAS  
+      FROM NPERC AS V WHERE CNSPAGO=@CNSPAGO AND CODCONCEPTO=@CODCONCEPTO AND NUMDOC=@NUMDOC  
+      GROUP BY V.DETALLE, V.CANTIDAD, V.IDTRANSPRESTAMO, V.NUMDOCPRESTAMO, V.NUMCUOTA ,V.CODPRF 
+          
+      RETURN  
+   END  
+   IF @BASE='Laborado'     
+   BEGIN    
+      SELECT @VALOR_CALCULO = @HORAS_LABORADAS*@VALOR_HORA
+      SELECT @VALOR_CALCULO = @DIASXPERIODO*(@HORASXCARGO/@DIASXCARGO)*@VALOR_HORA*@PORCLABORADO*0.01
+      SELECT @CANTIDAD      = @HORAS_LABORADAS  
+      SELECT @VALOR_HORA    = @VALOR_CALCULO/@HORASXCARGO 
+      SELECT @DETALLE=@DETALLE+' B_Laborado'   
+               
+      --    INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+      --    SELECT 'Laborado',@CANTIDAD,@VALOR_CALCULO,@PORCLABORADO,@DIASXPERIODO,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+      --    RETURN    
+       
+      IF NOT (@CONCEPTO_CON_EVENTO IS NULL OR @CONCEPTO_CON_EVENTO=0 )  
+      BEGIN    
+         SELECT @VALOR_CALCULO     = VALOR_CALCULO,   
+                  @CANTIDAD          = CANTIDAD,   
+                  @VALOR_CALCULO100P = VALOR_CALCULO100P  
+         FROM FNK_CALCULO_VLR_NOVEDAD_NOM(@CNSPAGO, @CODCONCEPTO, @NUMDOC, @FECHAINI, @FECHAFIN, @VALOR_HORA)  
+      END    
+            
+      -- SET @PORCLABORADO  = (100*@HORAS_LABORADAS)/@HORASXPERIODO  
+            
+      IF @TIPOCALCULO <> 'Porcentaje'  
+      BEGIN  
+         SELECT @VALOR         = @VALOR         * (@DIASXPERIODO/@DIASXCARGO)  
+         SELECT @VALOR_EMPRESA = @VALOR_EMPRESA * (@DIASXPERIODO/@DIASXCARGO)  
+      END  
+
+      --    INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+      --    SELECT 'Laborado',@CANTIDAD,@VALOR,@DIASXPERIODO,@DIASXCARGO,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+      --    RETURN    
+                           
+   END    
+   ELSE 
+   BEGIN   
+      IF @BASE = 'Basico'    
+      BEGIN    
+         IF ISNULL(@CONCEPTO_CON_EVENTO,0) = 0  
+         BEGIN    
+            SELECT @VALOR_CALCULO    = @HORASXCARGO * @VALOR_HORA  
+            SELECT @CANTIDAD         = @HORASXCARGO  
+         END    
+         ELSE    
+         BEGIN    
+            IF @TIPOLIQ='PorFechas' --Liquida Conceptos ya liquidados en un rango de fechas   
+            BEGIN
+               SELECT @VALOR_CALCULO = SUM(NEMPFD.VALOR)   
+               FROM   NCON INNER JOIN NEMPF  ON NCON.CODCONCEPTO         = @CODCONCEPTO 
+                                          AND NEMPF.NUMDOC             = @NUMDOC 
+                                          AND NCON.TIPO                = 'Ingreso' 
+                           INNER JOIN NEMPFD ON NEMPF.CNSPAGO            = NEMPFD.CNSPAGO 
+                                          AND NEMPFD.ITEM              = NEMPF.ITEM 
+                                          AND NEMPF.NUMDOC             = NEMPFD.NUMDOC 
+                                          AND NEMPFD.CODCONCEPTO       = NCON.CODCONCEPTO 
+                                          AND NEMPFD.BASE_PRESTACIONES = 'Si' 
+                                          AND NEMPFD.INFO              = 'No' 
+                                          AND NEMPFD.LIQUIDAR          = 'Si' 
+                           INNER JOIN NPER   ON NPER.CERRADO             = 1 
+                                          AND NEMPFD.CNSPAGO           = NPER.CNSPAGO 
+                                          AND NPER.FECHAINI           >= @FECHAINI 
+                                          AND NPER.FECHAFIN           <= @FECHAFIN  
+            END
+            ELSE
+            BEGIN
+               SELECT @VALOR_CALCULO     = VALOR_CALCULO,   
+                     @CANTIDAD          = CANTIDAD,   
+                     @VALOR_CALCULO100P = VALOR_CALCULO100P,
+                     @DETALLE=@DETALLE+' bASICO 2' 
+               FROM   FNK_CALCULO_VLR_NOVEDAD_NOM(@CNSPAGO, @CODCONCEPTO, @NUMDOC, @FECHAINI, @FECHAFIN, @VALOR_HORA)  
+            END
+         END   
+         SELECT @PORCLABORADO = 100  
+      END    
+      ELSE           
+      BEGIN    
+         IF @BASE='BasePrestaciones'     
+         BEGIN    
+            SELECT @DETALLE=@DETALLE+' B_Prestaciones'
+            IF @TIPOLIQ='PorNomina' --Liquida solo conceptos de la Nomina  
+            BEGIN 
+               SELECT @VALOR_CALCULO = SUM(NEMPFD.VALOR)   
+               FROM NCON INNER JOIN   
+               NEMPF ON NCON.CODCONCEPTO<>@CODCONCEPTO AND NEMPF.CNSPAGO=@CNSPAGO AND NEMPF.NUMDOC=@NUMDOC AND   
+                        NCON.TIPO='Ingreso' INNER JOIN   
+               NEMPFD ON NEMPF.CNSPAGO=NEMPFD.CNSPAGO AND NEMPFD.ITEM=NEMPF.ITEM AND NEMPF.NUMDOC=NEMPFD.NUMDOC AND  
+                        NEMPFD.CODCONCEPTO=NCON.CODCONCEPTO AND NEMPFD.BASE_PRESTACIONES='Si' AND NEMPFD.INFO='No' AND   
+                        NEMPFD.LIQUIDAR='Si'  
+            END
+            ELSE
+            BEGIN  
+               IF @TIPOLIQ='PorFechas' --Liquida Conceptos ya liquidados en un rango de fechas 
+               BEGIN  
+                  SELECT @VALOR_CALCULO = SUM(NEMPFD.VALOR)   
+                  FROM NCON INNER JOIN NEMPF ON NCON.CODCONCEPTO<>@CODCONCEPTO 
+                                             AND NEMPF.NUMDOC=@NUMDOC 
+                                             AND NCON.TIPO='Ingreso' 
+                              INNER JOIN NEMPFD ON NEMPF.CNSPAGO=NEMPFD.CNSPAGO 
+                                                AND NEMPFD.ITEM=NEMPF.ITEM 
+                                                AND NEMPF.NUMDOC=NEMPFD.NUMDOC 
+                                                AND NEMPFD.CODCONCEPTO=NCON.CODCONCEPTO 
+                                                AND NEMPFD.BASE_PRESTACIONES='Si' 
+                                                AND NEMPFD.INFO='No' 
+                                                AND NEMPFD.LIQUIDAR='Si' 
+                              INNER JOIN  NPER ON NEMPFD.CNSPAGO=NPER.CNSPAGO 
+                                             AND NPER.FECHAINI>=@FECHAINI 
+                                             AND NPER.FECHAFIN<=@FECHAFIN
+                                       
+                                                     
+                  IF ISNULL(@VALOR_CALCULO,0) = 0   
+                  BEGIN
+                     SELECT @VALOR_HORA = 0  
+                  END
+                  ELSE
+                  BEGIN  
+                     SELECT @VALOR_HORA = @VALOR_CALCULO/@HORASXCARGO    
+                  END
+                  IF COALESCE(@CONCEPTO_CON_EVENTO,0) = 0  
+                  BEGIN   
+                     SELECT @CANTIDAD          = @HORAS_LABORADAS  
+                     SELECT @VALOR_CALCULO100P = @VALOR_CALCULO  
+                  END 
+               END
+--query2
+               ELSE
+               BEGIN  
+                  SELECT @VALOR_CALCULO     = VALOR_CALCULO,   
+                           @CANTIDAD          = CANTIDAD,   
+                           @VALOR_CALCULO100P = VALOR_CALCULO100P  
+                  FROM FNK_CALCULO_VLR_NOVEDAD_NOM(@CNSPAGO, @CODCONCEPTO, @NUMDOC, @FECHAINI, @FECHAFIN, @VALOR_HORA)  
+                                    
+                  --SET @PORCLABORADO  = (100*@HORAS_LABORADAS)/@HORASXPERIODO  
+                                                
+                  IF @TIPOCALCULO <> 'Porcentaje'  
+                  BEGIN  
+                     SET @VALOR         = @VALOR         * (@DIASXPERIODO/@DIASXCARGO)  
+                     SET @VALOR_EMPRESA = @VALOR_EMPRESA * (@DIASXPERIODO/@DIASXCARGO)  
+                  END  
+               END
+            END  
+         END
+         ELSE 
+         BEGIN 
+            IF @BASE='SalarioNeto'     
+            BEGIN  
+               SELECT @DETALLE=@DETALLE+' B_S_Neto'  
+               IF @TIPOLIQ='PorNomina' --Liquida solo conceptos de la Nomina 
+               BEGIN  
+                  SELECT @VALOR_CALCULO = SUM(CASE WHEN NCON.TIPO='Ingreso' THEN NEMPFD.VALOR ELSE NEMPFD.VALOR*-1 END)   
+                  FROM NCON INNER JOIN   
+                        NEMPF ON NCON.CODCONCEPTO<>@CODCONCEPTO AND NEMPF.CNSPAGO=@CNSPAGO AND NEMPF.NUMDOC=@NUMDOC INNER JOIN   
+                        NEMPFD ON NEMPF.CNSPAGO=NEMPFD.CNSPAGO AND NEMPFD.ITEM=NEMPF.ITEM AND NEMPF.NUMDOC=NEMPFD.NUMDOC AND  
+                                 NEMPFD.CODCONCEPTO=NCON.CODCONCEPTO AND NEMPFD.INFO='No' AND NEMPFD.LIQUIDAR='Si'
+               END  
+               ELSE
+               BEGIN  
+                  IF @TIPOLIQ='PorFechas' --Liquida Conceptos ya liquidados en un rango de fechas
+                  BEGIN   
+                     SELECT @VALOR_CALCULO = SUM(CASE WHEN NCON.TIPO='Ingreso' THEN NEMPFD.VALOR ELSE NEMPFD.VALOR*-1 END)   
+                     FROM NCON INNER JOIN   
+                           NEMPF ON NCON.CODCONCEPTO<>@CODCONCEPTO AND NEMPF.NUMDOC=@NUMDOC INNER JOIN   
+                           NEMPFD ON NEMPF.CNSPAGO=NEMPFD.CNSPAGO AND NEMPFD.ITEM=NEMPF.ITEM AND NEMPF.NUMDOC=NEMPFD.NUMDOC AND  
+                                    NEMPFD.CODCONCEPTO=NCON.CODCONCEPTO AND NEMPFD.INFO='No' AND NEMPFD.LIQUIDAR='Si' INNER JOIN  
+                           NPER ON NEMPFD.CNSPAGO=NPER.CNSPAGO AND NPER.FECHAINI>=@FECHAINI AND NPER.FECHAFIN<=@FECHAFIN  
+  
+                     IF COALESCE(@VALOR_CALCULO,0) = 0 
+                     BEGIN  
+                        SELECT @VALOR_HORA = 0  
+                     END
+                     ELSE
+                     BEGIN  
+                        SELECT @VALOR_HORA = @VALOR_CALCULO/@HORASXCARGO    
+  
+                        IF ISNULL(@CONCEPTO_CON_EVENTO,0) = 0  
+                        BEGIN   
+                           SELECT @CANTIDAD          = @HORAS_LABORADAS  
+                           SELECT @VALOR_CALCULO100P = @VALOR_CALCULO 
+                        END
+                     END
+                  END 
+                  ELSE 
+                  BEGIN 
+                     SELECT @VALOR_CALCULO     = VALOR_CALCULO,   
+                              @CANTIDAD          = CANTIDAD,   
+                              @VALOR_CALCULO100P = VALOR_CALCULO100P  
+                     FROM FNK_CALCULO_VLR_NOVEDAD_NOM(@CNSPAGO, @CODCONCEPTO, @NUMDOC, @FECHAINI, @FECHAFIN, @VALOR_HORA)  
+  
+                     --SET @PORCLABORADO  = (100*@HORAS_LABORADAS)/@HORASXPERIODO  
+  
+                     IF @TIPOCALCULO <> 'Porcentaje'  
+                     BEGIN  
+                        SELECT @VALOR         = @VALOR         * (@DIASXPERIODO/@DIASXCARGO)  
+                        SELECT @VALOR_EMPRESA = @VALOR_EMPRESA * (@DIASXPERIODO/@DIASXCARGO)  
+                     END 
+                  END 
+               END  
+            END
+            ELSE 
+            BEGIN 
+               IF @BASE='Conceptos'  
+               BEGIN 
+                  SELECT @DETALLE=@DETALLE+' B_Conceptos' 
+                  SELECT @VALOR_CALCULO = DBO.FNK_VALOR_NCONDC(@NUMDOC, @CODCONCEPTO, @ITEM_NCOND, @FECHAINI, @FECHAFIN, @CNSPAGO)  
+  
+                  IF ISNULL(@VALOR_CALCULO,0) = 0   
+                  SET @VALOR_HORA = 0  
+                  ELSE  
+                  SET @VALOR_HORA = @VALOR_CALCULO/@HORASXCARGO    
+  
+                  IF ISNULL(@CONCEPTO_CON_EVENTO,0) = 0  
+                  BEGIN   
+                     SELECT @CANTIDAD          = @HORAS_LABORADAS  
+                     SELECT @VALOR_CALCULO100P = @VALOR_CALCULO  
+                  END  
+                  ELSE  
+                  SELECT @VALOR_CALCULO     = VALOR_CALCULO,   
+                           @CANTIDAD          = CANTIDAD,   
+                           @VALOR_CALCULO100P = VALOR_CALCULO100P  
+                  FROM FNK_CALCULO_VLR_NOVEDAD_NOM(@CNSPAGO, @CODCONCEPTO, @NUMDOC, @FECHAINI, @FECHAFIN, @VALOR_HORA)  
+  
+                  --SET @PORCLABORADO  = (100*@HORAS_LABORADAS)/@HORASXPERIODO  
+  
+                  IF @TIPOCALCULO <> 'Porcentaje'  
+                  BEGIN  
+                     SELECT @VALOR         = @VALOR         * (@DIASXPERIODO/@DIASXCARGO)  
+                     SELECT @VALOR_EMPRESA = @VALOR_EMPRESA * (@DIASXPERIODO/@DIASXCARGO)  
+                  END  
+               END 
+               ELSE  
+               BEGIN
+                  IF @BASE='Formula'  
+                  BEGIN 
+                     SELECT @DETALLE=@DETALLE+' B_Formula' 
+                     DECLARE CUR_NCONDF CURSOR FOR  
+                     SELECT CODCONCEPTO_OPE,CASE WHEN NPER.CNSPAGO IS NULL THEN @CNSPAGO ELSE NPER.CNSPAGO END,   
+                              CASE WHEN NPER.CNSPAGO IS NULL THEN @FECHAINI ELSE NPER.FECHAINI END,  
+                              CASE WHEN NPER.CNSPAGO IS NULL THEN @FECHAFIN ELSE NPER.FECHAFIN END,   
+                              PRIORIDAD, FACTOR, OPERACION, SOLICITA_CNSPAGO, ISNULL(REQUIERELIQ,0), ISNULL(VALHORASLAB,0), NCONDF.HORAS, ISNULL(NCONDF.DIAS,0)
+                     FROM NCONDF LEFT JOIN  NPER ON NPER.CNSPAGO=NCONDF.CNSPAGO   
+                     WHERE NCONDF.CODCONCEPTO=@CODCONCEPTO AND NCONDF.ITEM=@ITEM_NCOND  
+                     ORDER BY NCONDF.PRIORIDAD                                        
+                     OPEN CUR_NCONDF  
+                     SELECT @VALOR_CALCULO=0      
+                     FETCH NEXT FROM CUR_NCONDF  
+                     INTO @CODCONCEPTO_CUR, @CNSPAGO_CUR, @FECHAINI_CUR, @FECHAFIN_CUR, @PRIORIDAD_CUR,   
+                           @FACTOR_CUR, @OPERACION, @SOLICITA_CNSPAGO, @REQUIERELIQ_NCONDF, @VALHORASLAB_NCONDF, @HORAS_NCONDF, @DIAS_NCONDF  
+                     WHILE @@FETCH_STATUS = 0  
+                     BEGIN  
+                        SELECT @VALOR_CONCEPTO = 0  
+                        IF ISNULL(@CODCONCEPTO_CUR,'')<>''
+                        BEGIN
+                           IF @SOLICITA_CNSPAGO='Si'  
+                           BEGIN  
+                              SELECT @VALOR_CONCEPTO = ISNULL(SUM(VALOR),0)    
+                              FROM   NEMPFD   
+                              WHERE  CODCONCEPTO=@CODCONCEPTO_CUR AND CNSPAGO=@CNSPAGO_CUR AND NUMDOC=@NUMDOC 
+                              AND    INFO='No' AND LIQUIDAR='Si'  
+                              IF @VALHORASLAB_NCONDF = 1
+                              BEGIN
+                                 SELECT @VALOR_CONCEPTO = @PORCLABORADO * @VALOR_CONCEPTO * 0.01
+                              END
+                           END  
+                           ELSE   
+                           BEGIN  
+                              IF @REQUIERELIQ_NCONDF = 1  
+                              BEGIN  
+                                 IF @TIPOLIQ='PorNomina' --Liquida solo conceptos de la Nomina 
+                                 BEGIN  
+                                    SELECT @VALOR_CONCEPTO = SUM(NEMPFD.VALOR)   
+                                    FROM NEMPFD INNER JOIN
+                                       NPER ON NEMPFD.CNSPAGO = NPER.CNSPAGO
+                                    WHERE NEMPFD.CNSPAGO=@CNSPAGO AND NEMPFD.NUMDOC=@NUMDOC AND NEMPFD.INFO='No' AND NEMPFD.LIQUIDAR='Si' AND
+                                          NEMPFD.CODCONCEPTO = @CODCONCEPTO_CUR 
+                                 END
+                                 ELSE
+                                 BEGIN  
+                                    IF @TIPOLIQ='PorFechas' --Liquida Conceptos ya liquidados en un rango de fechas
+                                    BEGIN   
+                                       SELECT @VALOR_CONCEPTO = SUM(NEMPFD.VALOR)   
+                                       FROM   NEMPFD INNER JOIN NPER ON NEMPFD.CNSPAGO = NPER.CNSPAGO
+                                       WHERE  NEMPFD.NUMDOC      =  @NUMDOC 
+                                       AND    NEMPFD.INFO        =  'No' 
+                                       AND    NEMPFD.LIQUIDAR    =  'Si' 
+                                       AND    NEMPFD.CODCONCEPTO =  @CODCONCEPTO_CUR 
+                                       AND    NPER.CERRADO       =  1 
+                                       AND    NPER.FECHAINI      >= @FECHAINI 
+                                       AND    NPER.FECHAFIN<=@FECHAFIN 
+                                    END 
+                                 END
+                              END  
+                              ELSE 
+                              BEGIN 
+                                 SELECT @VALOR_CONCEPTO = V.VALOR_EMPLEADO  
+                                 FROM   FNK_CALCULO_VALORCONCEPTO_NOM(@NUMDOC,@CODCONCEPTO_CUR,@FECHAINI_CUR,@FECHAFIN_CUR,@CNSPAGO_CUR,@VALHORASLAB_NCONDF, @HORAS_NCONDF, @DIAS_NCONDF) AS V  
+                              END  
+                           END
+                        END
+                        ELSE
+                        BEGIN
+                           SELECT @VALOR_CONCEPTO = 1
+                           IF COALESCE(@VALOR_CONCEPTO,0)=0
+                           BEGIN   
+                              SELECT @VALOR_CONCEPTO = 0  
+                           END
+                           SELECT @VALOR_CALCULO = CASE @OPERACION    
+                                                      WHEN '+' THEN @VALOR_CALCULO+(@VALOR_CONCEPTO*@FACTOR_CUR)  
+                                                      WHEN '-' THEN @VALOR_CALCULO-(@VALOR_CONCEPTO*@FACTOR_CUR)  
+                                                      WHEN '*' THEN @VALOR_CALCULO*(@VALOR_CONCEPTO*@FACTOR_CUR)  
+                                                      WHEN '/' THEN @VALOR_CALCULO/(@VALOR_CONCEPTO*@FACTOR_CUR)  
+                                                   END    
+                        END
+                        FETCH NEXT FROM CUR_NCONDF  
+                        INTO @CODCONCEPTO_CUR, @CNSPAGO_CUR, @FECHAINI_CUR, @FECHAFIN_CUR, @PRIORIDAD_CUR,   
+                           @FACTOR_CUR, @OPERACION, @SOLICITA_CNSPAGO, @REQUIERELIQ_NCONDF, @VALHORASLAB_NCONDF, @HORAS_NCONDF, @DIAS_NCONDF
+                     END  
+                     CLOSE CUR_NCONDF  
+                     DEALLOCATE CUR_NCONDF  
+
+                     IF COALESCE(@VALOR_CALCULO,0) = 0 
+                     BEGIN  
+                        SELECT @VALOR_HORA = 0  
+                     END
+                     ELSE
+                     BEGIN  
+                        SELECT @VALOR_HORA = @VALOR_CALCULO/@HORASXCARGO    
+                     END
+  
+                     IF ISNULL(@CONCEPTO_CON_EVENTO,0) = 0  
+                     BEGIN   
+                        SELECT @CANTIDAD          = @HORAS_LABORADAS  
+                        SELECT @VALOR_CALCULO100P = @VALOR_CALCULO  
+                     END  
+                     ELSE 
+                     BEGIN 
+                        SELECT @VALOR_CALCULO     = VALOR_CALCULO,   
+                                 @CANTIDAD          = CANTIDAD,   
+                                 @VALOR_CALCULO100P = VALOR_CALCULO100P  
+                        FROM FNK_CALCULO_VLR_NOVEDAD_NOM(@CNSPAGO, @CODCONCEPTO, @NUMDOC, @FECHAINI, @FECHAFIN, @VALOR_HORA)  
+                     END
+                     IF @TIPOCALCULO <> 'Porcentaje'  
+                     BEGIN  
+                        SET @VALOR         = @VALOR         * (@DIASXPERIODO/@DIASXCARGO)  
+                        SET @VALOR_EMPRESA = @VALOR_EMPRESA * (@DIASXPERIODO/@DIASXCARGO)  
+                     END  
+  
+                     --  INSERT INTO @TABLA(DETALLE, CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+                     --       NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES)    
+                     --  SELECT 'HORAS', @HORAS_LABORADAS, @VALOR_CALCULO ,@PORCLABORADO, 0, 0, 0, 0, 0, 0, 0  
+                     --  RETURN   
+
+                  END  
+                  ELSE
+                  BEGIN  
+                     IF @BASE='Cuota' --AND @CLASE='Prestamo'  
+                     BEGIN ---10  
+                        SELECT @DETALLE=@DETALLE+' B_Cuota'  
+                        SELECT @CUOTASPGR     = 0    
+                        SELECT @VALOR_CALCULO = 0    
+                        SELECT @CANTIDAD      = 0  
+                        -------------------------------------------------------------------------------------------    
+                        --- VERIFICAR SI HAY PRESTAMOS POR PAGAR    
+                        ------------------------------------------------------------------------------------------    
+                        SELECT @CUOTASPGR = COUNT(*) FROM PRSD INNER JOIN PRS ON PRS.NUMDOCUMENTO=PRSD.NUMDOCUMENTO 
+                                                                              AND PRS.IDTRANSACCION=PRSD.IDTRANSACCION    
+                        WHERE PRS.IDDEUDOR=@NUMDOC 
+                        AND PRS.ESTADO='PorPagar' 
+                        AND PRS.CODCONCEPTO=@CODCONCEPTO 
+                        AND PRSD.FECHAPAGO>=@FECHAINI 
+                        AND PRSD.FECHAPAGO<=@FECHAFIN 
+                        AND  PRSD.ESTADO='PorPagar'    
+                        -------------------------------------------------------------------------------------------    
+                        --- SI HAY COUTAS    
+                        ------------------------------------------------------------------------------------------    
+                        IF @CUOTASPGR > 0     
+                        BEGIN  
+                           DECLARE CUR_NPRES CURSOR FOR    
+                           SELECT PRSD.IDTRANSACCION, PRSD.NUMDOCUMENTO, PRSD.VLRCUOTA, PRSD.NUMCUOTA, PRS.IDPRESTADOR  
+                           FROM PRSD INNER JOIN PRS ON PRS.NUMDOCUMENTO=PRSD.NUMDOCUMENTO 
+                                                      AND PRS.IDTRANSACCION=PRSD.IDTRANSACCION    
+                           WHERE PRS.IDDEUDOR=@NUMDOC 
+                           AND PRS.ESTADO='PorPagar' 
+                           AND PRS.CODCONCEPTO=@CODCONCEPTO 
+                           AND PRSD.FECHAPAGO>=@FECHAINI 
+                           AND PRSD.FECHAPAGO<=@FECHAFIN 
+                           AND PRSD.ESTADO='PorPagar'    
+                           OPEN CUR_NPRES    
+                           FETCH NEXT FROM CUR_NPRES    
+                           INTO @IDTRANSPRESTAMO_CUR, @NUMDOCPRESTAMO_CUR, @VLRCUOTA_CUR, @NUMCUOTA_CUR, @IDTERCERO  
+                           WHILE @@FETCH_STATUS = 0    
+                           BEGIN      
+                              INSERT INTO @TABLA(DETALLE, CANTIDAD, VALOR_EMPLEADO, VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO,   
+                                                NUMDOCPRESTAMO, NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES, ITEMCONCEPTO ,BASE_CALCULO,  
+                                                GENERANOVEFU, CODNOVEFU, MOSTRARHORAS)    
+                              SELECT @DETALLE, 0, ROUND(@VLRCUOTA_CUR*@VALOR*0.01,@REDONDEO), ROUND(@VLRCUOTA_CUR*@VALOR_EMPRESA*0.01,@REDONDEO),   
+                                    CASE WHEN @TIPO='Ingreso' THEN ROUND(@VLRCUOTA_CUR,0) ELSE 0 END, @IDTRANSPRESTAMO_CUR,   
+                                    @NUMDOCPRESTAMO_CUR, @NUMCUOTA_CUR ,@CODPRF, @IDTERCERO, @BASE_PRESTACIONES, @ITEM_NCOND,   
+                                    ROUND(@VLRCUOTA_CUR*@VALOR*0.01,@REDONDEO), @GENERANOVEFU, @CODNOVEFU, @MOSTRARHORAS  
+                              FETCH NEXT FROM CUR_NPRES    
+                              INTO @IDTRANSPRESTAMO_CUR, @NUMDOCPRESTAMO_CUR, @VLRCUOTA_CUR, @NUMCUOTA_CUR, @IDTERCERO  
+                           END       
+                           CLOSE CUR_NPRES    
+                           DEALLOCATE CUR_NPRES    
+                        END --Si hay coutas pendientes
+                        RETURN
+                     END --cuotas  
+                  END--Formula
+               END--Conceptos
+            END--salario neto
+         END--Prestaciones
+      END--Basico
+   END--Laborado                      
+   IF ISNULL(@VALOR_CALCULO,0)<=0  
+   BEGIN  
+      INSERT INTO @TABLA(CODPRF, DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,IDTERCERO,ITEMCONCEPTO)    
+      SELECT @CODPRF, 'Valor<=0',0,@VALOR_CALCULO,0,0,NULL,NULL,NULL,@CODCONCEPTO,@ITEM_NCOND  
+      RETURN    
+   END  
+   -------------------------------------------------------------------------------------------    
+   --- CALCULOS DEL SUBSIDIO SEGUN PARIENTES  
+   ------------------------------------------------------------------------------------------    
+   IF @CLASE='Familiares'
+   BEGIN  
+      DECLARE CUR_NCONDS CURSOR FOR    
+      SELECT IDPARENTESCO,SEXO,EDADMIN,EDADMAX,ESTADO_PARIENTE,FACTOR,OPERACION,MAXIMO,ESTUDIANTE,NIVELESTUDIOS  
+      FROM NCONDS    
+      WHERE CODCONCEPTO=@CODCONCEPTO AND ITEM_NCOND=@ITEM_NCOND            
+      OPEN CUR_NCONDS     
+      FETCH NEXT FROM CUR_NCONDS    
+      INTO @IDPARENTESCO,@SEXO,@EDADMIN,@EDADMAX,@ESTADO_PARIENTE,@FACTOR,@OPERACION,@MAXIMO,@ESTUDIANTE,@NIVELESTUDIOS  
+      SELECT @VALOR_PARIENTES=0  
+      SELECT @CANT_PARIENTES=0 
+      SELECT @VALOR_DEPENDENCIA=0   
+      WHILE @@FETCH_STATUS = 0     
+      BEGIN      
+         SELECT @CANT_PARIENTES=COUNT(*) FROM NEMPP   
+         WHERE NUMDOC=@NUMDOC AND IDPARENTESCO=@IDPARENTESCO AND SEXO=(CASE WHEN @SEXO='Ambos' THEN SEXO ELSE @SEXO END) AND  
+         DATEDIFF(YEAR,FNACIMIENTO,@FECHAINI)>=@EDADMIN AND DATEDIFF(YEAR,FNACIMIENTO,@FECHAFIN)<(CASE WHEN @EDADMAX=0 THEN 150 ELSE @EDADMAX END) AND  
+         ESTADO=@ESTADO_PARIENTE AND ESTUDIANTE=(CASE WHEN @ESTUDIANTE='NA' THEN ESTUDIANTE ELSE @ESTUDIANTE END) AND  
+         NIVELESTUDIOS=@NIVELESTUDIOS  
+         IF @MAXIMO>0 AND @CANT_PARIENTES>@MAXIMO  
+         SELECT @CANT_PARIENTES=@MAXIMO  
+         SELECT @VALOR_PARIENTES= CASE @OPERACION    
+                                    WHEN '+' THEN @VALOR_PARIENTES+(@VALOR*@CANT_PARIENTES*@FACTOR)  
+                                    WHEN '-' THEN @VALOR_PARIENTES-(@VALOR*@CANT_PARIENTES*@FACTOR)  
+                                    WHEN '*' THEN @VALOR_PARIENTES*(@VALOR*@CANT_PARIENTES*@FACTOR)  
+                                    WHEN '/' THEN @VALOR_PARIENTES/(@VALOR*@CANT_PARIENTES*@FACTOR)  
+                                 END    
+         FETCH NEXT FROM CUR_NCONDS    
+         INTO @IDPARENTESCO,@SEXO,@EDADMIN,@EDADMAX,@ESTADO_PARIENTE,@FACTOR,@OPERACION,@MAXIMO,@ESTUDIANTE,@NIVELESTUDIOS  
+      END    
+      CLOSE CUR_NCONDS    
+      DEALLOCATE CUR_NCONDS  
+      SELECT @VALOR             = @VALOR_PARIENTES  
+      SELECT @VALOR_EMPRESA     = 0  
+      SELECT @VALOR_CALCULO100P = @VALOR  
+   END         
+   IF @CLASE='Particular'   
+   BEGIN ---10    
+      DECLARE @VALOR_PART       DECIMAL(15,6)  
+      DECLARE @TIPOCALCULO_PART VARCHAR(12)  
+      DECLARE @IDTERCERO_PART   VARCHAR(20)  
+      DECLARE @VALOR_BK         DECIMAL(15,6)  
+      DECLARE @VALOR100P_BK     DECIMAL(15,6)  
+  
+      DECLARE CUR_PART CURSOR FOR    
+      SELECT VALOR, TIPOCALCULO, IDTERCERO  
+      FROM NEMPDA 
+      WHERE NUMDOC=@NUMDOC AND CODCONCEPTO = @CODCONCEPTO AND 
+            @FECHAFIN BETWEEN ISNULL(FECHAINI,@FECHAFIN) AND ISNULL(FECHAFIN,@FECHAFIN)
+  
+      OPEN CUR_PART  
+  
+      SELECT @VALOR_BK     = @VALOR  
+      SELECT @VALOR100P_BK = @VALOR100P  
+  
+      FETCH NEXT FROM CUR_PART  
+      INTO @VALOR_PART, @TIPOCALCULO_PART, @IDTERCERO_PART  
+      WHILE @@FETCH_STATUS = 0    
+      BEGIN      
+         SELECT @VALOR     = @VALOR_BK  
+         SELECT @VALOR100P = @VALOR100P_BK  
+         IF @TIPOCALCULO_PART = 'Valor' 
+         BEGIN 
+            SELECT @VALOR = (@PORCLABORADO / @VALOR_CALCULO) * @VALOR_PART 
+         END 
+         ELSE
+         BEGIN    
+            IF @TIPOCALCULO = 'Porcentaje'  
+            BEGIN
+               SELECT @VALOR     = @VALOR_PART * @VALOR * 0.01  
+            END
+         END   
+         GOTO CALCULOS  
+         INST_PARTICULAR:  
+  
+         INSERT INTO @TABLA(DETALLE, CANTIDAD, VALOR_EMPLEADO, VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+                           NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES, ITEMCONCEPTO, BASE_CALCULO, GENERANOVEFU,   
+                           CODNOVEFU, MOSTRARHORAS)    
+         SELECT @DETALLE, @CANTIDAD, ROUND(@VALOR,@REDONDEO) ,ROUND(@VALOR_EMPRESA,@REDONDEO), @VALOR100P,   
+               @IDTRANSPRESTAMO_CUR, @NUMDOCPRESTAMO_CUR, @NUMCUOTA_CUR, @CODPRF,   
+               CASE WHEN ISNULL(@IDTERCERO_PART,'')='' THEN @IDTERCERO ELSE @IDTERCERO_PART END,   
+               @BASE_PRESTACIONES, @ITEM_NCOND, @VALOR_CALCULO, @GENERANOVEFU, @CODNOVEFU, @MOSTRARHORAS  
+  
+         FETCH NEXT FROM CUR_PART  
+         INTO @VALOR_PART, @TIPOCALCULO_PART, @IDTERCERO_PART  
+      END    
+      CLOSE CUR_PART  
+      DEALLOCATE CUR_PART  
+  
+      RETURN    
+   END ---10    
+  
+   CALCULOS:  
+   -------------------------------------------------------------------------------------------    
+   --- INICIO DE CALCULOS    
+   ------------------------------------------------------------------------------------------    
+   --  INSERT INTO @TABLA(DETALLE, CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA, IDTRANSPRESTAMO, NUMDOCPRESTAMO, NUMCUOTA, CODPRF, IDTERCERO)    
+   --  SELECT @DETALLE, @CANTIDAD, @VALOR_CALCULO ,@VALOR, @IDTRANSPRESTAMO_CUR, @NUMDOCPRESTAMO_CUR, @NUMCUOTA_CUR, @CODPRF, @IDTERCERO  
+   --  RETURN    
+  
+   -- Busca valores o Porcentaje para aplicar deacuerdo a @VALOR   
+   IF @CLASE='Tabla'    
+   BEGIN    
+      SELECT @VALOR_A = CASE @VALIDATABLA  
+                           WHEN 'Base' THEN @VALOR_CALCULO  
+                           WHEN 'Basico' THEN @BASICO  
+                           WHEN 'Antiguedad' THEN DBO.FNK_ANTIGUEDAD(@FECHAING,@FECHAFIN+1,@DMATABLA)  
+                           WHEN 'Edad' THEN DBO.FNK_ANTIGUEDAD(@FNACIMIENTO,@FECHAFIN+1,@DMATABLA)  
+                           WHEN 'Horas' THEN @HORAS_LABORADAS  
+                           WHEN 'Conceptos' THEN DBO.FNK_VALOR_NCONDTC(@NUMDOC, @CODCONCEPTO, @ITEM_NCOND, @FECHAINI, @FECHAFIN, @CNSPAGO)  
+                        END  
+            
+      SELECT TOP 1  @VALOR_TABLA  = COALESCE( CASE NCONTDV.TIPOCALCULO  
+                                                   WHEN 'Porcentaje' THEN NCONTDV.PORCENTAJE  
+                                                   WHEN 'Valor'      THEN NCONTDV.VALOR    
+                                                END,
+                                             0),  
+      @TIPOCALCULO2 = NCONTDV.TIPOCALCULO  
+      FROM NCOND INNER JOIN   
+            NCONTD ON NCONTD.TIPOTABLA=NCOND.TIPOTABLA INNER JOIN   
+            NCONTDV ON NCONTD.TIPOTABLA=NCONTDV.TIPOTABLA AND NCONTD.ITEM=NCONTDV.ITEM  
+      WHERE NCONTD.FECHAINI<=@FECHAINI AND NCONTDV.VALORINICIAL<=@VALOR_A AND   
+            NCOND.CODCONCEPTO=@CODCONCEPTO AND NCOND.ITEM=@ITEM_NCOND   
+      ORDER BY NCONTD.FECHAINI DESC, NCONTDV.VALORINICIAL DESC  
+         
+      --   INSERT INTO @TABLA(DETALLE, CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+      --        NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES)    
+      --   SELECT 'TABLA 1', @VALOR_A, @VALOR_TABLA ,@VALOR, @VALOR_CALCULO, 0, 0, 0, 0, 0, 0  
+      --   RETURN   
+  
+      SELECT @VALOR = CASE @TIPOCALCULO2  
+                           WHEN 'Porcentaje' THEN @VALOR*@VALOR_TABLA*0.01  
+                           WHEN 'Valor'      THEN (@PORCLABORADO / @VALOR_CALCULO) * @VALOR_TABLA  
+                        END   
+   END    
+  
+   --  INSERT INTO @TABLA(DETALLE, CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+   --       NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES)    
+   --  SELECT 'TABLA 2', @VALOR_A, @VALOR_TABLA ,@VALOR, 0, 0, 0, 0, 0, 0, 0  
+   -- RETURN   
+ 
+   IF @TIPO='Ingreso'  
+   BEGIN  
+      SELECT @VALOR100P = CASE @TIPOCALCULO     
+                              WHEN 'Valor'      THEN @VALOR  
+                              WHEN 'Porcentaje' THEN @VALOR_CALCULO100P*@VALOR*0.01  
+                           END    
+   END  
+   ELSE
+   BEGIN  
+      SELECT @VALOR100P = 0
+   END  
+  
+   SELECT @VALOR = CASE @TIPOCALCULO     
+                        WHEN 'Valor'      THEN @VALOR * @PORCLABORADO  * 0.01    
+                        WHEN 'Porcentaje' THEN @VALOR * @VALOR_CALCULO * 0.01    
+                     END    
+
+   --    INSERT INTO @TABLA(DETALLE,CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA,VALOR100P,IDTRANSPRESTAMO,NUMDOCPRESTAMO,NUMCUOTA,CODPRF,IDTERCERO,ITEMCONCEPTO)    
+   --    SELECT 'Laborado',@PORCLABORADO,@HORASXCARGO,@DIASXPERIODO,@DIASXCARGO,NULL,NULL,NULL,NULL,NULL,@ITEM_NCOND  
+   --    RETURN    
+  
+   SELECT @VALOR_EMPRESA = CASE @TIPOCALCULO     
+                           WHEN 'Valor'      THEN @VALOR_EMPRESA*@PORCLABORADO*0.01    
+                           WHEN 'Porcentaje' THEN @VALOR_EMPRESA*@VALOR_CALCULO*0.01    
+                        END    
+  
+   --  INSERT INTO @TABLA(DETALLE, CANTIDAD,VALOR_EMPLEADO,VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+   --       NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES)    
+   --  SELECT 'TABLA', @VALOR_A, @VALOR_TABLA ,@VALOR, 0, 0, 0, 0, 0, 0, 0  
+   --  RETURN   
+  
+   IF @CONDICION<>'NA'    
+   BEGIN  ---20    
+      IF @EVALUAR='Resultado'
+      BEGIN    
+         SELECT @VALOR_EVALUAR=@VALOR
+      END    
+      ELSE IF @EVALUAR='Basico'
+      BEGIN    
+         SELECT @VALOR_EVALUAR=@SALARIOBASICO 
+      END
+      ELSE 
+      BEGIN   
+         SELECT @VALOR_EVALUAR=@VALOR_CALCULO    
+      END 
+      DECLARE CUR_NCONDD CURSOR FOR    
+      SELECT TIPODEPENDENCIA, CODDEPENDENCIA, FACTOR, OPERACION, ISNULL(REQUIERELIQ,0), ISNULL(VALHORASLAB,0), HORAS, DIAS,FACTORMAX
+      FROM NCONDD 
+      WHERE CODCONCEPTO=@CODCONCEPTO AND ITEM_NCOND=@ITEM_NCOND    
+      SELECT @VALOR_DEPENDENCIA=0, @VALORMAXIMO=0
+      OPEN CUR_NCONDD    
+      FETCH NEXT FROM CUR_NCONDD    
+      INTO @TIPODEPENDENCIA, @CODDEPENDENCIA, @FACTOR, @OPERACION, @REQUIERELIQ_NCONDD, @VALHORASLAB_NCONDD, @HORAS_NCONDD, @DIAS_NCONDD,@FACTORMAX 
+      WHILE @@FETCH_STATUS = 0     
+      BEGIN      
+         IF @TIPODEPENDENCIA='Parametro'    
+         BEGIN    
+            SELECT @VALOR_DEPENDENCIA= CASE @OPERACION    
+                                          WHEN '+' THEN @VALOR_DEPENDENCIA+(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTOR)    
+                                          WHEN '-' THEN @VALOR_DEPENDENCIA-(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTOR)    
+                                          WHEN '*' THEN @VALOR_DEPENDENCIA*(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTOR)    
+                                          WHEN '/' THEN @VALOR_DEPENDENCIA/(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTOR)    
+                                       END 
+            IF COALESCE(@FACTORMAX,0)>0
+            BEGIN
+               SELECT @VALORMAXIMO=CASE @OPERACION    
+                                          WHEN '+' THEN @VALORMAXIMO+(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTORMAX)    
+                                          WHEN '-' THEN @VALORMAXIMO-(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTORMAX)    
+                                          WHEN '*' THEN @VALORMAXIMO*(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTORMAX)    
+                                          WHEN '/' THEN @VALORMAXIMO/(DBO.FNK_CALCULO_VALORPARAMETRO_NOM( @CODDEPENDENCIA,@FECHAINI,@FECHAFIN)*@FACTORMAX)    
+                                       END 
+            
+            END   
+         END    
+         ELSE 
+         BEGIN   
+            IF @TIPODEPENDENCIA='Concepto'
+            BEGIN    
+               SELECT @VALOR_CALCULO = 0  
+               IF @REQUIERELIQ_NCONDD = 1  
+               BEGIN  
+                  IF (SELECT COUNT(*) FROM NEMPFD WHERE CNSPAGO=@CNSPAGO AND NUMDOC=@NUMDOC AND CODCONCEPTO=@CODDEPENDENCIA)>0
+                  BEGIN  
+                     SELECT @VALOR_CALCULO = V.VALOR_EMPLEADO*@FACTOR     
+                     FROM FNK_CALCULO_VALORCONCEPTO_NOM(@NUMDOC,@CODDEPENDENCIA,@FECHAINI,@FECHAFIN,@CNSPAGO,@VALHORASLAB_NCONDD, @HORAS_NCONDD, @DIAS_NCONDD) AS V    
+                     IF COALESCE(@FACTORMAX,0)>0
+                     BEGIN
+                        SELECT @VALOR_CALCULOMAX = V.VALOR_EMPLEADO*@FACTORMAX     
+                        FROM FNK_CALCULO_VALORCONCEPTO_NOM(@NUMDOC,@CODDEPENDENCIA,@FECHAINI,@FECHAFIN,@CNSPAGO,@VALHORASLAB_NCONDD, @HORAS_NCONDD, @DIAS_NCONDD) AS V    
+                     END
+                  END
+               END  
+               ELSE
+               BEGIN  
+                  SELECT @VALOR_CALCULO = V.VALOR_EMPLEADO*@FACTOR     
+                  FROM FNK_CALCULO_VALORCONCEPTO_NOM(@NUMDOC,@CODDEPENDENCIA,@FECHAINI,@FECHAFIN,@CNSPAGO,@VALHORASLAB_NCONDD, @HORAS_NCONDD, @DIAS_NCONDD) AS V  
+                  IF COALESCE(@FACTORMAX,0)>0
+                  BEGIN
+                     SELECT @VALOR_CALCULOMAX = V.VALOR_EMPLEADO*@FACTORMAX    
+                     FROM FNK_CALCULO_VALORCONCEPTO_NOM(@NUMDOC,@CODDEPENDENCIA,@FECHAINI,@FECHAFIN,@CNSPAGO,@VALHORASLAB_NCONDD, @HORAS_NCONDD, @DIAS_NCONDD) AS V  
+                  END
+               END  
+               SELECT  @VALOR_DEPENDENCIA=CASE @OPERACION    
+                                       WHEN '+' THEN @VALOR_DEPENDENCIA+@VALOR_CALCULO    
+                                       WHEN '-' THEN @VALOR_DEPENDENCIA-@VALOR_CALCULO    
+                                       WHEN '*' THEN @VALOR_DEPENDENCIA*@VALOR_CALCULO     
+                                       WHEN '/' THEN @VALOR_DEPENDENCIA/@VALOR_CALCULO    
+                                    END  
+               IF COALESCE(@FACTORMAX,0)>0
+               BEGIN
+                   SELECT @VALORMAXIMO=CASE @OPERACION    
+                                             WHEN '+' THEN @VALORMAXIMO+@VALOR_CALCULOMAX    
+                                             WHEN '-' THEN @VALORMAXIMO-@VALOR_CALCULOMAX    
+                                             WHEN '*' THEN @VALORMAXIMO*@VALOR_CALCULOMAX     
+                                             WHEN '/' THEN @VALORMAXIMO/@VALOR_CALCULOMAX    
+                                          END  
+               END                                         
+            END
+         END    
+         FETCH NEXT FROM CUR_NCONDD    
+         INTO @TIPODEPENDENCIA, @CODDEPENDENCIA, @FACTOR, @OPERACION, @REQUIERELIQ_NCONDD, @VALHORASLAB_NCONDD, @HORAS_NCONDD, @DIAS_NCONDD,@FACTORMAX   
+      END    
+      CLOSE CUR_NCONDD    
+      DEALLOCATE CUR_NCONDD     
+            -- ojo revizar esto 18.dic.2005  
+            -- SET @VALOR_DEPENDENCIA = @VALOR_DEPENDENCIA * (@DIASXPERIODO/@DIASXCARGO)  
+      IF COALESCE(@VALORMAXIMO,0)=0
+      BEGIN
+         SELECT @VALORMAXIMO=0
+      END
+
+      SELECT @VALOR=CASE @CONDICION    
+                  WHEN '>'  THEN (CASE WHEN @VALOR_EVALUAR>@VALOR_DEPENDENCIA  AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR ELSE 0 END)     
+                  WHEN '>=' THEN (CASE WHEN @VALOR_EVALUAR>=@VALOR_DEPENDENCIA AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR ELSE 0 END)     
+                  WHEN '='  THEN (CASE WHEN @VALOR_EVALUAR=@VALOR_DEPENDENCIA  AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR ELSE 0 END)     
+                  WHEN '<'  THEN (CASE WHEN @VALOR_EVALUAR<@VALOR_DEPENDENCIA  AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR ELSE 0 END)     
+                  WHEN '<=' THEN (CASE WHEN @VALOR_EVALUAR<=@VALOR_DEPENDENCIA AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR ELSE 0 END)     
+                  WHEN '<>' THEN (CASE WHEN @VALOR_EVALUAR<>@VALOR_DEPENDENCIA AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR ELSE 0 END)     
+      END        
+      SELECT @VALOR_EMPRESA= CASE @CONDICION    
+                                 WHEN '>'  THEN (CASE WHEN @VALOR_EVALUAR>@VALOR_DEPENDENCIA  AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR_EMPRESA ELSE 0 END)     
+                                 WHEN '>=' THEN (CASE WHEN @VALOR_EVALUAR>=@VALOR_DEPENDENCIA AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR_EMPRESA ELSE 0 END)     
+                                 WHEN '='  THEN (CASE WHEN @VALOR_EVALUAR=@VALOR_DEPENDENCIA  AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR_EMPRESA ELSE 0 END)     
+                                 WHEN '<'  THEN (CASE WHEN @VALOR_EVALUAR<@VALOR_DEPENDENCIA  AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR_EMPRESA ELSE 0 END)     
+                                 WHEN '<=' THEN (CASE WHEN @VALOR_EVALUAR<=@VALOR_DEPENDENCIA AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR_EMPRESA ELSE 0 END)     
+                                 WHEN '<>' THEN (CASE WHEN @VALOR_EVALUAR<>@VALOR_DEPENDENCIA AND @VALORMAXIMO> @VALOR_EVALUAR  THEN @VALOR_EMPRESA ELSE 0 END)     
+                           END   
+                            
+      IF @VALOR = 0  
+         SET @VALOR100P = 0  
+   END ---20    
+   IF @CLASE='Particular'
+   BEGIN
+      GOTO INST_PARTICULAR  
+   END
+
+  IF EXISTS(SELECT * FROM DBO.FNK_EXPLODE(DBO.FNK_VALORVARIABLE('CODNOM_NOMILIQUIXDIA'),',') WHERE WORD=@CODCONCEPTO ) AND @HORAS_LABORADAS<@HORASXCARGO
+  BEGIN 
+      SELECT @VALOR=((@VALOR/@HORAS_A_LABORAR)*@HORAS_LABORADAS),@VALOR_EMPRESA=((@VALOR_EMPRESA/@HORAS_A_LABORAR)*@HORAS_LABORADAS),@VALOR100P=((@VALOR100P/@HORAS_A_LABORAR)*@HORAS_LABORADAS)
+
+      IF EXISTS(SELECT * FROM TGEN WHERE TABLA='NOMINA' AND CAMPO='ProvICesan' AND CODIGO=@CODCONCEPTO)
+      BEGIN
+         SELECT @VALOR=((@VALOR/@HORAS_A_LABORAR)*@HORAS_LABORADAS),@VALOR_EMPRESA=((@VALOR_EMPRESA/@HORAS_A_LABORAR)*@HORAS_LABORADAS),@VALOR100P=((@VALOR100P/@HORAS_A_LABORAR)*@HORAS_LABORADAS)
+      END
+  END
+
+   INSERT INTO @TABLA(DETALLE, CANTIDAD, VALOR_EMPLEADO, VALOR_EMPRESA, VALOR100P, IDTRANSPRESTAMO, NUMDOCPRESTAMO,   
+                     NUMCUOTA, CODPRF, IDTERCERO, BASE_PRESTACIONES, ITEMCONCEPTO, BASE_CALCULO, GENERANOVEFU, CODNOVEFU,  
+                     MOSTRARHORAS)                        
+   SELECT @DETALLE, @CANTIDAD, ROUND(@VALOR,@REDONDEO) ,ROUND(@VALOR_EMPRESA,@REDONDEO), @VALOR100P, @IDTRANSPRESTAMO_CUR,   
+         @NUMDOCPRESTAMO_CUR, @NUMCUOTA_CUR, @CODPRF, @IDTERCERO, @BASE_PRESTACIONES, @ITEM_NCOND, @VALOR_CALCULO,  
+         @GENERANOVEFU, @CODNOVEFU, @MOSTRARHORAS  
+   RETURN   
+END

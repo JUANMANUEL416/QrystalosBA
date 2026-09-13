@@ -1,0 +1,29 @@
+{
+  "id": "c202609122220jsonperu",
+  "canal": "documentar",
+  "titulo": "JSON Perú / SUNAT · 2026-09-12 22:20",
+  "estado": "activo",
+  "procesoId": "json-peru",
+  "creadoEn": "2026-09-12T22:20:00",
+  "archivadoEn": null,
+  "mensajes": [
+    {
+      "id": "a2220jsonperu",
+      "autor": "agente",
+      "texto": "Quedó el módulo **Facturación · JSON Perú / SUNAT** (`json-peru`) en Documentar y Consultas.\n\nPuede preguntar por boleta 03 vs factura 01, `FACTEP`, envío (`ENVIA_CONTAB` → MiFact), notas 07/08 o variables de token/URL.\n\n**No es** XML DIAN ni RIPS. PHD solo fija precios.\n\nFalta ficha: `SPQ_FTR_PERU · LIBERAR_SUNAT` (bajar a `sql/`).\n\nBase: `conocimiento/json-peru/`. Ctrl+F5 si el desplegable no lo muestra.",
+      "en": "2026-09-12T22:20:00"
+    },
+    {
+      "id": "a202609122230liberar",
+      "autor": "agente",
+      "texto": "Leí `sql/SPQ_FTR_PERU.sql`. Ficha hecha.\n\n**LIBERAR_SUNAT.** Consulta el documento en MiFact (`SPK_CONSULTA_DOCUMENTO_ELECTRONICA`) y pone `FACTEP=NULL` si la factura está **P**, no es anulación NC y `FACTEP` **no** es 101 ni 102. El FE muestra Sin notificar. **No borra FTRE.** Si ya había envío, al regenerar el JSON puede salir «Ya fue enviada». Si el estado no cumple: *Estado de la Factura no Valido para liberar*.\n\n**También SUNAT (leídos).** `QUITAR_ERROR_API` solo limpia `104A`. `NOTIFICA_BOLETAS` / `MARCA_ENVIO` = correo de boletas (en producción). `ENVIAR_FACTURA_SAP` es **otro** JSON (`INTER_SAP` → `SPK_JSON_FTR_PERU_INTERFAX`).\n\nEl resto del SPQ (facturar MAD/PHD/citas, calificar, soportes) quedó **listado**: no es el circuito JSON.\n\n**Si quieren profundizar**, bajen a `sql/`:\n1. `SPK_CONSULTA_DOCUMENTO_ELECTRONICA.sql` (lo llama Liberar)\n2. `SPK_JSON_FTR_PERU_INTERFAX.sql` (solo si usan Interfax)\n\nQuedaron en Pendientes (filtro JSON Perú).",
+      "en": "2026-09-12T22:30:00"
+    },
+    {
+      "id": "a202609122245consulta",
+      "autor": "agente",
+      "texto": "Leí los tres `.sql` de `sql/`.\n\n**1. SPK_CONSULTA_DOCUMENTO_ELECTRONICA** (lo llama Liberar).\nSolo si el proveedor es **MIFACT**. Cambia `SendInvoice` por `GetEstatusInvoice` y pregunta a MiFact serie/correlativo/fecha. Si responde 101/102/103: pone ese `FACTEP` e inserta `FTRE` si no había. Otro resultado → `FACTEP=ERROR`. Token/URL cortos: se sale en silencio.\n\nLiberar **después** de consultar: `FACTEP=NULL` solo si **no** quedó 101/102. Si MiFact ya lo tenía aceptado, no lo limpia. **Sigue sin borrar FTRE.** Si el proveedor es INTER_SAP, la consulta no entra y Liberar sí puede dejar `FACTEP` vacío.\n\n**2. SPK_JSON_FTR_PERU_INTERFAX** (rama SAP).\nOtro JSON: **EPrefactura**. Paciente/boleta → `PreFacturaPacienteEM`. Garante → `PreFacturaGaranteEM`. Garante sin remesa no envía. Valor 0 → `104A`. OK → `102`. Error → `104`. `MODO_PRUEBAS=1` no manda.\n\n**3. SPK_JSON_FTR_PERU_INTERFAX_FNOT** (también lo agregaron).\nNotas Interfax (**EPreabono**). Lo llaman cartera (`SPQ_FCXC_COL` / `SPK_NOTASCXC`), no el botón Enviar Sunat de MiFact. Si no hay `CNSDIANFE`, numera NCB/NCF o NDB/NDF.\n\nFichas en `conocimiento/json-peru/`. No pido más scripts de este circuito.",
+      "en": "2026-09-12T22:45:00"
+    }
+  ]
+}

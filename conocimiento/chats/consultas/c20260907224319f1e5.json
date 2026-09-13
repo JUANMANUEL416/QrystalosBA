@@ -1,0 +1,35 @@
+{
+  "id": "c20260907224319f1e5",
+  "canal": "consultas",
+  "titulo": "NOMINA · 2026-09-07 22:43",
+  "estado": "activo",
+  "procesoId": "nomina",
+  "creadoEn": "2026-09-07T22:43:19",
+  "archivadoEn": null,
+  "mensajes": [
+    {
+      "id": "225bb037",
+      "autor": "agente",
+      "texto": "Este Chat es independiente y solo de «NOMINA». Facturación no mezcla caja (ni al revés). Nuevo abre otra conversación de este mismo módulo; Historial archiva la actual. Cada requerimiento tiene su propio Chat en Analista de negocio.",
+      "en": "2026-09-07T22:43:19"
+    },
+    {
+      "id": "a60ebf5f",
+      "autor": "coordinador",
+      "texto": "Error en liquidación de horas de transporte\n\nEl sistema está liquidando el auxilio de transporte por horas trabajadas, pero no está considerando el cálculo correcto de las 220 horas. Esto resulta en un pago menor a 8 horas, cuando debería liquidar el día completo. Se requiere revisión de este cálculo con conocimiento del Ing. Edgardo.",
+      "en": "2026-09-07T22:43:35"
+    },
+    {
+      "id": "0c102a56",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-07T22:43:35"
+    },
+    {
+      "id": "b7e4a91c",
+      "autor": "agente",
+      "texto": "## Auxilio de transporte y horas (220)\n\n**Alcance:** solo prenómina (`PRENOMINA` → `FNK_VALORCONCEPTO_NEMPFD_RUN`). La ficha en `conocimiento/nomina/sps.json` no detalla la regla de las **220 h**; contrasté el motor en `sql/FNK_VALORCONCEPTO_NEMPFD_RUN.sql`.\n\n### Cómo liquida hoy el motor\n\n1. **`HORASXCARGO` y `DIASXCARGO`** salen del cargo histórico (`FNK_INFO_NEMPHIS_NEMP`). El mes de referencia del período se arma como `@HORAS_A_LABORAR = HORASXCARGO × (días del pago / DIASXCARGO)`; **`@HORADIA = HORASXCARGO / DIASXCARGO`** (no es un 8 fijo salvo en validaciones de tiempo laborado con `DMATLABORADOPER = 'D'` → factor 8).\n2. **Horas efectivas** = novedades `NEDIA` + ajustes ingreso/retiro; luego, si **`NCOND.HORAS`** (o `@HORAS_COMP`) define **tiempo completo**, se trunca: `HORAS_LABORADAS = entero(HORAS_LABORADAS / HORAS_TCOMPLETO) × HORAS_TCOMPLETO`. Con bloque **8 h**, jornadas **&lt; 8 h** pueden quedar en **0 h** o en un múltiplo menor — coherente con un pago de transporte **por debajo de un día**.\n3. Si el concepto está en la variable **`CODNOM_NOMILIQUIXDIA`** y `HORAS_LABORADAS &lt; HORASXCARGO`, el valor se **prorratea** `(valor / HORAS_A_LABORAR) × HORAS_LABORADAS` (comentario en código: provisionar días realmente trabajados).\n4. Conceptos ligados a novedad usan **`FNK_CALCULO_VLR_NOVEDAD_NOM`**: `(horas + min/60) × FACTOR × @VALOR_HORA`, sin regla explícita de “día completo 8 h” en la ficha.\n5. Tras el cálculo, **`PRENOMINA`** puede **quitar** auxilio de transporte si ingresos superan 2×SMMLV (`AUX_TRANS_VS_INGRESO`) — otro motivo de monto menor, distinto del prorrateo por horas.\n\n### Hipótesis alineadas con el reporte\n\n- **`HORASXCARGO` del cargo ≠ 220** (o distinto al estándar que usa negocio para valor hora del auxilio) → `@VALOR_HORA` y cantidades por novedad quedan bajas.\n- Auxilio configurado con **prorrateo por horas** (`BASE Laborado`, lista `CODNOM_NOMILIQUIXDIA`, o novedad por hora) cuando la política exige **día completo (8 h)** por día laborado.\n- **`NCOND.HORAS` = 8** truncando hacia abajo horas parciales del período.\n\n### Qué validar con Ing. Edgardo (sin cambiar código aún)\n\n| Punto | Dónde mirar |\n|--------|-------------|\n| Código y condición del auxilio | `NCON` / `NCOND` del concepto (BASE, CLASE, `HORAS`, `SEREPITE`, vínculo `NEVE`/`NEDIA`) |\n| 220 vs cargo | `HORASXCARGO`, `DIASXCARGO` en histórico de cargo del empleado |\n| Lista día | `CODNOM_NOMILIQUIXDIA` (¿incluye o no el concepto de transporte?) |\n| Caso concreto | `NEMPFD_RUN` / `NEMPFD` del `NUMDOC`: `CANTIDAD`, `DETALLE`, horas usadas en prenómina |\n\n**Conclusión:** el síntoma encaja con **prorrateo por horas laboradas** y parámetros de cargo/condición, no con una constante “220” documentada en conocimiento. La corrección de negocio (pagar día completo vs hora real) debe acordarse con Edgardo y luego traducirse a parametrización (`NCOND`, variables) o ajuste puntual del motor — fuera del alcance de esta ficha.\n\n**Siguiente paso sugerido:** abrir chat de **Documentar** con `NUMDOC`, `CODCONCEPTO` transporte y período, para ficha de la regla 220/8 h en `sps.json` tras validación funcional.",
+      "en": "2026-09-07T22:45:00"
+    }
+  ]
+}

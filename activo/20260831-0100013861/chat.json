@@ -1,0 +1,46 @@
+{
+  "mensajes": [
+    {
+      "id": "20260912201004151461",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis).",
+      "fecha": "2026-09-12T20:10:04"
+    },
+    {
+      "id": "20260912201004179169w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-12T20:10:04"
+    },
+    {
+      "id": "2026091220115013861a",
+      "autor": "agente",
+      "texto": "## Análisis REQ 0100013861 — Conciliación bancaria\n\n### Problema (texto REQ)\nPlantilla IX pide un **módulo nuevo** de conciliación automática/manual entre movimientos internos y **extractos bancarios**, con notificaciones automáticas y acceso libre desde el menú. El formulario marca **tipo Performance** y módulo Contabilidad, sin captura ni ruta concreta. La cola `IX OnLine.htm` no aporta detalle adicional del caso.\n\n### Paso 0 — ¿Ya existe?\n**Sí, en varios caminos** (no es hueco total de «no hay módulo»):\n\n| Camino | Menú | Qué hace |\n|--------|------|----------|\n| **BCTC** | Administrativo → Tesorería → **Cuentas** → conciliación en cuenta | Conciliación **operativa** BCTC/BCTCD, saldos banco vs contabilidad, cierre e impresión. **Manual** (no importa archivo extracto). |\n| **Auxiliar bancos** | Contabilidad → Consultas → **Auxiliar de bancos** | Cruce **MCP/MCH vs BMOV**, marcar pares y salvar. MODELO `BANCOS_AUXILIAR`. |\n| **CONCBMOV** | Contabilidad → Procesos → **Conciliaciones contables** → pestaña Bancos | BMOV vs comprobante MCP, semáforo CONTABILIZADA, reenvío contable. |\n\n**No confundir** con Administrativo → **Conciliaciones de glosa** (`/admin/Concilia`, FCONCI_COL) — es cartera/EPS, no bancos.\n\n**Clasificación:** principalmente **capacitación** + alineación de alcance; **hueco parcial** si exigen importación automática de extracto y alertas proactivas (correo/push); posible **defecto/mejora** si el dolor real es **lentitud** del auxiliar (coherente con tipo Performance).\n\n### Causa (según KB + FE)\n- El REQ mezcla varios conceptos en un solo «módulo nuevo»; Qrystalos ya los separó en **bancos** (`conocimiento/bancos`, gate `conciliacion-bctc`) y **contabilidad** (gate `conci-contable-modulo`, `SPQ_BANCOS_AUXILIAR`).\n- «Automática» con extracto: **no hay METODO** de importación/cruce masivo en `sps.json`.\n- Notificaciones: solo `$q.notify` en sesión al operar, no campañas automáticas.\n- «Menú sin restricciones»: permisos **USGRUH** aplican siempre.\n\n### Solución recomendada\n1. **Opción A (primera entrega):** validar en test flujos BCTC y/o Auxiliar de bancos; material corto de rutas y permisos. Impacto desarrollo **No** si satisface la necesidad.\n2. **Opción C:** si confirman **performance** al consultar auxiliar → perfilar `OBTENER_MOVIMIENTOS` + grilla FE (impacto FE/SQL condicional).\n3. **Opción B:** solo si el comité exige **import extracto + matching auto** → REQ hijo (proyecto aparte).\n\n**No** proponer un módulo duplicado en menú principal.\n\n### Criterios / alcance / restricciones\nQuedaron en el formulario (`solicitud.contenido`): criterios de aceptación, alcance (sin FCONCI), restricciones, `validarAntes` con prueba de caminos existentes, `cambioPropuestoSimple` y opciones A/B/C.\n\n**Contabilidad:** `afecta=false` — validación agente **no_aplica** (no diseño de nuevos asientos en esta fase).\n\n**Impacto FE/API/SQL:** marcado **Condicional** (No si capacitación; Sí solo performance u opción B).\n\n### SP · METODO · estado · rol en el fix\n\n| SP | METODO | estado | Rol |\n|----|--------|--------|-----|\n| SPQ_BCTC | GUARDACONCILIACION | leido | Abrir conciliación operativa |\n| SPQ_BCTC | GETCONCILIACIONES, GETBCTCD, GUARDABCTCD | leido | Detalle manual tipo extracto |\n| SPQ_BCTC | CIERRACONCILIACION, IMPRIMIR_CONCILIACION | leido | Cierre e informe |\n| SPQ_BANCOS_AUXILIAR | OBTENER_MOVIMIENTOS | leido | Consulta grilla (performance) |\n| SPQ_BANCOS_AUXILIAR | MARCAR_DESMARCAR_*, SALVAR_CONCILIACION, LIMPIAR | leido | Conciliación manual contable |\n| SPQ_CONTABILIDAD_3 | ENV_CONTA_OTROS_MODULS | leido | Solo vía CONCBMOV si hay pendientes contables |\n\n`sql.usarDocumentacion=true`, `procesoId=bancos`, métodos filtrados en formulario. **No** SPQ_FCONCI_COL.\n\n### Siguiente paso\nEjecute **validar antes** en test y escriba en Chat si el cliente necesita **A** (capacitación), **C** (lentitud — indique tiempos/cuenta/volumen) o **B** (import automático). Con eso preparo dictamen HTML en turno siguiente si lo pide.\n\n*Sin dictamen HTML en este turno.*",
+      "fecha": "2026-09-12T20:11:50"
+    },
+    {
+      "id": "20260912202202084707d",
+      "autor": "sistema",
+      "texto": "Diagrama de flujo generado desde conocimiento/bancos/ y el análisis del REQ. Quedó **adjunto en el dictamen** (sección 4.5) y en dictamenes/20260831-0100013861-flujo.html.",
+      "fecha": "2026-09-12T20:22:02"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-12T20:29:12"
+    },
+    {
+      "id": "correo-cierre-20260831-0100013861",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a naren.voos@ixcolombia.com.",
+      "fecha": "2026-09-12T20:29:41"
+    },
+    {
+      "id": "2026091301223861activar",
+      "autor": "agente",
+      "texto": "## Activación caso 20260831-0100013861 — REQ 0100013861\n\nReleí `INSTRUCCION-AGENTE.md`, `solicitud.json`, cola `IX OnLine.htm`, `conocimiento/bancos/` (`procesoId=bancos`, coherente con el control de conciliación bancaria; **no** notas-dbcr/FCONCI) y fichas SPQ_BCTC del formulario (**todos `leido`**). `sql_refe/0100013861/` vacío — no hace falta para este alcance.\n\n### Veredicto .sql de hoy\n**No pedir** scripts en `sql/` de entrada: los METODOs marcados (SPQ_BCTC × 6) están documentados y cubren conciliación operativa BCTC. SPQ_BANCOS_AUXILIAR ya está fichado en brechaAnalisis para auxiliar/performance; **releer** `SPQ_BANCOS_AUXILIAR.sql` solo si, tras validar antes, confirman opción **C** (lentitud en `OBTENER_MOVIMIENTOS`).\n\n### Paso 0 (confirmado)\nClasificación: **capacitación + alineación** (camino correcto); hueco parcial (import extracto + notificaciones proactivas); rama **performance** condicional. Tres caminos inventariados: **BCTC** (Tesorería → Cuentas), **Auxiliar de bancos** (`/cont/auxBancos`), **CONCBMOV** (`/cont/conciContables`). Excluido `/admin/Concilia` (glosa).\n\n### Contabilidad\n`afecta=false` — sin cambios MCUE/CON en esta fase (ver `contenido.contabilidad.validacion`).\n\n### Entregables\n- Análisis y criterios ya en el formulario (impacto FE/SQL **Condicional**, API **No**).\n- **Dictamen HTML:** [dictamenes/20260831-0100013861.html](dictamenes/20260831-0100013861.html) — diagrama incrustado en §4.5; copia en `dictamenes/20260831-0100013861-flujo.html`.\n\n### Siguiente paso (coordinador)\nEjecute **validar antes** en test (texto en formulario). Indique en Chat: **A** capacitación (flujos actuales bastan), **C** lentitud (cuenta, periodo, segundos, filas aprox.) o **B** import automático (REQ hijo). Con **A** puede cerrar fase 1 sin desarrollo; con **C** el dictamen ya describe la rama acotada.\n\nRama sugerida: `feature/CPRIMA326`.",
+      "fecha": "2026-09-13T01:25:00"
+    }
+  ]
+}

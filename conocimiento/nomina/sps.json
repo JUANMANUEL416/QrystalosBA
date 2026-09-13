@@ -1,0 +1,1254 @@
+{
+  "procesoId": "nomina",
+  "actualizado": "2026-09-12T21:35:00",
+  "nota": "Prenómina, DIAN y liquidación (SPQ_LIQUIDACION) leídos. Cierre NPER lo hace SPQ_CERRAR_NOMI (anidado).",
+  "sps": [
+    {
+      "nombre": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC.sql",
+      "metodos": [
+        {
+          "id": "PRENOMINA",
+          "parametros": [
+            "@OPERACION='ADD'",
+            "@CNSPAGO",
+            "@NUMDOC"
+          ],
+          "hace": "Recalcula y persiste conceptos de nómina de un empleado en un período: borra NEMPFD/NEMPF previos, arma staging NEMPFD_RUN (ingresos y egresos por plantilla/cargo/novedades), vuelca a NEMPFD, aplica retiros, retención en la fuente, totales NEMPF y NPER.",
+          "valida": [
+            "Resuelve FECHAINI/FECHAFIN, CODNOMINA, IDPLANTILLA y tope de deducción PTOPE (NOMI.MAXADEDUCIR) vía NPER+NOMI+NOMIE para el NUMDOC",
+            "En ADD: empleado Activo en NEMP y NOMIE de la nómina del período",
+            "Conceptos de ingreso/egreso según plantilla (NPLTCO/NPLTCA), cargo histórico FNK_INFO_NEMPHIS_NEMP, clases Normal/Tabla/Particular/Manual/Aporte/Parafiscal/Prestamo/Provision y novedades NEDIA+NEVE cuando aplica",
+            "Solo inserta líneas con VALOR_EMPLEADO+VALOR_EMPRESA > 0",
+            "Egresos: LIQUIDAR='No' si (egresos acumulados + valor) * 100 / ingresos supera PTOPE; reintento post-retiro si quedaron egresos No liquidados"
+          ],
+          "noValida": [
+            "El .sql no tiene RAISERROR/THROW — errores dependen de objetos anidados o quedan silenciosos",
+            "Rama explícita @OPERACION distinta de ADD no calcula conceptos; siempre borra NEMPFD/NEMPF del NUMDOC al inicio",
+            "No valida aquí si el período NPER está cerrado",
+            "Variables de sistema (FORMALIQRETIROS, AUX_TRANS_VS_INGRESO, REDONCENT_APORTESNOM, NROPERIODOS_SALAPROM) alteran ramas sin validación previa"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_INFO_NEMPHIS_NEMP",
+            "FNK_VALORCONCEPTO_NEMPFD_RUN",
+            "SPK_CALCULAR_RETIROS",
+            "SPK_CALCULA_REFTE_NOMI",
+            "SPK_CALCULAR_NEMPF",
+            "FNK_VALORVARIABLE",
+            "FNK_REDONDEA_MAS_EXCEL"
+          ],
+          "efecto": "NEMPFD del NUMDOC/CNSPAGO repoblado desde NEMPFD_RUN; NEMPF con ítem CAR* y CALC=1; totales NPER (ingresos, egresos, aportes, parafiscales, total nómina) actualizados; posible SALPROMEDIO en NEMPF; auxilio transporte eliminado si ingresos superan 2×SMMLV (variable AUX_TRANS_VS_INGRESO).",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CALCULAR_RETIROS",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CALCULAR_RETIROS.sql",
+      "metodos": [
+        {
+          "id": "CALCULAR_RETIROS",
+          "parametros": [
+            "@CNSPAGO",
+            "@NUMDOR (filtro NUMDOC; vacío = todos con retiro en NEDIA)"
+          ],
+          "hace": "Liquida conceptos de retiro (NEVED IDEVENTO='RET') para empleados con evento RET en NEDIA del período. Rama según FORMALIQRETIROS: estándar escribe en NEMPFD_RUN; OTRASIPS genera provisión vía liquidación y escribe directo en NEMPFD.",
+          "valida": [
+            "Sale sin efecto si no hay NEDIA con IDEVENTO='RET' en el CNSPAGO (y NUMDOC filtrado)",
+            "Conceptos RET tomados de NEVED que aún no están en NEMPFD_RUN (rama estándar) o NIEPED (rama OTRASIPS tras purge)",
+            "Solo inserta líneas con VALOR_EMPLEADO+VALOR_EMPRESA > 0 (rama estándar vía FNK_VALORCONCEPTO_NEMPFD_RUN_RET)"
+          ],
+          "noValida": [
+            "Sin RAISERROR/THROW; solo PRINT y RETURN temprano",
+            "Parámetro @NUMDOR (no @NUMDOC) — convención heredada",
+            "Rama estándar: reglas duras por CODCONCEPTO (043 prima navidad, 044 semestral, 018/014/012/042 vacaciones) con umbrales 180/360 días y ajustes manuales en NEMPFD_RUN",
+            "Rama OTRASIPS: asume empleado único en @NUMDOR para sede; indemnización según NEVED.INDEMNIZA y NEDIA.INDEMNIZA"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORCONCEPTO_NEMPFD_RUN_RET",
+            "FNK_INFO_NEMPHIS_NEMP",
+            "FNK_DATEDIFF360",
+            "FNK_DIASLABORADOS_LIQUIDACION",
+            "FNK_VALORVARIABLE",
+            "SPK_LIQUIDAR_NOMI_NEMP",
+            "SPK_PROCESO_VACACIONES",
+            "FNK_CALCULO_VALORCONCEPTO_NOM",
+            "FNK_VALOR_ADELANTO_CESAN_PENDIENTE",
+            "SPQ_ADELANTO_CESAN",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "Rama estándar: líneas de retiro en NEMPFD_RUN (prima, vacaciones, etc.) listas para volcado posterior. Rama OTRASIPS: purge NIEPED/NEMPFD_RUN/NEMPFD de conceptos RET; inserta NEMPFD con valores de provisión (prima, cesantías, intereses, vacaciones, indemnización); marca NIEPED.PAGADO; actualiza NEMPV/NEMPVD en vacaciones.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CALCULA_REFTE_NOMI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CALCULA_REFTE_NOMI.sql",
+      "metodos": [
+        {
+          "id": "Nomina",
+          "parametros": [
+            "@CNSPAGO",
+            "@NUMDOC",
+            "@PROCEDENCIA='Nomina'"
+          ],
+          "hace": "Calcula retención en la fuente del empleado en el período: suma devengos y deducciones según RETTER, aplica renta exenta 25%, tabla RETUVT por UVT, persiste liquidación RETEL/RETELD y actualiza o elimina línea del concepto IDCONCEPTO_RETEFTE en NEMPFD.",
+          "valida": [
+            "Tercero del empleado (NEMP.TERCEROID) debe existir en RETTER",
+            "Variable IDCONCEPTO_RETEFTE debe apuntar a concepto NCON tipo Egreso",
+            "Debe existir línea NEMPFD del concepto de retención en el período (ENPAGO=1); si no, RETURN sin cambios",
+            "VALOR_UVT_RETEFTE numérico y > 0"
+          ],
+          "noValida": [
+            "Comentario PENDIENTE VALIDAR EL LIMITE en renta exenta — sin tope implementado",
+            "Si TMARGIN=0 en RETUVT, VLR_REFTE=0 y puede borrar la línea NEMPFD",
+            "Solo PRINT en fallos de configuración; sin RAISERROR"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "RETEL/RETELD del tercero+NOREFERENCIA=CNSPAGO recreados; NEMPFD del concepto retención actualizado con VALOR y CNSLIQRET, o eliminado si VLR_REFTE<=0.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "CXP",
+          "parametros": [
+            "@CNSPAGO (=CNSFCXP)",
+            "@NUMDOC (=IDTERCERO proveedor)",
+            "@PROCEDENCIA='CXP'"
+          ],
+          "hace": "Misma fórmula UVT/RETUVT pero sobre factura CXP (FCXP/FCXPD) y RETTER del proveedor; persiste RETEL con PROCEDENCIA='CXP'. No toca NEMPFD.",
+          "valida": [
+            "Tercero en RETTER",
+            "VALOR_UVT_RETEFTE > 0"
+          ],
+          "noValida": [
+            "Fuera del gate prenómina — usado desde cuentas por pagar",
+            "BASERET/NUVTS acotados a 0 si negativos al insertar RETEL"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "RETEL/RETELD con NOREFERENCIA=CNSFCXP; sin impacto en tablas de nómina.",
+          "capaId": null,
+          "gateId": null,
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CALCULAR_NEMPF",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CALCULAR_NEMPF.sql",
+      "metodos": [
+        {
+          "id": "CALCULAR",
+          "parametros": [
+            "@CNSPAGO",
+            "@NUMDOC (vacío = todos los ítems del período)"
+          ],
+          "hace": "Consolida totales por ítem NEMPF desde NEMPFD: ingresos, egresos, aportes empresa, ingresos100p; calcula neto, % egresos sobre ingresos (PEGRESOS) y margen libre de deducción (PLIBRE_EGRESOS) con tope PTOPE de NOMI.MAXADEDUCIR; actualiza PSOBREINGRESOS en cada línea NEMPFD.",
+          "valida": [
+            "Solo suma líneas NEMPFD con LIQUIDAR='Si' e INFO='No'",
+            "Clasifica por NCON.TIPO Ingreso/Egreso; aportes = VALOR_EMPRESA",
+            "PTOPE por defecto 0 si NOMI.MAXADEDUCIR es NULL"
+          ],
+          "noValida": [
+            "Sin RAISERROR; no valida existencia previa de NEMPF",
+            "PEGRESOS y PLIBRE_EGRESOS en 0 si ingresos=0 (división evitada)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NEMPF.VALOR_NETO, VALOR_INGRESOS, VALOR_EGRESOS, VALOR_APORTES, VALOR_INGRESOS100P, PEGRESOS, PLIBRE_EGRESOS actualizados; NEMPFD.PSOBREINGRESOS = (VALOR*100)/VALOR_INGRESOS del ítem.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALORCONCEPTO_NEMPFD_RUN",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALORCONCEPTO_NEMPFD_RUN.sql",
+      "metodos": [
+        {
+          "id": "VALORCONCEPTO_RUN",
+          "parametros": [
+            "@NUMDOC",
+            "@CODCONCEPTO",
+            "@FECHAINI",
+            "@FECHAFIN",
+            "@CNSPAGO",
+            "@VALHORASLAB",
+            "@HORAS_COMP",
+            "@DIAS_LAB"
+          ],
+          "hace": "Motor de cálculo unitario de un concepto para staging NEMPFD_RUN: lee NCOND/NCON vigente, resuelve básico y horas laboradas (novedades NEDIA, ingreso parcial, retiro), calcula base según BASE (Laborado, Basico, BasePrestaciones, SalarioNeto, Conceptos, Formula, Cuota) y CLASE (Normal, Tabla, Manual, Familiares, Particular, Aporte, Prestamo), aplica condiciones NCONDD y redondeo; devuelve tabla con VALOR_EMPLEADO, VALOR_EMPRESA, VALOR100P y metadatos de préstamo/tercero.",
+          "valida": [
+            "Empleado con básico > 0 vía FNK_INFO_NEMPHIS_NEMP; si FECHAING > fin período → ceros",
+            "Vigencia NCOND (FECHAINI<=@FECHAFIN), frecuencia Periodica/UnaVez, antigüedad y fecha ingreso según flags NCOND",
+            "Excluye concepto si está en NEMPE o NCARNGE (no liquida por empleado/cargo)",
+            "Aporte: exige tercero NPRFED/NPRFD; si no → DETALLE Ap.No.Conf y ceros",
+            "Tiempo laborado del período (VALIDA_TLABORADOPER) según horas calculadas",
+            "SEREPITE='Si': una fila por novedad NEDIA del concepto (no suma)",
+            "Redondeo PILA: @REDONDEO=-2 → CEILING a centena superior en aportes"
+          ],
+          "noValida": [
+            "Sin RAISERROR; salidas tempranas con fila en cero y DETALLE explicativo (BASICO=0, ANTIGUEDAD, etc.)",
+            "Validación VALOR<=0 comentada — fórmulas negativas pueden pasar",
+            "BASE Formula se auto-invoca recursivamente; dependencias REQUIERELIQ leen NEMPFD_RUN de HOST_NAME()",
+            "Ajuste IBC aportes al SMLV (incapacidad >90 días, contrato AEE) solo en BASE=Conceptos CLASE=Aporte",
+            "Variables DIAINGPRENOMI, NOMINA_EN_DIASCALEN, CODNOM_NOMILIQUIXDIA alteran horas/provisión sin validación previa"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_INFO_NEMPHIS_NEMP",
+            "FNK_INFO_NEMPHIS_NEMMP",
+            "FNK_VALORVARIABLE",
+            "FNK_ANTIGUEDAD",
+            "FNK_DIA_DEL_MES",
+            "FNK_CALCULO_VLR_NOVEDAD_NOM",
+            "FNK_VALOR_NCONDC_RUN",
+            "FNK_VALOR_NCONDTC_RUN",
+            "FNK_CALCULO_VALORPARAMETRO_NOM",
+            "FNK_CALCULO_VALORCONCEPTO_NOM",
+            "FNK_VALORCONCEPTO_NEMPFD_RUN"
+          ],
+          "efecto": "Tabla devuelta al caller (PRENOMINA inserta en NEMPFD_RUN); no persiste por sí sola. BASE BasePrestaciones/SalarioNeto/Formula leen otros conceptos ya en NEMPFD_RUN de la sesión.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALORCONCEPTO_NEMPFD_RUN_RET",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALORCONCEPTO_NEMPFD_RUN_RET.sql",
+      "cola": "FNK_ESBISIESTO sin ficha.",
+      "metodos": [
+        {
+          "id": "VALORCONCEPTO_RUN_RET",
+          "parametros": [
+            "@NUMDOC",
+            "@CODCONCEPTO",
+            "@FECHAINI",
+            "@FECHAFIN",
+            "@CNSPAGO",
+            "@VALHORASLAB",
+            "@HORAS_COMP",
+            "@DIAS_LAB"
+          ],
+          "hace": "Variante de cálculo para conceptos de retiro (llamada desde SPK_CALCULAR_RETIROS): misma estructura NCOND/NCON que RUN estándar, pero sin validar frecuencia periódica en retiro, con reglas duras por CODCONCEPTO de liquidación final y lectura de NEMPFD_RUN para primas.",
+          "valida": [
+            "Básico y cargo vía FNK_INFO_NEMPHIS (no _NEMP); mismas exclusiones NEMPE/NCARNGE y validaciones antigüedad/ingreso",
+            "Si @VALOR_CALCULO<=0 → DETALLE Valor<=0 y RETURN (a diferencia de RUN estándar)",
+            "019 prima servicios: meses desde ingreso/julio según FECHARET en NEDIA RET",
+            "018 prima vacaciones: suma ingresos 001-013 + 1/12 de 019/012, prorratea 23 días",
+            "033 prima navidad: días año hasta FECHARET, base ingresos + 1/12 prestaciones, fórmula (valor*32/30)/360*días"
+          ],
+          "noValida": [
+            "Frecuencia Periodica deshabilitada (comentario SE QUITA POR SER RETIRO)",
+            "Horas laboradas sin ajuste por FECHARETIRO/NEDIA RET como en RUN estándar",
+            "INSERT final duplicado (dos filas idénticas en @TABLA al cerrar)",
+            "Formula recursiva llama FNK_VALORCONCEPTO_NEMPFD_RUN (no _RET) para operandos",
+            "Tabla VALOR en CLASE=Tabla TIPOCALCULO=Valor usa (@PORCLABORADO/@VALOR_CALCULO)*@VALOR_TABLA — distinto a RUN"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_INFO_NEMPHIS",
+            "FNK_ANTIGUEDAD",
+            "FNK_DIA_DEL_MES",
+            "FNK_CALCULO_VLR_NOVEDAD_NOM",
+            "FNK_VALOR_NCONDC_RUN",
+            "FNK_VALOR_NCONDTC_RUN",
+            "FNK_CALCULO_VALORPARAMETRO_NOM",
+            "FNK_CALCULO_VALORCONCEPTO_NOM",
+            "FNK_VALORCONCEPTO_NEMPFD_RUN",
+            "FNK_ESBISIESTO"
+          ],
+          "efecto": "Tabla para insertar líneas de retiro en NEMPFD_RUN (rama estándar de SPK_CALCULAR_RETIROS).",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_CALCULO_VLR_NOVEDAD_NOM",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_CALCULO_VLR_NOVEDAD_NOM.sql",
+      "metodos": [
+        {
+          "id": "CALCULO_VLR_NOVEDAD",
+          "parametros": [
+            "@CNSPAGO",
+            "@CODCONCEPTO",
+            "@NUMDOC",
+            "@FECHAINI",
+            "@FECHAFIN",
+            "@VALOR_HORA"
+          ],
+          "hace": "Agrega novedades NEDIA del empleado ligadas al concepto (vía NEVE.CODCONCEPTO o NEVEC.IDCONCEPTO): suma horas+minutos/60 aplicando FACTOR de la novedad y @VALOR_HORA; devuelve CANTIDAD, VALOR_CALCULO (con factor) y VALOR_CALCULO100P (sin factor).",
+          "valida": [
+            "Cruza NPER del CNSPAGO con NEDIA según TIPOLIQ: PorNomina+FORMALIQUIDACION PorPago (mismo CNSPAGO) o PorFecha (FECHAINI en rango del período); o PorFechas con solapamiento de fechas período/novedad",
+            "Filtra NUMDOC y NEDIA.CNSPAGO=@CNSPAGO",
+            "Concepto resuelto por NEVE o tabla NEVEC del evento"
+          ],
+          "noValida": [
+            "Sin RAISERROR; si no hay filas → ceros en las tres columnas",
+            "No distingue LIQUIDAR ni estado del evento más allá del join",
+            "PorFechas: condición NPER.FECHAINI>=@FECHAINI AND NPER.FECHAFIN<@FECHAFIN+1 — acotada al rango pasado por el caller"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Tabla de una fila consumida por FNK_VALORCONCEPTO_NEMPFD_RUN/_RET en bases Manual/Novedad y ramas que prorratean por horas de novedad.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALOR_NCONDC_RUN",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALOR_NCONDC_RUN .sql",
+      "metodos": [
+        {
+          "id": "VALOR_NCONDC_RUN",
+          "parametros": [
+            "@NUMDOC",
+            "@CODCONCEPTO",
+            "@ITEM",
+            "@FECHAINI",
+            "@FECHAFIN",
+            "@CNSPAGO"
+          ],
+          "hace": "Suma valores de conceptos base definidos en NCONDC (ítem de condición del concepto): recorre CODCONCEPTO_BASE con cursor, obtiene VALOR_EMPLEADO vía FNK_VALORCONCEPTO_NEMPFD_RUN (o override de retiro) y acumula.",
+          "valida": [
+            "REQUIERELIQ=1 (default): solo calcula base si ya existe línea del CODCONCEPTO_BASE en NEMPFD_RUN de la sesión (HOST_NAME)",
+            "REQUIERELIQ≠1: siempre invoca FNK_VALORCONCEPTO_NEMPFD_RUN para la base",
+            "Si CODCONCEPTO_BASE está en NEVED con IDEVENTO='RET' → reemplaza valor por FNK_VALOR_CONCEP_RETIRO_RUN"
+          ],
+          "noValida": [
+            "Sin RAISERROR; bases no liquidadas con REQUIERELIQ=1 aportan 0 sin aviso",
+            "@DIAS_LAB inicia en 0 y se normaliza a NULL solo al inicio — el cursor puede sobrescribir con DIAS de NCONDC",
+            "Recursión potencial: cada base llama al motor completo FNK_VALORCONCEPTO_NEMPFD_RUN"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORCONCEPTO_NEMPFD_RUN",
+            "FNK_VALOR_CONCEP_RETIRO_RUN"
+          ],
+          "efecto": "Escalar devuelto al caller cuando NCOND usa condiciones compuestas por suma de conceptos base (BASE distintas a fórmula directa).",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALOR_NCONDTC_RUN",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALOR_NCONDTC_RUN .sql",
+      "metodos": [
+        {
+          "id": "VALOR_NCONDTC_RUN",
+          "parametros": [
+            "@NUMDOC",
+            "@CODCONCEPTO",
+            "@ITEM",
+            "@FECHAINI",
+            "@FECHAFIN",
+            "@CNSPAGO"
+          ],
+          "hace": "Acumula valores de conceptos base en NCONDTC (tabla de condición tipo tabla): cursor por CODCONCEPTO_BASE con FACTOR, OPERACION (+/−/*/÷), VALHORASLAB, HORAS y DIAS; obtiene VALOR_EMPLEADO de FNK_VALORCONCEPTO_NEMPFD_RUN y aplica la operación al acumulado.",
+          "valida": [
+            "DIAS=0 en fila NCONDTC se normaliza a NULL antes de llamar al motor",
+            "Cada base usa parámetros de horas/días de la fila NCONDTC"
+          ],
+          "noValida": [
+            "Sin RAISERROR; división por cero o bases en 0 propagan sin aviso",
+            "Acumulador inicia en 0 — primera operación * o / puede dar resultado inesperado",
+            "No tiene override de retiro (a diferencia de FNK_VALOR_NCONDC_RUN)"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORCONCEPTO_NEMPFD_RUN"
+          ],
+          "efecto": "Escalar devuelto cuando NCOND.VALIDATABLA='Conceptos' o dependencias usan NCONDTC en lugar de NCONDC.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_CALCULO_VALORPARAMETRO_NOM",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_CALCULO_VALORPARAMETRO_NOM .sql",
+      "metodos": [
+        {
+          "id": "VALORPARAMETRO",
+          "parametros": [
+            "@CODPARAMETRO",
+            "@FECHAINI",
+            "@FECHAFIN"
+          ],
+          "hace": "Resuelve valor vigente de parámetro de nómina desde NPARV: TOP 1 VALOR donde CODPARAMETRO coincide y FECHAFIN del parámetro >= @FECHAFIN, ordenado por FECHAFIN.",
+          "valida": [
+            "@FECHAINI no se usa en el filtro — solo @FECHAFIN y CODPARAMETRO"
+          ],
+          "noValida": [
+            "Sin RAISERROR; si no hay fila → devuelve 0",
+            "No valida solapamiento con @FECHAINI del período"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Escalar consumido por NCONDD TIPODEPENDENCIA='Parametro' en FNK_CALCULO_VALORCONCEPTO_NOM (y vía ese motor en RUN).",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_CALCULO_VALORCONCEPTO_NOM",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_CALCULO_VALORCONCEPTO_NOM.sql",
+      "cola": "FNK_VALOR_NCONDC y FNK_VALOR_NCONDTC (sin sufijo _RUN) referenciados en BASE Conceptos/Tabla — variantes legacy sin .sql en repo.",
+      "metodos": [
+        {
+          "id": "CALCULO_VALORCONCEPTO",
+          "parametros": [
+            "@NUMDOC",
+            "@CODCONCEPTO",
+            "@FECHAINI",
+            "@FECHAFIN",
+            "@CNSPAGO",
+            "@VALHORASLAB",
+            "@HORAS_COMP",
+            "@DIAS_LAB"
+          ],
+          "hace": "Motor table-valued hermano de FNK_VALORCONCEPTO_NEMPFD_RUN: calcula una línea de concepto (VALOR_EMPLEADO, VALOR_EMPRESA, VALOR100P, préstamos, tercero) sin staging NEMPFD_RUN. Mismas ramas BASE (Laborado, Basico, BasePrestaciones, SalarioNeto, Conceptos, Formula, Cuota) y CLASE (Manual, Tabla, Familiares, Particular, Aporte); auto-recursivo en fórmulas NCONDF y dependencias NCONDD.",
+          "valida": [
+            "Básico > 0 vía FNK_INFO_NEMPHIS_NEMP; FECHAING > fin → ceros",
+            "Frecuencia, antigüedad, fecha ingreso, tiempo laborado del período, exclusiones NEMPE/NCARNGE",
+            "VALOR_CALCULO<=0 → DETALLE Valor<=0 y RETURN",
+            "BASE Cuota: cursor PRS/PRSD PorPagar en rango de fechas del período",
+            "Ajuste prorrateo por horas si concepto en variable CODNOM_NOMILIQUIXDIA y HORAS_LABORADAS < HORASXCARGO"
+          ],
+          "noValida": [
+            "Sin RAISERROR; salidas tempranas con DETALLE explicativo",
+            "BASE Conceptos llama FNK_VALOR_NCONDC (no _RUN); Tabla VALIDATABLA=Conceptos llama FNK_VALOR_NCONDTC — distinto al motor _RUN",
+            "Formula: recursión vía FNK_CALCULO_VALORCONCEPTO_NOM; REQUIERELIQ lee NEMPFD/NPER cerrados, no NEMPFD_RUN",
+            "CLASE Particular: GOTO/INST_PARTICULAR — flujo con código muerto posible",
+            "Comentarios de depuración en DETALLE (Val_HLAB, B_Laborado, etc.)"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_INFO_NEMPHIS_NEMP",
+            "FNK_ANTIGUEDAD",
+            "FNK_DIA_DEL_MES",
+            "FNK_CALCULO_VLR_NOVEDAD_NOM",
+            "FNK_VALOR_NCONDC",
+            "FNK_VALOR_NCONDTC",
+            "FNK_CALCULO_VALORPARAMETRO_NOM",
+            "FNK_CALCULO_VALORCONCEPTO_NOM",
+            "FNK_VALORVARIABLE",
+            "FNK_EXPLODE"
+          ],
+          "efecto": "Tabla de una o más filas (préstamos = una por cuota). Usada por SPK_CALCULAR_RETIROS (rama OTRASIPS), NCONDF/NCONDD del motor RUN y evaluación recursiva de fórmulas.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALOR_CONCEP_RETIRO_RUN",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALOR_CONCEP_RETIRO_RUN.sql",
+      "metodos": [
+        {
+          "id": "VALOR_CONCEP_RETIRO",
+          "parametros": [
+            "@CNSPAGO",
+            "@NUMDOC",
+            "@CODCONCEPTO"
+          ],
+          "hace": "Valor escalar de concepto base en contexto de retiro: si hay NEDIA IDEVENTO='RET', toma básico diario (BASICO/DIASXCARGO de FNK_INFO_NEMPHIS_NEMP a FECHARET) y lo multiplica por suma de DIASG en NEMPVD/NEMPV con PROCE='Retiro'.",
+          "valida": [
+            "Sin evento RET en NEDIA del CNSPAGO/NUMDOC → devuelve 0",
+            "Período NPER para FECHAINI/FECHAFIN y datos de nómina"
+          ],
+          "noValida": [
+            "Sin RAISERROR; @CODCONCEPTO no filtra el cálculo — mismo valor para cualquier concepto base RET",
+            "Lógica histórica por NIEPED/NIEPE comentada; solo usa NEMPVD.DIASG",
+            "Variables UBEQ/COMPANIA leídas pero no usadas en el RETURN actual"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_INFO_NEMPHIS_NEMP"
+          ],
+          "efecto": "Override en FNK_VALOR_NCONDC_RUN cuando CODCONCEPTO_BASE está en NEVED con IDEVENTO='RET'.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FRT_NEMP",
+      "tipo": "SPQ",
+      "procedimiento": "SPQ_FRT_NEMP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FRT_NEMP.sql",
+      "metodos": [
+        {
+          "id": "RETIRAR_EMPLEADOS",
+          "parametros": [
+            "@JSON con $.METODO='RETIRAR_EMPLEADOS'",
+            "$.PARAMETROS.CNS (CNSRPDX)",
+            "$.PARAMETROS.CNSPAGO",
+            "$.PARAMETROS.FECHAINI"
+          ],
+          "hace": "Retiro masivo batch: recorre RPDX validadas (CANTIDAD10=0), actualiza NEMP.FECHARETIRO, inserta novedad NEDIA RET (FORMALIQUIDACION PorFecha, CNSMASIVO=CNSRPDX) y registra histórico SPK_ADD_HISTORICO_NEMP; devuelve lista NUMDOC procesados.",
+          "valida": [
+            "Solo filas RPDX sin error (CANTIDAD10=0) del CNS indicado",
+            "Resuelve IDEVENTO/FACTOR del evento retiro (NEVE/NEVED LIKE '%ret%')",
+            "Usuario/sede/compañía desde USUSU+UBEQ"
+          ],
+          "noValida": [
+            "Validación de filas ocurre en CARGAR_EMPLEADOS/VALIDAR_RPDX_EMPLEADO — RETIRAR no revalida empleado ni plantilla",
+            "Sin RAISERROR; siempre responde OK tras cursor aunque RPDX vacío",
+            "No invoca PRENOMINA ni SPK_CALCULAR_RETIROS — el FE debe recalcular empleado a empleado"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_ADD_HISTORICO_NEMP"
+          ],
+          "efecto": "NEMP.FECHARETIRO y NEDIA RET del CNSPAGO; RPDX procesadas eliminadas; resultset NUMDOC para recálculo FE.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "CARGAR_EMPLEADOS",
+          "parametros": [
+            "$.PARAMETROS.LINEAS (CSV NUMDOC,NOMBRE,FECHARETIRO)",
+            "$.PARAMETROS.CODNOMINA"
+          ],
+          "hace": "Carga masiva a staging RPDX: genera CNSRPDX, parsea líneas CSV, valida estructura/fecha/empleado/plantilla NOMIE; marca CANTIDAD10=1 si error.",
+          "valida": [
+            "Estructura 3 campos por registro",
+            "ISDATE fecha retiro",
+            "NEMP existe y FECHARETIRO IS NULL",
+            "NOMIE activo en CODNOMINA"
+          ],
+          "noValida": [
+            "Contrato inactivo en NOMIE: mensaje SELECT sin marcar @ER=1",
+            "Fecha retiro vs fecha ingreso no se valida aquí (sí en VALIDAR_RPDX_EMPLEADO)"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "RPDX con CNSRPDX; responde OK/CNSRPDX/TODOS/ERRADOS/TOK.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_RPDX_EMPLEADO",
+          "parametros": [
+            "$.PARAMETROS.DATOS (CNS, ID, NUMDOC, NOMBREEMPLEADO, FECHARETIRO)"
+          ],
+          "hace": "Revalida y actualiza una fila RPDX tras edición en grilla.",
+          "valida": [
+            "Fecha retiro válida y >= FECHAINGRESO",
+            "NUMDOC existe, sin duplicado en mismo CNS, sin FECHARETIRO previo",
+            "NOMIE en plantilla"
+          ],
+          "noValida": [
+            "Mismo bug inactivo NOMIE sin @ER"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE RPDX; contadores ERRADOS/TOK/TODOS.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_RPDX_EMPLEADO",
+          "parametros": [
+            "$.PARAMETROS.DATOS (CNS, ID)"
+          ],
+          "hace": "Elimina fila RPDX del staging.",
+          "valida": [],
+          "noValida": [
+            "Sin validar CNSPAGO ni permisos"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE RPDX por ITEM; contadores ERRADOS/TOK/TODOS.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTA_EMPLEADOS",
+          "parametros": [
+            "$.PARAMETROS.CNSPAGO",
+            "$.PARAMETROS.CNSEXCEL (opcional)"
+          ],
+          "hace": "Arma plantilla Excel de empleados del período vía KEXCEL_FILL (NEMPF+NEMP).",
+          "valida": [],
+          "noValida": [
+            "Consulta dinámica embebida en INSERT KEXCEL_FILL"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "KEXCEL_FILL con CNSEXCEL; OK/KO.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_EMPLEADOS_NOMINA",
+          "parametros": [
+            "$.PARAMETROS.CODNOMINA"
+          ],
+          "hace": "Lista empleados activos sin retiro en plantilla NOMIE.",
+          "valida": [
+            "NEMP ESTADO ACTIVO, NOMIE ACTIVO, FECHARETIRO NULL"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset NUMDOC, RAZONSOCIAL, DOCIDEMPLEADO, FECHAINGRESO.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_LIQUIDAR_NOMI_NEMP",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_LIQUIDAR_NOMI_NEMP.sql",
+      "metodos": [
+        {
+          "id": "LIQUIDAR_NEMP",
+          "parametros": [
+            "@COMPANIA",
+            "@CODNOMINA",
+            "@ANO",
+            "@MES",
+            "@CODPAGO",
+            "@USUARIO",
+            "@SYS_COMPUTERNAME",
+            "@CNSPAGO",
+            "@NUMDOC"
+          ],
+          "hace": "Función table-valued que arma el detalle de provisión/liquidación del empleado para NIEPED: cruza NEMPF+NEMPFD (solo LIQUIDAR='Si') del CNSPAGO con histórico FNK_INFO_NEMPHIS_NEMP a FECHAFIN, enriquece con área, cargo, concepto, parafiscal NPRF/tercero CXP, préstamos y sede NPLA; devuelve una fila por línea liquidable.",
+          "valida": [
+            "FECHAINI/FECHAFIN del período desde NPER.CNSPAGO",
+            "Solo líneas NEMPFD del ítem NEMPF del NUMDOC con LIQUIDAR='Si'",
+            "NEMPHIS.FECHAMOV <= @FECHAFIN — snapshot de cargo/básico al cierre del período",
+            "Post-proceso: CODFINANCIACION desde PRS (NUMDOCPRESTAMO) o NEMPDA (préstamo por concepto)"
+          ],
+          "noValida": [
+            "Sin RAISERROR; tabla vacía si no hay NEMPF/NEMPFD liquidables",
+            "No filtra egresos vs ingresos ni recobros — eso lo resuelve SPK_LIQUIDAR_NOMI_NEMP al insertar NIEPED/NIEPER",
+            "TOTAL_NOMINA = VALOR + VALOR_EMPRESA (aportes) sin redondeo adicional",
+            "CERRADO/GENERADO devueltos fijos 0/1 — no consultan estado real del período"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_INFO_NEMPHIS_NEMP",
+            "FNK_NOMBRE_MES"
+          ],
+          "efecto": "Tabla consumida por SPK_LIQUIDAR_NOMI_NEMP para INSERT NIEPED (rama OTRASIPS de SPK_CALCULAR_RETIROS). No persiste por sí sola.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_LIQUIDAR_NOMI_NEMP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_LIQUIDAR_NOMI_NEMP.sql",
+      "metodos": [
+        {
+          "id": "LIQUIDAR_NEMP",
+          "parametros": [
+            "@COMPANIA",
+            "@SEDE",
+            "@CODNOMINA",
+            "@ANO",
+            "@MES",
+            "@CODPAGO",
+            "@USUARIO",
+            "@SYS_COMPUTERNAME",
+            "@CNSPAGO",
+            "@NUMDOC"
+          ],
+          "hace": "Genera liquidación/provisión de un empleado en el período: purge NIEPE/NIEPED del NUMDOC, inserta cabecera NIEPE y detalle NIEPED desde FNK_LIQUIDAR_NOMI_NEMP, consolida totales empleado, arma NPERP/NPERPD por tercero/parafiscal, actualiza totales NPER y marca recobros NIEPER.",
+          "valida": [
+            "FECHAINI/FECHAFIN del CNSPAGO desde NPER",
+            "Solo inserta NPERP/NPERPD con CODPRF y IDTERCERO_PRF no nulos y TOTAL_NOMINA<>0",
+            "RECOBRO en NIEPED según NEDIA.RECOBRO=1 o NCOND.RECOBRO en egresos"
+          ],
+          "noValida": [
+            "Sin RAISERROR; DELETE NPERP/NPERPD borra todo el CNSPAGO (no solo @NUMDOC)",
+            "DBCC CHECKIDENT NIEPED RESEED 0 — efecto global en identidad",
+            "Depende de FNK_LIQUIDAR_NOMI_NEMP para conceptos y valores",
+            "No es el SP del gate liquidación (cierre NPER.CERRADO) — uso principal: rama OTRASIPS de SPK_CALCULAR_RETIROS"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_LIQUIDAR_NOMI_NEMP",
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "NIEPE/NIEPED del empleado; NPER.GENERADO=1 y totales período; NPERP/NPERPD; NIEPER recobros; NIEPED.RECOBRO marcado.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_PROCESO_VACACIONES",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PROCESO_VACACIONES.sql",
+      "metodos": [
+        {
+          "id": "ACTUALIZA",
+          "parametros": [
+            "@CNSPAGO",
+            "@PROCESO='ACTUALIZA'",
+            "@NUMDOCR"
+          ],
+          "hace": "Recalcula periodos de vacaciones NEMPV/NEMPVD del empleado en retiro: crea o actualiza ítems anuales (NDIAS según NCARNG.NVACACIONES), prorratea DIASG con FNK_DATEDIFF360 hasta FECHACORTE/FECHARET; sincroniza DIASP desde NEMPVD.",
+          "valida": [
+            "Cursor empleado RET en NIEPE+NEDIA o activo si @CNSPAGO vacío",
+            "Borra NEMPV con F_INICAL > FECHACORTE",
+            "Variable VAC_ULTIMOS_4PER='SI' limita a 4 periodos",
+            "PERIODO_VACACIONES='VIGENCIA' ajusta FECHAING al 01/01 año actual en retiro"
+          ],
+          "noValida": [
+            "@PROCESO='ACTUALIZA' no tiene rama explícita — no aplica ajuste CIERRE/ABRE de NDIAS/12",
+            "Sin RAISERROR; solo PRINT",
+            "Múltiples DECLARE PG_VACANOMI en ramas — patrón heredado"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_DATEDIFF360",
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "NEMPV con DIASG/DIASP/ESTADO (Proceso/Cumplidas/Pagado); usado tras SPK_LIQUIDAR_NOMI_NEMP en retiros OTRASIPS.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "CIERRE",
+          "parametros": [
+            "@CNSPAGO",
+            "@PROCESO='CIERRE'",
+            "@NUMDOCR"
+          ],
+          "hace": "Igual flujo ACTUALIZA más incremento DIASG += NDIAS/12 en último ítem NEMPV del empleado.",
+          "valida": [],
+          "noValida": [
+            "Misma lógica base que ACTUALIZA"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_DATEDIFF360",
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "NEMPV actualizado con provisión mensual de vacaciones al cierre de período.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "ABRE",
+          "parametros": [
+            "@CNSPAGO",
+            "@PROCESO='ABRE'",
+            "@NUMDOCR"
+          ],
+          "hace": "Igual flujo ACTUALIZA más decremento DIASG -= NDIAS/12 en último ítem (reversa de CIERRE).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_DATEDIFF360",
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "NEMPV revertido al abrir período.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_ADELANTO_CESAN",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "sql/SPQ_ADELANTO_CESAN.sql",
+      "metodos": [
+        {
+          "id": "APLICAR",
+          "parametros": [
+            "@METODO='APLICAR'",
+            "@NUMDOC",
+            "@ANO",
+            "@CNSPAGO_APLICA",
+            "@MONTO_A_CUBRIR (opcional)"
+          ],
+          "hace": "Aplica adelantos de cesantías NACE pendientes del tercero (mismo TERCEROID) contra monto a cubrir: cursor FIFO por FECHA, incrementa VALOR_APLICADO y marca ESTADO Aplicado.",
+          "valida": [
+            "RESTANTE = @MONTO_A_CUBRIR o FNK_VALOR_ADELANTO_CESAN_PENDIENTE; RETURN si <=0",
+            "Solo NACE ANO=@ANO, ESTADO Registrado/EnNomina, saldo >0"
+          ],
+          "noValida": [
+            "Sin RAISERROR",
+            "Aplica a todos los NUMDOC del mismo tercero, no solo @NUMDOC"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALOR_ADELANTO_CESAN_PENDIENTE"
+          ],
+          "efecto": "NACE.VALOR_APLICADO, ESTADO, CNSPAGO_APLICA, FECHA_APLICA actualizados.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "DESAPLICAR",
+          "parametros": [
+            "@METODO='DESAPLICAR'",
+            "@CNSPAGO_APLICA"
+          ],
+          "hace": "Revierte todos los adelantos aplicados al CNSPAGO.",
+          "valida": [
+            "RETURN si @CNSPAGO_APLICA vacío"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NACE VALOR_APLICADO=0, ESTADO Registrado/EnNomina según CNSPAGO origen.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        },
+        {
+          "id": "DESAPLICAR_UNICO",
+          "parametros": [
+            "@METODO='DESAPLICAR_UNICO'",
+            "@NUMDOC",
+            "@CNSPAGO_APLICA"
+          ],
+          "hace": "Revierte adelantos del CNSPAGO solo para contratos del mismo TERCEROID que @NUMDOC.",
+          "valida": [
+            "RETURN si @CNSPAGO_APLICA vacío"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NACE revertidos por tercero.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPHIS",
+      "tipo": "SPQ",
+      "modelo": "NOM_NEMPHIS",
+      "estado": "no_leido",
+      "fuente": "",
+      "cola": "REQ 0100016359. HistorialComponent.vue llama GUARDAR y ELIMINAR. Sin .sql en sql/ — no inventar UPDATE de IDAREA/CCOSTO.",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Persiste alta o edición de un ítem de histórico de empleado (NEMPHIS). Detalle desconocido hasta leer el .sql.",
+          "valida": [],
+          "noValida": [
+            "No leído — no afirmar si escribe CCOSTO, valida AFU/CEN o sincroniza NEMP"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Desconocido hasta documentar.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico",
+          "estado": "listado"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "Elimina un ítem de histórico (NEMPHIS). Detalle desconocido hasta leer el .sql.",
+          "valida": [],
+          "noValida": [
+            "No leído"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Desconocido hasta documentar.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_INFO_NEMPHIS_NEMP",
+      "tipo": "FNK",
+      "estado": "no_leido",
+      "fuente": "",
+      "cola": "REQ 0100016359 CA-09. Referenciada en PRENOMINA y otras fichas leídas; sin ficha propia. Necesaria para saber si IDAREA/CCOSTO de NEMPHIS entran al recálculo.",
+      "metodos": [
+        {
+          "id": "(función)",
+          "hace": "Snapshot de cargo/básico/ubicación del empleado desde NEMPHIS a una fecha. Sin ficha — no afirmar columnas ni filtro FECHAMOV.",
+          "valida": [],
+          "noValida": [
+            "No leído — no afirmar si devuelve IDAREA y CCOSTO"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Desconocido hasta documentar.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "TK_FDIANR",
+      "tipo": "TK",
+      "estado": "leido",
+      "fuente": "sql/TK_FDIANR.sql",
+      "actualizado": "2026-09-12",
+      "cola": "Trigger AFTER INSERT en FDIANR (WITH ENCRYPTION). No genera XML ni encola: procesa la respuesta que ya guardó el proceso externo. Nómina: METODO SendNominaSync y rama NE+SendBillAsync.",
+      "metodos": [
+        {
+          "id": "SendNominaSync",
+          "hace": "Al insertar FDIANR de nómina, lee IsValid/StatusCode/ErrorMessage del XML y actualiza NIEPEG.ESTADODIAN (y CUNE/ZIPKEY).",
+          "valida": [],
+          "noValida": [
+            "No genera el XML ni llama a la DIAN",
+            "No inserta FDIANR — asume que el proceso externo ya lo hizo"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "ESTADODIAN: 2 si IsValid=1; 1 si StatusCode 500; 4 si regla 90 o 'autorizada' 299; 3 en el resto de KO.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        },
+        {
+          "id": "SendBillAsync",
+          "hace": "Si TIPO=NE, toma ZipKey del XML y deja NIEPEG.ESTADODIAN=4 (en consulta).",
+          "valida": [
+            "TIPO='NE'"
+          ],
+          "noValida": [
+            "Otras ramas del mismo trigger son FEV/RADIAN (FTR/FNOT), no nómina"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NIEPEG.ZIPKEY + ESTADODIAN=4.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_DIAN",
+      "tipo": "SPQ",
+      "modelo": "NOM_DIAN",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_DIAN.sql",
+      "actualizado": "2026-09-12T21:15:18",
+      "cola": "No inserta FDIANR. PROCESAR_NIE solo pone ESTADODIAN=1 (cola). El externo + TK cierran el circuito.",
+      "metodos": [
+        {
+          "id": "GENERATE_NIEPEG",
+          "hace": "Inserta NIEPEG (CONSECUTIVO, NUMDOC, FECHA) desde VWK_NIEPE si no existe fila no anulada.",
+          "valida": [],
+          "noValida": [
+            "No exige NPER.CERRADO; no genera XML"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Filas NIEPEG del período.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_NIE",
+          "hace": "Pone ESTADODIAN=1 en un CNSNIEPEG si estaba 0 o 3 (encola para el proceso externo).",
+          "valida": [
+            "ESTADODIAN ∈ (0, 3)"
+          ],
+          "noValida": [
+            "No inserta FDIANR ni llama DIAN"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NIEPEG en cola (1).",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_NIE_FILTER",
+          "hace": "Igual que PROCESAR_NIE masivo del consecutivo (solo ESTADODIAN=0, no anulados).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Varios NIEPEG en cola.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_NIEPEG_PERIOD",
+          "hace": "Cuenta NIEPEG no anulados del consecutivo.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian"
+        },
+        {
+          "id": "GET_TOTALS",
+          "hace": "Totales neto/ingresos/egresos/empleados del filtro DIAN.",
+          "estado": "leido",
+          "gateId": "envio-dian"
+        },
+        {
+          "id": "GET_NIEPED",
+          "hace": "Detalle VWK_NIEPED de un empleado/período.",
+          "estado": "leido",
+          "gateId": "envio-dian"
+        },
+        {
+          "id": "CHANGE_NOM_NIEPEG",
+          "hace": "Nota reemplazo/eliminación: inserta NIEPEG nuevo (ESTADODIAN=1) y anula el base.",
+          "estado": "leido",
+          "gateId": "envio-dian"
+        },
+        {
+          "id": "PREVIEW_XML",
+          "hace": "Arma XML de vista previa con SPK_GENERAR_XML_NOMINA (@PATH_URL NULL). No notifica.",
+          "valida": [
+            "CNSNIEPEG informado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe indicar el consecutivo de nómina electrónica (CNSNIEPEG).",
+            "SPK_GENERAR_XML_NOMINA no retornó XML…"
+          ],
+          "llama": [
+            "SPK_GENERAR_XML_NOMINA"
+          ],
+          "efecto": "Devuelve XML; no guarda ni encola.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENERAR_XML_NOMINA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENERAR_XML_NOMINA.sql",
+      "actualizado": "2026-09-12T21:28:00",
+      "llamadoDesde": [
+        "SPQ_NOM_DIAN · PREVIEW_XML"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Arma XML de nómina electrónica (tipo 102 o 103 ajuste) para un CNSNIEPEG. Con @PATH_URL NULL devuelve el XML; si hay ruta, llama SPK_GUARDAR_ARCHIVO.",
+          "valida": [
+            "Conceptos VWK_NIEPED.ID_DIAN homologados en TGEN FDIAN CONCEPTOSNOMINA",
+            "FDIAN resolución vigente (VENCIDA=0, FTRELECTRONICA=1)",
+            "Si AMBIENTE=2: TGEN SOFTWARE_NOMINA TESTSETID",
+            "TGEN SOFTWARE_NOMINA ID y PIN",
+            "Empleado: NFUTC.HOMOLOGODIAN, TGEN TIPOIDENT, NEMP.TIPOCONTRATO",
+            "Nota de ajuste: CUNE del predecesor y TIPONOTA>0"
+          ],
+          "noValida": [
+            "No exige NPER.CERRADO ni ESTADODIAN",
+            "No INSERT FDIANR ni UPDATE NIEPEG (no notifica)",
+            "Atributo EncripCUNE=CUNE-SHA384: el script concatena el CUNE; no hay HASHBYTES en el .sql",
+            "PeriodoNomina va fijo en 5"
+          ],
+          "errores": [
+            "Concepto [CODCONCEPTO: …] … no está clasificado según el anexo técnico",
+            "No hay resolución de facturación electrónica disponible",
+            "El identificador de pruebas (TestSetId) es obligatorio…",
+            "CUNE de Predecesor… vacío o nulo…",
+            "Identificador / PIN del Software no configurado",
+            "Tipo de cotizante no configurado…",
+            "Tipo de documento… no homologado",
+            "Empleado no tiene tipo de contrato definido"
+          ],
+          "llama": [
+            "SPK_GUARDAR_ARCHIVO (solo si @PATH_URL informado)",
+            "FNK_LIMPIATEXTO",
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "XML (SELECT) o archivo; no cambia ESTADODIAN.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_LIQUIDACION",
+      "tipo": "SPQ",
+      "modelo": "LIQUIDACION",
+      "estado": "leido",
+      "fuente": "sql/SPQ_LIQUIDACION.sql",
+      "actualizado": "2026-09-12T21:35:00",
+      "cola": "Orquesta generar/cerrar/abrir. NPER.CERRADO lo escribe SPQ_CERRAR_NOMI / SPQ_ABRIR_NOMI.",
+      "metodos": [
+        {
+          "id": "GENERATE_NOMINA",
+          "hace": "Genera la liquidación del CNSPAGO (SPQ_LIQUIDAR_NOMI). Si PROCESO=CLOSE, además cierra (SPQ_CERRAR_NOMI) y vacaciones CIERRE.",
+          "valida": [
+            "Antes: ingresos NEMPFD cuyo tercero del concepto ≠ tercero del empleado → Excel RPDX y para",
+            "Cerrar: FNK_NC_CUENTA_KMCOM de cada NIEPED no puede devolver '%NO%' (Excel errores contables)",
+            "Cerrar: existe NIEPE del CNSPAGO"
+          ],
+          "noValida": [
+            "No mira NPER.CERRADO ni egresos LIQUIDAR='No'",
+            "No escribe NPER.CERRADO aquí: lo hace SPQ_CERRAR_NOMI",
+            "Generar (sin CLOSE) no exige NIEPE previo"
+          ],
+          "errores": [
+            "SE EXPORTARON LOS EMPLEADOS CON ERRORES EN TERCEROS, VALIDAR EMPLEADOS.",
+            "SE DEBEN CORREGIR LOS ERRORES DE CONTABILIZACION DE LA NOMINA ANTES DE SER CERRADA…",
+            "NO EXISTEN REGISTROS O DETALLES DE ESTA NOMINA, NO ES POSIBLE CERRAR UNA NOMINA SIN DETALLES."
+          ],
+          "llama": [
+            "SPQ_LIQUIDAR_NOMI",
+            "SPQ_CERRAR_NOMI (solo CLOSE)",
+            "SPQ_PROCESO_VACACIONES CIERRE (solo CLOSE)",
+            "SPQ_GENSEQUENCE",
+            "FNK_NC_CUENTA_KMCOM"
+          ],
+          "efecto": "NIEPE/NIEPED vía SPQ_LIQUIDAR_NOMI; si CLOSE, período cerrado + vacaciones.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "estado": "leido",
+          "ventanaFe": "LiquidaNomComponent · Generar / Cerrar (CLOSE)"
+        },
+        {
+          "id": "OPEN_NOMINA",
+          "hace": "Reabre el período: SPQ_ABRIR_NOMI + vacaciones ABRE.",
+          "valida": [
+            "PRI del año/mes no cerrado",
+            "Sin órdenes de pago FCXPP activas (CxP procedencia Nómina)",
+            "Sin notas DB/CR FCXPDBCR activas sobre esas CxP"
+          ],
+          "noValida": [
+            "No pide confirmación de NPER.CERRADO=1",
+            "El FE avisa que borra contab/CxP; este SPQ no las borra: lo hace SPQ_ABRIR_NOMI"
+          ],
+          "errores": [
+            "El periodo contable de la nomina se encuentra cerrado no se puede abrir",
+            "Existen ordenes de pagos para la nomina… no es posible la apertura…",
+            "Existen Cuentas por pagar con notas debito o credito registradas…"
+          ],
+          "llama": [
+            "SPQ_ABRIR_NOMI",
+            "SPQ_PROCESO_VACACIONES ABRE"
+          ],
+          "efecto": "Período reabierto (NPER.CERRADO lo deja el SPQ anidado).",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "estado": "leido",
+          "ventanaFe": "LiquidaNomComponent · Abrir"
+        },
+        {
+          "id": "EXPORTAR_PDF",
+          "hace": "Listado NIEPE del CNSPAGO para PDF.",
+          "estado": "leido",
+          "gateId": "liquidacion"
+        },
+        {
+          "id": "EXPORTAR_EXCEL",
+          "hace": "Export Excel de liquidación.",
+          "estado": "leido",
+          "gateId": "liquidacion"
+        },
+        {
+          "id": "EXPORTAR_SOI",
+          "hace": "Export SOI.",
+          "estado": "listado",
+          "gateId": "liquidacion"
+        },
+        {
+          "id": "EXPORTAR_DETALLE_NOMINA",
+          "hace": "Export detalle.",
+          "estado": "listado",
+          "gateId": "liquidacion"
+        },
+        {
+          "id": "EXPORTAR_CUENTAS_DBCR",
+          "hace": "Export cuentas DB/CR.",
+          "estado": "listado",
+          "gateId": "liquidacion"
+        }
+      ]
+    }
+  ]
+}

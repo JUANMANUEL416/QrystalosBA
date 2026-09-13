@@ -35,6 +35,10 @@ window.QrysDesarrolladores = (function () {
     return request("POST", { accion: "correo", nombre, correo });
   }
 
+  async function upsert(nombre, correo, caso) {
+    return request("POST", { accion: "upsert", nombre, correo, caso });
+  }
+
   function extraerCorreosDelTexto(texto) {
     const hallados = [];
     const lineas = String(texto || "").split(/\n|;/);
@@ -126,11 +130,13 @@ window.QrysDesarrolladores = (function () {
     return data;
   }
 
+  function normNombre(nombre) {
+    return String(nombre || "").toUpperCase().replace(/\s+/g, " ").trim();
+  }
+
   function correoDeLista(data, nombre) {
-    const key = String(nombre || "").toUpperCase().replace(/\s+/g, " ").trim();
-    const dev = (data.desarrolladores || []).find(
-      (d) => String(d.nombre || "").toUpperCase().replace(/\s+/g, " ").trim() === key,
-    );
+    const key = normNombre(nombre);
+    const dev = (data.desarrolladores || []).find((d) => normNombre(d.nombre) === key);
     return (dev && dev.correo) || "";
   }
 
@@ -138,6 +144,7 @@ window.QrysDesarrolladores = (function () {
     listar,
     sync,
     setCorreo,
+    upsert,
     extraerCorreosDelTexto,
     aplicarCorreosDelTexto,
     pedirCorreosSiFaltan,

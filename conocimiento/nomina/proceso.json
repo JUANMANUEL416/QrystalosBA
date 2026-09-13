@@ -1,0 +1,420 @@
+{
+  "id": "nomina",
+  "nombre": "NOMINA",
+  "modulo": "NOMI",
+  "estado": "parcial",
+  "resumen": "5 capas con evidencia FE/SP. Capa 2 leída (prenómina, SPQ_LIQUIDACION, DIAN). Capa 1: NEMPHIS y colilla siguen esqueleto (REQ). Capa 5: OM por NC_CONTAB_NOMINA · CONTABILIZAR (sin .sql).",
+  "notaSql": "Prenómina, liquidación, DIAN y adelanto cesantías leídos. Sin .sql hoy: SPQ_NOM_NEMPHIS, SPQ_RPT_NOMINA, SPQ_NC_CONTAB_NOMINA, NOM_NEDIA / NOM_NOVEDADES, NOM_VACACIONES.",
+  "alcanceHasta": "Capas 3-5 con evidencia (novedades, vacaciones, adelantos → prenómina; CxP/NIEPER → Tesorería; OM por CONTABILIZAR). No dictaminar 0100016359 ni 0100016378 hasta fichar esos SP.",
+  "ventanas": [
+    {
+      "uso": "Configuraciones avanzadas nómina — pestaña Empleados → Histórico de empleado",
+      "ruta": "nom.conf",
+      "path": "/nom/conf",
+      "vue": "indexPage.vue → EmpleadosComponent.vue → HistorialComponent.vue",
+      "entrada": "RRHH → Configuraciones avanzadas nómina → Empleados → modal Histórico De Empleado. MODELO NOM_NEMPHIS (GUARDAR / ELIMINAR). Gate empleados-historico — SPQ pendiente sql/."
+    },
+    {
+      "uso": "Colillas de pago (PDF)",
+      "ruta": "nom.Nom_procesos",
+      "path": "/nom/Nom_procesos",
+      "vue": "FmtColillasNom.js ← useNomi (RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA)",
+      "entrada": "Talento humano → Procesos nómina → colillas (prenómina o liquidación). PDF desprendible: columna CONCEPTOS DE NOMINA = NOMBRE_CONCEPTO."
+    },
+    {
+      "uso": "Procesos de nómina — pestaña Prenómina",
+      "ruta": "nom.Nom_procesos",
+      "path": "/nom/Nom_procesos",
+      "vue": "ProcesosPage.vue → PreNominaComponent.vue",
+      "entrada": "Menú central → Talento humano → Procesos nómina → Prenómina. Permiso USGRUH MENUQ_NOMINA / Prenomina."
+    },
+    {
+      "uso": "Procesos de nómina — pestaña Liquidación",
+      "ruta": "nom.procesos",
+      "path": "/nom/Nom_procesos",
+      "vue": "ProcesosPage.vue → LiquidaNomComponent.vue",
+      "entrada": "Talento humano → Procesos nómina → Liquidación. MODELO LIQUIDACION (GENERATE_NOMINA / OPEN_NOMINA) y NC_CONTAB_NOMINA (CONTABILIZAR / GENERATE_CxP_NOM)."
+    },
+    {
+      "uso": "Procesos de nómina — envío DIAN (nómina electrónica)",
+      "ruta": "nom.procesos",
+      "path": "/nom/Nom_procesos",
+      "vue": "ProcesosPage.vue → DianNominaComponent.vue",
+      "entrada": "Talento humano → Procesos nómina → Envío DIAN. MODELO NOM_DIAN. Distinto de FTR · NOTI_DIAN."
+    },
+    {
+      "uso": "Novedades del período (unidad y masivo)",
+      "ruta": "nom.procesos",
+      "path": "/nom/Nom_procesos",
+      "vue": "RegistNovedadesComponent.vue / NovedadesMasivoComponent.vue",
+      "entrada": "Prenómina → novedades. MODELO NOM_NEDIA (GUARDAR / ELIMINAR) y NOM_NOVEDADES (AGREGAR_NOVEDAD_EMPLEADOS)."
+    },
+    {
+      "uso": "Vacaciones",
+      "ruta": "nom.vacaciones",
+      "path": "/nom/Vacaciones",
+      "vue": "VacacionNomPage.vue → VacacionesNominaComponent.vue",
+      "entrada": "Talento humano → Vacaciones. MODELO NOM_VACACIONES · GENERA_NOVEDAD_VACACIONES (alimenta NEDIA)."
+    },
+    {
+      "uso": "Adelanto de cesantías",
+      "ruta": "nom.adelantoCesantias",
+      "path": "/nom/AdelantoCesantias",
+      "vue": "AdelantoCesantiasNomPage.vue → AdelantoCesantiasComponent.vue",
+      "entrada": "Talento humano → Adelanto cesantías. MODELO NOM_ADELANTO_CESANTIAS (GUARDAR / ANULAR). Consumo en retiro: SPQ_ADELANTO_CESAN."
+    },
+    {
+      "uso": "Prestaciones sociales (pago / recobro)",
+      "ruta": "nom.prestsociales",
+      "path": "/nom/PrestacionSocial",
+      "vue": "PrestSocialNomPage.vue → PrestSocialesComponent.vue",
+      "entrada": "Talento humano → Prestación social. MODELO NIEPER · PROC_PAGO (VALD_BANCOS / VALD_CAJA)."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "esqueleto",
+      "explicacion": "Período NPER abierto, conceptos/cargos parametrizados, empleados activos, permisos de pantalla. Gate de este REQ: histórico de empleado (NEMPHIS).",
+      "tablasClave": [
+        "NPER",
+        "NEMP",
+        "NEMPHIS",
+        "NCON",
+        "AFU",
+        "CEN"
+      ],
+      "controles": [
+        {
+          "id": "empleados-historico",
+          "nombre": "Histórico de empleado (NEMPHIS)",
+          "explicacion": "REQ 0100016359. RRHH → Configuraciones avanzadas nómina → Empleados → modal Histórico De Empleado. Crear/editar/eliminar ítems NEMPHIS (área funcional IDAREA, centro de costo CCOSTO). Consumido en prenómina por FNK_INFO_NEMPHIS_NEMP según FECHAMOV. Esqueleto: FE visto; SPQ_NOM_NEMPHIS no leído.",
+          "invariante": "NEMPHIS.IDAREA debe ser código válido en AFU; NEMPHIS.CCOSTO coherente con CEN (mismo IDAREA, activo). Un recálculo PRENOMINA en período abierto debe tomar el snapshot vigente por FECHAMOV. No inventar columnas ni comportamiento de GUARDAR hasta leer el .sql.",
+          "sps": [
+            {
+              "nombre": "SPQ_NOM_NEMPHIS",
+              "metodo": "GUARDAR",
+              "rol": "Persiste alta/edición de ítem NEMPHIS. Sin ficha — bajar SPQ_NOM_NEMPHIS.sql a sql/ y documentar en sps.json."
+            },
+            {
+              "nombre": "SPQ_NOM_NEMPHIS",
+              "metodo": "ELIMINAR",
+              "rol": "Borra ítem de histórico. Sin ficha — misma entrega .sql."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "NOM_NEMPHIS",
+              "metodo": "GUARDAR",
+              "rol": "HistorialComponent.vue — onSaveNEMPHIS. IDAREA es q-input texto; CCOSTO no está en formulario ni en ColumnasVisibles del read."
+            },
+            {
+              "nombre": "NOM_NEMPHIS",
+              "metodo": "ELIMINAR",
+              "rol": "HistorialComponent.vue — onDeleteNEMPHIS."
+            }
+          ],
+          "pendiente": [
+            "Bajar SPQ_NOM_NEMPHIS.sql a sql/ y fichar GUARDAR / ELIMINAR (hace, valida, noValida, errores, llama, efecto)",
+            "Confirmar si GUARDAR escribe CCOSTO e IDAREA y si valida FK AFU / coherencia CEN",
+            "Confirmar si GUARDAR sincroniza NEMP maestro o solo NEMPHIS",
+            "Documentar FNK_INFO_NEMPHIS_NEMP (consume IDAREA/CCOSTO por FECHAMOV) — referenciado en PRENOMINA, sin ficha propia",
+            "No dictaminar el REQ 0100016359 hasta cerrar este gate"
+          ]
+        },
+        {
+          "id": "colilla-nombres",
+          "nombre": "Nombres en colilla (Manual / Particular)",
+          "explicacion": "REQ 0100016378. Solo impresión del desprendible: alias de nombre por concepto Manual/Particular con fecha de aplicación. No toca prenómina, liquidación, DIAN ni NEMPHIS. FE: FmtColillasNom.js pinta NOMBRE_CONCEPTO del dataset RPT_NOMINA.",
+          "invariante": "NCON.DESCRIPCION y valores liquidados no cambian. En el PDF, Manual/Particular usan el alias vigente a NPER.FECHAFIN; sin alias se mantiene el nombre actual. Otras clases iguales que hoy.",
+          "sps": [
+            {
+              "nombre": "SPQ_RPT_NOMINA",
+              "metodo": "COLILLAS",
+              "rol": "Dataset de la colilla (liquidación). Resolver NOMBRE_CONCEPTO. No leído — bajar SPQ_RPT_NOMINA.sql."
+            },
+            {
+              "nombre": "SPQ_RPT_NOMINA",
+              "metodo": "COLILLAS_PRENOMINA",
+              "rol": "Mismo dataset desde prenómina. No leído."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "RPT_NOMINA",
+              "metodo": "COLILLAS / COLILLAS_PRENOMINA",
+              "rol": "useNomi → FmtColillasNom.js. Columna CONCEPTOS DE NOMINA."
+            }
+          ],
+          "pendiente": [
+            "Bajar SPQ_RPT_NOMINA.sql y fichar cómo arma hoy NOMBRE_CONCEPTO",
+            "Confirmar SP de CRUD de alias (¿NOM_CONCEPTOS o SPQ nuevo?)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Prenómina (documentada), liquidación definitiva del CNSPAGO (SPQ_LIQUIDACION) y transmisión nómina electrónica a la DIAN (NOM_DIAN + TK_FDIANR).",
+      "tablasClave": [
+        "NPER",
+        "NEMPF",
+        "NEMPFD",
+        "NEMPFD_RUN",
+        "NEVED",
+        "RPDX"
+      ],
+      "controles": [
+        {
+          "id": "prenomina",
+          "nombre": "Prenómina",
+          "explicacion": "Talento humano → Procesos nómina → Prenómina. Flujo: elegir CNSPAGO → PRENOMINA (purge, plantilla NPLTCO, motor FNK_VALORCONCEPTO_NEMPFD_RUN en NEMPFD_RUN, volcado NEMPFD, SPK_CALCULAR_RETIROS, SPK_CALCULA_REFTE_NOMI, SPK_CALCULAR_NEMPF) → retiros RETIRAR_EMPLEADOS (batch) → recálculo FE empleado a empleado. Cadena completa en PROCESO.md.",
+          "invariante": "Valores en NEMPFD; staging NEMPFD_RUN por sesión. Motor: bases NCONDC/NCONDTC, novedades NEDIA, parámetros NPARV, override retiro FNK_VALOR_CONCEP_RETIRO_RUN. Retiro masivo una llamada; recálculo posterior no es batch.",
+          "sps": [
+            {
+              "nombre": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+              "metodo": "PRENOMINA",
+              "rol": "Recálculo unitario por NUMDOC: purge NEMPFD/NEMPF → staging NEMPFD_RUN (FNK_VALORCONCEPTO_NEMPFD_RUN) → NEMPFD; retiros SPK_CALCULAR_RETIROS; retefuente SPK_CALCULA_REFTE_NOMI; totales SPK_CALCULAR_NEMPF + NPER. Ficha leída en sps.json."
+            },
+            {
+              "nombre": "FRT_NEMP",
+              "metodo": "RETIRAR_EMPLEADOS",
+              "rol": "Retiro masivo (SPQ_FRT_NEMP): staging RPDX → NEMP.FECHARETIRO + NEDIA RET; FE recalcula PRENOMINA empleado a empleado. Ficha leída en sps.json."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+              "metodo": "PRENOMINA",
+              "rol": "Orquestación FE: AddConXCar / processEmploye / closeRemoMassiveNEMP en PreNominaComponent.vue."
+            },
+            {
+              "nombre": "FRT_NEMP",
+              "metodo": "RETIRAR_EMPLEADOS",
+              "rol": "RetiroNempComponent.vue — modal retiros masivos."
+            }
+          ]
+        },
+        {
+          "id": "liquidacion",
+          "nombre": "Liquidación de nómina",
+          "explicacion": "Talento humano → Liquidación (`LiquidaNomComponent`). Generar/cerrar: MODELO `LIQUIDACION` · `GENERATE_NOMINA` (cerrar manda PROCESO=CLOSE). Reabrir: `OPEN_NOMINA`. Contab/CxP van por `NC_CONTAB_NOMINA`. Invariante cruzada: contabilidad rechaza cierre de mes si NPER.CERRADO=0.",
+          "invariante": "GENERATE_NOMINA primero valida terceros de ingresos. Cerrar (PROCESO=CLOSE) exige NIEPE y cuentas KMCOM; el CERRADO lo escribe SPQ_CERRAR_NOMI, no este SPQ. Abrir bloquea si PRI cerrado o hay pagos/notas en CxP de nómina.",
+          "sps": [
+            {
+              "nombre": "SPQ_LIQUIDACION",
+              "metodo": "GENERATE_NOMINA / OPEN_NOMINA",
+              "rol": "Fichas leídas 2026-09-12. sql/SPQ_LIQUIDACION.sql."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        },
+        {
+          "id": "envio-dian",
+          "nombre": "Envío DIAN — nómina electrónica",
+          "explicacion": "Talento humano → pantalla DIAN nómina (`DianNominaComponent`). Se generan NIEPEG (SPQ_NOM_DIAN · GENERATE_NIEPEG), se encolan (PROCESAR_NIE) y un proceso externo envía a la DIAN; la respuesta queda en FDIANR y el trigger TK_FDIANR actualiza NIEPEG.ESTADODIAN. No es FTR·NOTI_DIAN.",
+          "invariante": "PROCESAR_NIE solo pone ESTADODIAN=1. El proceso externo inserta FDIANR; TK_FDIANR cierra (2 OK, 1 error 500, 3 rechazado, 4 en consulta). GENERATE_NIEPEG no exige NPER.CERRADO. PREVIEW_XML arma el XML con SPK_GENERAR_XML_NOMINA y no notifica.",
+          "sps": [
+            {
+              "nombre": "TK_FDIANR",
+              "metodo": "SendNominaSync / SendBillAsync (TIPO=NE)",
+              "rol": "Ficha leída. sql/TK_FDIANR.sql."
+            },
+            {
+              "nombre": "SPQ_NOM_DIAN",
+              "metodo": "GENERATE_NIEPEG / PROCESAR_NIE / PROCESAR_NIE_FILTER / PREVIEW_XML",
+              "rol": "Fichas leídas. sql/SPQ_NOM_DIAN.sql."
+            },
+            {
+              "nombre": "SPK_GENERAR_XML_NOMINA",
+              "metodo": "(procedimiento)",
+              "rol": "Ficha leída 2026-09-12. Vista previa XML; no notifica."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega y completa",
+      "estado": "parcial",
+      "explicacion": "La prenómina come plantilla NPLTCO, histórico NEMPHIS, novedades NEDIA, manuales y (en retiro) vacaciones NEMPV + adelantos NACE. No se afirma que contratos o prestaciones GENPRESTACIONES alimenten NEMPFD: no hay .sql de esos MODELO.",
+      "tablasClave": [
+        "NEDIA",
+        "NEVE",
+        "NEVED",
+        "NEMPV",
+        "NEMPVD",
+        "NACE",
+        "NPLTCO"
+      ],
+      "controles": [
+        {
+          "id": "nedia-novedades",
+          "nombre": "Novedades del período (NEDIA)",
+          "explicacion": "Desde Prenómina: unidad NOM_NEDIA · GUARDAR / ELIMINAR; masivo NOM_NOVEDADES · AGREGAR_NOVEDAD_EMPLEADOS (staging RPDX). El motor suma esas filas con FNK_CALCULO_VLR_NOVEDAD_NOM (leído). RET masivo ya está en capa 2 (FRT_NEMP).",
+          "invariante": "Sin NEDIA del concepto no hay valor de novedad. TIPOLIQ (PorPago / PorFecha / PorFechas) decide qué filas entran al CNSPAGO. No inventar validaciones de GUARDAR hasta leer el .sql.",
+          "ventanasFe": "/nom/Nom_procesos · RegistNovedades / NovedadesMasivo",
+          "sps": [
+            {
+              "nombre": "FNK_CALCULO_VLR_NOVEDAD_NOM",
+              "metodo": "CALCULO_VLR_NOVEDAD",
+              "rol": "Leído. Agrega horas×FACTOR de NEDIA ligadas al concepto."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "NOM_NEDIA",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "RegistNovedadesComponent. Sin .sql hoy."
+            },
+            {
+              "nombre": "NOM_NOVEDADES",
+              "metodo": "AGREGAR_NOVEDAD_EMPLEADOS",
+              "rol": "Masivo. Sin .sql hoy."
+            }
+          ]
+        },
+        {
+          "id": "vacaciones-alimenta",
+          "nombre": "Vacaciones → NEDIA / NEMPV",
+          "explicacion": "Pantalla /nom/Vacaciones (NOM_VACACIONES · GENERA_NOVEDAD_VACACIONES) crea la novedad que prenómina calcula. En retiro/cierre, SPK_PROCESO_VACACIONES (leído) actualiza NEMPV/NEMPVD; SPQ_LIQUIDACION CLOSE llama SPQ_PROCESO_VACACIONES CIERRE.",
+          "invariante": "Días de vacaciones del retiro salen de NEMPVD (PROCE=Retiro), no se inventan en prenómina. El CRUD NOM_VACACIONES no está leído.",
+          "ventanasFe": "/nom/Vacaciones · VacacionesNominaComponent",
+          "sps": [
+            {
+              "nombre": "SPK_PROCESO_VACACIONES",
+              "metodo": "ACTUALIZA / CIERRE / ABRE",
+              "rol": "Leído. Consumido en retiros y en liquidar/abrir."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "NOM_VACACIONES",
+              "metodo": "GENERA_NOVEDAD_VACACIONES",
+              "rol": "VacacionesNominaComponent. Sin .sql hoy."
+            }
+          ]
+        },
+        {
+          "id": "adelanto-cesantias",
+          "nombre": "Adelanto de cesantías (NACE)",
+          "explicacion": "Se registra en /nom/AdelantoCesantias (NOM_ADELANTO_CESANTIAS · GUARDAR). En retiro OTRASIPS, SPQ_ADELANTO_CESAN · APLICAR (leído) cruza NACE pendientes del tercero contra el monto a cubrir (FIFO).",
+          "invariante": "Sin NACE pendiente no hay descuento de adelanto. DESAPLICAR revierte al reabrir/anular el CNSPAGO.",
+          "ventanasFe": "/nom/AdelantoCesantias",
+          "sps": [
+            {
+              "nombre": "SPQ_ADELANTO_CESAN",
+              "metodo": "APLICAR / DESAPLICAR",
+              "rol": "Leído. Lo llama SPK_CALCULAR_RETIROS rama OTRASIPS."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "NOM_ADELANTO_CESANTIAS",
+              "metodo": "GUARDAR / ANULAR",
+              "rol": "AdelantoCesantiasComponent. Sin .sql del alta."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Nómina se une a CxP (cuentas de nómina), Tesorería (pago NIEPER bancos/caja) y al proceso externo DIAN (ya en capa 2). No hay pantalla de archivo plano bancario de salarios en el FE revisado: el pago al empleado sale por CxP de procedencia Nómina.",
+      "tablasClave": [
+        "FCXP",
+        "FCXPP",
+        "NIEPER",
+        "NIEPEG",
+        "FDIANR"
+      ],
+      "controles": [
+        {
+          "id": "cxp-nomina",
+          "nombre": "Liquidación → CxP de nómina",
+          "explicacion": "En LiquidaNomComponent, tras CONTABILIZAR, si USVGS NOMINA_AUTENVIO_CXP está activa llama GENERATE_CxP_NOM; si no, el usuario genera a mano. También GENERAR_CxP_ESPECIAL, VALIDAR_CxP_NOM y RECONSTRUIR_CxP_NOM. A partir de FCXP el circuito es Cuentas por pagar / Tesorería. Abrir nómina bloquea si hay FCXPP o notas sobre esas CxP (SPQ_LIQUIDACION · OPEN_NOMINA, leído).",
+          "invariante": "OPEN_NOMINA no abre con órdenes de pago o notas activas. El .sql de NC_CONTAB_NOMINA no está hoy: no afirmar columnas ni OM de la CxP.",
+          "ventanasFe": "/nom/Nom_procesos · LiquidaNomComponent (botones CxP)",
+          "sps": [
+            {
+              "nombre": "SPQ_LIQUIDACION",
+              "metodo": "OPEN_NOMINA",
+              "rol": "Leído. Bloquea si hay FCXPP / FCXPDBCR de nómina."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "NC_CONTAB_NOMINA",
+              "metodo": "GENERATE_CxP_NOM / VALIDAR_CxP_NOM / RECONSTRUIR_CxP_NOM / GENERAR_CxP_ESPECIAL",
+              "rol": "LiquidaNomComponent. Sin .sql hoy."
+            }
+          ]
+        },
+        {
+          "id": "nieper-bancos-caja",
+          "nombre": "Prestaciones / recobros → Bancos o Caja",
+          "explicacion": "/nom/PrestacionSocial: NIEPER · PROC_PAGO. Si PROCE=Bancos valida VALD_BANCOS; si no, VALD_CAJA. AUTO_EMP marca consignado al empleado. Sigue Tesorería · Bancos o Caja, no un archivo de dispersión propio.",
+          "invariante": "VLRPAGO no puede superar el faltante. Sin REFERENCIA no corre la validación de banco/caja.",
+          "ventanasFe": "/nom/PrestacionSocial · PrestSocialesComponent",
+          "sps": [],
+          "feSinSql": [
+            {
+              "nombre": "NIEPER",
+              "metodo": "PROC_PAGO / VALD_BANCOS / VALD_CAJA / AUTO_EMP",
+              "rol": "PrestSocialesComponent. Sin .sql hoy."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "El asiento de nómina lo dispara el FE empleado a empleado: NC_CONTAB_NOMINA · CONTABILIZAR (CNSPAGO + FECHACONTABLE). Cerrar el período exige que FNK_NC_CUENTA_KMCOM no devuelva '%NO%' (SPQ_LIQUIDACION, leído). Abrir bloquea si el PRI del mes está cerrado. No se afirma tabla MCP ni job: el SPQ de CONTABILIZAR no está en sql/.",
+      "tablasClave": [
+        "NIEPE",
+        "NIEPED",
+        "PRI"
+      ],
+      "controles": [
+        {
+          "id": "om-nomina",
+          "nombre": "Contabilizar nómina (CONTABILIZAR)",
+          "explicacion": "LiquidaNomComponent lista empleados (NOM_NOMIE) y llama CONTABILIZAR uno a uno; espera fila OK. Cerrar (PROCESO=CLOSE) ya validó cuentas KMCOM. Invariante cruzada con Contabilidad: no se cierra el mes si NPER.CERRADO=0.",
+          "invariante": "Sin NIEPED con cuenta KMCOM válida no se cierra. CONTABILIZAR no está leído: no inventar OM, tercero ni centro de costo.",
+          "ventanasFe": "/nom/Nom_procesos · LiquidaNomComponent · Contabilizar",
+          "sps": [
+            {
+              "nombre": "SPQ_LIQUIDACION",
+              "metodo": "GENERATE_NOMINA (CLOSE) / OPEN_NOMINA",
+              "rol": "Leído. Valida KMCOM al cerrar; PRI al abrir."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "NC_CONTAB_NOMINA",
+              "metodo": "CONTABILIZAR",
+              "rol": "LiquidaNomComponent · accountNOMISequential. Sin .sql hoy."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actualizado": "2026-09-12T21:40:00"
+}

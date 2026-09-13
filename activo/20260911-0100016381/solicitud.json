@@ -1,0 +1,144 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-11T16:21:24.053Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016381",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260911-0100016381",
+    "idReq": "0100016381",
+    "fecha": "2026-09-10",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "SANITAS PERU",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Yineth Carrillo",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/KERPER175",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "NC CON IMPORTE MENOR A LA FACTURA EMITIDA. Al realizar la anulación de 2 facturas y revisar la NC, se evidencia que los importes con de ambos documentos tienen diferencias.\nFNC2-000439\t-176.15\t   F00200046910\t214.86\t38.71\nFNC2-000440\t-176.15\t   F00200047351\t262.09\t85.94\n\nFavor su revisión.\n DETALLE: Se requiere que al anular una factura si esta es de paquete y tiene servicios adicionales se deben incluir en la nota credito, actualmente la nota solo esta afecta al valor del paquete y no a los servicios adicionales",
+    "criteriosAceptacion": "1) En SANITAS Perú (IXCOUNTRY=PERU), al anular desde Facturación una factura con FTR.PAQUETE=1 (o TIPOFAC=M) que tenga en FTRD línea de paquete y al menos una línea de servicio adicional, la NC automática (FNOT clase C) debe quedar con |VR_TOTAL de la NC| = FTR.VR_TOTAL de la factura anulada (tolerancia ±0.01 por redondeo IGV), salvo copagos/particularidades ya soportadas por el motor.\n2) Los FNOTD deben reflejar todas las cuotas FTRD facturables del paquete (PAQUETE 0, 1 y 3 según aplique), no solo el importe del servicio paquete.\n3) Casos de prueba obligatorios del REQ: F00200046910 ↔ FNC2-000439 (diferencia hoy 38.71) y F00200047351 ↔ FNC2-000440 (diferencia hoy 85.94) — tras el fix la diferencia debe ser 0.\n4) No regresión: anulación de factura no paquete, factura capita (SPK_ANULA_FACT_CAPITADA), NC manual por concepto en Notas DB/CR, y factura paquete sin adicionales.\n5) Si la factura ya tiene NC aplicada o recaudos, el sistema debe seguir bloqueando con los mensajes actuales de ANULARFAC.",
+    "alcance": "Proceso **facturacion** (FTR_COL), gate anulación de factura emitida. Cliente SANITAS Perú. Corrección del armado de detalle de NC al anular factura de **paquete con servicios adicionales** (líneas extra en FTRD, típico tras facturación evento/paquete o CRUDFTRD). Frontend: sin cambio de pantalla salvo verificación en FTRComponent/FTRPe al pulsar anular (sigue METODO ANULARFAC). Backend/SQL: **SPK_GENITEMS_NOTACR** (rama Perú PAQUETE/TIPOFAC M), invocado desde **SPK_ANULA_FACT** / **SPK_ANULA_FACT_CAPITADA** al generar NC por periodo cerrado o reglas FACTE; **SPK_NOTASCXC** aplica la nota. Fuera de alcance: corregir facturas ya emitidas con FTR.VR_TOTAL incorrecto en origen (solo NC en anulación); reproceso masivo de NC históricas sin script explícito del cliente.",
+    "restricciones": "Rama **bugfix/KERPER175**. No ejecutar cambios en producción desde BA. Validar con copia/preversión Perú. Releer **SPK_GENITEMS_NOTACR.sql** del día en SSMS antes de implementar (referencia archivada en sql_refe/0100014982). No tocar flujo DIAN/SUNAT salvo que el total FNOTD corrido dispare validación existente. Contabilidad: no nuevas cuentas MCPE; la NC ya contabiliza vía SPK_NC_CONTAB_FNOT al aplicar. Tipo REQ marcado Performance en cola — el fix es funcional de importes, no optimización de consultas.",
+    "analisis": "**REQ (cola IX OnLine + formulario):** Tras anular dos facturas, las NC FNC2-000439 y FNC2-000440 muestran -176.15 frente a facturas 214.86 y 262.09; el cliente indica que faltan los **servicios adicionales** además del paquete.\n\n**Flujo actual (conocimiento/facturacion + notas-dbcr):** El usuario anula en Facturación → `AppStore.json` MODELO **FTR_COL**, METODO **ANULARFAC** (`FTRComponent.vue` / `FTRPeComponent.vue`) → **SPK_ANULA_FACT** (o **SPK_ANULA_FACT_CAPITADA** si FINANCIERO+CAPITADA=1). Cuando corresponde NC automática, se crea FNOT y se ejecuta **SPK_GENITEMS_NOTACR** + **SPK_NOTASCXC**.\n\n**Causa probable (evidencia sql_refe/0100014982/SPK_GENITEMS_NOTACR.sql):** Para `IXCOUNTRY='PERU'` y (`FTR.PAQUETE=1` o `TIPOFAC='M'`), el SP primero inserta un único FNOTD tomando **FTR.VR_TOTAL** con descripción de paquete vía **HADM** (falla o no aplica cuando `NOREFERENCIA` es evento tipo VARIOS/CI), y luego agrega líneas desde **FTRD** solo con `PAQUETE IN (0,3)` filtrando por **VLR_SERVICI** > 0. En Perú muchas líneas de detalle (incluidos adicionales) pueden llevar el valor en **VR_TOTAL** con **VLR_SERVICI** en cero, quedando fuera de la NC. La rama no Perú para `@PAQUETE=1` ya recorre **FTRD** con `PAQUETE IN (0,1,3)` (comentario «paquete y los que están por fuera») — la rama Perú no está alineada.\n\n**Contraste facturación paquete:** `SPK_FACTURACI_EVENTO_PAQ` genera cabecera PAQUETE=1 y al menos una línea FTRD; los adicionales suelen ser más líneas FTRD (PAQUETE 0 u otros), coherente con el síntoma.\n\n**Contabilidad:** `contabilidad.afecta=false` — el fix corrige importes FNOTD/FNOT; no define nuevo plan de cuentas. Si FTR ya estaba contabilizada, el flujo de reversos existente de NC se mantiene.",
+    "opciones": [],
+    "recomendacion": "**Solución recomendada (SQL, mínimo alcance):** Ajustar **SPK_GENITEMS_NOTACR** en el bloque Perú `PAQUETE=1 OR TIPOFAC='M'` para que, en anulación al 100% (`@VLRAREBAJAR_P`≈1), genere FNOTD desde **todas** las líneas FTRD relevantes del paquete (`PAQUETE IN (0,1,3)`), usando la misma base de valor que el resto del módulo Perú (**VR_TOTAL** y/o **VLR_SERVICI** con `COALESCE`), y evitar el INSERT único desde cabecera FTR cuando existan varias cuotas FTRD — o cuadrar el total de FNOTD con `FTR.VR_TOTAL` sin omitir adicionales. Reutilizar el patrón del bloque `@PAQUETE=1` no Perú (líneas ~216-237 del script de referencia). No requiere cambio FE si ANULARFAC ya dispara el SPK.\n\n**Pruebas desarrollador:** Reproducir con las dos facturas del REQ; comparar SUM(FNOTD.VR_TOTAL) vs FTR.VR_TOTAL; validar SUNAT/JSON Perú si aplica (`SPK_GENERA_JSON_PERU_NOTADBCR`).\n\n**Siguiente paso Fase 1:** Confirmar en BD de prueba PROCEDENCIA/PAQUETE y conteo FTRD de F00200046910 y F00200047351; luego dictamen HTML cuando el coordinador cierre análisis.",
+    "cambioPropuestoSimple": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "El cambio ajusta importes de FNOTD al anular (SPK_GENITEMS_NOTACR); no crea cuentas MCPE ni nuevos comprobantes distintos al flujo NC existente (SPK_NOTASCXC / SPK_NC_CONTAB_FNOT). Afecta contabilidad: No.",
+        "validadoEn": "2026-09-11T16:25:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de iniciar cualquier desarrollo, valide en el ambiente del cliente que el error no se haya corregido en un trabajo previo. Revise los datos del escenario (documento, montos, procedencia). Si el proceso ya funciona, no aplique la propuesta e informe que está correcto. Solo si el fallo se reproduce, proceda con el desarrollo sugerido. requerimiento ya generado en colombia se debe validar la generacion de la nota"
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En SANITAS Perú (IXCOUNTRY=PERU), al anular desde Facturación una factura con FTR.PAQUETE=1 (o TIPOFAC=M) que tenga en FTRD línea de paquete y al menos una línea de servicio adicional, la NC automática (FNOT clase C) debe quedar con |VR_TOTAL de la NC| = FTR.VR_TOTAL de la factura anulada (tolerancia ±0.01 por redondeo IGV), salvo copagos/particularidades ya soportadas por el motor.\n2) Los FNOTD deben reflejar todas las cuotas FTRD facturables del paquete (PAQUETE 0, 1 y 3 según aplique), no solo el importe del servicio paquete.\n3) Casos de prueba obligatorios del REQ: F00200046910 ↔ FNC2-000439 (diferencia hoy 38.71) y F00200047351 ↔ FNC2-000440 (diferencia hoy 85.94) — tras el fix la diferencia debe ser 0.\n4) No regresión: anulación de factura no paquete, factura capita (SPK_ANULA_FACT_CAPITADA), NC manual por concepto en Notas DB/CR, y factura paquete sin adicionales.\n5) Si la factura ya tiene NC aplicada o recaudos, el sistema debe seguir bloqueando con los mensajes actuales de ANULARFAC.",
+      "originalesEn": "2026-09-11T16:20:11.373Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En SANITAS Perú (IXCOUNTRY=PERU), al anular desde Facturación una factura con FTR.PAQUETE=1 (o TIPOFAC=M) que tenga en FTRD línea de paquete y al menos una línea de servicio adicional, la NC automática (FNOT clase C) debe quedar con |VR_TOTAL de la NC| = FTR.VR_TOTAL de la factura anulada (tolerancia ±0.01 por redondeo IGV), salvo copagos/particularidades ya soportadas por el motor.\n2) Los FNOTD deben reflejar todas las cuotas FTRD facturables del paquete (PAQUETE 0, 1 y 3 según aplique), no solo el importe del servicio paquete.\n3) Casos de prueba obligatorios del REQ: F00200046910 ↔ FNC2-000439 (diferencia hoy 38.71) y F00200047351 ↔ FNC2-000440 (diferencia hoy 85.94) — tras el fix la diferencia debe ser 0.\n4) No regresión: anulación de factura no paquete, factura capita (SPK_ANULA_FACT_CAPITADA), NC manual por concepto en Notas DB/CR, y factura paquete sin adicionales.\n5) Si la factura ya tiene NC aplicada o recaudos, el sistema debe seguir bloqueando con los mensajes actuales de ANULARFAC.",
+      "trasAnalisisEn": "2026-09-11T16:20:48.876Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: causa en rama Perú de SPK_GENITEMS_NOTACR vs FTRD paquete+adicionales. Fichas ANULARFAC/SPK_ANULA_FACT/SPK_GENITEMS_NOTACR/SPK_NOTASCXC leídas en conocimiento; cuerpo SPK_GENITEMS_NOTACR contrastado con sql_refe/0100014982. Releer SPK_GENITEMS_NOTACR.sql del día al implementar (líneas pueden haber cambiado). Opcional: captura FTRD de las dos facturas en aprobados/imagenes para dictamen.",
+      "fecha": "2026-09-11T16:25:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPK_GENITEMS_NOTACR (releer en sql/ día de desarrollo)"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260911-0100016381/diagramas/flujo.html",
+      "subidaEn": "2026-09-11T11:21:10",
+      "url": "/api/caso/20260911-0100016381/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260911-0100016381-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016381\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "ANULARFAC",
+        "estado": "leido",
+        "hace": "Anula factura ESTADO=P; si PROCEDENCIA=FINANCIERO y CAPITADA=1 → **SPK_ANULA_FACT_CAPITADA**; si FINANCIERO evento → SPK_ANULA_FACT; resto procedencias → SPK_ANULA_FACT.",
+        "llama": [
+          "SPK_ANULA_FACT",
+          "SPK_ANULA_FACT_CAPITADA"
+        ]
+      }
+    ],
+    "notas": "No copiar catálogo completo FTR_COL (68 METODOs). Si en implementación la rama Perú difiere del archivado 0100014982, bajar SPK_GENITEMS_NOTACR a sql/ y documentar en Chat.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260911-0100016381.html",
+    "aprobados": "aprobados/20260911-0100016381/",
+    "imagenes": "aprobados/20260911-0100016381/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-11",
+    "ultimoEnvio": "2026-09-11T11:25:06",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

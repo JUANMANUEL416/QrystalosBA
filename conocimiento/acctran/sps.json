@@ -1,7 +1,7 @@
 {
   "procesoId": "acctran",
-  "actualizado": "2026-09-03",
-  "nota": "SPQ_HACTRAN leído hoy en sql/ (LLENAR, INSERT, UPDATE). DATOSAFI no se bajó: el FE ya lo usa y este REQ no lo cambia.",
+  "actualizado": "2026-09-12T21:15:18",
+  "nota": "SPQ_FURIPS · FURIPS/FURIPSCXC leídos en sql/SPQ_FURIPS.sql (REQ 0100016340). Detalle FURIPS 2 es SELECT inline por @PROCEDENCIA (QX/CI/CE); no invoca FNK_SOAT_FURIPS2 en este script.",
   "sps": [
     {
       "nombre": "SPQ_HACTRAN",
@@ -14,8 +14,12 @@
         {
           "id": "LLENAR",
           "hace": "Carga el expediente HACTRAN (incluye campos *_AMPARO) para el modal.",
-          "valida": ["CNSHACTRAN en PARAMETROS"],
-          "noValida": ["No trae AFI; no rellena amparo si está vacío en HACTRAN"],
+          "valida": [
+            "CNSHACTRAN en PARAMETROS"
+          ],
+          "noValida": [
+            "No trae AFI; no rellena amparo si está vacío en HACTRAN"
+          ],
           "errores": [],
           "llama": [],
           "efecto": "SELECT del expediente. Los *_AMPARO salen como están guardados.",
@@ -26,10 +30,18 @@
         {
           "id": "INSERT",
           "hace": "Crea HACTRAN desde JSON del FE, incluidos TIPODOC_AMPARO, DOC_AMPARO y los cuatro nombres.",
-          "valida": ["No duplicar mismo IDAFILIADO accidentado el mismo día"],
-          "noValida": ["No exige que *_AMPARO coincidan con AFI"],
-          "errores": ["YA ESTA CREADO EL ACCIDENTE NO PUEDO INSERTARLO EL MISMO IDAFILIADO ACCIDENTADO EL MISMO DIA"],
-          "llama": ["SPK_GENCONSECUTIVO"],
+          "valida": [
+            "No duplicar mismo IDAFILIADO accidentado el mismo día"
+          ],
+          "noValida": [
+            "No exige que *_AMPARO coincidan con AFI"
+          ],
+          "errores": [
+            "YA ESTA CREADO EL ACCIDENTE NO PUEDO INSERTARLO EL MISMO IDAFILIADO ACCIDENTADO EL MISMO DIA"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
           "efecto": "Nueva fila HACTRAN. Consecutivo con SPK_GENCONSECUTIVO. Este REQ no cambia el SP.",
           "capaId": "02-operacion",
           "gateId": "amparo-traer-afi",
@@ -38,8 +50,12 @@
         {
           "id": "UPDATE",
           "hace": "Actualiza HACTRAN desde JSON, incluidos los seis campos de persona de Amparo.",
-          "valida": ["CNSHACTRAN"],
-          "noValida": ["No valida contenido de amparo contra AFI"],
+          "valida": [
+            "CNSHACTRAN"
+          ],
+          "noValida": [
+            "No valida contenido de amparo contra AFI"
+          ],
           "errores": [],
           "llama": [],
           "efecto": "UPDATE de columnas existentes. Este REQ no cambia el SP.",
@@ -60,13 +76,151 @@
         {
           "id": "DATOSAFI",
           "hace": "Devuelve datos del afiliado (tipo doc, documento, nombres, FNACIMIENTO, etc.).",
-          "valida": ["IDAFILIADO"],
-          "noValida": ["No escrito en HACTRAN"],
+          "valida": [
+            "IDAFILIADO"
+          ],
+          "noValida": [
+            "No escrito en HACTRAN"
+          ],
           "errores": [],
           "llama": [],
           "efecto": "Solo lectura. El botón de Amparo copia un subconjunto al formulario.",
           "capaId": "02-operacion",
           "gateId": "amparo-traer-afi",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FURIPS",
+      "tipo": "SPQ",
+      "modelo": "FURIPS",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_FURIPS.sql",
+      "cola": "Resto en SPQ_FURIPS_V2/V3 (PDFFURIPS, FURTRAN, FUCTAS, etc.). Fuera de alcance REQ 0100016340.",
+      "metodos": [
+        {
+          "id": "FURIPS",
+          "hace": "Devuelve OK + recordset[1] cabecera FURIPS 1 + recordset[2] líneas FURIPS 2 para CNSHACTRAN, @PROCEDENCIA, @NOREFERENCIA, @FTR.",
+          "valida": [
+            "CNSHACTRAN en PARAMETROS",
+            "CODHABILITA vía TER/IDTERCEROINSTALADO"
+          ],
+          "noValida": [
+            "No recorta columnas FURIPS 2 por tipo de servicio asistencial vs circular"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE",
+            "FNK_LIMPIATEXTO",
+            "FNK_FURIPS_CODIGOSERVICIO (si @ESMUNDIAL)"
+          ],
+          "efecto": "FURIPS 2: ramas @PROCEDENCIA QX (SALUD/HPRE), CI, CE. Si FURIPSRESUMIDO=NO y QX, el SELECT externo proyecta CAMPO_ITEMCIRUGIA, CAMPO_ESCIRUGIA, CAMPO_CODCUPS además de CAMPO01–09 (y duplicado CAMPO_VALORTOTALRECLAMADO). El FE serializa Object.values → columnas de más en TXT.",
+          "capaId": "04-unido",
+          "gateId": "furips2-asistencial-circular-0022",
+          "estado": "leido"
+        },
+        {
+          "id": "FURIPSCXC",
+          "hace": "Igual estructura por cuenta de cobro: OK + FURIPS 1 + FURIPS 2 desde FCXC/CNSCXC.",
+          "valida": [
+            "CNSCXC en PARAMETROS"
+          ],
+          "noValida": [
+            "Misma lógica de proyección FURIPS 2; líneas no quirúrgicas vía HPRE sin qxpcxd"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE",
+            "FNK_LIMPIATEXTO",
+            "FNK_FURIPS_CODIGOSERVICIO (si @ESMUNDIAL)"
+          ],
+          "efecto": "Recordset[2] con UNION (HPRE asistencial + bloques cirugía). SELECT final FURIPS 2 lista CAMPO01–09; riesgo residual en FE si el driver expone columnas internas del subquery — validar en prueba.",
+          "capaId": "04-unido",
+          "gateId": "furips2-asistencial-circular-0022",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_HACTRAND",
+      "tipo": "SPQ",
+      "modelo": "HACTRAND",
+      "estado": "leido",
+      "fuente": "sql/SPQ_HACTRAND.sql",
+      "actualizado": "2026-09-12T21:15:18",
+      "metodos": [
+        {
+          "id": "INSERT",
+          "hace": "Inserta detalle HACTRAND (clínica/valores/SIRAS) con columnas dinámicas FNK_COLUMNAS_TABLAS.",
+          "valida": [
+            "No duplicar CNSHACTRAN+ITEM"
+          ],
+          "noValida": [
+            "SQL dinámico; no valida tope SOAT aquí"
+          ],
+          "errores": [
+            "YA ESTA CREADO EL ACCIDENTE NO PUEDO INSERTARLO EL MISMO IDAFILIADO ACCIDENTADO EL MISMO DIA",
+            "ERROR AL INSERTAR HACTRAN: …"
+          ],
+          "llama": [
+            "FNK_COLUMNAS_TABLAS"
+          ],
+          "efecto": "INSERT HACTRAND.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "UPDATE",
+          "hace": "Actualiza fila HACTRAND.",
+          "estado": "leido"
+        },
+        {
+          "id": "DELETE",
+          "hace": "Elimina detalle.",
+          "estado": "leido"
+        },
+        {
+          "id": "FTRVLR",
+          "hace": "Lee VR_TOTAL de FTR con WHERE dinámico (@WHERES).",
+          "valida": [
+            "WHERES no vacío"
+          ],
+          "noValida": [
+            "WHERE concatenado"
+          ],
+          "errores": [
+            "NO ENCONTRE LA FACTURA …"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "estado": "leido"
+        },
+        {
+          "id": "RELIQUIDAR",
+          "hace": "Recalcula gastado/faltante del expediente HACTRAN (SIRAS, FONSAT, tope).",
+          "valida": [
+            "CNSHACTRAN informado"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "HACTRAN/HACTRAND de valores actualizados.",
+          "estado": "leido"
+        },
+        {
+          "id": "DATOSAFI",
+          "hace": "Datos afiliado para el expediente.",
+          "estado": "leido"
+        },
+        {
+          "id": "LLENAR",
+          "hace": "Carga detalle del expediente.",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDHACTRAND",
+          "hace": "CRUD unificado.",
           "estado": "listado"
         }
       ]

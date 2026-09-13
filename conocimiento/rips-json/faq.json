@@ -1,0 +1,61 @@
+{
+  "procesoId": "rips-json",
+  "actualizado": "2026-09-12T22:10:00",
+  "nota": "Semilla 2026-09-12 (árbol cerrado). El bot solo usa coincidencias con la pregunta actual.",
+  "items": [
+    {
+      "id": "rips-arbol-variante",
+      "pregunta": "qué hoja o variante genera el RIPS JSON: evento, masiva, PGP, capita, AUTPG, paquete, ajuste o nota",
+      "respuesta": "## Árbol — a qué hoja va el JSON\n\nEl FE llama `FTR_COL` (`RIPS_JSON` síncrono o job `INICIAR_RIPS_JSON_JOB` → `EJECUTAR_RIPS_JSON_ASYNC`). El motor es `SPK_GENERAR_RIPS_JSON` y **exige** `FTR.FACTE=2`.\n\n| Condición | Hoja |\n|-----------|------|\n| FACTURA + PGP (`CAPITADA=1` + `PPT.PGP=1`) | `SPK_RIPS_JSON_FTR_PGP` |\n| FACTURA + capita `TIPOCAP<4` | `FTR_CAPI` |\n| FACTURA + `TIPOCAP=4` | `FTR_CAPMASI` |\n| FACTURA + `TIPOFAC=M` + AUTPG | `FTR_AUTPG` |\n| FACTURA + `TIPOFAC=M` + NEDXC/NEDXS | `FTR_CITPAQ` |\n| FACTURA + `TIPOFAC=M` resto | `FTR_MAS` |\n| FACTURA evento | `FTR_IND` |\n| AJUSTE + PGP | `AJUSTE_PGP` y **RETURN** |\n| AJUSTE capita no-PGP | no regenera + RETURN |\n| AJUSTE evento | `AJUSTE_IND` + RETURN |\n| NOTACR / NOTADB (`FNOT.FACTE=2`) | `NDBCR_IND` |\n\n`SOLO_META=SI` no arma payload. `GENERAR=NO` reusa `FTRJSON.JSON_ENVIO` si existe.\n\n`NOTAAJUSTE_PGP` y `NOTAAJUSTE_MAS` quedan **después del RETURN** de AJUSTE: **no corren** por `FTR_COL`.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:10:00",
+      "mensajeId": "semilla-rips-arbol",
+      "chatId": "c202609122210ripsjson"
+    },
+    {
+      "id": "rips-defaults-ind",
+      "pregunta": "cuáles son los defaults del usuario en RIPS JSON evento IND tipoUsuario documento sexo zona recaudo diagnóstico particular",
+      "respuesta": "## Defaults IND (base para un REQ de defaults automáticos)\n\nLeídos en `SPK_RIPS_JSON_FTR_IND` (2026-09-12):\n\n- **tipoUsuario:** `AFI.TIPOUSUARIO` (2 dígitos) o mapa `TIPOAFILIADO` (C/J=01, B=02, A=03, Sb=04, SR/SN=05, TA=06, S/RE=07). Si no hay dato → **05**.\n- **tipoDocumento:** **CC** si falta.\n- **fechaNacimiento:** **1900-01-01** si falta.\n- **sexo:** **M** si falta.\n- **municipio:** **00000**; **zona:** **02**; **incapacidad:** **NO**; **país:** **170**.\n- **conceptoRecaudo:** arranca en **05**. Si hay copago: 02 / 01 / 03 según tipo de usuario.\n- **tipoDiagnostico** (presuntivo / impresión / definitivo): **01**.\n- **Particular:** **sí se reporta** (no se omite).\n\nSin `DOCIDAFILIADO` la hoja IND no arma el JSON.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:10:00",
+      "mensajeId": "semilla-rips-defaults",
+      "chatId": "c202609122210ripsjson"
+    },
+    {
+      "id": "rips-recien-nacidos",
+      "pregunta": "cómo arma el RIPS JSON los recién nacidos QXRCN FNK_RIPS_JSON_RECIENNACIDOS",
+      "respuesta": "## Recién nacidos\n\n**`FNK_RIPS_JSON_RECIENNACIDOS`** (IND, AJUSTE_IND, NDBCR): devuelve **un objeto** (no un array). Solo si hay **exactamente 1** `QXRCN` de la admisión. Cero o más de uno → string vacío. El caller lo pone en `recienNacidos:[ … ]`.\n\n**Origen:** `QXRCN` + alta `HADM.FECHAALTAMED`. Documento: plantilla `HCAO` proceso `RNACIDO` → `HCAD`; si no, `QXRCN.NRODOCUMENTO` y tipo **CN**.\n\n**Defaults:** sexo F=02 / M=01 / otro=03. Destino `'0'+ESTADORN` (si no, 01). Controles prenatales no numéricos → **2**. Edad gestacional/peso → **0**. DX vacío → texto `null`. Causa de muerte vacía → JSON null. CIE11 y `codigoVIDA` siempre null.\n\n**No usa** `@N_FACTURA`, `@PROCEDENCA`, `@TIPODOC` ni `@DOCIDAFILIADO` (los recibe y no los toca).\n\nLas hojas masivas (`FTR_MAS`, `NOTAAJUSTE_MAS`) arman `#RECIEN` en el propio SP; no llaman la función.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:10:00",
+      "mensajeId": "semilla-rips-rn",
+      "chatId": "c202609122210ripsjson"
+    },
+    {
+      "id": "rips-persistir-async",
+      "pregunta": "dónde persiste el JSON RIPS FTRJSON FNOTJSON y cuándo usa async cola CONFIG_GENE_FEV",
+      "respuesta": "## Persistir y async\n\n**Persistir** (`SPK_PERSISTIR_RIPSJSON_ENVIO`): FACTURA → `FTRJSON`. NOTACR / NOTADB / AJUSTE → `FNOTJSON` (C / D / A). **No escribe CUV**.\n\n**Async** (`FNK_RIPS_JSON_USAR_ASYNC` + `USVGS` `CONFIG_GENE_FEV` JSON):\n- Sin config o si no es JSON → **async=1** (cola `PROCESO_JOB`).\n- **async=0** (el FE cae a `RIPS_JSON` síncrono) si la procedencia está en `procedenciasSinAsync` o `VR_TOTAL` &lt; `valorMinimoAsync`.\n- Si ya hay job `PENDIENTE`/`PROCESANDO` del mismo CNSFCT+TIPODOC → KO («Ya existe una generación RIPS en ejecución»).\n\n`SPK_GUARDAR_ARCHIVO` escribe a disco por OLE; el despachador manda `@URL_PATH` nulo: **no corre** en FEVRIPS.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:10:00",
+      "mensajeId": "semilla-rips-persistir",
+      "chatId": "c202609122210ripsjson"
+    },
+    {
+      "id": "rips-cuv-no-es",
+      "pregunta": "RIPS JSON es lo mismo que DIAN FACTE o radicar CXC CUV ministerio",
+      "respuesta": "## Qué es / qué no es\n\n| Esto (módulo `rips-json`) | No es |\n|---------------------------|--------|\n| JSON RIPS + XML FEV + **CUV** SISPRO | Encolar / notificar **DIAN** (`FACTE`, `NOTI_DIAN`) |\n| Persistencia `FTRJSON` / `FNOTJSON` | **Radicar** cuenta (`FCXC`) |\n| Validar o corregir defaults del JSON | Asiento contable |\n\n**Precondición:** factura notificada DIAN (`FACTE=2`). El AJUSTE además exige CUV de la FV.\n\nDespués del JSON: marcar lote (`SPQ_RIPS` · `MARCA*`) → envío SISPRO → `SET_DATOS` escribe CUV. Cola microservicio opcional (`FEVRIPS_COLA`) solo si `FEVRIPS_MODO=MICROSERVICIO`.\n\n**CUV validado no significa cuenta radicada.** El empaque de anexos y Radicar CXC viven en el módulo **Facturación**.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:10:00",
+      "mensajeId": "semilla-rips-cuv",
+      "chatId": "c202609122210ripsjson"
+    },
+    {
+      "id": "rips-config-variables",
+      "pregunta": "qué variables y homologación hay que configurar para generar FEVRIPS CONFIG_GENE_FEV TGEN conceptoRecaudo",
+      "respuesta": "## Configuración antes de generar\n\n- **FACTE=2** (factura ya notificada DIAN). Sin eso el motor no genera.\n- **USVGS `CONFIG_GENE_FEV`:** JSON con `valorMinimoAsync` y `procedenciasSinAsync` (cola vs síncrono).\n- **`FEVRIPS_MODO=MICROSERVICIO`:** activa `SPQ_FEVRIPS_COLA`.\n- **TGEN** `TABLA=RIPS_JSON` campo `conceptoRecaudo` (homologación ICI/ICE).\n- Prestador: `TER.IDALTERNA2` o `SED.CODHABILITA` si `FACTSEDE=SI`.\n- Otras vistas: `EPI_MEDICODEFAULT`, `IDTERCEROINSTALADO`, `IDPLANPART*`, `IDMATERIALESRIPS`, `FEVRIPS_INC_SINVLR`.\n- El plan (`PPT.PGP` / capita / `TIPOCAP`) decide la hoja, no una variable aparte.\n\nSin CUV en la FV no hay AJUSTE. Marca masiva exige FACTE=2, contabilizada, CUV vacío y no caja.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:10:00",
+      "mensajeId": "semilla-rips-config",
+      "chatId": "c202609122210ripsjson"
+    }
+  ]
+}

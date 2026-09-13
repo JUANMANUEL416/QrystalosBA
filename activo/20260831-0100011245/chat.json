@@ -1,0 +1,58 @@
+{
+  "mensajes": [
+    {
+      "id": "20260912161743095123",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis).",
+      "fecha": "2026-09-12T16:17:43"
+    },
+    {
+      "id": "20260912161743125358w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-12T16:17:43"
+    },
+    {
+      "id": "20260912162352569002d",
+      "autor": "sistema",
+      "texto": "Diagrama de flujo generado desde conocimiento/facturacion/ y el análisis del REQ. Quedó **adjunto en el dictamen** (sección 4.5) y en dictamenes/20260831-0100011245-flujo.html.",
+      "fecha": "2026-09-12T16:23:52"
+    },
+    {
+      "id": "20260912162700agente01",
+      "autor": "agente",
+      "texto": "## Caso activado — Fase 1 (REQ 0100011245)\n\n**Estado:** Fase 1 abierta (`estado.json`, activado 2026-09-12). El análisis de solución ya estaba en `solicitud.contenido` (criterios, alcance, restricciones, recomendación, `brechaAnalisis` listo).\n\n### Activación — verificaciones hechas\n- **Cola:** `cola/IX OnLine.htm` (IX genérico; texto del REQ tomado del formulario).\n- **SQL en `sql/`:** `SPQ_HCA_COL.sql`, `SPQ_APOYODX_COL.sql` confirmados.\n- **Proceso KB:** el REQ es **impresión HC**, no facturación. Corregí en `solicitud.sql` `procesoId`/`catalogo` (vacío; no usar `facturacion`). El diagrama auto en `activo/.../diagramas/flujo.html` venía de facturación por etiqueta IX; en el dictamen 4.5 va el mapa corregido (gate HCA → CONSULTAR → V2/LORD → PDF).\n\n### Veredicto SQL (releer al codificar)\n| SP | METODO | Fuente | Rol |\n|----|--------|--------|-----|\n| SPQ_HCA_COL | (delega) | sql/SPQ_HCA_COL.sql | Rama DILIGENCIAR en script del día; **else → SPQ_HCA_COL_V2** |\n| SPQ_HCA_COL_V2 | CONSULTAR | **No en sql/ BA** | HCATD impresión — **bajar V2 del día** para diseño del join LORD |\n| SPQ_APOYODX_COL | IMPRIMIR_LORD | sql/ leído | LORD.NORDEN, RESULTADO, FECHARES — referencia de contenido |\n\nNo bloquea Fase 1: la propuesta FE+SQL está fundada en código vivo + IMPRIMIR_LORD. Al implementar sí hace falta **SPQ_HCA_COL_V2.sql**.\n\n### Contabilidad\n**No afecta** (solo PDF asistencial).\n\n### Dictamen\nGenerado en **dictamenes/20260831-0100011245.html** (estado Propuesto). Incluye validar antes, trazabilidad, cambios 5.0–5.3 y pruebas tres capas.\n\n### Siguiente paso\nRevise el dictamen en la app; si aprueba criterios, comente en Chat o pulse **Cerrar fase 1** cuando corresponda. Capturas PDF actual vs esperado en `aprobados/20260831-0100011245/imagenes/` ayudan al cierre.",
+      "fecha": "2026-09-12T16:27:00"
+    },
+    {
+      "id": "20260912163036342371",
+      "autor": "coordinador",
+      "texto": "te adicione el sp SPQ_HCA_COL_V2, necesitas algo mas para terminar la documentacion",
+      "fecha": "2026-09-12T16:30:36"
+    },
+    {
+      "id": "20260912163036372315w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-12T16:30:36"
+    },
+    {
+      "id": "20260912163500agente02",
+      "autor": "agente",
+      "texto": "## SPQ_HCA_COL_V2 recibido — documentación Fase 1\n\nGracias. Confirmé **`sql/SPQ_HCA_COL_V2.sql`** junto a HCA_COL y APOYODX_COL.\n\n### Hallazgo clave (CONSULTAR)\nEn el recordset **HCATD** ya existe la columna **`RAPDX`** (JSON): para órdenes con prefijo **AYUDADX** en HCCOMD y LORD con **ESTADO = 'R'**, devuelve **NOPRESTACION (NORDEN), NOITEM, TIPOINGRESO** — **no** trae analitos ni `RESULTADO`/`LORDD`. Eso explica por qué el PDF principal (`hca.js`) no muestra resultado aunque el back ya enlaza la orden con LORD.\n\n### FE (Qrystalos2)\n- **`src/boot/hca.js` · `generaPDFHCA`:** no usa `RAPDX` → **hueco del REQ** en el motor que usa `HCAComponent`.\n- **`hcaSoporte.js`:** ya parsea `RAPDX` y llama **`getImagenResultados`** por ítem (N round-trips). Conviene confirmar en test Fundación si imprimen con hca.js, soporte o **pdf-report-service**; la propuesta sigue siendo enriquecer **CONSULTAR** + pintar en **hca.js** (o portar la lógica de soporte sin N llamadas).\n\n### SP/METODO de este cambio (solo gate)\n| SP | METODO | Rol |\n|----|--------|-----|\n| SPQ_HCA_COL | (delega) | → SPQ_HCA_COL_V2 |\n| SPQ_HCA_COL_V2 | **CONSULTAR** | HCATD + **RAPDX**; **extender** payload resultado |\n| SPQ_APOYODX_COL | **IMPRIMIR_LORD** | Especificación de contenido LORD/LORDD |\n| SPQ_HCA_COL_V2 | HISTORICOLX | No sustituye este REQ |\n\n**Veredicto releer .sql al codificar:** sí, el día del desarrollo (SPs cambian a diario); para **cerrar Fase 1** la copia en `sql/` alcanza.\n\n### ¿Falta algo para la documentación?\n**No bloqueante:** el dictamen y `solicitud.contenido` quedan al día.\n\n**Opcional (recomendado):**\n1. Capturas en **`aprobados/20260831-0100011245/imagenes/`** (PDF HC actual sin resultado + impresión Apoyo DX del mismo NORDEN) para **validar antes** y cierre.\n2. En test: anotar si la impresión HC usa **jsPDF (`hca.js`)** o **microservicio** — afecta alcance FE.\n\nNo hace falta otro SP para documentar este REQ. Proceso **HC** en `conocimiento/` puede crearse en Documentar más adelante; no detiene la fase 1.\n\n### Dictamen actualizado\nAjusté secciones 2, trazabilidad y 5.2 con **RAPDX** y la distinción hca.js / hcaSoporte:\n**dictamenes/20260831-0100011245.html**\n\nSi los criterios le cuadran, puede **Cerrar fase 1** o comentar ajustes aquí.",
+      "fecha": "2026-09-12T16:35:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-12T16:46:06"
+    },
+    {
+      "id": "correo-cierre-20260831-0100011245",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a elan.bravo@ixcolombia.com.",
+      "fecha": "2026-09-12T16:46:22"
+    }
+  ]
+}

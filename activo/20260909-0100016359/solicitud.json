@@ -1,0 +1,144 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-09T16:33:51.670Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016359",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260909-0100016359",
+    "idReq": "0100016359",
+    "fecha": "2026-09-09",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "COMITE DE ESTUDIOS MEDICOS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": "/nom/conf — pestaña Empleados → Histórico de empleado"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/COESME605",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "Modificación de Información en el Historial de Empleados\n\nSe solicita la implementación de una funcionalidad que permita modificar la información del centro de costo y el área funcional asociada a cada empleado en el historial de empleados de nómina.\n\n1. El sistema permite modificar el centro de costo de un empleado desde su historial.\n2. El sistema permite modificar el área funcional de un empleado desde su historial.\n3. Los cambios realizados se guardan correctamente en la base de datos.\n4. Se muestra un mensaje de confirmación al usuario tras realizar modificaciones.",
+    "criteriosAceptacion": "CRITERIOS DE ACEPTACIÓN — REQ 0100016359 (agente)\n\nA. Acceso\nCA-01. Desde RRHH → Configuraciones avanzadas nómina → pestaña Empleados, al abrir un empleado y el modal «Histórico De Empleado», el usuario con permiso de configuración de empleados puede editar un ítem existente del historial (tabla NEMPHIS).\n\nB. Área funcional\nCA-02. En crear/editar histórico, el área funcional se selecciona desde catálogo AFU (búsqueda o selector equivalente al de Cargos del empleado), no solo texto libre sin validación.\nCA-03. Al guardar, NEMPHIS.IDAREA persiste un código válido en AFU; si el backend rechaza FK, se muestra mensaje claro al usuario.\n\nC. Centro de costo\nCA-04. En crear/editar histórico existe campo Centro de costo (NEMPHIS.CCOSTO) con descripción (tabla CEN), filtrado por el área funcional seleccionada y centros en estado Activo (misma regla que CargosComponent).\nCA-05. Al guardar, NEMPHIS.CCOSTO persiste en BD y es visible al reabrir el registro y en la consulta de la grilla.\nCA-06. Si cambia el área funcional, el centro de costo incompatible se limpia o se exige re-selección antes de guardar.\n\nD. Persistencia y UX\nCA-07. Guardar invoca AppStore.json con MODELO NOM_NEMPHIS y METODO GUARDAR; respuesta OK muestra notificación de éxito y refresca la grilla; si el SP devuelve OK='KO', se muestra el mensaje de error (ERROR_MESSAGE / fila ERROR) al usuario.\nCA-08. Eliminar histórico (METODO ELIMINAR) sigue operando sin regresión.\n\nE. Regresión nómina\nCA-09. Tras corregir IDAREA/CCOSTO en un ítem con FECHAMOV aplicable a un período abierto, un recálculo PRENOMINA del empleado refleja área/centro coherentes con el histórico (motor FNK_INFO_NEMPHIS_NEMP).\n\nF. Performance (tipo REQ en IX)\nCA-10. Con hasta 100 ítems NEMPHIS por empleado, la grilla paginada y el guardado de una edición responden en tiempo operativo en preversión o cliente (objetivo ≤5 s carga inicial de grilla; sin degradación por joins innecesarios).",
+    "alcance": "Incluye: ajustes en HistorialComponent.vue (modal histórico en EmpleadosComponent); AppStore.read de NEMPHIS con CCOSTO y descripción CEN; envío IDAREA/CCOSTO en GUARDAR; UX área→centro de costo alineada con CargosComponent; mostrar errores KO del SP cuando falle FK u otra validación BD; prueba de regresión PRENOMINA y lectura de histórico vía FNK_INFO_NEMPHIS_NEMP. Rama feature/COESME605.\n\nExcluye: cambio de SPQ_NOM_NEMPHIS salvo hallazgo en pruebas (sql/ confirma UPDATE/INSERT con IDAREA y CCOSTO); corrección masiva/batch; triggers TK_NEMPHIS_*; liquidación/contabilidad nómina; rediseño del resto del histórico; sync automática NEMP maestro (el SP no actualiza NEMP en EDITAR).",
+    "restricciones": "Proceso conocimiento: nomina — gate NEMPHIS / configuración empleados. FK NEMPHIS.IDAREA→AFU; CCOSTO coherente con CEN por IDAREA en FE. Patrón CargosComponent. SPQ_NOM_NEMPHIS leído en sql/SPQ_NOM_NEMPHIS.sql (aún sin ficha en sps.json — documentar en Documentar si aplica). FNK_INFO_NEMPHIS_NEMP en sql/ devuelve IDAREA/CCOSTO del snapshot NEMPHIS.",
+    "analisis": "REQ (solicitud + cola IX OnLine)\nModificar centro de costo y área funcional en historial NEMPHIS, persistir y confirmar al usuario.\n\nConocimiento (nomina)\nGate operativo: maestro empleados / NEMPHIS. Prenómina documentada consume histórico vía FNK_INFO_NEMPHIS_NEMP (IDAREA/CCOSTO en el snapshot por FECHAMOV).\n\nQrystalos2\nHistorialComponent.vue: read NEMPHIS; GUARDAR/ELIMINAR vía NOM_NEMPHIS. IDAREA editable como texto; CCOSTO no está en UI ni en ColumnasVisibles → el usuario no puede cumplir el REQ de centro de costo. CargosComponent tiene patrón AFU+CEN. onSaveNEMPHIS solo notifica si OK='OK'; no muestra filas KO/ERROR del SP.\n\nSQL (sql/SPQ_NOM_NEMPHIS.sql — leído hoy)\nMETODO GUARDAR: OPENJSON lee $.IDAREA y $.CCOSTO; INSERT y UPDATE NEMPHIS asignan ambos campos (rama PROCESO INSERTAR / EDITAR). METODO ELIMINAR: DELETE por NUMDOC+ITEM. Errores FK vía CATCH → OK='KO' + ERROR_MESSAGE(). Conclusión: la brecha es **frontend** (captura y visualización); no se requiere cambio SQL para el alcance estándar del REQ.\n\nContabilidad: afecta=false.",
+    "opciones": [],
+    "recomendacion": "Implementación recomendada **solo FE** (rama feature/COESME605):\n\n1) HistorialComponent.vue — Selectores AFU y CCOSTO (CEN por área, centros Activos); incluir CCOSTO + CEN.DESCRIPCION en read/grilla; onNew/onEdit deben inicializar CCOSTO desde NEMP o fila.\n\n2) UX errores — En GUARDAR/ELIMINAR, si recordset trae OK='KO', mostrar notify con texto ERROR (hoy solo se trata OK).\n\n3) SQL — Sin cambio: SPQ_NOM_NEMPHIS.GUARDAR ya persiste IDAREA/CCOSTO (sql/ leído 2026-09-09). Opcional Documentar: fichar GUARDAR/ELIMINAR en conocimiento/nomina/sps.json.\n\n4) Pruebas — Editar histórico → BD; PRENOMINA empleado; FNK_INFO_NEMPHIS_NEMP coherente con FECHAMOV.\n\nDictamen Fase 1: validar CA en Chat; impacto SQL bajo (verificación, no desarrollo SP).",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": true,
+      "comoAfecta": "se debe verificar que el centro de costo sea con colgante con la configuración del kmcom ya que si no existe no va a salir\n validar que sí está cortante ante el área funcional y el centro de costo",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contabilidad.afecta=false. Edición de NEMPHIS (IDAREA, CCOSTO) no crea ni modifica comprobantes MCPE, MCP, CON ni asientos de causación; solo datos históricos de nómina usados en liquidación y reportes.",
+        "validadoEn": "2026-09-09T16:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "criteriosMeta": {
+      "originales": "CRITERIOS DE ACEPTACIÓN — REQ 0100016359 (agente)\n\nA. Acceso\nCA-01. Desde RRHH → Configuraciones avanzadas nómina → pestaña Empleados, al abrir un empleado y el modal «Histórico De Empleado», el usuario con permiso de configuración de empleados puede editar un ítem existente del historial (tabla NEMPHIS).\n\nB. Área funcional\nCA-02. En crear/editar histórico, el área funcional se selecciona desde catálogo AFU (búsqueda o selector equivalente al de Cargos del empleado), no solo texto libre sin validación.\nCA-03. Al guardar, NEMPHIS.IDAREA persiste un código válido en AFU; si el backend rechaza FK, se muestra mensaje claro al usuario.\n\nC. Centro de costo\nCA-04. En crear/editar histórico existe campo Centro de costo (NEMPHIS.CCOSTO) con descripción (tabla CEN), filtrado por el área funcional seleccionada y centros en estado Activo (misma regla que CargosComponent).\nCA-05. Al guardar, NEMPHIS.CCOSTO persiste en BD y es visible al reabrir el registro y en la consulta de la grilla.\nCA-06. Si cambia el área funcional, el centro de costo incompatible se limpia o se exige re-selección antes de guardar.\n\nD. Persistencia y UX\nCA-07. Guardar invoca AppStore.json con MODELO NOM_NEMPHIS y METODO GUARDAR; respuesta OK muestra notificación de éxito y refresca la grilla; si el SP devuelve OK='KO', se muestra el mensaje de error (ERROR_MESSAGE / fila ERROR) al usuario.\nCA-08. Eliminar histórico (METODO ELIMINAR) sigue operando sin regresión.\n\nE. Regresión nómina\nCA-09. Tras corregir IDAREA/CCOSTO en un ítem con FECHAMOV aplicable a un período abierto, un recálculo PRENOMINA del empleado refleja área/centro coherentes con el histórico (motor FNK_INFO_NEMPHIS_NEMP).\n\nF. Performance (tipo REQ en IX)\nCA-10. Con hasta 100 ítems NEMPHIS por empleado, la grilla paginada y el guardado de una edición responden en tiempo operativo en preversión o cliente (objetivo ≤5 s carga inicial de grilla; sin degradación por joins innecesarios).",
+      "originalesEn": "2026-09-09T16:30:11.077Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "CRITERIOS DE ACEPTACIÓN — REQ 0100016359 (agente)\n\nA. Acceso\nCA-01. Desde RRHH → Configuraciones avanzadas nómina → pestaña Empleados, al abrir un empleado y el modal «Histórico De Empleado», el usuario con permiso de configuración de empleados puede editar un ítem existente del historial (tabla NEMPHIS).\n\nB. Área funcional\nCA-02. En crear/editar histórico, el área funcional se selecciona desde catálogo AFU (búsqueda o selector equivalente al de Cargos del empleado), no solo texto libre sin validación.\nCA-03. Al guardar, NEMPHIS.IDAREA persiste un código válido en AFU; si el backend rechaza FK, se muestra mensaje claro al usuario.\n\nC. Centro de costo\nCA-04. En crear/editar histórico existe campo Centro de costo (NEMPHIS.CCOSTO) con descripción (tabla CEN), filtrado por el área funcional seleccionada y centros en estado Activo (misma regla que CargosComponent).\nCA-05. Al guardar, NEMPHIS.CCOSTO persiste en BD y es visible al reabrir el registro y en la consulta de la grilla.\nCA-06. Si cambia el área funcional, el centro de costo incompatible se limpia o se exige re-selección antes de guardar.\n\nD. Persistencia y UX\nCA-07. Guardar invoca AppStore.json con MODELO NOM_NEMPHIS y METODO GUARDAR; respuesta OK muestra notificación de éxito y refresca la grilla; si el SP devuelve OK='KO', se muestra el mensaje de error (ERROR_MESSAGE / fila ERROR) al usuario.\nCA-08. Eliminar histórico (METODO ELIMINAR) sigue operando sin regresión.\n\nE. Regresión nómina\nCA-09. Tras corregir IDAREA/CCOSTO en un ítem con FECHAMOV aplicable a un período abierto, un recálculo PRENOMINA del empleado refleja área/centro coherentes con el histórico (motor FNK_INFO_NEMPHIS_NEMP).\n\nF. Performance (tipo REQ en IX)\nCA-10. Con hasta 100 ítems NEMPHIS por empleado, la grilla paginada y el guardado de una edición responden en tiempo operativo en preversión o cliente (objetivo ≤5 s carga inicial de grilla; sin degradación por joins innecesarios).",
+      "trasAnalisisEn": "2026-09-09T16:32:52.061Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ cubierto: brecha FE (CCOSTO ausente; IDAREA sin catálogo; KO del SP no mostrado). sql/SPQ_NOM_NEMPHIS.sql confirma GUARDAR con IDAREA/CCOSTO — sin cambio SQL para alcance. Regresión: PRENOMINA + FNK_INFO_NEMPHIS_NEMP.",
+      "fecha": "2026-09-09T16:30:00.000Z",
+      "estado": "listo"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016359\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+        "metodo": "PRENOMINA",
+        "estado": "leido",
+        "hace": "Recalcula y persiste conceptos de nómina de un empleado en un período: borra NEMPFD/NEMPF previos, arma staging NEMPFD_RUN (ingresos y egresos por plantilla/cargo/novedades), vuelca a NEMPFD, aplica retiros, retención en la fuente, totales NEMPF y NPER.",
+        "llama": [
+          "FNK_INFO_NEMPHIS_NEMP",
+          "FNK_VALORCONCEPTO_NEMPFD_RUN",
+          "SPK_CALCULAR_RETIROS",
+          "SPK_CALCULA_REFTE_NOMI",
+          "SPK_CALCULAR_NEMPF",
+          "FNK_VALORVARIABLE",
+          "FNK_REDONDEA_MAS_EXCEL"
+        ]
+      },
+      {
+        "sp": "SPQ_NOM_NEMPHIS",
+        "metodo": "GUARDAR",
+        "estado": "listado",
+        "hace": "Persiste alta o edición de un ítem de histórico de empleado (NEMPHIS). Detalle desconocido hasta leer el .sql.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_NOM_NEMPHIS",
+        "metodo": "ELIMINAR",
+        "estado": "listado",
+        "hace": "Elimina un ítem de histórico (NEMPHIS). Detalle desconocido hasta leer el .sql.",
+        "llama": []
+      }
+    ],
+    "notas": "SPQ leído en sql/; pendiente fichar en sps.json (Documentar). Desarrollo esperado: FE HistorialComponent."
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260909-0100016359.html",
+    "aprobados": "aprobados/20260909-0100016359/",
+    "imagenes": "aprobados/20260909-0100016359/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-09",
+    "ultimoEnvio": "2026-09-09T11:43:46",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

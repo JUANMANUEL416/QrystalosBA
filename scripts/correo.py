@@ -1,4 +1,5 @@
 """Envío del dictamen al desarrollador (SMTP de DevSoporte / Outlook)."""
+import base64
 import imaplib
 import json
 import os
@@ -28,10 +29,27 @@ COPIA_DEV_SOPORTE = "jose.jimenez@ixcolombia.com"
 LOGO_CID = "logo-ixcolombia"
 LOGO_URL = "https://www.ixcolombia.com/dist/IX%20COLOMBIA.png"
 
-EDGE_CANDIDATES = [
+BROWSER_CANDIDATES = [
+    os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+    os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
     os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
     os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
 ]
+
+CSS_IMPRESION = """
+@page { size: A4; margin: 10mm 12mm; }
+html, body, .container, .brand-bar, th, .badge, .diagrama-incrustado, .df-node, .df-box, .df-gate, .df-flow {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+@media print {
+  body { background: #fff8ee !important; padding: 8px !important; }
+  .container { border: 1px solid #000 !important; padding: 1.5rem !important; max-width: none !important; }
+  section { page-break-inside: auto; }
+  #diagrama-flujo, .brand-head, header { page-break-inside: avoid; }
+  th { background: #E67817 !important; color: #fff !important; }
+}
+"""
 
 
 def _parse_env_file(path):
@@ -86,35 +104,134 @@ def _dictamen_abs(id_caso):
     return ""
 
 
-def _find_edge():
-    for path in EDGE_CANDIDATES:
-        if path and os.path.isfile(path):
-            return path
-    return shutil.which("msedge")
+def _find_navegadores():
+    seen = []
+    for path in BROWSER_CANDIDATES:
+        if path and os.path.isfile(path) and path not in seen:
+            seen.append(path)
+    for name in ("chrome", "msedge"):
+        found = shutil.which(name)
+        if found and found not in seen:
+            seen.append(found)
+    return seen
+
+
+def _find_navegador():
+    navs = _find_navegadores()
+    return navs[0] if navs else ""
+
+
+def _logo_data_uri():
+    if not os.path.isfile(LOGO_PNG):
+        return ""
+    raw = Path(LOGO_PNG).read_bytes()
+    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+
+
+def _preparar_html_impresion(html_path):
+    """Copia lista para PDF: logo embebido y colores iguales a la pantalla."""
+    texto = Path(html_path).read_text(encoding="utf-8")
+    logo = _logo_data_uri()
+    if logo:
+        texto = texto.replace("../app/assets/logo-ixcolombia.png", logo)
+        texto = texto.replace("app/assets/logo-ixcolombia.png", logo)
+    if "print-color-adjust" not in texto:
+        if "</style>" in texto:
+            texto = texto.replace("</style>", CSS_IMPRESION + "\n</style>", 1)
+        else:
+            texto = texto.replace("</head>", f"<style>{CSS_IMPRESION}</style></head>", 1)
+    dest = os.path.join(tempfile.mkdtemp(prefix="qrystalos-ba-pdf-"), "dictamen-print.html")
+    Path(dest).write_text(texto, encoding="utf-8")
+    return dest
+
+
+def _pdf_utilizable(path):
+    return bool(path) and os.path.isfile(path) and os.path.getsize(path) > 1000
 
 
 def _html_a_pdf(html_path):
-    edge = _find_edge()
-    if not edge or not html_path:
+    """Imprime el HTML a PDF. Prueba varios navegadores/modos (el servicio Windows no tiene escritorio)."""
+    if not html_path:
         return ""
-    pdf_path = os.path.splitext(html_path)[0] + ".pdf"
-    url = Path(html_path).resolve().as_uri()
-    profile = os.path.join(tempfile.gettempdir(), "qrystalos-ba-edge-pdf")
-    os.makedirs(profile, exist_ok=True)
-    cmd = [
-        edge,
-        "--headless",
-        "--disable-gpu",
-        f"--user-data-dir={profile}",
-        f"--print-to-pdf={pdf_path}",
-        "--no-pdf-header-footer",
-        url,
-    ]
+    dest = os.path.splitext(html_path)[0] + ".pdf"
+    navs = _find_navegadores()
+    if not navs:
+        return dest if _pdf_utilizable(dest) else ""
     try:
-        subprocess.run(cmd, check=False, timeout=50, capture_output=True)
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
-    return pdf_path if os.path.isfile(pdf_path) and os.path.getsize(pdf_path) > 1000 else ""
+        impresion = _preparar_html_impresion(html_path)
+    except OSError:
+        impresion = html_path
+    url = Path(impresion).resolve().as_uri()
+    flags_comunes = [
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--hide-scrollbars",
+        "--no-pdf-header-footer",
+        "--virtual-time-budget=15000",
+        "--run-all-compositor-stages-before-draw",
+        "--allow-file-access-from-files",
+        "--no-sandbox",
+    ]
+    modos = ("--headless=old", "--headless", "--headless=new")
+    last_err = ""
+    for nav in navs:
+        for modo in modos:
+            work = tempfile.mkdtemp(prefix="qrystalos-ba-chrome-pdf-")
+            tmp_pdf = os.path.join(work, "dictamen.pdf")
+            cmd = [
+                nav,
+                modo,
+                *flags_comunes,
+                f"--user-data-dir={work}",
+                f"--print-to-pdf={tmp_pdf}",
+                url,
+            ]
+            try:
+                proc = subprocess.run(cmd, check=False, timeout=45, capture_output=True)
+                err = (proc.stderr or b"").decode("utf-8", errors="replace")
+                last_err = err[-400:]
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                last_err = str(exc)
+                continue
+            fuente = tmp_pdf if _pdf_utilizable(tmp_pdf) else dest
+            if _pdf_utilizable(fuente):
+                if os.path.abspath(fuente) != os.path.abspath(dest):
+                    try:
+                        shutil.copy2(fuente, dest)
+                    except OSError:
+                        return fuente
+                if _pdf_utilizable(dest):
+                    return dest
+    if _pdf_utilizable(dest):
+        return dest
+    if last_err:
+        try:
+            Path(os.path.join(tempfile.gettempdir(), "qrystalos-ba-pdf-error.txt")).write_text(
+                last_err, encoding="utf-8"
+            )
+        except OSError:
+            pass
+    return ""
+
+
+def dictamen_a_pdf(id_caso, html_path=None):
+    """Genera dictamenes/{id}.pdf con el mismo aspecto del HTML. Lanza si no puede."""
+    src = html_path or _dictamen_abs(id_caso)
+    if not src:
+        raise ValueError("No hay dictamen HTML para convertir a PDF.")
+    dest = os.path.splitext(src)[0] + ".pdf"
+    pdf = _html_a_pdf(src)
+    if _pdf_utilizable(pdf):
+        return pdf
+    if _pdf_utilizable(dest):
+        return dest
+    raise ValueError(
+        "No se pudo generar el PDF del dictamen (Chrome/Edge en modo impresión). "
+        "No se adjunta HTML. Instale Chrome o Edge, reinicie el servidor QrystalosBA y reintente el envío."
+    )
 
 
 def contexto(id_caso):
@@ -187,24 +304,32 @@ def _persistir(ctx, extra):
             nombre_dev = ((sol.get("personas") or {}).get("desarrollador") or "").strip()
         _write_json(path, sol)
 
-    # Una sola digitación: el correo queda en la lista para el próximo REQ.
-    if nombre_dev and payload["destinatario"]:
-        try:
-            devs.set_correo(nombre_dev, payload["destinatario"])
-        except ValueError as exc:
-            print(f"WARN no se pudo guardar correo de {nombre_dev}: {exc}", flush=True)
-        except OSError as exc:
-            print(f"WARN error al escribir desarrolladores.json: {exc}", flush=True)
-
-    devs.marcar_envio_caso(
-        id_caso,
-        correo_enviado=payload["enviado"],
-        fecha_envio=payload["fechaEnvio"],
-        ultimo_envio=payload["ultimoEnvio"],
-        reenvios=payload["reenvios"],
-        destinatario=payload["destinatario"],
-        via=payload["via"],
-    )
+    # Un solo write: correo del desarrollador + marca del caso (evita que sync pise el mail).
+    try:
+        devs.registrar_envio(
+            nombre_dev,
+            payload["destinatario"],
+            id_caso=id_caso,
+            correo_enviado=payload["enviado"],
+            fecha_envio=payload["fechaEnvio"],
+            ultimo_envio=payload["ultimoEnvio"],
+            reenvios=payload["reenvios"],
+            destinatario=payload["destinatario"],
+            via=payload["via"],
+        )
+    except ValueError as exc:
+        print(f"WARN no se pudo guardar correo de {nombre_dev}: {exc}", flush=True)
+        devs.marcar_envio_caso(
+            id_caso,
+            correo_enviado=payload["enviado"],
+            fecha_envio=payload["fechaEnvio"],
+            ultimo_envio=payload["ultimoEnvio"],
+            reenvios=payload["reenvios"],
+            destinatario=payload["destinatario"],
+            via=payload["via"],
+        )
+    except OSError as exc:
+        print(f"WARN error al escribir desarrolladores.json: {exc}", flush=True)
 
     hist = _read_json(HISTORICO_PATH, [])
     if isinstance(hist, list):
@@ -274,8 +399,7 @@ def _adjuntos(ctx):
     html = _dictamen_abs(ctx["idCaso"])
     if not html:
         return []
-    pdf = _html_a_pdf(html)
-    return [pdf] if pdf else [html]
+    return [html]
 
 
 def _enviar_outlook(para, asunto, cuerpo, adjuntos, display=False, cc="", html=""):
@@ -524,7 +648,7 @@ def enviar(id_caso, correo=None, reenviar=False, display=False, desarrollador=No
     if not ctx["idCaso"]:
         raise ValueError("Falta idCaso")
     if not ctx["tieneDictamen"]:
-        raise ValueError("No hay dictamen HTML para adjuntar. Genere dictamenes/{idCaso}.html primero.")
+        raise ValueError("No hay dictamen para convertir a PDF. Genere dictamenes/{idCaso}.html primero.")
     dest = correo or ctx.get("destinatario") or ""
     dest = devs.validar_correo(dest)
     if not dest:

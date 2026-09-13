@@ -1,0 +1,94 @@
+{
+  "mensajes": [
+    {
+      "id": "20260910141252336351",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis). Hay capturas en activo/20260910-0100016377/imagenes/ (Captura_de_pantalla_2026-09-02_112704_ReciboCaja.png, Captura_de_pantalla_2026-09-02_115147_cambioEstadoImagenes.png). Léalas y contrástelas con el REQ.",
+      "fecha": "2026-09-10T14:12:52"
+    },
+    {
+      "id": "20260910141252384020w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-10T14:12:52"
+    },
+    {
+      "id": "2026091019200016377a",
+      "autor": "agente",
+      "texto": "## Análisis REQ 0100016377 (sin dictamen HTML)\n\n### Problema\nFacturadores necesitan pasar órdenes de **imagenología y laboratorio** de **Anulado** a **Tomado** cuando el estudio **ya tiene resultado**, para que el cargo HPRED entre al proceso de facturación. Hoy la transición no está disponible.\n\n### Capturas\n- **cambioEstadoImagenes:** Admisión SOAT → **Cargos SOAT** → ítem imagenología → **Editar Detalle** (coherente con `HPRESOATComponent` / `ServiciosPrefijoComponent`).\n- **ReciboCaja:** Procesos de Caja / Reimpresión — **no** relacionada con este REQ.\n\n### Causa (según KB + FE)\n- Órdenes ApoyoDx viven en **HPRED** (`APOYODG_AMBITO`, **ENLAB**, `NORDEN`; resultado integrado ENLAB=2 según runbook **interfazlx** y uso en facturación `FTRPaqCedComponent`).\n- En cliente IMEXHS el FE muestra **Admitido/Tomado** para ENLAB 0/1 (`apoyodx/ordenes/AsistencialComponent.vue`).\n- El catálogo edita vía **`MODELO HPRE` · `METODO HPRED`**; no hay acción expuesta para rehabilitar orden anulada con resultado.\n- Proceso **hpre** en conocimiento solo tiene **`SPQ_DISTRIHPRED_SOAT`** (`HPRED_SOATSER`, `CARGAR_DATOS`) — lectura SOAT, no este fix.\n\n### Solución propuesta\n1. **SPQ_HPRE:** METODO dedicado (o rama HPRED) que valide Anulado + resultado + FACTURADA=0 y ponga **ENLAB=1 (Tomado)** (y limpieza de ANULADO solo si el SP lo permite).\n2. **FE:** acción en `HPREComponent` / `HPRESOATComponent` (Editar detalle / acciones) con permiso facturador.\n3. Revalidar inclusión en **Facturar SOAT** / facturación HADM tras el cambio.\n\n### Criterios / alcance / restricciones\nQuedaron en **solicitud.contenido** (`criteriosAceptacion`, `alcance`, `restricciones`, `analisis`, `recomendacion`, `brechaAnalisis.estado=listo`).\n\n### Contabilidad\n**No afecta** — corregí texto de validación en el formulario (antes decía nómina por error).\n\n### SP · METODO · estado · rol en el fix\n| SP | METODO | Estado KB | Rol |\n|----|--------|-----------|-----|\n| **SPQ_HPRE** | **HPRED** (EDITAR) o **CAMBIAR_ESTADO_ORDEN_APDX** (nuevo) | **No documentado** — falta `.sql` | Validar Anulado+resultado; actualizar ENLAB/estado orden |\n| SPQ_DISTRIHPRED_SOAT | HPRED_SOATSER | leido (hpre) | Solo listado cargos SOAT — **no** es el fix |\n| SPQ_DISTRIHPRED_SOAT | FACTURAR → SPK_FACTURA_SOAT_TODO | parcial (sql_refe 6305) | Destino tras corregir estado — verificar que no excluya el ítem |\n\n**Pendiente para dictamen:** colocar **`SPQ_HPRE.sql`** en `sql/` (no está en `sps.json` ni `sql_refe/0100016377`) para fijar códigos de estado y validaciones exactas en MEDICAL.\n\nSiguiente paso Fase 1: con el SP en disco, trazabilidad FE→HPRE→METODO y criterios de prueba con un NOPRESTACION/NOITEM real.",
+      "fecha": "2026-09-10T14:20:00"
+    },
+    {
+      "id": "20260910142508389435d",
+      "autor": "sistema",
+      "texto": "Diagrama de flujo generado desde conocimiento/hpre/ y el análisis del REQ. Quedó **adjunto en el dictamen** (sección 4.5) y en dictamenes/20260910-0100016377-flujo.html.",
+      "fecha": "2026-09-10T14:25:08"
+    },
+    {
+      "id": "20260910142555477177",
+      "autor": "coordinador",
+      "texto": "revisa si tienes dudas o preguntas",
+      "fecha": "2026-09-10T14:25:55"
+    },
+    {
+      "id": "20260910142555503253w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T14:25:55"
+    },
+    {
+      "id": "2026091014300016377b",
+      "autor": "agente",
+      "texto": "Revisé su mensaje («¿dudas o preguntas?») contra **solicitud.contenido** y el REQ.\n\n**Dudas funcionales que bloqueen la solución: ninguna.** El alcance quedó acordado en el análisis: catálogo HPRE / Cargos SOAT (admisión), ítems con `APOYODG_AMBITO` imagen o laboratorio, transición **Anulado → Tomado** solo si hay resultado integrado, perfil facturador. El IX habla de «módulo de facturación»; la captura útil es admisión SOAT — ya lo reflejamos en criterios y alcance (facturador opera el cargo antes de facturar).\n\n**Contabilidad:** sigue **no aplica** (`contabilidad.afecta=false`).\n\n**Un solo requisito técnico para el dictamen completo (no es cuestionario de negocio):** falta **`SPQ_HPRE.sql`** en `sql/`. Sin ese script no puedo citar en el HTML el valor exacto de «Anulado» en BD (¿`HPRED.ANULADO`, ¿`ENLAB` especial?, ¿otro campo?) ni las validaciones del `METODO HPRED` / EDITAR. Cuando lo dejen en carpeta fija, documento el METODO en `conocimiento/hpre/sps.json` y cierro la trazabilidad FE → SPQ_HPRE → SPK si aplica.\n\n**Diagrama:** tomé nota del flujo en `dictamenes/20260910-0100016377-flujo.html` (y adjunto en caso); al generar el dictamen principal (`dictamenes/20260910-0100016377.html`) lo incrusto en 4.5 según plantilla.\n\n**Opcional (no bloquea):** un **NOPRESTACION + NOITEM** (o NOADMISION) de un caso real anulado-con-resultado acelera las tres capas de prueba del dictamen; si no lo envían, el desarrollador lo reproduce en copia.\n\nSi está de acuerdo con criterios/alcance del formulario, el siguiente paso es **SPQ_HPRE en sql/** y luego dictamen HTML; dígame en Chat si quiere que avance el dictamen en cuanto esté el script o si ajusta algo del análisis.",
+      "fecha": "2026-09-10T14:30:00"
+    },
+    {
+      "id": "20260910143050439788",
+      "autor": "coordinador",
+      "texto": "genera el documento para validarlo",
+      "fecha": "2026-09-10T14:30:50"
+    },
+    {
+      "id": "20260910143050460809w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T14:30:50"
+    },
+    {
+      "id": "2026091014320016377c",
+      "autor": "agente",
+      "texto": "Listo el documento para su validación.\n\n**Dictamen (Propuesto):** [dictamenes/20260910-0100016377.html](dictamenes/20260910-0100016377.html)\n\n**Diagrama 4.5:** incrustado en el HTML anterior; copia en [dictamenes/20260910-0100016377-flujo.html](dictamenes/20260910-0100016377-flujo.html).\n\n**Resumen:** transición **Anulado → Tomado** en HPRED de imagen/laboratorio (ApoyoDx) con resultado, desde **Cargos SOAT / catálogo HPRE**, vía **SPQ_HPRE** (METODO propuesto `CAMBIAR_ESTADO_ORDEN_APDX` o rama HPRED) + FE `HPREComponent` / `HPRESOATComponent`. Criterios y alcance = formulario. **Contabilidad: No.**\n\n**Nota técnica:** sigue pendiente **`SPQ_HPRE.sql`** en `sql/` para citar en el dictamen el mapeo exacto de «Anulado» en BD; el HTML incluye especificación y una alerta al desarrollador. Cuando lo suban, actualizo la trazabilidad y `conocimiento/hpre/sps.json` sin cambiar el alcance funcional.\n\nRevise secciones 1, 5.0 y 8; si está de acuerdo, puede **cerrar fase 1** o indicar ajustes en este Chat.",
+      "fecha": "2026-09-10T14:32:00"
+    },
+    {
+      "id": "20260910143419700579",
+      "autor": "coordinador",
+      "texto": "te adicione el sp, valida de nuevo",
+      "fecha": "2026-09-10T14:34:19"
+    },
+    {
+      "id": "20260910143419736127w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T14:34:19"
+    },
+    {
+      "id": "2026091014400016377d",
+      "autor": "agente",
+      "texto": "Revalidé con **`sql/SPQ_HPRE.sql`** (gracias por subirlo).\n\n### Hallazgo principal\n- **HPRED · EDITAR / ELIMINAR:** si `HPRED.ENCARGOS <> 0` → **KO** *«Prestacion en apoyodx, encargos<>0»*. El `UPDATE` de EDITAR **no** toca **ENLAB** ni **ENCARGOS**.\n- **No existe** en el script un METODO para pasar orden ApoyoDx a Tomado.\n- **FE alineado:** `HPREComponent` rechaza editar/ajustar ítems con `ENCARGOS !== 0` (encargos en proceso u ordenados; en grilla 1=amarillo, 2=rojo «Ordenado»).\n\nEsto explica por qué «Editar Detalle» no sirve para el REQ: los cargos imagen/LX con orden ApoyoDx quedan fuera de la edición comercial. La solución sigue siendo un **METODO dedicado** (prop. `CAMBIAR_ESTADO_ORDEN_APDX`) que valide **resultado** (runbook interfazlx: **ENLAB=2** / LORD) y deje **ENLAB=1** (Tomado IMEXHS), sin usar la rama EDITAR. Con L3 conviene fijar si también hay que normalizar **ENCARGOS** para **Facturar SOAT** (`SPQ_DISTRIHPRED_SOAT` repite bloqueo ENCARGOS≠0 en otras ramas).\n\n### Documentación actualizada\n- Ficha **SPQ_HPRE · HPRED·EDITAR** (y ELIMINAR/EDIT_AUT) en `conocimiento/hpre/sps.json`.\n- **Análisis / recomendación / brecha** en el formulario.\n- **Dictamen** ajustado (causa ENCARGOS, trazabilidad, spec SQL): [dictamenes/20260910-0100016377.html](dictamenes/20260910-0100016377.html)\n\n### Contabilidad\nSin cambio: **No afecta**.\n\n### Nota sobre «Anulado» (IX)\nEl SP no usa esa etiqueta; en BD intervienen **ENLAB**, **ENCARGOS** y posiblemente **ANULADO**. Los criterios del formulario siguen válidos; en copia MEDICAL el desarrollador debe contrastar un caso real del ticket con esos campos.\n\nRevise el dictamen actualizado; si está de acuerdo, puede cerrar fase 1 o pedir ajustes aquí.",
+      "fecha": "2026-09-10T14:40:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-10T14:49:43"
+    },
+    {
+      "id": "correo-cierre-20260910-0100016377",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a elan.bravo@ixcolombia.com.",
+      "fecha": "2026-09-10T14:49:48"
+    }
+  ]
+}

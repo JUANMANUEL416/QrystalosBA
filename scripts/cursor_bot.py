@@ -19,13 +19,64 @@ if SCRIPT_DIR not in sys.path:
 from qrystalos_ba_db import get_db  # noqa: E402
 
 ACTIVO = os.path.join(ROOT, "activo")
+SOLICITUDES = os.path.join(ROOT, "solicitudes")
 CONOCIMIENTO = os.path.join(ROOT, "conocimiento")
 ENV_PATH = os.path.join(ROOT, ".env")
+# Más barato del pool Cursor: Composer 2.5 estándar.
+# Grok 4.6 ≈ 4×; Fast ≈ 6×. No usarlos en bots de oficina.
 MODELO = os.environ.get("CURSOR_BOT_MODEL", "composer-2.5")
+HERRAMIENTAS_KB = ("read", "edit", "grep", "glob", "ls")
+HERRAMIENTAS_NO = ("shell", "task", "mcp", "webSearch")
 CONOCIMIENTO_ID = "__conocimiento__"
 CONSULTAS_ID = "__consultas__"
 DOCUMENTAR_ID = "__documentar__"
 CONOCIMIENTO_IDS = {CONOCIMIENTO_ID, CONSULTAS_ID, DOCUMENTAR_ID}
+MOTIVOS_KB = frozenset({"conocimiento", "consultas", "documentar", "documentar-auto"})
+TIMEOUT_KB_SEC = 12 * 60
+TIMEOUT_CASO_SEC = 45 * 60
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = (os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "si", "on")
+
+
+FAST_CASOS = _env_bool("CURSOR_BOT_FAST", False)
+
+
+def modelo_id(motivo: str = "") -> str:
+    env = _parse_env(ENV_PATH)
+    if motivo in MOTIVOS_KB:
+        kb = (os.environ.get("CURSOR_BOT_MODEL_KB") or env.get("CURSOR_BOT_MODEL_KB") or "").strip()
+        if kb:
+            return kb
+    return (os.environ.get("CURSOR_BOT_MODEL") or env.get("CURSOR_BOT_MODEL") or MODELO).strip() or "composer-2.5"
+
+
+def usa_fast(motivo: str = "") -> bool:
+    if motivo in MOTIVOS_KB:
+        return False
+    return FAST_CASOS
+
+
+def modelo_selection(motivo: str = ""):
+    from cursor_sdk import ModelParameterValue, ModelSelection
+
+    return ModelSelection(
+        id=modelo_id(motivo),
+        params=[ModelParameterValue(id="fast", value="true" if usa_fast(motivo) else "false")],
+    )
+
+
+def modelo_report() -> dict:
+    return {
+        "modelo": modelo_id("chat"),
+        "modeloKb": modelo_id("consultas"),
+        "fast": usa_fast("chat"),
+        "fastKb": False,
+    }
 
 
 def _now() -> str:
@@ -63,6 +114,10 @@ def es_conocimiento(id_caso: str, motivo: str = "") -> bool:
     return motivo in ("conocimiento", "consultas", "documentar", "documentar-auto") or id_caso in CONOCIMIENTO_IDS
 
 
+def es_solicitar(id_caso: str, motivo: str = "") -> bool:
+    return motivo == "solicitar-req" or str(id_caso or "").startswith("SR")
+
+
 def caso_dir(id_caso: str) -> str:
     if id_caso in CONOCIMIENTO_IDS:
         import conocimiento as kb
@@ -70,6 +125,8 @@ def caso_dir(id_caso: str) -> str:
         canal = canal_de(id_caso)
         kb._ensure_canal(canal)
         return kb.canal_live_dir(canal)
+    if es_solicitar(id_caso):
+        return os.path.join(SOLICITUDES, id_caso)
     return os.path.join(ACTIVO, id_caso)
 
 
@@ -119,6 +176,11 @@ def append_chat(id_caso: str, autor: str, texto: str) -> None:
             proceso = ""
         kb.append_chat(autor, texto, proceso, canal)
         return
+    if es_solicitar(id_caso):
+        import solicitud_req as sr
+
+        sr.append_chat(id_caso, autor, texto)
+        return
     msg = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
         "autor": autor,
@@ -137,63 +199,104 @@ def ultimo_autor(id_caso: str) -> str:
     return ""
 
 
+def _texto_acotado(texto: str, max_chars: int) -> str:
+    t = (texto or "").strip()
+    if len(t) <= max_chars:
+        return t
+    return t[: max_chars - 20].rstrip() + "\n…[recorte]"
+
+
+def _msg_util(msg: dict) -> bool:
+    autor = msg.get("autor") or ""
+    if autor == "sistema":
+        return False
+    return autor in ("coordinador", "agente")
+
+
+def recorte_faq_kb(proceso_id: str, pregunta: str) -> str:
+    import conocimiento as kb
+
+    return kb.recorte_faq(proceso_id, pregunta)
+
+
+def recorte_chat_kb(id_caso: str) -> str:
+    """Último pedido del coordinador + eco corto del agente. No el chat entero."""
+    chat = read_json(os.path.join(caso_dir(id_caso), "chat.json"), {"mensajes": []})
+    utiles = [m for m in (chat.get("mensajes") or []) if _msg_util(m)]
+    coord = next((m for m in reversed(utiles) if m.get("autor") == "coordinador"), None)
+    agente = next((m for m in reversed(utiles) if m.get("autor") == "agente"), None)
+    partes = []
+    pid = (chat.get("procesoId") or "").strip()
+    if pid:
+        partes.append(f"procesoId del chat: {pid}")
+    faq = recorte_faq_kb(pid, str((coord or {}).get("texto") or ""))
+    if faq:
+        partes.append(faq)
+    if coord:
+        partes.append(
+            "Último mensaje del coordinador:\n"
+            + _texto_acotado(str(coord.get("texto") or ""), 6000)
+        )
+    if agente:
+        partes.append(
+            "Última respuesta suya (solo contexto; no la repita):\n"
+            + _texto_acotado(str(agente.get("texto") or ""), 800)
+        )
+    return "\n\n".join(partes) if partes else "(sin mensaje del coordinador)"
+
+
+def recorte_tarea_kb() -> str:
+    import conocimiento as kb
+
+    t = kb.load_tarea() or {}
+    if not t.get("abierta"):
+        return "Tarea: ninguna abierta."
+    return (
+        "Tarea ABIERTA:\n"
+        f"- tipo: {t.get('tipo')}\n"
+        f"- procesoId: {t.get('procesoId') or '—'}\n"
+        f"- archivoSql: {t.get('archivoSql') or '—'}\n"
+        f"- notas: {_texto_acotado(str(t.get('notas') or ''), 400)}"
+    )
+
+
 def prompt_turno(id_caso: str, motivo: str) -> str:
-    if motivo == "documentar-auto":
-        return """Eres el agente de Documentar de Qrystalos BA. Este turno es AUTÓNOMO (no un REQ).
-
-Lea del disco, en este orden:
-1. conocimiento/RUTA.json — trabaje SOLO el siguiente valle (conocimiento.py: el primer paso incompleto)
-2. conocimiento/INDICE.json y conocimiento/{proceso}/proceso.json + sps.json de ESE proceso
-3. conocimiento/pendientes.json (solo los de ese proceso)
-4. conocimiento/canales/documentar/chat.json
-5. Qrystalos2 (router, pages, AppStore.json) y qrystalos.documentacion vivos
-6. sql/ solo si hay .sql de hoy de ese proceso
-
-Orden fijo del coordinador: 1 Caja → 2 Facturación → 3 Recaudos → 4 Notas DB/CR → 5 Glosas → 6 Conciliaciones → 7 Activos fijos → 8 Contabilidad.
-ACCTRAN y HPRE no entran salvo un REQ.
-
-Este turno es UN proceso (el valle). Luego el vigilante pasa al siguiente SIN esperar .sql ni al coordinador.
-
-En ESTE proceso, en este turno:
-1. Revise lo que ya hay en proceso.json / sps.json.
-2. Analice Qrystalos2 (router, Vue, MODELO/METODO) y la documentación viva.
-3. Arme el flujo (5 capas + gates) SOLO con evidencia. estado=parcial.
-4. Cree la LISTA de pendientes (tipo sp) de los .sql que faltan. No se detenga a esperarlos.
-5. Ponga flujoPasado=true y pasadaEn (ISO) en proceso.json para que el vigilante siga al siguiente.
-6. Chat corto: qué flujo armó y qué pendientes dejó.
-
-No vuelva a este proceso en el mismo barrido. No invente columnas ni SP. Si no hay .sql de hoy, igual arme el flujo de FE/docs y deje pendientes.
-Si ya no queda valle en la ruta, pida al coordinador los siguientes módulos.
-
-Prohibido: implementar Qrystalos2, ejecutar SQL, copiar cuerpos de SP, inventar MCUE/FCONCI/IACT columnas no documentadas.
-Al terminar, el último mensaje relevante del chat de Documentar debe ser suyo.
-"""
     if es_conocimiento(id_caso, motivo):
         canal = canal_de(id_caso, motivo)
         ruta = f"conocimiento/canales/{canal}/chat.json"
-        puerta = "Consultas" if canal == "consultas" else "Documentar"
-        extra_c = ""
+        recorte = recorte_chat_kb(id_caso)
+        tarea = recorte_tarea_kb()
+        prohibido = (
+            "Este chat es SOLO del procesoId indicado (un módulo). No mezcle facturación con caja ni otros. "
+            "Si el prompt trae Respuestas ACEPTADAS y cubren el pedido, conteste con esa base; no reabra sps.json ni Qrystalos2. "
+            "PROHIBIDO leer: el chat.json histórico (canales/, chats/, conocimiento/chat.json), "
+            "faq.json entero, pendientes.json completo, RUTA.json para barrer, todos los sps.json, "
+            "Qrystalos2 y qrystalos.documentacion. Eso ya está destilado en conocimiento/{proceso}/. "
+            "Solo abra FE/docs/.sql si la ficha de ESE proceso no cubre el pedido; dígalo en una línea."
+        )
         if canal == "consultas":
-            extra_c = (
-                "\nEste agente SOLO responde cuando el coordinador pregunta. "
-                "No investigue por su cuenta ni documente procesos; eso es Documentar.\n"
-            )
-        return f"""Eres el agente de coordinación de Qrystalos BA. Este turno es el Chat de {puerta}, no un REQ.{extra_c}
+            return f"""Eres el agente de Consultas de Qrystalos BA. UN turno corto y termina. Sin shell ni web.
+{prohibido}
 
-Lea del disco:
-1. {ruta} — último mensaje del coordinador (releer entero)
-2. conocimiento/tarea.json
-3. conocimiento/INDICE.json y conocimiento/{{proceso}}/proceso.json + sps.json
-4. sql/ si hay .sql de hoy
-5. Qrystalos2 y documentación si hace falta para la pregunta
+Este turno (ya pegado; NO abra el chat.json):
+{recorte}
 
-Reglas:
-- Responda en español en {ruta} (autor: agente). Campo de fecha: use "en" (no "fecha").
-- NO implemente Qrystalos2 ni ejecute SQL.
-- NO invente columnas ni SPs. Si falta un .sql, pídalo.
-- El coordinador escribe solo en la app. No pida que pegue el texto en Cursor.
+{tarea}
 
-Al terminar, el último mensaje relevante de {ruta} debe ser suyo (autor: agente).
+Método: INDICE.json solo para ubicar el proceso nombrado. Luego SOLO conocimiento/{{id}}/proceso.json y sps.json de ese id.
+Responda en {ruta} autor agente, campo "en". Español. No invente columnas ni SP.
+"""
+        return f"""Eres el agente de Documentar de Qrystalos BA. UN turno y termina. Sin barrido, sin shell ni web.
+{prohibido}
+
+Este turno (ya pegado; NO abra el chat.json):
+{recorte}
+
+{tarea}
+
+Si la tarea está abierta: lea sql/{{archivoSql}} de hoy y documente METODOs en conocimiento/{{procesoId}}/sps.json. proceso.json solo si cambia un control.
+Si no hay tarea: haga únicamente lo que pide el coordinador, en el proceso que nombre.
+Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 ni ejecute SQL.
 """
     extra = ""
     if motivo == "contabilidad":
@@ -209,12 +312,20 @@ Al terminar, el último mensaje relevante de {ruta} debe ser suyo (autor: agente
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
             "  2) Contrastar con conocimiento/: INDICE → proceso → proceso.json + sps.json "
             "(y sql_refe si hace falta la línea exacta). También Qrystalos2/docs vivos.\n"
-            "  3) Determinar la solución concreta (qué cambia y dónde).\n"
+            "  2b) PASO 0 ¿YA EXISTE?: texto del REQ ≠ captura. Inventariar TODOS los "
+            "caminos del control (botones v-if, Help*, necesidadesYaCubiertas, no solo "
+            "los METODOs del formulario). Clasificar: capacitación | defecto | hueco. "
+            "Si ya existe, dígalo de frente; impacto No; no proponga módulo nuevo.\n"
+            "  3) Determinar la solución concreta (qué cambia y dónde; o capacitación).\n"
             "  4) Escribir OBLIGATORIAMENTE en solicitud.json → contenido:\n"
             "     criteriosAceptacion, alcance, restricciones, analisis, recomendacion;\n"
             "     criteriosMeta.fuente=agente; brechaAnalisis {texto, fecha ISO, estado:\"listo\"}.\n"
-            "  5) Actualizar solicitud.sql.metodosDocumentados (y procesoId) con los SP/METODO "
-            "documentados a usar; tabla en el Chat: SP · METODO · estado · rol en el fix.\n"
+            "  5) Actualizar solicitud.sql.metodosDocumentados (y procesoId) SOLO con los "
+            "SP/METODO que participan en ESTE cambio. NUNCA copie el catálogo entero de "
+            "conocimiento/{proceso}/sps.json (prenómina, retiros, DIAN… si el REQ es solo "
+            "impresión). Si el SP del fix no está en sps.json, deje metodosDocumentados "
+            "vacío o solo los que sí aplican, pida el .sql y anote en brechaAnalisis.sps. "
+            "Tabla en el Chat: SP · METODO · estado · rol en el fix.\n"
             "- Responda en chat.json (autor: agente) con el mismo resumen: problema → causa "
             "(según KB) → solución → CA/alcance/restricciones → SPs a usar.\n"
             "- Si el coordinador ya escribió analisis en el formulario, úselo y mejórelo; "
@@ -230,10 +341,33 @@ Al terminar, el último mensaje relevante de {ruta} debe ser suyo (autor: agente
             "- Contraste el REQ con conocimiento/{proceso}/sps.json y proceso.json.\n"
             "- Complete OBLIGATORIAMENTE solicitud.contenido: criteriosAceptacion, alcance, "
             "restricciones, analisis, recomendacion; criteriosMeta (fuente: agente).\n"
-            "- Liste y deje en solicitud.sql.metodosDocumentados los SP/METODO aplicables.\n"
+            "- Liste SOLO los SP/METODO de este cambio (no todos los del módulo) en "
+            "solicitud.sql.metodosDocumentados y brechaAnalisis.sps.\n"
             "- Resuma en chat.json. No genere dictamen HTML.\n"
             "- No termine sin haber escrito esos campos en solicitud.json."
         )
+    elif motivo == "solicitar-req":
+        return f"""Eres el agente BA/funcional de Qrystalos BA. Solicitud para el comité de desarrollo.
+
+ID: {id_caso}
+
+Lea del disco:
+1. solicitudes/{id_caso}/INSTRUCCION-AGENTE.md
+2. solicitudes/{id_caso}/solicitud.json
+3. solicitudes/{id_caso}/chat.json
+4. conocimiento/INDICE.json y conocimiento/{{proceso}}/proceso.json + sps.json
+
+Reglas:
+- Español. Responda en solicitudes/{id_caso}/chat.json (autor: agente).
+- Contraste la necesidad con la base de conocimiento. No invente SP ni columnas.
+- Liste SOLO los SP/METODO de este cambio.
+- Escriba en solicitud.json: analisis, alcance, restricciones, criterios, recomendacion, siguiente; procesoId si lo ubica.
+- Entregable: fundamento para el documento de comité (incluir en el plan), NO el dictamen técnico de implementación.
+- Si hay aval.aplica, cíteelo. Si falta un dato que bloquee, PIDA y deténgase.
+- OpenAI no interviene.
+
+Al terminar, el último mensaje relevante de chat.json debe ser suyo (autor: agente).
+"""
     return f"""Eres el agente de coordinación de Qrystalos BA. Trabaja SOLO este caso.
 
 ID caso: {id_caso}
@@ -251,32 +385,42 @@ Reglas:
 - Escriba la respuesta en activo/{id_caso}/chat.json (autor: agente). No incruste el HTML del dictamen en el Chat.
 - Si avanza el dictamen, déjelo en dictamenes/{id_caso}.html y ponga el enlace en el Chat.
 - NO implemente cambios en Qrystalos2, qrystalos.server ni ejecute SQL.
-- SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del gate están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas. También revise sql_refe/ si el cuerpo ya se archivó. NO pida sql/ vacío solo porque la carpeta del día esté limpia. Pida .sql en sql/ SOLO si el METODO está listado/no_leido/parcial, el alcance sale de la ficha, o el Chat concluyó que hay que releer la línea exacta.
-- Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el gate es conciliaciones/FCONCI, etc.).
+- SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del control están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas. También revise sql_refe/ si el cuerpo ya se archivó. NO pida sql/ vacío solo porque la carpeta del día esté limpia. Pida .sql en sql/ SOLO si el METODO está listado/no_leido/parcial, el alcance sale de la ficha, o el Chat concluyó que hay que releer la línea exacta.
+- Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el control es conciliaciones/FCONCI, etc.).
 - NO invente columnas ni SPs. Si falta una aclaración funcional, PIDA y deténgase.
 - El coordinador escribe solo en el Chat de la app. No pida que pegue el texto en Cursor.
-- Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → solución** (criterios, alcance, restricciones, análisis, recomendación, SPs a usar). Luego ventana/proceso/backend solo para afinar. No convierta el Chat en un cuestionario de «qué falta del coordinador».
+- Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → ¿ya existe? (capacitación|defecto|hueco) → solución**. No trate por defecto un REQ como desarrollo. Inventarie todos los caminos del control, no solo las casillas SQL. No convierta el Chat en un cuestionario de «qué falta del coordinador». En textos al coordinador y al desarrollador diga **control**, no «gate».
 - OpenAI no interviene. Usted escribe criterios, análisis organizado y recomendación en solicitud.json cuando falten o vengan de GPT.
-- Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra Qrystalos2 (MCUE, CON, MCPE, asientos, comprobantes) y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}.
+- Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra Qrystalos2 (MCUE, CON, MCPE, asientos, comprobantes) y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}. Si afecta=false, en el dictamen HTML deje solo «Afecta contabilidad: No»; no agregue Cómo lo afecta, Desarrollo contable ni Validación del agente.
 {extra}
 
 Al terminar, el último mensaje relevante de chat.json debe ser suyo (autor: agente).
 """
 
 
-def _local_opts():
+def _local_opts(motivo: str = "chat"):
     from cursor_sdk import LocalAgentOptions
 
+    # Consultas/Documentar: sin reglas de proyecto (son 14 KB+ por turno). Van en el prompt.
+    fuentes = [] if motivo in MOTIVOS_KB else ["project"]
     try:
-        return LocalAgentOptions(cwd=ROOT, setting_sources=["project"])
+        return LocalAgentOptions(cwd=ROOT, setting_sources=fuentes)
     except TypeError:
         return LocalAgentOptions(cwd=ROOT)
 
 
-def _agent_options(api_key: str):
+def _agent_options(api_key: str, motivo: str = "chat"):
     from cursor_sdk import AgentOptions
 
-    return AgentOptions(api_key=api_key, model=MODELO, local=_local_opts())
+    opts = {
+        "api_key": api_key,
+        "model": modelo_selection(motivo),
+        "local": _local_opts(motivo),
+        "disallowed_tools": list(HERRAMIENTAS_NO),
+    }
+    if motivo in MOTIVOS_KB:
+        opts["tools"] = list(HERRAMIENTAS_KB)
+    return AgentOptions(**opts)
 
 
 async def _check_key_async(key: str) -> int:
@@ -315,6 +459,15 @@ def check_key() -> int:
 
 
 def run_caso(id_caso: str, motivo: str) -> int:
+    if motivo == "documentar-auto":
+        write_bot(
+            id_caso,
+            estado="listo",
+            error="",
+            motivo=motivo,
+            terminadoEn=_now(),
+        )
+        return 0
     key = load_api_key()
     if not key:
         write_bot(
@@ -384,11 +537,15 @@ def run_caso(id_caso: str, motivo: str) -> int:
 
 
 async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
+    import asyncio
+
     from cursor_sdk.asyncio import AsyncAgent, AsyncClient
 
-    options = _agent_options(key)
+    options = _agent_options(key, motivo)
+    es_kb = es_conocimiento(id_caso, motivo)
     meta = read_json(agente_path(id_caso), {})
-    agent_id = (meta.get("agentId") or "").strip()
+    agent_id = "" if es_kb else (meta.get("agentId") or "").strip()
+    timeout_sec = TIMEOUT_KB_SEC if es_kb else TIMEOUT_CASO_SEC
 
     async with await AsyncClient.launch_bridge(workspace=ROOT) as client:
         agent = None
@@ -401,12 +558,40 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             agent = await AsyncAgent.create(options, client=client)
 
         try:
-            write_json(agente_path(id_caso), {"agentId": agent.agent_id, "modelo": MODELO})
-            write_bot(id_caso, agentId=agent.agent_id)
+            meta_out = {
+                "modelo": modelo_id(motivo),
+                "fast": usa_fast(motivo),
+            }
+            if es_kb:
+                meta_out["lastAgentId"] = agent.agent_id
+                meta_out["agentId"] = ""
+            else:
+                meta_out["agentId"] = agent.agent_id
+            write_json(agente_path(id_caso), meta_out)
+            write_bot(id_caso, agentId=agent.agent_id, modelo=modelo_id(motivo), fast=usa_fast(motivo))
 
             run = await agent.send(prompt_turno(id_caso, motivo))
             write_bot(id_caso, runId=getattr(run, "id", None) or getattr(run, "run_id", None))
-            result = await run.wait()
+            try:
+                result = await asyncio.wait_for(run.wait(), timeout=timeout_sec)
+            except TimeoutError:
+                try:
+                    if hasattr(run, "cancel"):
+                        await run.cancel()
+                except Exception:
+                    pass
+                write_bot(
+                    id_caso,
+                    estado="error",
+                    error=f"El turno superó {timeout_sec // 60} min y se canceló.",
+                    terminadoEn=_now(),
+                )
+                append_chat(
+                    id_caso,
+                    "sistema",
+                    "El turno se cortó por tiempo máximo para no seguir gastando tokens. Vuelva a enviar si hace falta.",
+                )
+                return 2
             status = getattr(result, "status", None) or ""
             if str(status) in ("error", "RunStatus.error"):
                 write_bot(id_caso, estado="error", error="El agente falló a mitad del turno", terminadoEn=_now())
@@ -427,6 +612,11 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             write_bot(id_caso, estado="listo", error="", terminadoEn=_now())
             return 0
         finally:
+            if es_kb:
+                try:
+                    await agent.archive()
+                except Exception:
+                    pass
             try:
                 await agent.close()
             except Exception:
@@ -741,6 +931,8 @@ def _esperar_arranque(id_caso: str, timeout_sec: float = 20) -> dict:
 
 
 def lanzar_bot(id_caso: str, motivo: str = "chat") -> dict:
+    if motivo == "documentar-auto":
+        return {"ok": False, "error": "barrido_deshabilitado"}
     actual = leer_estado_bot(id_caso)
     if actual.get("estado") == "trabajando" and pid_vivo(actual.get("pid")):
         return {"ok": True, "yaCorria": True, "pid": actual.get("pid")}

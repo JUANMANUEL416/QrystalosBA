@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-12T16:29:20.478Z",
+    "listoParaAnalisis": false
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100012644",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260829-0100014790",
+    "idReq": "0100014790",
+    "fecha": "2026-01-10",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "NEUROINTENSIVOS DE COLOMBIA",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "MARCOS MANUEL CONTRERAS MARIANO",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/NEUINT16",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "Implementación de conceptos de suma y resta en nómina con ocultación en desprendibles\n\nSe solicita la creación de conceptos de suma y resta en el sistema de nómina, de tal manera que estos conceptos no sean visibles para los empleados en el desprendible de pago. Esto permitirá una mejor gestión de la información contable sin comprometer la privacidad de los empleados.\n\n1. Los conceptos de suma y resta deben ser creados y configurados en el sistema de nómina.\n2. Los empleados no deben poder visualizar los conceptos de suma y resta en sus desprendibles de pago.\n3. Los conceptos deben ser correctamente calculados y reflejados en los reportes contables internos.\n \nno es requerimiento es soporte",
+    "criteriosAceptacion": "1. En test, con la variable de sistema NOM_RESTRI_CONCEPTOS en «Si», al crear o editar conceptos de ajuste (ingreso/egreso que sumen o resten en condiciones o en retención) con NCON.SEIMPRIME = «No», el concepto liquida en prenómina/liquidación y participa en totales internos, pero no aparece en el detalle del PDF de colilla (RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA) ni en reportes de liquidación que filtran SEIMPRIME = «Si».\n2. Los totales de devengados, deducidos y neto del empleado en colilla y en pantalla de liquidación coinciden con la política vigente (conceptos informativos INFO y líneas con LIQUIDAR según motor); no se altera el neto pagado al empleado salvo la parametrización acordada con RRHH.\n3. Reportes contables internos de nómina (provisiones / comprobante de nómina cuando aplique al cliente) siguen mostrando el valor del concepto; solo el canal empleado (desprendible PDF, envío de colillas por correo si aplica) omite la línea.\n4. Regresión: un concepto con SEIMPRIME = «Si» sigue visible en colilla; prenómina y retiros no se degradan.",
+    "alcance": "Proceso nomina — gate colilla / configuración de conceptos (capa 1). Pantallas: Configuraciones avanzadas nómina → Conceptos de Nómina (ConceptosComponent.vue, MODELO NOM_CONCEPTOS); impresión colilla Talento humano → Procesos nómina → Prenómina (printColilla) o liquidación (useNomi → RPT_NOMINA COLILLAS / COLILLAS_PRENOMINA → FmtColillasNom.js). Variable NOM_RESTRI_CONCEPTOS (FNK_VALORVARIABLE). Fuera de alcance: nuevo tipo de concepto «suma/resta», cambios DIAN nómina electrónica, presupuesto, ni el dictamen aprobado previo de este ID sobre facturación/RIPS (caso distinto).",
+    "restricciones": "Sin desarrollo en Qrystalos2, API ni scripts SQL salvo que en test se demuestre defecto (colilla ignora SEIMPRIME con NOM_RESTRI_CONCEPTOS = «Si»). No inventar columnas: usar NCON.SEIMPRIME, NCON.INFO y condiciones NCONDC/NCONDTC (+/−) ya documentadas. Rama feature/NEUINT16. El texto del formulario indica «no es requerimiento es soporte»: priorizar guía operativa. Cola IX OnLine.htm registrada con idReq 0100012644 — no sustituye el texto del REQ 0100014790 en el formulario.",
+    "analisis": "REQ (formulario): conceptos de suma/resta en nómina que liquiden pero no se vean en desprendible; deben cuadrar en reportes contables internos. Nota explícita: soporte, no desarrollo nuevo.\n\nPaso 0 — ¿ya existe? **Capacitación** (no hueco ni defecto verificado). El texto del REQ ≠ un módulo nuevo: en Qrystalos el catálogo NCON ya trae «¿Se Imprime?» (SEIMPRIME Si/No) en Conceptos de Nómina. La documentación viva (tabla NCON) y SPQ_RPT_NOMINA · COLILLAS/COLILLAS_PRENOMINA (sql_refe/0100016378) filtran el detalle del PDF cuando FNK_VALORVARIABLE('NOM_RESTRI_CONCEPTOS') = 'Si' exigiendo NCON.SEIMPRIME = 'Si'; si la variable no está en «Si», aún se ocultan líneas con valor cero. El motor de totales (SPK_CALCULAR_NEMPF, ficha en conocimiento/nomina/sps.json) suma NEMPFD con LIQUIDAR='Si' e INFO='No' — los conceptos informativos o no imprimibles pueden liquidarse sin mostrarse al empleado. «Suma y resta» en lenguaje del cliente encaja con: (a) operadores +/− en condiciones de concepto (NCONDC/NCONDTC), o (b) ítems de retención RETTER.CLASE Suma/Resta; no es una CLASE NCON aparte.\n\nCaminos del gate inventariados: (1) Alta/edición concepto NOM_CONCEPTOS; (2) liquidación prenómina/liquidación; (3) colilla PDF prenómina y liquidada; (4) reporte repNominaComponent (filtro SEIMPRIME); (5) envío masivo colillas (EXPORTA_DATOS_COLILLAS / mail) — mismo dataset COLILLAS.\n\nInconsistencia de caso: fase 1 cerrada el 12/09/2026 con dictamen de copago/RIPS bajo el mismo id-caso; el formulario reabierto es nómina NEUROINTENSIVOS. No mezclar criterios ni SP de facturación (sql_refe/0100014790) con este REQ.",
+    "opciones": [],
+    "recomendacion": "Cerrar como **soporte / capacitación**: (1) Verificar en el ambiente del cliente que NOM_RESTRI_CONCEPTOS = «Si» (si está en «No», activarla con el procedimiento habitual de variables de nómina). (2) Crear o ajustar los conceptos de ajuste con condiciones de suma/resta según necesidad contable y marcar **¿Se Imprime? = No**; usar **¿Informativo? = Sí** solo si el concepto no debe entrar en totales de neto (validar con RRHH). (3) Recalcular prenómina o liquidar y generar colilla PDF — confirmar que la línea no sale pero el valor sigue en reportes internos. (4) Solo escalar a desarrollo si con variable en «Si» y SEIMPRIME «No» la línea sigue apareciendo en COLILLAS (sería **defecto** en SPQ_RPT_NOMINA o dato incoherente en NCON); entonces releer SPQ_RPT_NOMINA.sql de hoy y comparar con sql_refe/0100016378.",
+    "cambioPropuestoSimple": "Hoy el sistema ya permite tener conceptos que se calculan en la nómina pero no se listan en el desprendible del empleado, marcando el concepto como «no se imprime» y activando la restricción de colilla en la variable NOM_RESTRI_CONCEPTOS. Soporte debe parametrizar esos conceptos y validar la colilla; no hace falta un módulo nuevo salvo que la impresión no respete la configuración.",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "REQ de nómina: ocultar líneas en desprendible (SEIMPRIME) no cambia el diseño de asientos ni comprobantes CON/MCPE por sí solo; los conceptos siguen liquidándose y pueden seguir en provisión de nómina según LIQUIDAR/CUENTA en NCON. No se solicita nuevo asiento. Afecta contabilidad: No.",
+        "validadoEn": "2026-09-12T16:25:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En test NEUROINTENSIVOS: confirmar valor de NOM_RESTRI_CONCEPTOS; con un concepto de prueba SEIMPRIME=No, generar colilla prenómina y liquidada. Si ya se oculta, cerrar como soporte sin desarrollo. Si aparece en PDF con variable en «Si», tratar como defecto y releer SPQ_RPT_NOMINA.\n\nrequerimiento no valido se de hacer la configuraicon correcta"
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1. En test, con la variable de sistema NOM_RESTRI_CONCEPTOS en «Si», al crear o editar conceptos de ajuste (ingreso/egreso que sumen o resten en condiciones o en retención) con NCON.SEIMPRIME = «No», el concepto liquida en prenómina/liquidación y participa en totales internos, pero no aparece en el detalle del PDF de colilla (RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA) ni en reportes de liquidación que filtran SEIMPRIME = «Si».\n2. Los totales de devengados, deducidos y neto del empleado en colilla y en pantalla de liquidación coinciden con la política vigente (conceptos informativos INFO y líneas con LIQUIDAR según motor); no se altera el neto pagado al empleado salvo la parametrización acordada con RRHH.\n3. Reportes contables internos de nómina (provisiones / comprobante de nómina cuando aplique al cliente) siguen mostrando el valor del concepto; solo el canal empleado (desprendible PDF, envío de colillas por correo si aplica) omite la línea.\n4. Regresión: un concepto con SEIMPRIME = «Si» sigue visible en colilla; prenómina y retiros no se degradan.",
+      "originalesEn": "2026-09-12T16:28:30.660Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. En test, con la variable de sistema NOM_RESTRI_CONCEPTOS en «Si», al crear o editar conceptos de ajuste (ingreso/egreso que sumen o resten en condiciones o en retención) con NCON.SEIMPRIME = «No», el concepto liquida en prenómina/liquidación y participa en totales internos, pero no aparece en el detalle del PDF de colilla (RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA) ni en reportes de liquidación que filtran SEIMPRIME = «Si».\n2. Los totales de devengados, deducidos y neto del empleado en colilla y en pantalla de liquidación coinciden con la política vigente (conceptos informativos INFO y líneas con LIQUIDAR según motor); no se altera el neto pagado al empleado salvo la parametrización acordada con RRHH.\n3. Reportes contables internos de nómina (provisiones / comprobante de nómina cuando aplique al cliente) siguen mostrando el valor del concepto; solo el canal empleado (desprendible PDF, envío de colillas por correo si aplica) omite la línea.\n4. Regresión: un concepto con SEIMPRIME = «Si» sigue visible en colilla; prenómina y retiros no se degradan.",
+      "trasAnalisisEn": "2026-09-12T16:28:53.308Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: clasificación capacitación (NCON.SEIMPRIME + NOM_RESTRI_CONCEPTOS). SPQ_RPT_NOMINA COLILLAS/COLILLAS_PRENOMINA revisados en sql_refe/0100016378 (gate colilla-nombres en proceso.json aún sin ficha en sps.json). sql_refe/0100014790 es facturación/RIPS — no aplica a este REQ. No se pide sql/ hoy salvo defecto en impresión.",
+      "fecha": "2026-09-12T16:25:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA — leído sql_refe/0100016378 · rol verificación filtro SEIMPRIME. SPK_CALCULAR_NEMPF · CALCULAR_NEMPF — leido sps.json · totales NEMPF (no colilla). Sin METODO de cambio si solo capacitación."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260829-0100014790/diagramas/flujo.html",
+      "subidaEn": "2026-09-12T11:29:20",
+      "url": "/api/caso/20260829-0100014790/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100014790\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [],
+    "notas": "NOM_CONCEPTOS (alta concepto SEIMPRIME) no fichado en sps.json; FE ConceptosComponent documentado en NCON.md. No usar sql_refe/0100014790 (facturación).",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260829-0100014790.html",
+    "aprobados": "aprobados/20260829-0100014790/",
+    "imagenes": "aprobados/20260829-0100014790/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-12",
+    "destinatario": "elan.bravo@ixcolombia.com"
+  }
+}

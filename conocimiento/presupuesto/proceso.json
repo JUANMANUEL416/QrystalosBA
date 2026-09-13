@@ -1,0 +1,220 @@
+{
+  "id": "presupuesto",
+  "nombre": "Presupuesto",
+  "modulo": "PTPTO",
+  "familia": "presupuesto",
+  "prioridad": 30,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "SPQ y SPK de envío nómina/PAC leídos. CRUDPTNOT no desarrollado (no es fallo). Hueco de menú: Seguimiento Gastos (REQ 0100016310 — Analista, no Documentar SP). Capa 5 sin OM.",
+  "actualizado": "2026-09-12T09:43:00",
+  "notaSql": "Núcleo leído. CRUDPTNOT y PRESUPUESTO_FCXC en listado a propósito. ENVIA_NOTADBCR_PPTO, SPK_ENTREGA_CXP_PTTO y FNK_PAC_G_CONSEC solo referenciados (no son pendientes a resolver).",
+  "alcanceHasta": "Flujo de menú y pantallas. No se documentó cierre presupuestal ni asiento MCP (capa 5 vacía de evidencia).",
+  "ventanas": [
+    {
+      "uso": "Presupuestos (maestro)",
+      "ruta": "ptpto.presupuestos",
+      "path": "/ppto",
+      "vue": "PTPTOPage → PTPTOComponent",
+      "entrada": "Movimientos → Presupuestos. MODELO PTPTO · CRUDPTPTO / CRUDPTPTODG."
+    },
+    {
+      "uso": "Periodos presupuestales",
+      "ruta": "pri.periodos",
+      "path": "/ppto",
+      "vue": "PRIPage → PRIComponent (presupuesto)",
+      "entrada": "Movimientos → Periodos. MODELO PRESUPUESTO · CAMBIAR_ESTADO_PPTO (CERRAR/reabrir)."
+    },
+    {
+      "uso": "CDP y seguimiento de gastos",
+      "ruta": "ptcdp.certificados / seg_ptcdp_cxp.seguimiento / ppto.en_construccion",
+      "path": "/ppto",
+      "vue": "PTCDPPage; SegCDPCxPPage + SeguimientoGastosComponent; EnConstruccionPage",
+      "entrada": "Gastos → CDP (operación). Seguimiento CDP/CxP/Pagos (consulta). Seguimiento Gastos e Históricos→Seguimiento Gasto siguen en construcción (REQ 0100016310)."
+    },
+    {
+      "uso": "Configuración",
+      "ruta": "ppto.config.*",
+      "path": "/ppto/config",
+      "vue": "ConfiguraPPTOPage → ConfPresupuestoComponent",
+      "entrada": "Recursos, rubros, clasificaciones, tipos de movimiento, divisiones, contratos, nómina PPTO."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Maestros antes de operar: recursos, rubros, clasificaciones, tipos de movimiento, divisiones, contratos y catálogo nómina PPTO. Periodo PRI (abrir/cerrar presupuestal). Menú: MENUQ_COL · PRESUPUESTO + USGRUH (ruta ppto.en_construccion ya está en la lista de permisos del layout).",
+      "tablasClave": [
+        "PTPTO",
+        "PRI"
+      ],
+      "controles": [
+        {
+          "id": "maestros-ppto",
+          "nombre": "Maestros de presupuesto",
+          "explicacion": "ConfPresupuestoComponent llama MODELO PRESUPUESTO. SPQ_PRESUPUESTO.sql: CRUD maestros y CAMBIAR_ESTADO_PPTO.",
+          "invariante": "Cerrar/reabrir PRI en orden cronológico; cierre delega validación a FNK_CIERRE_PERIODO_PPTO.",
+          "sps": [
+            {
+              "nombre": "SPQ_PRESUPUESTO",
+              "metodo": "CRUDPTRUB / CRUDPTREC / CRUDPTCLA / CRUDPTTMOV / CRUDPTDIV / CRUDNPER / CRUDNCOND / COPIAR_RUBROS / HELPER",
+              "rol": "Config. listado FE."
+            },
+            {
+              "nombre": "SPQ_PRESUPUESTO",
+              "metodo": "CAMBIAR_ESTADO_PPTO",
+              "rol": "Cerrar/reabrir periodo presupuestal (PRI)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Dos cadenas: ingresos (reconocimientos / recaudos / notas) y gastos (CDP → RP → obligación CxP → pago). Estados ANULAR/CONFIRMAR/DESCONFIRMAR en pptoRegistroEstado.js alineados al comentario de SPQ_PPTO_PTCDP.sql.",
+      "tablasClave": [
+        "PTPTO",
+        "PTCDP",
+        "PTRP",
+        "PTCXP",
+        "PTPAG",
+        "PTRECO",
+        "PTMOV",
+        "PTNOT"
+      ],
+      "controles": [
+        {
+          "id": "maestro-ptpto",
+          "nombre": "Abrir presupuesto",
+          "explicacion": "PTPTOComponent · CRUDPTPTO / CRUDPTPTODG. Cabecera y detalle del presupuesto.",
+          "invariante": "Sin ficha. No afirmar validaciones.",
+          "sps": [
+            {
+              "nombre": "SPQ_PTPTO o SPQ_PRESUPUESTO",
+              "metodo": "CRUDPTPTO / CRUDPTPTODG",
+              "rol": "MODELO en FE: PTPTO. Confirmar nombre SPQ al leer sql/."
+            }
+          ]
+        },
+        {
+          "id": "cadena-gastos",
+          "nombre": "CDP → RP → CxP → pago",
+          "explicacion": "PTCDPComponent CRUDPTCDP + detalle CRUDPTCDPD. PTRP CRUDPTRP/CRUDPTRPD. PTCXP CRUDPTCXP/CRUDPTCXPD. PTPAG CRUDPTPAG/CRUDPTPAGD. Un solo MODELO PPTO_PTCDP → SPQ_PPTO_PTCDP.",
+          "invariante": "Estados por PROCESO (INSERTAR…DESCONFIRMAR). DESCONFIRMAR CDP puede cascada a RP/CxP/Pago si PPTO_CDP_DESCONFMOV=SI. No anular/desconfirmar con saldos usados en detalle.",
+          "sps": [
+            {
+              "nombre": "SPQ_PPTO_PTCDP",
+              "metodo": "CRUDPTCDP / CRUDPTCDPD / CRUDPTRP / CRUDPTRPD / CRUDPTCXP / CRUDPTCXPD / CRUDPTPAG / CRUDPTPAGD",
+              "rol": "Operación gastos. listado FE."
+            }
+          ]
+        },
+        {
+          "id": "cadena-ingresos",
+          "nombre": "Reconocimientos y recaudos",
+          "explicacion": "PTRECO CRUDPTRECO + detalle CRUDPTRECOD. Recaudos en PTRECARecaudosComponent (mismo MODELO PPTO_RECO). Notas PTNOT: CRUDPTNOT y SPK_APLICA_NOTA_PPTO. Resoluciones PTRES · CRUDPTRES. Movimientos PTMOV · CRUDPTMOV/CRUDPTMOVD.",
+          "invariante": "CRUDPTNOT no está desarrollado (acuerdo). Aplicar/revertir nota: SPK_APLICA_NOTA_PPTO.",
+          "sps": [
+            {
+              "nombre": "SPQ_PPTO_RECO",
+              "metodo": "CRUDPTRECO / CRUDPTRECOD / CRUDPTMOV / CRUDPTMOVD / CRUDPTRES",
+              "rol": "Ingresos. leído."
+            },
+            {
+              "nombre": "SPK_APLICA_NOTA_PPTO",
+              "metodo": "(procedimiento)",
+              "rol": "Confirmar/revertir nota PTNOT."
+            }
+          ]
+        },
+        {
+          "id": "seguimiento-gastos",
+          "nombre": "Seguimiento Gastos (menú)",
+          "explicacion": "REQ 0100016310. Menú «Seguimiento Gastos» y Históricos→«Seguimiento Gasto» van a ppto.en_construccion. El componente SeguimientoGastosComponent ya lista PTCDP confirmados (AppStore.read) y detalle PTRP/PTCXP; hoy solo lo monta SegCDPCxPPage.",
+          "invariante": "El usuario de Gastos → Seguimiento Gastos debe ver la consulta, no EnConstruccionPage.",
+          "sps": [
+            {
+              "nombre": "(read)",
+              "metodo": "AppStore.read PTCDP / PTPTO / CEN",
+              "rol": "Grilla seguimiento."
+            },
+            {
+              "nombre": "SPQ_PPTO_PTCDP",
+              "metodo": "CRUD* en detalle (consulta)",
+              "rol": "Ver RP, CxP y pagos."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "Factura (TRAER_FACTURA_PPTO), recaudo (PRESUPUESTO_FPAG), nota FNOT (PRESUPUESTO_FNOT) y nómina (ENVIAR → SPK_REVISANOMINA_ANTES + SPK_ENVIARNOMI_PPTO_MASIVO). PRESUPUESTO_FCXC no existe en el script.",
+      "tablasClave": [
+        "PTCDP",
+        "PTRECO",
+        "FCXP",
+        "NPER"
+      ],
+      "controles": [
+        {
+          "id": "traer-otros-modulos",
+          "nombre": "Traer facturación / recaudos / nómina",
+          "explicacion": "Rutas ppto.facturacion, ppto.traer_recaudos, ppto.anticipos_cxp. Nómina PPTO usa ENVIAR.",
+          "invariante": "ENVIAR exige CDP+PPTO en NPER y RPDX vacío. Envío masivo no marca ENPPTO si falta saldo CDP (RETURN silencioso).",
+          "sps": [
+            {
+              "nombre": "SPQ_PPTO_REP",
+              "metodo": "TRAER_FACTURA_PPTO / PRESUPUESTO_FPAG / PRESUPUESTO_FNOT / EXPORT_*",
+              "rol": "Alimentadores e informes. leído."
+            },
+            {
+              "nombre": "SPQ_PRESUPUESTO",
+              "metodo": "ENVIAR",
+              "rol": "Nómina → presupuesto."
+            },
+            {
+              "nombre": "SPK_REVISANOMINA_ANTES",
+              "metodo": "(procedimiento)",
+              "rol": "Pre-chequeo rubros → RPDX."
+            },
+            {
+              "nombre": "SPK_ENVIARNOMI_PPTO_MASIVO",
+              "metodo": "(procedimiento)",
+              "rol": "FCXP nómina → PTRP + SPK_ENTREGA_CXP_PTTO."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Nómina: FCXP (PROCEDENCIA=Nomina) → PTRP/PTRPD y SPK_ENTREGA_CXP_PTTO. Factura/recaudo: ENPRESUPUESTO en FTR/FPAG. El cuerpo de SPK_ENTREGA_CXP_PTTO no está en sql/.",
+      "tablasClave": [
+        "PTCXP"
+      ],
+      "controles": []
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "En el FE de presupuesto no aparece ENV_CONTA / MCP en los METODO listados. Cierre presupuestal (CAMBIAR_ESTADO_PPTO) no se afirma que genere asiento. Históricos → Cierre está en construcción. No inventar OM.",
+      "tablasClave": [],
+      "controles": []
+    }
+  ]
+}

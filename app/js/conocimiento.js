@@ -3,11 +3,30 @@
  */
 window.QrysConocimiento = (function () {
   const MODE_KEY = "qrystalos_ba_modo";
+  const DOC_PROC_KEY = "qrystalos_ba_doc_proceso";
   let cache = null;
   let caches = { consultas: null, documentar: null };
   let procesoActual = null;
   let chatPoll = null;
+  const kbTimers = { consultas: null, documentar: null };
+  const ESTADO_UI = {
+    consultas: {
+      box: "#consultaChatEstado",
+      label: "#consultaChatEstadoLabel",
+      detail: "#consultaChatEstadoDetail",
+      timer: "#consultaChatTimer",
+      input: "#consultaChatInput",
+    },
+    documentar: {
+      box: "#docChatEstado",
+      label: "#docChatEstadoLabel",
+      detail: "#docChatEstadoDetail",
+      timer: "#docChatTimer",
+      input: "#docChatInput",
+    },
+  };
   let pagePanel = { consultas: "trabajo", documentar: "trabajo" };
+  let chatProceso = { consultas: "", documentar: "" };
 
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
@@ -26,6 +45,20 @@ window.QrysConocimiento = (function () {
 
   function guardarModo(m) {
     sessionStorage.setItem(MODE_KEY, m);
+  }
+
+  function procesoGuardado() {
+    try {
+      return sessionStorage.getItem(DOC_PROC_KEY) || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function guardarProcesoDoc(pid) {
+    try {
+      if (pid) sessionStorage.setItem(DOC_PROC_KEY, pid);
+    } catch (_) {}
   }
 
   async function fetchJson(url, opts) {
@@ -69,10 +102,15 @@ window.QrysConocimiento = (function () {
 
   async function loadResumen(canal) {
     const c = canal || "documentar";
+    const pid = procesoChatDe(c);
+    const q = new URLSearchParams({ canal: c });
+    if (pid) q.set("procesoId", pid);
     try {
-      const data = await fetchJson(`/api/conocimiento?canal=${encodeURIComponent(c)}`);
+      const data = await fetchJson(`/api/conocimiento?${q.toString()}`);
       caches[c] = data;
       cache = data;
+      if (pid) chatProceso[c] = pid;
+      else if (data.chatProcesoId) chatProceso[c] = data.chatProcesoId;
       return data;
     } catch (_) {
       const data = await loadFromDisk(c);
@@ -96,6 +134,7 @@ window.QrysConocimiento = (function () {
 
   function showHub() {
     stopChatPoll();
+    if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
     try {
       guardarModo("hub");
     } catch (_) {}
@@ -131,7 +170,7 @@ window.QrysConocimiento = (function () {
     if (shell) {
       shell.hidden = false;
       shell.removeAttribute("hidden");
-      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar");
+      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar");
       shell.classList.add(`modo-${mode}`);
     }
     const inicio = $("#btnInicioHub");
@@ -145,6 +184,10 @@ window.QrysConocimiento = (function () {
       if (colaTab) colaTab.classList.add("active");
       const cola = $("#view-cola");
       if (cola) cola.classList.add("active");
+    } else if (mode === "solicitar") {
+      const v = $("#view-solicitar");
+      if (v) v.classList.add("active");
+      if (window.QrysSolicitar) window.QrysSolicitar.enter();
     } else if (mode === "consultas") {
       const v = $("#view-consultas");
       if (v) v.classList.add("active");
@@ -163,7 +206,7 @@ window.QrysConocimiento = (function () {
     const det = $("#consultaDetalle");
     if (!list) return;
     try {
-      await loadResumen("consultas");
+      await loadResumenConModulo("consultas");
     } catch (e) {
       list.innerHTML = `<p class="alert alert-warning">No se pudo leer la base. Use abrir-app.bat. ${esc(e.message)}</p>`;
       return;
@@ -193,7 +236,7 @@ window.QrysConocimiento = (function () {
     });
     renderChatBoxes();
     if (det && !procesoActual) {
-      det.innerHTML = `<p class="hint">Elija un proceso a la izquierda. Flujo (capa → gate) o Procedimientos (SP → método). El Chat está en su pestaña.</p>`;
+      det.innerHTML = `<p class="hint">Elija un proceso a la izquierda. Flujo (capa → control) o Procedimientos (SP → método). El Chat está en su pestaña.</p>`;
     }
   }
 
@@ -239,6 +282,12 @@ window.QrysConocimiento = (function () {
       det.innerHTML = `<p class="alert alert-warning">Proceso no encontrado.</p>`;
       return;
     }
+    setProcesoChat("consultas", id);
+    if ($("#consultaPanelChat") && !$("#consultaPanelChat").classList.contains("hidden")) {
+      loadResumen("consultas")
+        .then(() => renderChatBoxes(true))
+        .catch(() => {});
+    }
     const p = procesoActual;
     const vista = tab || "flujo";
     det.innerHTML = `
@@ -259,17 +308,17 @@ window.QrysConocimiento = (function () {
   function renderFlujo(p) {
     const capas = (p.capas || [])
       .map((c) => {
-        const gates = (c.gates || [])
+        const controles = (c.controles || c.gates || [])
           .map((g) => {
             const sps = (g.sps || [])
               .map((s) => `<li><code>${esc(s.nombre)}</code> ${esc(s.metodo || "")} — ${esc(s.rol || "")}</li>`)
               .join("");
             return `
-            <article class="kb-gate">
+            <article class="kb-control kb-gate">
               <h4>${esc(g.nombre)}</h4>
               <p>${esc(g.explicacion || "")}</p>
               ${g.invariante ? `<div class="kb-invariante"><strong>Invariante:</strong> ${esc(g.invariante)}</div>` : ""}
-              ${sps ? `<p class="hint compact">SP de este gate (ficha completa en Procedimientos)</p><ul>${sps}</ul>` : `<p class="hint compact">SP de este gate: pendiente.</p>`}
+              ${sps ? `<p class="hint compact">SP de este control (ficha completa en Procedimientos)</p><ul>${sps}</ul>` : `<p class="hint compact">SP de este control: pendiente.</p>`}
             </article>`;
           })
           .join("");
@@ -281,7 +330,7 @@ window.QrysConocimiento = (function () {
           </header>
           <p>${esc(c.explicacion || "")}</p>
           ${tablas ? `<p class="hint compact">Tablas de apoyo (docs vivas): ${tablas}</p>` : ""}
-          ${gates || `<p class="hint">Gates aún no documentados.</p>`}
+          ${controles || `<p class="hint">Controles aún no documentados.</p>`}
         </section>`;
       })
       .join("");
@@ -344,7 +393,9 @@ window.QrysConocimiento = (function () {
   function spsPendientes(soloValle) {
     const items = (cache?.pendientes?.items || []).filter((i) => i.estado !== "completado" && i.spNombre);
     const valleId = cache?.valle?.proceso?.id || "";
-    const filtrados = soloValle && valleId ? items.filter((i) => i.procesoId === valleId) : items;
+    const modulo = $("#docFiltroProceso")?.value || chatProceso.documentar || "";
+    const porModulo = modulo ? items.filter((i) => i.procesoId === modulo) : items;
+    const filtrados = soloValle && valleId ? porModulo.filter((i) => i.procesoId === valleId) : porModulo;
     const seen = new Set();
     const out = [];
     filtrados.forEach((i) => {
@@ -397,31 +448,50 @@ window.QrysConocimiento = (function () {
     }
   }
 
+  function nombreProceso(pid) {
+    const procesos = cache?.indice?.procesos || [];
+    const p = procesos.find((x) => x.id === pid);
+    return (p && (p.nombre || p.id)) || pid || "";
+  }
+
   function renderPendientes() {
     const box = $("#docPendientesLista");
     if (!box || !cache) return;
-    const items = (cache.pendientes?.items || []).filter((i) => i.estado !== "completado");
-    badgePendientes(items.length);
+    const todos = (cache.pendientes?.items || []).filter((i) => i.estado !== "completado");
+    const filtro = $("#docFiltroProceso")?.value || chatProceso.documentar || "";
+    const items = filtro ? todos.filter((i) => (i.procesoId || "") === filtro) : todos;
+    const ocultos = todos.length - items.length;
+    badgePendientes(todos.length);
     if (!items.length) {
-      box.innerHTML = `<p class="hint">No hay pendientes. Cuando un REQ abra un proceso o falten SP, aparecerán aquí.</p>`;
+      const extra = filtro
+        ? `<p class="hint">No hay pendientes de <strong>${esc(nombreProceso(filtro))}</strong>.${ocultos ? " Hay " + ocultos + " de otros módulos (cambie el filtro a «Todos» para verlos)." : ""}</p>`
+        : `<p class="hint">No hay pendientes. Cuando un REQ abra un proceso o falten SP, aparecerán aquí.</p>`;
+      box.innerHTML = extra;
       return;
     }
-    box.innerHTML = items
-      .map((i) => {
-        const sel = i.estado === "en_progreso" ? " kb-pendiente--on" : "";
-        return `
+    const aviso = filtro
+      ? `<p class="hint compact">Solo <strong>${esc(nombreProceso(filtro))}</strong> (${items.length}).${ocultos ? " Ocultos " + ocultos + " de otros módulos." : ""}</p>`
+      : `<p class="alert alert-warning" style="margin:0 0 .6rem">Viendo todos los módulos (${items.length}). Elija <strong>Presupuesto</strong> o <strong>Nómina</strong> arriba para no mezclar.</p>`;
+    box.innerHTML =
+      aviso +
+      items
+        .map((i) => {
+          const sel = i.estado === "en_progreso" ? " kb-pendiente--on" : "";
+          const modulo = nombreProceso(i.procesoId) || i.procesoId || "—";
+          return `
         <label class="kb-pendiente${sel}">
           <input type="radio" name="docPendiente" value="${esc(i.id)}">
           <div>
             <strong>${esc(i.titulo)}</strong>
             ${pillEstado(i.estado)}
             <span class="kb-tipo">${esc(i.tipo)}</span>
+            <span class="kb-tipo">${esc(modulo)}</span>
             <p>${esc(i.detalle || "")}</p>
             ${i.spNombre ? `<p class="hint compact">SP sugerido: <code>${esc(i.spNombre)}</code> <button type="button" class="btn btn-ghost btn-sm btn-copiar-sp" data-sp="${esc(i.spNombre)}">Copiar</button></p>` : ""}
           </div>
         </label>`;
-      })
-      .join("");
+        })
+        .join("");
   }
 
   function fillSqlSelect() {
@@ -439,21 +509,92 @@ window.QrysConocimiento = (function () {
     const sel = $("#docProcesoId");
     if (!sel) return;
     const procesos = cache?.indice?.procesos || [];
-    const actual = sel.value || cache?.tarea?.procesoId || "";
+    const actual = sel.value || chatProceso.documentar || procesoGuardado() || "";
     sel.innerHTML =
       `<option value="">Proceso (se infiere si el SP ya está en el catálogo)…</option>` +
       procesos.map((p) => `<option value="${esc(p.id)}">${esc(p.nombre || p.id)}${p.modulo ? " · " + esc(p.modulo) : ""}</option>`).join("");
-    if (actual) sel.value = actual;
+    if (actual && procesos.some((p) => p.id === actual)) sel.value = actual;
+  }
+
+  function procesoSelId(canal) {
+    return canal === "consultas" ? "#consultaChatProceso" : "#docChatProceso";
+  }
+
+  function procesoChatDe(canal) {
+    const sel = $(procesoSelId(canal));
+    return (sel && sel.value) || chatProceso[canal] || "";
+  }
+
+  function setProcesoChat(canal, pid) {
+    chatProceso[canal] = pid || "";
+    if (canal === "documentar") guardarProcesoDoc(pid);
+    const sel = $(procesoSelId(canal));
+    if (sel && pid) sel.value = pid;
+    const filtro = $("#docFiltroProceso");
+    if (canal === "documentar" && filtro && pid) filtro.value = pid;
+    const docSel = $("#docProcesoId");
+    if (canal === "documentar" && docSel && pid) docSel.value = pid;
+  }
+
+  function fillProcesoChatSelect(canal) {
+    const sel = $(procesoSelId(canal));
+    const data = caches[canal];
+    if (!sel || !data) return;
+    const procesos = data.indice?.procesos || [];
+    const actual =
+      chatProceso[canal] ||
+      procesoGuardado() ||
+      data.chatProcesoId ||
+      "";
+    sel.innerHTML =
+      `<option value="">— Elija módulo —</option>` +
+      procesos.map((p) => `<option value="${esc(p.id)}">${esc(p.nombre || p.id)}</option>`).join("");
+    if (actual && procesos.some((p) => p.id === actual)) sel.value = actual;
+    chatProceso[canal] = sel.value || actual;
+    if (canal === "documentar" && sel.value) guardarProcesoDoc(sel.value);
+  }
+
+  function fillFiltroProceso() {
+    const sel = $("#docFiltroProceso");
+    const data = caches.documentar || cache;
+    if (!sel || !data) return;
+    const procesos = data.indice?.procesos || [];
+    const actual = chatProceso.documentar || procesoGuardado() || sel.value || "";
+    sel.innerHTML =
+      `<option value="">— Todos (se mezclan) —</option>` +
+      procesos.map((p) => `<option value="${esc(p.id)}">${esc(p.nombre || p.id)}</option>`).join("");
+    if (actual && procesos.some((p) => p.id === actual)) sel.value = actual;
+  }
+
+  async function loadResumenConModulo(canal) {
+    if (canal === "documentar" && !chatProceso.documentar && procesoGuardado()) {
+      chatProceso.documentar = procesoGuardado();
+    }
+    await loadResumen(canal);
+    fillProcesoChatSelect(canal);
+    const pid = procesoChatDe(canal);
+    if (pid && pid !== (caches[canal]?.chatProcesoId || "")) {
+      await loadResumen(canal);
+    }
   }
 
   function renderChatBoxes(forceBottom) {
-    renderChatIn("#docChatMensajes", caches.documentar, forceBottom);
-    renderChatIn("#consultaChatMensajes", caches.consultas, forceBottom);
+    fillProcesoChatSelect("consultas");
+    fillProcesoChatSelect("documentar");
+    renderChatIn("#docChatMensajes", caches.documentar, forceBottom, "documentar");
+    renderChatIn("#consultaChatMensajes", caches.consultas, forceBottom, "consultas");
     fillChatSelect("consultas", "#consultaChatSelect");
     fillChatSelect("documentar", "#docChatSelect");
     toggleCompose("consultas", "#consultaChatCompose");
     toggleCompose("documentar", "#docChatCompose");
-    renderBotHint();
+    renderKbStatus("consultas");
+    renderKbStatus("documentar");
+    const nC = caches.consultas?.faqCount || 0;
+    const nD = caches.documentar?.faqCount || 0;
+    const elC = $("#consultaFaqCount");
+    const elD = $("#docFaqCount");
+    if (elC) elC.textContent = nC ? `Hay ${nC} respuesta${nC === 1 ? "" : "s"} aceptada${nC === 1 ? "" : "s"} en este módulo.` : "";
+    if (elD) elD.textContent = nD ? `Hay ${nD} respuesta${nD === 1 ? "" : "s"} aceptada${nD === 1 ? "" : "s"} en este módulo.` : "";
   }
 
   function fillChatSelect(canal, selId) {
@@ -478,47 +619,147 @@ window.QrysConocimiento = (function () {
     box.classList.toggle("hidden", !!data.chatSoloLectura);
   }
 
-  function botHintText() {
-    const bot = cache?.bot || {};
-    if (bot.estado === "trabajando") {
-      return "El agente está trabajando. En unos segundos aparece la respuesta aquí.";
-    }
-    if (bot.estado === "error" || bot.estado === "sin_clave") {
-      return bot.error
-        ? "El agente no pudo responder: " + bot.error
-        : "El agente no pudo responder este turno. Vuelva a enviar o reinicie abrir-app.bat.";
-    }
-    return "";
+  function fmtKbElapsed(iso) {
+    if (!iso) return "0:00";
+    const t0 = new Date(iso).getTime();
+    if (Number.isNaN(t0)) return "0:00";
+    const sec = Math.max(0, Math.floor((Date.now() - t0) / 1000));
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
   }
 
-  function hintDe(canal) {
-    const bot = (caches[canal] || {}).bot || {};
-    if (bot.estado === "trabajando") return "El agente está trabajando. En unos segundos aparece la respuesta aquí.";
-    if (bot.estado === "error" || bot.estado === "sin_clave") {
-      return bot.error ? "El agente no pudo responder: " + bot.error : "El agente no pudo responder este turno.";
+  function stopKbTimer(canal) {
+    if (kbTimers[canal]) {
+      clearInterval(kbTimers[canal]);
+      kbTimers[canal] = null;
     }
-    if ((caches[canal] || {}).chatSoloLectura) return "Chat archivado (solo lectura). Pulse Nuevo chat para seguir.";
-    return "";
+    const el = $(ESTADO_UI[canal]?.timer);
+    if (el) el.classList.add("hidden");
   }
 
-  function renderBotHint() {
-    [
-      ["consultas", "#consultaChatBotHint"],
-      ["documentar", "#docChatBotHint"],
-    ].forEach(([canal, sel]) => {
-      const el = $(sel);
-      if (!el) return;
-      const text = hintDe(canal);
-      el.hidden = !text;
-      el.textContent = text;
-    });
+  function startKbTimer(canal, bot) {
+    const el = $(ESTADO_UI[canal]?.timer);
+    if (!el) return;
+    stopKbTimer(canal);
+    el.classList.remove("hidden");
+    const tick = () => {
+      const hb = bot.heartbeatEn ? new Date(bot.heartbeatEn).getTime() : null;
+      const hace = hb && !Number.isNaN(hb) ? Math.max(0, Math.floor((Date.now() - hb) / 1000)) : null;
+      let vivo = "arrancando…";
+      if (bot.pidVivo === false && (bot.pid || 0) > 0) vivo = "proceso detenido";
+      else if (hace != null && hace <= 15) vivo = "latido OK";
+      else if (hace != null) vivo = `sin latido (${hace}s)`;
+      el.textContent = `${fmtKbElapsed(bot.iniciadoEn)} · ${vivo}`;
+    };
+    tick();
+    kbTimers[canal] = setInterval(tick, 1000);
+  }
+
+  function computeKbStatus(bot, chat, soloLectura) {
+    const b = bot || {};
+    const hb = b.heartbeatEn
+      ? new Date(b.heartbeatEn).getTime()
+      : b.iniciadoEn
+        ? new Date(b.iniciadoEn).getTime()
+        : null;
+    const haceHb = hb && !Number.isNaN(hb) ? Math.max(0, Math.floor((Date.now() - hb) / 1000)) : null;
+    const botMuerto =
+      b.estado === "trabajando" && (b.pidVivo === false || (haceHb != null && haceHb > 45));
+    if (soloLectura) {
+      return {
+        code: "esperando",
+        label: "Chat archivado (solo lectura)",
+        detail: "Pulse Nuevo para seguir en este módulo.",
+      };
+    }
+    if (b.estado === "trabajando" && !botMuerto) {
+      return {
+        code: "trabajando",
+        label: "El agente está procesando",
+        detail: "Lea este Chat y conocimiento/. La respuesta aparece aquí; no cierre la pestaña.",
+        bot: b,
+      };
+    }
+    if (b.estado === "sin_clave") {
+      return {
+        code: "esperando",
+        label: "Falta CURSOR_API_KEY",
+        detail: "Péguela en .env (empieza por crsr_) y reinicie abrir-app.bat.",
+      };
+    }
+    if (b.estado === "error" || botMuerto) {
+      return {
+        code: "esperando",
+        label: "El bot no respondió",
+        detail: b.error || "Se quedó sin latido. Vuelva a Enviar o deje el mensaje: en Cursor lo toma al continuar.",
+      };
+    }
+    const msgs = (chat && chat.mensajes) || [];
+    const ultimo = [...msgs].reverse().find((m) => m.autor !== "sistema") || msgs[msgs.length - 1];
+    const lastAny = msgs[msgs.length - 1];
+    if (lastAny?.autor === "sistema" && /está trabajando|procesando/i.test(lastAny.texto || "")) {
+      const t0 = new Date(lastAny.en || lastAny.fecha || 0).getTime();
+      const age = Number.isNaN(t0) ? 0 : (Date.now() - t0) / 1000;
+      if (age < 90 || b.estado === "trabajando") {
+        return {
+          code: "trabajando",
+          label: "El agente está procesando",
+          detail: "El mensaje ya está en disco. En unos segundos aparece la respuesta aquí.",
+          bot: b.iniciadoEn ? b : { iniciadoEn: lastAny.en || lastAny.fecha || new Date().toISOString() },
+        };
+      }
+    }
+    if (ultimo?.autor === "agente") {
+      return {
+        code: "esperando",
+        label: "El agente ya respondió",
+        detail: "Siga solo en este Chat. Si la respuesta es correcta, pulse Aceptar.",
+      };
+    }
+    if (ultimo?.autor === "coordinador") {
+      return {
+        code: "esperando",
+        label: "Mensaje guardado — esperando al agente",
+        detail: "Si el punto no pasa a procesando, pulse Enviar de nuevo o continúe en Cursor.",
+      };
+    }
+    return {
+      code: "esperando",
+      label: "Chat listo",
+      detail: "Escriba y el agente responde en este hilo.",
+    };
+  }
+
+  function renderKbStatus(canal, estado) {
+    const ui = ESTADO_UI[canal];
+    if (!ui) return;
+    const data = caches[canal];
+    const st = estado || computeKbStatus(data?.bot, data?.chat, data?.chatSoloLectura);
+    const box = $(ui.box);
+    const label = $(ui.label);
+    const detail = $(ui.detail);
+    if (!box || !label || !detail) return;
+    box.classList.remove("hidden", "chat-estado-trabajando", "chat-estado-esperando", "chat-estado-cerrado");
+    box.classList.add(`chat-estado-${st.code}`);
+    label.textContent = st.label;
+    detail.textContent = st.detail;
+    if (st.code === "trabajando" && st.bot) startKbTimer(canal, st.bot);
+    else stopKbTimer(canal);
+    const input = $(ui.input);
+    if (input) {
+      input.placeholder =
+        st.code === "trabajando"
+          ? "Procesando… la respuesta aparece abajo. Puede escribir otro ajuste."
+          : canal === "consultas"
+            ? "Escriba la pregunta…"
+            : "Ej. el SP de confirmar es SPQ_… método CONFIRMAR";
+    }
   }
 
   const NEAR_BOTTOM_PX = 96;
 
   function chatSig(msgs) {
     if (!msgs?.length) return "empty";
-    return msgs.map((m) => `${m.id || ""}|${m.autor}|${m.en || ""}|${String(m.texto || "").length}`).join(";");
+    return msgs.map((m) => `${m.id || ""}|${m.autor}|${m.en || ""}|${String(m.texto || "").length}|${m.aceptada ? 1 : 0}`).join(";");
   }
 
   function paintChat(box, html, signature, forceBottom) {
@@ -533,17 +774,30 @@ window.QrysConocimiento = (function () {
     });
   }
 
-  function renderChatIn(sel, data, forceBottom) {
+  function burbujaProcesando() {
+    return `<div class="chat-msg chat-msg-sistema chat-msg-procesando">
+      <div class="chat-msg-head"><strong>Agente</strong> <small>procesando…</small></div>
+      <div class="chat-msg-body">Está leyendo este Chat y conocimiento/. En unos segundos aparece la respuesta aquí.</div>
+    </div>`;
+  }
+
+  function renderChatIn(sel, data, forceBottom, canal) {
     const box = $(sel);
     if (!box || !data) return;
+    const estado = computeKbStatus(data.bot, data.chat, data.chatSoloLectura);
+    const extra = estado.code === "trabajando" ? burbujaProcesando() : "";
     const msgs = data.chat?.mensajes || [];
     if (!msgs.length) {
+      const pid = data.chatProcesoId || "";
+      const proc = (data.indice?.procesos || []).find((p) => p.id === pid);
+      const nombre = (proc && proc.nombre) || pid || "este módulo";
       paintChat(
         box,
-        `<p class="hint">Escriba aquí. El agente responde en este Chat (autor agente), igual que en el caso.</p>`,
-        "empty",
+        `<p class="hint">Chat de <strong>${esc(nombre)}</strong>. Solo este proceso (no se mezcla con otros módulos). Escriba y el agente responde aquí.</p>${extra}`,
+        "empty-" + pid + "|" + estado.code,
         !!forceBottom,
       );
+      if (canal) renderKbStatus(canal, estado);
       return;
     }
     const html = msgs
@@ -555,10 +809,18 @@ window.QrysConocimiento = (function () {
             : m.autor === "sistema"
               ? "chat-msg chat-msg-sistema"
               : "chat-msg chat-msg-coord";
-        return `<div class="${cls}"><div class="chat-msg-head"><strong>${esc(who)}</strong> · ${esc(m.en || m.fecha || "")}</div><div>${esc(m.texto).replace(/\n/g, "<br>")}</div></div>`;
+        const intro = String(m.texto || "").startsWith("Este Chat es independiente");
+        let actions = "";
+        if (m.autor === "agente" && m.id && !intro) {
+          actions = m.aceptada
+            ? `<div class="chat-msg-actions"><span class="chat-faq-ok">En la base de este módulo</span></div>`
+            : `<div class="chat-msg-actions"><button type="button" class="btn btn-ghost btn-sm" data-faq-aceptar="${esc(m.id)}">Aceptar</button></div>`;
+        }
+        return `<div class="${cls}"><div class="chat-msg-head"><strong>${esc(who)}</strong> · ${esc(m.en || m.fecha || "")}</div><div>${esc(m.texto).replace(/\n/g, "<br>")}</div>${actions}</div>`;
       })
       .join("");
-    paintChat(box, html, chatSig(msgs), !!forceBottom);
+    paintChat(box, html + extra, chatSig(msgs) + "|" + estado.code, !!forceBottom);
+    if (canal) renderKbStatus(canal, estado);
   }
 
   function renderValle() {
@@ -566,14 +828,12 @@ window.QrysConocimiento = (function () {
     if (!el || !cache) return;
     const ruta = cache.rutaDocumentar || {};
     const pasos = ruta.pasos || [];
-    const vig = cache.vigilante || {};
     const valle = cache.valle;
     if (!pasos.length) {
       el.hidden = true;
       return;
     }
     el.hidden = false;
-    const estadoVig = vig.activo === false ? "Pausado" : "Activo (trabaja solo)";
     const actual = valle?.proceso?.id || "—";
     const filas = pasos
       .map((p) => {
@@ -584,29 +844,10 @@ window.QrysConocimiento = (function () {
     el.innerHTML = `
       <div class="historico-toolbar" style="margin:0 0 .5rem">
         <h3 class="kb-h3" style="margin:0;flex:1">Ruta administrativa</h3>
-        <span class="hint compact">${esc(estadoVig)}${actual !== "—" ? " · valle: " + esc(actual) : (cache.rutaEstado?.cerrada ? " · ruta cubierta" : "")}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="btnDocVigilante">${vig.activo === false ? "Reanudar agente" : "Pausar agente"}</button>
+        <span class="hint compact">Pausado (bajo demanda)${actual !== "—" ? " · valle: " + esc(actual) : (cache.rutaEstado?.cerrada ? " · ruta cubierta" : "")}</span>
       </div>
-      <p class="hint compact">Barrido automático <strong>detenido</strong> por defecto. Use Documentar (Chat) o Analista de negocio cuando encuentre algo nuevo o haya que mejorar un proceso. No hace falta reanudar el agente autónomo.</p>
+      <p class="hint compact">El agente <strong>no</strong> corre solo. Pregunte en el Chat o pulse Documentar SP: un turno con Composer 2.5 estándar (sin Fast) y se detiene. El barrido automático está eliminado.</p>
       <ol class="kb-valle-list">${filas}</ol>`;
-    $("#btnDocVigilante")?.addEventListener("click", () => onToggleVigilante(!(vig.activo === false)));
-  }
-
-  async function onToggleVigilante(pausar) {
-    try {
-      await fetchJson("/api/conocimiento/vigilante", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ activo: !pausar }),
-      });
-      await refreshDocumentar();
-    } catch (e) {
-      const err = $("#docError");
-      if (err) {
-        err.hidden = false;
-        err.textContent = e.message;
-      }
-    }
   }
 
   function renderTarea() {
@@ -625,12 +866,13 @@ window.QrysConocimiento = (function () {
 
   async function refreshDocumentar() {
     try {
-      await loadResumen("documentar");
+      await loadResumenConModulo("documentar");
     } catch (e) {
       const box = $("#docPendientesLista");
       if (box) box.innerHTML = `<p class="alert alert-warning">${esc(e.message)}</p>`;
       return;
     }
+    fillFiltroProceso();
     renderPendientes();
     fillSqlSelect();
     fillProcesoSelect();
@@ -639,23 +881,45 @@ window.QrysConocimiento = (function () {
     renderValle();
   }
 
+  function kbPollMs() {
+    const docOn = $("#view-documentar")?.classList.contains("active");
+    const consOn = $("#view-consultas")?.classList.contains("active");
+    const canal = docOn ? "documentar" : consOn ? "consultas" : "";
+    if (!canal || pagePanel[canal] !== "chat") return 5000;
+    const data = caches[canal];
+    const code = computeKbStatus(data?.bot, data?.chat, data?.chatSoloLectura).code;
+    return code === "trabajando" ? 1500 : 4000;
+  }
+
   function startChatPoll() {
     stopChatPoll();
-    chatPoll = setInterval(() => {
-      if ($("#view-documentar")?.classList.contains("active")) refreshDocumentar();
-      else if ($("#view-consultas")?.classList.contains("active")) {
-        loadResumen("consultas")
-          .then(() => renderChatBoxes())
-          .catch(() => {});
-      }
-    }, 5000);
+    const run = async () => {
+      try {
+        if ($("#view-documentar")?.classList.contains("active")) {
+          if (pagePanel.documentar === "chat") {
+            await loadResumenConModulo("documentar");
+            renderChatBoxes();
+          } else {
+            await refreshDocumentar();
+          }
+        } else if ($("#view-consultas")?.classList.contains("active")) {
+          await loadResumenConModulo("consultas");
+          if (pagePanel.consultas === "chat") renderChatBoxes();
+          else refreshConsultas();
+        }
+      } catch (_) {}
+      chatPoll = setTimeout(run, kbPollMs());
+    };
+    chatPoll = setTimeout(run, 400);
   }
 
   function stopChatPoll() {
     if (chatPoll) {
-      clearInterval(chatPoll);
+      clearTimeout(chatPoll);
       chatPoll = null;
     }
+    stopKbTimer("consultas");
+    stopKbTimer("documentar");
   }
 
   function pendienteSeleccionado() {
@@ -678,7 +942,7 @@ window.QrysConocimiento = (function () {
       return;
     }
     try {
-      await fetchJson("/api/conocimiento/documentar", {
+      const out = await fetchJson("/api/conocimiento/documentar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pendienteId, archivoSql: archivo, notas, procesoId }),
@@ -686,6 +950,15 @@ window.QrysConocimiento = (function () {
       if ($("#docNotas")) $("#docNotas").value = "";
       if ($("#docSqlManual")) $("#docSqlManual").value = "";
       await refreshDocumentar();
+      if (caches.documentar) {
+        caches.documentar.bot = out.bot || {
+          estado: "trabajando",
+          iniciadoEn: new Date().toISOString(),
+          heartbeatEn: new Date().toISOString(),
+        };
+      }
+      renderKbStatus("documentar");
+      if (pagePanel.documentar === "chat") renderChatBoxes(true);
     } catch (e) {
       if (err) {
         err.hidden = false;
@@ -780,26 +1053,62 @@ window.QrysConocimiento = (function () {
       el.classList.toggle("hidden", key !== panel);
     });
     if (panel === "chat") {
-      loadResumen(page).then(() => renderChatBoxes(true)).catch(() => {});
+      loadResumenConModulo(page).then(() => renderChatBoxes(true)).catch(() => {});
+    }
+  }
+
+  async function onChatProceso(canal, pid) {
+    setProcesoChat(canal, pid);
+    await loadResumen(canal);
+    renderChatBoxes(true);
+    if (canal === "documentar") {
+      fillFiltroProceso();
+      renderPendientes();
+      fillProcesoSelect();
     }
   }
 
   async function onChatNuevo(canal) {
+    const procesoId = procesoChatDe(canal);
     await fetchJson("/api/conocimiento/chat/nuevo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ canal }),
+      body: JSON.stringify({ canal, procesoId }),
     });
     await loadResumen(canal);
     renderChatBoxes(true);
   }
 
+  async function onGenerarDiagramaConsultas() {
+    const sel = $("#consultaChatProceso");
+    const procesoId = sel?.value || chatProceso.consultas || "";
+    if (!procesoId) return alert("Seleccione el módulo en el desplegable de Chat.");
+    const pregunta = ($("#consultaChatInput")?.value || "").trim();
+    const btn = $("#btnConsultaGenerarDiagrama");
+    if (btn) btn.disabled = true;
+    try {
+      const out = await fetchJson("/api/conocimiento/diagrama", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ procesoId, pregunta }),
+      });
+      if (!out?.ok) throw new Error(out?.error || "No se pudo generar");
+      const url = out.diagrama?.url || `/conocimiento/${procesoId}/diagramas/flujo.html`;
+      window.open(url, "_blank", "noopener");
+    } catch (e) {
+      alert(e.message || "Error al generar el diagrama.");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function onChatArchivar(canal) {
     const titulo = window.prompt("Nombre para archivar este chat (opcional):", "") || "";
+    const procesoId = procesoChatDe(canal);
     await fetchJson("/api/conocimiento/chat/archivar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ canal, titulo }),
+      body: JSON.stringify({ canal, titulo, procesoId }),
     });
     await loadResumen(canal);
     renderChatBoxes(true);
@@ -816,24 +1125,69 @@ window.QrysConocimiento = (function () {
     renderChatBoxes(true);
   }
 
+  async function onAceptarFaq(canal, mensajeId) {
+    const dest = canal || "consultas";
+    const procesoId = procesoChatDe(dest) || caches[dest]?.chatProcesoId || "";
+    const chatId = caches[dest]?.chat?.id || "";
+    try {
+      await fetchJson("/api/conocimiento/faq", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canal: dest, procesoId, mensajeId, chatId }),
+      });
+      await loadResumen(dest);
+      renderChatBoxes(true);
+    } catch (e) {
+      alert(e.message || "No se pudo guardar en la base.");
+    }
+  }
+
   async function onEnviarChat(fromSel, canal) {
     const input = $(fromSel || "#docChatInput") || $("#consultaChatInput");
     const texto = input?.value?.trim();
     if (!texto) return;
     const dest = canal || (fromSel && fromSel.includes("consulta") ? "consultas" : "documentar");
+    if (input) input.value = "";
+    if (caches[dest]) {
+      const prev = caches[dest].chat || { mensajes: [] };
+      caches[dest].bot = {
+        estado: "trabajando",
+        iniciadoEn: new Date().toISOString(),
+        heartbeatEn: new Date().toISOString(),
+        pid: 0,
+      };
+      caches[dest].chat = {
+        ...prev,
+        mensajes: (prev.mensajes || []).concat([
+          { autor: "coordinador", texto, en: new Date().toISOString() },
+        ]),
+      };
+      renderChatBoxes(true);
+    }
     try {
-      await fetchJson("/api/conocimiento/chat", {
+      const out = await fetchJson("/api/conocimiento/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           autor: "coordinador",
           texto,
           canal: dest,
-          procesoId: procesoActual?.id || caches[dest]?.chat?.procesoId || "",
+          procesoId: procesoChatDe(dest) || procesoActual?.id || caches[dest]?.chatProcesoId || "",
         }),
       });
-      if (input) input.value = "";
       await loadResumen(dest);
+      if (caches[dest]) {
+        if (out.bot && out.bot.ok === false) {
+          caches[dest].bot = { estado: "error", error: out.bot.error || "No arrancó" };
+        } else if (out.bot) {
+          caches[dest].bot = {
+            estado: "trabajando",
+            ...out.bot,
+            iniciadoEn: out.bot.iniciadoEn || new Date().toISOString(),
+          };
+        }
+        if (out.chat) caches[dest].chat = out.chat;
+      }
       renderChatBoxes(true);
     } catch (e) {
       const err = $("#docError");
@@ -873,6 +1227,7 @@ window.QrysConocimiento = (function () {
     $("#btnDocNuevoProceso")?.addEventListener("click", () => onNuevoProceso());
     $("#btnDocEnviarChat")?.addEventListener("click", () => onEnviarChat("#docChatInput", "documentar"));
     $("#btnConsultaEnviarChat")?.addEventListener("click", () => onEnviarChat("#consultaChatInput", "consultas"));
+    $("#btnConsultaGenerarDiagrama")?.addEventListener("click", () => onGenerarDiagramaConsultas());
     $("#docChatInput")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.altKey) {
         e.preventDefault();
@@ -891,6 +1246,25 @@ window.QrysConocimiento = (function () {
     $("#btnDocChatArchivar")?.addEventListener("click", () => onChatArchivar("documentar"));
     $("#consultaChatSelect")?.addEventListener("change", (e) => onChatAbrir("consultas", e.target.value));
     $("#docChatSelect")?.addEventListener("change", (e) => onChatAbrir("documentar", e.target.value));
+    $("#consultaChatProceso")?.addEventListener("change", (e) => onChatProceso("consultas", e.target.value));
+    $("#docChatProceso")?.addEventListener("change", (e) => onChatProceso("documentar", e.target.value));
+    $("#docFiltroProceso")?.addEventListener("change", (e) => {
+      setProcesoChat("documentar", e.target.value || "");
+      refreshDocumentar();
+    });
+    $("#docProcesoId")?.addEventListener("change", (e) => {
+      if (e.target.value) setProcesoChat("documentar", e.target.value);
+    });
+    $("#consultaChatMensajes")?.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-faq-aceptar]") : null;
+      if (!btn) return;
+      onAceptarFaq("consultas", btn.getAttribute("data-faq-aceptar"));
+    });
+    $("#docChatMensajes")?.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest("[data-faq-aceptar]") : null;
+      if (!btn) return;
+      onAceptarFaq("documentar", btn.getAttribute("data-faq-aceptar"));
+    });
     $$(".kb-page-tab").forEach((btn) => {
       btn.addEventListener("click", () => showPagePanel(btn.dataset.kbPage, btn.dataset.kbPanel));
     });
@@ -912,6 +1286,7 @@ window.QrysConocimiento = (function () {
   });
 
   function init() {
+    if (window.QrysSolicitar) window.QrysSolicitar.init();
     bind();
     let mode = "hub";
     try {
@@ -919,7 +1294,7 @@ window.QrysConocimiento = (function () {
     } catch (_) {
       mode = "hub";
     }
-    if (mode === "analista" || mode === "consultas" || mode === "documentar") {
+    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar") {
       enterMode(mode);
     } else {
       showHub();

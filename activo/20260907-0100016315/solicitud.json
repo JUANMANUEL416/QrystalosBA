@@ -1,0 +1,183 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-11T23:46:43.875Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016315",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260907-0100016315",
+    "idReq": "0100016315",
+    "fecha": "2026-09-04",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "NEUMOCENTER SAS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "LAYNEKER CERON",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/NCENTE2",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Restricción de facturas en traslados simultáneos\n\nSe requiere implementar una restricción en el sistema para que una factura que se encuentre en un traslado no pueda ser agregada a otro traslado, ya sea que este se encuentre pendiente o ya haya sido recibida.\n\n1. Crear una factura y asignarla a un traslado.\n2. Intentar agregar la misma factura a otro traslado. DETALLE: Restricción de facturas en traslados simultáneos\n\nSe requiere implementar una restricción en el sistema para que una factura que se encuentre en un traslado no pueda ser agregada a otro traslado, ya sea que este se encuentre pendiente o ya haya sido recibida.\nRestricción de facturas en traslados simultáneos Se requiere implementar una restricción en el sistema para que una factura que se encuentre en un traslado no pueda ser agregada a otro traslado, ya sea que este se encuentre pendiente o ya haya sido recibida. 1. Crear una factura y asignarla a un traslado. 2. Intentar agregar la misma factura a otro traslado",
+    "criteriosAceptacion": "1) Con una factura ya incluida en un traslado PROCESO=FACTURAS (detalle ENTD, ENDEVO=0), el sistema no debe permitir agregarla a otro traslado de facturas, sin importar si el envío origen está Pendiente o Recibido (ENT.ESTADO) ni si el envío figura Cerrado (ENT.CERRADO=1).\n2) Escenario del REQ: crear traslado A → asignar factura → cerrar envío si aplica → crear traslado B → intentar marcar/asignar la misma N_FACTURA → debe bloquearse con mensaje claro (KO en API / notify en FE).\n3) Tras retirar la factura del traslado abierto con QUITAFACT_ENTD (o vaciar con QUITARTODO_ENTD en entrega aún editable), debe volver a poder incluirse en un traslado nuevo.\n4) Flujo DEVFACT (devolución desde cartera) y ENDEVO=1 en el ENTD origen no deben romperse: la factura en devolución sigue las reglas actuales de marcar/asignar DEVFACT.\n5) MARCAR_TODAS no debe volver a marcar facturas ya ligadas a ENTD activo (comportamiento ya alineado en SP); marcar individual (MARCAR_ITEM) y asignar (ASIGNAR_FACT) deben quedar igual de estrictos.\n6) No regresión: CREARCXC_ENT, PROCESAR_ENVIO, RECIBIR_AUDIFACTU, impresión acta (IMPRIMIR_ENT) y filtros por sede/fecha en la pestaña Traslados Facturas.",
+    "alcance": "Proceso **facturacion**, gate **envío-cartera-recepcion** (Traslados Facturas). Pantalla `/admin/facturacion` → pestaña **Traslados Facturas** (`FTRComponent.vue` → `ENTComponent.vue`), botones Enviar a Cartera / Enviar a Auditoría (captura 31/08/2026: grid ENT con Estado Pendiente/Recibido, Envío Cerrado). **Frontend:** alinear filtro de facturas candidatas (`WhereBFtr` / consistencia con `whereUSU`) para no listar facturas ya en ENTD activo. **Backend/SQL:** `SPQ_ENT_COL` — METODO **MARCAR_ITEM**, **ASIGNAR_FACT** y, si aplica el mismo hueco, **ASIGNAR_AUDIFACT**; mensaje de error explícito al intentar duplicar. Fuera de alcance: rediseño del módulo de traslados, cambios contables, reproceso masivo de ENTD históricos duplicados en BD (solo prevención hacia adelante salvo script explícito del cliente).",
+    "restricciones": "Rama **feature/NCENTE2**. Cliente NEUMOCENTER SAS. No implementar desde Qrystalos BA. Validar en copia/preversión con dos traslados FACTURAS reales. Releer **SPQ_ENT_COL.sql** del día en SSMS antes de desplegar (referencia en `sql_refe/xsql/SPQ_ENT_COL.sql`; fichas `leido` en conocimiento). Contabilidad: no afecta MCPE/MCH. Tipo cola «Performance»: el fix es integridad de datos (EXISTS ENTD), no tuning de consultas pesadas.",
+    "analisis": "**REQ (formulario + cola IX OnLine.htm):** Impedir que una factura presente en un traslado se agregue a otro, esté el traslado pendiente o ya recibido.\n\n**Ventana (captura):** Traslados Facturas — entregas ENT (Cns Entrega, Estado Pendiente/Recibido, Envío Cerrado, dep. Facturación → Cartera). Flujo operativo documentado en `conocimiento/facturacion/proceso.json` gate envío-cartera-recepcion: marcar FTR → **ASIGNAR_FACT** → **CERRAR_ENT** → recepción cartera (**PROCESAR_ENVIO** / **CREARCXC_ENT**) o auditoría (**RECIBIR_AUDIFACTU**).\n\n**Causa (KB + código vivo):** La restricción actual solo excluye facturas en traslados **abiertos** (`ENT.CERRADO=0`). En **SPQ_ENT_COL · ASIGNAR_FACT** el `NOT EXISTS` sobre ENTD exige `ENT.CERRADO=0` (sql_refe/xsql, líneas ~240-248). En **ENTComponent.vue** el filtro `WhereBFtr` repite esa condición (~2251-2253). Cuando el usuario **cierra** el envío (CERRADO=1) pero el traslado sigue Pendiente (ESTADO=0) o ya Recibido (ESTADO=1), la factura sigue en ENTD con ENDEVO=0 y vuelve a aparecer como candidata; **MARCAR_ITEM** no valida duplicados (solo toggle FTR.MARCA) y **ASIGNAR_FACT** inserta otra fila ENTD en un segundo CNSENTREGA. **MARCAR_TODAS** ya usa un `NOT EXISTS` más estricto (cualquier ENTD FACTURAS con ENDEVO=0, sin filtrar CERRADO) — de ahí posible inconsistencia «marca todas» vs marcar una a una.\n\n**Solución concreta:** Unificar predicado de bloqueo: existe `ENTD` con `PROCESO='FACTURAS'`, `COALESCE(ENDEVO,0)=0` y `NODOCUMENTO=@N_FACTURA`, excluyendo solo el `CNSENTREGA` destino cuando se reasigna dentro del mismo envío abierto. Aplicar en **MARCAR_ITEM** (al pasar a MARCA=1), **ASIGNAR_FACT** (INSERT SELECT) y **ASIGNAR_AUDIFACT** si comparte la misma lógica CERRADO=0; reflejar el mismo criterio en **WhereBFtr** (y revisar `whereUSU` ya más amplio). Devolver `KO` con texto tipo «Factura ya está en traslado Nº …» citando CNSENTREGA si es útil soporte.\n\n**Contabilidad:** `contabilidad.afecta=false` — controles sobre ENT/ENTD/FTR departamental; no genera comprobantes ni cuentas nuevas.",
+    "opciones": [],
+    "recomendacion": "**Implementación recomendada (mínimo alcance, defensa en profundidad):**\n1. **SQL `SPQ_ENT_COL`:** Sustituir en **ASIGNAR_FACT** (rama FACTURAS) el `NOT EXISTS` que filtra `ENT.CERRADO=0` por bloqueo ante cualquier ENTD activo (ENDEVO=0), opcionalmente `AND ENTD.CNSENTREGA <> @CNSENTREGA`. En **MARCAR_ITEM**, antes de poner MARCA=1, validar el mismo EXISTS y devolver KO con mensaje; permitir desmarcar sin restricción.\n2. **Revisar ASIGNAR_AUDIFACT** (misma condición CERRADO=0 en referencia) para no duplicar traslados a auditoría.\n3. **FE `ENTComponent.vue`:** Quitar `COALESCE(ENT.CERRADO,0)=0` del `NOT EXISTS` en `WhereBFtr` para alinear listado con backend; mantener filtros INDCARTERA/INDCXC/IDDEP facturación.\n4. **Pruebas:** (a) REQ paso 1-2 con envío cerrado y Estado Pendiente; (b) repetir con Estado Recibido sin quitar ENTD; (c) QUITAFACT_ENTD y re-traslado OK; (d) DEVFACT con ENDEVO=1.\n\n**Documentación:** Actualizar ficha `sps.json` de **MARCAR_ITEM** / **ASIGNAR_FACT** (`valida`/`errores`) tras cambiar el SP. **Siguiente paso Fase 1:** coordinador valida criterios; luego dictamen HTML cuando corresponda.",
+    "cambioPropuestoSimple": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Validación ENT/ENTD y departamentos FTR; no crea asientos MCPE/MCH ni comprobantes contables nuevos. Afecta contabilidad: No.",
+        "validadoEn": "2026-09-11T23:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de iniciar cualquier desarrollo, valide en el ambiente del cliente que el error no se haya corregido en un trabajo previo. Revise los datos del escenario (documento, montos, procedencia). Si el proceso ya funciona, no aplique la propuesta e informe que está correcto. Solo si el fallo se reproduce, proceda con el desarrollo sugerido."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-08-31_180916.png",
+        "ruta": "activo/20260907-0100016315/imagenes/Captura_de_pantalla_2026-08-31_180916.png",
+        "subidaEn": "2026-09-11T18:42:24",
+        "url": "/api/caso/20260907-0100016315/imagen/Captura_de_pantalla_2026-08-31_180916.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Con una factura ya incluida en un traslado PROCESO=FACTURAS (detalle ENTD, ENDEVO=0), el sistema no debe permitir agregarla a otro traslado de facturas, sin importar si el envío origen está Pendiente o Recibido (ENT.ESTADO) ni si el envío figura Cerrado (ENT.CERRADO=1).\n2) Escenario del REQ: crear traslado A → asignar factura → cerrar envío si aplica → crear traslado B → intentar marcar/asignar la misma N_FACTURA → debe bloquearse con mensaje claro (KO en API / notify en FE).\n3) Tras retirar la factura del traslado abierto con QUITAFACT_ENTD (o vaciar con QUITARTODO_ENTD en entrega aún editable), debe volver a poder incluirse en un traslado nuevo.\n4) Flujo DEVFACT (devolución desde cartera) y ENDEVO=1 en el ENTD origen no deben romperse: la factura en devolución sigue las reglas actuales de marcar/asignar DEVFACT.\n5) MARCAR_TODAS no debe volver a marcar facturas ya ligadas a ENTD activo (comportamiento ya alineado en SP); marcar individual (MARCAR_ITEM) y asignar (ASIGNAR_FACT) deben quedar igual de estrictos.\n6) No regresión: CREARCXC_ENT, PROCESAR_ENVIO, RECIBIR_AUDIFACTU, impresión acta (IMPRIMIR_ENT) y filtros por sede/fecha en la pestaña Traslados Facturas.",
+      "originalesEn": "2026-09-11T23:45:50.675Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Con una factura ya incluida en un traslado PROCESO=FACTURAS (detalle ENTD, ENDEVO=0), el sistema no debe permitir agregarla a otro traslado de facturas, sin importar si el envío origen está Pendiente o Recibido (ENT.ESTADO) ni si el envío figura Cerrado (ENT.CERRADO=1).\n2) Escenario del REQ: crear traslado A → asignar factura → cerrar envío si aplica → crear traslado B → intentar marcar/asignar la misma N_FACTURA → debe bloquearse con mensaje claro (KO en API / notify en FE).\n3) Tras retirar la factura del traslado abierto con QUITAFACT_ENTD (o vaciar con QUITARTODO_ENTD en entrega aún editable), debe volver a poder incluirse en un traslado nuevo.\n4) Flujo DEVFACT (devolución desde cartera) y ENDEVO=1 en el ENTD origen no deben romperse: la factura en devolución sigue las reglas actuales de marcar/asignar DEVFACT.\n5) MARCAR_TODAS no debe volver a marcar facturas ya ligadas a ENTD activo (comportamiento ya alineado en SP); marcar individual (MARCAR_ITEM) y asignar (ASIGNAR_FACT) deben quedar igual de estrictos.\n6) No regresión: CREARCXC_ENT, PROCESAR_ENVIO, RECIBIR_AUDIFACTU, impresión acta (IMPRIMIR_ENT) y filtros por sede/fecha en la pestaña Traslados Facturas.",
+      "trasAnalisisEn": "2026-09-11T23:46:05.099Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: hueco CERRADO=0 en ASIGNAR_FACT/WhereBFtr vs MARCAR_TODAS; MARCAR_ITEM sin validación. Fichas SPQ_ENT_COL leídas en conocimiento/facturacion/sps.json; líneas exactas contrastadas con sql_refe/xsql/SPQ_ENT_COL.sql. Releer SPQ_ENT_COL.sql del día al implementar por si NCENTE2 ya tocó el SP.",
+      "fecha": "2026-09-11T23:45:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_ENT_COL (releer en sql/ día de desarrollo si difiere de sql_refe/xsql)"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260907-0100016315/diagramas/flujo.html",
+      "subidaEn": "2026-09-11T18:46:25",
+      "url": "/api/caso/20260907-0100016315/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260907-0100016315-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016315\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "MARCAR_ITEM",
+        "estado": "leido",
+        "hace": "Toggle FTR.MARCA en traslado; guarda MOTIVO en RAZONANULACION.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "ASIGNAR_FACT",
+        "estado": "leido",
+        "hace": "INSERT ENTD desde FTR marcadas (FACTURAS/DEVFACT/AUDITORIA según PROCESO).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "MARCAR_TODAS",
+        "estado": "leido",
+        "hace": "Marca lote FTR por filtros para ENT.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "QUITAFACT_ENTD",
+        "estado": "leido",
+        "hace": "Quita línea ENTD; revierte marca FTR.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "CERRAR_ENT",
+        "estado": "leido",
+        "hace": "Alterna ENT.CERRADO si entrega ESTADO=0 y tiene ENTD.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "ASIGNAR_AUDIFACT",
+        "estado": "leido",
+        "hace": "Asigna FTR marcadas a ENT auditoría.",
+        "llama": []
+      }
+    ],
+    "notas": "Solo METODOs del gate traslados FACTURAS. No copiar catálogo SPQ_FTR_COL (68). FE: ENTComponent.vue WhereBFtr + AppStore ENT_COL.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260907-0100016315.html",
+    "aprobados": "aprobados/20260907-0100016315/",
+    "imagenes": "aprobados/20260907-0100016315/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-11",
+    "ultimoEnvio": "2026-09-11T18:51:15",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

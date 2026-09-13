@@ -1,0 +1,53 @@
+{
+  "id": "c202609120734579ab7",
+  "canal": "documentar",
+  "titulo": "NOMINA · 2026-09-12 07:34",
+  "estado": "activo",
+  "procesoId": "nomina",
+  "creadoEn": "2026-09-12T07:34:57",
+  "archivadoEn": null,
+  "mensajes": [
+    {
+      "id": "a20260912074300nomhint",
+      "autor": "agente",
+      "texto": "Este Chat es **Nómina**. Para Presupuesto cambie el **Módulo** arriba a PRESUPUESTO.\n\n**Qué hacer hoy (todos los pendientes):**\n1. **Presupuesto:** ya están en `sql/` `SPQ_PPTO_PTCDP`, `SPQ_PRESUPUESTO`, `SPQ_PPTO_RECO`, `SPQ_PPTO_REP`. En Documentar, módulo PRESUPUESTO, pulse **Documentar SP** uno por uno (siguen sin ficha).\n2. **Analista 6310** (Seguimiento Gastos): si acepta opción A, pida el dictamen en ese Chat.\n3. **Analista 6328**: dictamen listo → Cerrar fase 1 si lo aprueba.\n\n**Nómina (esta semana, no urgente):** falta identificar el SP de Liquidar (cierre NPER) y el de envío DIAN NE. Prenómina ya está documentada.\n\n**No toque:** HPRE, ACCTRAN, CE, PHD 6352, inventario esqueleto — esperan un REQ.",
+      "en": "2026-09-12T07:43:00"
+    },
+    {
+      "id": "a202609122130dian",
+      "autor": "agente",
+      "texto": "**Envío DIAN nómina.** Confirmado con FE (`DianNominaComponent`, MODELO `NOM_DIAN`) y `TK_FDIANR.sql`:\ngenerar/encolar NIEPEG → proceso externo → INSERT FDIANR → el TK pone ESTADODIAN en NIEPEG (2 OK, 1 error 500, 3 rechazado, 4 en consulta).\n\nTK fichado. **Falta `SPQ_NOM_DIAN.sql`** (GENERATE_NIEPEG, PROCESAR_NIE, PREVIEW_XML…).\nFRT_NEMP ya estaba leído (no se rehizo). Liquidación NPER sigue sin SP.",
+      "en": "2026-09-12T21:04:41"
+    },
+    {
+      "id": "a202609122120nom",
+      "autor": "agente",
+      "texto": "Validé `SPQ_NOM_DIAN.sql`. Fichas hechas.\n\n`GENERATE_NIEPEG` inserta desde VWK_NIEPE (no exige NPER.CERRADO). `PROCESAR_NIE` / `PROCESAR_NIE_FILTER` solo ponen ESTADODIAN=1. No insertan FDIANR. El externo envía y `TK_FDIANR` cierra (2 OK, 1 error 500, 3 rechazado, 4 consulta). `PREVIEW_XML` llama `SPK_GENERAR_XML_NOMINA` (no lo pido salvo que toquen el XML).\n\nSigue abierto: **liquidación NPER** (sin SP del botón Liquidar).",
+      "en": "2026-09-12T21:20:00"
+    },
+    {
+      "id": "a202609122128xml",
+      "autor": "agente",
+      "texto": "Leí `SPK_GENERAR_XML_NOMINA.sql`. Ficha hecha.\n\nArma XML 102 (o 103 si hay predecesor). Exige conceptos con `ID_DIAN` en `TGEN` CONCEPTOSNOMINA, resolución `FDIAN` vigente, ID/PIN software y ficha empleado (cotizante, tipo doc, contrato). Vista previa (`PATH_URL` nulo) solo `SELECT` del XML: **no** notifica ni toca `ESTADODIAN`. El atributo dice CUNE-SHA384; en el script el CUNE es concatenación (no hay HASHBYTES).\n\nEnvío DIAN documentado. Sigue abierto: **liquidación NPER**.",
+      "en": "2026-09-12T21:28:00"
+    },
+    {
+      "id": "a202609122132liq",
+      "autor": "agente",
+      "texto": "Ya está el botón. Pantalla `LiquidaNomComponent`. MODELO `LIQUIDACION` · `GENERATE_NOMINA` (cerrar: `PROCESO=CLOSE`) y `OPEN_NOMINA`. Contab/CxP van por `NC_CONTAB_NOMINA` (otro SP).\n\nPara fichar el cierre de `NPER`: baje **`SPQ_LIQUIDACION.sql`** a `sql/`.",
+      "en": "2026-09-12T21:32:00"
+    },
+    {
+      "id": "a202609122135nom",
+      "autor": "agente",
+      "texto": "Leí `SPQ_LIQUIDACION.sql`. Fichas hechas. Pendiente de liquidación: **cerrado**.\n\n`GENERATE_NOMINA` genera con `SPQ_LIQUIDAR_NOMI`. Si `PROCESO=CLOSE`, además `SPQ_CERRAR_NOMI` + vacaciones. Antes: terceros de ingresos distintos; al cerrar: KMCOM sin '%NO%' y que exista NIEPE. Este SPQ **no** escribe `NPER.CERRADO`.\n\n`OPEN_NOMINA`: no abre si PRI del mes está cerrado o hay pagos/notas en CxP de nómina → `SPQ_ABRIR_NOMI`.\n\nNo pido más. Los anidados solo si quieren la línea exacta de `CERRADO`.",
+      "en": "2026-09-12T21:35:00"
+    },
+    {
+      "id": "a202609122140capas",
+      "autor": "agente",
+      "texto": "Completé las **capas 3–5** con FE y SP ya leídos. No inventé archivo bancario ni asiento.\n\n**3 Lo que llega.** Novedades `NEDIA` (unidad/masivo; el motor `FNK_CALCULO_VLR_NOVEDAD_NOM` está leído). Vacaciones → `GENERA_NOVEDAD_VACACIONES` (sin .sql) y `SPK_PROCESO_VACACIONES` (leído). Adelantos `NACE` → `SPQ_ADELANTO_CESAN` en retiro.\n\n**4 Unido.** Liquidación → CxP (`NC_CONTAB_NOMINA` · `GENERATE_CxP_NOM`; USVGS `NOMINA_AUTENVIO_CXP`). Prestaciones `NIEPER` · `PROC_PAGO` (Bancos o Caja). DIAN ya está en capa 2. No hay pantalla de dispersión de salarios.\n\n**5 Contabilidad.** El FE llama `CONTABILIZAR` empleado a empleado. Cerrar ya exige KMCOM; abrir bloquea PRI cerrado. El .sql de `NC_CONTAB_NOMINA` no está: no afirmo OM.\n\n**Capa 1** (secundarios) sigue abierta: NEMPHIS (6359) y colilla (6378).\n\nPendiente del esqueleto: **cerrado**. No pido SQL.",
+      "en": "2026-09-12T21:40:00"
+    }
+  ]
+}

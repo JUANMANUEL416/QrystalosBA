@@ -1,5 +1,5 @@
 {
-  "actualizado": "2026-09-06T17:25:00",
+  "actualizado": "2026-09-12T21:15:18",
   "procesoId": "autorizaciones-ce",
   "spkPendientes": [
     "SPK_COPAGO_AUT_CEHOSP_RELIQ",
@@ -331,7 +331,7 @@
       "tipo": "SPQ",
       "estado": "parcial",
       "fuente": "sql/SPQ_CIT_COL_3.sql",
-      "nota": "SP grande (~3600 líneas). Gates bandeja CE documentados; resto inventario.",
+      "nota": "Bandeja CE: AUDITAR/ENVIARA + 5 METODO del control fichados 2026-09-12. El SP sigue parcial (GETCIT, exports, logs…).",
       "metodos": [
         {
           "id": "AUDITAR_CIT",
@@ -369,31 +369,96 @@
         },
         {
           "id": "ENVIARAPROGRAMA",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Pasa citas filtradas a programa: INSERT AUTPG (estado Generado) si no existe el afiliado/mes/unidad; pone CIT.CLASEORDEN=Modelo.",
+          "valida": [
+            "AFI y AFIPE activos",
+            "Cita no facturada y ENFACT=0"
+          ],
+          "noValida": [
+            "SQL dinámico (INNER/LEFT/WHERE del FE)",
+            "No factura"
+          ],
+          "errores": [
+            "Hubieron errores al enviar a los pacientes a programa: …"
+          ],
+          "llama": [],
+          "efecto": "AUTPG nuevos + CIT.CLASEORDEN=Modelo; TOTAL_REGISTROS.",
           "gateId": "ce-bandeja-envio-ftr",
           "capaId": "02-operacion"
         },
         {
           "id": "ENVIAR_TODO_AFACTURACION",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Marca ENFACT=1 masivo en CIT del filtro (auditada, cumplida, no facturada, no excluida).",
+          "valida": [
+            "AUTAUDITADO=1",
+            "CUMPLIDA=1",
+            "Autorización o PPT.PNUMAUTORIZA_OBL=0",
+            "NO_ENVIAR_FACT=0"
+          ],
+          "noValida": [
+            "No chequea duplicado AUTPG del mismo período (eso es ENVIARA_FACT individual)"
+          ],
+          "errores": [
+            "Error al enviar a facturacion: …"
+          ],
+          "llama": [],
+          "efecto": "CIT.ENFACT=1 + listado de no enviados.",
           "gateId": "ce-bandeja-envio-ftr",
           "capaId": "02-operacion"
         },
         {
           "id": "GENERAR_AUTPG",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Arma bandeja AUTPG del período/entidad/unidad desde AFIPE activos (un afiliado por unidad).",
+          "valida": [
+            "PERIODOS existe",
+            "No dos programas activos del mismo documento en la unidad",
+            "Plan del paciente en PPT de la aseguradora"
+          ],
+          "noValida": [
+            "No envía a facturación"
+          ],
+          "errores": [
+            "Los siguientes pacientes se encuentran activos en varios programas…",
+            "Los siguientes pacientes tienen un plan que no pertenece a la aseguradora…",
+            "No existe periodo, por favor validar",
+            "Error al generar el periodo para esta entidad y programa"
+          ],
+          "llama": [],
+          "efecto": "INSERT AUTPG estado Generado.",
           "gateId": "ce-bandeja-envio-ftr",
           "capaId": "02-operacion"
         },
         {
           "id": "HELPER_AUTPG",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Combos de la pestaña Programa: períodos, régimen, contratantes, unidades, programas, sedes, causales, planes.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
           "gateId": "ce-bandeja-envio-ftr",
           "capaId": "02-operacion"
         },
         {
           "id": "PROCESAR_NO_ENV_FACT_MASIVO",
-          "estado": "listado",
+          "estado": "leido",
+          "hace": "Marca o revierte exclusión de envío a facturación en lote (CIT.NO_ENVIAR_FACT) y deja log CIT_LOG_AF.",
+          "valida": [
+            "FILAS JSON válido",
+            "Marcar: causal TGEN CIT/NO_ENV_FACT_CAUSAL; cita no facturada, ENFACT=0, no excluida",
+            "Revertir: ya excluida, ENFACT=0, no facturada"
+          ],
+          "noValida": [],
+          "errores": [
+            "FILAS debe ser un arreglo JSON valido.",
+            "No se recibieron filas para procesar."
+          ],
+          "llama": [],
+          "efecto": "CIT excluida o reactivada + CIT_LOG_AF.",
           "gateId": "ce-bandeja-envio-ftr",
           "capaId": "02-operacion"
         }
@@ -526,6 +591,140 @@
       "gateId": "aut-creacion-gestion",
       "capaId": "02-operacion",
       "notaCaja": "Concepto CPCJ: MOCC.CODIGOCPCJ del plan, o USVGS IDCJMODE (TIPOCOPAGO=M) / IDCJCOPA (C) / IDCJPART (planes particular). PROCEDENCIA TFCJ=CE, CLASE_FAC=COBRO."
+    },
+    {
+      "nombre": "SPQ_AUTPG",
+      "tipo": "SPQ",
+      "modelo": "AUTPG",
+      "estado": "leido",
+      "fuente": "sql/SPQ_AUTPG.sql",
+      "actualizado": "2026-09-12T21:15:18",
+      "metodos": [
+        {
+          "id": "INSERTAR_PACIENTE",
+          "hace": "Alta AUTPG: afiliado activo del programa y de la entidad, no duplicado en periodo/unidad.",
+          "valida": [
+            "MPE.IDROL (unidad)",
+            "AFI Activo y IDADMINISTRADORA = entidad",
+            "AFIPE Activo en el programa",
+            "No existe AUTPG mismo afiliado/periodo/unidad/entidad"
+          ],
+          "noValida": [],
+          "errores": [
+            "Programa inválido: no se encontró unidad de atención (MPE.IDROL)",
+            "Afiliado inválido o inactivo",
+            "El afiliado no pertenece a la aseguradora (entidad) seleccionada",
+            "Este paciente ya se encuentra registrado en este periodo y entidad",
+            "Este paciente no se encuentra activo en el programa seleccionado"
+          ],
+          "llama": [],
+          "efecto": "INSERT AUTPG.",
+          "capaId": "02-operacion",
+          "gateId": "ce-bandeja-envio-ftr",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIARA_FACT_TODOS",
+          "hace": "Marca ENFACT=1 masivo (autorizados, facturables, VALORPAQ>0, no NO_ENVIAR_FACT) y log AUTPG_LOG.",
+          "valida": [
+            "IDTERCERO, UNIDAD, PERIODO obligatorios"
+          ],
+          "noValida": [
+            "No factura; solo marca envío"
+          ],
+          "errores": [
+            "EXISTEN VARIABLES OBLIGATORIAS QUE NO SE HAN SUMINISTRADO…"
+          ],
+          "llama": [],
+          "efecto": "AUTPG.ENFACT=1 + copago desde VWK_CARGOS_HADMAUTCIT_ART.",
+          "capaId": "02-operacion",
+          "gateId": "ce-bandeja-envio-ftr",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIARA_EVENTO",
+          "hace": "Si AUTPG Rechazado, pone CIT.CLASEORDEN=Normal (sale a evento).",
+          "valida": [],
+          "noValida": [
+            "No valida estado de la cita"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE CIT.",
+          "capaId": "02-operacion",
+          "gateId": "ce-bandeja-envio-ftr",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIARA_FACT",
+          "hace": "Toggle ENFACT de un AUTPG (ACCION=1 envía / 0 regresa). Log AUTPG_LOG. Copia copago si aplica.",
+          "valida": [
+            "Si envía: no NO_ENVIAR_FACT",
+            "Estado Autorizado o Autorizado Recuperado",
+            "No FACTURADO; VALORPAQ>0",
+            "Sin otro AUTPG/CIT del mismo afiliado-período en facturación (salvo FORZAR_ENVIO_DUPLICADO)"
+          ],
+          "noValida": [
+            "No factura"
+          ],
+          "errores": [
+            "El registro está marcado como No enviado a facturación…",
+            "DUPLICADO_FACTURACION_MISMO_PERIODO"
+          ],
+          "llama": [],
+          "efecto": "AUTPG.ENFACT + log.",
+          "estado": "leido",
+          "gateId": "ce-bandeja-envio-ftr",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "FACTURAR_AUTPG",
+          "hace": "Factura programa: AUTPG autorizados del período/plan → SPK_FACTURA_AUTPG.",
+          "valida": [
+            "Hay AUTPG FACTURABLE no facturados, no excluidos",
+            "SERTOT del paquete > 0",
+            "SER del paquete existe",
+            "MAXAFI_XFTR > 0",
+            "NIT facturador"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se encontraron items para facturar.",
+            "Tercero facturador no identificado…",
+            "Servicio del paquete no proporcionado…",
+            "El paquete asociado no existe…",
+            "Valor del Paquete no puede ser menor o igual a cero(0)"
+          ],
+          "llama": [
+            "SPK_FACTURA_AUTPG"
+          ],
+          "efecto": "FTR del programa (lo deja el SPK).",
+          "estado": "leido",
+          "gateId": "aut-facturacion",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "FACTURAR_EVENTO_PAQ",
+          "hace": "Factura marcas VWK_CARGOS_HADMAUTCIT_ART (MARCAFAC=1) vía SPK_FACTURACI_EVENTO_PAQ.",
+          "valida": [
+            "Hay marcas del usuario",
+            "Paquete SER y valor > 0",
+            "Si FACTSEDE=SI no permite sede TODAS salvo FACTSEDEPACIENTE"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se encontraron items para facturar.",
+            "Escogio Todas las Sedes y esta IPS Tiene configurado Facturación por Sede"
+          ],
+          "llama": [
+            "SPK_FACTURACI_EVENTO_PAQ"
+          ],
+          "efecto": "FTR evento paquete (lo deja el SPK).",
+          "estado": "leido",
+          "gateId": "aut-facturacion",
+          "capaId": "02-operacion"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,64 @@
+{
+  "mensajes": [
+    {
+      "id": "20260910121059297664",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste los SP/METODO documentados a usar. No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis).",
+      "fecha": "2026-09-10T12:10:59"
+    },
+    {
+      "id": "20260910121059325480w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-10T12:10:59"
+    },
+    {
+      "id": "20260910121646877178",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste los SP/METODO documentados a usar. No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis).",
+      "fecha": "2026-09-10T12:16:46"
+    },
+    {
+      "id": "20260910121646955545w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-10T12:16:46"
+    },
+    {
+      "id": "20260910172500agente6337",
+      "autor": "agente",
+      "texto": "## Análisis REQ 0100016337 · Anexo factura — código paquete\n\n**Problema:** Al imprimir el **anexo** desde Facturación, el **código de paquete/servicio** no se ve en el PDF y el **formato sobrepone** textos (misma queja de visualización en IX OnLine / cola `IX OnLine.htm`).\n\n**Causa (KB + Qrystalos2):**\n- Flujo: `FTRComponent` → **Anexo** → `useAnexFtr` → `ANEXOS_HADMFTR` (**ANEXO_NORMAL** tab AFTR o **ANEXO_AUTPG** si procedencia programa) → PDF en `RptAnexoFtrnormal.js` / `generarAnexoAUTPG.js`.\n- El código se pinta con `s.IDSERVICIO` (anexo normal) o `s.REFERENCIA` (AUTPG). Si el dato viene vacío del SP o la maquetación lo tapa, el usuario ve el campo «invisible».\n- En `RptAnexoFtrnormal.addencabezado` (y `FmtAnex01.js`) hay **texto duplicado del tercero en `doc.text(35, dt, …)` con `dt=0`**, encabezado fijo estrecho y columnas Plan/Nivel mal ubicadas → solapamiento con la grilla «Servicio» (coherente con «no sobreponga datos»).\n- Facturas **PAQUETE=1**: la **factura** ya segmenta detalle en `fmt06E.js`; el **anexo normal** no replica esa lógica (riesgo adicional en Clínica Maicao).\n\n**Solución propuesta (rama hotfix/CMAICA169):**\n1. **FE (prioritario):** corregir encabezado y columnas en `RptAnexoFtrnormal.js`; paridad en `FmtAnex01.js` (ruta `ImprimeAnexoFtr` / `FTR_IMPRESION` · DATOSFTR). Reservar columna Servicio, altura de fila multilínea, opcional segmentación PAQUETE como `fmt06E`.\n2. **SQL (solo si hace falta):** si FTRD tiene IDSERVICIO (LISTAFTRD) y el recordset de **ANEXO_NORMAL** no, ajustar SPQ_ANEXOS_HADMFTR — hoy **no documentado** en `sps.json`.\n\n**Criterios / alcance / restricciones:** quedaron en el formulario (`solicitud.contenido`). Contabilidad: **no aplica** (validación corregida a `no_aplica`).\n\n**SP · METODO · estado · rol en el fix**\n\n| SP | METODO | estado | Rol |\n|----|--------|--------|-----|\n| SPQ_FTR_COL | LISTAFTRD | leido | Contrastar IDSERVICIO/PAQUETE en BD vs PDF |\n| SPQ_ANEXOS_HADMFTR | ANEXO_NORMAL | no_documentado | Datos anexo factura (AFTR) |\n| SPQ_ANEXOS_HADMFTR | ANEXO_AUTPG | no_documentado | Anexo factura programa |\n| SPQ_FTR_IMPRESION | DATOSFTR | no_documentado | Ruta alternativa FmtAnex01 |\n\n**Brecha:** falta **N_FACTURA** (y captura PDF actual) en el caso activo para cerrar en dictamen si el fix es solo FE o también SP. Si la tienen, adjúntenla en Chat o `aprobados/.../imagenes/` antes del dictamen HTML.\n\nNo generé dictamen en este turno (solo análisis orientado a solución).",
+      "fecha": "2026-09-10T12:25:00"
+    },
+    {
+      "id": "20260910131849680689",
+      "autor": "coordinador",
+      "texto": "genera el documento para validarlo",
+      "fecha": "2026-09-10T13:18:49"
+    },
+    {
+      "id": "20260910131849699324w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-10T13:18:49"
+    },
+    {
+      "id": "20260910182000agente6337doc",
+      "autor": "agente",
+      "texto": "Listo el dictamen para su revisión.\n\n**Documento:** dictamenes/20260907-0100016337.html (ábralo desde la app o el explorador; Ctrl+P si necesita PDF).\n\n**Contenido resumido:** fix prioritario en **frontend** (RptAnexoFtrnormal.js + paridad FmtAnex01.js): encabezado del anexo sin solapamiento y columna del **código de paquete/servicio** visible; lógica **PAQUETE=1** alineada a fmt06E si aplica. API **ANEXOS_HADMFTR** sin cambio salvo que el dato no llegue pese a FTRD correcto (LISTAFTRD documentado). **Contabilidad: No.**\n\n**Estado:** Propuesto — valide criterios CA-01 a CA-05 y la trazabilidad sección 4. Si está de acuerdo, indique ajustes en este Chat o cierre fase 1 cuando corresponda.\n\nActualicé también `solicitud.contenido` (criterios, alcance, análisis, brecha, SPs) para que coincida con el HTML.",
+      "fecha": "2026-09-10T13:20:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-10T13:22:56"
+    },
+    {
+      "id": "correo-cierre-20260907-0100016337",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a elan.bravo@ixcolombia.com.",
+      "fecha": "2026-09-10T13:23:13"
+    }
+  ]
+}

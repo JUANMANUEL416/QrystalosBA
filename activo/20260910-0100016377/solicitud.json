@@ -1,0 +1,142 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-10T19:25:08.280Z",
+    "listoParaAnalisis": false
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016377",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260910-0100016377",
+    "idReq": "0100016377",
+    "fecha": "2026-09-10",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "CLINICA MEDICAL",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "HPRE · CATALOGO DE CARGO",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "KENA PAOLA MONTES",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/MEDICAL785",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "HPRE · CATALOGO DE CARGO",
+    "requerimiento": "Solicitud de cambio de estado en órdenes de imágenes y laboratorios\n\nSe solicita la implementación de una funcionalidad que permita a los facturadores cambiar el estado de las órdenes de imágenes diagnósticas y laboratorios de 'Anulado' a 'Tomado' cuando cuenten con un resultado. Actualmente, se han identificado casos en que los estudios se encuentran en  estado en 'Anulado' y tienen resultado impidiendo la correcta inclusión de estos ítems en el proceso de facturación.\n\n1. Acceder al módulo de facturación.\n2. Seleccionar una orden de imagen diagnóstica o laboratorio con estado 'Anulado'.\n3. Verificar que no se puede cambiar el estado a 'Tomado'. DETALLE: Se solicita la implementación de una funcionalidad que permita a los facturadores cambiar el estado de las órdenes de imágenes diagnósticas y laboratorios de 'Anulado' a 'Tomado' cuando cuenten con un resultado. Actualmente, se han identificado casos en que los estudios se encuentran en  estado en 'Anulado' y tienen resultado impidiendo la correcta inclusión de estos ítems en el proceso de facturación.",
+    "criteriosAceptacion": "1) Con rol/permiso de facturador, en catálogo de cargos (admisión hospitalaria / Cargos SOAT), un ítem HPRED de imagenología o laboratorio (APOYODG_AMBITO distinto de vacío) que el sistema muestre como orden «Anulada» y que tenga resultado integrado (evidencia: LORD/LABO_INTER o HPRED.ENLAB=2 según reglas del cliente IMEXHS) permite cambiar el estado a «Tomado» (ENLAB=1 en convención ApoyoDx / IMEXHS).\n2) Tras el cambio exitoso, el ítem queda elegible para el flujo de facturación de la admisión (marcación / Facturar SOAT o facturación hospitalaria) sin quedar excluido por el estado previo; FACTURADA sigue en 0 hasta facturar normalmente.\n3) Si no hay resultado, si FACTURADA=1, si HPRED.ANULADO impide edición según reglas actuales del SP, o si el ámbito no es imagen/laboratorio, el sistema rechaza con mensaje explícito (sin actualizar ENLAB).\n4) Queda trazabilidad mínima (usuario, fecha; motivo opcional si el SP ya lo soporta).\n5) No se alteran ítems sin apoyo diagnóstico ni órdenes que no estén en el estado origen «Anulado».",
+    "alcance": "Incluye: detalle de prestación HPRED ligado a órdenes de apoyo diagnóstico (imagenología y laboratorio) en hospitalización — ventana operativa alineada con captura: Admisión → Cargos SOAT (`HPRESOATComponent` / `ServiciosPrefijoComponent`, ruta `#/asis/admisiones`) y catálogo HPRE no SOAT (`HPREComponent`); persistencia vía `SPQ_HPRE` (METODO `HPRED` / acción dedicada de cambio de estado); validación de resultado antes de pasar Anulado→Tomado; permiso USGRUH para perfiles facturador. Cliente MEDICAL, rama feature/MEDICAL785.\nExcluye: facturación masiva FTR_COL, consulta externa AUT/AUTD (salvo que el mismo SP comparta rama CE), anulación/reverso de facturas FTR, interfaz LIS completa (SPQ_INTERFACELX) salvo sincronización mínima que el SP exija, y cambios contables (MCPE/MCP).",
+    "restricciones": "No inventar valores de ENLAB: contrastar en `SPQ_HPRE.sql` el código exacto de «Anulado» vs «Tomado» en MEDICAL (IMEXHS documenta 0=Admitido, 1=Tomado, 2=con resultado en `AsistencialComponent.vue` / runbook interfazlx). Respetar `HPRED.ANULADO`, `FACTURADA`, `NOCOBRABLE`, `USUARIOMARCA` y reglas de interfaz (`INTERFAZ_LX`, `ITF_LX_HABILITA_EDIC`) ya usadas en ApoyoDx. No permitir transición si el resultado no está integrado. No tocar MCUE/CON/MCPE. Desarrollo solo especificación; pruebas en copia con caso real (admisión SOAT + radiografía con resultado y estado anulado).",
+    "analisis": "REQ (IX + formulario): facturadores no pueden pasar órdenes de imagen/lab de Anulado a Tomado cuando ya hay resultado, y el cargo no entra a facturación.\n\nEvidencia FE: la captura `cambioEstadoImagenes` muestra Admisión SOAT → pestaña Cargos SOAT → ítem imagenología (871010) con acción «Editar Detalle» (`ServiciosPrefijoComponent` / `onEditarHPREDesdeServicios` en `HPRESOATComponent`). La otra captura (Procesos de Caja / Reimpresión) no ilustra el cambio de estado; no se usa como referencia funcional del REQ.\n\nKB proceso `hpre` (esqueleto, gate 0100016305): solo `SPQ_DISTRIHPRED_SOAT` · `HPRED_SOATSER` y `CARGAR_DATOS` están `leido`; no cubren edición de estado ApoyoDx. Catálogo hospitalario usa `MODELO: HPRE`, `METODO: HPRED` (`HPREComponent.vue`, `HPRESOATComponent.vue`). Apoyo diagnóstico: `HPRED.APOYODG_AMBITO`, `HPRED.ENLAB`, `HPRED.NORDEN`; runbook interfazlx y `FTRPaqCedComponent` tratan ENLAB=2 como «con resultado» para facturación/apoyo. En IMEXHS el FE etiqueta ENLAB 0/1 como Admitido/Tomado (`apoyodx/ordenes/AsistencialComponent.vue`). El bloqueo actual es coherente con ausencia de acción/validación en FE+SP para rehabilitar una orden anulada con resultado ya cargado.\n\nCausa probable (pendiente línea exacta en SP): `SPQ_HPRE` rechaza o no expone actualización de ENLAB/estado de orden cuando el registro quedó anulado pese a tener LORD/LABO_INTER; el catálogo solo permite editar campos comerciales del HPRED, no el estado de la orden.",
+    "opciones": [],
+    "recomendacion": "Implementar transición controlada Anulado→Tomado en el gate catálogo HPRE:\n\n1) **Backend:** En `SPQ_HPRE`, nuevo METODO (p. ej. `CAMBIAR_ESTADO_ORDEN_APDX`) o rama en `HPRED` que reciba NOPRESTACION+NOITEM+estado destino. Validar: `APOYODG_AMBITO` en conjunto imagen/LX del cliente; estado origen = anulado (según SP); resultado integrado (ENLAB=2 y/o EXISTS LORD/LABO_INTER — definir en el script); `FACTURADA=0`; `ANULADO` según política (solo limpiar si negocio lo autoriza). Actualizar `HPRED.ENLAB=1` (Tomado) y campos auxiliares que el SP ya use (NORDEN, ANULADO). Devolver OK/KO con texto operativo.\n\n2) **Frontend:** En `HPREComponent` y `HPRESOATComponent` (diálogo Editar detalle / menú acciones en filas con APOYODG), acción «Cambiar a Tomado» visible solo con permiso facturador y cuando el listado traiga el estado Anulado + indicador de resultado. Llamada `AppStore.json` al METODO nuevo. Refrescar grilla SOAT vía `ServiciosPrefijoComponent`.\n\n3) **Facturación:** Verificar que, tras ENLAB=1 con resultado previo, el ítem entra en `FACTURAR` SOAT (`SPQ_DISTRIHPRED_SOAT` → `SPK_FACTURA_SOAT_TODO`) o en preparación HADM sin filtros adicionales que sigan excluyendo el ítem.\n\n4) **Documentar** el METODO en `conocimiento/hpre/sps.json` al recibir `SPQ_HPRE.sql` en `sql/`.\n\n**SQL pendiente:** bajar `SPQ_HPRE.sql` (no está en `conocimiento/hpre/sps.json` ni en `sql_refe/0100016377`). Sin ese script no se fija el valor numérico de «Anulado» ni las validaciones existentes en EDITAR.",
+    "cambioPropuestoSimple": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contabilidad.afecta=false. Ajuste de HPRED.ENLAB/estado de orden ApoyoDx para facturación hospitalaria/SOAT; no genera ni modifica MCP, MCPE, CON, MCUE ni comprobantes. La facturación posterior sigue el flujo FTR/SOAT ya existente.",
+        "validadoEn": "2026-09-10T19:20:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-09-02_112704_ReciboCaja.png",
+        "ruta": "activo/20260910-0100016377/imagenes/Captura_de_pantalla_2026-09-02_112704_ReciboCaja.png",
+        "subidaEn": "2026-09-10T14:12:48",
+        "url": "/api/caso/20260910-0100016377/imagen/Captura_de_pantalla_2026-09-02_112704_ReciboCaja.png"
+      },
+      {
+        "nombre": "Captura_de_pantalla_2026-09-02_115147_cambioEstadoImagenes.png",
+        "ruta": "activo/20260910-0100016377/imagenes/Captura_de_pantalla_2026-09-02_115147_cambioEstadoImagenes.png",
+        "subidaEn": "2026-09-10T14:12:48",
+        "url": "/api/caso/20260910-0100016377/imagen/Captura_de_pantalla_2026-09-02_115147_cambioEstadoImagenes.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Con rol/permiso de facturador, en catálogo de cargos (admisión hospitalaria / Cargos SOAT), un ítem HPRED de imagenología o laboratorio (APOYODG_AMBITO distinto de vacío) que el sistema muestre como orden «Anulada» y que tenga resultado integrado (evidencia: LORD/LABO_INTER o HPRED.ENLAB=2 según reglas del cliente IMEXHS) permite cambiar el estado a «Tomado» (ENLAB=1 en convención ApoyoDx / IMEXHS).\n2) Tras el cambio exitoso, el ítem queda elegible para el flujo de facturación de la admisión (marcación / Facturar SOAT o facturación hospitalaria) sin quedar excluido por el estado previo; FACTURADA sigue en 0 hasta facturar normalmente.\n3) Si no hay resultado, si FACTURADA=1, si HPRED.ANULADO impide edición según reglas actuales del SP, o si el ámbito no es imagen/laboratorio, el sistema rechaza con mensaje explícito (sin actualizar ENLAB).\n4) Queda trazabilidad mínima (usuario, fecha; motivo opcional si el SP ya lo soporta).\n5) No se alteran ítems sin apoyo diagnóstico ni órdenes que no estén en el estado origen «Anulado».",
+      "originalesEn": "2026-09-10T19:24:22.007Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Con rol/permiso de facturador, en catálogo de cargos (admisión hospitalaria / Cargos SOAT), un ítem HPRED de imagenología o laboratorio (APOYODG_AMBITO distinto de vacío) que el sistema muestre como orden «Anulada» y que tenga resultado integrado (evidencia: LORD/LABO_INTER o HPRED.ENLAB=2 según reglas del cliente IMEXHS) permite cambiar el estado a «Tomado» (ENLAB=1 en convención ApoyoDx / IMEXHS).\n2) Tras el cambio exitoso, el ítem queda elegible para el flujo de facturación de la admisión (marcación / Facturar SOAT o facturación hospitalaria) sin quedar excluido por el estado previo; FACTURADA sigue en 0 hasta facturar normalmente.\n3) Si no hay resultado, si FACTURADA=1, si HPRED.ANULADO impide edición según reglas actuales del SP, o si el ámbito no es imagen/laboratorio, el sistema rechaza con mensaje explícito (sin actualizar ENLAB).\n4) Queda trazabilidad mínima (usuario, fecha; motivo opcional si el SP ya lo soporta).\n5) No se alteran ítems sin apoyo diagnóstico ni órdenes que no estén en el estado origen «Anulado».",
+      "trasAnalisisEn": "2026-09-10T19:24:44.711Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis REQ→KB listo. Proceso hpre (esqueleto): solo lectura SOAT documentada. Fix requiere SPQ_HPRE (no en sps.json). Confirmar en SP el mapeo exacto Anulado/Tomado vs ENLAB/ANULADO y regla de «tiene resultado» para MEDICAL/IMEXHS.",
+      "fecha": "2026-09-10T19:20:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_HPRE.sql — METODO HPRED / CAMBIAR_ESTADO_ORDEN_APDX (propuesto): validar y actualizar estado orden ApoyoDx en HPRED"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260910-0100016377/diagramas/flujo.html",
+      "subidaEn": "2026-09-10T14:25:08",
+      "url": "/api/caso/20260910-0100016377/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016377\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": false,
+    "procesoId": "hpre",
+    "catalogo": "conocimiento/hpre/sps.json",
+    "metodosDocumentados": [],
+    "notas": "Gate 0100016377. El SP del cambio (SPQ_HPRE) no está fichado; no marcar HPRED_SOATSER/CARGAR_DATOS (solo listado SOAT, REQ 6305). Colocar SPQ_HPRE.sql en sql/ para dictamen/trazabilidad.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260910-0100016377.html",
+    "aprobados": "aprobados/20260910-0100016377/",
+    "imagenes": "aprobados/20260910-0100016377/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-10",
+    "ultimoEnvio": "2026-09-10T14:49:47",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

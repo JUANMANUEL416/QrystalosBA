@@ -1,0 +1,362 @@
+{
+  "procesoId": "inventario",
+  "actualizado": "2026-09-12T21:15:18",
+  "nota": "SR20260911-001. Solo METODOs del gate periodo-inv-abierto, leídos en sql/ el 2026-09-11. No se fichó el catálogo IMOV/IZSOL. SPQ_IMOV_2.sql es copia paralela de los mismos METODO (mismo hueco PRI).",
+  "sps": [
+    {
+      "nombre": "SPQ_IMOV",
+      "tipo": "SPQ",
+      "modelo": "IMOV",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_IMOV.sql",
+      "cola": "Gate periodo: CRUD_IMOV, CRUD_IMOV_SAL, CONFIRMA_ENTREGA, CONFIRMA_SALIDA, ANULAR_SALIDA. Resto del SP no fichado.",
+      "metodos": [
+        {
+          "id": "CRUD_IMOV",
+          "hace": "Crea o edita cabecera IMOV de entrada (PROCESO NUEVO/EDITAR). Genera CNSMOV con SPQ_GENSEQUENCE prefijo @MOV.",
+          "valida": [
+            "NUEVO: PRI.CERRADO_INV=1 del ANO/MES de FECHAMOV → KO",
+            "EDITAR: IMOV.ESTADO=1 no se edita",
+            "Tipo producción propia exige CNSTRAN (paciente)",
+            "Compras/remisión: factura no duplicada si ya hay IMOV confirmado",
+            "Si ASI_VAL_CCAF_CARGOS=SI y el tipo se contabiliza: existe KMCOM MOV_INVENTARIO para prefijo+CCOSTO+IDAREA"
+          ],
+          "noValida": [
+            "PRI.CERRADO (cierre contable general) en NUEVO ni EDITAR",
+            "CERRADO_INV al EDITAR (solo al insertar)",
+            "Pendientes IMOV del mes"
+          ],
+          "errores": [
+            "No se Permiten hacer Movimientos de Periodos Cerrados.",
+            "No se puede Editar, el regsitro ya se encuentra Confirmado",
+            "Debe de seleccionar al paciente.",
+            "Número de Factura Duplicado.... revisar",
+            "No existe configuracion contable para este prefijo, centro de costo y Area funcional.",
+            "Consecutivo Utilizado por otro Movimiento, Verificar Contadores."
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "INSERT/UPDATE IMOV (ESTADO 0). No confirma ni toca IEXI.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_IMOV_SAL",
+          "hace": "Crea o edita cabecera IMOV de salida. Único METODO IMOV que valida permiso por grupo USUSU.",
+          "valida": [
+            "PRI.CERRADO=1 del ANO/MES de FECHAMOV → KO",
+            "Bodega destino distinta en traslado IDTS",
+            "FECHAMOV no mayor a hoy",
+            "Periodos anteriores si MOV_PERIODOS_ANT=NO"
+          ],
+          "noValida": [
+            "PRI.CERRADO_INV",
+            "Pendientes IMOV/ITRA/ISAL del mes"
+          ],
+          "errores": [
+            "No se Permiten hacer Movimientos de Periodos Cerrados.",
+            "No puede Seleccionar la misma Bodega Destino Para Los Traslados.",
+            "La Fecha de Movimiento no puede ser mayor a la fecha Actual.",
+            "No se Permiten hacer Movimientos de Periodos Anteriores."
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "INSERT/UPDATE IMOV de salida (ESTADO 0).",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMA_ENTREGA",
+          "hace": "Registra/ajusta entregas ISAL (y sincroniza IMOVH) de un IMOV aún no confirmado. No pasa IMOV a ESTADO=1.",
+          "valida": [
+            "CNSMOV e IDBODEGA (bodega siempre desde IMOV)",
+            "IMOV no confirmado ni anulado (ESTADO 1/2)",
+            "Existencia IEXI por lote+pedido vs cantidad ISAL acumulada"
+          ],
+          "noValida": [
+            "PRI.CERRADO",
+            "PRI.CERRADO_INV",
+            "Fecha FECHAMOV vs periodo"
+          ],
+          "errores": [
+            "No se pueden registrar entregas: movimiento o bodega origen no encontrados.",
+            "El movimiento ya está confirmado o anulado. No se pueden agregar/modificar entregas.",
+            "Lote … no cuenta con las existencias suficientes…"
+          ],
+          "llama": [
+            "SPK_ACTUALIZA_IMOVH_DISAL"
+          ],
+          "efecto": "ISAL/IMOVH actualizados; IMOV sigue ESTADO=0.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMA_SALIDA",
+          "hace": "Confirma salida: exige ISAL, revalida existencias (INV + reservas Pick&Pack), applock por bodega y llama SPK_CONFIRMARSALIDAS.",
+          "valida": [
+            "CNSMOV y bodega desde IMOV",
+            "Pick&Pack: ESTADO_PICKPACK=3 si ES_PICKPACK=1",
+            "Al menos una fila ISAL",
+            "Farmacia: IMOVH.PCOSTO>0",
+            "INV: IEXI suficiente (lote/pedido) menos reservas ajenas",
+            "Sin transacción externa; ESTADO sigue 0 bajo lock"
+          ],
+          "noValida": [
+            "PRI.CERRADO",
+            "PRI.CERRADO_INV",
+            "FECHAMOV vs ANO/MES de PRI"
+          ],
+          "errores": [
+            "No se puede confirmar: movimiento o bodega origen no encontrados.",
+            "Picking parcial… / Debe finalizar packing…",
+            "No se puede Confirmar el Movimiento. No se realizó entrega de al menos un(1) artículo.",
+            "No se puede confirmar el movimiento. Existe artículos con Costo Cero(0)",
+            "Hay artículos en el movimiento sin existencias suficientes…",
+            "CONFIRMA_SALIDA debe ejecutarse sin una transacción externa.",
+            "El movimiento cambió de estado mientras se esperaba disponibilidad…"
+          ],
+          "llama": [
+            "SPK_CONFIRMARSALIDAS"
+          ],
+          "efecto": "Salida confirmada vía SPK (IEXI/IMOV ESTADO=1). No consulta PRI.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULAR_SALIDA",
+          "hace": "Anula IMOV de salida. Farmacia: SPK_ANULAR_MOV_INV. Resto: UPDATE ESTADO=2 en IMOV/IMOVH según procedencia (INV, HTX/SALUD, CM_SOL/Consumo).",
+          "valida": [
+            "Farmacia: resultado ESTADO=2 del SPK",
+            "HTX/SALUD: HADM.CERRADA=1",
+            "CM_SOL/Consumo: sin IMOVH y IZSOL.ESTADO=2"
+          ],
+          "noValida": [
+            "PRI.CERRADO",
+            "PRI.CERRADO_INV",
+            "IMOV ya contabilizado / MCP",
+            "Fecha del movimiento"
+          ],
+          "errores": [
+            "El Movimiento NO se pudo Anular",
+            "El N° de Admision No se encuentra cerrada totalmente…",
+            "Movimiento no puede ser Anulado, Debe Deshacer la Entrega de la Solicitud.",
+            "Movimiento no puede ser anulado porque la solicitud no se encuentra cerrada.",
+            "Movimiento no puede ser anulado. Reportarlo"
+          ],
+          "llama": [
+            "SPK_ANULAR_MOV_INV"
+          ],
+          "efecto": "IMOV/IMOVH ESTADO=2 (o vía SPK en farmacia). No mira periodo.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IZSOL",
+      "tipo": "SPQ",
+      "modelo": "IZSOL",
+      "estado": "parcial",
+      "fuente": "sql/SPQ_IZSOL.sql",
+      "cola": "Gate periodo: CONF_ENTRADA, ANULAR_ENTRADA. El resto del SP (solicitudes, tránsito, canasta) no fichado.",
+      "metodos": [
+        {
+          "id": "CONF_ENTRADA",
+          "hace": "Confirma entrada IMOV: validaciones de detalle/costo/factura y EXEC SPK_CONFIRMARENTRADAS. Opcional CUFE RADIAN no bloqueante.",
+          "valida": [
+            "IMOVH con vencimiento si ITAR.MFECHAVENCIMIENTO=1",
+            "Detalle ESTADO=0 y CANTIDAD>0",
+            "Compras/remisión: factura no duplicada; F_FACTURA/F_VENCE",
+            "PCOSTO>0 salvo IDINVTPROPIA",
+            "IDINVTPROPIA exige CNSTRAN",
+            "IMOV.ESTADO=0",
+            "Artículos principales loteables",
+            "Si VALID_CCOSTO_CXP=SI y compras: KMCOM CXP_COMPRAS DB+CR por ITAR"
+          ],
+          "noValida": [
+            "PRI.CERRADO",
+            "PRI.CERRADO_INV",
+            "FECHAMOV vs periodo"
+          ],
+          "errores": [
+            "Existen articulos sin Fecha de Vencimiento.",
+            "El registro no cuenta con Detalle, para confirmar",
+            "El detalle existe pero no está en estado confirmable…",
+            "Número de Factura Duplicado.... revisar",
+            "La Fecha de Factura y/o Fecha Vence Factura esta En Blanco...",
+            "Uno o Varios Lotes Ingresados no tienen precio de costo…",
+            "Es obligatorio, para este tipo de movimiento el Paciente.",
+            "El Movimiento de Inventario No esta Preparado para Confirmar Revise",
+            "El movimiento no puede ser confirmado porque existen articulos… principal.",
+            "El Centro de Costo no está correctamente configurado… (CXP_COMPRAS).",
+            "La entrada no pudo ser confirmada. Revise el detalle del movimiento."
+          ],
+          "llama": [
+            "SPK_CONFIRMARENTRADAS",
+            "SPK_SINCRONIZAR_CUFE_RADIAN"
+          ],
+          "efecto": "IMOV.ESTADO=1 vía SPK. No consulta PRI.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULAR_ENTRADA",
+          "hace": "Anula IMOV de entrada sin confirmar y sin detalle: UPDATE ESTADO=2.",
+          "valida": [
+            "CNSMOV e IDBODEGA",
+            "IMOV.ESTADO=0",
+            "Sin filas IMOVH"
+          ],
+          "noValida": [
+            "PRI.CERRADO",
+            "PRI.CERRADO_INV",
+            "Anular entrada ya confirmada (ESTADO=1)"
+          ],
+          "errores": [
+            "Debe indicar CNSMOV e IDBODEGA.",
+            "Sólo se puede anular un movimiento sin confirmar.",
+            "No se puede anular: el movimiento tiene detalle en IMOVH.",
+            "No se pudo anular el movimiento."
+          ],
+          "llama": [],
+          "efecto": "IMOV.ESTADO=2 si cabecera vacía. No mira periodo.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PRI",
+      "tipo": "SPQ",
+      "modelo": "PRI",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PRI.sql",
+      "nota": "Ficha de proceso también en conocimiento/contabilidad/sps.json. Aquí solo el hueco INV.",
+      "cola": "CRUDPRI escribe CERRADO_INV desde el formulario. No existe CERRAR_INV / ABRIR_INV.",
+      "metodos": [
+        {
+          "id": "CRUDPRI",
+          "hace": "INSERT/EDITAR periodo PRI. En EDITAR persiste CERRADO_INV (y CERRADO_FAC, SI, SINIIF…) desde el JSON del formulario.",
+          "valida": [
+            "ANO+MES único al insertar",
+            "Un solo periodo SI=1",
+            "Un solo periodo SINIIF=1"
+          ],
+          "noValida": [
+            "IMOV ESTADO=0 / ITRA abiertos / ISAL pendientes antes de marcar CERRADO_INV=1",
+            "Proceso de cierre de inventario (no hay CERRAR_INV)"
+          ],
+          "errores": [
+            "Periodo insertado ya existe",
+            "Ya existe un periodo de saldos iniciales",
+            "ERROR_MESSAGE()"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE PRI. CERRADO_INV se puede cambiar a mano sin listar pendientes.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_FACTURA",
+          "hace": "Cierra subperiodo FACTURA o CARTERA (SPK_CIERRA_CARTERA). No cubre inventario.",
+          "valida": [
+            "PRI.CERRADO=0",
+            "CERRADO_FAC o CERRADO_CARTERA=0 según PROCEDENCIA"
+          ],
+          "noValida": [
+            "CERRADO_INV",
+            "PROCEDENCIA INV",
+            "Pendientes IMOV"
+          ],
+          "errores": [
+            "Periodo Cerrado...",
+            "No se Encontro el Periodo de Facturación o ya esta Cerrado…",
+            "No se Encontro el Periodo de Cartera o ya esta Cerrado…"
+          ],
+          "llama": [
+            "SPK_CIERRA_CARTERA"
+          ],
+          "efecto": "Cierra factura/cartera. CERRADO_INV no cambia.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        },
+        {
+          "id": "ABRIR_FACTURA",
+          "hace": "Reabre FACTURA, CARTERA o CXP. No hay rama INV.",
+          "valida": [
+            "Subperiodo cerrado según PROCEDENCIA FACTURA/CARTERA/CXP",
+            "CARTERA: tope 25 días desde fin de mes"
+          ],
+          "noValida": [
+            "CERRADO_INV",
+            "PROCEDENCIA INV"
+          ],
+          "errores": [
+            "El periodo no está cerrado; no se puede abrir.",
+            "Procedencia no válida para abrir periodo."
+          ],
+          "llama": [],
+          "efecto": "UPDATE CERRADO_FAC/CARTERA/CXP=0. No abre inventario.",
+          "capaId": "01-configuracion",
+          "gateId": "periodo-inv-abierto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_ITRA",
+      "tipo": "SPQ",
+      "modelo": "ITRA",
+      "estado": "leido",
+      "fuente": "sql/SPQ_ITRA.sql",
+      "actualizado": "2026-09-12T21:15:18",
+      "metodos": [
+        {
+          "id": "ON_PROCESAR",
+          "hace": "Procesa líneas de traslado: filtra CANTIDADDES>0 y ≤ origen, genera lote ICBU e INSERT ITRAH (INICIAL=1); descuenta ITRAH inicial=0.",
+          "valida": [
+            "Artículo origen y destino existen en IART",
+            "CANTIDADORI >= CANTIDADDES > 0"
+          ],
+          "noValida": [
+            "No mira PRI.CERRADO_INV",
+            "No confirma IMOV"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "ITRAH del CNSITRA con lotes nuevos.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ANIOS",
+          "hace": "Lista años de ITRA.",
+          "estado": "leido"
+        },
+        {
+          "id": "EXCEL_DETALLE",
+          "hace": "Exporta detalle del traslado.",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_TRANSITO",
+          "hace": "Exporta tránsito.",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

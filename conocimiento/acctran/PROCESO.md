@@ -23,7 +23,7 @@ Variables `IDTARIFASOAT` / `IDPLANSOAT`. Catálogos de tipo documento.
 
 ### 2. Proceso propio
 
-Alta y edición del expediente. **Gate de este REQ:** copiar AFI a campos `*_AMPARO`.
+Alta y edición del expediente. **Control de este REQ:** copiar AFI a campos `*_AMPARO`.
 
 ### 3. Lo que llega
 

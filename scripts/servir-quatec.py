@@ -155,7 +155,8 @@ No pida que pegue el mismo texto en Cursor. Relea `chat.json` en cada turno y re
 ## Contabilidad
 Si `solicitud.json` → `contenido.contabilidad.afecta` es true, valide cómoAfecta y desarrollo
 contra Qrystalos2 (MCUE, CON, MCPE) y documentación. Escriba el veredicto en el Chat y en
-`contenido.contabilidad.validacion`.
+`contenido.contabilidad.validacion`. Si **no afecta**, en el dictamen HTML deje solo
+«Afecta contabilidad: No». No ponga Cómo lo afecta, Desarrollo contable ni Validación del agente.
 
 ## Cierre fase 1
 Cuando el coordinador apruebe → botón **Cerrar fase 1** en la app.
@@ -804,7 +805,8 @@ class QuatecHandler(SimpleHTTPRequestHandler):
         proyecto = solicitud.get("proyecto") or {}
         gestion = solicitud.get("gestion") or {}
         id_caso = ident.get("idCaso") or ""
-        devs.upsert(nombre, caso={
+        dest = ((solicitud.get("correo") or {}).get("destinatario") or "").strip()
+        caso = {
             "idReq": ident.get("idReq") or "",
             "idCaso": id_caso,
             "cliente": proyecto.get("nombre") or "",
@@ -812,7 +814,10 @@ class QuatecHandler(SimpleHTTPRequestHandler):
             "rama": gestion.get("rama") or "",
             "dictamen": f"dictamenes/{id_caso}.html" if id_caso else "",
             "fase1": fase1 or "abierta",
-        })
+        }
+        if dest:
+            caso["destinatario"] = dest
+        devs.upsert(nombre, caso=caso, correo=dest or None)
 
     def _get_correo(self):
         parsed = urlparse(self.path)
@@ -858,8 +863,7 @@ class QuatecHandler(SimpleHTTPRequestHandler):
 
     def _get_desarrolladores(self):
         try:
-            cola = get_db().get_cola()
-            return self._json(devs.sync_all(cola))
+            return self._json(devs.snapshot())
         except OSError as e:
             return self._json({"ok": False, "error": f"No se pudo leer/guardar desarrolladores: {e}"}, 500)
 

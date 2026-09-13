@@ -3,9 +3,9 @@
   "nombre": "Consulta externa · Autorizaciones",
   "modulo": "AUT_COL",
   "estado": "parcial",
-  "resumen": "SPQ núcleo + SPKs CONFIRMAR/COPAGO/FACTURACE/PAGOSCAJA leídos 2026-09-06. Gates creación/facturación cerrados SQL. Pendiente resto SPQ_CIT_COL_3.",
-  "actualizado": "2026-09-06T17:08:00",
-  "notaSql": "SPQ_AUT_COL, SPQ_GEN_AUT, SPQ_CIT_COL_3 (parcial) y SPKs núcleo+caja en sql/. Opcional: SPK_PAGOSCAJA_AUT_CEHOSP.",
+  "resumen": "5 capas con evidencia FE/SP. Capa 2 leída. Capa 1: USVGS + CAUT (sin .sql de crudCAUT). Capa 5: OM por caja copago o por FTR, no asiento propio de AUT.",
+  "actualizado": "2026-09-12T21:38:00",
+  "notaSql": "AUT/GEN_AUT/CIT_COL_3/AUTPG y SPKs núcleo leídos. CAUT es AppStore + MODELO CAUT · crudCAUT (sin .sql hoy). Opcional: SPK_PAGOSCAJA_AUT_CEHOSP.",
   "ventanas": [
     {
       "uso": "Bandeja administrativa CE",
@@ -20,6 +20,13 @@
       "name": "ce.autorizador",
       "vue": "AutorizadorPage.vue → AutorizadorComponent.vue",
       "entrada": "Consulta Externa → Autorizador. Grilla AUT + detalle AUTD por afiliado."
+    },
+    {
+      "uso": "Clases de autorización",
+      "ruta": "/conf/caut",
+      "name": "conf.caut",
+      "vue": "CAUTPage.vue → CAUTComponent.vue",
+      "entrada": "Configuración → CE → Clases de autorizaciones (tabla CAUT)."
     }
   ],
   "capas": [
@@ -27,19 +34,62 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "esqueleto",
-      "explicacion": "Variables USVGS del autorizador (AUT_IDSOLICITA_OBLI, AUT_OBLI_IDPROVEEDOR, AUT_MENTREGA, AUT_OBS_FACTURA…), prefijos PRE, planes PPT, CAUT (conf.ce). Sin sql/ leído.",
-      "tablasClave": ["PRE", "PPT", "USVGS", "CAUT"],
-      "gates": []
+      "estado": "parcial",
+      "explicacion": "Antes de operar: variables USVGS del Autorizador, clases CAUT, planes PPT (facturación individual vs masiva, MAUT_ENPROGRAMA, PNUMAUTORIZA_OBL) y particular (IDPLANPART* / IDTERCEROPARTICULAR). CAUT se mantiene en conf.caut. USVGS es manual (sistemas), no hay SPQ de esas variables.",
+      "tablasClave": [
+        "USVGS",
+        "CAUT",
+        "PPT",
+        "PRE"
+      ],
+      "controles": [
+        {
+          "id": "usvgs-autorizador",
+          "nombre": "Variables del Autorizador (USVGS)",
+          "explicacion": "AutorizadorComponent lee: AUT_IDSOLICITA_OBLI (médico solicitante, no Perú), AUT_OBLI_IDPROVEEDOR, AUT_MENTREGA (tipo de entrega), AUT_OBS_FACTURA (obs al facturar). Particular: IDPLANPART* + IDTERCEROPARTICULAR. PPT.PFACTURARIND decide si FACTURA_AUT o masiva.",
+          "invariante": "Si AUT_IDSOLICITA_OBLI=SI (no Perú) no guarda sin médico. Sin AUTD no guarda (validaAUT). Plan masivo no usa FACTURA_AUT.",
+          "ventanasFe": "/ce/autorizador · AutorizadorComponent (validaAUT)",
+          "sps": [],
+          "feSinSql": [
+            {
+              "nombre": "USVGS",
+              "metodo": "getUsvgs (composable)",
+              "rol": "Manual en sistemas. No hay SPQ de estas variables."
+            }
+          ],
+          "pendiente": []
+        },
+        {
+          "id": "catalogo-caut",
+          "nombre": "Clases de autorización (CAUT)",
+          "explicacion": "Catálogo IDCLASEAUT, descripción, días de vencimiento (DIASV) y mensaje. FE: ServerSideTable + diálogo. MODELO CAUT · crudCAUT.",
+          "invariante": "Es maestro de clase; no crea AUT. El .sql de crudCAUT no está en sql/ hoy (AppStore.json).",
+          "ventanasFe": "/conf/caut · CAUTComponent",
+          "sps": [],
+          "feSinSql": [
+            {
+              "nombre": "CAUT",
+              "metodo": "crudCAUT",
+              "rol": "CAUTComponent.vue. Sin .sql hoy."
+            }
+          ],
+          "pendiente": []
+        }
+      ]
     },
     {
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio",
-      "estado": "esqueleto",
+      "estado": "parcial",
       "explicacion": "Creación y gestión de AUT/AUTD; bandeja CE envía CIT/AUTPG a facturación; facturación admin consume marcas.",
-      "tablasClave": ["AUT", "AUTD", "CIT", "AUTPG"],
-      "gates": [
+      "tablasClave": [
+        "AUT",
+        "AUTD",
+        "CIT",
+        "AUTPG"
+      ],
+      "controles": [
         {
           "id": "aut-creacion-gestion",
           "nombre": "Creación y gestión AUT (Autorizador)",
@@ -47,11 +97,31 @@
           "invariante": "Sin AUTD no guarda. ESTADO Anulada bloquea edición/factura. Plan masivo → FACTURA_AUT KO «factura masivamente».",
           "ventanasFe": "/ce/autorizador · AutorizadorComponent",
           "sps": [
-            { "nombre": "SPQ_AUT_COL", "metodo": "CRUDAUT, FACTURA_AUT, ANULAR_AUT, RELIQUIDAR…", "rol": "✅ 28/28 leído. CRUDAUT→SPK_COPAGO; FACTURA_AUT→SPK_FACTURACE_N." },
-            { "nombre": "SPQ_GEN_AUT", "metodo": "AUTORIZAR", "rol": "✅ Leído. POST INSERT → SPK_CONFIRMAR_AUT." },
-            { "nombre": "SPK_CONFIRMAR_AUT", "metodo": "(SP)", "rol": "✅ Liquida valores/copago al crear AUT." },
-            { "nombre": "SPK_COPAGO_AUT_CEHOSP", "metodo": "(SP)", "rol": "✅ Motor copago por línea AUTD/CIT." },
-            { "nombre": "SPK_PAGOSCAJA_AUT", "metodo": "(SP)", "rol": "✅ TFCJ copago/particular post-CRUDAUT." }
+            {
+              "nombre": "SPQ_AUT_COL",
+              "metodo": "CRUDAUT, FACTURA_AUT, ANULAR_AUT, RELIQUIDAR…",
+              "rol": "✅ 28/28 leído. CRUDAUT→SPK_COPAGO; FACTURA_AUT→SPK_FACTURACE_N."
+            },
+            {
+              "nombre": "SPQ_GEN_AUT",
+              "metodo": "AUTORIZAR",
+              "rol": "✅ Leído. POST INSERT → SPK_CONFIRMAR_AUT."
+            },
+            {
+              "nombre": "SPK_CONFIRMAR_AUT",
+              "metodo": "(SP)",
+              "rol": "✅ Liquida valores/copago al crear AUT."
+            },
+            {
+              "nombre": "SPK_COPAGO_AUT_CEHOSP",
+              "metodo": "(SP)",
+              "rol": "✅ Motor copago por línea AUTD/CIT."
+            },
+            {
+              "nombre": "SPK_PAGOSCAJA_AUT",
+              "metodo": "(SP)",
+              "rol": "✅ TFCJ copago/particular post-CRUDAUT."
+            }
           ]
         },
         {
@@ -61,8 +131,16 @@
           "invariante": "CIT/AUTPG con ENFACT=1 aparecen en Facturación admin. No confundir con AUT clínica (tabla AUT).",
           "ventanasFe": "/ce/autcit · AutorizacionesCitasComponent",
           "sps": [
-            { "nombre": "SPQ_CIT_COL_3", "metodo": "ENVIARA_FACT, AUDITAR_CIT, GENERAR_AUTPG…", "rol": "🔶 AUDITAR_CIT+ENVIARA_FACT leídos; resto inventario." },
-            { "nombre": "SPQ_AUTPG", "metodo": "ENVIARA_FACT, ENVIARA_EVENTO, INSERTAR_PACIENTE…", "rol": "Leído 2026-09-06 en facturacion/sps.json." }
+            {
+              "nombre": "SPQ_CIT_COL_3",
+              "metodo": "ENVIARA_FACT, AUDITAR_CIT, GENERAR_AUTPG…",
+              "rol": "AUDITAR_CIT, ENVIARA_FACT, ENVIARAPROGRAMA, ENVIAR_TODO_AFACTURACION, GENERAR_AUTPG, HELPER_AUTPG, PROCESAR_NO_ENV_FACT_MASIVO leídos."
+            },
+            {
+              "nombre": "SPQ_AUTPG",
+              "metodo": "ENVIARA_FACT, ENVIARA_FACT_TODOS, ENVIARA_EVENTO, INSERTAR_PACIENTE, FACTURAR_AUTPG…",
+              "rol": "Fichas leídas 2026-09-12 (sql/SPQ_AUTPG.sql)."
+            }
           ]
         },
         {
@@ -72,10 +150,26 @@
           "invariante": "AUT.FACTURADA=1 tiene N_FACTURA. Plan configurado masivo debe ir por Facturación masiva, no FACTURA_AUT.",
           "ventanasFe": "Autorizador (FACTURA_AUT) · /admin/facturacion masiva/evento/programa",
           "sps": [
-            { "nombre": "SPQ_AUT_COL", "metodo": "FACTURA_AUT", "rol": "✅ Orquesta → SPK_FACTURACE_N (PROC=CE)." },
-            { "nombre": "SPK_FACTURACE_N", "metodo": "(SP)", "rol": "✅ Motor FTR individual AUT/CIT." },
-            { "nombre": "SPQ_FTR_MASIVA_COL", "metodo": "MARCAAUT_FTR / FACTURAR_MASI", "rol": "Leído — facturacion/sps.json." },
-            { "nombre": "SPK_FACTURACE_CITAUT_COL", "metodo": "(SP)", "rol": "Invocado en FACTURAR_MASI rama AUT. En sql/." }
+            {
+              "nombre": "SPQ_AUT_COL",
+              "metodo": "FACTURA_AUT",
+              "rol": "✅ Orquesta → SPK_FACTURACE_N (PROC=CE)."
+            },
+            {
+              "nombre": "SPK_FACTURACE_N",
+              "metodo": "(SP)",
+              "rol": "✅ Motor FTR individual AUT/CIT."
+            },
+            {
+              "nombre": "SPQ_FTR_MASIVA_COL",
+              "metodo": "MARCAAUT_FTR / FACTURAR_MASI",
+              "rol": "Leído — facturacion/sps.json."
+            },
+            {
+              "nombre": "SPK_FACTURACE_CITAUT_COL",
+              "metodo": "(SP)",
+              "rol": "Invocado en FACTURAR_MASI rama AUT. En sql/."
+            }
           ]
         }
       ]
@@ -84,28 +178,135 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega",
-      "estado": "esqueleto",
-      "explicacion": "Órdenes médicas HCATD, citas CIT, programas AUTPG, agenda, farmacia/inventario (PEDIR_INVENTARIO_OPTICA), interfaces RX (REENVIAR_ITF_RX).",
-      "tablasClave": ["HCATD", "CIT", "HCA"],
-      "gates": []
+      "estado": "parcial",
+      "explicacion": "La AUT clínica nace de orden médica (HCATD) o se digita. La bandeja Evento come CIT. La bandeja Programa come AFIPE/MPE (afiliado en programa). Óptica e interfaz RX salen del Autorizador, no de la bandeja.",
+      "tablasClave": [
+        "HCATD",
+        "HCA",
+        "CIT",
+        "AFIPE",
+        "MPE"
+      ],
+      "controles": [
+        {
+          "id": "hcatd-autorizar",
+          "nombre": "Orden médica → AUT (GEN_AUT)",
+          "explicacion": "GEN_AUT · AUTORIZAR toma servicios temporales de HCATD, arma AUT/AUTD (PROCEDENCIA=HC, Pendiente), confirma copago y marca HCATD.APLICADA=1. Anular AUT revierte APLICADA=0.",
+          "invariante": "Sin HCATD aplicada no hay AUT de HC. Anular no deja la orden aplicada.",
+          "ventanasFe": "Historia clínica / Autorizador (AUTORIZAR)",
+          "sps": [
+            {
+              "nombre": "SPQ_GEN_AUT",
+              "metodo": "AUTORIZAR",
+              "rol": "Leído. POST → SPK_CONFIRMAR_AUT."
+            }
+          ]
+        },
+        {
+          "id": "cit-afipe-bandeja",
+          "nombre": "Citas y programas hacia la bandeja",
+          "explicacion": "CIT atendida/auditada entra a Evento (ENVIARA_FACT). AFIPE activo + MPE/unidad arma AUTPG (GENERAR_AUTPG o ENVIARAPROGRAMA desde CIT). No es la tabla AUT del Autorizador.",
+          "invariante": "CIT y AUTPG con ENFACT=1 salen a Facturación. Duplicado mismo afiliado/período se controla en el envío.",
+          "ventanasFe": "/ce/autcit",
+          "sps": [
+            {
+              "nombre": "SPQ_CIT_COL_3",
+              "metodo": "AUDITAR_CIT / ENVIARA_FACT / GENERAR_AUTPG / ENVIARAPROGRAMA",
+              "rol": "Leídos."
+            }
+          ]
+        },
+        {
+          "id": "optica-rx",
+          "nombre": "Inventario óptica e interfaz RX",
+          "explicacion": "Del Autorizador: PEDIR_INVENTARIO_OPTICA → SPK_PEDIDOINVCE. REENVIAR_ITF_RX reenvía interfaz. No pasan por la bandeja autcit.",
+          "invariante": "Son auxiliares del AUT clínico, no del envío a FTR.",
+          "ventanasFe": "/ce/autorizador",
+          "sps": [
+            {
+              "nombre": "SPQ_AUT_COL",
+              "metodo": "PEDIR_INVENTARIO_OPTICA / REENVIAR_ITF_RX",
+              "rol": "Leídos."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "04-unido",
       "numero": 4,
       "nombre": "Subproceso unido",
-      "estado": "esqueleto",
-      "explicacion": "Caja (copago autorizador): TFCJ vía SPK_PAGOSCAJA_AUT → FCJ vía RECAUDAR_COPAGO/CONFIRMAR_RECIBO. DIAN/RIPS post-FTR, empaque anexos, cartera.",
-      "tablasClave": ["FCJ", "FTR"],
-      "gates": []
+      "estado": "parcial",
+      "explicacion": "CE se une a Caja (copago), Facturación (FTR) y, si hay SOAT, a HACTRAND. DIAN/RIPS y empaque son del proceso Facturación, no de este módulo.",
+      "tablasClave": [
+        "TFCJ",
+        "FCJ",
+        "FTR",
+        "HACTRAND"
+      ],
+      "controles": [
+        {
+          "id": "caja-copago-aut",
+          "nombre": "Copago Autorizador → Caja",
+          "explicacion": "CRUDAUT/CONFIRMAR_AUT puede armar TFCJ (SPK_PAGOSCAJA_AUT). El usuario recauda: RECAUDAR_COPAGO (SPK_TRAERECIB_CAJA) y CONFIRMAR_RECIBO (cierra FCJ + banco + contab de ingreso). Sigue el proceso Caja.",
+          "invariante": "FACTURA_AUT puede exigir copago ya recaudado (VALRECA_COPA_FACTU). Recibo confirmado es FCJ, no TFCJ.",
+          "ventanasFe": "/ce/autorizador · Recaudar / Confirmar recibo",
+          "sps": [
+            {
+              "nombre": "SPQ_AUT_COL",
+              "metodo": "RECAUDAR_COPAGO / CONFIRMAR_RECIBO",
+              "rol": "Leídos. Contab ingreso: SPK_NC_CONTAB_CAJA_ING."
+            }
+          ]
+        },
+        {
+          "id": "ftr-desde-ce",
+          "nombre": "CE → Facturación (FTR)",
+          "explicacion": "Tres caminos ya en capa 2: FACTURA_AUT (individual), bandeja ENFACT + masiva admin, FACTURAR_AUTPG / FACTURAR_EVENTO_PAQ. Motor individual: SPK_FACTURACE_N. A partir de FTR el circuito es el de Facturación (DIAN, empaque, cartera).",
+          "invariante": "AUT.FACTURADA=1 tiene N_FACTURA. Plan masivo no usa FACTURA_AUT.",
+          "ventanasFe": "Autorizador · /ce/autcit · /admin/facturacion",
+          "sps": [
+            {
+              "nombre": "SPK_FACTURACE_N",
+              "metodo": "(SP)",
+              "rol": "Leído. INSERT FTR/FTRD + SPK_NC_CONTAB_FTR."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Contabilidad",
-      "estado": "esqueleto",
-      "explicacion": "AUT.CONTABILIZADA / FTR contab vía SPK_NC_CONTAB_FTR o job FTRCO (mismo patrón facturación).",
-      "tablasClave": ["FTR", "MCP"],
-      "gates": []
+      "estado": "parcial",
+      "explicacion": "No hay asiento propio de la tabla AUT. El OM evidenciado sale por dos caminos ya leídos: (1) copago confirmado → SPK_NC_CONTAB_CAJA_ING; (2) factura CE → SPK_FACTURACE_N → SPK_NC_CONTAB_FTR (+ CxP SPK_CREACXP_CE). No se afirma otro OM ni job FTRCO desde este módulo.",
+      "tablasClave": [
+        "FCJ",
+        "FTR",
+        "MCP"
+      ],
+      "controles": [
+        {
+          "id": "om-ce-caja-ftr",
+          "nombre": "OM de copago y de factura CE",
+          "explicacion": "CONFIRMAR_RECIBO contabiliza el ingreso de caja. FACTURA_AUT / SPK_FACTURACE_N contabiliza la FTR. PRI abierto lo valida FACTURA_AUT. Abrir/cerrar mes es Contabilidad, no CE.",
+          "invariante": "Sin FTR o sin recibo confirmado no hay OM de este proceso. No inventar AUT.CONTABILIZADA como asiento distinto.",
+          "ventanasFe": "Autorizador (confirmar recibo / facturar) · Facturación admin",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_ING",
+              "metodo": "(SP)",
+              "rol": "Lo llama CONFIRMAR_RECIBO. Documentado en Caja."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_FTR",
+              "metodo": "(SP)",
+              "rol": "Lo llama SPK_FACTURACE_N. Documentado en Facturación."
+            }
+          ]
+        }
+      ]
     }
   ]
 }

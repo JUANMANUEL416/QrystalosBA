@@ -1,7 +1,7 @@
 {
   "procesoId": "facturacion",
-  "actualizado": "2026-09-06T18:45:00",
-  "nota": "Fase B + gates 2026-09-06. SPQ_FTR_COL 68/68 fichas. Gate factura-financiera + capita-pgp cerrados SQL (ADD/DEL/TOTAL/ANULA_CAPITADA en sql/).",
+  "actualizado": "2026-09-12T21:15:18",
+  "nota": "2026-09-12: HPREP + SPK reliquidación + FNQ_VAL_SERTOT_PERU + FTR_PHD leídos (REQ 6352: sin SERTOT vigente en las dos ventanas de fecha → 0). Sigue FTR_COL 68/68.",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
@@ -663,11 +663,11 @@
         {
           "id": "RIPS_JSON",
           "estado": "leido",
-          "hace": "Wrapper: EXEC SPK_GENERAR_RIPS_JSON (CNSFCT, TIPODOC, GENERAR, SOLO_META).",
-          "capaId": "02-operacion",
+          "hace": "Wrapper síncrono: lee CNSFCT, TIPODOC, GENERAR, SOLO_META del JSON y EXEC SPK_GENERAR_RIPS_JSON. No arma el RIPS.",
+          "capaId": "04-bancos",
           "gateId": "rips-fev",
           "valida": [
-            "CNSFCT y TIPODOC"
+            "CNSFCT y TIPODOC en PARAMETROS"
           ],
           "llama": [
             "SPK_GENERAR_RIPS_JSON"
@@ -676,16 +676,29 @@
         {
           "id": "INICIAR_RIPS_JSON_JOB",
           "estado": "leido",
-          "hace": "Encola job asíncrono generación RIPS JSON (SQL Agent / cola).",
-          "capaId": "02-operacion",
-          "gateId": "rips-fev"
+          "hace": "Si FNK_RIPS_JSON_USAR_ASYNC=0 devuelve USAR_ASYNC=0 (el FE cae a RIPS_JSON síncrono). Si hay job PENDIENTE/PROCESANDO mismo CNSFCT+TIPODOC → KO. Si no, encola PROCESO_JOB TIPO=RIPS_JSON vía SPQ_PROCESO_JOB · INICIAR_JOB.",
+          "capaId": "04-bancos",
+          "gateId": "rips-fev",
+          "errores": [
+            "Ya existe una generación RIPS en ejecución para este documento."
+          ],
+          "llama": [
+            "FNK_RIPS_JSON_USAR_ASYNC",
+            "SPQ_PROCESO_JOB"
+          ]
         },
         {
           "id": "EJECUTAR_RIPS_JSON_ASYNC",
           "estado": "leido",
-          "hace": "Ejecuta lote async RIPS pendiente.",
-          "capaId": "02-operacion",
-          "gateId": "rips-fev"
+          "hace": "Marca PROCESO_JOB PROCESANDO, EXEC SPK_GENERAR_RIPS_JSON, luego COMPLETADO o ERROR (ERROR_MESSAGE). Exige CNS del job.",
+          "capaId": "04-bancos",
+          "gateId": "rips-fev",
+          "errores": [
+            "CNS es requerido."
+          ],
+          "llama": [
+            "SPK_GENERAR_RIPS_JSON"
+          ]
         },
         {
           "id": "CONFIG_FACTUAUTO",
@@ -2713,7 +2726,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Devuelve CUV, FRADICA_RIPS, JSON_RESPUESTA, JSON_ENVIO desde FTRJSON (FV) o FNOTJSON (NC/ND/NA). URLBASE pruebas si BD≠BDATA_PRODUCCION.",
-          "valida": ["TIPODOC + CNSDOC"],
+          "valida": [
+            "TIPODOC + CNSDOC"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2728,8 +2743,13 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Persiste respuesta SISPRO: CUV + FRADICA_RIPS en FTR/FNOT/FGLO y FTRJSON/FNOTJSON. ISVALIDACUV=1 solo actualiza CUV ya validado. KO: guarda JSON_RESPUESTA en FTR_MAS_LOG (FEVRIPS).",
-          "valida": ["ResultState=1 para éxito", "TIPODOC FV/NC/ND/NA"],
-          "errores": ["KO + fila ERROR si excepción SQL"],
+          "valida": [
+            "ResultState=1 para éxito",
+            "TIPODOC FV/NC/ND/NA"
+          ],
+          "errores": [
+            "KO + fila ERROR si excepción SQL"
+          ],
           "efecto": "FTR.CUV, FTR.FRADICA_RIPS; FNOT/FGLO en NC/ND/NA; limpia FTR_MAS_LOG FEVRIPS",
           "capaId": "04-bancos"
         },
@@ -2738,7 +2758,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "XML_Base64 FEV desde FDIANR (SendBillSync) para paquete ZIP.",
-          "valida": ["CNSDOC + TIPODOC"],
+          "valida": [
+            "CNSDOC + TIPODOC"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2746,7 +2768,10 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "AttachedDocument DIAN vía FNK_AttachedDocument; parche NUMERO_CONTRATO (PPT/CNT) y tipo usuario subs 04/05. FV y NC/ND.",
-          "llama": ["FNK_AttachedDocument", "FNK_VALORVARIABLE SINTAGXMLVERSION"],
+          "llama": [
+            "FNK_AttachedDocument",
+            "FNK_VALORVARIABLE SINTAGXMLVERSION"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2761,7 +2786,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "UPDATE dinámico FTR por FILTROS SQL (ACCION 1=marca / 0=desmarca). Join FDIAN+TER+PLN.",
-          "valida": ["FILTROS no vacío — SQL dinámico"],
+          "valida": [
+            "FILTROS no vacío — SQL dinámico"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2776,7 +2803,12 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Desmarca previas del usuario; marca facturas FCXCD de CNSCXC con FACTE=2, contabilizada, CUV vacío, no caja.",
-          "valida": ["FACTE=2", "CONTABILIZADA<>0", "CUV vacío", "PROCEDENCIA<>CAJA"],
+          "valida": [
+            "FACTE=2",
+            "CONTABILIZADA<>0",
+            "CUV vacío",
+            "PROCEDENCIA<>CAJA"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2801,7 +2833,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Veredicto worker: MODO, ES_PRODUCCION, URL efectiva (prod vs URL_SERV_RIPS_PRUEBA), NIT prestador, existe FEVRIPS_COLA. Opcional CONTAR_PENDIENTES.",
-          "errores": ["KO: MODO_INACTIVO, SIN_COLA, SIN_NIT, SIN_URL_PRODUCCION, SIN_URL_PRUEBA"],
+          "errores": [
+            "KO: MODO_INACTIVO, SIN_COLA, SIN_NIT, SIN_URL_PRODUCCION, SIN_URL_PRUEBA"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2809,7 +2843,10 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "MERGE candidatas FV (mismo predicado que masivo) → ESTADO=1 reclamado por WORKER. Fase 1 solo facturas.",
-          "valida": ["WORKER obligatorio", "FACTE=2, no caja, CUV vacío, FDIAN FTRELECTRONICA"],
+          "valida": [
+            "WORKER obligatorio",
+            "FACTE=2, no caja, CUV vacío, FDIAN FTRELECTRONICA"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2817,7 +2854,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Avance pipeline cola: ESTADO 2=generando, 3=enviando, 4=error técnico (reintento), 5=validación (no auto). LIBERAR suelta WORKER.",
-          "valida": ["WORKER debe coincidir si se envía"],
+          "valida": [
+            "WORKER debe coincidir si se envía"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2825,7 +2864,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Reserva doc ESTADO=9 BLOQUEO_HASTA antes envío manual; evita doble radicación con worker.",
-          "errores": ["KO EN_PROCESO si worker u otro manual activo"],
+          "errores": [
+            "KO EN_PROCESO si worker u otro manual activo"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2833,7 +2874,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Suelta reserva MANUAL:usuario. ESTADO_FINAL=0 pendiente o 5 error validación.",
-          "valida": ["Solo WORKER=MANUAL:usuario"],
+          "valida": [
+            "Solo WORKER=MANUAL:usuario"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2841,7 +2884,9 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "REPROCESAR=1, INTENTOS=0; PRIORIDAD opcional. Única salida de ESTADO 5.",
-          "errores": ["KO EN_PROCESO si colgada en 1-3 o manual vivo"],
+          "errores": [
+            "KO EN_PROCESO si colgada en 1-3 o manual vivo"
+          ],
           "capaId": "04-bancos"
         },
         {
@@ -2866,8 +2911,12 @@
           "estado": "leido",
           "gateId": "rips-fev",
           "hace": "Devuelve JSON_QUERY(JSON_ENVIO,'$.rips') + CUV desde FTRJSON por CNSFCT (factura base NA-RIPS).",
-          "errores": ["KO: No se Encontro el dato buscado..."],
-          "valida": ["Existe FTRJSON para CNSFCT"],
+          "errores": [
+            "KO: No se Encontro el dato buscado..."
+          ],
+          "valida": [
+            "Existe FTRJSON para CNSFCT"
+          ],
           "capaId": "04-bancos"
         }
       ]
@@ -2876,25 +2925,44 @@
       "nombre": "SPK_GENERAR_RIPS_JSON",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "sql/SPK_GENERAR_RIPS_JSON.sql",
+      "fuente": "sql_refe/xsql/SPK_GENERAR_RIPS_JSON.sql (Qrystalos2/sql copia viva; no está en sql/ hoy)",
       "llamadoDesde": [
         "FTR_COL · RIPS_JSON",
+        "FTR_COL · EJECUTAR_RIPS_JSON_ASYNC",
         "ValidacionesFEVRipsComponent",
         "useRipsJsonAsync",
         "useNotaAjusteJsonEnvio"
       ],
       "gateId": "rips-fev",
-      "hace": "Genera o devuelve RIPSJSON + XML FEV por TIPODOC: FACTURA, AJUSTE (glosa CNSGLO o FTR), NOTACR, NOTADB. SOLO_META=SI sin payload. GENERAR=NO reutiliza FTRJSON salvo vacío.",
+      "hace": "Despacha el generador JSON por TIPODOC + FTR.CAPITADA + TIPOCAP + TIPOFAC + PROCEDENCIA + PPT.PGP. Arma XML FEV (FNK_AttachedDocument o FDIANR). Persiste con SPK_PERSISTIR_RIPSJSON_ENVIO. SOLO_META=SI: meta sin payload. GENERAR=NO reutiliza FTRJSON.JSON_ENVIO; si está vacío fuerza GENERAR=SI.",
       "valida": [
-        "FACTE=2 en factura base",
-        "AJUSTE: factura base debe tener CUV en SISPRO",
-        "NOTACR/NOTADB: FNOT.FACTE=2"
+        "FACTE=2 en FTR de la factura base",
+        "AJUSTE: CUV en FTRJSON/FTR (SISPRO)",
+        "NOTACR/NOTADB: FNOT.FACTE=2 del CNSFNOT"
+      ],
+      "noValida": [
+        "No arma nodos RIPS (consultas, medicamentos…): eso es cada SPK_RIPS_JSON_*",
+        "AJUSTE capita no-PGP (TIPOCAP<4 o =4): no llama generador; devuelve JSON ya persistido"
       ],
       "errores": [
-        "La Factura … No esta Registrada en el SISPRO",
+        "La Factura … No esta Registrada en el SISPRO, No se puede Continuar",
         "La Nota DB-CR no Existe o no se ha Notificado a la Dian",
         "La factura … no esta notificada a la DIAN (FACTE<>2)",
         "No se encontro factura ni glosa para CNSFCT"
+      ],
+      "dispatch": [
+        "FACTURA + CAPITADA=1 + PPT.PGP=1 → SPK_RIPS_JSON_FTR_PGP (@N_FACTURA)",
+        "FACTURA + CAPITADA=1 + TIPOCAP<4 → SPK_RIPS_JSON_FTR_CAPI",
+        "FACTURA + (CAPITADA=1 o 0) + TIPOCAP=4 → SPK_RIPS_JSON_FTR_CAPMASI",
+        "FACTURA + TIPOFAC=M + PROCEDENCIA=AUTPG → SPK_RIPS_JSON_FTR_AUTPG (@N_FACTURA, XML base64)",
+        "FACTURA + TIPOFAC=M + IDPLAN IN (NEDXC,NEDXS) → SPK_RIPS_JSON_FTR_CITPAQ",
+        "FACTURA + TIPOFAC=M (resto) → SPK_RIPS_JSON_FTR_MAS",
+        "FACTURA + evento (TIPOFAC≠M, no capita) → SPK_RIPS_JSON_FTR_IND",
+        "AJUSTE + CAPITADA=1 + PPT.PGP=1 → SPK_RIPS_JSON_AJUSTE_PGP (@CNSFACT) y RETURN",
+        "AJUSTE + CAPITADA=1 + no PGP → no genera (SELECT del JSON actual) y RETURN",
+        "AJUSTE + no capita → SPK_RIPS_JSON_AJUSTE_IND (@CNSFACT) y RETURN",
+        "NOTACR / NOTADB → SPK_RIPS_JSON_NDBCR_IND (@CNSFNOT); XML NC/ND",
+        "Código posterior (NOTAAJUSTE_PGP / NOTAAJUSTE_MAS): no se alcanza si AJUSTE ya hizo RETURN"
       ],
       "llama": [
         "FNK_AttachedDocument",
@@ -2908,11 +2976,388 @@
         "SPK_RIPS_JSON_FTR_CITPAQ",
         "SPK_RIPS_JSON_AJUSTE_IND",
         "SPK_RIPS_JSON_AJUSTE_PGP",
-        "SPK_RIPS_JSON_NOTAAJUSTE_*",
+        "SPK_RIPS_JSON_NOTAAJUSTE_PGP",
+        "SPK_RIPS_JSON_NOTAAJUSTE_MAS",
         "SPK_RIPS_JSON_NDBCR_IND"
       ],
-      "efecto": "Persiste JSON_ENVIO en FTRJSON/FNOTJSON vía SPK_PERSISTIR_RIPSJSON_ENVIO",
-      "cola": "SPKs anidados SPK_RIPS_JSON_* no están en sql/ — opcional hasta REQ."
+      "efecto": "OUTPUT RIPSJSON + XML; persiste JSON_ENVIO en FTRJSON/FNOTJSON si GENERAR=SI y hay JSON.",
+      "cola": "Árbol RIPS JSON cerrado 2026-09-12. Todas las hojas + FNK_RECIENNACIDOS leídas."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_IND",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_IND(1).sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "Arma el sobre {rips, xmlFevFile} de factura evento. Nodos: usuario + consultas, procedimientos, urgencias, hospitalizacion, medicamentos, otrosServicios, recienNacidos (FNK_RIPS_JSON_RECIENNACIDOS). Procedencias FTR/HADM/CIT/AUT (SALUD, CI, CE, ONCO, AUT).",
+      "valida": [
+        "Existe FTR.N_FACTURA + NOREFERENCIA",
+        "DOCIDAFILIADO no vacío",
+        "JSON resultante no NULL"
+      ],
+      "noValida": [
+        "Particular sí se reporta (el RETURN por IDPLANPART está comentado)",
+        "No exige CUV"
+      ],
+      "errores": [
+        "no se encontro FTR.N_FACTURA/NOREFERENCIA",
+        "DOCIDAFILIADO vacio",
+        "el JSON resultante quedó NULL",
+        "No se encontró la factura UBL dentro del AttachedDocument",
+        "No se encontró la procedencia de la factura"
+      ],
+      "defaults": [
+        "tipoUsuario: AFI.TIPOUSUARIO (2 dígitos) o mapa TIPOAFILIADO (C/J=01, B=02, A=03, Sb=04, SR/SN/S/=05, TA=06, S/RE=07) else 05",
+        "SALUD: HADM.TIPOAFILIADO o AFI.TIPOUSUARIO; COALESCE final 05 (NULL no pisa)",
+        "usuario: tipoDoc CC, fechaNac 1900-01-01, sexo M, mpio 00000, zona 02, incapacidad NO, pais 170",
+        "conceptoRecaudo parte en 05; si copago>0: 02 (01/02/06 no SALUD), 01 (01/02/04), 03 (03/11)",
+        "tipoDiagnostico: Presuntivo/Impresion/Definitivo=01, Conf Nuevo=02, Conf Repet=03, else 01",
+        "tipoDoc médico default: MED.TIPO_ID de EPI_MEDICODEFAULT o CC"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_RIPS_JSON_RECIENNACIDOS",
+        "FNK_AttachedDocument",
+        "SPK_GUARDAR_ARCHIVO (solo si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO = {rips, xmlFevFile}. No persiste (lo hace SPK_PERSISTIR_RIPSJSON_ENVIO)."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_MAS",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_MAS.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON masiva TIPOFAC=M (no AUTPG / no paquete CIT). Usuarios y servicios desde FTRD + CIT/AUT/HADM. conceptoRecaudo arranca 05.",
+      "valida": [
+        "FTR.TIPOFAC=M",
+        "Existe FTRD del CNSFTR"
+      ],
+      "errores": [
+        "FACTURA MASIVA SIN RELACION DE SERVICIOS, POR FAVOR VERIFIQUE."
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. No persiste."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_CAPI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_CAPI.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON capita clásica (TIPOCAP 1/2/3). Periodo: FECHACAP_INI / FECHACAP_FIN. TIPOCAP=2 busca factura anterior FACTE=2 del mismo tercero/plan. OUTPUT extra @REPORTE_VALIDACION.",
+      "valida": [
+        "TIPOCAP distinto de 0",
+        "TIPOCAP distinto de 4",
+        "FTRDC si TIPOCAP<>1"
+      ],
+      "errores": [
+        "No se ha Definido el Tipo de Capita",
+        "Este tipo de Capita no es permitido",
+        "FACTURA CAPITADA SIN RELACION DE SERVICIOS"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. No persiste."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_CAPMASI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_CAPMASI.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON capitación masiva (TIPOCAP=4). Exige FTRDC. Si IDAFILIADO nulo, lo completa desde CIT/AUT/HADM.",
+      "valida": [
+        "Existe FTRDC del CNSFTR"
+      ],
+      "errores": [
+        "FACTURA CAPITADA SIN RELACION DE SERVICIOS, POR FAVOR VERIFIQUE."
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. No persiste."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_PGP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_PGP.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON factura PGP. Usuarios/servicios desde FTRDC (CIT/ONCO/APLIM/AUT/HADM). Completa IDAFILIADO nulo. Falla si documento de usuario queda vacío tras normalizar.",
+      "valida": [
+        "Existe FTRDC",
+        "numDocumentoIdentificacion no vacío tras normalizar"
+      ],
+      "errores": [
+        "FACTURA CAPITADA SIN RELACION DE SERVICIOS",
+        "Número de documento de usuario vacío o inválido tras normalización RIPS"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. No persiste."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_AUTPG",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_AUTPG.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON masiva de programa. Recibe XML base64 (el despachador se lo pasa). Prestador por SED.CODHABILITA. USVGS: RIPS_CITSOLOCUMPLIDA, PREFIJOMEDICAMENTOS, PGP_AUT_SOLODISPENSA.",
+      "valida": [
+        "FTR.TIPOFAC=M y PROCEDENCIA=AUTPG",
+        "Existe FTRD",
+        "Suma servicios = valor facturado"
+      ],
+      "errores": [
+        "FACTURA MASIVA SIN RELACION DE SERVICIOS",
+        "FACTURA NO ES DE PROCEDENCIA DE PROGRAMA",
+        "Error de registros en servicios, el total no coincide con lo facturado"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. No persiste."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_FTR_CITPAQ",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_FTR_CITPAQ.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON masiva de citas paquete: TIPOFAC=M + PAQUETE=1 + PROCEDENCIA=CI (planes NEDXC/NEDXS en el despachador).",
+      "valida": [
+        "Existe FTRD",
+        "PAQUETE=1, PROCEDENCIA=CI, TIPOFAC=M",
+        "Suma servicios = valor facturado"
+      ],
+      "errores": [
+        "FACTURA MASIVA SIN RELACION DE SERVICIOS",
+        "FACTURA NO ES DE PROCEDENCIA DE CITAS PAQUETE",
+        "Error de registros en servicios, el total no coincide con lo facturado"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. No persiste."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_AJUSTE_IND",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_AJUSTE_IND.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON nota de ajuste evento. Param @CNSGLO (el despachador manda CNSGLO o CNSFCT). Misma familia de nodos que IND + recién nacidos.",
+      "valida": [
+        "AttachedDocument / UBL de la factura base",
+        "Procedencia de la factura",
+        "IUNI.HOMOLOGO_RIPS en medicamentos"
+      ],
+      "errores": [
+        "No se encontró la factura UBL dentro del AttachedDocument",
+        "El texto extraído no es XML válido",
+        "No se encontró la procedencia de la factura",
+        "La Unidad de Medida de los Medicamentos no puede ser null (IUNI.HOMOLOGO_RIPS)"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_RIPS_JSON_RECIENNACIDOS",
+        "FNK_AttachedDocument",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. Persiste el despachador como TIPODOC=AJUSTE → FNOTJSON CLASE=A."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_AJUSTE_PGP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_AJUSTE_PGP.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON nota de ajuste PGP. Camino vivo del despachador (RETURN tras EXEC). Exige FTRDC.",
+      "valida": [
+        "Existe FTRDC"
+      ],
+      "errores": [
+        "FACTURA CAPITADA SIN RELACION DE SERVICIOS, POR FAVOR VERIFIQUE."
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_NOTAAJUSTE_PGP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_NOTAAJUSTE_PGP.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON tipo nota-ajuste PGP por CNSFCT de factura (no CNSGLO). Completa FTRDC.IDAFILIADO. USVGS FEVRIPS_INC_SINVLR, FTRDC_EXCUYSERPLAN, EPI_MEDICODEFAULT. En el despachador queda después del RETURN de AJUSTE: no se alcanza por FTR_COL.",
+      "valida": [
+        "Existe FTRDC"
+      ],
+      "errores": [
+        "FACTURA CAPITADA SIN RELACION DE SERVICIOS, POR FAVOR VERIFIQUE.  {CNSFCT}"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_AttachedDocument",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. Caller vivo no visto en FTR_COL."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_NOTAAJUSTE_MAS",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_NOTAAJUSTE_MAS.sql",
+      "actualizado": "2026-09-12T21:58:00",
+      "gateId": "rips-fev",
+      "hace": "JSON nota-ajuste sobre factura masiva (TIPOFAC=M). Casi el mismo cuerpo que FTR_MAS (hasta el PRINT). Usuarios/servicios desde FTRD. recienNacidos lo arma en #RECIEN (no llama FNK_RIPS_JSON_RECIENNACIDOS). En el despachador queda después del RETURN de AJUSTE.",
+      "valida": [
+        "FTR.TIPOFAC=M",
+        "Existe FTRD"
+      ],
+      "errores": [
+        "FACTURA MASIVA SIN RELACION DE SERVICIOS, POR FAVOR VERIFIQUE."
+      ],
+      "defaults": [
+        "conceptoRecaudo arranca 05"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. Caller vivo no visto en FTR_COL."
+    },
+    {
+      "nombre": "SPK_RIPS_JSON_NDBCR_IND",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RIPS_JSON_NDBCR_IND.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "JSON NC/ND. tipoNota TOTAL si NC + IDCONCEP_ANULAFTRCE + procedencia FACTURA; si no, PARCIAL. NC parcial no financiero puede recortar un ítem del JSON de la FV (vrServicio >= VR_NOTA). Recién nacidos vía FNK.",
+      "valida": [
+        "Existe FTR de la nota",
+        "IUNI.HOMOLOGO_RIPS en medicamentos"
+      ],
+      "noValida": [
+        "Si no hay FTR, RETURN silencioso (no RAISERROR)"
+      ],
+      "errores": [
+        "No se encontro la procedencia de la factura",
+        "La Unidad de Medida de los Medicamentos no puede ser null (IUNI.HOMOLOGO_RIPS)"
+      ],
+      "defaults": [
+        "finalidadTecnologiaSalud: HPRE.FINALIDAD=10 o vacía → TGEN DATO1 o 15 (igual que IND)",
+        "tipoDiagnosticoPrincipal: si LEN<2 → 01"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE",
+        "FNK_RIPS_JSON_RECIENNACIDOS",
+        "FNK_AttachedDocument",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
+      ],
+      "efecto": "OUTPUT @PLANO. Persiste el despachador en FNOTJSON C/D."
+    },
+    {
+      "nombre": "SPK_PERSISTIR_RIPSJSON_ENVIO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PERSISTIR_RIPSJSON_ENVIO.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "Si JSON o CNSDOC vacío, sale. FACTURA → INSERT/UPDATE FTRJSON.JSON_ENVIO por CNSFCT. NOTACR/NOTADB/AJUSTE → FNOTJSON (CLASE C/D/A) por CNSFNOT.",
+      "valida": [
+        "JSON_ENVIO y CNSDOC no vacíos",
+        "TIPODOC ∈ FACTURA, NOTACR, NOTADB, AJUSTE"
+      ],
+      "noValida": [
+        "No toca CUV ni JSON_RESPUESTA",
+        "Otro TIPODOC: RETURN sin error"
+      ],
+      "llama": [],
+      "efecto": "FTRJSON o FNOTJSON.JSON_ENVIO actualizado."
+    },
+    {
+      "nombre": "FNK_RIPS_JSON_USAR_ASYNC",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_RIPS_JSON_USAR_ASYNC.sql",
+      "actualizado": "2026-09-12T21:55:00",
+      "gateId": "rips-fev",
+      "hace": "Decide si INICIAR_RIPS_JSON_JOB encola. Lee USVGS CONFIG_GENE_FEV (JSON). Sin config o no JSON → 1 (async). 0 si procedencia ∈ procedenciasSinAsync o VR_TOTAL < valorMinimoAsync.",
+      "valida": [],
+      "llama": [
+        "FNK_VALORVARIABLE (CONFIG_GENE_FEV)"
+      ],
+      "efecto": "BIT. No escribe."
+    },
+    {
+      "nombre": "FNK_RIPS_JSON_RECIENNACIDOS",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_RIPS_JSON_RECIENNACIDOS.sql",
+      "actualizado": "2026-09-12T22:00:00",
+      "gateId": "rips-fev",
+      "hace": "Devuelve UN objeto JSON de recién nacido (no array). Solo si hay exactamente 1 fila QXRCN de la admisión. 0 o >1 → ''. Datos: QXRCN + HADM.FECHAALTAMED. Documento/tipo: HCAO PROCESO=RNACIDO (NRODOCUMENTO/TIPODOC) → HCAD; si no, QXRCN.NRODOCUMENTO y CN.",
+      "valida": [
+        "QXRCN.NOADMISION = @NOADMISION y COUNT=1"
+      ],
+      "noValida": [
+        "@N_FACTURA, @PROCEDENCA, @TIPODOC y @DOCIDAFILIADO se reciben y no se usan",
+        "No recorre varios recién nacidos"
+      ],
+      "defaults": [
+        "tipoDocumentoIdentificacion: HCAO TIPODOC o CN",
+        "codSexoBiologico: F/Femenino=02, M/Masculino=01, else 03",
+        "condicionDestinoUsuarioEgreso: '0'+ESTADORN; COALESCE 01",
+        "numConsultasCPrenatal: si no es numérico → 2",
+        "edadGestacional/peso: COALESCE 0",
+        "codDiagnosticoPrincipal: COALESCE 'null' (texto)",
+        "codDiagnosticoCausaMuerte: vacío → JSON null",
+        "CIE11 y codigoVIDA: siempre null"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR con un objeto {…} o vacío. El caller lo mete en \"recienNacidos\":[ … ]."
+    },
+    {
+      "nombre": "SPK_GUARDAR_ARCHIVO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GUARDAR_ARCHIVO.sql",
+      "actualizado": "2026-09-12T21:58:00",
+      "gateId": "rips-fev",
+      "hace": "Escribe @String a disco (@Path\\@Filename) vía OLE Scripting.FileSystemObject. Las hojas RIPS solo lo llaman si @URL_PATH no es nulo (el despachador manda NULL).",
+      "valida": [],
+      "errores": [
+        "Error whilst opening/creating/writing/closing the file + descripción OLE"
+      ],
+      "llama": [
+        "sp_OACreate / sp_OAMethod / sp_OADestroy"
+      ],
+      "efecto": "Archivo en servidor SQL. No toca FTRJSON."
     },
     {
       "nombre": "SPQ_AUTPG",
@@ -2926,8 +3371,14 @@
           "id": "INSERTAR_PACIENTE",
           "estado": "leido",
           "hace": "Alta paciente en AUTPG para periodo/tercero/plan/unidad. Valida duplicado mismo periodo.",
-          "valida": ["IDAFILIADO, ANOMES, IDTERCEROCA, IDPLAN, UNIDAD_ATENCION", "No duplicado AUTPG mismo periodo"],
-          "errores": ["Paciente ya existe en el periodo", "Variables obligatorias no suministradas"],
+          "valida": [
+            "IDAFILIADO, ANOMES, IDTERCEROCA, IDPLAN, UNIDAD_ATENCION",
+            "No duplicado AUTPG mismo periodo"
+          ],
+          "errores": [
+            "Paciente ya existe en el periodo",
+            "Variables obligatorias no suministradas"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "INSERT AUTPG estado Autorizado"
@@ -2936,8 +3387,17 @@
           "id": "ENVIARA_FACT",
           "estado": "leido",
           "hace": "Envía o retira registro a cola de facturación (ENFACT 1/0). ACCION ENVIAR|RETIRAR. Log AUTPG_LOG.",
-          "valida": ["Estado Autorizado/Autorizado Recuperado", "VALORPAQ>0", "No facturado", "No duplicado facturación mismo periodo (ENVIAR)"],
-          "errores": ["DUPLICADO_FACTURACION_MISMO_PERIODO", "El registro no admite esta acción", "Variables obligatorias"],
+          "valida": [
+            "Estado Autorizado/Autorizado Recuperado",
+            "VALORPAQ>0",
+            "No facturado",
+            "No duplicado facturación mismo periodo (ENVIAR)"
+          ],
+          "errores": [
+            "DUPLICADO_FACTURACION_MISMO_PERIODO",
+            "El registro no admite esta acción",
+            "Variables obligatorias"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "UPDATE AUTPG ENFACT, USUENVIA_AFACT, FECHAENVIO_AFACT, VALORCOPAGO"
@@ -2946,8 +3406,13 @@
           "id": "ENVIARA_FACT_TODOS",
           "estado": "leido",
           "hace": "Envío masivo a facturación por tercero/unidad/periodo/sede. Recalcula copago desde VWK_CARGOS_HADMAUTCIT_ART.",
-          "valida": ["IDTERCEROCA, UNIDAD_ATENCION, ANOMES obligatorios", "Estado autorizado, ENFACT=0, FACTURABLE=1, no facturado"],
-          "errores": ["Variables obligatorias no suministradas"],
+          "valida": [
+            "IDTERCEROCA, UNIDAD_ATENCION, ANOMES obligatorios",
+            "Estado autorizado, ENFACT=0, FACTURABLE=1, no facturado"
+          ],
+          "errores": [
+            "Variables obligatorias no suministradas"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "INSERT AUTPG_LOG + UPDATE AUTPG masivo ENFACT=1"
@@ -2956,8 +3421,15 @@
           "id": "RECHAZAR_FACTURACION",
           "estado": "leido",
           "hace": "Rechaza facturación individual o masiva. CAU IDCLASE=RECHAZO_FTR obligatorio.",
-          "valida": ["CAU en TGEN RECHAZO_FTR", "Estado admite rechazo", "No facturado"],
-          "errores": ["Causal de rechazo no válida", "El registro no admite rechazo"],
+          "valida": [
+            "CAU en TGEN RECHAZO_FTR",
+            "Estado admite rechazo",
+            "No facturado"
+          ],
+          "errores": [
+            "Causal de rechazo no válida",
+            "El registro no admite rechazo"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "UPDATE AUTPG ESTADO=Rechazado Facturacion, MOTIVORECHAZO, log"
@@ -2982,8 +3454,14 @@
           "id": "PROCESAR_IMPORTACION_EXCEL",
           "estado": "leido",
           "hace": "Procesa archivo importado: valida filas, inserta/actualiza AUTPG staging importados.",
-          "valida": ["Formato columnas", "Paciente existe", "Periodo/tercero/plan coherentes"],
-          "errores": ["Errores por fila en @TBLERRORES"],
+          "valida": [
+            "Formato columnas",
+            "Paciente existe",
+            "Periodo/tercero/plan coherentes"
+          ],
+          "errores": [
+            "Errores por fila en @TBLERRORES"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "Persiste registros importados pendientes facturar"
@@ -3016,17 +3494,24 @@
           "id": "VALIDADIAN_AUTPG",
           "estado": "leido",
           "hace": "Pre-validación resolución DIAN: cuenta facturas por sede según MAXAFI_XFTR (PPT) y pacientes ENFACT. Si BLOQUEADIAN≠SI retorna CONTINUA=1.",
-          "valida": ["IDTERCEROCA, IDPLAN, PERIODO", "Pacientes ENFACT facturables"],
+          "valida": [
+            "IDTERCEROCA, IDPLAN, PERIODO",
+            "Pacientes ENFACT facturables"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
-          "llama": ["SPQ_VALIDADIAN2"],
+          "llama": [
+            "SPQ_VALIDADIAN2"
+          ],
           "efecto": "Retorna CONTINUA y detalle por sede; no persiste FTR"
         },
         {
           "id": "CONTEOAUTORIZADO",
           "estado": "leido",
           "hace": "Conteo registros autorizados listos vs marcados (WITHMARCA) para facturar en filtro.",
-          "valida": ["IDTERCEROCA, IDPLAN, PERIODO, IDSEDE"],
+          "valida": [
+            "IDTERCEROCA, IDPLAN, PERIODO, IDSEDE"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "Solo lectura conteos"
@@ -3043,7 +3528,10 @@
           "id": "RETIRAR_COPAGO",
           "estado": "leido",
           "hace": "Pone VALORCOPAGO=0 en AUTPG seleccionados ENFACT.",
-          "valida": ["ENFACT=1", "No facturado"],
+          "valida": [
+            "ENFACT=1",
+            "No facturado"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "UPDATE AUTPG.VALORCOPAGO=0"
@@ -3052,33 +3540,69 @@
           "id": "FACTURAR_AUTPG",
           "estado": "leido",
           "hace": "Orquesta facturación programa: valida filtros en SPQ y delega a SPK_FACTURA_AUTPG (WITH_MARCA=0).",
-          "valida": ["PRI abierto", "Tercero facturador NIT", "Items marcados ENFACT", "VALORPAQ>0", "FACTSEDE"],
-          "errores": ["No se encontraron items para facturar", "Tercero facturador no identificado", "Valor del Paquete no puede ser menor o igual a cero", "Periodo Contable No Existe o no Esta Abierto"],
+          "valida": [
+            "PRI abierto",
+            "Tercero facturador NIT",
+            "Items marcados ENFACT",
+            "VALORPAQ>0",
+            "FACTSEDE"
+          ],
+          "errores": [
+            "No se encontraron items para facturar",
+            "Tercero facturador no identificado",
+            "Valor del Paquete no puede ser menor o igual a cero",
+            "Periodo Contable No Existe o no Esta Abierto"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
-          "llama": ["SPK_FACTURA_AUTPG"],
+          "llama": [
+            "SPK_FACTURA_AUTPG"
+          ],
           "efecto": "Crea FTR/FTRD; UPDATE AUTPG FACTURADO=1"
         },
         {
           "id": "FACTURAR_AUTPG_IMPORTADOS",
           "estado": "leido",
           "hace": "Igual FACTURAR_AUTPG; SPK con WITH_MARCA=1 (solo importados marcados).",
-          "valida": ["Mismas que FACTURAR_AUTPG", "Origen importación"],
-          "errores": ["No se encontraron items para facturar"],
+          "valida": [
+            "Mismas que FACTURAR_AUTPG",
+            "Origen importación"
+          ],
+          "errores": [
+            "No se encontraron items para facturar"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
-          "llama": ["SPK_FACTURA_AUTPG"],
+          "llama": [
+            "SPK_FACTURA_AUTPG"
+          ],
           "efecto": "Crea FTR desde importados"
         },
         {
           "id": "FACTURAR_EVENTO_PAQ",
           "estado": "leido",
           "hace": "Orquesta factura paquete evento: valida marcas en VWK_CARGOS_HADMAUTCIT_ART y delega a SPK_FACTURACI_EVENTO_PAQ.",
-          "valida": ["Marcas MARCAFAC=1 usuario (USUMARCA)", "NIT tercero instalado", "IDSERPAQ en SER", "VALORPAQ>0", "MAX_AFILIADOS_FACTURA>0", "FACTSEDE"],
-          "errores": ["No se encontraron items para facturar.", "Escogio Todas las Sedes y esta IPS Tiene configurado Facturación por Sede", "Tercero facturador no identificado...", "El paquete asociado no existe en el Maestro de Servicios...", "Valor del Paquete no puede ser menor o igual a cero(0)", "Nro. de afiliados por factura no puede ser menor o igual a cero(0)"],
+          "valida": [
+            "Marcas MARCAFAC=1 usuario (USUMARCA)",
+            "NIT tercero instalado",
+            "IDSERPAQ en SER",
+            "VALORPAQ>0",
+            "MAX_AFILIADOS_FACTURA>0",
+            "FACTSEDE"
+          ],
+          "errores": [
+            "No se encontraron items para facturar.",
+            "Escogio Todas las Sedes y esta IPS Tiene configurado Facturación por Sede",
+            "Tercero facturador no identificado...",
+            "El paquete asociado no existe en el Maestro de Servicios...",
+            "Valor del Paquete no puede ser menor o igual a cero(0)",
+            "Nro. de afiliados por factura no puede ser menor o igual a cero(0)"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-evento-paq",
-          "llama": ["SPK_FACTURACI_EVENTO_PAQ"],
+          "llama": [
+            "SPK_FACTURACI_EVENTO_PAQ"
+          ],
           "efecto": "Crea FTR PROCEDENCIA=CI paquete; UPDATE CIT FACTURADA=1",
           "ventanaFe": "FTRCITEventoComponent · facturarEventoPaq() · tab Facturación Evento (no pestaña Programa)"
         },
@@ -3110,8 +3634,15 @@
           "id": "MARCAR_NO_ENVIAR_FACT",
           "estado": "leido",
           "hace": "Excluye registro de facturación con causal (NO_ENVIAR_FACT=1, FACTURABLE=0). Log AUTPG_LOG.",
-          "valida": ["IDCAUSAL en TGEN", "Estado autorizado, ENFACT=0, no facturado, VALORPAQ>0"],
-          "errores": ["Debe indicar la causal", "Causal no registrada", "El registro no admite esta acción"],
+          "valida": [
+            "IDCAUSAL en TGEN",
+            "Estado autorizado, ENFACT=0, no facturado, VALORPAQ>0"
+          ],
+          "errores": [
+            "Debe indicar la causal",
+            "Causal no registrada",
+            "El registro no admite esta acción"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "UPDATE AUTPG NO_ENVIAR_FACT, guarda FACTURABLE_ANTES_NOFACT"
@@ -3120,7 +3651,10 @@
           "id": "REVERTIR_NO_ENVIAR_FACT",
           "estado": "leido",
           "hace": "Revierte exclusión NO_ENVIAR_FACT restaurando FACTURABLE.",
-          "valida": ["NO_ENVIAR_FACT=1", "No facturado"],
+          "valida": [
+            "NO_ENVIAR_FACT=1",
+            "No facturado"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "UPDATE AUTPG revierte flags exclusión + log"
@@ -3129,7 +3663,9 @@
           "id": "PROCESAR_NO_ENV_FACT_MASIVO",
           "estado": "leido",
           "hace": "Aplica MARCAR_NO_ENVIAR_FACT masivo por filtro JSON (IDs o criterio).",
-          "valida": ["IDCAUSAL obligatoria"],
+          "valida": [
+            "IDCAUSAL obligatoria"
+          ],
           "capaId": "02-operacion",
           "gateId": "facturacion-programa-autpg",
           "efecto": "UPDATE AUTPG masivo exclusión"
@@ -3217,6 +3753,313 @@
       "cola": "Origen CIT directo (no AUTPG). Marcado previo vía FTR_COL · MARCAFACT/MARCAFACTPTE en FTRCITEventoComponent. Grilla VWK_CARGOS_HADMAUTCIT_ART.",
       "gateId": "facturacion-evento-paq",
       "capaId": "02-operacion"
+    },
+    {
+      "nombre": "SPQ_HPREP",
+      "tipo": "SPQ",
+      "modelo": "HPREP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_HPREP.sql",
+      "actualizado": "2026-09-12",
+      "cola": "REQ 0100016352. Presupuesto hospitalario PHD (Perú). Motor de precios: SPK_RELIQUIDA_PRESUPUESTO_PERU (leído). Calificación/aprobación de cargos es FTR_PHD, no este SP.",
+      "metodos": [
+        {
+          "id": "CLONE_PRESUPUESTO",
+          "hace": "Clona un HPREP/HPREPD a un NOPRESUPUESTO nuevo (CLON=1, ESTADO=0) con fecha/hora pedidas y reliquida el clon.",
+          "valida": [
+            "Existe HPREP origen (lee NOADMISION)",
+            "Consecutivo SPK_GENCONSECUTIVO @HPREP + sede"
+          ],
+          "noValida": [
+            "No recalcula VALOR al copiar: copia VALOR/VALORCOPAGO/VALOREXCEDENTE/IGV del origen; el precio nuevo lo deja SPK_RELIQUIDA_PRESUPUESTO_PERU",
+            "No exige ESTADO del origen ni FACTURADA",
+            "JOIN SER en el INSERT de detalle: si un IDSERVICIO no está en SER, esa línea no se clona"
+          ],
+          "errores": [
+            "Error al clonar presupuesto: …"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_RELIQUIDA_PRESUPUESTO_PERU"
+          ],
+          "efecto": "Nuevo HPREP pendiente + detalle copiado; listado de presupuestos de la admisión.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido",
+          "ventanaFe": "HADMAsistencialComp / PresupuestoComponent · icono Clonar (pide FECHA_CLON + HORA_CLON)"
+        },
+        {
+          "id": "RELIQUIDAR_PRESUPUESTO",
+          "hace": "Reliquida un presupuesto existente (tarifas/copago/IGV) vía SPK_RELIQUIDA_PRESUPUESTO_PERU y devuelve cabecera+detalle.",
+          "valida": [],
+          "noValida": [
+            "No comprueba ESTADO pendiente ni FACTURADA",
+            "La regla de precio cero vive en el SPK, no aquí"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_RELIQUIDA_PRESUPUESTO_PERU"
+          ],
+          "efecto": "HPREP/HPREPD actualizados por el SPK; resultset de la admisión.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido",
+          "ventanaFe": "HADMAsistencialComp · Reliquidar en fila HPREP"
+        },
+        {
+          "id": "CONSULTA_PRESUPUESTO",
+          "hace": "Lista HPREP de una admisión (estado, totales, detalle JSON) y HADM.REVALU.",
+          "valida": [],
+          "noValida": [
+            "No filtra ELIMINADO en el JSON de detalle"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "NUEVO_HPREP",
+          "hace": "Crea presupuesto vacío (totales 0, ESTADO=0) para la admisión/tercero/plan/sede.",
+          "valida": [],
+          "noValida": [
+            "No valida admisión ni plan vigentes"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT HPREP nuevo.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_HPREPD",
+          "hace": "INSERTAR/EDITAR/ELIMINAR línea HPREPD si el presupuesto está pendiente (ESTADO=0); luego reliquida.",
+          "valida": [
+            "HPREP.ESTADO=0"
+          ],
+          "noValida": [
+            "INSERTAR no calcula VALOR: lo deja el SPK"
+          ],
+          "errores": [
+            "Presupuesto no se encuentra pendiente"
+          ],
+          "llama": [
+            "SPK_RELIQUIDA_PRESUPUESTO_PERU"
+          ],
+          "efecto": "Detalle cambiado + reliquidación.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "PRINT_PRESUPUESTO",
+          "hace": "Datasets de impresión de un NOPRESUPUESTO (cabecera HADM/AFI + detalle no eliminado).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura / PDF.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "PRINT_PRESUPUESTO_PHD",
+          "hace": "Impresión de varios NOPRESUPUESTOS de una admisión (usaPrintPHD).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura / PDF.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "ACEPTAPREADM",
+          "hace": "Acepta presupuesto (ASE aseguradora ESTADO=1 o PTE paciente ESTADO=2); eventos HEVEN.",
+          "valida": [
+            "Admisión existe",
+            "Rama medicamentos+plan está desactivada (AND 1=2)"
+          ],
+          "noValida": [],
+          "errores": [
+            "Admision no encontrada, noadmision=…"
+          ],
+          "llama": [],
+          "efecto": "HPREP.ESTADO 1 o 2; HADM.ESTADO_PRE en ASE.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "RECHAZAPREADM",
+          "hace": "Rechaza presupuesto (ASE=3 / PTE=4).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "HPREP.ESTADO 3 o 4.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_RELIQUIDA_PRESUPUESTO_PERU",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RELIQUIDA_PRESUPUESTO_PERU.sql",
+      "actualizado": "2026-09-12T21:15:18",
+      "llamadoDesde": [
+        "SPQ_HPREP · CLONE_PRESUPUESTO",
+        "SPQ_HPREP · RELIQUIDAR_PRESUPUESTO",
+        "SPQ_HPREP · GUARDAR_HPREPD"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "hace": "Recorre HPREPD del presupuesto, toma tarifa con FNQ_VAL_SERTOT_PERU (HPREP.FECHA + IDTERCEROCA + IDPLAN + IDSERVICIO) y escribe VALOR/IGV/copago/excedente; totaliza HPREP.",
+          "valida": [],
+          "noValida": [
+            "Si FNQ_VAL_SERTOT_PERU no halla SERTOT vigente, VALOR queda 0 (encaja REQ 6352 tras clonar)",
+            "CLONE no pasa @PROCESO='NUEVO': no recalcula COPAGOVARIABLE ni FECHA_VENCE en esa rama",
+            "La consulta SERTOT previa (IART.PRINCIPAL) no se usa: el UPDATE sale de la función"
+          ],
+          "errores": [],
+          "llama": [
+            "FNQ_VAL_SERTOT_PERU"
+          ],
+          "efecto": "HPREPD.VALOR e IGV actualizados; HPREP.VALORTOTAL/VALORCOPAGO/VALOREXCEDENTE.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNQ_VAL_SERTOT_PERU",
+      "tipo": "FN",
+      "estado": "leido",
+      "fuente": "sql/FNQ_VAL_SERTOT_PERU.sql",
+      "actualizado": "2026-09-12T21:28:00",
+      "llamadoDesde": [
+        "SPK_RELIQUIDA_PRESUPUESTO_PERU"
+      ],
+      "metodos": [
+        {
+          "id": "(función)",
+          "hace": "Devuelve tarifa unitaria de SERTOT (con IGV, IGV, sin IGV) para tercero+plan+servicio en una fecha.",
+          "valida": [
+            "SERTOT.IDTERCERO + IDPLAN + IDSERVICIO",
+            "Fecha dentro de FECHAINI–FECHAFIN y también FECHAINIFD–FECHAFINFD"
+          ],
+          "noValida": [
+            "Si no hay fila vigente, MAX(VLRSERVICIO) es NULL y COALESCE deja 0 (no error)",
+            "IGV fijo 1.18; no lee alícuota de tabla",
+            "No mira IART.PRINCIPAL ni sede; toma MAX(VLRSERVICIO) si hay varias filas",
+            "La fecha la pone el caller (HPREP.FECHA del clon, no la del origen)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Tabla: VALOR_UNITARIO_CON_IGV, VALOR_IGV_UNITARIO, VALOR_UNITARIO_SIN_IGV.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FTR_PHD",
+      "tipo": "SPQ",
+      "modelo": "FTR_PHD",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTR_PHD.sql",
+      "actualizado": "2026-09-12T21:15:18",
+      "cola": "Calificación y facturación PHD. APROBAR no toca HPREP.VALOR.",
+      "metodos": [
+        {
+          "id": "APROBAR_CALIFICACION",
+          "hace": "Aprueba admisión PHD en PHDCAL (ESTADO_CALIFICACION=1) con cartas CARTG si NOREQCARTG=0.",
+          "valida": [
+            "HADM existe y TIPOADM = HTAD_HOSPITA",
+            "Si algún HPREP.NOREQCARTG=0: exige cartas vigentes no facturadas; faltante cobertura ≤ 3000"
+          ],
+          "noValida": [
+            "No reliquida HPREP ni HPRED; no mira precios en cero del presupuesto"
+          ],
+          "errores": [
+            "La admisión no existe o no es PHD",
+            "No hay cartas de garantía vigentes para esta admisión",
+            "Debe seleccionar al menos una carta de garantía vigente…",
+            "Las cartas… no son válidas, están vencidas o ya fueron facturadas",
+            "El faltante (…) supera la tolerancia de 3000"
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE PHDCAL aprobada + JSON de cartas.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_CARGOS_ADMISION",
+          "hace": "Lista HPRE/HPRED de la admisión (valores, paquete, no cobrable) para la grilla expandida.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru",
+          "estado": "leido"
+        },
+        {
+          "id": "OBSERVAR_CALIFICACION",
+          "hace": "Deja PHDCAL observada (no aprobada) con comentario.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru"
+        },
+        {
+          "id": "REGRESAR_PENDIENTE",
+          "hace": "Devuelve calificación a pendiente.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru"
+        },
+        {
+          "id": "LISTAR_CARTAS_GARANTIA",
+          "hace": "Cartas CARTG de la admisión para el diálogo de aprobar.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru"
+        },
+        {
+          "id": "FACTURAR_PHD",
+          "hace": "Factura admisiones PHD marcadas (tab Facturación).",
+          "estado": "listado",
+          "capaId": "02-operacion",
+          "gateId": "phd-calificacion-peru"
+        },
+        {
+          "id": "LISTAR_ADMISIONES_PHD",
+          "hace": "Listado admisiones PHD.",
+          "estado": "listado",
+          "gateId": "phd-calificacion-peru"
+        },
+        {
+          "id": "HPRED",
+          "hace": "Submétodos NOCOBRABLE/ADDPAQUETE/EDITAR/ELIMINAR sobre cargos en calificación.",
+          "estado": "listado",
+          "gateId": "phd-calificacion-peru"
+        }
+      ]
     }
   ]
 }

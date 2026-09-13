@@ -11,13 +11,22 @@ Actúa como **coordinador de desarrollo experto en Qrystalos** (frontend Quasar/
 
 - **OpenAI no interviene** en este proceso (ni criterios, ni organizar textos, ni Chat, ni dictámenes).
 - **Agente en Cursor (nosotros):** análisis técnico, criterios de aceptación, organización del análisis/recomendación, Chat del caso (`activo/{id-caso}/chat.json`), Chat de procesos (`conocimiento/chat.json`) y documentos (`dictamenes/`). Fundamente en Qrystalos2, `conocimiento/` y documentación viva. El coordinador escribe **solo** en la app. Releer esos `chat.json` en cada turno y responder (autor: `agente`). No pedir que pegue el mismo texto en Cursor.
-- **Contabilidad:** si `contenido.contabilidad.afecta` es true, validar `comoAfecta` y `desarrollo` contra Qrystalos2 (MCUE, CON, MCPE) y documentación. Dejar veredicto en el Chat y en `contenido.contabilidad.validacion`.
+- **Contabilidad:** si `contenido.contabilidad.afecta` es true, validar `comoAfecta` y `desarrollo` contra Qrystalos2 (MCUE, CON, MCPE) y documentación. Dejar veredicto en el Chat y en `contenido.contabilidad.validacion`. Si **no afecta**, en el dictamen HTML la sección 3 lleva **solo** «Afecta contabilidad: No». **No** ponga «Cómo lo afecta», «Desarrollo contable» ni «Validación del agente» (sobran y confunden). Tampoco rellene esos campos con `contabilidad.afecta=false` ni «Ninguno».
 - **Validar antes:** si `contenido.validarAntes.aplica` es true, el dictamen HTML **debe** incluir la sección «Validar antes de desarrollar» (el desarrollador comprueba que el error no se haya corregido ya). Si el fallo no se reproduce, no hay desarrollo: informar que está correcto. Usar `validarAntes.texto` si viene del formulario.
+- **¿Ya existe? (REQ por desconocimiento):** antes de proponer desarrollo, clasifique el ticket. Muchos REQ piden algo que el sistema ya hace (el usuario no conoce el botón, el estado o el orden). **No** tome solo los METODOs marcados en el formulario ni solo la captura.
+
+  **Paso 0 obligatorio** (Chat + `solicitud.contenido.analisis`, primeras líneas):
+  1. Texto del REQ (necesidad de negocio) ≠ pantalla de la captura (el usuario pudo entrar al camino equivocado).
+  2. Inventariar **todos** los caminos del control: botones Vue (`v-if` / estado CERRADA, INDRECIBIDO…), ayuda `help/Help*`, `proceso.json` → `necesidadesYaCubiertas` si existe, fichas del SPQ **del control** (no solo las casillas del formulario).
+  3. Clasificar: **capacitación** (ya existe; informar ruta y condición) | **defecto** (el camino existe y falla) | **hueco** (no hay botón/METODO).
+  4. Si es capacitación: impacto FE/API/SQL = No; `validarAntes` = probar el camino existente en test; no inventar módulo. Si es defecto: validar antes de desarrollar. Si es hueco: ahí sí solución de desarrollo.
+
+  En Documentar, al ficha un control, anote en `proceso.json` → `necesidadesYaCubiertas[]` la frase del usuario («subir radicados masivos») → botón + condición + METODO + qué **no** es. Así el próximo REQ se cruza contra esa lista.
 
 ## Arranque de cada requerimiento
 
 1. Leer `config/rutas.json` para obtener rutas de Qrystalos2, documentación, SQL y formulario.
-2. **Proceso:** leer `conocimiento/INDICE.json`. Ubicar el módulo en la base de procesos. Si no existe, crear esqueleto (5 capas) y pendientes — no inventar el flujo. Dictaminar solo el gate de este REQ.
+2. **Proceso:** leer `conocimiento/INDICE.json`. Ubicar el módulo en la base de procesos. Si no existe, crear esqueleto (5 capas) y pendientes — no inventar el flujo. Dictaminar solo el control de este REQ.
 3. Si existe **`activo/{id-caso}/`**, leer `INSTRUCCION-AGENTE.md`, `solicitud.json` y `chat.json` — prioridad sobre prompt pegado.
 4. Cada turno, además: `conocimiento/tarea.json` (si `abierta`) y `conocimiento/chat.json` (Documentar). Responder ahí autor `agente`.
 5. Verificar que exista **HTML en `cola/`**. SQL: o bien **métodos documentados** en `solicitud.json` → `sql.usarDocumentacion` + `sql.metodosDocumentados`, o bien **scripts en `sql/`** (nombres del formulario).
@@ -30,13 +39,13 @@ Actúa como **coordinador de desarrollo experto en Qrystalos** (frontend Quasar/
 
 ## Base de procesos (`conocimiento/`)
 
-- Se guarda **solo el flujo y la explicación** (capas, gates, invariantes, nombre/rol del SP).
+- Se guarda **solo el flujo y la explicación** (capas, controles, invariantes, nombre/rol del SP). **Vocabulario:** en Chat, dictámenes y pantalla se dice **control** (no «gate»). Un control es el paso del proceso —pantalla, botón o confirmación— donde algo debe cumplirse para seguir. El JSON usa `controles` (fichas antiguas: `gates`).
 - Catálogo `{proceso}/sps.json`: **SP → METODO** (`hace`, `valida`, `noValida`, `errores`, `llama`, `efecto`). Se llena al leer el `.sql` de hoy (Documentar).
 - En un **REQ**, si el coordinador seleccionó METODOs ya documentados, use esas fichas. **No** exija bajar el cuerpo a `sql/` de entrada. En el Chat del caso deje el veredicto: ¿hace falta el .sql de hoy? (`leido` y alcance cubierto → no; `listado`/`no_leido`/`parcial` o alcance nuevo → sí).
 - **No** se archivan cuerpos de SP: se actualizan a diario. Cuando haya que releer o documentar uno nuevo, bajarlos a `sql/` y pasarlos en Documentar.
 - Qrystalos2 y `qrystalos.documentacion` se consultan **vivos** en cada análisis.
 - Si faltan SP o se crea un proceso: filas en `conocimiento/pendientes.json` (visibles en la app → Documentar).
-- Tras leer un SP: ficha de cada METODO en `sps.json`; el gate en `proceso.json` solo si cambia el flujo. No pegar el script.
+- Tras leer un SP: ficha de cada METODO en `sps.json`; el control en `proceso.json` solo si cambia el flujo. No pegar el script. No escriba «gate» al coordinador ni al desarrollador.
 - Menú central: Analista de negocio | Consultas | Documentar.
 
 ## Regla de oro: detenerse y pedir
@@ -49,13 +58,16 @@ Pedir explícitamente (lista concreta) cuando falte:
 - Ruta de `qrystalos.server` si el cambio toca API
 - Datos del formulario aval asesor incompletos (proyecto, módulo, ID REQ)
 - Capturas, logs o tiempos medidos (requerimientos de performance)
+- **Normativa** (circular, resolución, anexo técnico) en `activo/{id-caso}/archivos/` cuando el REQ pide cumplir una norma: leer el `.extracto.txt`, comparar con lo que genera el sistema y citar apartes en el dictamen (sección 4.6)
 - Confirmación de opción de solución cuando hay varias propuestas
 
 **Prohibido:** inventar columnas, SPs o comportamiento; asumir y seguir en silencio.
 
 ## Formulario GUI (`app/index.html`)
 
-Menú central: **Analista de negocio** | **Consultas** | **Documentar**.
+Menú central: **Solicitar requerimiento** | **Analista de negocio** | **Consultas** | **Documentar**.
+
+**Solicitar requerimiento:** necesidad de negocio/funcional para el comité (plan de trabajo). El agente contrasta con `conocimiento/`. Se puede asociar un aval técnico (REQ/dictamen). El HTML sale en `solicitudes/{id}/documento.html`. No es el dictamen de implementación.
 
 Analista: pestañas **Cola de trabajo** | **Nuevo / Editar caso** | **Chat** | **Histórico**.
 
@@ -76,7 +88,7 @@ Analista: pestañas **Cola de trabajo** | **Nuevo / Editar caso** | **Chat** | *
 4. El agente **lee el HTML del disco** — no hace falta pegar todo en el chat
 
 ### SQL — documentados o carpeta fija
-En el paso 4: botón **Traer métodos documentados** (lee `conocimiento/{proceso}/sps.json`) y checks por METODO. Si marca «Usar estos métodos…», no exige `sql/`. El **Chat del caso** valida si hay que bajar el .sql de hoy.
+En el paso 4: botón **Traer métodos de este REQ** (lee `conocimiento/{proceso}/sps.json` y **filtra** por el requerimiento/análisis/brecha: no lista prenómina, retiros ni DIAN si el cambio es solo impresión). Marque solo esos METODO. «Ver todos los del módulo» es opcional. Si marca «Usar estos métodos…», no exige `sql/`. El **Chat del caso** valida si hay que bajar el .sql de hoy. **Nunca** copie el catálogo entero a `sql.metodosDocumentados`.
 
 Si el método no está documentado (o el Chat lo pide): coloque scripts en **`sql/`** (carpeta fija) y marque la confirmación.
 
@@ -150,6 +162,9 @@ Si cambia el dictamen HTML: explique los cambios en `chat.json` (autor: `agente`
 
 - Copiar estructura de `plantillas/dictamen.html`.
 - Reemplazar placeholders `{{...}}` con contenido real del análisis.
+- **Sección 4.5 — Diagrama de flujo:** si hay diagrama (`solicitud.contenido.diagramaFlujo` o `activo/{id}/diagramas/`), **incrustarlo en el dictamen** (mapa visible en 4.5, no solo un enlace). El botón **Generar diagrama** lo adjunta solo. Copia suelta en `dictamenes/{id}-flujo.html` y, al cerrar fase 1, en `aprobados/{id-caso}/diagramas/`. Si no hay diagrama, texto indicando que no se generó.
+- **Sección 4.6 — Normativa adjunta:** placeholder `{{NORMATIVA_ADJUNTOS}}`. Si hay `solicitud.contenido.archivosAnalisis`, leer cada extracto en `activo/{id-caso}/archivos/*.extracto.txt`, contrastar con FE/SP y citar apartes (artículo/numeral/campo). Copiar originales a `aprobados/{id-caso}/archivos/` al cerrar fase 1. Si no hay archivo, indicar que no se adjuntó.
+- **Sección 5 — Cambios propuestos:** incluir siempre **5.0 En palabras simples (negocio)** antes del detalle técnico (5.1 FE, 5.2 SQL, 5.3 backend). Mismo tono que el requerimiento: qué ocurre hoy y qué se propone, sin SP ni rutas. Usar `solicitud.contenido.cambioPropuestoSimple` si el coordinador lo completó en el formulario.
 - ID sugerido: fecha + slug corto (ej. `20260829-visor-medico-mad`).
 - Estado inicial: `Propuesto`.
 - CSS embebido, sin dependencias externas, imprimible (Ctrl+P → PDF).

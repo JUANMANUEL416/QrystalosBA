@@ -33,7 +33,7 @@ Auditoría: recepción → responder (motivos `FGLOCG` + detalle `FGLOD`) → ap
 
 ### 3. Lo que llega y completa
 
-Recaudo (cartera) alimenta la glosa. **Gate de este REQ.**
+Recaudo (cartera) alimenta la glosa. **Control de este REQ.**
 
 ### 4. Subproceso unido
 

@@ -2,11 +2,15 @@
 
 Mapa de **flujos de proceso** para coordinar requerimientos y atender consultas (p. ej. una llamada de caja). No es un diccionario de tablas ni un archivo de stored procedures.
 
+## Vocabulario
+
+**Control** (plural **controles**): paso del proceso —pantalla, botón o confirmación— donde algo debe cumplirse para seguir. En Chat, dictámenes y pantalla se dice control, no «gate». El JSON usa `controles` (fichas antiguas: `gates`).
+
 ## Qué se guarda aquí
 
-- Flujo por proceso (capas y gates) con una **explicación**.
+- Flujo por proceso (capas y controles) con una **explicación**.
 - Invariantes: qué debe ser cierto para cerrar un paso.
-- Nombre y **rol** del SP en ese gate (no el cuerpo del procedimiento).
+- Nombre y **rol** del SP en ese control (no el cuerpo del procedimiento).
 - Catálogo `{proceso}/sps.json`: **SP → METODO** (hace, valida, noValida, errores KO, llama, efecto). Se completa cada vez que se lee un `.sql`.
 - Lista de **pendientes** (Documentar).
 
@@ -20,13 +24,13 @@ Mapa de **flujos de proceso** para coordinar requerimientos y atender consultas 
 | Entrada en el menú central | Uso |
 |----------------------------|-----|
 | Analista de negocio | Cola, casos, dictámenes |
-| Consultas | Flujo (capa → gate) y Procedimientos (SP → método) |
+| Consultas | Flujo (capa → control) y Procedimientos (SP → método) |
 | Documentar | Pendientes, indicar SP del día, Chat de proceso |
 
 ## Regla para el agente
 
 1. En cada REQ: abrir `INDICE.json`, ubicar el proceso. Si no existe, crear esqueleto y dejar pendientes.
 2. No inventar flujo ni validaciones de SP sin el `.sql` de hoy en `sql/`.
-3. Tras leer un SP: en `{proceso}/sps.json` documentar cada `METODO` (hace, valida, noValida, errores, llama, efecto). Actualizar el gate en `proceso.json` solo si cambia el flujo. No copiar el script.
+3. Tras leer un SP: en `{proceso}/sps.json` documentar cada `METODO` (hace, valida, noValida, errores, llama, efecto). Actualizar el control en `proceso.json` solo si cambia el flujo. No copiar el script.
 4. Si faltan SP o capas: filas en `pendientes.json`.
 5. Releer `tarea.json` y `chat.json` cuando el coordinador documente desde la app.

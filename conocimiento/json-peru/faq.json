@@ -1,0 +1,88 @@
+{
+  "procesoId": "json-peru",
+  "actualizado": "2026-09-12T22:45:00",
+  "nota": "Semilla 2026-09-12. El bot solo usa coincidencias con la pregunta actual.",
+  "items": [
+    {
+      "id": "peru-arbol-envio",
+      "pregunta": "cómo se envía el JSON de la factura a SUNAT Perú MiFact ENVIA_CONTAB",
+      "respuesta": "## Envío JSON Perú\n\nEn `/admin/facturacionPe` el botón de **enviar a contabilidad** llama `FTR_COL · ENVIA_CONTAB`, y ese método ejecuta:\n\n1. `SPK_GENERA_JSON_PERU_FTR_INTEGRA`\n2. `SPK_GENERA_JSON_PERU_FACTURA`\n\nNo hay cola `FACTE` colombiana. El SP arma el JSON y hace POST a MiFact (`URLFACT_ELE_PRODJSON` o `…PRUEJSON`).\n\nSi **ya existe FTRE** de esa `N_FACTURA`, se sale («Ya fue enviada»). Token corto o URL corta → no envía.\n\nRespuesta: `FTR.FACTEP`, `LINKFACTURA`, `FTRE`, `FTRAPILOG`.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:20:00",
+      "mensajeId": "semilla-peru-envio",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-boleta-factura",
+      "pregunta": "cuándo es boleta 03 y cuándo factura 01 TIPOFIN FDIAN BOLE",
+      "respuesta": "## Boleta vs factura\n\n`TIPOFIN='N'` → tipo documento **03** (boleta) y resolución `FDIAN.PROCEDENCIA=BOLE`.\n\nCualquier otro `TIPOFIN` → tipo **01** (factura) y `PROCEDENCIA=FTR`.\n\nMoneda siempre **PEN**. Código de operación SUNAT en el JSON: **0101**.\n\nEl correlativo es la parte de `N_FACTURA` después del prefijo (sin guion).",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:20:00",
+      "mensajeId": "semilla-peru-boleta",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-factep",
+      "pregunta": "qué significan los estados FACTEP Est.Sunat 103 104 104A OK",
+      "respuesta": "## FACTEP (Est.Sunat)\n\nMapeo de la grilla Perú:\n\n| Valor | Etiqueta FE |\n|-------|-------------|\n| vacío | Sin notificar |\n| 103 | Error valida |\n| 104 | Rechazado |\n| 104A | Rechazado-api |\n| 105 | Anulada |\n| 108 | Baja |\n| resto | OK |\n\nEl SP escribe `FACTEP=ESTDOC` de la API. Si la respuesta viene vacía: **104A**. Si ya iba 101/102/103, solo actualiza `FTRE.SOLICITUDJSON` y no reinserta.\n\n**No confundir con FACTE** (Colombia, módulo XML DIAN).",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:20:00",
+      "mensajeId": "semilla-peru-factep",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-notas",
+      "pregunta": "cómo se envía la nota crédito débito a SUNAT FNOT_ENVIARSUNAT",
+      "respuesta": "## Notas → SUNAT\n\n`FNOT_COL · FNOT_ENVIARSUNAT` (solo `IXCOUNTRY=PERU` y `FACTEP≠OK`) → `SPK_GENERA_JSON_PERU_NOTADBCR`.\n\nEl armado del JSON está dentro de `ENVIA_NOTAS_ACEPTA=SI`. Si `FNOT.FACTEP=OK` no reenvía.\n\n| CLASE | Tipo SUNAT | Prefijo FDIAN |\n|-------|------------|---------------|\n| C (crédito) | 07 | NCB si el padre es boleta (03), NCF si factura (01) |\n| D (débito) | 08 | NDB / NDF |\n\nObservación &lt; 7 caracteres bloquea. Líneas `FNOTD` con `VR_TOTAL>0`.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:20:00",
+      "mensajeId": "semilla-peru-notas",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-no-es",
+      "pregunta": "el JSON de Perú es lo mismo que RIPS o el XML de la DIAN PHD precios",
+      "respuesta": "## Qué no es\n\n- **No es XML DIAN** (`FACTE`, CUFE) — módulo `dian-xml`.\n- **No es RIPS JSON / CUV** — módulo `rips-json` (Colombia salud). La ayuda de notas lo dice: FEVRIPS no aplica en SUNAT.\n- **PHD / HPREP / FNQ_VAL_SERTOT_PERU** fijan **precios** del presupuesto (REQ 6352). No envían el JSON a MiFact.\n\n`LIBERAR_SUNAT` ya está fichado: consulta MiFact y deja `FACTEP` vacío (no si es 101/102). No borra FTRE.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:20:00",
+      "mensajeId": "semilla-peru-noes",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-config-variables",
+      "pregunta": "qué variables URL token se configuran para el JSON electrónico Perú",
+      "respuesta": "## Variables\n\n- `IXCOUNTRY=PERU`\n- `BDATA_PRODUCCION` = nombre de la BD de producción → usa `URLFACT_ELE_PRODJSON` + `TOKEN_FACTU_ELE_PERU`\n- Si no es esa BD → `URLFACT_ELE_PRUEJSON` y RUC emisor de prueba `20100100100`\n- `IDTERCEROINSTALADO` (emisor)\n- `NOMBRE_COMERCIAL`\n- Notas: `ENVIA_NOTAS_ACEPTA=SI`\n\nToken con menos de 20 caracteres o URL con menos de 30 → el SP no llama la API.\n\nResolución: `/conf/fdian` con `PROCEDENCIA` FTR o BOLE.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:20:00",
+      "mensajeId": "semilla-peru-config",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-liberar-sunat",
+      "pregunta": "cómo funciona LIBERAR_SUNAT quitar error 104A FACTEP",
+      "respuesta": "## Liberar SUNAT y quitar error\n\n**`FTR_PERU · LIBERAR_SUNAT`** + **`SPK_CONSULTA_DOCUMENTO_ELECTRONICA`** (leídos):\n\n1. Exige factura `ESTADO=P`, `TIPOANULACION≠NC` y `FACTEP` distinto de 101 y 102.\n2. Si `PROVEEDOR_FACTUELECT=MIFACT`, consulta MiFact (`GetEstatusInvoice`, no `SendInvoice`).\n3. Si MiFact responde 101/102/103: actualiza `FACTEP` y, si no hay `FTRE`, la inserta (QR/hash).\n4. Luego pone `FACTEP=NULL` **solo** si tras la consulta **no** quedó 101/102. Si MiFact ya lo tenía aceptado, Liberar **no** lo limpia.\n5. **No borra FTRE.** Un reenvío MiFact puede salir «Ya fue enviada».\n\nSi el estado inicial no cumple: *Estado de la Factura no Valido para liberar*.\n\n**`QUITAR_ERROR_API`:** solo si `FACTEP=104A` → `FACTEP=NULL`.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:45:00",
+      "mensajeId": "semilla-peru-liberar",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-consulta-mifact",
+      "pregunta": "qué hace SPK_CONSULTA_DOCUMENTO_ELECTRONICA GetEstatusInvoice Liberar",
+      "respuesta": "## Consulta documento MiFact\n\nSolo corre si `PROVEEDOR_FACTUELECT=MIFACT`. Token/URL iguales que el envío; cambia `SendInvoice` por `GetEstatusInvoice`.\n\n- Factura: tipo 03/01, serie = 4 izq. de `N_FACTURA`.\n- Nota (`CNSFNOT`): 07/08, serie de `CNSDIANFE`.\n- Fuera de producción: RUC `20100100100` y token de prueba.\n\nRespuesta 101/102/103 → sincroniza `FACTEP` e inserta `FTRE` si faltaba. Otro estado → `FACTEP=ERROR`. Log en `FTRAPILOG` método CONSULTA.\n\nSi el proveedor es INTER_SAP, este SP no hace nada.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:45:00",
+      "mensajeId": "semilla-peru-consulta",
+      "chatId": "c202609122220jsonperu"
+    },
+    {
+      "id": "peru-interfax-sap",
+      "pregunta": "cómo funciona INTER_SAP Interfax JSON SAP ENVIAR_FACTURA_SAP EPrefactura",
+      "respuesta": "## Rama Interfax / SAP (no es MiFact)\n\nSi `PROVEEDOR_FACTUELECT=INTER_SAP`, `ENVIAR_FACTURA_SAP` llama `SPK_JSON_FTR_PERU_INTERFAX`.\n\nArma **EPrefactura** (prefactura SAP) y envía con `SPK_ENVIA_TRAMAS_CIPERU`:\n\n| Caso | Endpoint |\n|------|----------|\n| Boleta o factura paciente | `/FacturacionPaciente/PreFacturaPacienteEM` |\n| Factura garante (01 + MAD/SALUD/CMV) | `/FacturacionGarante/PreFacturaGaranteEM` |\n\nGarante **sin remesa** no envía. Valor 0 → `FACTEP=104A`. OK código 0 → `102`. Error → `104`.\n`MODO_PRUEBAS=1` arma el JSON y no lo manda.\n\nNotas: `SPK_JSON_FTR_PERU_INTERFAX_FNOT` (**EPreabono**), lo dispara cartera (`SPQ_FCXC_COL` / `SPK_NOTASCXC`), no el botón Enviar Sunat de notas MiFact.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-09-12T22:45:00",
+      "mensajeId": "semilla-peru-interfax",
+      "chatId": "c202609122220jsonperu"
+    }
+  ]
+}

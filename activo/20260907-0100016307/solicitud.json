@@ -1,0 +1,170 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-12T15:37:47.222Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016307",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260907-0100016307",
+    "idReq": "0100016307",
+    "fecha": "2026-09-03",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Maicao",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CARTERA · Cartera",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "hotfix/CMAICA162",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CARTERA · Cartera",
+    "requerimiento": "Solicitud de carga masiva de cuentas de cobro por número de radicado\n\nEl usuario solicita la posibilidad de subir de manera masiva las cuentas de cobro asociadas a cada factura utilizando el número de radicado correspondiente.\n\n1. Acceder al módulo de carga masiva\n2. Seleccionar el archivo con las cuentas de cobro\n3. Iniciar el proceso de carga DETALLE: Solicitud de carga masiva de cuentas de cobro por número de radicado\n\nEl usuario solicita la posibilidad de subir de manera masiva las cuentas de cobro asociadas a cada factura utilizando el número de radicado correspondiente.\nal intentar radicar la cxc opcion varios",
+    "criteriosAceptacion": "1) En Cuentas por cobrar, con la CXC ya radicada (INDRECIBIDO=1), el botón «Importar Radicados» está visible. El usuario exporta el formato Excel (N_FACTURA, NOREFERENCIAEXT), lo llena con el radicado de cada factura, Lee archivo e Importa: el detalle FCXCD muestra el radicado por factura.\n2) Si hay filas con error, el sistema entrega ErroresRadicados.xlsx y no deja la cuenta a medias sin aviso.\n3) No se crea un módulo nuevo de «carga masiva»: la necesidad del REQ (subir radicado por factura) ya está cubierta por ese botón + IMPORTAR_RADICADO_CXC.\n4) El camino «Radicar CXC → Tiene varias fechas» no es el de «solo cargar radicados»; se usa solo si una misma cuenta debe partirse por distintas fechas de recepción.\n5) En test Maicao (hotfix/CMAICA162) se confirma el punto 1. Si funciona: REQ correcto, sin desarrollo. Una a una: NRORAD_FCXCD (asignar nro. de radicado en el detalle).",
+    "alcance": "Análisis y validación de lo que YA existe: Importar Radicados (IMPORTAR_RADICADO_CXC), asignación unitaria NRORAD_FCXCD, radicación simple RADICA_FCXC y, solo si el negocio tiene varias fechas reales, el diálogo «varias fechas». Sin módulo nuevo. Fuera: MCPE/CON, presupuesto, ENT_COL. Desarrollo FE/SQL solo si, tras validar Importar Radicados, el cliente demuestra que necesita partír CXC por fechas y ese flujo falla.",
+    "restricciones": "Importar Radicados solo aparece si INDRECIBIDO=1 (cuenta ya recibida). Radicar CXC solo si CERRADA=1 e INDRECIBIDO=0. Excel: N_FACTURA debe coincidir exacto con FCXCD. Permiso CXC_RADICAR. Rama hotfix/CMAICA162. No ejecutar SQL en producción. Contabilidad: no afecta.",
+    "analisis": "El texto del REQ pide cargar masivamente el número de radicado de cada factura. Eso YA existe y el análisis anterior no lo puso primero.\n\n**Camino A (cubre el REQ) — ya desarrollado.** Tras radicar la CXC (INDRECIBIDO=1) el detalle muestra «Importar Radicados» (FCXCAComponent.vue, v-if INDRECIBIDO==1). Diálogo: Exportar Formato → Excel N_FACTURA + NOREFERENCIAEXT → Leer archivo → Importar → SPQ_FCXC_COL · IMPORTAR_RADICADO_CXC actualiza FCXCD. Errores salen en ErroresRadicados.xlsx. Ayuda en línea §6.2 (HelpManualCuentasPorCobrarComponent). Alterno una a una: NRORAD_FCXCD.\n\n**Camino B — otra cosa.** «Radicar CXC → Tiene varias fechas» (captura x.png, CNSCXC 0100058446) PARTE la cuenta por FECHA_RADICADO (RPDX + PROCESAR_RADICACION_MULTI_FECHA). No es el botón de subir radicados. La grilla vacía es esperable: no han pulsado Exportar/subir Excel/Importar Datos. «Al procesar desaparece» es el cierre del diálogo al OK (limpia RPDX), no prueba que falte la carga masiva.\n\n**Por qué el operador no lo ve:** Importar Radicados no está dentro de Radicar CXC; solo en el pie del detalle cuando la cuenta YA está recibida. Quien busca «carga masiva» en la opción «varios» entra al camino B.\n\n**Veredicto:** necesidad de negocio = Camino A, ya solucionado. No hay módulo nuevo ni desarrollo por defecto. Validar en test Maicao Importar Radicados. Camino B solo si confirman que una cuenta debe partirse por varias fechas de recepción.",
+    "opciones": [],
+    "recomendacion": "Informar que la carga masiva de radicado por factura YA está en el sistema: detalle de CXC recibida → Importar Radicados (IMPORTAR_RADICADO_CXC). No desarrollar módulo nuevo.\n\nValidar en hotfix/CMAICA162 ese botón (Excel N_FACTURA + NOREFERENCIAEXT). Si funciona: cerrar REQ como correcto / capacitación.\n\nNo usar «Tiene varias fechas» para esa necesidad. Solo si el cliente confirma partíción por fechas distintas y el flujo B falla de verdad, entonces sí se mira UX de onProcesarMultiFecha (cierre del diálogo).",
+    "cambioPropuestoSimple": "El sistema ya permite subir el radicado de cada factura: primero se radica la cuenta de cobro y después, en el detalle, el botón verde «Importar Radicados» carga un Excel (factura + radicado). No hace falta un módulo nuevo. La pantalla de «varias fechas» que sale en la captura es otro proceso (partir la cuenta por fechas) y no es el camino para solo cargar radicados. En test hay que probar Importar Radicados; si funciona, el REQ ya está solucionado.",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Radicación CXC multi-fecha (FCXC/FCXCD/RPDX vía SPQ_FCXC_COL). No modifica diseño de asientos MCPE/MCH ni comprobantes CON en este REQ; la contabilización al radicar solo aplica si el cliente tiene CONTABCXC=SI (comportamiento ya existente en SPK_CONTAB_RADICACXC, fuera del alcance funcional del ticket). Afecta contabilidad: No.",
+        "validadoEn": "2026-09-12T15:50:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "1) En test Maicao (hotfix/CMAICA162): tomar una CXC YA radicada (recibida). Debe verse «Importar Radicados». Exportar formato, llenar N_FACTURA + NOREFERENCIAEXT, importar. Si el detalle queda con radicado por factura, el REQ está solucionado: no desarrollar. 2) Confirmar con el usuario si lo que quería era eso o realmente partir una cuenta por varias fechas de recepción. 3) Solo si confirman el caso 2 y, usando Exportar → llenar Excel con FECHA_RADICADO → Importar Datos → Procesar, el fallo de la captura sigue, entonces se evalúa desarrollo del camino B. La grilla vacía de x.png no cuenta como fallo si no importaron el Excel a RPDX."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "x.png",
+        "ruta": "activo/20260907-0100016307/imagenes/x.png",
+        "subidaEn": "2026-09-12T09:56:46",
+        "url": "/api/caso/20260907-0100016307/imagen/x.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Cuentas por cobrar (/admin/CuentasxCobrar), al radicar con «Tiene varias fechas de radicación», el usuario exporta plantilla, carga Excel (N_FACTURA, NOREFERENCIAEXT, FECHA_RADICADO YYYY-MM-DD), ve en grilla RPDX todas las filas válidas y el resumen por fecha antes de Procesar.\n2) Tras «Importar Datos», el sistema conserva CNSRPDX en sesión y marca errados (periodo cerrado) con VALOR10=1; Procesar queda bloqueado mientras haya errados.\n3) Al pulsar Procesar (QRECIBE ≥10 chars, NRORADICA ≥5), PROCESAR_RADICACION_MULTI_FECHA radica por grupo de fecha: conserva CNSCXC en el grupo mayoritario y crea CXC nuevas para las demás fechas; cada una queda INDRECIBIDO=1 con NOREFERENCIAEXT por factura desde RPDX.\n4) La UI no «pierde» el contexto sin aviso: tras éxito muestra resumen (CNSCXC + fecha + cantidad facturas) y refresca cabecera/detalle; si el usuario permanece en la CXC original, ve estado coherente (radicada o con saldo de facturas acorde al reparto).\n5) Con volumen alto (caso clínica), Procesar completa en tiempo aceptable (<90 s referencia ~500 facturas en preversión) o informa progreso/error explícito sin dejar pantalla en blanco.\n6) Camino alterno «Importar Radicados» (una sola fecha de radicación) sigue funcionando sin regresión.",
+      "originalesEn": "2026-09-12T15:36:17.574Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Cuentas por cobrar, con la CXC ya radicada (INDRECIBIDO=1), el botón «Importar Radicados» está visible. El usuario exporta el formato Excel (N_FACTURA, NOREFERENCIAEXT), lo llena con el radicado de cada factura, Lee archivo e Importa: el detalle FCXCD muestra el radicado por factura.\n2) Si hay filas con error, el sistema entrega ErroresRadicados.xlsx y no deja la cuenta a medias sin aviso.\n3) No se crea un módulo nuevo de «carga masiva»: la necesidad del REQ (subir radicado por factura) ya está cubierta por ese botón + IMPORTAR_RADICADO_CXC.\n4) El camino «Radicar CXC → Tiene varias fechas» no es el de «solo cargar radicados»; se usa solo si una misma cuenta debe partirse por distintas fechas de recepción.\n5) En test Maicao (hotfix/CMAICA162) se confirma el punto 1. Si funciona: REQ correcto, sin desarrollo. Una a una: NRORAD_FCXCD (asignar nro. de radicado en el detalle).",
+      "trasAnalisisEn": "2026-09-12T10:50:00.000Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Contraste minucioso: el REQ de carga masiva de radicado por factura coincide con IMPORTAR_RADICADO_CXC (ya en producción/FE), no con un módulo nuevo. La captura x.png es el diálogo varias fechas (camino distinto). SQL del día: fichas leídas; no pedir sql/ salvo que se confirme fallo real del camino B.",
+      "fecha": "2026-09-12T10:50:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_FCXC_COL · IMPORTAR_RADICADO_CXC · NRORAD_FCXCD · RADICA_FCXC · EXPORTAR_FORMATO_CxC · (solo si aplica B) ACTUALIZAR_RPDX_RADICACION · PROCESAR_RADICACION_MULTI_FECHA · BORRAR_RPDX"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260907-0100016307/diagramas/flujo.html",
+      "subidaEn": "2026-09-12T10:36:50",
+      "url": "/api/caso/20260907-0100016307/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260907-0100016307-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016307\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FCXC_COL",
+        "metodo": "PROCESAR_RADICACION_MULTI_FECHA",
+        "estado": "leido",
+        "hace": "Radica partiendo FCXC por fechas en RPDX (múltiples CNSCXC).",
+        "llama": [
+          "SPK_GENCONSECUTIVO",
+          "SPK_ENTREGA_CXC"
+        ]
+      },
+      {
+        "sp": "SPQ_FCXC_COL",
+        "metodo": "EXPORTAR_FORMATO_CxC",
+        "estado": "leido",
+        "hace": "Export plantilla Excel radicación CxC.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FCXC_COL",
+        "metodo": "ACTUALIZAR_RPDX_RADICACION",
+        "estado": "leido",
+        "hace": "Staging RPDX agrupación fechas antes de radicar multi.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FCXC_COL",
+        "metodo": "BORRAR_RPDX",
+        "estado": "leido",
+        "hace": "Limpia RPDX de sesión radicación.",
+        "llama": []
+      }
+    ],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260907-0100016307.html",
+    "aprobados": "aprobados/20260907-0100016307/",
+    "imagenes": "aprobados/20260907-0100016307/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-12",
+    "ultimoEnvio": "2026-09-12T11:05:56",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

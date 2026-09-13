@@ -1,0 +1,170 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-13T00:57:20.069Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100014536",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260829-0100014536",
+    "idReq": "0100014536",
+    "fecha": "2026-05-08",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "CLINICA MEDICAL",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "HPRE · CATALOGO DE CARGO",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "YOXIMAR PADRINO",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/MEDICAL397",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "HPRE · CATALOGO DE CARGO",
+    "requerimiento": "SE REQUIERE ESCOGER O QUE EL SISTEMA ESCOJA UNA SEDE, DEPENDIENDO DE LOS SERVICIOS PRESTADOS EN UNA ADMISIÓN, YA QUE PUEDE PASAR POR VARIAS SEDES.\n          \ncontexto, la idea es crear una tabla que contenga los servicios habilitados por sede y la prioridad al momento de facturar, para cuando un paciente tenga cargos de varias sede el sistema debe sugerir la sede para que tenga los datos para los rips y factura de la sede que cubra todos los servicios prestados",
+    "criteriosAceptacion": "1) Parametrización sede–servicio: servicios habilitados por sede para facturar y orden de prioridad entre sedes cuando varias aplican (configuración visible; reutilizar o extender SEDSER en «Servicios por Sede» del catálogo SER).\n2) Al facturar admisión con prestaciones en más de una sede (Administrativo → Facturación → Urg-Hospi-Domi, o Facturar admisión desde HPRE con FTRHADMComponent: FACTHADM_TODO / FACTHADM_ITEM / FACTHADM_ITEMCORTE), el sistema fija automáticamente FTR.IDSEDE: por cada sede candidata cuenta cuántos IDSERVICIO a facturar están habilitados en la parametrización; gana la de mayor conteo; empate por prioridad configurada.\n3) La sede resultante debe tener resolución FDIAN vigente (PROCEDENCIA=FTR); si ninguna califica, mensaje claro y no numerar con sede inválida (coherente con datos RIPS/factura de la sede emisora).\n4) Opcional en implementación: mostrar sede sugerida y permitir cambio con permiso antes de confirmar.\n5) Regresión: una sola sede, CREARFTR manual y flujos masivos/AUTPG sin cambio salvo acuerdo explícito.",
+    "alcance": "Incluye: persistencia y mantenimiento de habilitación + prioridad sede/servicio; extensión FE de SedserComponent (o pantalla equivalente); algoritmo de resolución de sede integrado en SPK_FACTURA_ASIS (entrada desde SPQ_FTR_HADM_COL · FACTHADM_*); mensajes; pruebas CLINICA MEDICAL (rama feature/MEDICAL397).\nExcluye: contabilidad (MCUE/ENVIA_CONTAB); facturación masiva por SEDEFMAS; AUTPG/evento paquete; SOAT (DISTRIHPRED_SOAT · FACTURAR usa IDSEDE del usuario, flujo distinto); radicaciones.",
+    "restricciones": "Validar columnas reales de SEDSER y origen de sede por línea (HPRED/CCOSTO/vista de staging) leyendo SPK_FACTURA_ASIS.sql del día antes de codificar — no está fichado en sps.json.\nRespetar USGRUH (FACT_HOSPIURG, FacturarHADM, configuración servicios).\nLa resolución debe usar los servicios del staging RPDX a facturar, no asumir solo HADM.IDSEDE sin evidencia del SP.\nCoordinación: no implementar en Qrystalos BA.",
+    "analisis": "Paso 0 — ¿Ya existe?\n• REQ (formulario + cola IX OnLine.htm): al facturar una admisión con paso por varias sedes, elegir o que el sistema elija la sede según servicios prestados, tabla de habilitación y prioridad, para RIPS y factura de la sede que cubra los servicios.\n• El formulario dice «HPRE · CATÁLOGO DE CARGO», pero el negocio apunta a facturación de admisión (FTR + sede emisora), no al catálogo SOAT ni a HPRED_SOATSER.\n• Caminos del gate:\n  – Configuración → Servicios → «Servicios por Sede» (SedserComponent, tabla SEDSER, MODELO SEDSER): habilita IDSERVICIO por IDSEDE (ESTADO); sin prioridad ni regla al facturar.\n  – Administrativo → Facturación → Urg-Hospi-Domi (FTRHADMComponent, FACT_HOSPIURG): PREPARAR_HADM → FACTHADM_TODO / FACTHADM_ITEM / FACTHADM_ITEMCORTE → SPK_FACTURA_ASIS.\n  – Asistencial → Cargos (HPREComponent): mismo FTRHADM embebido si permiso FacturarHADM.\n  – Factura manual (CREARFTR): usuario elige sede; no resuelve multi-sede por admisión.\n  – Masiva (FACTSEDE=SI): sede obligatoria en filtro; no algoritmo por admisión.\n  – Programa/evento: sede por CIT/AFI (FACTSEDEPACIENTE); distinto.\n• Clasificación: **hueco funcional** (falta prioridad + motor de sede en facturación admisión). No es capacitación: SEDSER no cubre el REQ.\n\nCausa: la cabecera FTR en admisión se arma en SPK_FACTURA_ASIS (referenciado por fichas FACTHADM_* leídas); no hay en conocimiento regla «sede con más servicios habilitados». HADM tiene IDSEDE de ingreso; cargos pueden asociarse a otras sedes según prestación — el cliente pide consolidar en la sede óptima para factura/RIPS.\n\nContabilidad: afecta=false (solo IDSEDE en FTR; FDIAN ya validada en numeración).",
+    "opciones": [],
+    "recomendacion": "Extender SEDSER (o tabla anexa acordada en BD) con prioridad de sede; parametrizar en el mismo gate de «Servicios por Sede». Implementar función SP (p. ej. SPK_RESOLVER_IDSEDE_FACTURA) que reciba el conjunto de IDSERVICIO a facturar, filtre SEDSER activos, puntúe por conteo y desempate por prioridad, valide FDIAN; invocarla al inicio de SPK_FACTURA_ASIS antes de asignar FTR.IDSEDE. FE: tras PREPARAR_HADM, mostrar sede propuesta si el negocio lo pide. Antes de desarrollo: bajar SPK_FACTURA_ASIS.sql a sql/ para ubicar asignación actual de sede y lista de servicios de entrada.",
+    "cambioPropuestoSimple": "Completar la configuración de qué servicios puede facturar cada sede y en qué orden preferir sedes; al facturar hospitalización/urgencias desde admisión, que el sistema elija la sede que mejor coincide con los servicios prestados (más habilitados; desempate por prioridad), con resolución DIAN de esa sede, para que factura y RIPS queden en la sede correcta.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contenido.contabilidad.afecta=false. Cambio de IDSEDE en cabecera FTR por regla de negocio no modifica ENVIA_CONTAB, asientos MCUE/CON ni totales; solo debe usar sede con FDIAN vigente (ya validado en CREARFTR/SPK_GENNUMEROFACTURA).",
+        "validadoEn": "2026-09-13T01:02:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Parametrización sede–servicio: servicios habilitados por sede para facturar y orden de prioridad entre sedes cuando varias aplican (configuración visible; reutilizar o extender SEDSER en «Servicios por Sede» del catálogo SER).\n2) Al facturar admisión con prestaciones en más de una sede (Administrativo → Facturación → Urg-Hospi-Domi, o Facturar admisión desde HPRE con FTRHADMComponent: FACTHADM_TODO / FACTHADM_ITEM / FACTHADM_ITEMCORTE), el sistema fija automáticamente FTR.IDSEDE: por cada sede candidata cuenta cuántos IDSERVICIO a facturar están habilitados en la parametrización; gana la de mayor conteo; empate por prioridad configurada.\n3) La sede resultante debe tener resolución FDIAN vigente (PROCEDENCIA=FTR); si ninguna califica, mensaje claro y no numerar con sede inválida (coherente con datos RIPS/factura de la sede emisora).\n4) Opcional en implementación: mostrar sede sugerida y permitir cambio con permiso antes de confirmar.\n5) Regresión: una sola sede, CREARFTR manual y flujos masivos/AUTPG sin cambio salvo acuerdo explícito.",
+      "originalesEn": "2026-09-13T00:56:44.805Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Parametrización sede–servicio: servicios habilitados por sede para facturar y orden de prioridad entre sedes cuando varias aplican (configuración visible; reutilizar o extender SEDSER en «Servicios por Sede» del catálogo SER).\n2) Al facturar admisión con prestaciones en más de una sede (Administrativo → Facturación → Urg-Hospi-Domi, o Facturar admisión desde HPRE con FTRHADMComponent: FACTHADM_TODO / FACTHADM_ITEM / FACTHADM_ITEMCORTE), el sistema fija automáticamente FTR.IDSEDE: por cada sede candidata cuenta cuántos IDSERVICIO a facturar están habilitados en la parametrización; gana la de mayor conteo; empate por prioridad configurada.\n3) La sede resultante debe tener resolución FDIAN vigente (PROCEDENCIA=FTR); si ninguna califica, mensaje claro y no numerar con sede inválida (coherente con datos RIPS/factura de la sede emisora).\n4) Opcional en implementación: mostrar sede sugerida y permitir cambio con permiso antes de confirmar.\n5) Regresión: una sola sede, CREARFTR manual y flujos masivos/AUTPG sin cambio salvo acuerdo explícito.",
+      "trasAnalisisEn": "2026-09-13T00:56:52.533Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis orientado a solución listo (proceso facturacion, gate urg-hosp-factura). Pendiente técnico para implementación: SPK_FACTURA_ASIS.sql en sql/ (punto exacto de FTR.IDSEDE y sede por línea HPRED/RPDX). Confirmar en Medical si todos los servicios multi-sede ya están en SEDSER.",
+      "fecha": "2026-09-13T00:55:00.000Z",
+      "estado": "listo",
+      "sps": "SPK_FACTURA_ASIS — no documentado como SP en sps.json; solicitar en sql/ antes de codificar."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260829-0100014536/diagramas/flujo.html",
+      "subidaEn": "2026-09-12T19:56:59",
+      "url": "/api/caso/20260829-0100014536/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260829-0100014536-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100014536\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_HADM_COL",
+        "metodo": "PREPARAR_HADM",
+        "estado": "leido",
+        "hace": "Staging RPDX facturación admisión: SPK_ESTADO_ADMI + SPK_AFACTURAR. Devuelve filas pagador/plan/total.",
+        "llama": [
+          "SPK_GENCONSECUTIVO",
+          "SPK_ESTADO_ADMI",
+          "SPK_AFACTURAR"
+        ]
+      },
+      {
+        "sp": "SPQ_FTR_HADM_COL",
+        "metodo": "FACTHADM_ITEM",
+        "estado": "leido",
+        "hace": "Factura un ítem RPDX de admisión vía SPK_FACTURA_ASIS.",
+        "llama": [
+          "SPK_FACTURA_ASIS"
+        ]
+      },
+      {
+        "sp": "SPQ_FTR_HADM_COL",
+        "metodo": "FACTHADM_TODO",
+        "estado": "leido",
+        "hace": "Factura todos los ítems pendientes de la admisión (cursor RPDX).",
+        "llama": [
+          "SPK_FACTURA_ASIS"
+        ]
+      },
+      {
+        "sp": "SPQ_FTR_HADM_COL",
+        "metodo": "FACTHADM_ITEMCORTE",
+        "estado": "leido",
+        "hace": "Factura ítem de corte parcial.",
+        "llama": [
+          "SPK_FACTURA_ASIS"
+        ]
+      }
+    ],
+    "notas": "Proceso facturacion (no hpre). SPK_FACTURA_ASIS: pedir .sql; no copiar catálogo SPQ_FTR_COL. SEDSER/SEDSER_COL según script de mantenimiento en cliente.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260829-0100014536.html",
+    "aprobados": "aprobados/20260829-0100014536/",
+    "imagenes": "aprobados/20260829-0100014536/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-12",
+    "ultimoEnvio": "2026-09-12T20:09:01",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

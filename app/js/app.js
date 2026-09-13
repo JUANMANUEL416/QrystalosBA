@@ -17,7 +17,11 @@
   let criteriosMeta = window.QrysCriterios ? QrysCriterios.emptyMeta() : {};
   let contValidacion = null;
   let brechaAnalisis = null;
+  let imagenesAnalisis = [];
+  let archivosAnalisis = [];
+  let diagramaFlujo = null;
   let syncingCorreo = false;
+  let analisisLoadingToken = 0;
 
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
@@ -106,9 +110,38 @@
     }
   }
 
+  function isAnalisisEnCurso() {
+    const ov = $("#analisisLoadingOverlay");
+    return ov && !ov.hidden;
+  }
+
+  function showAnalisisLoading(titulo, detalle, idCaso) {
+    const ov = $("#analisisLoadingOverlay");
+    if (!ov) return;
+    if ($("#analisisLoadingTitle")) $("#analisisLoadingTitle").textContent = titulo || "Analizando requerimiento";
+    if ($("#analisisLoadingDetail")) $("#analisisLoadingDetail").textContent = detalle || "";
+    if ($("#analisisLoadingCaso")) {
+      $("#analisisLoadingCaso").textContent = idCaso ? `Caso: ${idCaso}` : "";
+    }
+    ov.hidden = false;
+    document.body.classList.add("analisis-loading-active");
+  }
+
+  function updateAnalisisLoadingDetalle(texto) {
+    const el = $("#analisisLoadingDetail");
+    if (el && texto) el.textContent = texto;
+  }
+
+  function hideAnalisisLoading() {
+    const ov = $("#analisisLoadingOverlay");
+    if (ov) ov.hidden = true;
+    document.body.classList.remove("analisis-loading-active");
+  }
+
   function bindMainTabs() {
     $$(".main-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
+        if (isAnalisisEnCurso()) return;
         $$(".main-tab").forEach((t) => t.classList.toggle("active", t === tab));
         $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${tab.dataset.view}`));
         if (tab.dataset.view === "historico") refreshHistorico();
@@ -133,6 +166,7 @@
   }
 
   function switchToView(viewName) {
+    if (isAnalisisEnCurso()) return;
     $$(".main-tab").forEach((t) => t.classList.toggle("active", t.dataset.view === viewName));
     $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${viewName}`));
     if (viewName === "chat") refreshChatView();
@@ -377,6 +411,7 @@
     }
     const mail = cierre?.correo || {};
     if (mail.ok && !mail.borrador) {
+      await guardarCorreoEnLista(val("#desarrollador"), dest);
       aplicarResultadoCorreoEnviado(idCaso, mail);
     } else if (archivoColaVinculado) {
       QrysCola.updateEstado(archivoColaVinculado, "aprobado", {}, idReqVinculado);
@@ -420,8 +455,14 @@
     if (!nombre || !mail || !window.QrysDesarrolladores) return false;
     try {
       const r = await QrysDesarrolladores.setCorreo(nombre, mail);
-      return !!(r && r.ok !== false);
-    } catch {
+      if (!r || r.ok === false) {
+        console.warn("No se guardó el correo en desarrolladores:", r && r.error);
+        return false;
+      }
+      const guardado = String((r.desarrollador && r.desarrollador.correo) || "").trim().toLowerCase();
+      return guardado === mail.toLowerCase();
+    } catch (e) {
+      console.warn("No se guardó el correo en desarrolladores:", e);
       return false;
     }
   }
@@ -515,19 +556,38 @@
     }
   }
 
+  function showServerOldAlert(html) {
+    $("#alertServerOld")?.remove();
+    const el = document.createElement("div");
+    el.id = "alertServerOld";
+    el.className = "alert alert-warning";
+    el.innerHTML = html;
+    $(".app-header")?.prepend(el);
+  }
+
   async function checkServerHealth() {
     if (location.protocol === "file:") return;
     try {
       const resp = await fetch("/api/health");
       const data = await parseJsonResponse(resp);
       if (!data.features?.includes("caso") || !data.features?.includes("chatSinOpenAI")) {
-        $("#alertFileProtocol")?.remove();
-        const el = document.createElement("div");
-        el.id = "alertServerOld";
-        el.className = "alert alert-warning";
-        el.innerHTML =
-          "<strong>Servidor viejo.</strong> Cierre la ventana negra y ejecute <code>abrir-app.bat</code>.";
-        $(".app-header")?.prepend(el);
+        showServerOldAlert(
+          "<strong>Servidor viejo.</strong> Cierre la ventana negra y ejecute <code>abrir-app.bat</code>.",
+        );
+        return;
+      }
+      if (!data.features?.includes("imagenesAnalisis")) {
+        showServerOldAlert(
+          "<strong>Servidor sin capturas.</strong> Ejecute <code>reiniciar-servidor.bat</code> "
+          + "(como administrador si hay servicio Windows) y recargue con Ctrl+F5. "
+          + "Las capturas del paso Requerimiento no funcionarán hasta reiniciar.",
+        );
+      }
+      if (!data.features?.includes("archivosAnalisis")) {
+        showServerOldAlert(
+          "<strong>Servidor sin archivos de normativa.</strong> Ejecute <code>reiniciar-servidor.bat</code> "
+          + "y recargue con Ctrl+F5 para adjuntar resoluciones/circulares.",
+        );
       }
     } catch {
       /* servidor no responde health — activarAnalisis mostrará el error concreto */
@@ -567,6 +627,7 @@
       });
       if (archivoColaVinculado) QrysCola.updateEstado(archivoColaVinculado, "en_analisis", {}, idReqVinculado);
       refreshColaTable();
+      await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
 
       alert(
         "Fase 1 activada.\n\n" +
@@ -905,6 +966,12 @@
     if ($("#chkCorreoEnviado")) $("#chkCorreoEnviado").checked = false;
     setVal("#fechaEnvioCorreo", "");
     brechaAnalisis = null;
+    imagenesAnalisis = [];
+    archivosAnalisis = [];
+    diagramaFlujo = null;
+    renderImagenesAnalisis();
+    renderArchivosAnalisis();
+    renderDiagramaFlujo();
     renderBrechaAnalisis(null);
     const hintBrecha = $("#brechaAnalisisHint");
     if (hintBrecha) hintBrecha.textContent = "El agente (Cursor) contrasta el REQ con su análisis y lista qué le falta revisar. No usa OpenAI.";
@@ -912,6 +979,7 @@
     $("#archivoColaVinculado").textContent = "—";
     if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = false;
     if ($("#chkUsarDocSp")) $("#chkUsarDocSp").checked = false;
+    if ($("#chkSqlKbTodos")) $("#chkSqlKbTodos").checked = false;
     if ($("#sqlMetodosKbLista")) $("#sqlMetodosKbLista").innerHTML = "";
     if ($("#sqlKbEstado")) $("#sqlKbEstado").textContent = "";
     if ($("#opcionesLista")) $("#opcionesLista").innerHTML = "";
@@ -1007,17 +1075,31 @@
     if (buscarKb) {
       buscarKb.addEventListener("input", () => renderMetodosKbLista());
     }
+    const chkTodosKb = $("#chkSqlKbTodos");
+    if (chkTodosKb) {
+      chkTodosKb.addEventListener("change", () => {
+        metodosKbState.verTodos = !!chkTodosKb.checked;
+        renderMetodosKbLista();
+      });
+    }
     $("#btnGuardarJson").addEventListener("click", downloadJson);
     const btnZip = $("#btnDescargarZip");
     if (btnZip) btnZip.addEventListener("click", downloadZip);
     $("#btnActivarAnalisis").addEventListener("click", () => activarAnalisis());
     const btnCopiar = $("#btnCopiarPrompt");
     if (btnCopiar) btnCopiar.addEventListener("click", copyPrompt);
+    $("#btnCopiarPromptPruebasSql")?.addEventListener("click", () => copyPromptPruebasSql());
+    $("#btnCopiarPromptValidarDev")?.addEventListener("click", () => copyPromptValidarDesarrollo());
     $("#btnArchivarSql").addEventListener("click", () => archivarSql());
     $("#chkSqlColocados").addEventListener("change", updateAll);
     $("#idReq").addEventListener("input", updateSqlPath);
     bindCorreoDev();
     bindCriterios();
+    bindCambioSimplePreview();
+    bindImagenesAnalisis();
+    bindArchivosAnalisis();
+    bindDiagramaFlujo();
+    $("#btnCopiarPromptDiagrama")?.addEventListener("click", () => copyPromptDiagrama());
     $("#btnAnalizarRequerimiento")?.addEventListener("click", () => analizarRequerimiento());
 
     $$(".step").forEach((btn) => {
@@ -1221,9 +1303,13 @@
         return;
       }
       // Refuerzo: el backend también actualiza la lista; si falló, reintentamos aquí.
-      await guardarCorreoEnLista(val("#desarrollador"), dest);
+      const okLista = await guardarCorreoEnLista(val("#desarrollador"), dest);
       aplicarResultadoCorreoEnviado(idCaso, r);
-      alert(r.mensaje || "Correo enviado.");
+      if (!okLista) {
+        alert((r.mensaje || "Correo enviado.") + "\n\nAviso: no quedó el correo en la lista de desarrolladores. Revíselo y salga del campo Correo destino.");
+      } else {
+        alert(r.mensaje || "Correo enviado.");
+      }
     } catch (e) {
       alert(e.message || "No se pudo enviar el correo.");
     } finally {
@@ -1246,7 +1332,10 @@
     $("#correoDestino")?.addEventListener("blur", async () => {
       await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
     });
-    $("#desarrollador")?.addEventListener("change", () => refreshCorreoEstado());
+    $("#desarrollador")?.addEventListener("change", async () => {
+      await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
+      refreshCorreoEstado();
+    });
   }
 
   function bindDictado() {
@@ -1380,7 +1469,7 @@
     );
   }
 
-  async function pollBrechaAnalisis(idCaso, hintEl) {
+  async function pollBrechaAnalisis(idCaso, hintEl, loadingToken) {
     const hint = hintEl || $("#brechaAnalisisHint");
     const snapshot = {
       ca: val("#criteriosAceptacion"),
@@ -1388,15 +1477,21 @@
       re: val("#restricciones"),
       an: val("#analisis"),
     };
+    const stale = () => loadingToken != null && loadingToken !== analisisLoadingToken;
     for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 4000));
+      if (stale()) return;
       try {
         const est = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/estado?t=${Date.now()}`, { cache: "no-store" });
         const estado = await est.json();
         const bot = estado.bot || {};
         if (bot.estado === "error" || bot.estado === "sin_clave") {
           if (hint) hint.textContent = bot.error || "El agente no pudo terminar. Revise el Chat.";
+          updateAnalisisLoadingDetalle(bot.error || "El agente no pudo terminar. Revise el Chat.");
           return;
+        }
+        if (i === 0) {
+          updateAnalisisLoadingDetalle("El agente está trabajando. Suele tardar 1–3 minutos…");
         }
         const cargada = await cargarSolicitudCaso(idCaso);
         if (cargada && solicitudTienePropuesta({
@@ -1419,6 +1514,7 @@
               hint.textContent =
                 "Listo: criterios, alcance, restricciones y análisis quedaron en el formulario y en el Chat.";
             }
+            updateAnalisisLoadingDetalle("Análisis listo. Actualizando formulario…");
             if (bot.estado === "listo" || bot.estado === "terminado") return;
           }
         }
@@ -1447,6 +1543,7 @@
               ? "Listo: revise criterios, alcance, restricciones y análisis en el formulario."
               : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
           }
+          updateAnalisisLoadingDetalle(hint?.textContent || "Análisis finalizado.");
           return;
         }
       } catch {
@@ -1454,21 +1551,534 @@
       }
     }
     if (hint) hint.textContent = "Sigue en el Chat si aquí no aparece. Recargue el caso si hace falta.";
+    updateAnalisisLoadingDetalle("Tiempo de espera agotado. Revise el Chat del caso.");
+  }
+
+  function imagenAnalisisUrl(idCaso, nombre) {
+    return `/api/caso/${encodeURIComponent(idCaso)}/imagen/${encodeURIComponent(nombre)}`;
+  }
+
+  function renderImagenesAnalisis() {
+    const ul = $("#imagenesAnalisisLista");
+    const empty = $("#imagenesAnalisisEmpty");
+    if (!ul) return;
+    const idCaso = val("#idCaso");
+    ul.innerHTML = imagenesAnalisis
+      .map((img) => {
+        const nombre = img.nombre || "";
+        const url = img.url || (idCaso && nombre ? imagenAnalisisUrl(idCaso, nombre) : "");
+        return `<li class="imagen-analisis-item${img._subiendo ? " is-uploading" : ""}" data-nombre="${escAttr(nombre)}">
+          <button type="button" class="btn-quitar-imagen" title="Quitar" aria-label="Quitar ${escAttr(nombre)}">×</button>
+          ${url ? `<a href="${escAttr(url)}" target="_blank" rel="noopener"><img src="${escAttr(url)}" alt="${escAttr(nombre)}" loading="lazy"></a>` : `<div class="imagen-analisis-placeholder">${escAttr(nombre)}</div>`}
+          <span class="imagen-analisis-nombre" title="${escAttr(nombre)}">${escAttr(nombre)}</span>
+        </li>`;
+      })
+      .join("");
+    ul.querySelectorAll(".btn-quitar-imagen").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const li = btn.closest(".imagen-analisis-item");
+        quitarImagenAnalisis(li?.dataset.nombre || "");
+      });
+    });
+    if (empty) empty.hidden = imagenesAnalisis.length > 0;
+  }
+
+  async function subirImagenAnalisis(file) {
+    const idCaso = val("#idCaso");
+    if (!idCaso) {
+      alert("Indique ID caso (paso 1) antes de adjuntar capturas.");
+      return null;
+    }
+    if (location.protocol === "file:") {
+      alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/ para subir capturas.");
+      return null;
+    }
+    if (!file || !String(file.type || "").startsWith("image/")) {
+      alert("Solo se admiten imágenes (PNG, JPG, WebP, GIF).");
+      return null;
+    }
+    const maxMb = 8;
+    if (file.size > maxMb * 1024 * 1024) {
+      alert(`La imagen supera ${maxMb} MB. Reduzca la captura e intente de nuevo.`);
+      return null;
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+      reader.readAsDataURL(file);
+    });
+    const tempNombre = file.name || `captura-${Date.now()}.png`;
+    imagenesAnalisis.push({ nombre: tempNombre, _subiendo: true });
+    renderImagenesAnalisis();
+    try {
+      let resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/imagen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: file.name || "", dataUrl }),
+      });
+      let out = await parseJsonResponse(resp);
+      if (resp.status === 404 && (out.error || "").toLowerCase().includes("ruta")) {
+        const data = collectData();
+        resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            solicitud: data,
+            subirImagen: { nombre: file.name || "", dataUrl },
+          }),
+        });
+        out = await parseJsonResponse(resp);
+      }
+      if (!resp.ok) {
+        if (resp.status === 404 && (out.error || "").toLowerCase().includes("ruta")) {
+          throw new Error(
+            "El servidor no tiene la ruta de capturas (versión antigua). "
+            + "Ejecute reiniciar-servidor.bat (como administrador) y recargue con Ctrl+F5.",
+          );
+        }
+        throw new Error(out.error || "No se pudo subir la imagen");
+      }
+      if (!out.imagen) throw new Error("El servidor no devolvió la imagen guardada.");
+      imagenesAnalisis = imagenesAnalisis.filter((i) => !i._subiendo);
+      const existIdx = imagenesAnalisis.findIndex((i) => i.nombre === out.imagen.nombre);
+      if (existIdx >= 0) imagenesAnalisis[existIdx] = out.imagen;
+      else imagenesAnalisis.push(out.imagen);
+      renderImagenesAnalisis();
+      saveToStorage();
+      return out.imagen;
+    } catch (e) {
+      imagenesAnalisis = imagenesAnalisis.filter((i) => !i._subiendo);
+      renderImagenesAnalisis();
+      alert(e.message || "Error al subir la imagen.");
+      return null;
+    }
+  }
+
+  async function quitarImagenAnalisis(nombre) {
+    if (!nombre) return;
+    if (!confirm(`¿Quitar la captura «${nombre}»?`)) return;
+    const idCaso = val("#idCaso");
+    imagenesAnalisis = imagenesAnalisis.filter((i) => i.nombre !== nombre);
+    renderImagenesAnalisis();
+    saveToStorage();
+    if (location.protocol === "file:" || !idCaso) return;
+    try {
+      await fetch(`/api/caso/${encodeURIComponent(idCaso)}/imagen/${encodeURIComponent(nombre)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* local ya actualizado */
+    }
+  }
+
+  function diagramaFlujoUrl(idCaso, nombre) {
+    if (!idCaso || !nombre) return "";
+    if (location.protocol === "file:") return "";
+    return `/api/caso/${encodeURIComponent(idCaso)}/diagrama/${encodeURIComponent(nombre)}`;
+  }
+
+  function renderDiagramaFlujo() {
+    const estado = $("#diagramaFlujoEstado");
+    const hint = $("#hintDiagramaFlujo");
+    const btnQuitar = $("#btnQuitarDiagrama");
+    const preview = $("#diagramaFlujoPreview");
+    if (!estado) return;
+    if (diagramaFlujo?.nombre) {
+      const idCaso = val("#idCaso");
+      const url = diagramaFlujo.url || diagramaFlujoUrl(idCaso, diagramaFlujo.nombre);
+      estado.hidden = false;
+      estado.classList.remove("hidden");
+      estado.innerHTML = url
+        ? `Diagrama: <strong>${diagramaFlujo.nombre}</strong> — <a href="${url}" target="_blank" rel="noopener">Abrir</a>`
+        : `Diagrama: <strong>${diagramaFlujo.nombre}</strong> (${diagramaFlujo.ruta || ""})`;
+      if (hint) hint.textContent = "Listo para la sección 4.5 del dictamen";
+      if (btnQuitar) btnQuitar.classList.remove("hidden");
+      if (preview) {
+        if (url) {
+          preview.src = url;
+          preview.classList.remove("hidden");
+        } else {
+          preview.removeAttribute("src");
+          preview.classList.add("hidden");
+        }
+      }
+    } else {
+      estado.hidden = true;
+      estado.classList.add("hidden");
+      estado.textContent = "";
+      if (hint) {
+        hint.textContent = val("#idCaso")
+          ? "Sin diagrama — pulse Generar diagrama (conocimiento + análisis)"
+          : "Indique ID de caso";
+      }
+      if (btnQuitar) btnQuitar.classList.add("hidden");
+      if (preview) {
+        preview.removeAttribute("src");
+        preview.classList.add("hidden");
+      }
+    }
+  }
+
+  async function subirDiagramaFlujo(file) {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso (paso 1).");
+    if (location.protocol === "file:") {
+      return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/ para subir diagramas.");
+    }
+    if (!file) return;
+    let html;
+    try {
+      html = await file.text();
+    } catch (e) {
+      return alert(e.message || "No se pudo leer el archivo.");
+    }
+    try {
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/diagrama`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contenido: html,
+          nombre: file.name || "flujo.html",
+          notas: val("#notasDiagramaFlujo"),
+        }),
+      });
+      const out = await resp.json();
+      if (!resp.ok || !out.ok) throw new Error(out.error || "Error al subir diagrama");
+      diagramaFlujo = out.diagrama;
+      renderDiagramaFlujo();
+      saveToStorage();
+      alert(
+        "Diagrama subido. El agente debe incluir la sección 4.5 en el dictamen con enlace diagramas/" +
+          diagramaFlujo.nombre,
+      );
+    } catch (e) {
+      alert(e.message || "Error al subir el diagrama.");
+    }
+  }
+
+  async function quitarDiagramaFlujo() {
+    if (!diagramaFlujo?.nombre) return;
+    if (!confirm(`¿Quitar el diagrama «${diagramaFlujo.nombre}»?`)) return;
+    const idCaso = val("#idCaso");
+    const nombre = diagramaFlujo.nombre;
+    diagramaFlujo = null;
+    renderDiagramaFlujo();
+    saveToStorage();
+    if (location.protocol === "file:" || !idCaso) return;
+    try {
+      await fetch(`/api/caso/${encodeURIComponent(idCaso)}/diagrama/${encodeURIComponent(nombre)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* local ya actualizado */
+    }
+  }
+
+  function buildPromptDiagramaCaso(data) {
+    const pf = window.QrysPromptsFlujo;
+    if (!pf) return "(Cargue prompts-flujo.js)";
+    const d = data || collectData();
+    return pf.buildPromptDiagramaArchify({
+      modo: "caso",
+      idCaso: d.identificacion.idCaso,
+      idReq: d.identificacion.idReq,
+      procesoId: d.sql.procesoId,
+      proyecto: d.proyecto.nombre,
+      modulo: d.proyecto.modulo,
+      rutaPantalla: d.proyecto.rutaPantalla,
+      cambioPropuestoSimple: d.contenido.cambioPropuestoSimple,
+      colaPath: d.cola.rutaCola,
+      notasDiagrama: val("#notasDiagramaFlujo"),
+      data: d,
+    });
+  }
+
+  async function copyPromptDiagrama() {
+    if (!val("#idCaso")) return alert("Indique ID de caso.");
+    const prompt = buildPromptDiagramaCaso();
+    await copyTextToClipboard(
+      prompt,
+      "Prompt Archify copiado (opcional).\n\nLo habitual es pulsar «Generar diagrama» en esta misma tarjeta.",
+    );
+  }
+
+  async function generarDiagramaDesdeKb() {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso (paso 1).");
+    if (location.protocol === "file:") {
+      return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
+    }
+    const btn = $("#btnGenerarDiagrama");
+    const hint = $("#hintDiagramaFlujo");
+    if (btn) btn.disabled = true;
+    if (hint) hint.textContent = "Generando desde conocimiento/ y el análisis…";
+    try {
+      saveToStorage();
+      const data = collectData();
+      const saveResp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solicitud: data }),
+      });
+      const saveOut = await parseJsonResponse(saveResp);
+      if (!saveResp.ok) throw new Error(saveOut.error || "No se pudo guardar el caso");
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/diagrama/generar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notas: val("#notasDiagramaFlujo") }),
+      });
+      const out = await parseJsonResponse(resp);
+      if (!resp.ok || !out.ok) throw new Error(out.error || "No se pudo generar el diagrama");
+      diagramaFlujo = out.diagrama;
+      renderDiagramaFlujo();
+      saveToStorage();
+      if (hint) {
+        hint.textContent = out.diagrama?.aviso || "Diagrama listo — sección 4.5 del dictamen";
+      }
+    } catch (e) {
+      if (hint) hint.textContent = e.message || "Error al generar";
+      alert(e.message || "Error al generar el diagrama.");
+    } finally {
+      if (btn) btn.disabled = !val("#idCaso");
+    }
+  }
+
+  function bindDiagramaFlujo() {
+    const input = $("#inputDiagramaFlujo");
+    if (input) {
+      input.addEventListener("change", async () => {
+        const f = input.files?.[0];
+        input.value = "";
+        if (f) await subirDiagramaFlujo(f);
+      });
+    }
+    $("#btnQuitarDiagrama")?.addEventListener("click", () => quitarDiagramaFlujo());
+    $("#btnGenerarDiagrama")?.addEventListener("click", () => generarDiagramaDesdeKb());
+  }
+
+  function bindImagenesAnalisis() {
+    const input = $("#inputImagenAnalisis");
+    const btn = $("#btnElegirImagenAnalisis");
+    const drop = $("#imagenesAnalisisDrop");
+    if (btn && input) {
+      btn.addEventListener("click", () => input.click());
+      input.addEventListener("change", async () => {
+        const files = [...(input.files || [])];
+        input.value = "";
+        for (const f of files) await subirImagenAnalisis(f);
+      });
+    }
+    if (!drop) return;
+    drop.addEventListener("paste", async (e) => {
+      const items = [...(e.clipboardData?.items || [])];
+      const imgs = items.filter((it) => it.type.startsWith("image/"));
+      if (!imgs.length) return;
+      e.preventDefault();
+      for (const it of imgs) {
+        const blob = it.getAsFile();
+        if (blob) await subirImagenAnalisis(blob);
+      }
+    });
+    drop.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      drop.classList.add("is-dragover");
+    });
+    drop.addEventListener("dragleave", () => drop.classList.remove("is-dragover"));
+    drop.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      drop.classList.remove("is-dragover");
+      const files = [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith("image/"));
+      for (const f of files) await subirImagenAnalisis(f);
+    });
+  }
+
+  const ARCHIVO_EXTS_OK = [".pdf", ".txt", ".md", ".html", ".htm", ".docx"];
+
+  function archivoAnalisisUrl(idCaso, nombre) {
+    return `/api/caso/${encodeURIComponent(idCaso)}/archivo/${encodeURIComponent(nombre)}`;
+  }
+
+  function esArchivoNormativa(file) {
+    const name = String(file?.name || "").toLowerCase();
+    return ARCHIVO_EXTS_OK.some((ext) => name.endsWith(ext));
+  }
+
+  function renderArchivosAnalisis() {
+    const ul = $("#archivosAnalisisLista");
+    const empty = $("#archivosAnalisisEmpty");
+    if (!ul) return;
+    const idCaso = val("#idCaso");
+    ul.innerHTML = archivosAnalisis
+      .map((a) => {
+        const nombre = a.nombre || "";
+        const url = a.url || (idCaso && nombre ? archivoAnalisisUrl(idCaso, nombre) : "");
+        const urlEx = a.urlExtracto || (idCaso && a.extracto ? archivoAnalisisUrl(idCaso, a.extracto) : "");
+        const kb = a.bytes ? `${Math.round(a.bytes / 1024)} KB` : "";
+        const aviso = a.avisoExtracto ? ` · ${a.avisoExtracto}` : "";
+        const extractoOk = a.charsExtracto > 0 ? ` · extracto ${a.charsExtracto} caracteres` : "";
+        return `<li class="archivo-analisis-item${a._subiendo ? " is-uploading" : ""}" data-nombre="${escAttr(nombre)}">
+          <button type="button" class="btn-quitar-imagen" title="Quitar" aria-label="Quitar ${escAttr(nombre)}">×</button>
+          <span class="archivo-analisis-tipo">${escAttr(a.tipo || "normativa")}</span>
+          ${url ? `<a class="archivo-analisis-nombre" href="${escAttr(url)}" target="_blank" rel="noopener">${escAttr(nombre)}</a>` : `<span class="archivo-analisis-nombre">${escAttr(nombre)}</span>`}
+          <span class="archivo-analisis-meta">${escAttr(kb)}${extractoOk}${escAttr(aviso)}
+            ${urlEx ? ` · <a href="${escAttr(urlEx)}" target="_blank" rel="noopener">extracto</a>` : ""}
+          </span>
+        </li>`;
+      })
+      .join("");
+    ul.querySelectorAll(".btn-quitar-imagen").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const li = btn.closest(".archivo-analisis-item");
+        quitarArchivoAnalisis(li?.dataset.nombre || "");
+      });
+    });
+    if (empty) empty.hidden = archivosAnalisis.length > 0;
+  }
+
+  async function subirArchivoAnalisis(file) {
+    const idCaso = val("#idCaso");
+    if (!idCaso) {
+      alert("Indique ID caso (paso 1) antes de adjuntar normativa.");
+      return null;
+    }
+    if (location.protocol === "file:") {
+      alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/ para subir archivos.");
+      return null;
+    }
+    if (!file || !esArchivoNormativa(file)) {
+      alert("Solo se admiten PDF, TXT, MD, HTML o DOCX.");
+      return null;
+    }
+    const maxMb = 20;
+    if (file.size > maxMb * 1024 * 1024) {
+      alert(`El archivo supera ${maxMb} MB.`);
+      return null;
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+      reader.readAsDataURL(file);
+    });
+    const tipo = val("#tipoArchivoAnalisis") || "circular";
+    const tempNombre = file.name || `normativa-${Date.now()}.pdf`;
+    archivosAnalisis.push({ nombre: tempNombre, tipo, _subiendo: true });
+    renderArchivosAnalisis();
+    try {
+      let resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/archivo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: file.name || "", dataUrl, tipo }),
+      });
+      let out = await parseJsonResponse(resp);
+      if (resp.status === 404 && (out.error || "").toLowerCase().includes("ruta")) {
+        const data = collectData();
+        resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            solicitud: data,
+            subirArchivo: { nombre: file.name || "", dataUrl, tipo },
+          }),
+        });
+        out = await parseJsonResponse(resp);
+      }
+      if (!resp.ok) {
+        if (resp.status === 404) {
+          throw new Error(
+            "El servidor no tiene la ruta de archivos. Ejecute reiniciar-servidor.bat y Ctrl+F5.",
+          );
+        }
+        throw new Error(out.error || "No se pudo subir el archivo");
+      }
+      if (!out.archivo) throw new Error("El servidor no devolvió el archivo guardado.");
+      archivosAnalisis = archivosAnalisis.filter((i) => !i._subiendo);
+      const existIdx = archivosAnalisis.findIndex((i) => i.nombre === out.archivo.nombre);
+      if (existIdx >= 0) archivosAnalisis[existIdx] = out.archivo;
+      else archivosAnalisis.push(out.archivo);
+      renderArchivosAnalisis();
+      saveToStorage();
+      return out.archivo;
+    } catch (e) {
+      archivosAnalisis = archivosAnalisis.filter((i) => !i._subiendo);
+      renderArchivosAnalisis();
+      alert(e.message || "Error al subir el archivo.");
+      return null;
+    }
+  }
+
+  async function quitarArchivoAnalisis(nombre) {
+    if (!nombre) return;
+    if (!confirm(`¿Quitar el archivo «${nombre}»?`)) return;
+    const idCaso = val("#idCaso");
+    archivosAnalisis = archivosAnalisis.filter((i) => i.nombre !== nombre);
+    renderArchivosAnalisis();
+    saveToStorage();
+    if (location.protocol === "file:" || !idCaso) return;
+    try {
+      await fetch(`/api/caso/${encodeURIComponent(idCaso)}/archivo/${encodeURIComponent(nombre)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      /* local ya actualizado */
+    }
+  }
+
+  function bindArchivosAnalisis() {
+    const input = $("#inputArchivoAnalisis");
+    const btn = $("#btnElegirArchivoAnalisis");
+    const drop = $("#archivosAnalisisDrop");
+    if (btn && input) {
+      btn.addEventListener("click", () => input.click());
+      input.addEventListener("change", async () => {
+        const files = [...(input.files || [])];
+        input.value = "";
+        for (const f of files) await subirArchivoAnalisis(f);
+      });
+    }
+    if (!drop) return;
+    drop.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      drop.classList.add("is-dragover");
+    });
+    drop.addEventListener("dragleave", () => drop.classList.remove("is-dragover"));
+    drop.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      drop.classList.remove("is-dragover");
+      const files = [...(e.dataTransfer?.files || [])].filter(esArchivoNormativa);
+      for (const f of files) await subirArchivoAnalisis(f);
+    });
   }
 
   async function analizarRequerimiento() {
     const req = val("#requerimiento");
     const cola = val("#colaArchivoManual") || archivoColaVinculado;
-    if (!req && !cola) return alert("Escriba el requerimiento o registre la cola primero.");
+    if (!req && !cola && !imagenesAnalisis.length && !archivosAnalisis.length) {
+      return alert("Escriba el requerimiento, registre la cola o adjunte una captura o un archivo de normativa.");
+    }
     const idCaso = val("#idCaso");
     if (!idCaso) return alert("Indique ID caso (paso 1). Hace falta para que el agente deje el resultado.");
     if (location.protocol === "file:") {
       return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
     }
+    if (isAnalisisEnCurso()) return;
     saveToStorage();
+    switchToFormulario();
+    goStep(2);
     const hint = $("#brechaAnalisisHint");
     const btn = $("#btnAnalizarRequerimiento");
+    const loadingToken = ++analisisLoadingToken;
     if (btn) btn.disabled = true;
+    showAnalisisLoading(
+      "Analizando requerimiento",
+      "Guardando y pidiendo análisis al agente…",
+      idCaso,
+    );
     if (hint) hint.textContent = "Guardando y pidiendo análisis al agente…";
     try {
       const data = collectData();
@@ -1486,11 +2096,15 @@
         hint.textContent =
           "El agente está armando criterios, alcance, restricciones, análisis y SPs. Espere…";
       }
-      pollBrechaAnalisis(idCaso, hint);
+      updateAnalisisLoadingDetalle(
+        "El agente contrasta el REQ con conocimiento/. El formulario se actualizará solo.",
+      );
+      await pollBrechaAnalisis(idCaso, hint, loadingToken);
     } catch (e) {
       if (hint) hint.textContent = e.message || "Error al analizar";
       alert(e.message || "No se pudo analizar el requerimiento.");
     } finally {
+      if (loadingToken === analisisLoadingToken) hideAnalisisLoading();
       if (btn) btn.disabled = false;
     }
   }
@@ -1536,6 +2150,75 @@
       el.textContent =
         "Criterios, análisis y recomendación los escribe el agente (Cursor) con base en Qrystalos2. OpenAI no interviene.";
     }
+  }
+
+  function escapeHtmlCambio(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function pintarVistaCambioSimple(texto) {
+    const vista = $("#cambioSimpleVista");
+    if (!vista) return;
+    const t = String(texto || "").trim();
+    if (!t) {
+      vista.classList.add("is-empty");
+      vista.textContent = "El campo está vacío. Escriba o pegue el texto abajo para ver cómo quedará en el dictamen.";
+      return;
+    }
+    vista.classList.remove("is-empty");
+    vista.innerHTML = escapeHtmlCambio(t).replace(/\n/g, "<br>");
+  }
+
+  function abrirCambioSimplePreview() {
+    const modal = $("#modalCambioSimple");
+    const editar = $("#cambioSimpleEditar");
+    if (!modal || !editar) return;
+    const actual = val("#cambioPropuestoSimple");
+    editar.value = actual;
+    pintarVistaCambioSimple(actual);
+    const hint = $("#cambioSimplePreviewHint");
+    if (hint) {
+      hint.textContent = actual.trim()
+        ? "Revise si el tono es el del cliente y si falta algún caso."
+        : "Aún no hay texto. Escríbalo abajo o pida al agente que lo complete.";
+    }
+    modal.classList.remove("hidden");
+    editar.focus();
+  }
+
+  function cerrarCambioSimplePreview() {
+    $("#modalCambioSimple")?.classList.add("hidden");
+  }
+
+  function usarTextoCambioSimple() {
+    const texto = ($("#cambioSimpleEditar")?.value || "").trim();
+    setVal("#cambioPropuestoSimple", texto);
+    saveToStorage();
+    updateAll();
+    cerrarCambioSimplePreview();
+    const hint = $("#cambioSimplePreviewHint");
+    if (hint) hint.textContent = texto ? "Texto aplicado al campo." : "Campo dejado vacío.";
+  }
+
+  function bindCambioSimplePreview() {
+    $("#btnVerCambioSimple")?.addEventListener("click", abrirCambioSimplePreview);
+    $("#btnCerrarCambioSimple")?.addEventListener("click", cerrarCambioSimplePreview);
+    $("#btnUsarCambioSimple")?.addEventListener("click", usarTextoCambioSimple);
+    $("#cambioSimpleEditar")?.addEventListener("input", (e) => {
+      pintarVistaCambioSimple(e.target.value);
+    });
+    $("#modalCambioSimple")?.addEventListener("click", (e) => {
+      if (e.target.id === "modalCambioSimple") cerrarCambioSimplePreview();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !$("#modalCambioSimple")?.classList.contains("hidden")) {
+        cerrarCambioSimplePreview();
+      }
+    });
   }
 
   function bindCriterios() {
@@ -1585,13 +2268,22 @@
     if (location.protocol === "file:") {
       return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
     }
+    if (isAnalisisEnCurso()) return;
     captureCriteriosOriginales();
     saveToStorage();
+    switchToFormulario();
+    goStep(2);
     const btn = $("#btnSugerirCriterios");
     const btnRefinar = $("#btnRefinarCriterios");
     const hintOai = $("#openaiEstadoHint");
+    const loadingToken = ++analisisLoadingToken;
     if (btn) btn.disabled = true;
     if (btnRefinar) btnRefinar.disabled = true;
+    showAnalisisLoading(
+      usarAnalisis ? "Actualizando criterios con el agente" : "Pidiendo criterios al agente",
+      "El agente arma criterios, alcance, restricciones y análisis…",
+      idCaso,
+    );
     if (hintOai) hintOai.textContent = "Pidiendo criterios al agente (Cursor)…";
     try {
       const data = collectData();
@@ -1613,12 +2305,12 @@
         const hint = $("#criteriosRefineHint");
         if (hint) hint.textContent = "El agente actualiza los criterios en el Chat y en este formulario.";
       }
-      pollBrechaAnalisis(idCaso, hintOai);
-      abrirChatCaso(idCaso);
+      await pollBrechaAnalisis(idCaso, hintOai, loadingToken);
     } catch (e) {
       if (hintOai) hintOai.textContent = e.message || "Error al pedir criterios";
       alert(e.message || "No se pudieron pedir los criterios al agente.");
     } finally {
+      if (loadingToken === analisisLoadingToken) hideAnalisisLoading();
       if (btn) btn.disabled = false;
       if (btnRefinar) btnRefinar.disabled = false;
     }
@@ -1727,7 +2419,143 @@
   }
 
   function emptyMetodosKb() {
-    return { procesoId: "", sps: [], seleccion: {}, nota: "", actualizado: "" };
+    return { procesoId: "", sps: [], seleccion: {}, nota: "", actualizado: "", verTodos: false };
+  }
+
+  function filasSpsBrechaKb() {
+    const raw = brechaAnalisis?.sps;
+    const out = [];
+    const walk = (val) => {
+      if (val == null) return;
+      if (Array.isArray(val)) {
+        val.forEach(walk);
+        return;
+      }
+      if (typeof val === "string") {
+        if (val.trim()) out.push({ rol: val.trim() });
+        return;
+      }
+      if (typeof val === "object") {
+        if (val.sp || val.nombre || val.metodo) {
+          out.push(val);
+          return;
+        }
+        Object.values(val).forEach(walk);
+      }
+    };
+    walk(raw);
+    return out;
+  }
+
+  function textoReqParaSqlKb() {
+    const brechaSps = filasSpsBrechaKb()
+      .map((s) => `${s.sp || ""} ${s.metodo || ""} ${s.rol || ""}`)
+      .join("\n");
+    return [
+      val("#requerimiento"),
+      val("#cambioPropuestoSimple"),
+      val("#analisis"),
+      val("#alcance"),
+      val("#restricciones"),
+      val("#recomendacion"),
+      brechaAnalisis?.texto || "",
+      brechaSps,
+    ].filter(Boolean).join("\n");
+  }
+
+  function extraerCitasSqlKb(texto) {
+    const pares = [];
+    const vistos = new Set();
+    const re = /\b(SPQ_[A-Z0-9_]+|SPK_[A-Z0-9_]+|FNK_[A-Z0-9_]+)\b/g;
+    let m;
+    const src = texto || "";
+    while ((m = re.exec(src))) {
+      const sp = m[1];
+      const after = src.slice(m.index + m[0].length, m.index + m[0].length + 90);
+      const mm = /(?:·\s*|METODO\s+|\/\s*)([A-Z][A-Z0-9_]{2,})(?:\s+y\s+([A-Z][A-Z0-9_]{2,}))?/.exec(after);
+      const mets = mm ? [mm[1], mm[2]].filter(Boolean) : [""];
+      mets.forEach((met) => {
+        const key = `${sp}|${met}`;
+        if (vistos.has(key)) return;
+        vistos.add(key);
+        pares.push({ sp, metodo: met });
+      });
+    }
+    filasSpsBrechaKb().forEach((s) => {
+      const sp = String(s.sp || "").toUpperCase();
+      const met = String(s.metodo || "").toUpperCase();
+      if (!sp) return;
+      const key = `${sp}|${met}`;
+      if (vistos.has(key)) return;
+      vistos.add(key);
+      pares.push({ sp, metodo: met, rol: s.rol || "", estado: s.estado || "no_leido" });
+    });
+    return pares;
+  }
+
+  function textoReqNormalizadoKb(texto) {
+    return (texto || "").toLowerCase()
+      .replace(/colillas_prenomina/g, "colillas")
+      .replace(/colillas\s+prenomina/g, "colillas");
+  }
+
+  function clavesDistintivasReq(texto) {
+    const t = textoReqNormalizadoKb(texto);
+    return [
+      "colilla", "impres", "desprendible", "furips", "cum", "dian",
+      "retiro", "nemphis", "historico", "prenomina", "vacacion", "cesant",
+    ].filter((k) => t.includes(k));
+  }
+
+  function scoreMetodoKb(sp, metodo, texto, citas, claves) {
+    const mid = metodo.id || metodo.nombre || "";
+    const blob = `${sp.nombre || ""} ${mid} ${metodo.hace || ""} ${metodo.gateId || ""} ${metodo.capaId || ""}`.toLowerCase();
+    const spU = String(sp.nombre || "").toUpperCase();
+    const metU = String(mid).toUpperCase();
+    const t = textoReqNormalizadoKb(texto);
+    let score = 0;
+    citas.forEach((c) => {
+      if (c.sp !== spU) return;
+      score += c.metodo && c.metodo === metU ? 12 : c.metodo ? 0 : 6;
+    });
+    filasSpsBrechaKb().forEach((s) => {
+      if (String(s.sp || "").toUpperCase() === spU && String(s.metodo || "").toUpperCase() === metU) {
+        score += 14;
+      }
+    });
+    claves.forEach((k) => {
+      if (blob.includes(k)) score += 3;
+    });
+    if (blob.includes("historico") && !t.includes("historico") && !t.includes("nemphis")) score -= 5;
+    if ((blob.includes("retiro") || blob.includes("retiros")) && !t.includes("retiro")) score -= 5;
+    if (blob.includes("dian") && !t.includes("dian")) score -= 5;
+    if (
+      blob.includes("prenomina")
+      && !metU.includes("COLILLAS")
+      && t.includes("colilla")
+      && !t.replace("colillas_prenomina", "").includes("prenomina")
+    ) {
+      score -= 4;
+    }
+    return score;
+  }
+
+  function metodoRelevanteKb(sp, metodo, texto, citas, claves) {
+    return scoreMetodoKb(sp, metodo, texto, citas, claves) > 0;
+  }
+
+  function citasFueraDeCatalogo(citas, sps) {
+    const enCat = new Set();
+    (sps || []).forEach((sp) => {
+      (sp.metodos || []).forEach((m) => {
+        enCat.add(`${String(sp.nombre || "").toUpperCase()}|${String(m.id || m.nombre || "").toUpperCase()}`);
+      });
+    });
+    return (citas || []).filter((c) => {
+      if (!c.sp) return false;
+      if (!c.metodo) return !enCat.has(`${c.sp}|`) && ![...enCat].some((k) => k.startsWith(`${c.sp}|`));
+      return !enCat.has(`${c.sp}|${c.metodo}`);
+    });
   }
 
   function metodoKbKey(spNombre, metodoId) {
@@ -1843,7 +2671,7 @@
       const nMet = sps.reduce((acc, sp) => acc + (sp.metodos || []).length, 0);
       if (estadoEl) {
         estadoEl.textContent = nMet
-          ? `${nMet} método(s) · ${actualizado || "sin fecha"}`
+          ? `${nMet} en el módulo · se filtran por este REQ`
           : "Sin métodos documentados — use sql/";
       }
       if (!nMet && !silent) {
@@ -1866,9 +2694,15 @@
       return;
     }
     const filtro = ($("#sqlKbBuscar")?.value || "").trim().toLowerCase();
+    const verTodos = !!metodosKbState.verTodos || !!$("#chkSqlKbTodos")?.checked;
+    const textoReq = textoReqParaSqlKb();
+    const hayReq = !!(textoReq || "").trim();
+    const citas = extraerCitasSqlKb(textoReq);
+    const claves = clavesDistintivasReq(textoReq);
     let visibles = 0;
     let total = 0;
-    box.innerHTML = sps.map((sp) => {
+    let relevantes = 0;
+    const htmlLista = sps.map((sp) => {
       const metodos = sp.metodos || [];
       if (!metodos.length) return "";
       const rows = metodos.map((m) => {
@@ -1877,18 +2711,25 @@
         total += 1;
         const key = metodoKbKey(sp.nombre, id);
         const seleccionado = !!metodosKbState.seleccion[key];
+        const relevante = !hayReq || metodoRelevanteKb(sp, m, textoReq, citas, claves);
+        if (relevante) relevantes += 1;
         const blob = `${sp.nombre} ${id} ${m.hace || ""}`.toLowerCase();
-        const match = !filtro || blob.includes(filtro) || seleccionado;
-        if (!match) return "";
+        const matchBuscar = !filtro || blob.includes(filtro) || seleccionado;
+        const matchReq = verTodos || relevante || seleccionado;
+        if (!matchBuscar || !matchReq) return "";
         visibles += 1;
         const checked = seleccionado ? "checked" : "";
         const est = (m.estado || sp.estado || "no_leido").replace(/\s+/g, "_");
         const hace = m.hace ? `<span class="hace">${esc(m.hace)}</span>` : "";
+        const badgeReq = relevante && hayReq
+          ? `<span class="sql-kb-badge sugerido">este REQ</span>`
+          : "";
         return `<label class="sql-kb-metodo">
           <input type="checkbox" data-sp="${esc(sp.nombre)}" data-metodo="${esc(id)}" ${checked}>
           <span>
             <span class="kb-id">${esc(id)}</span>
             <span class="sql-kb-badge ${esc(est)}">${esc(est.replace(/_/g, " "))}</span>
+            ${badgeReq}
             ${hace}
           </span>
         </label>`;
@@ -1896,6 +2737,25 @@
       if (!rows.trim()) return "";
       return `<div class="sql-kb-sp">${esc(sp.nombre)}</div>${rows}`;
     }).join("");
+    const fuera = citasFueraDeCatalogo(citas, sps);
+    const vacioReq = hayReq && !verTodos && relevantes === 0;
+    const avisoVacio = (vacioReq || fuera.length)
+      ? `<div class="sql-kb-vacio">${
+          `<p><strong>Son los de este REQ</strong> (los que participan en el cambio). No es una lista de pendientes por bajar.</p>`
+        }${
+          fuera.length
+            ? `<p>Aún no tienen ficha en <code>sps.json</code>, por eso no salen con casilla. El Chat pedirá el .sql <em>solo</em> si hay que leer el cuerpo hoy:</p>
+              <ul>${fuera.map((c) => `<li><code>${esc(c.sp)}</code>${c.metodo ? ` · <strong>${esc(c.metodo)}</strong>` : ""}${c.rol ? ` — ${esc(c.rol)}` : ""} <span class="sql-kb-badge no_leido">sin ficha</span></li>`).join("")}</ul>`
+            : vacioReq
+              ? `<p>Ninguno de esos está todavía en el catálogo documentado del módulo. El resto del módulo no se lista.</p>`
+              : ""
+        }${
+          vacioReq
+            ? `<p class="hint">«Ver todos los del módulo» solo si necesita marcar uno que el filtro ocultó. «Usar estos métodos documentados» aplica cuando hay casillas marcadas, no a esta lista.</p>`
+            : ""
+        }</div>`
+      : "";
+    box.innerHTML = avisoVacio + htmlLista;
 
     box.querySelectorAll("input[type=checkbox]").forEach((cb) => {
       cb.addEventListener("change", () => {
@@ -1912,9 +2772,18 @@
     });
     const estadoEl = $("#sqlKbEstado");
     if (estadoEl && total) {
-      estadoEl.textContent = filtro
-        ? `${visibles} de ${total} método(s)`
-        : `${total} método(s) · ${metodosKbState.actualizado || "sin fecha"}`;
+      if (filtro) {
+        estadoEl.textContent = `${visibles} de ${total} método(s)`;
+      } else if (hayReq && !verTodos) {
+        estadoEl.textContent = relevantes
+          ? `${relevantes} de este REQ · ${total} en el módulo`
+          : `0 de este REQ · ${total} ocultos del módulo`;
+      } else {
+        estadoEl.textContent = `${total} método(s) · ${metodosKbState.actualizado || "sin fecha"}`;
+      }
+    }
+    if (!Object.keys(metodosKbState.seleccion).length && $("#chkUsarDocSp")) {
+      $("#chkUsarDocSp").checked = false;
     }
     actualizarAvisoReleerKb();
     updateSqlPasoHint();
@@ -1944,7 +2813,7 @@
       : "<p class=\"hint\">No hay .sql en la carpeta de hoy (el Chat los pedirá si hace falta releer).</p>";
     return `<h4>Dónde queda para el Chat</h4>
       <p><strong>Catálogo (fichas):</strong> <code>${esc(catalogo)}</code></p>
-      <p><strong>Métodos de este REQ</strong> (también en <code>activo/${esc(idCaso)}/solicitud.json</code> → <code>sql.metodosDocumentados</code>):</p>
+      <p><strong>Métodos de este REQ</strong> (solo los marcados; no el catálogo del módulo — <code>activo/${esc(idCaso)}/solicitud.json</code> → <code>sql.metodosDocumentados</code>):</p>
       ${filasMet}
       <p><strong>SQL de hoy</strong> (si hay que releer o no está documentado): <code>${esc(PATH_SQL)}</code></p>
       ${filasSql}
@@ -2215,6 +3084,7 @@
 
   function goStep(step) {
     if (step < 1 || step > totalSteps) return;
+    if (isAnalisisEnCurso() && step !== currentStep) return;
     if (step > currentStep && !validateStep(currentStep, true)) return;
     if (currentStep === 2 && step !== 2) captureCriteriosOriginales();
     if (currentStep === 3 && step !== 3) captureCriteriosTrasAnalisis();
@@ -2287,8 +3157,34 @@
   }
 
   function isFormComplete() {
-    for (let s = 1; s <= 4; s++) if (!validateStep(s, false)) return false;
-    return sqlPasoListoParaActivar();
+    return faltantesActivarAnalisis().length === 0;
+  }
+
+  function faltantesActivarAnalisis() {
+    const issues = [];
+    for (let s = 1; s <= 3; s++) {
+      getRequiredForStep(s).forEach(({ el, label }) => {
+        if (!el?.value?.trim()) issues.push(label);
+      });
+    }
+    if (!archivoColaVinculado && !val("#requerimiento")) {
+      issues.push("Cola HTML o texto del requerimiento (paso 2)");
+    }
+    if ($("#chkAfectaContabilidad")?.checked && !val("#contComoAfecta")) {
+      issues.push("Contabilidad: «Cómo lo afecta»");
+    }
+    if (!sqlPasoListoParaActivar()) {
+      const nMet = getMetodosDocumentadosSeleccionados().length;
+      const nSql = getSqlArchivosSeleccionados().length;
+      if (nMet > 0 && !$("#chkUsarDocSp")?.checked) {
+        issues.push("SQL: marque «Usar las fichas marcadas…» (paso 4)");
+      } else if (nSql > 0 && !$("#chkSqlColocados")?.checked) {
+        issues.push("SQL: marque «Confirmo que coloqué todos los .sql…» (paso 4)");
+      } else {
+        issues.push("SQL: traiga y marque métodos documentados, o lea sql/ y confirme los .sql (paso 4)");
+      }
+    }
+    return [...new Set(issues)];
   }
 
   function collectData() {
@@ -2350,14 +3246,31 @@
         analisis: val("#analisis"),
         opciones,
         recomendacion: val("#recomendacion"),
+        cambioPropuestoSimple: val("#cambioPropuestoSimple"),
         impactoFe: val("#impactoFe"),
         impactoApi: val("#impactoApi"),
         impactoSql: val("#impactoSql"),
         contabilidad: collectContabilidad(),
         validarAntes: collectValidarAntes(),
         imagenesNecesarias: val("#imagenesNecesarias"),
+        imagenesAnalisis: imagenesAnalisis
+          .filter((i) => i.nombre && !i._subiendo)
+          .map(({ nombre, ruta, subidaEn, url }) => ({ nombre, ruta, subidaEn, url })),
+        archivosAnalisis: archivosAnalisis
+          .filter((a) => a.nombre && !a._subiendo)
+          .map(({ nombre, ruta, extracto, extractoRuta, tipo, mime, bytes, charsExtracto, avisoExtracto, subidaEn, url, urlExtracto }) => ({
+            nombre, ruta, extracto, extractoRuta, tipo, mime, bytes, charsExtracto, avisoExtracto, subidaEn, url, urlExtracto,
+          })),
         criteriosMeta,
         brechaAnalisis,
+        diagramaFlujo: diagramaFlujo
+          ? {
+              ...diagramaFlujo,
+              notas: val("#notasDiagramaFlujo"),
+            }
+          : val("#notasDiagramaFlujo")
+            ? { notas: val("#notasDiagramaFlujo") }
+            : null,
       },
       sql: {
         carpetaFija: PATH_SQL,
@@ -2372,6 +3285,7 @@
         })(),
         metodosDocumentados: getMetodosDocumentadosSeleccionados(),
         notas: val("#notasSql"),
+        pruebasUnitarias: val("#pruebasSqlUnitarias"),
       },
       rutas: {
         dictamen: `dictamenes/${idCaso}.html`,
@@ -2408,6 +3322,8 @@ ${d.contenido.opciones.length ? "## Opciones\n" + d.contenido.opciones.map((o, i
 
 ${d.contenido.recomendacion ? "## Recomendación\n" + d.contenido.recomendacion : ""}
 
+${d.contenido.cambioPropuestoSimple ? "## Cambio propuesto (palabras simples — sección 5 del dictamen)\n" + d.contenido.cambioPropuestoSimple : ""}
+
 ## Validar antes de desarrollar
 - Aplica: ${d.contenido.validarAntes?.aplica ? "Sí" : "No"}
 ${d.contenido.validarAntes?.aplica && d.contenido.validarAntes?.texto ? d.contenido.validarAntes.texto : ""}
@@ -2423,12 +3339,233 @@ ${d.contenido.criteriosAceptacion}
 
 ${d.contenido.requerimiento ? "## Complemento requerimiento\n" + d.contenido.requerimiento : ""}
 
-## Imágenes
+## Capturas para análisis
+${(d.contenido.imagenesAnalisis || []).length
+    ? (d.contenido.imagenesAnalisis || []).map((i) => `- activo/${d.identificacion.idCaso}/imagenes/${i.nombre}`).join("\n")
+    : "(ninguna — el coordinador puede adjuntarlas en paso Requerimiento)"}
+
+## Normativa / archivos (sección 4.6 del dictamen)
+${(d.contenido.archivosAnalisis || []).length
+    ? (d.contenido.archivosAnalisis || []).map((a) =>
+        `- ${a.tipo || "normativa"}: activo/${d.identificacion.idCaso}/archivos/${a.nombre}`
+        + (a.extracto ? `\n  extracto: activo/${d.identificacion.idCaso}/archivos/${a.extracto}` : "")
+      ).join("\n")
+    : "(ninguno — adjuntar circular/resolución en paso Requerimiento)"}
+
+## Diagrama de flujo (sección 4.5 del dictamen)
+${d.contenido.diagramaFlujo?.nombre
+    ? `- HTML: activo/${d.identificacion.idCaso}/diagramas/${d.contenido.diagramaFlujo.nombre}\n- En dictamen usar enlace relativo: diagramas/${d.contenido.diagramaFlujo.nombre}\n${d.contenido.diagramaFlujo.notas ? "- Notas: " + d.contenido.diagramaFlujo.notas : ""}`
+    : "(ninguno — botón «Generar diagrama» en paso Revisión: conocimiento + análisis)"}
+
+## Imágenes dictamen
 ${d.contenido.imagenesNecesarias || "El agente pedirá capturas si las necesita → aprobados/.../imagenes/"}
 
 Generar: dictamenes/${d.identificacion.idCaso}.html
 Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
 `;
+  }
+
+  function listarObjetosSqlPrompt(d) {
+    if (d.sql.usarDocumentacion && d.sql.metodosDocumentados?.length) {
+      return d.sql.metodosDocumentados.map((m) => {
+        const extra = m.hace ? ` — ${m.hace}` : "";
+        const nested = m.llama?.length ? `\n     llama: ${m.llama.join(", ")}` : "";
+        return `- ${m.sp} · METODO ${m.metodo} (${m.estado})${extra}${nested}`;
+      }).join("\n");
+    }
+    const archivos = d.sql.archivosEsperados || [];
+    if (archivos.length) {
+      return archivos.map((a) => `- sql/${a}`).join("\n");
+    }
+    return "(ninguno — indique objetos SQL o marque métodos documentados)";
+  }
+
+  function buildPromptPruebasSqlUnitarias(d) {
+    const idCaso = d.identificacion.idCaso || "{id-caso}";
+    const idReq = d.identificacion.idReq || "—";
+    const objetos = listarObjetosSqlPrompt(d);
+    const notasCoord = d.sql.pruebasUnitarias?.trim();
+    const dictamen = d.rutas?.dictamen || `dictamenes/${idCaso}.html`;
+
+    return `# Pruebas unitarias SQL — Qrystalos
+
+## Rol
+Eres experto en SQL Server y procesos Qrystalos. Diseña y ejecuta pruebas unitarias sobre los scripts del REQ **antes** de pasar a calidad. **No modifiques** los SP salvo para corregir un fallo demostrado; reporta resultados.
+
+## Caso
+- ID caso: ${idCaso} | REQ: ${idReq}
+- Proyecto: ${d.proyecto.nombre || "—"} | Módulo: ${d.proyecto.modulo || "—"}
+- Pantalla: ${d.proyecto.rutaPantalla || "—"}
+- Rama desarrollo: ${d.gestion.rama || "—"}
+
+## Objetos bajo prueba
+${objetos}
+
+## Fuentes (leer en disco)
+- Scripts: carpeta fija \`sql/\` o archivados \`sql_refe/${idReq}/\`
+${d.sql.usarDocumentacion && d.sql.catalogo ? `- Catálogo METODO: \`${d.sql.catalogo}\`` : ""}
+- Dictamen (secciones 5 y 7): \`${dictamen}\`
+- Solicitud: \`activo/${idCaso}/solicitud.json\`
+${d.cola.rutaCola ? `- Cola REQ: \`${d.cola.rutaCola}\`` : ""}
+
+## Cambio esperado (negocio)
+${d.contenido.cambioPropuestoSimple?.trim() || "(ver dictamen sección 5.0 y criterios)"}
+
+## Criterios de aceptación
+${d.contenido.criteriosAceptacion?.trim() || "(completar en formulario)"}
+
+${notasCoord ? `## Notas del coordinador (casos adicionales)\n${notasCoord}\n` : ""}${d.sql.notas?.trim() ? `## Notas SQL del caso\n${d.sql.notas.trim()}\n` : ""}
+## Entorno y reglas
+- Ejecutar solo en **preversión / copia de BD** (nunca producción).
+- Usar transacciones con **ROLLBACK** cuando la prueba inserte o actualice datos.
+- Convenciones: tablas MAYÚSCULAS; SPQ_* (API lógica) y SPK_* (núcleo); mensajes KO documentados en fichas METODO.
+- Si un METODO está en \`sps.json\` con estado distinto de \`leido\`, releer el \`.sql\` de hoy antes de asumir comportamiento.
+
+## Metodología por objeto (SP / METODO)
+Para cada script listado arriba:
+
+1. **Arrange** — Datos mínimos: tablas maestras, parámetros JSON/XML, usuario/sede/empresa si aplica.
+2. **Act** — \`EXEC\` del procedimiento con happy path y casos borde.
+3. **Assert** — Result sets, códigos/mensajes KO, filas afectadas, SPKs invocados, ausencia de efectos colaterales.
+
+## Casos obligatorios
+- [ ] Happy path alineado con cada criterio de aceptación
+- [ ] Parámetros NULL, vacíos o fuera de rango
+- [ ] Registros inexistentes (FK, estado inválido, documento cerrado)
+- [ ] Duplicidad / idempotencia si el negocio lo exige
+- [ ] Errores KO **esperados** (texto exacto si está documentado) vs errores inesperados
+- [ ] Regresión: flujos vecinos no deben romperse
+${d.contenido.contabilidad?.afecta ? "- [ ] Contabilidad: asientos MCUE/CON/MCPE según dictamen\n" : ""}${d.contenido.validarAntes?.aplica ? `- [ ] Validar antes: ${d.contenido.validarAntes.texto || "reproducir fallo original"}\n` : ""}
+## Entregables
+1. Scripts \`.sql\` de prueba (comentados o en carpeta temporal; sin datos sensibles del cliente).
+2. Tabla resumen:
+
+| # | Objeto | Escenario | Entrada | Resultado esperado | OK/KO |
+|---|--------|-----------|---------|-------------------|-------|
+
+3. Si hay KO: mensaje de error, filas afectadas y propuesta concreta de corrección.
+
+## Restricciones
+- No inventar columnas ni SPs: basarse en scripts leídos y documentación viva.
+- No ejecutar DELETE masivo ni cambios destructivos sin acuerdo.
+- Marcar incertidumbre explícitamente cuando falte evidencia.
+`;
+  }
+
+  function buildPromptValidarDesarrollo(d) {
+    const idCaso = d.identificacion.idCaso || "{id-caso}";
+    const idReq = d.identificacion.idReq || "—";
+    const dictamenAprob = `aprobados/${idCaso}/`;
+    const dictamenProp = d.rutas?.dictamen || `dictamenes/${idCaso}.html`;
+
+    return `# Validar desarrollo realizado — Qrystalos
+
+## Rol
+Valida que el desarrollo entregado cumple el **dictamen aprobado** y los **criterios de aceptación**. **No implementes cambios**: emite un veredicto con evidencia. Si algo no cuadra, indica archivo, línea o objeto SQL concreto.
+
+## Caso
+- ID caso: ${idCaso} | REQ: ${idReq}
+- Desarrollador: ${d.personas.desarrollador || "—"}
+- Rama Git: ${d.gestion.rama || "—"}
+- Ticket: ${d.gestion.ticket || "—"}
+
+## Fuentes obligatorias (leer en disco — no asumir)
+1. Dictamen aprobado: \`${dictamenAprob}\` (o borrador \`${dictamenProp}\` si fase 1 aún abierta)
+2. Solicitud: \`activo/${idCaso}/solicitud.json\`
+3. Chat del caso: \`activo/${idCaso}/chat.json\`
+${d.cola.rutaCola ? `4. Cola REQ: \`${d.cola.rutaCola}\`` : "4. Cola REQ: `cola/` (HTML del REQ)"}
+5. SQL entregado: \`sql_refe/${idReq}/\` y/o diff en rama \`${d.gestion.rama || "feature/*"}\`
+6. Qrystalos2: archivos Vue/stores indicados en dictamen (sección 5)
+${d.contenido.impactoApi ? `7. Backend/API si aplica: revisar MODELO/METODO en AppStore.json vs SPQ_*` : ""}
+
+## Cambio esperado (palabras simples)
+${d.contenido.cambioPropuestoSimple?.trim() || "(dictamen §5.0)"}
+
+## Criterios de aceptación (validar uno a uno)
+${d.contenido.criteriosAceptacion?.trim() || "(completar en formulario)"}
+
+${d.contenido.analisis?.trim() ? `## Análisis coordinador (contexto)\n${d.contenido.analisis.trim()}\n` : ""}${d.contenido.recomendacion?.trim() ? `## Recomendación del dictamen\n${d.contenido.recomendacion.trim()}\n` : ""}
+## Objetos SQL del REQ
+${listarObjetosSqlPrompt(d)}
+
+${d.sql.pruebasUnitarias?.trim() ? `## Pruebas SQL acordadas\n${d.sql.pruebasUnitarias.trim()}\n` : ""}
+## Checklist de validación
+
+### SQL Server
+- [ ] Objetos modificados coinciden con dictamen (nombres SPQ/SPK, METODO)
+- [ ] Lógica alineada con fichas METODO en \`conocimiento/${d.sql.procesoId || "?"}/sps.json\` si aplica
+- [ ] Sin cambios colaterales no documentados
+- [ ] Pruebas unitarias SQL ejecutadas; tabla resumen OK/KO adjunta o descrita
+- [ ] Mensajes de error KO coinciden con lo documentado
+
+### Frontend (Qrystalos2)
+- [ ] Pantallas/rutas según dictamen
+- [ ] Llamadas \`AppStore.read\` / \`AppStore.json\` con MODELO y METODO correctos
+- [ ] Permisos \`useUSGRUH\` si el dictamen los menciona
+- [ ] UX coherente con pantallas vecinas
+
+${d.contenido.contabilidad?.afecta ? `### Contabilidad
+- [ ] Impacto MCUE / CON / MCPE según dictamen
+- Cómo afecta: ${d.contenido.contabilidad.comoAfecta || "—"}
+- Desarrollo contable esperado: ${d.contenido.contabilidad.desarrollo || "—"}
+` : ""}${d.contenido.validarAntes?.aplica ? `### Validar antes de desarrollar
+- [ ] Reproducir el fallo reportado en el REQ
+- Si **ya no falla**: veredicto **CORRECTO SIN DESARROLLO** — no exigir merge
+- Texto: ${d.contenido.validarAntes.texto || "—"}
+` : ""}
+## Formato de respuesta (obligatorio)
+
+1. **Veredicto global**: CUMPLE | CUMPLE PARCIAL | NO CUMPLE | CORRECTO SIN DESARROLLO
+2. **Por criterio de aceptación**: CA-1, CA-2… → OK / KO / N/A + evidencia breve
+3. **Desviaciones** respecto al dictamen (archivo, SP, pantalla)
+4. **Riesgos de regresión** identificados
+5. **Acciones concretas** para el desarrollador (lista numerada, priorizada)
+6. **Próximo paso** recomendado (rework, pruebas adicionales, listo para coordinador/soporte)
+
+## Restricciones
+- No inventar tablas, columnas ni SPs.
+- Declarar explícitamente lo que no pudiste verificar por falta de acceso a rama/BD.
+- Responder en español.
+`;
+  }
+
+  async function copyTextToClipboard(text, mensajeOk) {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(mensajeOk);
+      return true;
+    } catch {
+      alert("No se pudo copiar al portapapeles. Use la vista previa y copie manualmente.");
+      return false;
+    }
+  }
+
+  async function copyPromptPruebasSql() {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso.");
+    if (!sqlPasoPuedeAvanzar()) {
+      return alert("Indique objetos SQL (lista o carpeta) o seleccione métodos documentados en el paso SQL.");
+    }
+    const data = collectData();
+    const prompt = buildPromptPruebasSqlUnitarias(data);
+    await copyTextToClipboard(
+      prompt,
+      "Prompt de pruebas unitarias SQL copiado.\n\nPéguelo en Cursor junto con los scripts en sql/ o sql_refe/."
+    );
+  }
+
+  async function copyPromptValidarDesarrollo() {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso.");
+    if (!val("#criteriosAceptacion").trim()) {
+      return alert("Complete los criterios de aceptación (paso Requerimiento) antes de validar el desarrollo.");
+    }
+    const data = collectData();
+    const prompt = buildPromptValidarDesarrollo(data);
+    await copyTextToClipboard(
+      prompt,
+      "Prompt de validación de desarrollo copiado.\n\nPéguelo en Cursor con la rama del desarrollador y el dictamen en aprobados/."
+    );
   }
 
   function updateAll() {
@@ -2438,8 +3575,48 @@ Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
     const complete = isFormComplete();
     const data = collectData();
     $("#previewPrompt").textContent = buildPrompt(data);
+    const prevPruebas = $("#previewPromptPruebasSql");
+    if (prevPruebas) prevPruebas.textContent = buildPromptPruebasSqlUnitarias(data);
+    const prevValidar = $("#previewPromptValidarDev");
+    if (prevValidar) prevValidar.textContent = buildPromptValidarDesarrollo(data);
+    const prevDiagrama = $("#previewPromptDiagrama");
+    if (prevDiagrama) prevDiagrama.textContent = buildPromptDiagramaCaso(data);
+    const btnDiagrama = $("#btnCopiarPromptDiagrama");
+    if (btnDiagrama) btnDiagrama.disabled = !val("#idCaso");
+    const btnGenDiagrama = $("#btnGenerarDiagrama");
+    if (btnGenDiagrama) btnGenDiagrama.disabled = !val("#idCaso");
+    renderDiagramaFlujo();
+    const btnPruebasSql = $("#btnCopiarPromptPruebasSql");
+    if (btnPruebasSql) btnPruebasSql.disabled = !val("#idCaso") || !sqlPasoPuedeAvanzar();
+    const btnValidarDev = $("#btnCopiarPromptValidarDev");
+    if (btnValidarDev) btnValidarDev.disabled = !val("#idCaso") || !val("#criteriosAceptacion").trim();
+    const hintPruebas = $("#hintPruebasSql");
+    if (hintPruebas) {
+      hintPruebas.textContent = sqlPasoPuedeAvanzar()
+        ? `${getSqlArchivosSeleccionados().length || getMetodosDocumentadosSeleccionados().length} objeto(s) en el prompt`
+        : "Faltan objetos SQL o métodos documentados";
+    }
+    const hintValidar = $("#hintValidarDev");
+    if (hintValidar) {
+      hintValidar.textContent = val("#criteriosAceptacion").trim()
+        ? "Incluye dictamen, criterios y checklist SQL/FE"
+        : "Complete criterios de aceptación";
+    }
     const btnActivar = $("#btnActivarAnalisis");
-    if (btnActivar) btnActivar.disabled = !complete;
+    const faltan = faltantesActivarAnalisis();
+    if (btnActivar) {
+      btnActivar.disabled = !complete;
+      btnActivar.title = complete
+        ? "Activa Fase 1: el agente lee el caso en disco"
+        : `Falta: ${faltan.join("; ")}`;
+    }
+    const hintActivar = $("#activarAnalisisFalta");
+    if (hintActivar) {
+      hintActivar.classList.toggle("hidden", complete);
+      hintActivar.innerHTML = complete
+        ? ""
+        : `<strong>El botón no se activa.</strong> Falta:<ul>${faltan.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
+    }
     const btnCopiar = $("#btnCopiarPrompt");
     if (btnCopiar) btnCopiar.disabled = !complete;
     const btnChat = $("#btnAbrirChat");
@@ -2457,19 +3634,9 @@ Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
     }
     refrescarBadgeFaseCerrada();
 
-    const issues = [];
-    for (let s = 1; s <= 3; s++) {
-      getRequiredForStep(s).forEach(({ el, label }) => {
-        if (!el?.value?.trim()) issues.push(label);
-      });
-    }
-    if (!archivoColaVinculado && !val("#requerimiento")) issues.push("Cola HTML o requerimiento");
-    if (!sqlPasoListoParaActivar()) {
-      issues.push("SQL: solo al Activar fase 1 (después del análisis, o si soporte/director confirma el SP)");
-    }
-
+    const issues = faltantesActivarAnalisis();
     $("#validacionResumen").innerHTML = issues.length
-      ? `<p class="fail"><strong>Pendiente:</strong></p><ul>${[...new Set(issues)].map((i) => `<li>${i}</li>`).join("")}</ul>`
+      ? `<p class="fail"><strong>El botón «Activar análisis» no se activa. Falta:</strong></p><ul>${issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
       : `<p class="ok"><strong>✓ Listo.</strong> Pulse <em>Activar análisis (Fase 1)</em> — no hace falta copiar prompt.</p>`;
 
     updateCriteriosHint();
@@ -2627,6 +3794,7 @@ Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
       set("#restricciones", data.contenido?.restricciones);
       set("#analisis", data.contenido?.analisis);
       set("#recomendacion", data.contenido?.recomendacion);
+      set("#cambioPropuestoSimple", data.contenido?.cambioPropuestoSimple);
       set("#impactoFe", data.contenido?.impactoFe);
       set("#impactoApi", data.contenido?.impactoApi);
       set("#impactoSql", data.contenido?.impactoSql);
@@ -2644,8 +3812,29 @@ Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
       set("#validarAntesTexto", va.texto);
       toggleValidarAntes();
       set("#imagenesNecesarias", data.contenido?.imagenesNecesarias);
+      imagenesAnalisis = (data.contenido?.imagenesAnalisis || []).map((i) => ({
+        ...i,
+        url: i.url || (data.identificacion?.idCaso && i.nombre
+          ? imagenAnalisisUrl(data.identificacion.idCaso, i.nombre)
+          : ""),
+      }));
+      renderImagenesAnalisis();
+      archivosAnalisis = (data.contenido?.archivosAnalisis || []).map((a) => ({
+        ...a,
+        url: a.url || (data.identificacion?.idCaso && a.nombre
+          ? archivoAnalisisUrl(data.identificacion.idCaso, a.nombre)
+          : ""),
+        urlExtracto: a.urlExtracto || (data.identificacion?.idCaso && a.extracto
+          ? archivoAnalisisUrl(data.identificacion.idCaso, a.extracto)
+          : ""),
+      }));
+      renderArchivosAnalisis();
       set("#objetosSolicitados", data.sql?.archivosEsperados?.join("\n"));
       set("#notasSql", data.sql?.notas);
+      set("#pruebasSqlUnitarias", data.sql?.pruebasUnitarias);
+      diagramaFlujo = data.contenido?.diagramaFlujo?.nombre ? data.contenido.diagramaFlujo : null;
+      set("#notasDiagramaFlujo", data.contenido?.diagramaFlujo?.notas || "");
+      renderDiagramaFlujo();
       if (data.sql?.confirmadoEnCarpeta) $("#chkSqlColocados").checked = true;
       restaurarMetodosKb(data.sql);
       const correo = data.correo || {};
