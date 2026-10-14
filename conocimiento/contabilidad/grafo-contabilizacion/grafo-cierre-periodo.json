@@ -30,33 +30,8 @@
       ]
     },
     {
-      "id": "N1-validar-basico",
+      "id": "N1-cierre-cartera",
       "orden": 1,
-      "nombre": "Validar periodo básico (paso 1 pantalla)",
-      "requiresDocumento": [
-        {
-          "id": "vpb-paquete",
-          "desc": "Inventario FECHAMOV, SI único, MCP ANOMES, MCPE, traslado costos",
-          "obligatorio": true,
-          "validacionSql": "SPQ_CONTABILIDAD_2 VALIDAR_PERIODO_BASICO (réplica BA)",
-          "checkMotor": "vpb-periodo-no-cerrado"
-        }
-      ],
-      "llamaAnterior": [
-        "N0-obtener-periodo"
-      ],
-      "ordenEstado": "evidenciado",
-      "evidenciaOrden": [
-        {
-          "archivo": "sql/SPQ_CONTABILIDAD_2.sql",
-          "linea": 191,
-          "nota": "VALIDAR_PERIODO_BASICO = paso 1 de la pantalla Cerrar periodos (ficha conocimiento/contabilidad/sps.json → SPQ_CONTABILIDAD_2/VALIDAR_PERIODO_BASICO)."
-        }
-      ]
-    },
-    {
-      "id": "N2-cierre-cartera",
-      "orden": 2,
       "nombre": "Cerrar cartera (PRI.CERRADO_CARTERA)",
       "requiresConfig": [
         {
@@ -68,17 +43,106 @@
         }
       ],
       "llamaAnterior": [
-        "N1-validar-basico"
+        "N0-obtener-periodo"
       ],
-      "ordenEstado": "por_confirmar",
+      "ordenEstado": "confirmado_usuario",
       "evidenciaOrden": [
+        {
+          "fuente": "usuario",
+          "fecha": "2026-10-14",
+          "nota": "Cartera y CxP deben estar cerrados antes de cerrar el periodo; la validación lo reporta si no."
+        },
+        {
+          "archivo": "sql/SPQ_PRI.sql",
+          "linea": 196,
+          "nota": "CERRAR_FACTURA con PROCEDENCIA CARTERA ejecuta SPK_CIERRA_CARTERA."
+        },
         {
           "archivo": "sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql",
           "linea": 92,
-          "nota": "La FNK de integridad exige CERRADO_CARTERA=1 ('SE DEBE CERRAR EL PERIODO DE CARTERA ANTES DE CERRAR CONTABILIDAD'): va antes de N3/N4. Si va antes o después de N1 no está evidenciado (SPQ_PRI · CERRAR_FACTURA es otra pantalla)."
+          "nota": "'SE DEBE CERRAR EL PERIODO DE CARTERA ANTES DE CERRAR CONTABILIDAD' si CERRADO_CARTERA=0."
         }
       ],
-      "idAnterior": "N3-cierre-cartera"
+      "idAnterior": "N3-cierre-cartera",
+      "sp": "SPQ_PRI · CERRAR_FACTURA (PROCEDENCIA=CARTERA) → SPK_CIERRA_CARTERA"
+    },
+    {
+      "id": "N1-cierre-cxp",
+      "orden": 1,
+      "nombre": "Cerrar CxP (PRI.CERRADO_CXP)",
+      "sp": "SPQ_ORDEN_PAGO · CERRAR_CUENTA → SPK_CIERRA_CARTERA @PROCEDENCIA='CXP'",
+      "requiresConfig": [
+        {
+          "id": "pri-cxp",
+          "tabla": "PRI",
+          "obligatorio": true,
+          "validacionSql": "PRI.CERRADO_CXP"
+        }
+      ],
+      "efecto": "FCARTH PROCEDENCIA CXP (aging VWK_CXPDIASVTO) + PRI.CERRADO_CXP=1",
+      "llamaAnterior": [
+        "N0-obtener-periodo"
+      ],
+      "ordenEstado": "confirmado_usuario",
+      "evidenciaOrden": [
+        {
+          "fuente": "usuario",
+          "fecha": "2026-10-14",
+          "nota": "Prerrequisito paralelo al cierre de cartera."
+        },
+        {
+          "archivo": "sql/SPQ_ORDEN_PAGO.sql",
+          "linea": 1678,
+          "nota": "EXEC SPK_CIERRA_CARTERA @ANIO,@MES,@USUARIO,'CXP' (ficha cxp-fcxp/sps.json SPQ_ORDEN_PAGO · CERRAR_CUENTA)."
+        },
+        {
+          "archivo": "sql/SPK_CIERRA_CARTERA.sql",
+          "linea": 47,
+          "nota": "UPDATE PRI SET CERRADO_CXP=1 (también línea 109)."
+        },
+        {
+          "archivo": "sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql",
+          "linea": 97,
+          "nota": "'SE DEBE CERRAR EL PERIODO DE CXP ANTES DE CERRAR CONTABILIDAD' si CERRADO_CXP=0."
+        },
+        {
+          "archivo": "sql/SPQ_PRI.sql",
+          "linea": 260,
+          "nota": "Reapertura: ABRIR_FACTURA con PROCEDENCIA CXP pone CERRADO_CXP=0."
+        }
+      ]
+    },
+    {
+      "id": "N2-validar-basico",
+      "orden": 2,
+      "nombre": "Validar periodo básico (paso 1 pantalla)",
+      "requiresDocumento": [
+        {
+          "id": "vpb-paquete",
+          "desc": "Inventario FECHAMOV, SI único, MCP ANOMES, MCPE, traslado costos",
+          "obligatorio": true,
+          "validacionSql": "SPQ_CONTABILIDAD_2 VALIDAR_PERIODO_BASICO (réplica BA)",
+          "checkMotor": "vpb-periodo-no-cerrado"
+        }
+      ],
+      "llamaAnterior": [
+        "N1-cierre-cartera",
+        "N1-cierre-cxp"
+      ],
+      "ordenEstado": "confirmado_usuario",
+      "evidenciaOrden": [
+        {
+          "fuente": "usuario",
+          "fecha": "2026-10-14",
+          "nota": "La validación del periodo detecta y reporta cartera/CxP sin cerrar."
+        },
+        {
+          "archivo": "sql/SPQ_CONTABILIDAD_2.sql",
+          "linea": 191,
+          "nota": "VALIDAR_PERIODO_BASICO (paso 1 de la pantalla). En su fuente no aparece CERRADO_CARTERA/CXP: la detección la hace la FNK (N3/N4), dentro del mismo paso de validación."
+        }
+      ],
+      "idAnterior": "N1-validar-basico"
     },
     {
       "id": "N3-precierre-modulos",
@@ -108,18 +172,14 @@
         }
       ],
       "llamaAnterior": [
-        "N2-cierre-cartera"
+        "N2-validar-basico"
       ],
       "ordenEstado": "evidenciado",
       "evidenciaOrden": [
         {
           "archivo": "sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql",
           "linea": 90,
-          "nota": "Los pendientes por módulo salen de la FNK, que también revisa los sub-cierres (cartera, CxP): requiere N2."
-        },
-        {
-          "archivo": "conocimiento/flujo-cierre-periodo-contab/PROCESO.md",
-          "nota": "Pre-cierre módulos + FNK antes de la integridad extra."
+          "nota": "Pendientes por módulo + filas 'CIERRE CARTERA' y 'CIERRE CXP' cuando N1 no está hecho."
         }
       ]
     },
@@ -209,8 +269,47 @@
       "idAnterior": "N3-cierre-contable"
     },
     {
-      "id": "N6-apertura-siguiente",
+      "id": "N6-crear-periodo-siguiente",
       "orden": 6,
+      "nombre": "Crear periodo PRI (manual o automático)",
+      "sp": "SPQ_PRI · CRUDPRI (manual) | SPK_PRI (automático)",
+      "ramas": [
+        {
+          "tipo": "manual",
+          "sp": "SPQ_PRI · CRUDPRI",
+          "evidencia": "sql/SPQ_PRI.sql:53,101 (INSERT INTO PRI desde la pantalla de periodos)"
+        },
+        {
+          "tipo": "automatico",
+          "sp": "SPK_PRI",
+          "evidencia": "sql_refe/xsql/SPK_PRI.sql:11-18 ('creará el periodo contable actual en caso de no estar creado', mes de GETDATE()); lo llaman sql/SPQ_FTR_COL.sql:406 y sql/SPK_NC_CONTAB_INV.sql:54"
+        }
+      ],
+      "efecto": "INSERT PRI (CERRADO=0, CERRADO_CARTERA/CXP=0)",
+      "llamaAnterior": [
+        "N5-cierre-contable"
+      ],
+      "ordenEstado": "confirmado_usuario",
+      "evidenciaOrden": [
+        {
+          "fuente": "usuario",
+          "fecha": "2026-10-14",
+          "nota": "El periodo siguiente se crea manual o automáticamente con un SP."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPK_PRI.sql",
+          "linea": 18
+        },
+        {
+          "archivo": "sql/SPQ_PRI.sql",
+          "linea": 101
+        }
+      ],
+      "pendiente": "SPK_PRI sin ficha en la KB (handoff documentar_metodo). Crea el mes de la fecha del sistema, no 'el siguiente del cerrado'."
+    },
+    {
+      "id": "N7-apertura-siguiente",
+      "orden": 7,
       "nombre": "Apertura periodo nuevo",
       "requiresConfig": [
         {
@@ -246,21 +345,21 @@
         }
       ],
       "llamaAnterior": [
-        "N5-cierre-contable"
+        "N6-crear-periodo-siguiente"
       ],
       "ordenEstado": "evidenciado",
       "evidenciaOrden": [
         {
           "archivo": "sql/SPK_CIERRE_MES_CONTABLE.sql",
           "linea": 102,
-          "nota": "SALDOMES / SALDOMESTER / SALDOMESTERFAC se recalculan DENTRO del cierre (líneas 102-177): son su resultado, por eso este paso va después de N5. La existencia del PRI del mes siguiente no la crea este SP: requisito por_confirmar."
+          "nota": "SALDOMES/SALDOMESTER/SALDOMESTERFAC salen del cierre (SPK_CIERRE_MES_CONTABLE 102-177); el PRI siguiente lo crea N6."
         }
       ],
       "idAnterior": "N2-apertura-siguiente"
     },
     {
-      "id": "N7-libros-informes",
-      "orden": 7,
+      "id": "N8-libros-informes",
+      "orden": 8,
       "nombre": "Libros / foliado (USCXS)",
       "requiresConfig": [
         {
@@ -279,14 +378,31 @@
       "llamaAnterior": [
         "N5-cierre-contable"
       ],
-      "ordenEstado": "por_confirmar",
+      "ordenEstado": "confirmado_usuario",
       "evidenciaOrden": [
         {
+          "fuente": "usuario",
+          "fecha": "2026-10-14",
+          "nota": "Un SP genera los consecutivos usando SEQUENCE de la base."
+        },
+        {
+          "archivo": "sql/SPQ_FOLIAR_LB.sql",
+          "linea": 156,
+          "nota": "INICIALIZAR_LIBROS inserta en USCXS los prefijos de libros que faltan (CRUD_USCXS línea 46)."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPQ_GENSEQUENCE.sql",
+          "linea": 48,
+          "nota": "Sí usa SEQUENCE: NEXT VALUE FOR <SequenceName> vía sp_executesql; si no existe la crea (CreateSequenceIfNotExists, línea 44) arrancando en MAX(USCXS.CONSECUTIVO)+1 y la registra en SequenceControl."
+        },
+        {
           "archivo": "conocimiento/flujo-cierre-periodo-contab/PROCESO.md",
-          "nota": "Fotos TBALANCEH: 'warn si mes cerrado sin BPRUEBA' → después del cierre. Foliado USCXS (SPQ_FOLIAR_LB · INICIALIZAR_LIBROS, no lo usa el FE): sin evidencia de secuencia; puede correr en paralelo a N6."
+          "nota": "Fotos TBALANCEH después del cierre."
         }
       ],
-      "idAnterior": "N5-libros-informes"
+      "idAnterior": "N5-libros-informes",
+      "sp": "SPQ_FOLIAR_LB · INICIALIZAR_LIBROS (filas USCXS) + SPQ_GENSEQUENCE (consecutivo con SEQUENCE)",
+      "pendiente": "SPQ_GENSEQUENCE sin ficha; fuente de CreateSequenceIfNotExists no está en sql/ ni sql_refe/ (handoff). No hay evidencia de que SPQ_FOLIAR_LB llame a SPQ_GENSEQUENCE."
     }
   ],
   "auditoriaBd": {
@@ -342,5 +458,5 @@
       "invariante": "FNK detalle como VALIDAR_INTEGRIDAD; fotos TBALANCEH BPRUEBA/ESTRES."
     }
   ],
-  "notaOrden": "Orden N0→N7 reconstruido desde los fuentes SQL (sql/SPQ_CONTABILIDAD_2.sql, sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql, sql/SPK_CIERRA_PERIODOCONTABLE.sql, sql/SPK_CIERRE_MES_CONTABLE.sql) y conocimiento/flujo-cierre-periodo-contab/PROCESO.md. Cada nodo trae evidenciaOrden; ordenEstado=por_confirmar donde la secuencia no está demostrada. llamaAnterior = paso(s) previo(s), mismo esquema que los otros grafos. Cierre fiscal (SPK_CIERRE_FISCAL, solo PAR.MESDECIERRE) queda fuera: es un ramal anual."
+  "notaOrden": "Orden N0→N8 (v2, 2026-10-14, con respuestas del usuario) reconstruido desde los fuentes SQL (sql/SPQ_CONTABILIDAD_2.sql, sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql, sql/SPK_CIERRA_PERIODOCONTABLE.sql, sql/SPK_CIERRE_MES_CONTABLE.sql) y conocimiento/flujo-cierre-periodo-contab/PROCESO.md. Cada nodo trae evidenciaOrden; ordenEstado=por_confirmar donde la secuencia no está demostrada. llamaAnterior = paso(s) previo(s), mismo esquema que los otros grafos. Cierre fiscal (SPK_CIERRE_FISCAL, solo PAR.MESDECIERRE) queda fuera: es un ramal anual. ordenEstado=confirmado_usuario: secuencia confirmada por el usuario, con la evidencia SQL encontrada."
 }

@@ -54,6 +54,6 @@ Equivalente a **Validar configuración** con procedencia **Fase 2 — cierre per
 
 ## Orden del cierre (grafo, 2026-10-14)
 
-N0 obtener periodo → N1 validar básico (paso 1) → N2 cerrar cartera *(por confirmar si va antes o después de N1)* → N3 pre-cierre módulos (FNK) → N4 integridad paso 2 → N5 cierre contable (SPK_CIERRA_PERIODOCONTABLE: SALDOMES/SALDOMESTER/SALDOMESTERFAC y PRI.CERRADO=1) → N6 saldos y periodo siguiente · N7 libros/fotos TBALANCEH *(por confirmar)*. Evidencia por nodo en `evidenciaOrden`. Validar: `python scripts/validar_grafos.py`.
+N0 obtener periodo → N1 cerrar cartera ∥ N1 cerrar CxP (SPK_CIERRA_CARTERA; prerrequisitos) → N2 validar periodo (reporta cartera/CxP sin cerrar) → N3 pre-cierre FNK → N4 integridad paso 2 → N5 cierre contable → N6 crear periodo (manual SPQ_PRI·CRUDPRI / automático SPK_PRI) → N7 saldos y periodo siguiente · N8 libros/foliado (SPQ_FOLIAR_LB + SPQ_GENSEQUENCE con SEQUENCE) y fotos TBALANCEH. Confirmado con el usuario el 2026-10-14. Evidencia en `evidenciaOrden`. Validar: `python scripts/validar_grafos.py`.
 
 Grafo: `grafo-cierre-periodo.json`. No ejecuta SP de cierre ni METODOs CONTABILIDAD_2 en API.
