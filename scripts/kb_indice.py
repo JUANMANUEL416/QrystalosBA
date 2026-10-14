@@ -186,6 +186,24 @@ def generar() -> dict:
                 for t in met.get("tablas") or []:
                     if isinstance(t, str):
                         _add(tabla_map, t.strip().upper(), {"proceso": pid, "sp": nombre, "metodo": met["id"], "archivo": archivo_s, "ruta": ruta})
+    grafo_map: dict = {}
+    gdir = KB / "contabilidad" / "grafo-contabilizacion"
+    if gdir.is_dir():
+        for gpath in sorted(gdir.glob("*.json")):
+            if gpath.name.startswith(("puntos-criticos", "VALIDACION")):
+                continue
+            g = _leer(gpath, {}) or {}
+            arch = f"conocimiento/contabilidad/grafo-contabilizacion/{gpath.name}"
+            for ni, nodo in enumerate(g.get("nodos") or []):
+                if not isinstance(nodo, dict) or not nodo.get("id"):
+                    continue
+                ref = {"grafo": gpath.stem, "procedencia": g.get("procedencia") or "", "archivo": arch, "ruta": f"nodos[{ni}]", "nodo": nodo["id"]}
+                _add(grafo_map, f"{gpath.stem}/{nodo['id']}", ref)
+                sps_n = nodo.get("sp") if isinstance(nodo.get("sp"), list) else [nodo.get("sp")]
+                for sp in sps_n:
+                    nombre = re.split(r"[\s·(/]", str(sp or "").strip())[0].upper()
+                    if nombre.startswith(("SP", "FN")):
+                        _add(grafo_map, nombre, ref)
     data = {
         "nota": "Generado por scripts/kb_indice.py. No editar a mano. Buscar aquí y abrir SOLO la ruta indicada (python scripts/kb_buscar.py CLAVE o GET /api/kb/buscar?q=CLAVE).",
         "generado": datetime.now().isoformat(timespec="seconds"),
@@ -197,8 +215,9 @@ def generar() -> dict:
         "pantalla": pant_map,
         "control": ctrl_map,
         "termino": {k: sorted(v) for k, v in term_map.items()},
+        "grafo": grafo_map,
     }
-    data["totales"] = {k: len(data[k]) for k in ("procesos", "sp", "metodo", "tabla", "pantalla", "control", "termino")}
+    data["totales"] = {k: len(data[k]) for k in ("procesos", "sp", "metodo", "tabla", "pantalla", "control", "termino", "grafo")}
     return data
 
 

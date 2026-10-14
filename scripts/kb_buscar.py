@@ -53,7 +53,7 @@ def buscar(q: str, limite: int = 5) -> dict:
     idx = _cargar_indice()
     up = q.upper().replace(".", "/") if "/" not in q and q.count(".") == 1 and q.split(".")[0].upper().startswith(("SP", "FN")) else q.upper()
     candidatos = [
-        ("metodo", up), ("sp", up), ("tabla", up), ("control", q), ("pantalla", q.lower()), ("termino", q), ("termino", q.lower()), ("termino", up),
+        ("metodo", up), ("sp", up), ("tabla", up), ("control", q), ("grafo", up), ("grafo", q), ("pantalla", q.lower()), ("termino", q), ("termino", q.lower()), ("termino", up),
     ]
     for tipo, clave in candidatos:
         refs = (idx.get(tipo) or {}).get(clave)
@@ -72,7 +72,7 @@ def buscar(q: str, limite: int = 5) -> dict:
         return {"ok": True, "tipo": tipo, "clave": clave, "resultados": fichas}
     # Búsqueda parcial: claves que contienen el texto (solo referencias, sin fichas).
     sugerencias = []
-    for tipo in ("metodo", "sp", "tabla", "pantalla", "control"):
+    for tipo in ("metodo", "sp", "tabla", "pantalla", "control", "grafo"):
         for clave in idx.get(tipo) or {}:
             if up in clave.upper():
                 sugerencias.append({"tipo": tipo, "clave": clave})
