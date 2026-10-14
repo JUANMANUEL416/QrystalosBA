@@ -3,7 +3,7 @@
   "procedencia": "CIERRE-PERIODO",
   "fase": 2,
   "estadoGrafo": "parcial",
-  "actualizado": "2026-10-13",
+  "actualizado": "2026-10-14",
   "descripcion": "Cierre/apertura PRI, sub-cierres cartera/inventario, SALDOMES, MCPE pendientes.",
   "fuenteSql": "SPQ / pantallas cierre; SALDOMES; libros",
   "nodos": [
@@ -17,6 +17,15 @@
           "tabla": "PRI",
           "desc": "SI, saltos, anterior cerrado, cierre fiscal",
           "checkMotor": "opc-periodo-anterior-cerrado"
+        }
+      ],
+      "llamaAnterior": [],
+      "ordenEstado": "evidenciado",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_CONTABILIDAD_2.sql",
+          "linea": 50,
+          "nota": "OBTENER_PERIODO_A_CERRAR determina el ANO/MES candidato; los demás pasos reciben ese periodo."
         }
       ]
     },
@@ -32,36 +41,22 @@
           "validacionSql": "SPQ_CONTABILIDAD_2 VALIDAR_PERIODO_BASICO (réplica BA)",
           "checkMotor": "vpb-periodo-no-cerrado"
         }
+      ],
+      "llamaAnterior": [
+        "N0-obtener-periodo"
+      ],
+      "ordenEstado": "evidenciado",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_CONTABILIDAD_2.sql",
+          "linea": 191,
+          "nota": "VALIDAR_PERIODO_BASICO = paso 1 de la pantalla Cerrar periodos (ficha conocimiento/contabilidad/sps.json → SPQ_CONTABILIDAD_2/VALIDAR_PERIODO_BASICO)."
+        }
       ]
     },
     {
-      "id": "N3-cierre-contable",
-      "orden": 3,
-      "nombre": "Cerrar periodo contable (PRI.CERRADO)",
-      "requiresDocumento": [
-        {
-          "id": "mcpe-sin-errados",
-          "desc": "Sin MCPE estado 0 pendientes de revisión",
-          "obligatorio": true,
-          "validacionSql": "MCPE ESTADO=0 en periodo",
-          "checkMotor": "mcpe-estado-0"
-        }
-      ],
-      "requiresConfig": [
-        {
-          "id": "pri-abierto",
-          "tabla": "PRI",
-          "desc": "Mes a cerrar existe y CERRADO=0",
-          "obligatorio": true,
-          "validacionSql": "PRI ANO/MES CERRADO",
-          "checkMotor": "pri-foco"
-        }
-      ],
-      "efecto": "PRI.CERRADO=1; bloquea contabilización operativa"
-    },
-    {
-      "id": "N3-cierre-cartera",
-      "orden": 3,
+      "id": "N2-cierre-cartera",
+      "orden": 2,
       "nombre": "Cerrar cartera (PRI.CERRADO_CARTERA)",
       "requiresConfig": [
         {
@@ -71,11 +66,23 @@
           "validacionSql": "PRI.CERRADO_CARTERA",
           "checkMotor": "pri-cartera"
         }
-      ]
+      ],
+      "llamaAnterior": [
+        "N1-validar-basico"
+      ],
+      "ordenEstado": "por_confirmar",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql",
+          "linea": 92,
+          "nota": "La FNK de integridad exige CERRADO_CARTERA=1 ('SE DEBE CERRAR EL PERIODO DE CARTERA ANTES DE CERRAR CONTABILIDAD'): va antes de N3/N4. Si va antes o después de N1 no está evidenciado (SPQ_PRI · CERRAR_FACTURA es otra pantalla)."
+        }
+      ],
+      "idAnterior": "N3-cierre-cartera"
     },
     {
       "id": "N3-precierre-modulos",
-      "orden": 2,
+      "orden": 3,
       "nombre": "Integridad pre-cierre (módulos)",
       "requiresDocumento": [
         {
@@ -99,11 +106,26 @@
           "desc": "ESTADO<>2 en periodo",
           "checkMotor": "mcp-sin-confirmar"
         }
+      ],
+      "llamaAnterior": [
+        "N2-cierre-cartera"
+      ],
+      "ordenEstado": "evidenciado",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql",
+          "linea": 90,
+          "nota": "Los pendientes por módulo salen de la FNK, que también revisa los sub-cierres (cartera, CxP): requiere N2."
+        },
+        {
+          "archivo": "conocimiento/flujo-cierre-periodo-contab/PROCESO.md",
+          "nota": "Pre-cierre módulos + FNK antes de la integridad extra."
+        }
       ]
     },
     {
-      "id": "N3-integridad-paso2",
-      "orden": 3,
+      "id": "N4-integridad-paso2",
+      "orden": 4,
       "nombre": "Integridad paso 2 (extra FNK)",
       "requiresDocumento": [
         {
@@ -126,30 +148,69 @@
           "desc": "MCP confirmados con cuenta no detalle",
           "checkMotor": "int-mcp-cuenta-no-detalle"
         }
-      ]
-    },
-    {
-      "id": "N5-libros-informes",
-      "orden": 5,
-      "nombre": "Libros / foliado (USCXS)",
-      "requiresConfig": [
+      ],
+      "llamaAnterior": [
+        "N3-precierre-modulos"
+      ],
+      "ordenEstado": "evidenciado",
+      "evidenciaOrden": [
         {
-          "id": "libros-uscxs",
-          "tabla": "USCXS",
-          "desc": "Seis libros LBGR…LMAY",
-          "checkMotor": "libros-uscxs-seis-tipos"
+          "archivo": "sql/SPQ_CONTABILIDAD_2.sql",
+          "linea": 586,
+          "nota": "VALIDAR_INTEGRIDAD_PERIODO = paso 2 (FNK_REVISION_ANTES_CIERRE_PERIODO)."
         },
         {
-          "id": "tbalanceh-fotos",
-          "tabla": "TBALANCEH",
-          "desc": "Foto mes BPRUEBA/ESTRES · MES=13 anual",
-          "checkMotor": "tbalanceh-fotos-mes"
+          "archivo": "conocimiento/flujo-cierre-periodo-contab/PROCESO.md",
+          "nota": "'Integridad paso 2 (extra FNK): después de precierre-fnk'."
         }
-      ]
+      ],
+      "idAnterior": "N3-integridad-paso2"
     },
     {
-      "id": "N2-apertura-siguiente",
-      "orden": 4,
+      "id": "N5-cierre-contable",
+      "orden": 5,
+      "nombre": "Cerrar periodo contable (PRI.CERRADO)",
+      "requiresDocumento": [
+        {
+          "id": "mcpe-sin-errados",
+          "desc": "Sin MCPE estado 0 pendientes de revisión",
+          "obligatorio": true,
+          "validacionSql": "MCPE ESTADO=0 en periodo",
+          "checkMotor": "mcpe-estado-0"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-abierto",
+          "tabla": "PRI",
+          "desc": "Mes a cerrar existe y CERRADO=0",
+          "obligatorio": true,
+          "validacionSql": "PRI ANO/MES CERRADO",
+          "checkMotor": "pri-foco"
+        }
+      ],
+      "efecto": "PRI.CERRADO=1; bloquea contabilización operativa",
+      "llamaAnterior": [
+        "N4-integridad-paso2"
+      ],
+      "ordenEstado": "evidenciado",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_CONTABILIDAD_2.sql",
+          "linea": 310,
+          "nota": "EJECUTAR_CIERRE_PERIODO (o INICIAR_CIERRE_PERIODO async, línea 386) → SPK_CIERRA_PERIODOCONTABLE."
+        },
+        {
+          "archivo": "sql/SPK_CIERRE_MES_CONTABLE.sql",
+          "linea": 180,
+          "nota": "UPDATE PRI SET CERRADO=1 al final del cierre."
+        }
+      ],
+      "idAnterior": "N3-cierre-contable"
+    },
+    {
+      "id": "N6-apertura-siguiente",
+      "orden": 6,
       "nombre": "Apertura periodo nuevo",
       "requiresConfig": [
         {
@@ -183,7 +244,49 @@
           "validacionSql": "PRI periodo siguiente",
           "checkMotor": "pri-siguiente"
         }
-      ]
+      ],
+      "llamaAnterior": [
+        "N5-cierre-contable"
+      ],
+      "ordenEstado": "evidenciado",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_CIERRE_MES_CONTABLE.sql",
+          "linea": 102,
+          "nota": "SALDOMES / SALDOMESTER / SALDOMESTERFAC se recalculan DENTRO del cierre (líneas 102-177): son su resultado, por eso este paso va después de N5. La existencia del PRI del mes siguiente no la crea este SP: requisito por_confirmar."
+        }
+      ],
+      "idAnterior": "N2-apertura-siguiente"
+    },
+    {
+      "id": "N7-libros-informes",
+      "orden": 7,
+      "nombre": "Libros / foliado (USCXS)",
+      "requiresConfig": [
+        {
+          "id": "libros-uscxs",
+          "tabla": "USCXS",
+          "desc": "Seis libros LBGR…LMAY",
+          "checkMotor": "libros-uscxs-seis-tipos"
+        },
+        {
+          "id": "tbalanceh-fotos",
+          "tabla": "TBALANCEH",
+          "desc": "Foto mes BPRUEBA/ESTRES · MES=13 anual",
+          "checkMotor": "tbalanceh-fotos-mes"
+        }
+      ],
+      "llamaAnterior": [
+        "N5-cierre-contable"
+      ],
+      "ordenEstado": "por_confirmar",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/flujo-cierre-periodo-contab/PROCESO.md",
+          "nota": "Fotos TBALANCEH: 'warn si mes cerrado sin BPRUEBA' → después del cierre. Foliado USCXS (SPQ_FOLIAR_LB · INICIALIZAR_LIBROS, no lo usa el FE): sin evidencia de secuencia; puede correr en paralelo a N6."
+        }
+      ],
+      "idAnterior": "N5-libros-informes"
     }
   ],
   "auditoriaBd": {
@@ -238,5 +341,6 @@
       "nombre": "Integridad FNK paso 2 e informes",
       "invariante": "FNK detalle como VALIDAR_INTEGRIDAD; fotos TBALANCEH BPRUEBA/ESTRES."
     }
-  ]
+  ],
+  "notaOrden": "Orden N0→N7 reconstruido desde los fuentes SQL (sql/SPQ_CONTABILIDAD_2.sql, sql/FNK_REVISION_ANTES_CIERRE_PERIODO.sql, sql/SPK_CIERRA_PERIODOCONTABLE.sql, sql/SPK_CIERRE_MES_CONTABLE.sql) y conocimiento/flujo-cierre-periodo-contab/PROCESO.md. Cada nodo trae evidenciaOrden; ordenEstado=por_confirmar donde la secuencia no está demostrada. llamaAnterior = paso(s) previo(s), mismo esquema que los otros grafos. Cierre fiscal (SPK_CIERRE_FISCAL, solo PAR.MESDECIERRE) queda fuera: es un ramal anual."
 }

@@ -3108,6 +3108,8 @@ def listar_procedencias_contab() -> list[dict]:
     idx = _load_grafo_indice()
     out = []
     for p in idx.get("procedencias") or []:
+        if p.get("fase") == 2:
+            continue  # cierre de periodo: opción propia CIERRE_PERIODO en la pantalla
         out.append(
             {
                 "orden": p.get("orden"),
@@ -3125,7 +3127,8 @@ def _resolve_procedencias_contab(seleccion: str) -> list[str]:
     idx = _load_grafo_indice()
     todas = [p.get("procedencia") for p in idx.get("procedencias") or [] if p.get("procedencia")]
     if sel in ("TODAS", "ALL", "*"):
-        return todas
+        # CIERRE-PERIODO (Fase 2) no es procedencia de comprobante: tiene su propio motor.
+        return [x for x in todas if x != "CIERRE-PERIODO"]
     if sel in ("CRITICO", "CRÍTICO", "PAQUETE"):
         return [x for x in _PAQUETE_CRITICO if x in todas]
     # una procedencia (RAD CXC tiene espacio)
@@ -7561,7 +7564,7 @@ def validar_config_contabilidad(
 ) -> dict:
     """Valida configuración exigida por grafos contables (solo SELECT)."""
     proc_sel = (procedencia or "CRITICO").strip().upper()
-    if proc_sel in ("CIERRE_PERIODO", "CIERRE", "FASE2_CIERRE"):
+    if proc_sel in ("CIERRE_PERIODO", "CIERRE-PERIODO", "CIERRE", "FASE2_CIERRE"):
         return validar_cierre_periodo_contable(servidor_id, base_datos, referencia)
 
     server, user, pwd, db = _resolve_server_db(servidor_id, base_datos)

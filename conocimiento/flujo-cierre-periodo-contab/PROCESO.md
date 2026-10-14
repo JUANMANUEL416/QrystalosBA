@@ -52,4 +52,8 @@ Equivalente a **Validar configuración** con procedencia **Fase 2 — cierre per
 - **`tbalanceh-fotos-mes`:** fotos **BPRUEBA** / **ESTRES** en el periodo; warn si mes cerrado sin BPRUEBA.
 - **`tbalanceh-foto-anual`:** si mes=12, revisa **MES=13** (foto del año).
 
+## Orden del cierre (grafo, 2026-10-14)
+
+N0 obtener periodo → N1 validar básico (paso 1) → N2 cerrar cartera *(por confirmar si va antes o después de N1)* → N3 pre-cierre módulos (FNK) → N4 integridad paso 2 → N5 cierre contable (SPK_CIERRA_PERIODOCONTABLE: SALDOMES/SALDOMESTER/SALDOMESTERFAC y PRI.CERRADO=1) → N6 saldos y periodo siguiente · N7 libros/fotos TBALANCEH *(por confirmar)*. Evidencia por nodo en `evidenciaOrden`. Validar: `python scripts/validar_grafos.py`.
+
 Grafo: `grafo-cierre-periodo.json`. No ejecuta SP de cierre ni METODOs CONTABILIDAD_2 en API.
