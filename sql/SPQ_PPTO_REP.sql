@@ -120,13 +120,13 @@ BEGIN
 
         IF COALESCE(DBO.FNK_VALORVARIABLE('PRESUP_CCOSTO'), '') = ''
         BEGIN
-            SELECT 'KO' AS OK, 'No est� configurada la variable PRESUP_CCOSTO (centro de costo presupuesto)' AS ERROR;
+            SELECT 'KO' AS OK, 'No está configurada la variable PRESUP_CCOSTO (centro de costo presupuesto)' AS ERROR;
             RETURN;
         END;
 
         IF @INGRESO_FPAG IN ('GLOSAS', 'DEVOLUCION')
         BEGIN
-            SELECT 'KO' AS OK, 'Los recaudos de glosas o devoluci�n no se env�an a presupuesto por este proceso' AS ERROR;
+            SELECT 'KO' AS OK, 'Los recaudos de glosas o devolución no se envían a presupuesto por este proceso' AS ERROR;
             RETURN;
         END;
 
@@ -220,7 +220,7 @@ BEGIN
         )
         BEGIN
             SELECT 'KO' AS OK,
-                   'El recaudo no qued� en presupuesto. Revise PRESUP_TIPORECO, PRESUP_CCOSTO, rubros del plan (PLN) y vigencia PTPTO.' AS ERROR;
+                   'El recaudo no quedó en presupuesto. Revise PRESUP_TIPORECO, PRESUP_CCOSTO, rubros del plan (PLN) y vigencia PTPTO.' AS ERROR;
             RETURN;
         END;
 
@@ -401,7 +401,7 @@ BEGIN
         )
         BEGIN
             SELECT 'KO' AS OK,
-                   'La nota no qued� en presupuesto. Revise la factura relacionada y la vigencia del presupuesto.' AS ERROR;
+                   'La nota no quedó en presupuesto. Revise la factura relacionada y la vigencia del presupuesto.' AS ERROR;
             RETURN;
         END;
 
@@ -506,11 +506,11 @@ BEGIN
 
         SELECT 'OK' AS OK;
 
-        SELECT CASE WHEN COALESCE(E.ENPRESUPUESTO, 0) = 1 THEN 'S�' ELSE 'No' END AS Presupuesto,
+        SELECT CASE WHEN COALESCE(E.ENPRESUPUESTO, 0) = 1 THEN 'Sí' ELSE 'No' END AS Presupuesto,
                E.CNSFNOT AS Consecutivo,
                CASE
-                  WHEN E.CLASE = 'C' THEN 'Cr�dito'
-                  WHEN E.CLASE = 'D' THEN 'D�bito'
+                  WHEN E.CLASE = 'C' THEN 'Crédito'
+                  WHEN E.CLASE = 'D' THEN 'Débito'
                   ELSE COALESCE(E.CLASE, '')
                END AS [Clase Nota],
                E.CLASE AS ClaseCod,
@@ -521,8 +521,8 @@ BEGIN
                E.NOMRUBRO AS [Nombre del Rubro],
                E.VR_TOTAL AS [Vlr. Nota],
                E.NIT AS [Id. Tercero],
-               E.RAZONSOCIAL AS [Raz�n Social],
-               E.OBSERVACION AS Observaci�n
+               E.RAZONSOCIAL AS [Razón Social],
+               E.OBSERVACION AS Observación
         FROM   #FNOT_EXPORT E
         ORDER BY E.F_NOTA DESC, E.CNSFNOT DESC, E.CLASE DESC;
 
@@ -829,7 +829,7 @@ BEGIN
             SELECT 'KO' AS OK,
                    CONCAT(
                        'TRAER_FACTURA_PPTO solo inserta cuando PRESUP_TIPORECO = CUENTAC. Actual: ',
-                       COALESCE(NULLIF(@TIPORECO_FTR, ''), '(vac�o)')
+                       COALESCE(NULLIF(@TIPORECO_FTR, ''), '(vacío)')
                    ) AS ERROR;
             RETURN;
         END;
@@ -837,7 +837,7 @@ BEGIN
         SET @CCOSTOPRESUP_FTR = COALESCE(DBO.FNK_VALORVARIABLE('PRESUP_CCOSTO'), '');
         IF @CCOSTOPRESUP_FTR = ''
         BEGIN
-            SELECT 'KO' AS OK, 'No est� configurada la variable PRESUP_CCOSTO' AS ERROR;
+            SELECT 'KO' AS OK, 'No está configurada la variable PRESUP_CCOSTO' AS ERROR;
             RETURN;
         END;
 
@@ -855,7 +855,7 @@ BEGIN
 
         IF COALESCE(@ENPPTO_FTR, 0) <> 0
         BEGIN
-            SELECT 'KO' AS OK, 'La factura ya est� en presupuesto' AS ERROR;
+            SELECT 'KO' AS OK, 'La factura ya está en presupuesto' AS ERROR;
             RETURN;
         END;
 
@@ -1029,7 +1029,7 @@ BEGIN
                    CONCAT(
                        'La factura ',
                        @N_FACTURA_FTR,
-                       ' no qued� en presupuesto. Revise PRESUP_TIPORECO=CUENTAC, PRESUP_CCOSTO, rubro PLN y vigencia PTPTO.'
+                       ' no quedó en presupuesto. Revise PRESUP_TIPORECO=CUENTAC, PRESUP_CCOSTO, rubro PLN y vigencia PTPTO.'
                    ) AS ERROR;
             RETURN;
         END;
@@ -1098,8 +1098,8 @@ BEGIN
                    CASE
                        WHEN SUM(CASE WHEN FNOT.CLASE = 'C' THEN 1 ELSE 0 END) > 0
                         AND SUM(CASE WHEN FNOT.CLASE = 'D' THEN 1 ELSE 0 END) > 0 THEN 'Ambas'
-                       WHEN SUM(CASE WHEN FNOT.CLASE = 'C' THEN 1 ELSE 0 END) > 0 THEN 'Cr�dito'
-                       WHEN SUM(CASE WHEN FNOT.CLASE = 'D' THEN 1 ELSE 0 END) > 0 THEN 'D�bito'
+                       WHEN SUM(CASE WHEN FNOT.CLASE = 'C' THEN 1 ELSE 0 END) > 0 THEN 'Crédito'
+                       WHEN SUM(CASE WHEN FNOT.CLASE = 'D' THEN 1 ELSE 0 END) > 0 THEN 'Débito'
                        ELSE ''
                    END AS CLASE_NOTAS
             FROM   FNOT

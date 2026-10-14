@@ -139,7 +139,7 @@ BEGIN
 		RETURN
 	END
 
-	-- Rpt:ListaDiaria_CDP - filtros equivalentes a Brw:ListaDiaria_CDP (KPPT1022.clw ApplyFilter) + joins del reporte (KPPT1023.clw)
+	-- Rpt:ListaDiaria_CDP — filtros equivalentes a Brw:ListaDiaria_CDP (KPPT1022.clw ApplyFilter) + joins del reporte (KPPT1023.clw)
 	IF @METODO = 'ListaDiaria_CDP'
 	BEGIN
 		IF @COMPANIA_PARAM IS NULL

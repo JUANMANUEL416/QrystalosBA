@@ -97,7 +97,7 @@ BEGIN
 
             IF @NROCOMPROBANTE IS NOT NULL
             BEGIN
-                SELECT @ERROR_MSG = 'El comprobante ' + @NROCOMPROBANTE + ' ya est� contabilizado'
+                SELECT @ERROR_MSG = 'El comprobante ' + @NROCOMPROBANTE + ' ya está contabilizado'
                 RAISERROR (@ERROR_MSG, 16, 1)
             END
 
@@ -129,7 +129,7 @@ BEGIN
                     
                     IF @CERRADO = 1
                     BEGIN
-                        SELECT @ERROR_MSG = 'Per�odo cerrado para: ' + @NROCOMPROBANTE
+                        SELECT @ERROR_MSG = 'Período cerrado para: ' + @NROCOMPROBANTE
                         RAISERROR (@ERROR_MSG, 16, 1)
                     END
 
@@ -152,7 +152,7 @@ BEGIN
                         
                         IF @CERRADO_CARTERA = 1
                         BEGIN
-                            SELECT @ERROR_MSG = 'Cartera/Facturaci�n cerrada para: ' + @NROCOMPROBANTE
+                            SELECT @ERROR_MSG = 'Cartera/Facturación cerrada para: ' + @NROCOMPROBANTE
                             RAISERROR (@ERROR_MSG, 16, 1)
                         END
                     END
@@ -189,17 +189,17 @@ BEGIN
                     
                     IF @TOTAL_REGISTROS_PRE > 0
                     BEGIN
-                        PRINT ' LIMPIEZA PRE-RECONSTRUCCI�N OBLIGATORIA: Eliminando TODOS los ' + CAST(@TOTAL_REGISTROS_PRE AS VARCHAR) + ' registro(s) existente(s) del comprobante ' + @NROCOMPROBANTE + ' antes de reconstruir'
+                        PRINT ' LIMPIEZA PRE-RECONSTRUCCIÓN OBLIGATORIA: Eliminando TODOS los ' + CAST(@TOTAL_REGISTROS_PRE AS VARCHAR) + ' registro(s) existente(s) del comprobante ' + @NROCOMPROBANTE + ' antes de reconstruir'
                         
                         DELETE FROM MCHE
                         WHERE NROCOMPROBANTE = @NROCOMPROBANTE
                         
                         SET @REGISTROS_ELIMINADOS_PRE = @@ROWCOUNT
-                        PRINT ' LIMPIEZA PRE-RECONSTRUCCI�N COMPLETADA: Se eliminaron ' + CAST(@REGISTROS_ELIMINADOS_PRE AS VARCHAR) + ' registro(s) del comprobante ' + @NROCOMPROBANTE
+                        PRINT ' LIMPIEZA PRE-RECONSTRUCCIÓN COMPLETADA: Se eliminaron ' + CAST(@REGISTROS_ELIMINADOS_PRE AS VARCHAR) + ' registro(s) del comprobante ' + @NROCOMPROBANTE
                     END
                     ELSE
                     BEGIN
-                        PRINT ' VALIDACI�N PRE-RECONSTRUCCI�N: No hay registros existentes en comprobante ' + @NROCOMPROBANTE + '. Procediendo con reconstrucci�n.'
+                        PRINT ' VALIDACIÓN PRE-RECONSTRUCCIÓN: No hay registros existentes en comprobante ' + @NROCOMPROBANTE + '. Procediendo con reconstrucción.'
                     END
                     
                     SELECT @PROCEDENCIA = PROCEDENCIA, @REF1 = REFERENCIA1, @REF2 = REFERENCIA2, 
@@ -209,14 +209,14 @@ BEGIN
                     
                     IF @PROCEDENCIA IS NULL
                     BEGIN
-                       PRINT ' ERROR: No se encontr� el comprobante ' + @NROCOMPROBANTE + ' en MCPE'
+                       PRINT ' ERROR: No se encontró el comprobante ' + @NROCOMPROBANTE + ' en MCPE'
                        INSERT INTO @TBLERRORES(ERROR) VALUES('Comprobante ' + @NROCOMPROBANTE + ' no existe en MCPE')
                        SET @ERRORES_REC = @ERRORES_REC + 1
                        FETCH NEXT FROM _cursor INTO @NROCOMPROBANTE
                        CONTINUE
                     END
                     
-                    PRINT ' VALIDACI�N PRE-RECONSTRUCCI�N: Comprobante=' + @NROCOMPROBANTE + ' | Procedencia=' + ISNULL(@PROCEDENCIA, 'NULL') + ' | NOREFERENCIA=' + ISNULL(@NOREFERENCIA, 'NULL') + ' | IDSEDE=' + ISNULL(@IDSEDE_COMP, 'NULL')
+                    PRINT ' VALIDACIÓN PRE-RECONSTRUCCIÓN: Comprobante=' + @NROCOMPROBANTE + ' | Procedencia=' + ISNULL(@PROCEDENCIA, 'NULL') + ' | NOREFERENCIA=' + ISNULL(@NOREFERENCIA, 'NULL') + ' | IDSEDE=' + ISNULL(@IDSEDE_COMP, 'NULL')
                     
                     IF @NOREFERENCIA IS NOT NULL AND LTRIM(RTRIM(@NOREFERENCIA)) != ''
                     BEGIN
@@ -234,7 +234,7 @@ BEGIN
                        
                        IF @COMPROBANTES_DUPLICADOS > 0
                        BEGIN
-                          PRINT ' ========== ADVERTENCIA CR�TICA: Se detectaron ' + CAST(@COMPROBANTES_DUPLICADOS AS VARCHAR) + ' comprobante(s) duplicado(s) con NOREFERENCIA=' + @NOREFERENCIA + ' diferente(s) a ' + @NROCOMPROBANTE + ' =========='
+                          PRINT ' ========== ADVERTENCIA CRÍTICA: Se detectaron ' + CAST(@COMPROBANTES_DUPLICADOS AS VARCHAR) + ' comprobante(s) duplicado(s) con NOREFERENCIA=' + @NOREFERENCIA + ' diferente(s) a ' + @NROCOMPROBANTE + ' =========='
                           
                           SELECT TOP 1 @NROCOMPROBANTE_DUPLICADO = NROCOMPROBANTE
                           FROM MCPE
@@ -246,8 +246,8 @@ BEGIN
                             AND ISNULL(IDSEDE, '') = ISNULL(@IDSEDE_COMP, '')
                           ORDER BY NROCOMPROBANTE ASC
                           
-                          PRINT ' ERROR CR�TICO: Existe comprobante duplicado ' + @NROCOMPROBANTE_DUPLICADO + ' con NOREFERENCIA=' + @NOREFERENCIA + '. Se requiere revisi�n manual antes de reconstruir.'
-                          INSERT INTO @TBLERRORES(ERROR) VALUES('ERROR CR�TICO: Existe comprobante duplicado ' + @NROCOMPROBANTE_DUPLICADO + ' con NOREFERENCIA=' + @NOREFERENCIA + '. No se puede reconstruir ' + @NROCOMPROBANTE + ' hasta resolver el duplicado.')
+                          PRINT ' ERROR CRÍTICO: Existe comprobante duplicado ' + @NROCOMPROBANTE_DUPLICADO + ' con NOREFERENCIA=' + @NOREFERENCIA + '. Se requiere revisión manual antes de reconstruir.'
+                          INSERT INTO @TBLERRORES(ERROR) VALUES('ERROR CRÍTICO: Existe comprobante duplicado ' + @NROCOMPROBANTE_DUPLICADO + ' con NOREFERENCIA=' + @NOREFERENCIA + '. No se puede reconstruir ' + @NROCOMPROBANTE + ' hasta resolver el duplicado.')
                           SET @ERRORES_REC = @ERRORES_REC + 1
                           FETCH NEXT FROM _cursor INTO @NROCOMPROBANTE
                           CONTINUE
@@ -431,7 +431,7 @@ BEGIN
                         EXEC sp_executesql @SQL_EXEC
                         SET @RECONSTRUIDOS = @RECONSTRUIDOS + 1
                         
-                        PRINT ' RECONSTRUCCI�N COMPLETADA para ' + @NROCOMPROBANTE
+                        PRINT ' RECONSTRUCCIÓN COMPLETADA para ' + @NROCOMPROBANTE
                         
                         IF @NOREFERENCIA_ORIGINAL IS NOT NULL AND LTRIM(RTRIM(@NOREFERENCIA_ORIGINAL)) != ''
                         BEGIN
@@ -443,8 +443,8 @@ BEGIN
                            
                            IF @COMPROBANTES_MCPE_DESPUES > @COMPROBANTES_MCPE_ANTES
                            BEGIN
-                              PRINT ' ========== ERROR CR�TICO: Se detect� creaci�n de comprobante(s) duplicado(s) en MCPE con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL + ' =========='
-                              PRINT ' Comprobantes ANTES: ' + CAST(@COMPROBANTES_MCPE_ANTES AS VARCHAR) + ' | DESPU�S: ' + CAST(@COMPROBANTES_MCPE_DESPUES AS VARCHAR)
+                              PRINT ' ========== ERROR CRÍTICO: Se detectó creación de comprobante(s) duplicado(s) en MCPE con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL + ' =========='
+                              PRINT ' Comprobantes ANTES: ' + CAST(@COMPROBANTES_MCPE_ANTES AS VARCHAR) + ' | DESPUÉS: ' + CAST(@COMPROBANTES_MCPE_DESPUES AS VARCHAR)
                               
                               DECLARE @DUPLICADOS_MCPE_ELIMINADOS INT = 0
                               
@@ -506,12 +506,12 @@ BEGIN
                               
                               IF @VERIFICACION_FINAL_MCPE > 1
                               BEGIN
-                                 PRINT ' ========== ERROR CR�TICO PERSISTENTE: A�n existen ' + CAST(@VERIFICACION_FINAL_MCPE AS VARCHAR) + ' comprobante(s) con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL + ' despu�s de la limpieza =========='
-                                 INSERT INTO @TBLERRORES(ERROR) VALUES('ERROR CR�TICO: A�n existen ' + CAST(@VERIFICACION_FINAL_MCPE AS VARCHAR) + ' comprobante(s) duplicado(s) con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL + ' despu�s de la limpieza. Se requiere revisi�n manual.')
+                                 PRINT ' ========== ERROR CRÍTICO PERSISTENTE: Aún existen ' + CAST(@VERIFICACION_FINAL_MCPE AS VARCHAR) + ' comprobante(s) con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL + ' después de la limpieza =========='
+                                 INSERT INTO @TBLERRORES(ERROR) VALUES('ERROR CRÍTICO: Aún existen ' + CAST(@VERIFICACION_FINAL_MCPE AS VARCHAR) + ' comprobante(s) duplicado(s) con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL + ' después de la limpieza. Se requiere revisión manual.')
                               END
                               ELSE
                               BEGIN
-                                 PRINT ' VERIFICACI�N FINAL MCPE: OK - Solo existe 1 comprobante con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL
+                                 PRINT ' VERIFICACIÓN FINAL MCPE: OK - Solo existe 1 comprobante con NOREFERENCIA=' + @NOREFERENCIA_ORIGINAL
                               END
                            END
                         END
@@ -525,7 +525,7 @@ BEGIN
                         SET @DUPLICADOS_DESPUES = 0
                         SET @DUPLICADOS_ELIMINADOS = 0
                         
-                        PRINT ' INICIANDO LIMPIEZA POST-RECONSTRUCCI�N AGRESIVA para comprobante ' + @NROCOMPROBANTE
+                        PRINT ' INICIANDO LIMPIEZA POST-RECONSTRUCCIÓN AGRESIVA para comprobante ' + @NROCOMPROBANTE
                         
                         WHILE @ITERACION_LIMPIEZA < @MAX_ITERACIONES_LIMPIEZA
                         BEGIN
@@ -552,11 +552,11 @@ BEGIN
                            
                            IF @DUPLICADOS_DESPUES = 0
                            BEGIN
-                              PRINT ' Iteraci�n ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ': OK - No se detectaron duplicados. Limpieza completada.'
+                              PRINT ' Iteración ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ': OK - No se detectaron duplicados. Limpieza completada.'
                               BREAK
                            END
                            
-                           PRINT ' Iteraci�n ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ': Detectados ' + CAST(@DUPLICADOS_DESPUES AS VARCHAR) + ' duplicado(s). Eliminando...'
+                           PRINT ' Iteración ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ': Detectados ' + CAST(@DUPLICADOS_DESPUES AS VARCHAR) + ' duplicado(s). Eliminando...'
                            
                            DELETE m1
                            FROM MCHE m1
@@ -585,23 +585,23 @@ BEGIN
                            
                            IF @DUPLICADOS_ELIMINADOS_ITERACION > 0
                            BEGIN
-                              PRINT ' Iteraci�n ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ' completada: Se eliminaron ' + CAST(@DUPLICADOS_ELIMINADOS_ITERACION AS VARCHAR) + ' duplicado(s)'
+                              PRINT ' Iteración ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ' completada: Se eliminaron ' + CAST(@DUPLICADOS_ELIMINADOS_ITERACION AS VARCHAR) + ' duplicado(s)'
                            END
                            ELSE
                            BEGIN
-                              PRINT ' Iteraci�n ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ': No se eliminaron registros. Verificando...'
+                              PRINT ' Iteración ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ': No se eliminaron registros. Verificando...'
                               BREAK
                            END
                         END
                         
                         IF @DUPLICADOS_ELIMINADOS > 0
                         BEGIN
-                           PRINT ' LIMPIEZA POST-RECONSTRUCCI�N COMPLETADA: Se eliminaron ' + CAST(@DUPLICADOS_ELIMINADOS AS VARCHAR) + ' duplicado(s) en ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ' iteraci�n(es)'
+                           PRINT ' LIMPIEZA POST-RECONSTRUCCIÓN COMPLETADA: Se eliminaron ' + CAST(@DUPLICADOS_ELIMINADOS AS VARCHAR) + ' duplicado(s) en ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ' iteración(es)'
                            SET @MENSAJE_FINAL = 'Comprobante ' + @NROCOMPROBANTE + ' reconstruido. Se eliminaron ' + CAST(@DUPLICADOS_ELIMINADOS AS VARCHAR) + ' duplicado(s).'
                         END
                         ELSE
                         BEGIN
-                           PRINT ' VALIDACI�N POST-RECONSTRUCCI�N: OK - No se detectaron duplicados en comprobante ' + @NROCOMPROBANTE
+                           PRINT ' VALIDACIÓN POST-RECONSTRUCCIÓN: OK - No se detectaron duplicados en comprobante ' + @NROCOMPROBANTE
                         END
                         
                         DECLARE @VERIFICACION_FINAL_POST INT = 0
@@ -614,7 +614,7 @@ BEGIN
                         
                         IF @VERIFICACION_FINAL_POST > 0
                         BEGIN
-                           PRINT ' ERROR CR�TICO: A�n existen ' + CAST(@VERIFICACION_FINAL_POST AS VARCHAR) + ' duplicado(s) despu�s de ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ' iteraciones. Ejecutando limpieza final de emergencia...'
+                           PRINT ' ERROR CRÍTICO: Aún existen ' + CAST(@VERIFICACION_FINAL_POST AS VARCHAR) + ' duplicado(s) después de ' + CAST(@ITERACION_LIMPIEZA AS VARCHAR) + ' iteraciones. Ejecutando limpieza final de emergencia...'
                            
                            DECLARE @ITERACION_EMERGENCIA INT = 0
                            WHILE @VERIFICACION_FINAL_POST > 0 AND @ITERACION_EMERGENCIA < 10
@@ -660,12 +660,12 @@ BEGIN
                            END
                            ELSE
                            BEGIN
-                              PRINT ' ADVERTENCIA CR�TICA: A�n quedan ' + CAST(@VERIFICACION_FINAL_POST AS VARCHAR) + ' duplicado(s) despu�s de la limpieza de emergencia. Se requiere revisi�n manual.'
+                              PRINT ' ADVERTENCIA CRÍTICA: Aún quedan ' + CAST(@VERIFICACION_FINAL_POST AS VARCHAR) + ' duplicado(s) después de la limpieza de emergencia. Se requiere revisión manual.'
                            END
                         END
                         ELSE
                         BEGIN
-                           PRINT ' VERIFICACI�N FINAL: OK - No se detectaron duplicados despu�s de la limpieza.'
+                           PRINT ' VERIFICACIÓN FINAL: OK - No se detectaron duplicados después de la limpieza.'
                         END
                     END
                     ELSE
@@ -686,7 +686,7 @@ BEGIN
             CLOSE _cursor  
             DEALLOCATE _cursor  
             
-            PRINT ' ========== VALIDACI�N FINAL MCPE: Verificando y eliminando comprobantes duplicados en MCPE por NOREFERENCIA =========='
+            PRINT ' ========== VALIDACIÓN FINAL MCPE: Verificando y eliminando comprobantes duplicados en MCPE por NOREFERENCIA =========='
             
             DECLARE @DUPLICADOS_MCPE_FINAL INT = 0
             DECLARE @ITERACION_MCPE_FINAL INT = 0
@@ -707,16 +707,16 @@ BEGIN
                BEGIN
                   IF @ITERACION_MCPE_FINAL = 1
                   BEGIN
-                     PRINT ' VALIDACI�N FINAL MCPE: No se detectaron comprobantes duplicados por NOREFERENCIA'
+                     PRINT ' VALIDACIÓN FINAL MCPE: No se detectaron comprobantes duplicados por NOREFERENCIA'
                   END
                   ELSE
                   BEGIN
-                     PRINT ' Iteraci�n ' + CAST(@ITERACION_MCPE_FINAL AS VARCHAR) + ': OK - Todos los comprobantes duplicados en MCPE eliminados'
+                     PRINT ' Iteración ' + CAST(@ITERACION_MCPE_FINAL AS VARCHAR) + ': OK - Todos los comprobantes duplicados en MCPE eliminados'
                   END
                   BREAK
                END
                
-               PRINT ' Iteraci�n ' + CAST(@ITERACION_MCPE_FINAL AS VARCHAR) + ': Detectados ' + CAST(@DUPLICADOS_MCPE_FINAL AS VARCHAR) + ' comprobante(s) duplicado(s) en MCPE. Eliminando...'
+               PRINT ' Iteración ' + CAST(@ITERACION_MCPE_FINAL AS VARCHAR) + ': Detectados ' + CAST(@DUPLICADOS_MCPE_FINAL AS VARCHAR) + ' comprobante(s) duplicado(s) en MCPE. Eliminando...'
                
                DECLARE @COMPROBANTES_DUPLICADOS_MCPE TABLE(NOREFERENCIA_DUP VARCHAR(50), NROCOMPROBANTE_DUP VARCHAR(20))
                
@@ -768,7 +768,7 @@ BEGIN
                   WHERE NROCOMPROBANTE = @NROCOMPROBANTE_DUP_MCPE
                     AND COMPANIA = @COMPANIA
                   
-                  PRINT ' Limpieza MCPE: Se elimin� comprobante duplicado ' + @NROCOMPROBANTE_DUP_MCPE + ' (NOREFERENCIA=' + @NOREFERENCIA_DUP + ')'
+                  PRINT ' Limpieza MCPE: Se eliminó comprobante duplicado ' + @NROCOMPROBANTE_DUP_MCPE + ' (NOREFERENCIA=' + @NOREFERENCIA_DUP + ')'
                   
                   FETCH NEXT FROM cur_eliminar_mcpe_duplicados INTO @NOREFERENCIA_DUP, @NROCOMPROBANTE_DUP_MCPE
                END
@@ -784,11 +784,11 @@ BEGIN
             BEGIN
                IF @DUPLICADOS_MCPE_FINAL = 0
                BEGIN
-                  PRINT ' ========== VALIDACI�N FINAL MCPE: OK - No quedan comprobantes duplicados por NOREFERENCIA =========='
+                  PRINT ' ========== VALIDACIÓN FINAL MCPE: OK - No quedan comprobantes duplicados por NOREFERENCIA =========='
                END
                ELSE
                BEGIN
-                  PRINT ' ========== ADVERTENCIA: A�n quedan comprobantes duplicados en MCPE despu�s de ' + CAST(@MAX_ITERACIONES_MCPE_FINAL AS VARCHAR) + ' iteraciones =========='
+                  PRINT ' ========== ADVERTENCIA: Aún quedan comprobantes duplicados en MCPE después de ' + CAST(@MAX_ITERACIONES_MCPE_FINAL AS VARCHAR) + ' iteraciones =========='
                END
             END
             
@@ -863,7 +863,7 @@ BEGIN
 
         IF OBJECT_ID('DBO.SPK_DIAG_MCPE_ERRORES') IS NULL
         BEGIN
-            SELECT 'KO' OK, N'No existe el procedimiento SPK_DIAG_MCPE_ERRORES. Despli�galo primero.' MENSAJE
+            SELECT 'KO' OK, N'No existe el procedimiento SPK_DIAG_MCPE_ERRORES. Despliégalo primero.' MENSAJE
             RETURN
         END
 

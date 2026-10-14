@@ -844,7 +844,7 @@ BEGIN
 				SELECT
 					'KO' AS OK,
 					CONCAT(
-						'No se puede eliminar la resoluci�n ',
+						'No se puede eliminar la resolución ',
 						@P_RESOLUCION_PTRES,
 						' porque tiene movimientos presupuestales asociados.'
 					) AS ERROR
@@ -865,7 +865,7 @@ BEGIN
 				BEGIN
 					INSERT INTO @TBLERRORES (ERROR)
 					SELECT CONCAT(
-						'No se puede eliminar la resoluci�n ',
+						'No se puede eliminar la resolución ',
 						@P_RESOLUCION_PTRES,
 						' porque tiene movimientos presupuestales asociados.'
 					)

@@ -312,7 +312,7 @@ BEGIN
 		-- agregada validacion de area funcional
 		IF ISNULL(@IDAREA, '') = ''
 		BEGIN
-			SELECT 'KO' OK, 'Debe seleccionar un �rea Funcional para el Centro de Costo' ERROR
+			SELECT 'KO' OK, 'Debe seleccionar un Área Funcional para el Centro de Costo' ERROR
 
 			RETURN
 		END
@@ -323,7 +323,7 @@ BEGIN
 				WHERE IDAREA = @IDAREA
 				)
 		BEGIN
-			SELECT 'KO' OK, 'El �rea Funcional no existe. Verifique e intente nuevamente' ERROR
+			SELECT 'KO' OK, 'El Área Funcional no existe. Verifique e intente nuevamente' ERROR
 
 			RETURN
 		END
@@ -554,7 +554,7 @@ BEGIN
 			ELSE
 			BEGIN
 				INSERT INTO @TBLERRORES (ERROR)
-				SELECT 'Ya Existe una Distribuci�n de Costo con ese c�digo, verifique e intente de nuevo'
+				SELECT 'Ya Existe una Distribución de Costo con ese código, verifique e intente de nuevo'
 			END
 		END
 
@@ -590,7 +590,7 @@ BEGIN
 					)
 			BEGIN
 				INSERT INTO @TBLERRORES (ERROR)
-				SELECT 'Existen Distribuciones detalles asociados a este c�digo, no se puede continuar'
+				SELECT 'Existen Distribuciones detalles asociados a este código, no se puede continuar'
 			END
 			ELSE
 			BEGIN
@@ -633,7 +633,7 @@ BEGIN
 				)
 		BEGIN
 			INSERT INTO @TBLERRORES (ERROR)
-			SELECT 'El c�digo de Distribuci�n no existe'
+			SELECT 'El código de Distribución no existe'
 		END
 
 		IF NOT EXISTS (

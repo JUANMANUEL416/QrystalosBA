@@ -1,7 +1,8 @@
 {
   "procesoId": "presupuesto",
-  "actualizado": "2026-10-04T22:00:00",
-  "nota": "2026-10-04 libro: IXONLINE/SQL PREVERSION = 2.0.7 (IDANT 2.0.6). Idénticas salvo SPQ_PPTO_RECO (PRE ≠ liberada: validar en preversión). SPQ_PTPTO no existe (maestro SPQ_PRESUPUESTO · CRUDPTPTO). CRUDPTNOT no está en PREVERSION; el FE sí llama PPTO_RECO · CRUDPTNOT + SPK_APLICA_NOTA_PPTO CONF/ANUL. TRAER_ANTICIPOCXP lo llama el FE y no aparece en SPQ_PPTO_REP. PRESUPUESTO_FCXC sin rama. Seguimiento Gastos (ppto.seguimiento_gastos) entregado. Capa 5 sin MCP. Fichas de 2026-09-12 se conservan.",
+  "actualizado": "2026-10-13T23:50:00",
+  "catalogoSpFe": "presupuesto/catalogo-sp-fe.json",
+  "nota": "PREVERSION 2.0.9: PPTO_RECO sin CRUDPTNOT; PPTO_REP releído 2026-10-13. Catálogo srComite **SR011–012** + soloDocumentacion (PTPTO naming, fichas, sin MCP). 37+14 tablas PT*.",
   "sps": [
     {
       "nombre": "SPQ_PPTO_PTCDP",
@@ -305,7 +306,7 @@
       "modelo": "PPTO_RECO",
       "estado": "leido",
       "fuente": "sql/SPQ_PPTO_RECO.sql",
-      "cola": "2026-10-04: PREVERSION ≠ liberada. CRUDPTNOT no está en PREVERSION; el FE PTNOTComponent sí lo llama. Confirmar/anular nota vía SPK_APLICA_NOTA_PPTO (CONF/ANUL). PTMOV usa SPK_GENCONSECUTIVO (nombre distinto al _PPTO del CDP).",
+      "cola": "2026-10-13 PREVERSION 2.0.9 = liberada. METODOs: CRUDPTRECO, CRUDPTRECA, CRUDPTRECAD, CRUDPTRECOD, CRUDPTRES, CRUDPTMOV, CRUDPTMOVD. **CRUDPTNOT ausente** (FE PTNOTComponent lo invoca). Confirmar/anular: SPK_APLICA_NOTA_PPTO. PTMov: SPK_GENCONSECUTIVO (no _PPTO).",
       "metodos": [
         {
           "id": "CRUDPTRECO",
@@ -393,15 +394,15 @@
         },
         {
           "id": "CRUDPTNOT",
-          "hace": "2026-10-04: el FE (PTNOTComponent) envía PPTO_RECO · CRUDPTNOT para INSERTAR/EDITAR. PREVERSION de SPQ_PPTO_RECO aún no tiene la rama. Aplicar/revertir sí existe: SPK_APLICA_NOTA_PPTO CONF/ANUL.",
+          "hace": "El FE (PTNOTComponent) envía PPTO_RECO · CRUDPTNOT (INSERTAR/EDITAR/…). Releído 2026-10-13: **no hay IF @METODO = 'CRUDPTNOT'** en SPQ_PPTO_RECO PREVERSION 2.0.9 ni en liberada 2.0.9.",
           "valida": [],
-          "noValida": ["CRUD de cabecera PTNOT en el SP de PREVERSION"],
-          "errores": [],
-          "llama": ["SPK_APLICA_NOTA_PPTO (CONF/ANUL desde el FE, no desde esta rama)"],
-          "efecto": "Hallazgo ppto-crudptnot-fe-adelantado. Validar en preversión; no pedir a ciegas.",
+          "noValida": ["Todo el CRUD PTNOT en servidor"],
+          "errores": ["Backend devuelve método no reconocido o cae sin rama (según enrutador)"],
+          "llama": ["SPK_APLICA_NOTA_PPTO (CONF/ANUL) sí existe para notas ya creadas por otro medio"],
+          "efecto": "Hallazgo **ppto-crudptnot-fe-adelantado** — hueco desarrollo SQL o FE debe dejar de llamar hasta existir rama. Distinto de PRESUPUESTO_FNOT (FNOT cartera).",
           "capaId": "02-operacion",
           "gateId": "cadena-ingresos",
-          "estado": "listado"
+          "estado": "leido"
         }
       ]
     },
@@ -543,6 +544,206 @@
           "efecto": "Informe facturas/notas. Solo lectura.",
           "capaId": "03-alimentadores",
           "gateId": "traer-otros-modulos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PTPTO_IMPRESION",
+      "tipo": "SPQ",
+      "modelo": "PTPTO_IMPRESION",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PTPTO_IMPRESION.sql",
+      "cola": "2026-10-13: PREVERSION 2.0.9 (idéntica liberada). FE getPDFReporte → PPTO_PROCESOS. Sin CRUD: solo datasets para Rpt* PDF.",
+      "metodos": [
+        {
+          "id": "PPTO_PROCESOS",
+          "hace": "Devuelve cabecera + detalle para impresión según PARAMETROS.TABLA (PTMOV, PTRECO, PTRECA, PTCDP, PTRP, PTCXP, PTPAG, PTNOT).",
+          "valida": ["TABLA, CONSECUTIVO, PTPTO, COMPANIA en JSON", "Claves CONSECUTIVO1/2/3 según tabla (RP: CDP en CONSECUTIVO1; CxP: CDP/RP/CNSCXP; Pago: CNSPAGO en CONSECUTIVO3)"],
+          "noValida": ["Estado confirmado del documento", "Permisos USGRUH"],
+          "errores": ["Sin RAISERROR en ramas TABLA; datasets vacíos si claves no coinciden"],
+          "llama": ["FNK_FECHA_DDMMAA"],
+          "efecto": "Primer recordset OK; luego 1–3 SELECT (cabecera, detalle rubros). PTRP expone NODOCUMENTO AS NCONTRATO. Varios PRINT de depuración.",
+          "capaId": "02-operacion",
+          "gateId": "impresion-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "RP_ARBOL_DETALLE",
+          "hace": "Grilla de rubros agregados por árbol genealógico PTRUB para formato RP árbol (CDP ± RP).",
+          "valida": ["COMPANIA, CONSECUTIVO presupuesto, CDP existente", "RP opcional pero debe existir si se envía", "NIVEL_MINIMO 0–6 o detalle NIVELR=8"],
+          "noValida": [],
+          "errores": ["KO Debe indicar COMPANIA", "KO Debe indicar CONSECUTIVO (presupuesto)", "KO Debe indicar CDP", "KO CDP no encontrado…", "KO RP no encontrado…"],
+          "llama": ["FNK_GENEALOGICO_PTRUB()"],
+          "efecto": "Recordset rubros con VALOR sumado por nivel/tipo. No sustituye encabezado PPTO_PROCESOS para contrato.",
+          "capaId": "02-operacion",
+          "gateId": "impresion-ppto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_INFORMES_PPTO",
+      "tipo": "SPQ",
+      "modelo": "INFORMES_PPTO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_INFORMES_PPTO.sql",
+      "cola": "2026-10-13 PREVERSION 2.0.9. Listados operativos + ejecución gasto/ingreso vía VWK_PTOG_EJEXRUBRO / VWK_PTOI_EJEXRUBRO. Hub FE puede usar fallback Clarion en construcción.",
+      "metodos": [
+        {
+          "id": "Lista_CDP",
+          "hace": "Listado CDP por compañía, presupuesto, meses, rubros, CCOSTO, vigencia, estado.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos"],
+          "llama": [],
+          "efecto": "Solo lectura PTCDP/PTCDPD.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "ListaDiaria_CDP",
+          "hace": "CDP por rango FECHAINI–FECHAFIN.",
+          "valida": ["COMPANIA", "CONSECUTIVO", "fechas"],
+          "noValida": [],
+          "errores": ["KO por compañía/consecutivo/fechas"],
+          "llama": [],
+          "efecto": "Lectura.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "Lista_RP",
+          "hace": "Listado RP con filtros análogos a CDP.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos"],
+          "llama": [],
+          "efecto": "Lectura PTRP.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "Lista_CXP",
+          "hace": "Listado obligaciones PTCXP.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos"],
+          "llama": [],
+          "efecto": "Lectura.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "Lista_PAG",
+          "hace": "Listado pagos PTPAG.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos"],
+          "llama": [],
+          "efecto": "Lectura.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "ListaUtiliza_CDP",
+          "hace": "Utilización de CDP (saldos vs ejecutado).",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO filtros obligatorios"],
+          "llama": [],
+          "efecto": "Lectura.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "Lista_RECA",
+          "hace": "Listado recaudos PTRECA.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos"],
+          "llama": [],
+          "efecto": "Lectura.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "Lista_RECO",
+          "hace": "Listado reconocimientos PTRECO.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos"],
+          "llama": [],
+          "efecto": "Lectura.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "PTOG_Ejecucion_*",
+          "hace": "Familia informes ejecución gastos desde VWK_PTOG_EJEXRUBRO (MESINI, rubros, CCOSTO). Incluye PTOG_Ejecucion_Mante, PTOG_Ejecucion_excel, variantes Super/Anual.",
+          "valida": ["COMPANIA", "CONSECUTIVO", "Vista VWK_PTOG_EJEXRUBRO existe"],
+          "noValida": [],
+          "errores": ["KO COMPANIA y CONSECUTIVO requeridos", "KO Vista dbo.VWK_PTOG_EJEXRUBRO no existe en la BD."],
+          "llama": [],
+          "efecto": "Grilla ejecución gasto por rubro/mes.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "PTOI_Ejecucion_*",
+          "hace": "Familia informes ejecución ingresos desde VWK_PTOI_EJEXRUBRO.",
+          "valida": ["COMPANIA", "CONSECUTIVO", "Vista VWK_PTOI_EJEXRUBRO"],
+          "noValida": [],
+          "errores": ["KO vista no existe"],
+          "llama": [],
+          "efecto": "Grilla ejecución ingreso.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "PTOG_EjecucionxCCosto",
+          "hace": "Ejecución gasto por centro de costo (y variante anual rubro×CCosto).",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO filtros"],
+          "llama": [],
+          "efecto": "Lectura agregada.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "PTOI_EjecucionxCCosto",
+          "hace": "Ejecución ingreso por centro de costo.",
+          "valida": ["COMPANIA", "CONSECUTIVO"],
+          "noValida": [],
+          "errores": ["KO filtros"],
+          "llama": [],
+          "efecto": "Lectura agregada.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
+          "estado": "leido"
+        },
+        {
+          "id": "PAC_G",
+          "hace": "Informe PAC (plan anual de caja) por presupuesto y mes.",
+          "valida": ["COMPANIA", "CONSECUTIVO", "MES"],
+          "noValida": [],
+          "errores": ["KO parámetros"],
+          "llama": ["Puede cruzar SPK_GENERA_PAC_G / FNK_PAC_G_CONSEC vía FE EXPORT_EJECUCION_PAC en PPTO_REP"],
+          "efecto": "Dataset PAC.",
+          "capaId": "04-informes",
+          "gateId": "informes-ppto",
           "estado": "leido"
         }
       ]

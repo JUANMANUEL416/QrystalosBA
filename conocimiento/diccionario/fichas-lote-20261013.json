@@ -1,0 +1,819 @@
+{
+  "FTRJSON": {
+    "modulo": "Facturación / RIPS JSON",
+    "titulo": "JSON RIPS por factura",
+    "proposito": "Persiste el payload JSON enviado y la respuesta del validador RIPS (incl. CUV) ligado al consecutivo de factura.",
+    "descripcion": "Cada fila corresponde a una factura (`CNSFCT`) en el circuito RIPS JSON Colombia. Almacena `JSON_ENVIO`, `JSON_RESPUESTA`, código único de validación (`CUV`) y marcas de envío. Se consulta desde seguimiento FEV-RIPS y validaciones en facturación.",
+    "campos_clave": {
+      "CNSFCT": "Consecutivo interno de factura (enlace con FTR).",
+      "JSON_ENVIO": "Trama JSON generada para el validador.",
+      "JSON_RESPUESTA": "Respuesta del servicio (errores, CUV, estado).",
+      "CUV": "Código único de validación cuando aplica.",
+      "SINENVIO": "Marca de registro pendiente de envío.",
+      "FRADICA_RIPS": "Fecha asociada a radicación RIPS."
+    },
+    "relaciones": "Lógica con `FTR` por `CNSFCT`. Proceso `rips-json`.",
+    "procesoId": "rips-json"
+  },
+  "FNOTJSON": {
+    "modulo": "Facturación / RIPS JSON",
+    "titulo": "JSON RIPS de notas",
+    "proposito": "JSON de notas crédito/débito para validación RIPS.",
+    "descripcion": "Par de `FTRJSON` para documentos `FNOT`: guarda envío/respuesta del validador y CUV de la nota.",
+    "campos_clave": {
+      "CNSFNOT": "Consecutivo de nota (FNOT).",
+      "JSON_ENVIO": "Payload JSON.",
+      "JSON_RESPUESTA": "Respuesta validador.",
+      "CUV": "Código único de validación."
+    },
+    "relaciones": "Enlace lógico con `FNOT`. Proceso `rips-json`.",
+    "procesoId": "rips-json"
+  },
+  "FEVRIPS_COLA": {
+    "modulo": "Facturación / RIPS JSON",
+    "titulo": "Cola validación externa FEV-RIPS",
+    "proposito": "Cola de trabajos para validación externa de paquetes RIPS.",
+    "descripcion": "Registra envíos en cola (estado, fechas, referencia al lote o factura) para el control FEV-RIPS en pantalla de validación externa.",
+    "campos_clave": {
+      "ESTADO": "Estado del ítem en cola.",
+      "PROCEDENCIA": "Origen del registro (factura, lote, etc.)."
+    },
+    "relaciones": "Complementa tablas `FTRJSON` / proceso DIAN-RIPS.",
+    "procesoId": "rips-json"
+  },
+  "FTR_MAS_LOG": {
+    "modulo": "Facturación",
+    "titulo": "Log de facturación masiva",
+    "proposito": "Trazabilidad de procesos masivos de facturación (errores, pasos).",
+    "descripcion": "Auditoría operativa cuando se ejecutan lotes de facturación masiva: mensajes, usuario, referencia al lote.",
+    "campos_clave": {},
+    "relaciones": "Relacionado con `FMAS` / colas masivas.",
+    "procesoId": "facturacion"
+  },
+  "PROCESO_JOB": {
+    "modulo": "Plataforma / Jobs",
+    "titulo": "Jobs asíncronos SQL",
+    "proposito": "Control de trabajos en background (estado COMPLETADO/ERROR).",
+    "descripcion": "Usado por reportes contables async (libro auxiliar), cargas masivas y otros METODOs que devuelven job id al frontend.",
+    "campos_clave": {
+      "ESTADO": "COMPLETADO, ERROR, EN PROCESO.",
+      "PROCESO": "Nombre lógico del job."
+    },
+    "relaciones": "Invocado desde `SPQ_CONTABILIDAD_2` (libro auxiliar) y otros SPQ.",
+    "procesoId": "contabilidad"
+  },
+  "FTRDJSON": {
+    "modulo": "Facturación / RIPS JSON",
+    "titulo": "JSON RIPS por línea de factura",
+    "proposito": "Detalle JSON RIPS a nivel línea cuando el proceso lo exige.",
+    "descripcion": "Complemento granular de `FTRJSON` para líneas `FTRD` en escenarios PGP/cápita o validación por ítem.",
+    "campos_clave": {},
+    "relaciones": "Lógica con `FTRD` / `FTR`.",
+    "procesoId": "rips-json"
+  },
+  "FDIANR": {
+    "modulo": "Facturación / DIAN",
+    "titulo": "Respuestas DIAN RIPS",
+    "proposito": "Almacena respuestas o trazas DIAN ligadas a RIPS.",
+    "descripcion": "Soporte de integración DIAN–RIPS: códigos, fechas y payload de respuesta asociados a facturas o lotes.",
+    "campos_clave": {},
+    "relaciones": "Procesos `dian-xml` / `rips-json`.",
+    "procesoId": "dian-xml"
+  },
+  "QXRCN": {
+    "modulo": "Integración / Reconciliación",
+    "titulo": "Reconciliación QX",
+    "proposito": "Datos de reconciliación o cruce con sistema externo QX.",
+    "descripcion": "Tabla de apoyo a procesos de conciliación o interfaz; revisar SP que la escribe en el cliente concreto.",
+    "campos_clave": {},
+    "relaciones": "Consultar en SQLIX si hay SP dedicado en la instalación.",
+    "procesoId": "rips-json"
+  },
+  "FCXCDV": {
+    "modulo": "Cartera / Contabilidad",
+    "titulo": "Vencimientos de cartera",
+    "proposito": "Subdivisiones de saldo por factura (tipos F/G/R/C/L) para aging, glosas y conciliaciones.",
+    "descripcion": "Cada registro es un vencimiento o bucket de una factura en cartera. Tipos habituales: factura (F), glosa (G), recuperación (R), conciliación (C); tipo L se trata como glosa en `SPQ_FCONCI_COL` (exige `CNSGLO`). Usada en reportes de cartera, conciliaciones y castigos.",
+    "campos_clave": {
+      "CNSCXC": "Cabecera cartera.",
+      "N_FACTURA": "Factura origen.",
+      "TIPO": "F/G/R/C/L — clasificación del vencimiento.",
+      "SALDO": "Saldo del tramo.",
+      "IDFCONCI": "Enlace a conciliación cuando aplica.",
+      "CNSGLO": "Glosa asociada (tipos G/L/C según reglas SP)."
+    },
+    "relaciones": "Padre lógico `FCXCD` / `FCXC`. Procesos `reportes-cartera`, `conciliaciones`, `glosas`.",
+    "procesoId": "reportes-cartera"
+  },
+  "BCT": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Cuenta bancaria",
+    "proposito": "Catálogo de cuentas banco–sucursal–número con saldo y parámetros contables.",
+    "descripcion": "Maestro de cuentas usado en Tesorería → Cuentas. Define cuenta contable (`CUE`), saldos, cupo TC, flags de caja y conciliación. Cabecera de movimientos `BMOV`.",
+    "campos_clave": {
+      "BANCO": "Código banco.",
+      "SUCURSAL": "Sucursal.",
+      "CTA_BCO": "Número de cuenta.",
+      "SALDO": "Saldo operativo.",
+      "CUE": "Cuenta contable asociada."
+    },
+    "relaciones": "Hijos: `BMOV`, `BCTC`, `BCTD`, `BCTTAR`, `BCTSM`. Proceso `bancos`.",
+    "procesoId": "bancos"
+  },
+  "BMOV": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Movimiento bancario (cabecera)",
+    "proposito": "Libro bancario: ingresos, egresos y traslados por cuenta.",
+    "descripcion": "Cabecera con `ESTADO` P/O/A, `VLROPERACION`, `PROCEDENCIA` (BANCOS/CAJA/CONTAB), enlace contable `NROCOMPROBANTE` y `CONTABILIZADA`. Confirmación vía `SPK_OK_BMOV` → `SPK_NC_CONTAB_BMOV`.",
+    "campos_clave": {
+      "BANCO": "Parte de llave con sucursal/cuenta/item.",
+      "ESTADO": "P pendiente, O confirmado, A anulado.",
+      "IDOPERACION": "Tipo operación OFIN.",
+      "PROCEDENCIA": "Origen del movimiento.",
+      "NROCOMPROBANTE": "MCP generado al confirmar."
+    },
+    "relaciones": "Detalle `BMOVD`. Proceso `bancos`, contabilidad procedencia BMOV.",
+    "procesoId": "bancos"
+  },
+  "BMOVD": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Movimiento bancario (detalle)",
+    "proposito": "Renglones del movimiento: valor, tercero, forma de pago, recaudo.",
+    "descripcion": "Cada línea aporta a `VLROPERACION`. `RECAUDO=1` enlaza con recaudos cartera (`FPAG`). Campos de legalización y nómina según operación.",
+    "campos_clave": {
+      "ITEM": "Número de línea.",
+      "VLRITEM": "Valor del renglón.",
+      "RECAUDO": "Marca recaudo cartera.",
+      "ENPAGOS": "En proceso de pago cartera.",
+      "IDTERCERO": "Tercero del renglón."
+    },
+    "relaciones": "FK a cabecera `BMOV`.",
+    "procesoId": "bancos"
+  },
+  "BCTC": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Conciliación bancaria (cabecera)",
+    "proposito": "Periodo de conciliación por cuenta (extracto vs libro).",
+    "descripcion": "Cierra con saldo extracto/libros; al cerrar actualiza `BCTSM` mensual vía `SPK_UPSERT_BCTSM`.",
+    "campos_clave": {
+      "FECHACON": "Fecha corte conciliación.",
+      "SALDOB": "Saldo banco.",
+      "SALDOCONT": "Saldo contable.",
+      "Cerrada": "Estado del periodo conciliado."
+    },
+    "relaciones": "Detalle partidas `BCTCD`.",
+    "procesoId": "bancos"
+  },
+  "BCTCD": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Conciliación bancaria (detalle)",
+    "proposito": "Partidas conciliadas o pendientes por periodo.",
+    "descripcion": "Líneas que explican diferencias entre extracto y movimientos `BMOV`/contabilidad.",
+    "campos_clave": {},
+    "relaciones": "Cabecera `BCTC`.",
+    "procesoId": "bancos"
+  },
+  "BCTSM": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Auxiliar mensual de conciliación",
+    "proposito": "Snapshot SI/DB/CR/SF por mes y cuenta (nuevo en 2.0.7).",
+    "descripcion": "Persiste saldo inicial, débitos/créditos del mes y saldo final al cerrar conciliación; base del auxiliar imprimible.",
+    "campos_clave": {
+      "ANO": "Año.",
+      "MES": "Mes.",
+      "SI": "Saldo inicial.",
+      "SF": "Saldo final."
+    },
+    "relaciones": "Cuenta `BCT`; escrito por `SPK_UPSERT_BCTSM`.",
+    "procesoId": "bancos"
+  },
+  "BCTD": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Chequera",
+    "proposito": "Rango de cheques por cuenta.",
+    "descripcion": "Control de numeración de cheques asociada a `BCT`.",
+    "campos_clave": {},
+    "relaciones": "Detalle cheques `BCTDD`.",
+    "procesoId": "bancos"
+  },
+  "BCTDD": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Detalle de chequera",
+    "proposito": "Cheques individuales (usado, anulado, número).",
+    "descripcion": "Estado de cada cheque del rango definido en `BCTD`.",
+    "campos_clave": {},
+    "relaciones": "Padre `BCTD`.",
+    "procesoId": "bancos"
+  },
+  "BCTTAR": {
+    "modulo": "Tesorería / Bancos",
+    "titulo": "Cuotas tarjeta de crédito",
+    "proposito": "Extracto de cuotas TC por cuenta bancaria.",
+    "descripcion": "Soporta generación CxP desde cuotas (`SPK_GEN_CXP_BCTTAR`) y recálculo de cupo en confirmación.",
+    "campos_clave": {},
+    "relaciones": "Cuenta `BCT`.",
+    "procesoId": "bancos"
+  },
+  "FXP": {
+    "modulo": "Honorarios médicos",
+    "titulo": "Liquidación honorarios (cabecera)",
+    "proposito": "Periodo o lote de liquidación de honorarios profesionales.",
+    "descripcion": "Encabezado del módulo de honorarios: médico, periodo, totales y estado de liquidación.",
+    "campos_clave": {},
+    "relaciones": "Detalle `FXPD`, cruces `PXS*`. Proceso honorarios/fees.",
+    "procesoId": "honorarios"
+  },
+  "FXPD": {
+    "modulo": "Honorarios médicos",
+    "titulo": "Liquidación honorarios (detalle)",
+    "proposito": "Líneas de servicios o conceptos liquidados.",
+    "descripcion": "Detalle por servicio, valor, deducciones y referencia a prestación.",
+    "campos_clave": {},
+    "relaciones": "Cabecera `FXP`.",
+    "procesoId": "honorarios"
+  },
+  "PXS": {
+    "modulo": "Honorarios médicos",
+    "titulo": "Prestaciones honorarios",
+    "proposito": "Registro de prestaciones sujetas a pago de honorarios.",
+    "descripcion": "Tabla puente entre asistencial/facturación y liquidación FXP.",
+    "campos_clave": {},
+    "relaciones": "Extensiones `PXSE`, `PXSN`.",
+    "procesoId": "honorarios"
+  },
+  "PXSE": {
+    "modulo": "Honorarios médicos",
+    "titulo": "Prestaciones honorarios (extensión)",
+    "proposito": "Campos adicionales o histórico de prestaciones.",
+    "descripcion": "Complemento de `PXS` según configuración del cliente.",
+    "campos_clave": {},
+    "relaciones": "Relacionada con `PXS`.",
+    "procesoId": "honorarios"
+  },
+  "PXSN": {
+    "modulo": "Honorarios médicos",
+    "titulo": "Prestaciones honorarios (nómina)",
+    "proposito": "Enlace prestación–nómina o deducciones.",
+    "descripcion": "Usada cuando el pago de honorarios cruza con nómina o retenciones.",
+    "campos_clave": {},
+    "relaciones": "Relacionada con `PXS`.",
+    "procesoId": "honorarios"
+  },
+  "HOMED": {
+    "modulo": "Honorarios médicos",
+    "titulo": "Homologación médicos honorarios",
+    "proposito": "Equivalencias médico–tercero–servicio para liquidación.",
+    "descripcion": "Catálogo de homologación usado al armar liquidaciones y pagos.",
+    "campos_clave": {},
+    "relaciones": "TER, MED, SER según columnas de la instalación.",
+    "procesoId": "honorarios"
+  },
+  "CUE": {
+    "modulo": "Contabilidad / Configuración",
+    "titulo": "Plan de cuentas (PUC)",
+    "proposito": "Catálogo de cuentas contables locales.",
+    "descripcion": "Nivel, tipo (Detalle/Suma), naturaleza, rubro y estado. Validada en `SPQ_CUE_COL` / configuración contable. Referenciada por `MCH`, `BCT`, KMCOM.",
+    "campos_clave": {
+      "CUENTA": "Código PUC.",
+      "NIVEL": "Nivel jerárquico.",
+      "TIPO": "Detalle o Suma.",
+      "ESTADO": "Activa/Inactiva."
+    },
+    "relaciones": "Padre lógico de movimientos `MCH`. Proceso `configuracion-contabilidad`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "NTZ": {
+    "modulo": "Contabilidad",
+    "titulo": "Naturaleza de cuentas NIIF",
+    "proposito": "Catálogo auxiliar NIIF (naturaleza por cuenta).",
+    "descripcion": "Soporte de reportes NIIF y homologación con plan local.",
+    "campos_clave": {},
+    "relaciones": "Plan `CUENIIF`, proceso contabilidad NIIF.",
+    "procesoId": "contabilidad"
+  },
+  "PAR": {
+    "modulo": "Contabilidad / Configuración",
+    "titulo": "Parámetros contables",
+    "proposito": "Parámetros globales del módulo contable (una fila por compañía).",
+    "descripcion": "Mes de cierre fiscal, orden de cuentas en comprobantes, cuentas puente y flags de cierre por módulo. Editado desde Parámetros contables (`EDITA_PAR`).",
+    "campos_clave": {
+      "MESDECIERRE": "Mes de cierre fiscal.",
+      "MCUEORDEN_GLOSAS": "Orden de cuentas glosas en comprobantes."
+    },
+    "relaciones": "Usado en cierre, exógena y generadores MCP.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "PARN": {
+    "modulo": "Contabilidad",
+    "titulo": "Parámetros contables NIIF",
+    "proposito": "Parámetros específicos proceso NIIF.",
+    "descripcion": "Complemento de `PAR` cuando `IDPROCESOCONTABLE` es NIIF.",
+    "campos_clave": {},
+    "relaciones": "`PAR`, `MCPNIIF`.",
+    "procesoId": "contabilidad"
+  },
+  "KPRES": {
+    "modulo": "Contabilidad",
+    "titulo": "Presupuesto contable (puente)",
+    "proposito": "Enlace contabilidad–presupuesto por documento o comprobante.",
+    "descripcion": "Registra cruces entre movimientos contables y documentos presupuestales cuando aplica integración.",
+    "campos_clave": {},
+    "relaciones": "Procesos `presupuesto` y OM contabilidad.",
+    "procesoId": "presupuesto"
+  },
+  "SALDOMES": {
+    "modulo": "Contabilidad",
+    "titulo": "Saldos mensuales por cuenta",
+    "proposito": "Snapshot de saldos por cuenta/tercero/CC al cierre de mes.",
+    "descripcion": "Poblada por `SPK_CIERRE_MES_CONTABLE`; base de balances e informes.",
+    "campos_clave": {
+      "ANO": "Año.",
+      "MES": "Mes.",
+      "CUENTA": "Cuenta PUC.",
+      "SALDO": "Saldo del periodo."
+    },
+    "relaciones": "`PRI`, `CUE`.",
+    "procesoId": "contabilidad"
+  },
+  "SALDOMESTER": {
+    "modulo": "Contabilidad",
+    "titulo": "Saldos mensuales por tercero",
+    "proposito": "Detalle de saldos con tercero (y CC cuando aplica).",
+    "descripcion": "Complemento granular de `SALDOMES` para auxiliares y aging.",
+    "campos_clave": {},
+    "relaciones": "`SALDOMES`, `TER`.",
+    "procesoId": "contabilidad"
+  },
+  "COM": {
+    "modulo": "Contabilidad / Configuración",
+    "titulo": "Tipos de comprobante",
+    "proposito": "Catálogo de comprobantes contables (DIAN, consecutivo, prefijo).",
+    "descripcion": "Cada `MCP.COMPROBANTE` referencia un tipo COM. Asignación por documento vía variables USVGS (`IDCON_TCOM_*`).",
+    "campos_clave": {
+      "COMPROBANTE": "Código tipo.",
+      "DESCRIPCION": "Nombre del comprobante."
+    },
+    "relaciones": "`MCP`, pantalla Comprobantes por documento.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "USCXS": {
+    "modulo": "Contabilidad",
+    "titulo": "Configuración informes contables",
+    "proposito": "Parámetros de reportes (libros, balances, exógena).",
+    "descripcion": "Almacena definiciones o filtros persistidos para informes del módulo contable.",
+    "campos_clave": {},
+    "relaciones": "`SPQ_CONTABILIDAD_2` reportes.",
+    "procesoId": "contabilidad"
+  },
+  "TBALANCEH": {
+    "modulo": "Contabilidad",
+    "titulo": "Histórico balance de prueba",
+    "proposito": "Snapshot histórico de balances generados.",
+    "descripcion": "Permite consultar balances cerrados sin recalcular desde MCH.",
+    "campos_clave": {},
+    "relaciones": "`SPK_BALANCE`, cierre periodo.",
+    "procesoId": "contabilidad"
+  },
+  "EXOFMT": {
+    "modulo": "Contabilidad",
+    "titulo": "Formatos exógena",
+    "proposito": "Definición de formatos DIAN exógena.",
+    "descripcion": "Cabecera de formatos usados por `SPK_NC_GENERA_EXOGENA`.",
+    "campos_clave": {},
+    "relaciones": "Detalle `FIMPDV` / formatos impuestos.",
+    "procesoId": "contabilidad"
+  },
+  "CIRUNI": {
+    "modulo": "Contabilidad",
+    "titulo": "Circular única",
+    "proposito": "Datos o parametrización informe Circular Única.",
+    "descripcion": "Soporte de `SPK_CIRCULARUNICA` y reportes regulatorios.",
+    "campos_clave": {},
+    "relaciones": "Contabilidad informes.",
+    "procesoId": "contabilidad"
+  },
+  "FIMPDV": {
+    "modulo": "Contabilidad / Impuestos",
+    "titulo": "Detalle formatos impuestos",
+    "proposito": "Líneas de formatos de impuestos/exógena.",
+    "descripcion": "Detalle asociado a formatos fiscales (`FIMP`, `EXOFMT`).",
+    "campos_clave": {},
+    "relaciones": "Cabeceras de formatos.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "KCDE": {
+    "modulo": "Contabilidad / Configuración",
+    "titulo": "Códigos contables especiales",
+    "proposito": "Mapa de códigos KCDE (castigo cartera, cuentas puente, etc.).",
+    "descripcion": "Usado por castigos, conciliaciones y generadores MCP (`CXC_CASTIGO_CARTERA`, etc.).",
+    "campos_clave": {},
+    "relaciones": "`SPK_NC_CONTAB_CASTIGO_CARTERA`, TTEC.",
+    "procesoId": "contabilidad"
+  },
+  "SDCUEFIS": {
+    "modulo": "Contabilidad",
+    "titulo": "Saldos cierre fiscal",
+    "proposito": "Saldos de cuentas de resultado al cierre fiscal.",
+    "descripcion": "Generada/actualizada por `SPK_CIERRE_FISCAL` antes del comprobante de cierre.",
+    "campos_clave": {},
+    "relaciones": "`SPK_GEN_COMP_CIERRE_FISCAL`.",
+    "procesoId": "contabilidad"
+  },
+  "MCPNIIF": {
+    "modulo": "Contabilidad NIIF",
+    "titulo": "Comprobante NIIF (cabecera)",
+    "proposito": "Paralelo NIIF de `MCP` cuando aplica dualidad.",
+    "descripcion": "Recibe copia vía `SPK_PASA_MCP_MCPNIIF` según configuración.",
+    "campos_clave": {},
+    "relaciones": "`MCHNIIF`, `CUENIIF`.",
+    "procesoId": "contabilidad"
+  },
+  "MCHNIIF": {
+    "modulo": "Contabilidad NIIF",
+    "titulo": "Comprobante NIIF (detalle)",
+    "proposito": "Líneas del comprobante NIIF.",
+    "descripcion": "Detalle homólogo de `MCH` en plan NIIF.",
+    "campos_clave": {},
+    "relaciones": "`MCPNIIF`, `CUENIIF`.",
+    "procesoId": "contabilidad"
+  },
+  "CENH": {
+    "modulo": "Configuración contable",
+    "titulo": "Histórico centros de costo",
+    "proposito": "Auditoría o versiones de centros de costo.",
+    "descripcion": "Complemento histórico de catálogo `CEN`.",
+    "campos_clave": {},
+    "relaciones": "`CEN`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "HARE": {
+    "modulo": "Configuración contable",
+    "titulo": "Histórico áreas",
+    "proposito": "Histórico de áreas (`HARE` / estructura).",
+    "descripcion": "Trazabilidad de cambios en áreas organizacionales.",
+    "campos_clave": {},
+    "relaciones": "Estructura sedes/áreas.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "KUNG": {
+    "modulo": "Configuración contable",
+    "titulo": "Unidades de negocio (K)",
+    "proposito": "Catálogo unidades de negocio para contabilidad/analítica.",
+    "descripcion": "Usado en reglas KMCOM y distribuciones.",
+    "campos_clave": {},
+    "relaciones": "`SEDUNG`, `KMCOMS`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "SEDUNG": {
+    "modulo": "Configuración contable",
+    "titulo": "Unidad de negocio por sede",
+    "proposito": "Asignación sede → unidad de negocio.",
+    "descripcion": "Parametrización en sedes/contabilidad.",
+    "campos_clave": {},
+    "relaciones": "`SED`, `KUNG`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "SEDCONS": {
+    "modulo": "Configuración contable",
+    "titulo": "Constantes por sede",
+    "proposito": "Valores fijos contables/administrativos por sede.",
+    "descripcion": "Complemento de maestro `SED` (bodegas, FHIR, etc.).",
+    "campos_clave": {},
+    "relaciones": "`SED`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "CUENIIF": {
+    "modulo": "Configuración contable",
+    "titulo": "Plan de cuentas NIIF",
+    "proposito": "PUC NIIF paralelo al local.",
+    "descripcion": "CRUD desde configuración; validaciones de jerarquía en carga masiva.",
+    "campos_clave": {
+      "CUENTA": "Código NIIF.",
+      "NIVEL": "Nivel.",
+      "CUENTA_SUMA": "Cuenta padre sumaria."
+    },
+    "relaciones": "`MCPNIIF`, `MCHNIIF`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "TTEC": {
+    "modulo": "Configuración contable / Cartera",
+    "titulo": "Tipos de tercero contable",
+    "proposito": "Clasificación contable de terceros (dificil cobro, etc.).",
+    "descripcion": "Usado en castigos cartera (`CUEDIFCOB`) y reglas MCP.",
+    "campos_clave": {},
+    "relaciones": "`TER`, castigo cartera.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "KMCOMS": {
+    "modulo": "Configuración contable",
+    "titulo": "Reglas contabilización (detalle sede)",
+    "proposito": "Extensiones por sede de reglas KMCOM.",
+    "descripcion": "Complemento de `KMCOM` para prefijos/sedes.",
+    "campos_clave": {},
+    "relaciones": "`KMCOM`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "KTCO": {
+    "modulo": "Configuración contable",
+    "titulo": "Tipos de comprobante KMCOM",
+    "proposito": "Catálogo auxiliar de tipos ligados a KMCOM.",
+    "descripcion": "Parametrización de generadores OM.",
+    "campos_clave": {},
+    "relaciones": "`KMCOM`, `COM`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "FDIS": {
+    "modulo": "Configuración contable",
+    "titulo": "Distribuciones contables (cabecera)",
+    "proposito": "Esquemas de distribución de costos/gastos.",
+    "descripcion": "CRUD `FDIS_CRUD`; renombrar código requiere actualizar detalle.",
+    "campos_clave": {},
+    "relaciones": "Detalle `FDISD`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "FDISD": {
+    "modulo": "Configuración contable",
+    "titulo": "Distribuciones contables (detalle)",
+    "proposito": "Porcentajes o cuentas por esquema FDIS.",
+    "descripcion": "Líneas de distribución aplicadas en contabilización.",
+    "campos_clave": {},
+    "relaciones": "Cabecera `FDIS`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "MND": {
+    "modulo": "Configuración contable",
+    "titulo": "Monedas",
+    "proposito": "Catálogo de monedas.",
+    "descripcion": "Moneda local y extranjeras para comprobantes y CxP/CxC.",
+    "campos_clave": {},
+    "relaciones": "Detalle tasas `MNDV`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "MNDV": {
+    "modulo": "Configuración contable",
+    "titulo": "Tasas de cambio",
+    "proposito": "Historial de TRM por moneda y fecha.",
+    "descripcion": "Usado al contabilizar en moneda extranjera.",
+    "campos_clave": {},
+    "relaciones": "`MND`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "FIMP": {
+    "modulo": "Configuración contable",
+    "titulo": "Impuestos (cabecera)",
+    "proposito": "Catálogo de impuestos/retenciones.",
+    "descripcion": "Base de retenciones en CxP, honorarios y exógena.",
+    "campos_clave": {},
+    "relaciones": "Detalle `FIMPD`, `FIMPDV`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "FIMPD": {
+    "modulo": "Configuración contable",
+    "titulo": "Impuestos (detalle)",
+    "proposito": "Tarifas y vigencias por impuesto.",
+    "descripcion": "Detalle de `FIMP`.",
+    "campos_clave": {},
+    "relaciones": "`FIMP`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "FCTSER": {
+    "modulo": "Configuración contable",
+    "titulo": "Tipos de servicio (cabecera)",
+    "proposito": "Clasificación de servicios para contabilidad/tarifas.",
+    "descripcion": "Catálogo usado en reglas de ingreso y CxC.",
+    "campos_clave": {},
+    "relaciones": "Detalle `FCTSERD`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "FCTSERD": {
+    "modulo": "Configuración contable",
+    "titulo": "Tipos de servicio (detalle)",
+    "proposito": "Detalle del catálogo FCTSER.",
+    "descripcion": "Líneas o subtipos asociados.",
+    "campos_clave": {},
+    "relaciones": "`FCTSER`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "RETEI": {
+    "modulo": "Configuración contable",
+    "titulo": "Retención en la fuente",
+    "proposito": "Tabla retenciones ICA/retención.",
+    "descripcion": "Parametrización de retenciones aplicables a pagos.",
+    "campos_clave": {},
+    "relaciones": "CxP, honorarios, nómina.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "RETTER": {
+    "modulo": "Configuración contable",
+    "titulo": "Retenciones por tercero",
+    "proposito": "Retenciones específicas por tercero.",
+    "descripcion": "Override o registro por proveedor.",
+    "campos_clave": {},
+    "relaciones": "`TER`, `RETEI`.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "RETUVT": {
+    "modulo": "Configuración contable",
+    "titulo": "Retenciones UVT",
+    "proposito": "Umbrales UVT para retenciones.",
+    "descripcion": "Soporte normativo tributario.",
+    "campos_clave": {},
+    "relaciones": "Retenciones nómina y pagos.",
+    "procesoId": "configuracion-contabilidad"
+  },
+  "PTPTO": {
+    "modulo": "Presupuesto",
+    "titulo": "Vigencia presupuestal",
+    "proposito": "Maestro de vigencia/año presupuesto (PTO).",
+    "descripcion": "CRUD vía `SPQ_PRESUPUESTO` · CRUDPTPTO (no confundir con SPQ_PTPTO inexistente). Controla apertura/cierre presupuesto.",
+    "campos_clave": {
+      "ANO": "Año vigencia.",
+      "ESTADO": "Abierto/cerrado."
+    },
+    "relaciones": "Rubros `PTRUB`, movimientos `PTMOV`. Proceso `presupuesto`.",
+    "procesoId": "presupuesto"
+  },
+  "PTRUB": {
+    "modulo": "Presupuesto",
+    "titulo": "Rubros presupuestales",
+    "proposito": "Estructura programática/rubros del PTO.",
+    "descripcion": "Jerarquía de rubros; alimenta CDP, RP y reconocimientos.",
+    "campos_clave": {},
+    "relaciones": "`PTPTO`, `SPQ_PPTO_PRI`.",
+    "procesoId": "presupuesto"
+  },
+  "PTREC": {
+    "modulo": "Presupuesto",
+    "titulo": "Recursos presupuestales",
+    "proposito": "Fuentes de financiación.",
+    "descripcion": "Catálogo de recursos asociados a rubros y CDP.",
+    "campos_clave": {},
+    "relaciones": "`PTRUB`.",
+    "procesoId": "presupuesto"
+  },
+  "PTCDP": {
+    "modulo": "Presupuesto",
+    "titulo": "CDP (cabecera)",
+    "proposito": "Certificado de disponibilidad presupuestal.",
+    "descripcion": "Documento que reserva rubro antes de RP/CxP. CRUD `SPQ_PPTO_PTCDP`.",
+    "campos_clave": {
+      "CNSCDP": "Consecutivo CDP.",
+      "VALOR": "Valor certificado."
+    },
+    "relaciones": "Detalle `PTCDPD`, RP `PTRP`.",
+    "procesoId": "presupuesto"
+  },
+  "PTCDPD": {
+    "modulo": "Presupuesto",
+    "titulo": "CDP (detalle)",
+    "proposito": "Líneas de rubro/recurso del CDP.",
+    "descripcion": "Detalle por rubro y valor.",
+    "campos_clave": {},
+    "relaciones": "`PTCDP`.",
+    "procesoId": "presupuesto"
+  },
+  "PTRP": {
+    "modulo": "Presupuesto",
+    "titulo": "Registro presupuestal (cabecera)",
+    "proposito": "RP que compromete el gasto tras CDP.",
+    "descripcion": "Vinculado a contratos/CxP en integración presupuesto–CxP.",
+    "campos_clave": {},
+    "relaciones": "Detalle `PTRPD`, `PTCXP`.",
+    "procesoId": "presupuesto"
+  },
+  "PTRPD": {
+    "modulo": "Presupuesto",
+    "titulo": "Registro presupuestal (detalle)",
+    "proposito": "Líneas del RP.",
+    "descripcion": "Desglose por rubro.",
+    "campos_clave": {},
+    "relaciones": "`PTRP`.",
+    "procesoId": "presupuesto"
+  },
+  "PTCXP": {
+    "modulo": "Presupuesto",
+    "titulo": "Obligación presupuestal (cabecera)",
+    "proposito": "Registro de obligación (CxP presupuestal).",
+    "descripcion": "Puente hacia cuentas por pagar operativas.",
+    "campos_clave": {},
+    "relaciones": "Detalle `PTCXPD`, pagos `PTPAG`.",
+    "procesoId": "presupuesto"
+  },
+  "PTCXPD": {
+    "modulo": "Presupuesto",
+    "titulo": "Obligación presupuestal (detalle)",
+    "proposito": "Líneas de obligación.",
+    "descripcion": "Detalle por rubro/valor.",
+    "campos_clave": {},
+    "relaciones": "`PTCXP`.",
+    "procesoId": "presupuesto"
+  },
+  "PTPAG": {
+    "modulo": "Presupuesto",
+    "titulo": "Pago presupuestal (cabecera)",
+    "proposito": "Documento de pago contra obligación.",
+    "descripcion": "CRUD `SPQ_PPTO_PTCDP` / pagos.",
+    "campos_clave": {},
+    "relaciones": "Detalle `PTPAGD`.",
+    "procesoId": "presupuesto"
+  },
+  "PTPAGD": {
+    "modulo": "Presupuesto",
+    "titulo": "Pago presupuestal (detalle)",
+    "proposito": "Líneas del pago presupuestal.",
+    "descripcion": "Afectación de rubros al pagar.",
+    "campos_clave": {},
+    "relaciones": "`PTPAG`.",
+    "procesoId": "presupuesto"
+  },
+  "PTRECO": {
+    "modulo": "Presupuesto",
+    "titulo": "Reconocimiento (cabecera)",
+    "proposito": "Ingresos/reconocimientos presupuestales.",
+    "descripcion": "CRUD `SPQ_PPTO_RECO` · CRUDPTRECO.",
+    "campos_clave": {},
+    "relaciones": "Detalle `PTRECOD`, recaudos `PTRECA`.",
+    "procesoId": "presupuesto"
+  },
+  "PTRECOD": {
+    "modulo": "Presupuesto",
+    "titulo": "Reconocimiento (detalle)",
+    "proposito": "Líneas de reconocimiento.",
+    "descripcion": "Detalle por rubro/valor.",
+    "campos_clave": {},
+    "relaciones": "`PTRECO`.",
+    "procesoId": "presupuesto"
+  },
+  "PTRECA": {
+    "modulo": "Presupuesto",
+    "titulo": "Recaudos presupuestales",
+    "proposito": "Registro de recaudos contra reconocimiento.",
+    "descripcion": "Estado NoConfirmado bloquea cierre (`FNK_CIERRE_PERIODO_PPTO`).",
+    "campos_clave": {},
+    "relaciones": "`PTRECO`, cierre presupuesto.",
+    "procesoId": "presupuesto"
+  },
+  "PTMOV": {
+    "modulo": "Presupuesto",
+    "titulo": "Movimiento presupuestal (cabecera)",
+    "proposito": "Traslados y modificaciones presupuestales.",
+    "descripcion": "CRUD movimientos (`SPQ_PPTO_RECO` / PRI).",
+    "campos_clave": {},
+    "relaciones": "Detalle `PTMOVD`.",
+    "procesoId": "presupuesto"
+  },
+  "PTMOVD": {
+    "modulo": "Presupuesto",
+    "titulo": "Movimiento presupuestal (detalle)",
+    "proposito": "Líneas de traslado/modificación.",
+    "descripcion": "Origen/destino rubro.",
+    "campos_clave": {},
+    "relaciones": "`PTMOV`.",
+    "procesoId": "presupuesto"
+  },
+  "PTNOT": {
+    "modulo": "Presupuesto",
+    "titulo": "Notas presupuestales",
+    "proposito": "Notas crédito/débito presupuesto.",
+    "descripcion": "FE `PTNOTComponent` · CRUDPTNOT / `SPK_APLICA_NOTA_PPTO` (validar PREVERSION).",
+    "campos_clave": {},
+    "relaciones": "Proceso presupuesto ingresos.",
+    "procesoId": "presupuesto"
+  },
+  "PTRES": {
+    "modulo": "Presupuesto",
+    "titulo": "Reservas presupuestales",
+    "proposito": "Reservas de saldo en rubros.",
+    "descripcion": "Control de cupo antes de CDP/RP.",
+    "campos_clave": {},
+    "relaciones": "`PTRUB`, CDP.",
+    "procesoId": "presupuesto"
+  },
+  "PTCLA": {
+    "modulo": "Presupuesto",
+    "titulo": "Clasificadores presupuestales",
+    "proposito": "Catálogo de clasificadores (CRUDPTCLA).",
+    "descripcion": "Parametrización del PTO.",
+    "campos_clave": {},
+    "relaciones": "`SPQ_PPTO_PRI`.",
+    "procesoId": "presupuesto"
+  },
+  "PTTMOV": {
+    "modulo": "Presupuesto",
+    "titulo": "Tipos de movimiento presupuestal",
+    "proposito": "Catálogo tipos de movimiento PTO.",
+    "descripcion": "Usado al registrar PTMOV.",
+    "campos_clave": {},
+    "relaciones": "`PTMOV`.",
+    "procesoId": "presupuesto"
+  },
+  "PTDIV": {
+    "modulo": "Presupuesto",
+    "titulo": "Divisiones presupuestales",
+    "proposito": "Segmentación/división del PTO.",
+    "descripcion": "CRUDPTDIV en configuración presupuesto.",
+    "campos_clave": {},
+    "relaciones": "`PTPTO`, `PTRUB`.",
+    "procesoId": "presupuesto"
+  }
+}

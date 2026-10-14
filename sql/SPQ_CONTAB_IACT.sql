@@ -202,10 +202,10 @@ BEGIN
 
 					IF @BAJA = 1
 					BEGIN
-						-- Baja Depreciaci�n Acumulada
+						-- Baja Depreciación Acumulada
 						IF @DEP_ACUMULADA > 0
 						BEGIN
-							PRINT ' -Insertando Registro MCH. DB Baja Depreciaci�n Acumulada...'
+							PRINT ' -Insertando Registro MCH. DB Baja Depreciación Acumulada...'
 
 							INSERT INTO MCHE (
 								NROCOMPROBANTE, COMPANIA, TIPO, CUENTA, IDTERCERO, CCOSTO, DETALLE, VALOR, REFERENCIA1, REFERENCIA2, REFERENCIA3, ITEMREF, USUARIO
@@ -218,10 +218,10 @@ BEGIN
 							FROM #TEMPORAL
 						END
 
-						-- Baja Ajuste Depreciaci�n Acumulada
+						-- Baja Ajuste Depreciación Acumulada
 						IF @AJU_DEPACUMULADA > 0
 						BEGIN
-							PRINT ' -Insertando Registro MCH. DB Baja de Ajuste Depreciaci�n Acumulada...'
+							PRINT ' -Insertando Registro MCH. DB Baja de Ajuste Depreciación Acumulada...'
 
 							INSERT INTO MCHE (
 								NROCOMPROBANTE, COMPANIA, TIPO, CUENTA, IDTERCERO, CCOSTO, DETALLE, VALOR, REFERENCIA1, REFERENCIA2, REFERENCIA3, ITEMREF, USUARIO
@@ -261,7 +261,7 @@ BEGIN
 						FROM #TEMPORAL
 						WHERE #TEMPORAL.VALOR <> 0
 
-						-- Baja del Ajuste por Inflaci�n
+						-- Baja del Ajuste por Inflación
 						IF @AJU_ACUMULADO > 0
 						BEGIN
 							PRINT ' -Insertando Registro MCH. CR Baja Ajuste Acumulado del Activo...'

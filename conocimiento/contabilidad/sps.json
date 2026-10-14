@@ -1,7 +1,8 @@
 {
   "procesoId": "contabilidad",
-  "actualizado": "2026-10-04T18:00:00",
-  "nota": "Cola contabilidad cerrada 2026-09-06. SPQ_CONF_CONTABLE 11/11 + SPQ_PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído sql/. Hueco FE: CREA_PAR/ELIMINA_PAR no están en SPQ_CONF_CONTABLE export. | 2026-10-04 libro: leídos SPK del ciclo (REVISAR_COMPROBANTE, SUMA_DBCR, NC_CONFIRMAR_CONTAB, PASA_A_MCPE, NC_REVISAMCPE, NC_BALANCEO_CENTAVOS, DIAG_MCPE_ERRORES), liquidación (SPQ_CONTA_LIQIMP, SPK_GEN_CXP_LIQIMP, VWK_LIQ_IMP), FOLIAR_LB, MOV_ACTIVOS, TER_EQUIV_EFECTIVO, EXOFMT, cierre (CIERRA/ABRE_PERIODOCONTABLE, CIERRE_FISCAL, FNK_REVISION_ANTES_CIERRE_PERIODO), correcciones (HOMOLOGA_TERCERO/CUENTA, NC_CONTAB_CASTIGO_CARTERA, REVERSAR_MCP). Generadores NC_CONTAB_FTR/FNOT/CXC/CAJA_ING/BMOV solo resumen (variables, errores, EXEC). Menú real en USPROH (dato de instalación).",
+  "actualizado": "2026-10-13T23:45:00",
+  "notaCatalogo": "contabilidad/catalogo-sp-fe.json",
+  "nota": "2026-10-13: MCP_COL, MCPE_COL, MCH_COL releídos PREVERSION 2.0.9 en sql/. SR004–007 ↔ hallazgos en catalogo-sp-fe.json · srComite. Cola contabilidad cerrada 2026-09-06. SPQ_CONF_CONTABLE 11/11 + SPQ_PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído sql/. Hueco FE: CREA_PAR/ELIMINA_PAR no están en SPQ_CONF_CONTABLE export. | 2026-10-04 libro: leídos SPK del ciclo (REVISAR_COMPROBANTE, SUMA_DBCR, NC_CONFIRMAR_CONTAB, PASA_A_MCPE, NC_REVISAMCPE, NC_BALANCEO_CENTAVOS, DIAG_MCPE_ERRORES), liquidación (SPQ_CONTA_LIQIMP, SPK_GEN_CXP_LIQIMP, VWK_LIQ_IMP), FOLIAR_LB, MOV_ACTIVOS, TER_EQUIV_EFECTIVO, EXOFMT, cierre (CIERRA/ABRE_PERIODOCONTABLE, CIERRE_FISCAL, FNK_REVISION_ANTES_CIERRE_PERIODO), correcciones (HOMOLOGA_TERCERO/CUENTA, NC_CONTAB_CASTIGO_CARTERA, REVERSAR_MCP). Generadores NC_CONTAB_FTR/FNOT/CXC/CAJA_ING/BMOV solo resumen (variables, errores, EXEC). Menú real en USPROH (dato de instalación).",
   "sps": [
     {
       "nombre": "SPQ_MCP_COL",
@@ -3601,6 +3602,111 @@
           "estado": "leido"
         }
       ]
+    },
+    {
+      "nombre": "SPK_CIERRE_MES_CONTABLE",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CIERRE_MES_CONTABLE.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Cierre mensual: recalcula SALDOMES/SALDOMESTER y marca PRI.CERRADO=1 (no periodo SI).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Valida un solo SI, periodo abierto, no SI; acumula saldos por cuenta/tercero/CC; cierra mes.",
+          "valida": ["PRI existe", "PRI.CERRADO=0", "No es periodo SI"],
+          "noValida": [],
+          "errores": ["PERIODO CERRADO", "PERIODO ESTA DEFINIDO COMO DE SALDOS INICIALES", "MAS DE UN PERIODO DEFINIDO COMO DE SALDOS INICIALES"],
+          "llama": [],
+          "efecto": "SALDOMES, SALDOMESTER, PRI.CERRADO=1.",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIERRE_SALDOS_INICIALES",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CIERRE_SALDOS_INICIALES.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Cierre del unico periodo marcado SI=1.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Cierra periodo de saldos iniciales y deja base lista para movimientos.",
+          "valida": ["PRI.SI=1"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "PRI.CERRADO y saldos iniciales consolidados.",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_BALANCE",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_BALANCE.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Motor de balance/ER/BP segun @TIPO; llena TBALANCETERFAC/RPDX.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Arma balance por rango cuentas/niveles/CC/tercero segun @TIPO (BP, ER, etc.).",
+          "valida": ["Periodos y cuentas parseables"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Tablas temporales de reporte contable.",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIRCULARUNICA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CIRCULARUNICA.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Generacion informe Circular Unica (CONTABILIDAD_2).",
+      "metodos": [{ "id": "(cuerpo)", "hace": "Llena estructura de circular unica desde saldos/MCH.", "valida": [], "noValida": [], "errores": [], "llama": [], "efecto": "Datos reporte CU.", "estado": "leido" }]
+    },
+    {
+      "nombre": "SPK_NC_GENERA_EXOGENA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_GENERA_EXOGENA.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Exogena DIAN desde contabilidad.",
+      "metodos": [{ "id": "(cuerpo)", "hace": "Genera archivo/formato exogena segun parametros del SPQ.", "valida": ["Periodo"], "noValida": [], "errores": [], "llama": [], "efecto": "RPDX/archivo exogena.", "estado": "leido" }]
+    },
+    {
+      "nombre": "NC_SPK_GEN_LIBROAUXILIAR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/NC_SPK_GEN_LIBROAUXILIAR.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Job async libro auxiliar (SPQ_CONTABILIDAD_2).",
+      "metodos": [{ "id": "(cuerpo)", "hace": "Puebla RPDX2 con movimiento auxiliar por cuenta/tercero.", "valida": ["Rango fechas/cuentas"], "noValida": [], "errores": [], "llama": [], "efecto": "RPDX2 COMPLETADO/ERROR.", "estado": "leido" }]
+    },
+    {
+      "nombre": "SPK_NC_ANAVTO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_ANAVTO.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Aging cartera automatico en reportes contables.",
+      "metodos": [{ "id": "(cuerpo)", "hace": "Clasifica vencimientos FCXC en buckets en RPDX2.", "valida": ["Fecha corte"], "noValida": [], "errores": [], "llama": [], "efecto": "RPDX2 aging.", "estado": "leido" }]
+    },
+    {
+      "nombre": "SPK_PASA_MCP_MCPNIIF",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PASA_MCP_MCPNIIF.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Puente comprobante local a MCPNIIF cuando aplica NIIF.",
+      "metodos": [{ "id": "(cuerpo)", "hace": "Replica MCP/MCH a esquema NIIF si IDPROCESOCONTABLE lo permite.", "valida": ["NROCOMPROBANTE", "Modelo contable"], "noValida": [], "errores": [], "llama": [], "efecto": "MCPNIIF/MCHNIIF.", "estado": "leido" }]
+    },
+    {
+      "nombre": "SPK_CONTAB_RADICACXC_1",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_RADICACXC_1.sql (IXONLINE/SQL PREVERSION)",
+      "nota": "Contabilizacion radicacion cartera (variante _1).",
+      "metodos": [{ "id": "(cuerpo)", "hace": "Genera asiento MCP por radicacion FCXC segun KMCOM.", "valida": ["Periodo abierto", "Documento no contabilizado"], "noValida": [], "errores": [], "llama": ["SPK_NC_REVISAMCPE"], "efecto": "MCPE/MCPE→MCP.", "estado": "leido" }]
     }
   ]
 }

@@ -1,0 +1,309 @@
+{
+  "PTPTO": {
+    "titulo": "Vigencia presupuestal (cabecera)",
+    "modulo": "Presupuesto (PTPTO)",
+    "procesoId": "presupuesto",
+    "proposito": "Maestro de la vigencia anual o periodo presupuestal: consecutivo, estado, flags de control (saldo por mes, centro de costo, etc.).",
+    "descripcion": "Cada fila es un presupuesto operativo al que se imputan CDP, reconocimientos y distribución por rubros (PTPTODG). El FE usa AppStore.json MODELO **PRESUPUESTO** → IXONLINE/SQL **SPQ_PRESUPUESTO** · METODO **CRUDPTPTO** / **CRUDPTPTODG**. No existe SPQ_PTPTO en catálogo.",
+    "campos_clave": {
+      "CONSECUTIVO": "Identificador del presupuesto (PK lógica)",
+      "COMPANIA": "Compañía",
+      "ESTADO": "Estado del maestro (activo/cerrado según uso)",
+      "MSALDOXMES": "Control de saldo por mes",
+      "MCCOSTO": "Manejo de centro de costo en movimientos"
+    },
+    "relaciones": "PTPTODG (distribución rubros), PTCDP/PTRECO (movimientos por CONSECUTIVO), PRI.CERRADO_PPTO cierra periodo no la fila PTPTO sola."
+  },
+  "PTRUB": {
+    "titulo": "Rubros presupuestales",
+    "modulo": "Presupuesto · Configuración",
+    "procesoId": "presupuesto",
+    "proposito": "Catálogo de rubros de ingreso y gasto para imputación en CDP, reconocimientos y pagos.",
+    "descripcion": "Mantenido por **SPQ_PRESUPUESTO** · **CRUDPTRUB** y **COPIAR_RUBROS**. Referenciado en detalle de CDP, RP, CxP, pagos e ingresos.",
+    "campos_clave": {
+      "RUBRO": "Código rubro",
+      "RUBRO_ID": "Identificador interno usado en detalle",
+      "COMPANIA": "Compañía"
+    },
+    "relaciones": "PTCDPD, PTRPD, PTCXPD, PTPAGD, PTRECOD, PTPTODG, NCOND/NPLTCO/PLN (rubro nómina y facturación)."
+  },
+  "PTCDP": {
+    "titulo": "Certificado de disponibilidad (CDP)",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Cabecera del CDP: reserva de disponibilidad presupuestal antes del compromiso (RP).",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTCDP** (INSERT usa SPK_GENCONSECUTIVO_PPTO). Estados NoConfirmado / Confirmado / Anulado. Cadena hacia PTRP → PTCXP → PTPAG.",
+    "campos_clave": {
+      "CDP": "Número CDP",
+      "CONSECUTIVO": "Presupuesto (PTPTO)",
+      "CCOSTO": "Centro de costo",
+      "FECHAEXPEDICION": "Fecha expedición",
+      "ESTADO": "Confirmación / anulación"
+    },
+    "relaciones": "PTCDPD (detalle rubros), PTRP por CDP."
+  },
+  "PTRP": {
+    "titulo": "Registro presupuestal (compromiso RP)",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Compromiso presupuestal asociado a un CDP.",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTRP** / **CRUDPTRPD**. Enlaza CDP con obligación PTCXP.",
+    "campos_clave": {
+      "RP": "Número RP",
+      "CDP": "CDP origen",
+      "FECHARP": "Fecha RP",
+      "ESTADO": "Confirmación"
+    },
+    "relaciones": "PTRPD, PTCXP."
+  },
+  "PTCXP": {
+    "titulo": "Obligación presupuestal (CxP presupuesto)",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Obligación contraída en la cadena gastos (después del RP).",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTCXP** / **CRUDPTCXPD**. CNSCXP identifica la obligación.",
+    "campos_clave": {
+      "CNSCXP": "Consecutivo obligación",
+      "CDP": "CDP",
+      "RP": "RP asociado"
+    },
+    "relaciones": "PTPAG, PTCXPD."
+  },
+  "PTPAG": {
+    "titulo": "Pago presupuestal",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Registro del pago contra una obligación PTCXP.",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTPAG** / **CRUDPTPAGD**.",
+    "campos_clave": {
+      "CNSPAGO": "Consecutivo pago",
+      "CNSCXP": "Obligación pagada"
+    },
+    "relaciones": "PTPAGD por rubro."
+  },
+  "PTRECO": {
+    "titulo": "Reconocimiento de ingresos",
+    "modulo": "Presupuesto · Ingresos",
+    "procesoId": "presupuesto",
+    "proposito": "Cabecera de reconocimiento presupuestal de ingresos.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTRECO** / **CRUDPTRECOD**. Antes del recaudo PTRECA y notas PTNOT.",
+    "campos_clave": {
+      "CNSRECO": "Consecutivo reconocimiento",
+      "CONSECUTIVO": "Presupuesto",
+      "ESTADO": "NoConfirmado / Confirmado / Anulado"
+    },
+    "relaciones": "PTRECA, PTNOT, PTMOV."
+  },
+  "PTRECA": {
+    "titulo": "Recaudo presupuestal",
+    "modulo": "Presupuesto · Ingresos",
+    "procesoId": "presupuesto",
+    "proposito": "Registro de recaudo contra reconocimiento.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTRECA** (y detalle asociado en mismo SPQ).",
+    "campos_clave": {
+      "CNSRECA": "Consecutivo recaudo",
+      "CONSECUTIVO": "Presupuesto"
+    },
+    "relaciones": "PTRECO, alimentadores cartera vía PPTO_REP."
+  },
+  "PTNOT": {
+    "titulo": "Notas débito/crédito presupuesto",
+    "modulo": "Presupuesto · Ingresos",
+    "procesoId": "presupuesto",
+    "proposito": "Ajustes presupuestales de ingreso vía nota DB/CR.",
+    "descripcion": "FE llama **PPTO_RECO** · **CRUDPTNOT** (rama **ausente** en SPQ_PPTO_RECO PREVERSION 2.0.9). Confirmación **SPK_APLICA_NOTA_PPTO** (CONF/ANUL) sí existe para notas ya persistidas.",
+    "campos_clave": {
+      "CNSNOT": "Consecutivo nota",
+      "CONSECUTIVO": "Presupuesto"
+    },
+    "relaciones": "PTRECO, SPK_APLICA_NOTA_PPTO."
+  },
+  "PTCDPD": {
+    "titulo": "Detalle rubros del CDP",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Líneas de rubro, valor, saldo y vigencia por certificado de disponibilidad.",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTCDPD**. Enlaza CDP con PTRUB; base de PTRPD y reportes de impresión.",
+    "campos_clave": {
+      "CDP": "Certificado",
+      "ITEM": "Ítem detalle",
+      "RUBRO_ID": "Rubro imputado",
+      "VALOR": "Valor reservado",
+      "SALDO": "Saldo disponible"
+    },
+    "relaciones": "PTCDP cabecera, PTRPD, PTCXPD, PTPAGD vía ITEMCDPD."
+  },
+  "PTRPD": {
+    "titulo": "Detalle del registro presupuestal (RP)",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Distribución del RP sobre ítems del CDP.",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTRPD**.",
+    "campos_clave": {
+      "RP": "Registro presupuestal",
+      "CDP": "CDP origen",
+      "ITEMCDPD": "Ítem CDP asociado",
+      "VALOR": "Valor comprometido",
+      "SALDO": "Saldo RP en rubro"
+    },
+    "relaciones": "PTRP, PTCDPD."
+  },
+  "PTCXPD": {
+    "titulo": "Detalle obligación presupuestal",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Rubros de la obligación PTCXP.",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTCXPD**.",
+    "campos_clave": {
+      "CNSCXP": "Obligación",
+      "ITEMCDPD": "Ítem CDP",
+      "VALOR": "Valor obligación"
+    },
+    "relaciones": "PTCXP, PTCDPD."
+  },
+  "PTPAGD": {
+    "titulo": "Detalle pago presupuestal",
+    "modulo": "Presupuesto · Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Distribución del pago por rubro/ítem CxP.",
+    "descripcion": "**SPQ_PPTO_PTCDP** · **CRUDPTPAGD**.",
+    "campos_clave": {
+      "CNSPAGO": "Pago",
+      "CNSCXP": "Obligación",
+      "VALOR": "Valor pagado"
+    },
+    "relaciones": "PTPAG, PTCDPD."
+  },
+  "PTMOV": {
+    "titulo": "Registro de movimientos presupuestales",
+    "modulo": "Presupuesto · Ingresos/Gastos",
+    "procesoId": "presupuesto",
+    "proposito": "Cabecera de movimientos manuales o de ajuste en la vigencia.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTMOV** / **CRUDPTMOVD**. Consecutivo vía SPK_GENCONSECUTIVO (no _PPTO).",
+    "campos_clave": {
+      "CNSMOV": "Consecutivo movimiento",
+      "CONSECUTIVO": "Presupuesto",
+      "FECHAMOV": "Fecha",
+      "ESTADO": "Confirmación"
+    },
+    "relaciones": "PTMOVD por rubro ingreso/gasto."
+  },
+  "PTMOVD": {
+    "titulo": "Detalle movimiento presupuestal",
+    "modulo": "Presupuesto",
+    "procesoId": "presupuesto",
+    "proposito": "Líneas DB/CR por rubro en un PTMov.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTMOVD**.",
+    "campos_clave": {
+      "CNSMOV": "Movimiento",
+      "RUBRO_ID": "Rubro",
+      "TIPOMOV": "DB/CR",
+      "VALOR": "Valor línea"
+    },
+    "relaciones": "PTMOV, PTRUB, PTREC."
+  },
+  "PTRECOD": {
+    "titulo": "Detalle reconocimiento por rubro",
+    "modulo": "Presupuesto · Ingresos",
+    "procesoId": "presupuesto",
+    "proposito": "Rubros y valores del reconocimiento PTRECO.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTRECOD**.",
+    "campos_clave": {
+      "RECO": "Reconocimiento",
+      "RUBRO_ID": "Rubro",
+      "VALOR": "Valor reconocido",
+      "SALDO": "Saldo"
+    },
+    "relaciones": "PTRECO; SPK_APLICA_NOTA_PPTO actualiza saldos."
+  },
+  "PTRECAD": {
+    "titulo": "Detalle recaudo por rubro",
+    "modulo": "Presupuesto · Ingresos",
+    "procesoId": "presupuesto",
+    "proposito": "Imputación del recaudo PTRECA a rubros.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTRECAD**.",
+    "campos_clave": {
+      "CNSPAGO": "Recaudo",
+      "RECO": "Reconocimiento",
+      "RUBRO_ID": "Rubro",
+      "VALOR": "Valor recaudado"
+    },
+    "relaciones": "PTRECA, PTRECO."
+  },
+  "PTPTODG": {
+    "titulo": "Distribución del presupuesto por rubros",
+    "modulo": "Presupuesto · Maestro vigencia",
+    "procesoId": "presupuesto",
+    "proposito": "Detalle de distribución por rubro/clase de la vigencia PTPTO (valores iniciales por rubro).",
+    "descripcion": "**SPQ_PRESUPUESTO** · **CRUDPTPTODG**. Bloquea eliminar PTPTO si existen filas PTPTODG.",
+    "campos_clave": {
+      "CONSECUTIVO": "Presupuesto",
+      "RUBRO": "Rubro",
+      "CLASE": "Clase ingreso/gasto",
+      "VALOR": "Valor distribuido"
+    },
+    "relaciones": "PTPTO cabecera, PTRUB."
+  },
+  "PTREC": {
+    "titulo": "Recursos presupuestales",
+    "modulo": "Presupuesto · Configuración",
+    "procesoId": "presupuesto",
+    "proposito": "Catálogo de recursos (origen de financiación) usados en rubros y movimientos.",
+    "descripcion": "**SPQ_PRESUPUESTO** · **CRUDPTREC**. Unicidad RECURSO por compañía al insertar.",
+    "campos_clave": {
+      "RECURSO": "Código recurso",
+      "DESCRIPCION": "Nombre",
+      "COMPANIA": "Compañía"
+    },
+    "relaciones": "PTRUB.RECURSO, detalle CDP/RECO/MOV."
+  },
+  "PTCLA": {
+    "titulo": "Clasificaciones presupuestales",
+    "modulo": "Presupuesto · Configuración",
+    "procesoId": "presupuesto",
+    "proposito": "Clasificación jerárquica o analítica de rubros/movimientos.",
+    "descripcion": "**SPQ_PRESUPUESTO** · **CRUDPTCLA**.",
+    "campos_clave": {
+      "CLASIFICACION": "Código",
+      "COMPANIA": "Compañía"
+    },
+    "relaciones": "PTRUB y reportes."
+  },
+  "PTTMOV": {
+    "titulo": "Tipos de movimiento presupuestal",
+    "modulo": "Presupuesto · Configuración",
+    "procesoId": "presupuesto",
+    "proposito": "Tipos de movimiento usados en detalle CDP y otros (IDTIPOMOV).",
+    "descripcion": "**SPQ_PRESUPUESTO** · **CRUDPTTMOV**.",
+    "campos_clave": {
+      "IDTIPOMOV": "Identificador tipo",
+      "DESCRIPCION": "Etiqueta"
+    },
+    "relaciones": "PTCDPD, informes SPQ_INFORMES_PPTO."
+  },
+  "PTDIV": {
+    "titulo": "Divisiones presupuestales",
+    "modulo": "Presupuesto · Configuración",
+    "procesoId": "presupuesto",
+    "proposito": "Divisiones organizativas del presupuesto (segmentación interna).",
+    "descripcion": "**SPQ_PRESUPUESTO** · **CRUDPTDIV**.",
+    "campos_clave": {
+      "DIVISION": "Código división",
+      "COMPANIA": "Compañía"
+    },
+    "relaciones": "Catálogos y rubros según instalación."
+  },
+  "PTRES": {
+    "titulo": "Resoluciones presupuestales",
+    "modulo": "Presupuesto · Ingresos",
+    "procesoId": "presupuesto",
+    "proposito": "Resoluciones administrativas asociadas a reconocimientos/recaudos.",
+    "descripcion": "**SPQ_PPTO_RECO** · **CRUDPTRES**. Pantalla PTRESComponent en /ppto.",
+    "campos_clave": {
+      "RESOLUCION": "Número resolución",
+      "CONSECUTIVO": "Presupuesto",
+      "FECHA": "Fecha"
+    },
+    "relaciones": "PTRECO, PTMOV (campo RESOLUCION en impresión PTMov)."
+  }
+}

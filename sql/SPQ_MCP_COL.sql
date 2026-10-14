@@ -834,7 +834,7 @@ BEGIN
             ELSE IF @ESTADO_COMP = '2'
                 SET @MARCA_AGUA = ''
 
-            -- EGRESO: t�tulo del PDF desde COM del tipo configurado en IDCON_TCOM_ECAJ
+            -- EGRESO: título del PDF desde COM del tipo configurado en IDCON_TCOM_ECAJ
             IF @RPT_COMP_PDF = 'EGRESO'
             BEGIN
                 SET @TCOM_EGRESO = NULLIF(TRIM(DBO.FNK_VALORVARIABLE('IDCON_TCOM_ECAJ')), '')
@@ -985,7 +985,7 @@ BEGIN
             IF EXISTS(SELECT * FROM MCP WHERE NROCOMPROBANTE=@NROCOMPROBANTE AND RPT_COMPROBANTE='EGRESO')
             BEGIN
                -- Usar MCP (no MCH): el detalle puede tener varias REFERENCIA2 distintas
-               -- y al asignar sin ORDER BY queda un CODCAJA incorrecto ? impuestos vac�os.
+               -- y al asignar sin ORDER BY queda un CODCAJA incorrecto ? impuestos vacíos.
                SELECT @CODCAJA = REFERENCIA2, @CNSFACJ = REFERENCIA1
                FROM MCP
                WHERE NROCOMPROBANTE = @NROCOMPROBANTE
@@ -1265,7 +1265,7 @@ BEGIN
 
             SET @CANT_DETALLES_COPIADOS = 0
 
-            -- Duplicar l�neas MCH del comprobante origen (opcional)
+            -- Duplicar líneas MCH del comprobante origen (opcional)
             IF @DUPLICAR_DETALLES = 1 AND @NROCOMPROBANTE_ORIGEN IS NOT NULL
             BEGIN
                 IF NOT EXISTS (

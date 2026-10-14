@@ -425,7 +425,7 @@ BEGIN
 				OR @TIPODOC_JSON IS NULL OR @TIPODOC_JSON IN ('', '[]')
 			BEGIN
 				SELECT 'KO' AS OK
-				SELECT ERROR = 'Faltan par�metros: NIT, TIPOCONTIGENCIA y al menos un TIPODOC.'
+				SELECT ERROR = 'Faltan parámetros: NIT, TIPOCONTIGENCIA y al menos un TIPODOC.'
 				RETURN
 			END
 
@@ -490,7 +490,7 @@ BEGIN
 			IF @IDINCAOPT_DEL IS NULL
 			BEGIN
 				SELECT 'KO' AS OK
-				SELECT ERROR = 'Falta par�metro IDINCAOPT.'
+				SELECT ERROR = 'Falta parámetro IDINCAOPT.'
 				RETURN
 			END
 
@@ -508,7 +508,7 @@ BEGIN
 			IF @@ROWCOUNT = 0
 			BEGIN
 				SELECT 'KO' AS OK
-				SELECT ERROR = 'No se encontr� el registro a eliminar.'
+				SELECT ERROR = 'No se encontró el registro a eliminar.'
 				RETURN
 			END
 

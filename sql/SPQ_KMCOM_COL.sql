@@ -460,7 +460,7 @@ BEGIN
 			ELSE
 			BEGIN
 				INSERT INTO @TBLERRORES (ERROR)
-				SELECT 'Ya existe un registro con esta Exepci�n, no se puede continuar, Verifique e intente de nuevo'
+				SELECT 'Ya existe un registro con esta Exepción, no se puede continuar, Verifique e intente de nuevo'
 			END
 
 			IF NOT EXISTS (
@@ -489,7 +489,7 @@ BEGIN
 			ELSE
 			BEGIN
 				INSERT INTO @TBLERRORES (ERROR)
-				SELECT 'Ya existe un registro con esta Exepci�n, no se puede continuar, Verifique e intente de nuevo'
+				SELECT 'Ya existe un registro con esta Exepción, no se puede continuar, Verifique e intente de nuevo'
 			END
 		END
 

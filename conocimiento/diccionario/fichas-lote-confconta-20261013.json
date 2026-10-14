@@ -1,0 +1,184 @@
+{
+  "PRI": {
+    "titulo": "Periodos contables y sub-cierres",
+    "modulo": "Configuración · Contable / Presupuesto",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Calendario por compañía/año/mes: apertura/cierre contabilidad, facturación, inventario, CxP, cartera, presupuesto (CERRADO_PPTO).",
+    "descripcion": "**SPQ_PRI** · **CRUDPRI**, **CERRAR_FACTURA**, **ABRIR_FACTURA**. Presupuesto usa **SPQ_PRESUPUESTO** · **CAMBIAR_ESTADO_PPTO** sobre CERRADO_PPTO. Hallazgos: confconta-pri-editar-sin-rollback, confconta-pri-cierre-fac-inv-sin-validar.",
+    "campos_clave": {
+      "COMPANIA": "Compañía",
+      "ANO": "Año",
+      "MES": "Mes",
+      "CERRADO": "Contabilidad cerrada",
+      "CERRADO_PPTO": "Presupuesto cerrado",
+      "CERRADOINV": "Inventario",
+      "CERRADOFAC": "Facturación"
+    },
+    "relaciones": "MCP/MCH por periodo; cierre masivo desde contabilidad (SR20261013-002)."
+  },
+  "KMCO": {
+    "titulo": "Reglas contabilización por ubicación (cabecera)",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Cabecera KMCOM: modelo, procedencia, tipo movimiento, prefijo sede.",
+    "descripcion": "**SPQ_KMCOM_COL** · **CRUD_KMCOM**, **TRAER_KTCO**, **TRAER_CUENTAS**, **VALIDA_CODNOMI**. Hallazgos: mensajes copiados, sedes/prefijo sin validar.",
+    "campos_clave": {
+      "IDMODELOCONT": "Modelo contable",
+      "PROCEDENCIA": "Procedencia MCP",
+      "PREFIJO": "Prefijo sede",
+      "IDSEDE": "Sede"
+    },
+    "relaciones": "KMCOMS detalle cuentas; motor FNK_CUENTA_KMCOM en contabilización."
+  },
+  "KMCOMS": {
+    "titulo": "Detalle cuentas KMCOM",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Cuentas DB/CR por regla KMCOM.",
+    "descripcion": "**SPQ_KMCOM_COL** · **CRUD_KMCOMS**.",
+    "campos_clave": {
+      "IDKMCOM": "Regla cabecera",
+      "CUENTA": "Cuenta contable",
+      "TIPO": "DB/CR"
+    },
+    "relaciones": "KMCO, CUE."
+  },
+  "SED": {
+    "titulo": "Sedes",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Catálogo de sedes institucionales.",
+    "descripcion": "**SPQ_CONF_CONTABLE** · **CRUD_SEDES** y **SPQ_SED** · **CRUDSEDCONS** (consultas/consolidado).",
+    "campos_clave": {
+      "IDSEDE": "Código sede",
+      "DESCRIPCION": "Nombre",
+      "ESTADOSEDE": "Activa/inactiva"
+    },
+    "relaciones": "KMCOM prefijo, MCP IDSEDE, hallazgo confconta-sed-crud-sin-validar-fk."
+  },
+  "CUE": {
+    "titulo": "Plan de cuentas",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Catálogo PUC local (niveles, detalle, naturaleza).",
+    "descripcion": "**SPQ_CUE_COL** · **CRUDCUE**, **VALIDARCUENTAS**, **EXPOCUENTAS**. Hallazgos: rubro=cuenta, validar nivel2.",
+    "campos_clave": {
+      "CUENTA": "Código cuenta",
+      "NIVEL": "Nivel jerárquico",
+      "DETALLE": "Es de detalle",
+      "RUBRO": "Rubro NIIF/local"
+    },
+    "relaciones": "MCH, KMCOMS, CUENIIF."
+  },
+  "PAR": {
+    "titulo": "Parámetros contables",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Parámetros globales del módulo contable (PAR / CONF_CONTABLE según pantalla).",
+    "descripcion": "**SPQ_CONF_CONTABLE** métodos PAR y FE **conf.ParConta**. Hallazgo: radios no persisten; CREA_PAR vs export (contabilidad SR007).",
+    "campos_clave": {},
+    "relaciones": "USVGS, variables IDCON_TCOM_*."
+  },
+  "AFU": {
+    "titulo": "Áreas funcionales",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Grupos de áreas funcionales (estructura organizacional contable).",
+    "descripcion": "**SPQ_CONF_CONTABLE** · **CRUD_AFU**, **CRUD_HARE** (grupos).",
+    "campos_clave": {
+      "IDAREA": "Código área",
+      "IDAREAH": "Grupo áreas",
+      "CONTABLE": "Flag contable",
+      "ESTADO": "Activa/inactiva"
+    },
+    "relaciones": "CEN (centros de costo) exigen IDAREA."
+  },
+  "CEN": {
+    "titulo": "Centros de costo",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Centros de costo (CCOSTO) por área funcional.",
+    "descripcion": "**SPQ_CONF_CONTABLE** · **CRUD_CCOSTO**. Hallazgo: borrar método inexistente en FE.",
+    "campos_clave": {
+      "CCOSTO": "Código centro",
+      "IDAREA": "Área funcional",
+      "ESTADO": "Activo/inactivo",
+      "HOMOLOGO": "Centro sustituto al inactivar"
+    },
+    "relaciones": "MCH.CCOSTO, KMCOM, presupuesto PRESUP_CCOSTO."
+  },
+  "CUENIIF": {
+    "titulo": "Plan de cuentas NIIF",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Catálogo NIIF paralelo al PUC local.",
+    "descripcion": "**SPQ_CUENIIF** · GENEALOGICO, INSERTAR, EDITAR, ELIMINAR, CARGA_MASIVA. Hallazgo: nivel no validado.",
+    "campos_clave": {
+      "CUENTA": "Código NIIF",
+      "NIVEL": "Nivel",
+      "DETALLE": "Cuenta de detalle"
+    },
+    "relaciones": "CUE local, informes NIIF."
+  },
+  "COM": {
+    "titulo": "Tipos de comprobante contable",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Catálogo COM (tipos de comprobante MCP).",
+    "descripcion": "**SPQ_COM_COL** · **CRUDCOM**. Asignación por documento: **SPQ_CONF_CONTABLE** · **ASIGNA_COM** (hallazgo sin filtro tabla).",
+    "campos_clave": {
+      "COMPROBANTE": "Código tipo",
+      "NOMCOMPROBANTE": "Nombre"
+    },
+    "relaciones": "MCP.COMPROBANTE, IDCON_TCOM_* variables."
+  },
+  "KCDE": {
+    "titulo": "Deducibles (KCDE)",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Reglas de deducibles para contabilización.",
+    "descripcion": "**SPQ_KCDE_COL** · **CRUDKCDE**.",
+    "campos_clave": {
+      "CODIGO": "Código deducible",
+      "DESCRIPCION": "Etiqueta"
+    },
+    "relaciones": "Motor contable según procedencia."
+  },
+  "TTEC": {
+    "titulo": "Tipos de terceros contables",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Catálogo TTEC (clasificación tercero en MCP/MCH).",
+    "descripcion": "**SPQ_TTEC_COL** · **CRUDTTEC**. Usado en generales contables y validación cuentas.",
+    "campos_clave": {
+      "TIPO": "Código tipo tercero",
+      "DESCRIPCION": "Nombre"
+    },
+    "relaciones": "TER, MCP tercero, variables CUENTACG/CUENTARAD en auditoría."
+  },
+  "FDIS": {
+    "titulo": "Distribución de gastos (cabecera)",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Esquemas de distribución de gastos entre centros/cuentas.",
+    "descripcion": "**SPQ_CONF_CONTABLE** · **FDIS_CRUD**, **FDIS_TRAESUMA**. Hallazgo: editar código FDIS sin restricción.",
+    "campos_clave": {
+      "CODFDIS": "Código distribución",
+      "DESCRIPCION": "Nombre"
+    },
+    "relaciones": "FDISD detalle."
+  },
+  "FDISD": {
+    "titulo": "Detalle distribución de gastos",
+    "modulo": "Configuración · Contable",
+    "procesoId": "configuracion-contabilidad",
+    "proposito": "Líneas porcentaje/cuenta/centro de un FDIS.",
+    "descripcion": "**SPQ_CONF_CONTABLE** · **FDISD_CRUD**.",
+    "campos_clave": {
+      "CODFDIS": "Cabecera",
+      "ITEM": "Línea",
+      "PORCENTAJE": "Porcentaje o regla"
+    },
+    "relaciones": "FDIS, CEN, CUE."
+  }
+}

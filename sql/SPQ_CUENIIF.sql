@@ -102,7 +102,7 @@ BEGIN
 
 		IF @NIVEL IS NULL OR @NIVEL < 1
 			INSERT INTO @TBLERRORES (ERROR)
-			SELECT 'El nivel de la cuenta no es v�lido'
+			SELECT 'El nivel de la cuenta no es válido'
 
 		IF (
 				SELECT COUNT(*)
@@ -167,7 +167,7 @@ BEGIN
 
 		IF @IDCUENIIF IS NULL
 			INSERT INTO @TBLERRORES (ERROR)
-			SELECT 'No se indic� el identificador de la cuenta'
+			SELECT 'No se indicó el identificador de la cuenta'
 
 		IF @ESTADO IS NULL OR @ESTADO = ''
 			INSERT INTO @TBLERRORES (ERROR)
@@ -195,7 +195,7 @@ BEGIN
 
 		IF @NIVEL IS NULL OR @NIVEL < 1
 			INSERT INTO @TBLERRORES (ERROR)
-			SELECT 'El nivel de la cuenta no es v�lido'
+			SELECT 'El nivel de la cuenta no es válido'
 
 		IF NOT EXISTS (
 				SELECT 1
@@ -217,7 +217,7 @@ BEGIN
 
 			IF @MOVIMIENTOS > 0
 				INSERT INTO @TBLERRORES (ERROR)
-				SELECT 'La cuenta tiene movimientos contables. No se puede editar el c�digo de cuenta. Debe colocarla en estado Inactivo.'
+				SELECT 'La cuenta tiene movimientos contables. No se puede editar el código de cuenta. Debe colocarla en estado Inactivo.'
 		END
 
 		IF (
@@ -272,7 +272,7 @@ BEGIN
 
 		IF @IDCUENIIF IS NULL
 			INSERT INTO @TBLERRORES (ERROR)
-			SELECT 'No se indic� el identificador de la cuenta'
+			SELECT 'No se indicó el identificador de la cuenta'
 
 		SELECT @CUENTA = CUENTA
 		FROM CUENIIF
@@ -338,8 +338,8 @@ BEGIN
 	/* ------------------------------------------------------------------
 	   CARGA_MASIVA (todo o nada)
 	   1) Valida todas las filas del Excel.
-	   2) Si hay alg�n error: no inserta nada y devuelve el detalle.
-	   3) Solo si todas est�n correctas: inserta en orden.
+	   2) Si hay algún error: no inserta nada y devuelve el detalle.
+	   3) Solo si todas están correctas: inserta en orden.
 	   Formato Clarion:
 	   CUENTANIIF, NOMBRE CUENTA, TIPO, NEMONICO, DETALLE CCOSTO, DETALLE PRODUCTO,
 	   DETALLE FACTURA (REFERENCIA), DETALLE TERCERO, ES IMPUESTO, ESTADO, NIVEL,
@@ -410,8 +410,8 @@ BEGIN
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
 				SELECT @CUENTA, @NOMCUENTA, CONCAT (
-						'Duplicado en el archivo: la cuenta "', @CUENTA, '" aparece m�s de una vez. ', 
-						'Soluci�n: deje una sola fila por c�digo de cuenta y vuelva a cargar.'
+						'Duplicado en el archivo: la cuenta "', @CUENTA, '" aparece más de una vez. ', 
+						'Solución: deje una sola fila por código de cuenta y vuelva a cargar.'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -426,7 +426,7 @@ BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
 				SELECT @CUENTA, @NOMCUENTA, CONCAT (
 						'Duplicado: la cuenta "', @CUENTA, '" ya existe en CUENIIF. ', 
-						'Soluci�n: utilice otro c�digo de cuenta, o edite/inactive la existente en lugar de cargarla de nuevo.'
+						'Solución: utilice otro código de cuenta, o edite/inactive la existente en lugar de cargarla de nuevo.'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -456,12 +456,12 @@ BEGIN
 					SELECT @CUENTA, @NOMCUENTA, CASE 
 							WHEN @CUENTA_SUMA IS NULL OR LTRIM(RTRIM(@CUENTA_SUMA)) = ''
 								THEN CONCAT (
-										'Falta CUENTA_SUMA. La cuenta "', @CUENTA, '" tiene m�s de 1 car�cter y requiere padre. ', 
-										'Soluci�n: indique en CUENTA_SUMA el c�digo de una cuenta tipo Suma que ya exista (o c�rguela antes en el archivo).'
+										'Falta CUENTA_SUMA. La cuenta "', @CUENTA, '" tiene más de 1 carácter y requiere padre. ', 
+										'Solución: indique en CUENTA_SUMA el código de una cuenta tipo Suma que ya exista (o cárguela antes en el archivo).'
 										)
 							ELSE CONCAT (
-									'CUENTA_SUMA inv�lida: "', @CUENTA_SUMA, '" no existe como tipo Suma (en base de datos ni antes en el archivo). ', 
-									'Soluci�n: verifique el c�digo, cr�ela primero como TIPO=Suma (arriba en el Excel), o corr�jala en CUENTA_SUMA.'
+									'CUENTA_SUMA inválida: "', @CUENTA_SUMA, '" no existe como tipo Suma (en base de datos ni antes en el archivo). ', 
+									'Solución: verifique el código, créela primero como TIPO=Suma (arriba en el Excel), o corríjala en CUENTA_SUMA.'
 									)
 							END
 
@@ -472,7 +472,7 @@ BEGIN
 			IF @TIPO IS NULL OR @TIPO = ''
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
-				SELECT @CUENTA, @NOMCUENTA, 'TIPO vac�o. Soluci�n: complete la columna TIPO con exactamente "Suma" o "Detalle".'
+				SELECT @CUENTA, @NOMCUENTA, 'TIPO vacío. Solución: complete la columna TIPO con exactamente "Suma" o "Detalle".'
 
 				GOTO SIGUIENTE_FILA
 			END
@@ -480,7 +480,7 @@ BEGIN
 			IF @TIPO NOT IN ('Suma', 'Detalle')
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
-				SELECT @CUENTA, @NOMCUENTA, CONCAT ('TIPO inv�lido: "', @TIPO, '". ', 'Soluci�n: utilice exactamente "Suma" o "Detalle".'
+				SELECT @CUENTA, @NOMCUENTA, CONCAT ('TIPO inválido: "', @TIPO, '". ', 'Solución: utilice exactamente "Suma" o "Detalle".'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -489,7 +489,7 @@ BEGIN
 			IF @ESTADO IS NULL OR @ESTADO = ''
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
-				SELECT @CUENTA, @NOMCUENTA, 'ESTADO vac�o. Soluci�n: complete la columna ESTADO con exactamente "Activa" o "Inactiva".'
+				SELECT @CUENTA, @NOMCUENTA, 'ESTADO vacío. Solución: complete la columna ESTADO con exactamente "Activa" o "Inactiva".'
 
 				GOTO SIGUIENTE_FILA
 			END
@@ -497,7 +497,7 @@ BEGIN
 			IF @ESTADO NOT IN ('Activa', 'Inactiva')
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
-				SELECT @CUENTA, @NOMCUENTA, CONCAT ('ESTADO inv�lido: "', @ESTADO, '". ', 'Soluci�n: utilice exactamente "Activa" o "Inactiva".'
+				SELECT @CUENTA, @NOMCUENTA, CONCAT ('ESTADO inválido: "', @ESTADO, '". ', 'Solución: utilice exactamente "Activa" o "Inactiva".'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -507,8 +507,8 @@ BEGIN
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
 				SELECT @CUENTA, @NOMCUENTA, CONCAT (
-						'Flags inv�lidos en cuenta Detalle (CCOSTO=', @CENTRO, ', PRODUCTO=', @PRODUCTO, ', FACTURA/REFERENCIA=', @REFERENCIA, ', TERCERO=', 
-						@TERCERO, '). ', 'Soluci�n: utilice solo 0 o 1 en DETALLE CCOSTO, DETALLE PRODUCTO, DETALLE FACTURA y DETALLE TERCERO.'
+						'Flags inválidos en cuenta Detalle (CCOSTO=', @CENTRO, ', PRODUCTO=', @PRODUCTO, ', FACTURA/REFERENCIA=', @REFERENCIA, ', TERCERO=', 
+						@TERCERO, '). ', 'Solución: utilice solo 0 o 1 en DETALLE CCOSTO, DETALLE PRODUCTO, DETALLE FACTURA y DETALLE TERCERO.'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -518,8 +518,8 @@ BEGIN
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
 				SELECT @CUENTA, @NOMCUENTA, CONCAT (
-						'Longitud de cuenta inv�lida: "', @CUENTA, '" tiene ', @LENC, ' caracteres (impar). ', 
-						'Soluci�n: si la cuenta tiene m�s de 2 caracteres, la longitud debe ser par (2, 4, 6, 8.18). Ejemplo: utilice "23" o "2341", no "234".'
+						'Longitud de cuenta inválida: "', @CUENTA, '" tiene ', @LENC, ' caracteres (impar). ', 
+						'Solución: si la cuenta tiene más de 2 caracteres, la longitud debe ser par (2, 4, 6, 8…18). Ejemplo: utilice "23" o "2341", no "234".'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -529,8 +529,8 @@ BEGIN
 			BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
 				SELECT @CUENTA, @NOMCUENTA, CONCAT (
-						'Cuenta fuera de rango: "', @CUENTA, '" tiene ', @LENC, ' caracteres (m�ximo 18). ', 
-						'Soluci�n: acorte el c�digo CUENTANIIF a m�ximo 18 caracteres.'
+						'Cuenta fuera de rango: "', @CUENTA, '" tiene ', @LENC, ' caracteres (máximo 18). ', 
+						'Solución: acorte el código CUENTANIIF a máximo 18 caracteres.'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -565,7 +565,7 @@ BEGIN
 				INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
 				SELECT @CUENTA, @NOMCUENTA, CONCAT (
 						'No se pudo calcular el nivel para "', @CUENTA, '" (longitud ', @LENC, '). ', 
-						'Soluci�n: utilice longitudes v�lidas 1, 2, 4, 6, 8, 10, 12, 14, 16 u 18.'
+						'Solución: utilice longitudes válidas 1, 2, 4, 6, 8, 10, 12, 14, 16 u 18.'
 						)
 
 				GOTO SIGUIENTE_FILA
@@ -621,7 +621,7 @@ BEGIN
 				ROLLBACK TRAN
 
 			INSERT INTO @TBLERRCARGA (CUENTA, NOMCUENTA, ERROR)
-			SELECT CAST(NULL AS VARCHAR(20)), CAST(NULL AS VARCHAR(200)), CONCAT ('Error al insertar el lote (no se insert� ninguna cuenta): ', ERROR_MESSAGE(), '. Soluci�n: corrija el archivo y vuelva a procesar.'
+			SELECT CAST(NULL AS VARCHAR(20)), CAST(NULL AS VARCHAR(200)), CONCAT ('Error al insertar el lote (no se insertó ninguna cuenta): ', ERROR_MESSAGE(), '. Solución: corrija el archivo y vuelva a procesar.'
 					)
 
 			SELECT 'OK' OK, 0 AS INSERTADOS, 1 AS ERRORES
@@ -642,5 +642,5 @@ BEGIN
 
 	SELECT 'KO' OK
 
-	SELECT CONCAT ('M�todo no soportado: ', COALESCE(@METODO, '')) AS ERROR
+	SELECT CONCAT ('Método no soportado: ', COALESCE(@METODO, '')) AS ERROR
 END

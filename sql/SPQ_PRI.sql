@@ -171,7 +171,7 @@ BEGIN
             IF NOT EXISTS(SELECT * FROM PRI WHERE ANO=@ANO AND MES=@MES AND CERRADO_FAC=0)
             BEGIN
             INSERT INTO @TBLERRORES(ERROR)
-            SELECT 'No se Encontro el Periodo de Facturaci�n o ya esta Cerrado. Verifique e intente de nuevo'
+            SELECT 'No se Encontro el Periodo de Facturación o ya esta Cerrado. Verifique e intente de nuevo'
             END
         END
         IF @PROCEDENCIA='CARTERA'
@@ -227,7 +227,7 @@ BEGIN
         IF COALESCE(@CERRADO, 0) = 0
         BEGIN
             INSERT INTO @TBLERRORES (ERROR)
-            SELECT N'El periodo no est� cerrado; no se puede abrir.'
+            SELECT N'El periodo no está cerrado; no se puede abrir.'
         END
 
         IF @PROCEDENCIA = 'FACTURA'
@@ -235,7 +235,7 @@ BEGIN
             IF NOT EXISTS (SELECT 1 FROM PRI WHERE ANO = @ANO AND MES = @MES AND COMPANIA = @COMPANIA AND CERRADO_FAC = 1)
             BEGIN
                 INSERT INTO @TBLERRORES (ERROR)
-                SELECT N'No se encontr� el periodo de facturaci�n o ya est� abierto. Verifique e intente de nuevo.'
+                SELECT N'No se encontró el periodo de facturación o ya está abierto. Verifique e intente de nuevo.'
             END
         END
         ELSE IF @PROCEDENCIA = 'CARTERA'
@@ -243,13 +243,13 @@ BEGIN
             IF NOT EXISTS (SELECT 1 FROM PRI WHERE ANO = @ANO AND MES = @MES AND COMPANIA = @COMPANIA AND CERRADO_CARTERA = 1)
             BEGIN
                 INSERT INTO @TBLERRORES (ERROR)
-                SELECT N'No se encontr� el periodo de cartera o ya est� abierto. Verifique e intente de nuevo.'
+                SELECT N'No se encontró el periodo de cartera o ya está abierto. Verifique e intente de nuevo.'
             END
             INSERT INTO @TBLERRORES (ERROR)
             SELECT CONCAT(
                 N'Ya pasaron ',
                 CAST(DATEDIFF(DAY, DBO.FNK_DIA_DEL_MES(@ANO, @MES, 'ULTIMO'), GETDATE()) AS VARCHAR(11)),
-                N' d�as; ya no es posible la apertura de la cartera para este periodo contable.'
+                N' días; ya no es posible la apertura de la cartera para este periodo contable.'
             )
             FROM PRI AS P
             WHERE P.ANO = @ANO
@@ -262,13 +262,13 @@ BEGIN
             IF NOT EXISTS (SELECT 1 FROM PRI WHERE ANO = @ANO AND MES = @MES AND COMPANIA = @COMPANIA AND CERRADO_CXP = 1)
             BEGIN
                 INSERT INTO @TBLERRORES (ERROR)
-                SELECT N'No se encontr� el periodo de CxP o ya est� abierto. Verifique e intente de nuevo.'
+                SELECT N'No se encontró el periodo de CxP o ya está abierto. Verifique e intente de nuevo.'
             END
         END
         ELSE
         BEGIN
             INSERT INTO @TBLERRORES (ERROR)
-            SELECT N'Procedencia no v�lida para abrir periodo.'
+            SELECT N'Procedencia no válida para abrir periodo.'
         END
 
         IF (SELECT COUNT(1) FROM @TBLERRORES) > 0

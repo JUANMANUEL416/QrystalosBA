@@ -41,7 +41,7 @@ BEGIN
 					IDSERVICIO VARCHAR(20) '$.IDSERVICIO', CRONICO BIT '$.CRONICO', TASEGURA025 SMALLINT '$.TASEGURA025', HOMOLOGO VARCHAR(20)
 					)
 
-			/* REQ 0100016503: bloquear pareja TIPOSISTEMA + cobertura SISPRO inv�lida */
+			/* REQ 0100016503: bloquear pareja TIPOSISTEMA + cobertura SISPRO inválida */
 			IF NULLIF(LTRIM(RTRIM(@TIPOVOLUNTARIO)), '') IS NOT NULL
 				AND NULLIF(LTRIM(RTRIM(@TIPOSISTEMA)), '') IS NOT NULL
 				AND NOT EXISTS (
@@ -87,17 +87,17 @@ BEGIN
 						ELSE NULL
 						END
 					, @SUG_DESC = CASE @TIPOSISTEMA
-						WHEN 'Contributivo' THEN N'Plan de beneficios UPC r�gimen contributivo'
-						WHEN 'Desplazado Reg Cont' THEN N'Plan de beneficios UPC r�gimen contributivo'
-						WHEN 'Subsidiado' THEN N'Plan de beneficios UPC r�gimen subsidiado'
-						WHEN 'Desplazado Reg Sub' THEN N'Plan de beneficios UPC r�gimen subsidiado'
+						WHEN 'Contributivo' THEN N'Plan de beneficios UPC régimen contributivo'
+						WHEN 'Desplazado Reg Cont' THEN N'Plan de beneficios UPC régimen contributivo'
+						WHEN 'Subsidiado' THEN N'Plan de beneficios UPC régimen subsidiado'
+						WHEN 'Desplazado Reg Sub' THEN N'Plan de beneficios UPC régimen subsidiado'
 						WHEN 'Particular' THEN N'Particular'
 						WHEN 'ARL' THEN N'Cobertura ARL'
-						WHEN 'Vinculado' THEN N'Cobertura salud p�blica'
-						WHEN 'Desplazado Vinc' THEN N'Cobertura salud p�blica'
-						WHEN 'Exepcion' THEN N'Cobertura r�gimen especial o excepci�n'
+						WHEN 'Vinculado' THEN N'Cobertura salud pública'
+						WHEN 'Desplazado Vinc' THEN N'Cobertura salud pública'
+						WHEN 'Exepcion' THEN N'Cobertura régimen especial o excepción'
 						WHEN 'Prepagado' THEN N'Plan medicina prepagada'
-						WHEN 'SinRegimen' THEN N'Cobertura p�liza SOAT'
+						WHEN 'SinRegimen' THEN N'Cobertura póliza SOAT'
 						WHEN 'Otro' THEN N'Cobertura ADRES'
 						ELSE NULL
 						END
@@ -374,7 +374,7 @@ BEGIN
 				IDMODELOPCA, IDMODELOPCH, NODESCUENTACOPAGO, CEAUTORIZADO, COPAGOIND, CAMBIACONT, IDCONTRATO, FACTPORAFU, RESUMEN, IMPRIMEEST
 			FROM PPT Origen
 			WHERE IDTERCERO = @IDTERCEROOR AND IDPLAN = @IDPLANOR AND NOT EXISTS (
-					-- Validaci�n: No insertar si ya existe en ppt
+					-- Validación: No insertar si ya existe en ppt
 					SELECT 1
 					FROM PPT Destino
 					WHERE Destino.IDTERCERO = @IDTERCERODES AND Destino.IDPLAN = @IDPLANDES
@@ -389,7 +389,7 @@ BEGIN
 				TIPORESTRICCION
 			FROM ETP Origen
 			WHERE IDPROVEEDOR = @IDTERCEROOR AND IDPLAN = @IDPLANOR AND NOT EXISTS (
-					-- Validaci�n: No insertar si ya existe en etp
+					-- Validación: No insertar si ya existe en etp
 					SELECT 1
 					FROM ETP Destino
 					WHERE Destino.IDPROVEEDOR = @IDTERCERODES AND Destino.IDPLAN = @IDPLANDES
@@ -409,7 +409,7 @@ BEGIN
 					SELECT 1
 					FROM ESP Destino
 					WHERE Destino.IDPROVEEDOR = @IDTERCERODES AND Destino.IDPLAN = @IDPLANDES AND Destino.IDSERVICIO = Origen.IDSERVICIO
-						-- Validamos por servicio tambi�n
+						-- Validamos por servicio también
 					);
 
 			-- ==========================================================
@@ -435,7 +435,7 @@ BEGIN
 						ELSE 0
 						END
 					) = 1
-				-- Validaci�n Existencia
+				-- Validación Existencia
 				AND NOT EXISTS (
 					SELECT 1
 					FROM CPPAF Destino
@@ -463,7 +463,7 @@ BEGIN
 			WHERE IDADMINISTRADORA = @IDTERCEROOR AND IDPLAN = @IDPLANOR AND NOT EXISTS (
 					SELECT 1
 					FROM PXSN Destino
-					WHERE Destino.IDTERCERO = Origen.IDTERCERO -- Ojo aqu�, el tercero prestador se mantiene
+					WHERE Destino.IDTERCERO = Origen.IDTERCERO -- Ojo aquí, el tercero prestador se mantiene
 						AND Destino.IDADMINISTRADORA = @IDTERCERODES AND Destino.IDPLAN = @IDPLANDES
 					);
 
@@ -706,7 +706,7 @@ BEGIN
 						@IDTARIFA = @TAR, -- TAR principal
 						@COBRARA = @COBRARA, -- COBRARA principal
 						@IDPLANCA = @PrefijoIDPLAN;
-						-- IDPLANCA principal (Ajust� el nombre del �ltimo par�metro del SP a IDPLANCA, asumiendo que debe ser el principal)
+						-- IDPLANCA principal (Ajusté el nombre del último parámetro del SP a IDPLANCA, asumiendo que debe ser el principal)
 				END
 
 				CLOSE PrefijosCursor;
@@ -799,7 +799,7 @@ BEGIN
 		SELECT @PROCESO = NULLIF(LTRIM(RTRIM(PROCESO)), '')
 		FROM OPENJSON(@PARAMETROS) WITH (PROCESO VARCHAR(20) '$.PROCESO')
 
-		-- Leer datos: si existe REGISTRO, leer desde ah�; si no, desde el propio @PARAMETROS
+		-- Leer datos: si existe REGISTRO, leer desde ahí; si no, desde el propio @PARAMETROS
 		SELECT @REGISTRO_PLNU = REGISTRO
 		FROM OPENJSON(@PARAMETROS) WITH (REGISTRO NVARCHAR(MAX) AS JSON)
 		WHERE REGISTRO IS NOT NULL
@@ -821,7 +821,7 @@ BEGIN
 		IF @PROCESO IS NULL OR @PROCESO NOT IN ('INSERTAR', 'EDITAR', 'eliminar', 'ELIMINAR')
 		BEGIN
 			INSERT INTO @TBLERRORES (ERROR)
-			VALUES ('Proceso no v�lido. Debe ser INSERTAR, EDITAR o eliminar.')
+			VALUES ('Proceso no válido. Debe ser INSERTAR, EDITAR o eliminar.')
 
 			SELECT 'KO' AS OK
 
@@ -852,7 +852,7 @@ BEGIN
 						)
 				BEGIN
 					INSERT INTO @TBLERRORES (ERROR)
-					VALUES ('Ya existe un registro con esa unidad de atenci�n para el plan.')
+					VALUES ('Ya existe un registro con esa unidad de atención para el plan.')
 				END
 				ELSE
 				BEGIN

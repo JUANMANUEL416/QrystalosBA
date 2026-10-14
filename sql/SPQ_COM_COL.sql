@@ -67,7 +67,7 @@ BEGIN
 
             BEGIN
                 SELECT 'KO' OK
-                SELECT ERROR = 'Ya existe un comprobante con esta compa�ia y codigo del comprobante'
+                SELECT ERROR = 'Ya existe un comprobante con esta compañia y codigo del comprobante'
                 RETURN
             END
             

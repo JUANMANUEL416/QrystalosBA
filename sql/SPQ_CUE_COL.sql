@@ -185,7 +185,7 @@ BEGIN
       IF EXISTS(SELECT  * FROM CUE WHERE LEFT(CUENTA,LEN(CUENTA)-2)<>CUENTA_SUMA AND LEN(CUENTA)>2 )
       BEGIN
          INSERT INTO @CUEERROR
-         SELECT CUENTA,NOMCUENTA,' Cuenta de suma inv�lida: la cuenta contable '+CUENTA+' no tiene una cuenta de agrupaci�n v�lida ('+CUENTA_SUMA+'). Verifica la jerarqu�a del plan contable'
+         SELECT CUENTA,NOMCUENTA,' Cuenta de suma inválida: la cuenta contable '+CUENTA+' no tiene una cuenta de agrupación válida ('+CUENTA_SUMA+'). Verifica la jerarquía del plan contable'
          FROM CUE WHERE LEFT(CUENTA,LEN(CUENTA)-2)<>CUENTA_SUMA AND LEN(CUENTA)>2
       END
       IF EXISTS(SELECT * FROM CUE WHERE CUENTA_SUMA NOT IN(SELECT  CUENTA FROM CUE WHERE TIPO='Suma'))
@@ -198,7 +198,7 @@ BEGIN
       IF EXISTS(SELECT * FROM CUE WHERE LEN(CUENTA)%2 <>0 AND LEN(CUENTA)>1)
       BEGIN
          INSERT INTO @CUEERROR
-         SELECT CUENTA,NOMCUENTA,' Error en la estructura, Error de formato: la longitud del campo debe ser un n�mero par de caracteres. '
+         SELECT CUENTA,NOMCUENTA,' Error en la estructura, Error de formato: la longitud del campo debe ser un número par de caracteres. '
          FROM CUE WHERE LEN(CUENTA)%2 <>0 AND LEN(CUENTA)>1
       END
       DECLARE @NRO INT
