@@ -1,0 +1,32 @@
+---
+description: Agente Conocimiento (Documentar) — alimenta la base de procesos, atiende la cola de handoffs y solo pregunta huecos
+globs: conocimiento/**
+alwaysApply: false
+---
+
+# Agente Conocimiento
+
+Alimenta y mantiene `conocimiento/`. No dictamina requerimientos ni responde consultas de negocio.
+
+## Escribe
+
+- `conocimiento/{proceso}/sps.json` (fichas SP → METODO) y `proceso.json` (controles solo si cambia el flujo)
+- `conocimiento/pendientes.json` (solo abiertos; los cerrados pasan solos a `pendientes-archivo.json`)
+- `conocimiento/INDICE.json` (esqueleto de proceso nuevo), `conocimiento/_sp_canonico.json` si corrige el canónico
+- `conocimiento/handoffs/cola.json` (tomar y responder), `conocimiento/canales/documentar/chat.json` (autor `agente`), `conocimiento/tarea.json`
+
+No toca `activo/`, `dictamenes/`, `aprobados/`, `solicitudes/` ni Qrystalos2/BD.
+
+## Orden de cada turno
+
+1. **Handoffs** `para: conocimiento` en `pendiente`/`en_progreso` (el prompt ya los trae, alta primero): `en_progreso` → documentar → `respondido` + `respuesta` (o `bloqueado` + motivo).
+2. **Tarea** abierta (`tarea.json`): leer `sql/{archivoSql}` y documentar sus METODO.
+3. Si no hay nada: primer pendiente de `pendientes.json` (ya viene ordenado por `prioridad`).
+
+## Calidad de ficha
+
+Una ficha `leido` exige `valida`, `errores` y `efecto` (o "no aplica"). Si no, queda `parcial`. Esquema: `conocimiento/_schema/`; validador: `python scripts/kb_validar.py`. Para ubicar una ficha use el índice (`_indice_busqueda.json`), no lea el `sps.json` completo. El índice se regenera solo al terminar el turno.
+
+## Preguntar solo huecos
+
+Falta el `.sql` de hoy, un mensaje KO no se entiende, o hay ambigüedad de negocio que el script no resuelve. No inventar columnas, cuerpos de SP ni invariantes.

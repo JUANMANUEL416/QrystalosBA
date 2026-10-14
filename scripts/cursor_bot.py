@@ -37,6 +37,8 @@ DOCUMENTAR_ID = "__documentar__"
 CONOCIMIENTO_IDS = {CONOCIMIENTO_ID, CONSULTAS_ID, DOCUMENTAR_ID}
 MOTIVOS_KB = frozenset({"conocimiento", "consultas", "documentar", "documentar-auto"})
 TIMEOUT_KB_SEC = 12 * 60
+# Turnos que Conocimiento/Consultas reutilizan su sesión antes de abrir una nueva (0 = sesión nueva cada turno).
+KB_TURNOS_SESION = int(os.environ.get("CURSOR_BOT_KB_TURNOS", "6") or 6)
 TIMEOUT_CASO_SEC = 45 * 60
 
 
@@ -395,7 +397,44 @@ def _plan_subagentes(id_caso: str) -> str:
     )
 
 
+BUSQUEDA_KB = (
+    "BÚSQUEDA EN LA BASE (obligatorio, antes que cualquier otra fuente):\n"
+    "1. grep en conocimiento/_indice_busqueda.json por la clave exacta entre comillas: \"SP/METODO\", \"SP\", \"TABLA\", \"/ruta/pantalla\", \"proceso/control\" o un término. "
+    "Cada línea trae {proceso, archivo, ruta, linea, estado, canonico}.\n"
+    "2. Abra SOLO ese archivo desde la línea indicada (read con offset≈linea, limit≈40). NUNCA lea un sps.json entero ni todos los procesos.\n"
+    "3. Si hay varias referencias, use la canonico=true (conocimiento/_sp_canonico.json).\n"
+    "4. Ficha con estado distinto de leido o inexistente = HUECO → handoff a Conocimiento en conocimiento/handoffs/cola.json (contrato conocimiento/HANDOFF.md)."
+)
+
+
+def rol_de(id_caso: str, motivo: str) -> str:
+    if es_conocimiento(id_caso, motivo):
+        return "consultas" if canal_de(id_caso, motivo) == "consultas" else "conocimiento"
+    if es_soporte_consulta(id_caso, motivo):
+        return "consultas"
+    if es_revisar(id_caso, motivo):
+        return "revisar-sql"
+    return "requerimientos"
+
+
+def _bloque_handoffs(id_caso: str, motivo: str) -> str:
+    rol = rol_de(id_caso, motivo)
+    if rol == "revisar-sql":
+        return ""
+    try:
+        import kb_handoff
+
+        txt = kb_handoff.resumen_prompt(rol)
+    except Exception:  # noqa: BLE001
+        return ""
+    return ("\n" + txt + "\n") if txt else ""
+
+
 def prompt_turno(id_caso: str, motivo: str) -> str:
+    return _prompt_base(id_caso, motivo)
+
+
+def _prompt_base(id_caso: str, motivo: str) -> str:
     if es_conocimiento(id_caso, motivo):
         canal = canal_de(id_caso, motivo)
         ruta = f"conocimiento/canales/{canal}/chat.json"
@@ -405,7 +444,7 @@ def prompt_turno(id_caso: str, motivo: str) -> str:
             "Este chat es SOLO del procesoId indicado (un módulo). No mezcle facturación con caja ni otros. "
             "Si el prompt trae Respuestas ACEPTADAS y cubren el pedido, conteste con esa base; no reabra sps.json ni Qrystalos2. "
             "PROHIBIDO leer: el chat.json histórico (canales/, chats/, conocimiento/chat.json), "
-            "faq.json entero, pendientes.json completo, RUTA.json para barrer, todos los sps.json, "
+            "faq.json entero, pendientes.json completo, pendientes-archivo.json, RUTA.json para barrer, cualquier sps.json completo, "
             "Qrystalos2 y qrystalos.documentacion. Eso ya está destilado en conocimiento/{proceso}/. "
             "Solo abra FE/docs/.sql si la ficha de ESE proceso no cubre el pedido; dígalo en una línea."
         )
@@ -418,19 +457,23 @@ Este turno (ya pegado; NO abra el chat.json):
 
 {tarea}
 
-Método: INDICE.json solo para ubicar el proceso nombrado. Luego SOLO conocimiento/{{id}}/proceso.json y sps.json de ese id.
-Si la KB no alcanza: NO abra Qrystalos2 ni la documentación. Responda lo que la KB sí cubre, diga «Escalado a Conocimiento» y agregue un ítem en conocimiento/pendientes.json (origen: consultas, pregunta literal, procesoId).
+{BUSQUEDA_KB}
+{_bloque_handoffs(id_caso, motivo)}
+Si la base no alcanza: NO abra Qrystalos2 ni la documentación. Responda lo que la base sí cubre, diga «Escalado a Conocimiento (ho-…)» y agregue el handoff en conocimiento/handoffs/cola.json: de consultas, para conocimiento, tipo documentar_metodo o confirmar_hueco, contexto {{proceso, sp, metodo, pregunta literal, evidencia}}. Si ya hay uno abierto igual, súmele vecesPedido en vez de duplicar.
 Responda en {ruta} autor agente, campo "en". Español. No invente columnas ni SP.
 {_plan_subagentes(id_caso)}
 """
-        return f"""Eres el agente de Documentar de Qrystalos BA. UN turno y termina. Sin barrido, sin shell ni web.
+        return f"""Eres el agente de Conocimiento (Documentar) de Qrystalos BA. UN turno y termina. Sin barrido, sin shell ni web.
 {prohibido}
 
 Este turno (ya pegado; NO abra el chat.json):
 {recorte}
 
 {tarea}
-
+{_bloque_handoffs(id_caso, motivo)}
+Orden de trabajo: (1) handoffs para conocimiento de la lista de arriba, alta primero: póngalo en_progreso, documente y deje respondido + respuesta (o bloqueado + motivo) en conocimiento/handoffs/cola.json; (2) la tarea abierta; (3) si no hay nada más, el primer pendiente de conocimiento/pendientes.json (ya viene ordenado por prioridad: lea solo las primeras líneas).
+{BUSQUEDA_KB}
+Una ficha leido exige valida, errores y efecto (o "no aplica"); si no los tiene, déjela parcial (validador: scripts/kb_validar.py).
 Si la tarea está abierta: lea sql/{{archivoSql}} de hoy y documente METODOs en conocimiento/{{procesoId}}/sps.json. proceso.json solo si cambia un control.
 Si no hay tarea: haga únicamente lo que pide el coordinador, en el proceso que nombre.
 Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 ni ejecute SQL.
@@ -449,8 +492,9 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "- Método obligatorio (en este orden):\n"
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
             "  2) Contrastar con conocimiento/: INDICE → proceso → proceso.json + sps.json "
-            "(y sql_refe si hace falta la línea exacta). SOLO DESPUÉS, y únicamente para huecos "
-            "de la KB, Qrystalos2/docs vivos; anote el hueco en conocimiento/pendientes.json.\n"
+            "vía conocimiento/_indice_busqueda.json (solo las fichas del control; y sql_refe si hace falta la línea exacta). "
+            "SOLO DESPUÉS, y únicamente para huecos de la base: Qrystalos2, luego qrystalos.documentacion, luego DESAIX; "
+            "cada hueco va como handoff a Conocimiento (conocimiento/handoffs/cola.json).\n"
             "  2b) PASO 0 ¿YA EXISTE?: texto del REQ ≠ captura. Inventariar TODOS los "
             "caminos del control (botones v-if, Help*, necesidadesYaCubiertas, no solo "
             "los METODOs del formulario). Clasificar: capacitación | defecto | hueco. "
@@ -533,9 +577,11 @@ Lea del disco, en este orden:
 1. data/soporte-consultas/{id_caso}/INSTRUCCION-AGENTE.md
 2. data/soporte-consultas/{id_caso}/meta.json
 3. data/soporte-consultas/{id_caso}/chat.json
-4. conocimiento/INDICE.json y los procesos que apliquen (proceso.json, sps.json, grafos en contabilidad/, runbooks).
-5. Qrystalos2 y qrystalos.documentacion según config/rutas.json si la ficha no alcanza.
+4. La base vía conocimiento/_indice_busqueda.json: solo las fichas que apliquen (y grafos en contabilidad/ si es contable). Nunca un sps.json entero.
+5. Solo si la ficha no alcanza: Qrystalos2 y luego qrystalos.documentacion (config/rutas.json). Cada hueco también va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
 
+{BUSQUEDA_KB}
+{_bloque_handoffs(id_caso, motivo)}
 Reglas:
 - Español. NO implemente en Qrystalos2 ni ejecute SQL en cliente.
 - Escriba en data/soporte-consultas/{id_caso}/chat.json (autor: agente, campo en). No borre mensajes previos.
@@ -559,8 +605,10 @@ Lea del disco:
 2. solicitudes/{id_caso}/solicitud.json
 3. solicitudes/{id_caso}/chat.json
 4. solicitudes/{id_caso}/archivos/ (PDF, imágenes, .md/.txt y *.extracto.txt). Si la necesidad llegó en .md, ese archivo es la fuente principal del requerimiento: léalo completo.
-5. conocimiento/INDICE.json y conocimiento/{{proceso}}/proceso.json + sps.json
+5. La base vía conocimiento/_indice_busqueda.json (proceso, control y solo sus fichas). Después, solo para huecos: Qrystalos2 → qrystalos.documentacion → DESAIX. Huecos: handoff a Conocimiento.
 
+{BUSQUEDA_KB}
+{_bloque_handoffs(id_caso, motivo)}
 Reglas:
 - Español. Responda SOLO en solicitudes/{id_caso}/chat.json (autor: agente). Este Chat permanece activo en cada turno.
 - El coordinador plantea una necesidad. Usted analiza contra conocimiento/ y los adjuntos.
@@ -585,10 +633,12 @@ Lea del disco, en este orden:
 1. activo/{id_caso}/INSTRUCCION-AGENTE.md
 2. activo/{id_caso}/solicitud.json
 3. activo/{id_caso}/chat.json
-4. conocimiento/INDICE.json → conocimiento/{{proceso}}/proceso.json + sps.json (BASE DE CONOCIMIENTO, SIEMPRE ANTES DEL CÓDIGO)
+4. BASE DE CONOCIMIENTO, SIEMPRE ANTES DEL CÓDIGO: conocimiento/_indice_busqueda.json → solo las fichas del control (ver BÚSQUEDA EN LA BASE). Nunca un sps.json entero.
 5. cola/ y activo/{id_caso}/sql/ si aplican
-6. SOLO si la KB no cubre el punto: Qrystalos2 y qrystalos.documentacion según config/rutas.json. Diga en el Chat qué hueco de la KB lo obligó y regístrelo en conocimiento/pendientes.json (origen: {id_caso}).
+6. SOLO si la base no cubre el punto, en este orden: Qrystalos2, luego qrystalos.documentacion (config/rutas.json), luego DESAIX. Diga en el Chat qué hueco lo obligó y deje handoff a Conocimiento en conocimiento/handoffs/cola.json (de requerimientos, idCaso {id_caso}).
 
+{BUSQUEDA_KB}
+{_bloque_handoffs(id_caso, motivo)}
 Reglas:
 - Responda en español.
 - Escriba la respuesta en activo/{id_caso}/chat.json (autor: agente). No incruste el HTML del dictamen en el Chat.
@@ -833,6 +883,16 @@ def run_caso(id_caso: str, motivo: str) -> int:
         latido.set()
 
 
+def _reindexar_kb() -> None:
+    """El agente edita sps.json/proceso.json con su herramienta: regenerar el índice al terminar."""
+    try:
+        import kb_indice
+
+        kb_indice.regenerar()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[kb_indice] {exc}", flush=True)
+
+
 async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
     import asyncio
 
@@ -846,7 +906,16 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
     modelo_guardado = (meta.get("modelo") or "").strip()
     fast_pedido = usa_fast(motivo)
     fast_guardado = meta.get("fast")
-    agent_id = "" if es_kb else (meta.get("agentId") or "").strip()
+    # Una sesión por rol: Conocimiento y Consultas reutilizan la suya (canal propio) y la
+    # renuevan cada KB_TURNOS_SESION turnos para que el contexto no crezca sin control.
+    # Requerimientos: una sesión por caso (agente.json vive en la carpeta del caso).
+    rol = rol_de(id_caso, motivo)
+    turnos = int(meta.get("turnos") or 0)
+    agent_id = (meta.get("agentId") or "").strip()
+    if meta.get("rol") and meta.get("rol") != rol:
+        agent_id = ""
+    if es_kb and (KB_TURNOS_SESION <= 0 or turnos >= KB_TURNOS_SESION):
+        agent_id = ""
     if agent_id and modelo_guardado and modelo_guardado != modelo_pedido:
         agent_id = ""
     if agent_id and fast_guardado is not None and bool(fast_guardado) != bool(fast_pedido):
@@ -870,12 +939,11 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             meta_out = {
                 "modelo": modelo_id(motivo),
                 "fast": usa_fast(motivo),
+                "rol": rol,
+                "agentId": agent.agent_id,
+                "lastAgentId": agent.agent_id,
+                "turnos": (turnos + 1) if agent.agent_id == agent_id else 1,
             }
-            if es_kb:
-                meta_out["lastAgentId"] = agent.agent_id
-                meta_out["agentId"] = ""
-            else:
-                meta_out["agentId"] = agent.agent_id
             write_json(agente_path(id_caso), meta_out)
             write_bot(id_caso, agentId=agent.agent_id, modelo=modelo_id(motivo), fast=usa_fast(motivo))
 
@@ -937,6 +1005,7 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
                         "El bot terminó pero no dejó mensaje en el Chat. Reintente o escriba de nuevo.",
                     )
 
+            _reindexar_kb()
             write_bot(id_caso, estado="listo", error="", terminadoEn=_now())
             return 0
         finally:
