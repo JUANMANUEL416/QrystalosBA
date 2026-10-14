@@ -1,6 +1,6 @@
 {
   "procesoId": "cxp-fcxp",
-  "actualizado": "2026-10-04T23:45:00",
+  "actualizado": "2026-10-14T09:00:00",
   "nota": "Fichas de orden de pago → caja leídas 2026-10-04 desde DESAIX PREVERSION (idéntica a 2.0.7 salvo SPQ_FCXP: MASIVA_CXP y UNSPSC). Catálogo SP → METODO; no se archivan cuerpos. | 2026-10-04 tarde: fichas de notas (SPQ_FCXPDBCR completo, SPQ_NC_CONTAB_CXPFNT, SPK_CIERRA_FCXPDBCR, SPK_ANULAR_FCXPDBCR, SPQ_FNT_COL), anticipos (SPK_GEN_PROCESO_ANTICIPO, SPK_ANTICIPO_LEG_CXP, SPK_NC_CONTAB_ANTICIPO, SPQ_TANT_COL), Radian (SPQ_FRADIAN completo), auditoría y cierre (CERRAR_CUENTA/ABRIR_CUENTA, SPK_CIERRA_CARTERA). FCXPCXC: ningún SP la escribe.",
   "sps": [
     {
@@ -2337,6 +2337,52 @@
           "capaId": "01-configuracion",
           "controlId": "periodo-contable-cxp",
           "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NUMERODIAN_CXP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NUMERODIAN_CXP.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_CXP"
+      ],
+      "nota": "Asigna el número de documento soporte DIAN (resolución FDIAN PROCEDENCIA CXP) a la CxP o al recibo de caja.",
+      "tablas": [
+        "FDIAN",
+        "FCXP",
+        "FCJ",
+        "SED",
+        "FTR"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Resuelve la sede de la resolución: FACTSEDE='NO' → IDSEDEPRINCIPAL (o la de FDIAN vigente, o la última de FTR); si no, sede de la FCXP (o @IDSEDE si PROCEDENCIA='CAJA'). Toma la resolución FDIAN vigente PROCEDENCIA 'CXP', calcula CNSACTUAL+1 y graba prefijo+número en FCXP.N_FACTURA y NOREFERENCIA (o FCJ.N_FACTURA en caja) con CNSRESOL, y avanza FDIAN.CNSACTUAL.",
+          "valida": [
+            "Consecutivo dentro de CNSINICIAL..CNSFINAL",
+            "Resolución (CNSRESOL) informada"
+          ],
+          "noValida": [
+            "Fecha de vigencia de la resolución (solo VENCIDA=0)",
+            "Concurrencia (lee y actualiza CNSACTUAL sin bloqueo)"
+          ],
+          "errores": [
+            "Se ha terminado los consecutivos de facturacion Habilitados, No se puede Continuar",
+            "NO existe resolucion para este nro de factura, No se puede Continuar"
+          ],
+          "llama": [],
+          "efecto": "UPDATE FCXP CNSRESOL, N_FACTURA, NOREFERENCIA (o FCJ CNSRESOL, N_FACTURA); UPDATE FDIAN.CNSACTUAL.",
+          "variables": [
+            "FACTSEDE",
+            "IDSEDEPRINCIPAL"
+          ],
+          "observaciones": [
+            "Los RAISERROR van con severidad 1 (argumentos '1,16' invertidos): son avisos, no detienen al llamador; el SP sale sin numerar y SPK_NC_CONTAB_CXP sigue."
+          ]
         }
       ]
     }

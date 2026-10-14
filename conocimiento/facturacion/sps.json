@@ -1,6 +1,6 @@
 {
   "procesoId": "facturacion",
-  "actualizado": "2026-10-03T13:45:00-05:00",
+  "actualizado": "2026-10-14T09:00:00",
   "nota": "2026-10-03: procedencias FTR y énfasis de factura financiera contrastados contra Qrystalos2 e IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 son idénticas para SPQ_SUBIR_AUTCOL y los diez objetos del mapa; IDANT 2.0.6. Confirmado HADM→SALUD, CIT→CI, AUT/NOPOS→CE, AUTPG→AUTPG y recibo/copago→CAJA.",
   "sps": [
     {
@@ -4198,6 +4198,100 @@
           "hace": "Resume cada archivo externo por número de factura, pacientes, servicios y valor, leyendo los grupos RIPS dentro de JSON_SER.",
           "valida": [],
           "efecto": "Consulta de solo lectura agrupada por ARCHIVO_EXT."
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_DIST_COPA_UNIFICA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_DIST_COPA_UNIFICA.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_FTR (sql:502, 540)"
+      ],
+      "nota": "Redistribuye copagos de factura unificada cuando alguna línea quedó con total negativo.",
+      "tablas": [
+        "FTRD",
+        "CIT"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Solo si la factura tiene FTRD con VR_TOTAL<0: por afiliado (vía CIT) calcula el % de copago sobre CANTIDAD×VALOR y lo reparte en cada línea (VLR_COPAGOS y VR_TOTAL = bruto − copago); la diferencia de redondeo va a la última línea.",
+          "valida": [
+            "Existencia de líneas FTRD con VR_TOTAL<0 (si no hay, no hace nada)"
+          ],
+          "noValida": [
+            "Líneas sin CIT (no entran al reparto)",
+            "Total bruto en cero (división)"
+          ],
+          "errores": "no aplica (no lanza RAISERROR)",
+          "llama": [],
+          "efecto": "UPDATE FTRD VLR_COPAGOS, VR_TOTAL."
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_INSERT_TERDEAFI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_INSERT_TERDEAFI.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_FTR (sql:876, 1093)",
+        "SPK_NC_CONTAB_CAJA_ING (sql:206)",
+        "SPK_NC_REVISAMCPE",
+        "SPK_REVISAR_COMPROBANTE",
+        "SPK_FACTURA_ASIS",
+        "SPK_FACTURACE_N",
+        "SPK_CREA_FACTURA_POS_CAJA"
+      ],
+      "nota": "Asegura que el afiliado/paciente exista como tercero (TER) antes de usarlo en el asiento o la factura.",
+      "tablas": [
+        "AFI",
+        "TER",
+        "CAT",
+        "TEXCA",
+        "PPT",
+        "HADM",
+        "CIT",
+        "AUT",
+        "TGEN"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Si @IDAFILIADO no es afiliado, busca TER activo con NIT=@IDAFILIADO y no crea nada. Si es afiliado: reutiliza TER cuyo IDTERCERO o NIT coincida con el documento (reactiva y actualiza nombre, tipo, DV, ciudad, dirección, teléfono y correo desde AFI) o crea TER nuevo con consecutivo '@TER' y datos de AFI (actividad DEFAULT_PART_AEC, responsabilidad DEFAULT_PART_RF). Actualiza AFI.RUC. Agrega TEXCA para @IDCATEGORIA y TERCATCLIENTE si existen en CAT. Crea PPT para el plan de la admisión (HADM/CIT/AUT) o IDPLANPART copiando la configuración del tercero IDTERCEROPARTICULAR. Normaliza correo (si inválido usa el del tercero instalado), ciudad (si no está en TGEN RIPSJSON MUNICIPIO) y DV.",
+          "valida": [
+            "@IDAFILIADO vacío → sale",
+            "Si el INSERT TER no creó fila → sale sin categoría ni plan",
+            "TEXCA solo si la categoría no es vacía, existe en CAT y no está duplicada"
+          ],
+          "noValida": [
+            "Duplicados de NIT entre terceros activos (toma el primero)"
+          ],
+          "errores": "no aplica (no lanza RAISERROR)",
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "FNK_CALCULA_DV",
+            "FNQ_VALIDA_EMAIL"
+          ],
+          "efecto": "INSERT/UPDATE TER; UPDATE AFI.RUC; INSERT TEXCA; INSERT PPT.",
+          "variables": [
+            "DEFAULT_PART_AEC",
+            "DEFAULT_PART_RF",
+            "TERCATCLIENTE",
+            "IDPLANPART",
+            "IDTERCEROPARTICULAR",
+            "IDTERCEROINSTALADO",
+            "IXCOUNTRY"
+          ],
+          "observaciones": [
+            "Rama Perú (sql:151-155) asigna 'DNI'/'RUC'/'PS' a TER.NIT en lugar de TIPO_ID, y @TIPO_ID nunca se carga (sql:258)."
+          ]
         }
       ]
     }
