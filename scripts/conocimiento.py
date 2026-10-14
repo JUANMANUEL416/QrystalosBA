@@ -865,13 +865,30 @@ def load_indice() -> dict:
 def save_indice(data: dict) -> None:
     data["actualizado"] = _now()
     _write_json(indice_path(), data)
+    _reindexar()
 
 
-def load_pendientes() -> dict:
+def load_pendientes(incluir_archivo: bool = False) -> dict:
+    """Abiertos (pendientes.json). Con incluir_archivo=True suma los cerrados de pendientes-archivo.json."""
     data = _read_json(pendientes_path(), {"actualizado": "", "items": []})
     if "items" not in data:
         data["items"] = []
+    if incluir_archivo:
+        import kb_pendientes
+
+        data = dict(data)
+        data["items"] = list(data["items"]) + list(kb_pendientes.cargar_archivo().get("items") or [])
     return data
+
+
+def _reindexar() -> None:
+    """Regenera conocimiento/_indice_busqueda.json tras escribir la base (en segundo plano)."""
+    try:
+        import kb_indice
+
+        kb_indice.regenerar_en_segundo_plano()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def load_ruta() -> dict:
@@ -1000,6 +1017,13 @@ def ruta_resumen() -> dict:
 
 
 def save_pendientes(data: dict) -> None:
+    """Guarda solo abiertos: los completados/cerrados pasan a pendientes-archivo.json."""
+    try:
+        import kb_pendientes
+
+        data, _ = kb_pendientes.normalizar(data)
+    except Exception:  # noqa: BLE001
+        pass
     data["actualizado"] = _now()
     _write_json(pendientes_path(), data)
 
@@ -1023,6 +1047,7 @@ def save_sps(proceso_id: str, data: dict) -> None:
     data["procesoId"] = proceso_id
     data["actualizado"] = _now()
     _write_json(sps_json_path(proceso_id), data)
+    _reindexar()
 
 
 def load_proceso(proceso_id: str) -> dict | None:
@@ -1044,6 +1069,7 @@ def save_proceso(proceso_id: str, data: dict) -> None:
     data["actualizado"] = _now()[:10]
     to_save = {k: v for k, v in data.items() if k not in ("sps", "spsNota", "spsActualizado")}
     _write_json(proceso_json_path(proceso_id), to_save)
+    _reindexar()
 
 
 def load_tarea() -> dict:
@@ -1150,7 +1176,7 @@ def resumen(canal: str = "documentar", proceso_id: str = "") -> dict:
     if pid:
         items = [i for i in items if (i.get("procesoId") or "") == pid]
     indice = load_indice()
-    pendientes = load_pendientes()
+    pendientes = load_pendientes(incluir_archivo=True)  # la app sigue mostrando los cerrados
     abiertos = [i for i in pendientes.get("items", []) if _pendiente_por_fichar(i)]
     return {
         "ok": True,
@@ -1283,7 +1309,21 @@ def set_pendiente_estado(pendiente_id: str, estado: str) -> dict:
             found = item
             break
     if not found:
-        return {"ok": False, "error": "Pendiente no encontrado"}
+        import kb_pendientes
+
+        found = kb_pendientes.reabrir_desde_archivo(pendiente_id)
+        if not found:
+            return {"ok": False, "error": "Pendiente no encontrado"}
+        if estado in kb_pendientes.CERRADOS:
+            # Ya estaba cerrado: se devuelve tal cual al archivo.
+            found["estado"] = estado
+            found["actualizadoEn"] = _now()
+            data["items"].append(found)
+            save_pendientes(data)
+            return {"ok": True, "item": found}
+        found["estado"] = estado
+        found["actualizadoEn"] = _now()
+        data["items"].append(found)
     save_pendientes(data)
     return {"ok": True, "item": found}
 

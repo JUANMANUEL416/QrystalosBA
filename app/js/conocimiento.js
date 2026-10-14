@@ -136,6 +136,11 @@ window.QrysConocimiento = (function () {
     try {
       tarea = await fetchJson("/conocimiento/tarea.json");
     } catch (_) {}
+    try {
+      // Los cerrados viven en pendientes-archivo.json; la vista los sigue mostrando.
+      const archivo = await fetchJson("/conocimiento/pendientes-archivo.json");
+      pendientes.items = (pendientes.items || []).concat(archivo.items || []);
+    } catch (_) {}
     const items = pendientes.items || [];
     return {
       ok: true,

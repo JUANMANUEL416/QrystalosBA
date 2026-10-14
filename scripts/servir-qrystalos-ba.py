@@ -30,6 +30,9 @@ from qrystalos_ba_db import get_db  # noqa: E402
 import desarrolladores as devs  # noqa: E402
 import correo as mailer  # noqa: E402
 import conocimiento as kb  # noqa: E402
+import kb_buscar  # noqa: E402
+import kb_handoff  # noqa: E402
+import kb_indice  # noqa: E402
 import diagrama_flujo as diagflujo  # noqa: E402
 import mockup_generar as mockgen  # noqa: E402
 import mockup_empaquetar as mockzip  # noqa: E402
@@ -902,6 +905,18 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
 
+        if parts == ["api", "kb", "buscar"]:
+            q = (parse_qs(parsed.query).get("q") or [""])[0]
+            return self._json(kb_buscar.buscar(q))
+
+        if parts == ["api", "kb", "handoffs"]:
+            rol = (parse_qs(parsed.query).get("rol") or [""])[0]
+            try:
+                items = kb_handoff.abiertos_para(rol) if rol else kb_handoff.leer()
+            except ValueError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 400)
+            return self._json({"ok": True, "items": items})
+
         if parts == ["api", "agentes"]:
             return self._json({
                 "ok": True,
@@ -1259,6 +1274,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
+
+        if parts[:3] == ["api", "kb", "handoffs"] or parts == ["api", "kb", "indice"]:
+            return self._post_kb(parts)
 
         if parts == ["api", "agentes"]:
             return self._post_agentes()
@@ -2205,6 +2223,34 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "error": "openai_retirado",
             "mensaje": "OpenAI ya no organiza textos. El agente (Cursor) asume criterios, análisis y recomendación.",
         }, 410)
+
+    def _post_kb(self, parts):
+        """POST /api/kb/indice (regenera) · /api/kb/handoffs (encola) · /api/kb/handoffs/{id} (estado)."""
+        if parts == ["api", "kb", "indice"]:
+            return self._json({"ok": True, "totales": kb_indice.regenerar()})
+        try:
+            body = self._read_json_body() or {}
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            if len(parts) == 3:
+                h = kb_handoff.encolar(body.get("de") or "", body.get("para") or "conocimiento", body.get("tipo") or "", body.get("contexto") or {}, body.get("prioridad") or "media")
+            else:
+                hid = unquote(parts[3])
+                estado = (body.get("estado") or "").strip()
+                if estado == "en_progreso":
+                    h = kb_handoff.tomar(hid)
+                elif estado in ("respondido", "bloqueado"):
+                    h = kb_handoff.responder(hid, body.get("respuesta"), bloqueado=estado == "bloqueado")
+                elif estado == "cerrado":
+                    h = kb_handoff.cerrar(hid)
+                else:
+                    return self._json({"ok": False, "error": "estado inválido"}, 400)
+                if not h:
+                    return self._json({"ok": False, "error": "handoff no encontrado"}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, "handoff": h})
 
     def _post_agentes(self):
         try:
@@ -3990,6 +4036,7 @@ def main():
     os.makedirs(SQL_REF_ROOT, exist_ok=True)
     os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
     os.makedirs(os.path.join(ROOT, "conocimiento"), exist_ok=True)
+    kb_indice.regenerar_en_segundo_plano(0.5)  # índice de búsqueda al día al arrancar
     _free_port_if_needed(PORT)
     try:
         get_db().init()

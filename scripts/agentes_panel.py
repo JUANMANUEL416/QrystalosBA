@@ -13,39 +13,34 @@ RUTA = os.path.join(ROOT, "config", "agentes.json")
 
 DEFINIDOS = [
     {
-        "id": "solicitar",
-        "nombre": "Solicitud de requerimiento",
-        "hace": "Analiza la necesidad, genera documento, mockup y flujo, y atiende el chat de ajustes.",
+        "id": "conocimiento",
+        "nombre": "Conocimiento",
+        "hace": "Alimenta la base: atiende la cola de handoffs, documenta el SP del día y cierra pendientes. Solo pregunta huecos.",
         "motor": "cursor",
         "motores": ["local", "cursor"],
-        "modeloLocal": "qwen2.5-coder:7b",
+        "modeloLocal": "",
+        "modos": ["normal"],
+        "nota": "Único que escribe sps.json / proceso.json. En local completa métodos sin ficha; no pisa una ficha leída.",
     },
     {
         "id": "consultas",
         "nombre": "Consultas",
-        "hace": "Responde preguntas de un proceso con la base de conocimiento.",
+        "hace": "Responde desde la base (índice → ficha puntual). Si no alcanza, escala a Conocimiento por la cola.",
         "motor": "cursor",
         "motores": ["local", "cursor"],
         "modeloLocal": "",
-        "nota": "En local responde con la ficha del proceso. No reescribe la base.",
+        "modos": ["normal", "soporte"],
+        "nota": "Modo soporte: consulta formal en data/soporte-consultas/{id} con respuestaOficial. No reescribe la base.",
     },
     {
-        "id": "documentar",
-        "nombre": "Documentar",
-        "hace": "Lee el procedimiento del día y escribe la ficha en la base.",
+        "id": "requerimientos",
+        "nombre": "Requerimientos",
+        "hace": "REQ o necesidad: base primero, luego Qrystalos2 y documentación; dudas, cambio propuesto e impactos.",
         "motor": "cursor",
         "motores": ["local", "cursor"],
         "modeloLocal": "",
-        "nota": "En local completa métodos que aún no tienen ficha. No pisa una ficha ya leída.",
-    },
-    {
-        "id": "analista",
-        "nombre": "Analista de negocio",
-        "hace": "Caso activo: activar, analizar el requerimiento, criterios y chat del dictamen.",
-        "motor": "cursor",
-        "motores": ["local", "cursor"],
-        "modeloLocal": "",
-        "nota": "En local llena campos vacíos y responde el chat. No sustituye un análisis ya escrito ni arma el dictamen HTML.",
+        "modos": ["analisis", "comite", "contable"],
+        "nota": "analisis = caso activo y dictamen; comite = solicitud de requerimiento; contable = validar contabilidad o comprobante errado.",
     },
     {
         "id": "revisar-sql",
@@ -54,74 +49,105 @@ DEFINIDOS = [
         "motor": "cursor",
         "motores": ["cursor"],
         "modeloLocal": "",
-        "nota": "La oficina arma la diferencia y los avisos estáticos. El dictamen de lógica corre en Cursor. No ejecuta el script.",
-    },
-    {
-        "id": "contabilidad",
-        "nombre": "Contabilidad",
-        "hace": "Recibe un comprobante errado, lo entrega al subagente de su procedencia y responde procedimiento, variable y corrección.",
-        "motor": "cursor",
-        "motores": ["cursor"],
-        "modeloLocal": "",
-        "nota": "No reabre el caso. La ficha de cada procedencia está en conocimiento/contabilidad/procedencias. Si la variante no está escrita, se lee el procedimiento una vez y se anota ahí.",
-    },
-    {
-        "id": "soporte-consultas",
-        "nombre": "Consultas soporte",
-        "hace": "Contrasta la pregunta con conocimiento/, redacta respuestaOficial y responde en el chat de la consulta.",
-        "motor": "cursor",
-        "motores": ["cursor"],
-        "modeloLocal": "",
-        "nota": "Carpeta data/soporte-consultas/{id}. No dictamen HTML de analista.",
+        "nota": "Herramienta, no agente de rol. La oficina arma la diferencia y los avisos estáticos. No ejecuta el script.",
     },
 ]
+
+# Perfiles antiguos -> (rol, modo). Las llamadas viejas siguen funcionando.
+ALIAS = {
+    "documentar": ("conocimiento", "normal"),
+    "analista": ("requerimientos", "analisis"),
+    "solicitar": ("requerimientos", "comite"),
+    "contabilidad": ("requerimientos", "contable"),
+    "soporte-consultas": ("consultas", "soporte"),
+}
+# Motivo del turno -> modo, cuando quien llama usa el rol nuevo sin modo.
+MODO_POR_MOTIVO = {
+    "solicitar-req": "comite",
+    "contabilidad": "contable",
+    "soporte-consulta-analisis": "soporte",
+    "soporte-consulta-chat": "soporte",
+}
+# Corredor local existente por rol/modo (agente_oficina usa los nombres viejos).
+_LOCAL_LEGACY = {
+    ("conocimiento", "normal"): "documentar",
+    ("consultas", "normal"): "consultas",
+    ("requerimientos", "analisis"): "analista",
+}
+
+
+def resolver(agente_id: str, motivo: str = "") -> tuple[str, str]:
+    """Devuelve (rol, modo) para un id nuevo o viejo."""
+    aid = (agente_id or "").strip()
+    if aid in ALIAS:
+        rol, modo = ALIAS[aid]
+        base = next((d for d in DEFINIDOS if d["id"] == rol), {})
+        por_motivo = MODO_POR_MOTIVO.get(motivo or "")
+        return rol, por_motivo if por_motivo in (base.get("modos") or []) else modo
+    base = next((d for d in DEFINIDOS if d["id"] == aid), None)
+    modos = (base or {}).get("modos") or [""]
+    modo = MODO_POR_MOTIVO.get(motivo or "", modos[0])
+    if modo not in modos:
+        modo = modos[0]
+    return aid, modo
+
 
 # Pasos de cada agente. El motor guardado manda: local (esta PC) o Cursor.
 # Mockup, flujo y documento los arma la oficina; no tienen motor de pago.
 SUBAGENTES = [
-    {"id": "solicitar-proceso", "padre": "solicitar", "orden": 1, "nombre": "Proceso", "hace": "Ubica el proceso y el control en la base.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "solicitar-pantalla", "padre": "solicitar", "orden": 2, "nombre": "Pantalla", "hace": "Mira en Qrystalos2 si el camino ya existe.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "solicitar-fichas", "padre": "solicitar", "orden": 3, "nombre": "Fichas", "hace": "Lee los procedimientos documentados de ese control.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "solicitar-desaix", "padre": "solicitar", "orden": 4, "nombre": "DESAIX", "hace": "Compara PREVERSION con la última cerrada solo si la ficha no alcanza.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "solicitar-redaccion", "padre": "solicitar", "orden": 5, "nombre": "Redacción", "hace": "Escribe análisis, alcance, criterios y recomendación.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "solicitar-entregables", "padre": "solicitar", "orden": 6, "nombre": "Mockup, flujo y documento", "hace": "La oficina arma el HTML con el texto ya escrito.", "motor": "local", "motores": ["local"]},
-    {"id": "solicitar-chat", "padre": "solicitar", "orden": 7, "nombre": "Chat", "hace": "Responde una duda o regenera la propuesta.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "consultas-proceso", "padre": "consultas", "orden": 1, "nombre": "Proceso", "hace": "Ubica el proceso en el índice.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "consultas-fichas", "padre": "consultas", "orden": 2, "nombre": "Fichas", "hace": "Responde con la ficha de ese proceso.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "consultas-respuesta", "padre": "consultas", "orden": 3, "nombre": "Respuesta", "hace": "Redacta la respuesta del chat.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "documentar-proceso", "padre": "documentar", "orden": 1, "nombre": "Proceso", "hace": "Confirma el proceso de la tarea.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "documentar-fichas", "padre": "documentar", "orden": 2, "nombre": "Fichas", "hace": "Lee lo ya documentado para no pisarlo.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "documentar-script", "padre": "documentar", "orden": 3, "nombre": "Script del día", "hace": "Lee el procedimiento vigente y, si falta, PREVERSION.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "documentar-ficha", "padre": "documentar", "orden": 4, "nombre": "Escribir ficha", "hace": "Completa métodos que aún no tienen texto.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "analista-proceso", "padre": "analista", "orden": 1, "nombre": "Proceso", "hace": "Ubica el proceso del caso.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "analista-pantalla", "padre": "analista", "orden": 2, "nombre": "Pantalla", "hace": "Inventaría los caminos del control en Qrystalos2.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "analista-fichas", "padre": "analista", "orden": 3, "nombre": "Fichas", "hace": "Usa los métodos documentados de ese control.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "analista-desaix", "padre": "analista", "orden": 4, "nombre": "DESAIX", "hace": "Compara PREVERSION con la última cerrada si hay que releer el script.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "analista-redaccion", "padre": "analista", "orden": 5, "nombre": "Redacción", "hace": "Completa criterios, alcance y recomendación si están vacíos.", "motor": "cursor", "motores": ["local", "cursor"]},
-    {"id": "analista-chat", "padre": "analista", "orden": 6, "nombre": "Chat", "hace": "Responde el chat del caso.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "solicitar-proceso", "padre": "requerimientos", "modo": "comite", "orden": 1, "nombre": "Proceso", "hace": "Ubica proceso y control con el índice de la base (_indice_busqueda.json).", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "solicitar-pantalla", "padre": "requerimientos", "modo": "comite", "orden": 3, "nombre": "Pantalla", "hace": "Solo si la base no cubre: mira en Qrystalos2 los caminos del control.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "solicitar-fichas", "padre": "requerimientos", "modo": "comite", "orden": 2, "nombre": "Fichas", "hace": "Lee SOLO las fichas SP/METODO del control (línea indicada por el índice), nunca el sps.json entero.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "solicitar-desaix", "padre": "requerimientos", "modo": "comite", "orden": 5, "nombre": "DESAIX", "hace": "Compara PREVERSION con la última cerrada solo si la ficha no alcanza.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "solicitar-redaccion", "padre": "requerimientos", "modo": "comite", "orden": 7, "nombre": "Redacción", "hace": "Escribe análisis, alcance, criterios y recomendación.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "solicitar-documentacion", "padre": "requerimientos", "modo": "comite", "orden": 4, "nombre": "Documentación", "hace": "Solo para huecos: qrystalos.documentacion (tablas, runbooks).", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "solicitar-escalar", "padre": "requerimientos", "modo": "comite", "orden": 6, "nombre": "Escalar hueco", "hace": "Lo que la base no tiene va como handoff a Conocimiento (conocimiento/handoffs/cola.json).", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "solicitar-entregables", "padre": "requerimientos", "modo": "comite", "orden": 8, "nombre": "Mockup, flujo y documento", "hace": "La oficina arma el HTML con el texto ya escrito.", "motor": "local", "motores": ["local"]},
+    {"id": "solicitar-chat", "padre": "requerimientos", "modo": "comite", "orden": 9, "nombre": "Chat", "hace": "Responde una duda o regenera la propuesta.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "consultas-proceso", "padre": "consultas", "modo": "normal", "orden": 1, "nombre": "Proceso", "hace": "Busca en conocimiento/_indice_busqueda.json y abre solo esa ficha.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "consultas-fichas", "padre": "consultas", "modo": "normal", "orden": 2, "nombre": "Fichas", "hace": "Responde solo con fichas 'leido' de ese proceso; cita SP/METODO.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "consultas-respuesta", "padre": "consultas", "modo": "normal", "orden": 3, "nombre": "Respuesta", "hace": "Redacta la respuesta del chat.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "consultas-escalar", "padre": "consultas", "modo": "normal", "orden": 4, "nombre": "Escalar", "hace": "Si la ficha falta o no es 'leido': handoff a Conocimiento. No abre Qrystalos2.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "soporte-indice", "padre": "consultas", "modo": "soporte", "orden": 1, "nombre": "Índice y fichas", "hace": "Contrasta la pregunta con la base vía índice.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "soporte-respuesta", "padre": "consultas", "modo": "soporte", "orden": 2, "nombre": "Respuesta oficial", "hace": "Redacta respuestaOficial y responde el chat de la consulta.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "soporte-escalar", "padre": "consultas", "modo": "soporte", "orden": 3, "nombre": "Escalar", "hace": "Hueco en la base: handoff a Conocimiento.", "motor": "cursor", "motores": ["cursor"]},
+        {"id": "conocimiento-cola", "padre": "conocimiento", "modo": "normal", "orden": 0, "nombre": "Cola de handoffs", "hace": "Atiende primero los handoffs para Conocimiento (alta → baja) y responde en la cola.", "motor": "cursor", "motores": ["cursor"]},
+{"id": "documentar-proceso", "padre": "conocimiento", "modo": "normal", "orden": 1, "nombre": "Proceso", "hace": "Confirma el proceso de la tarea.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "documentar-fichas", "padre": "conocimiento", "modo": "normal", "orden": 2, "nombre": "Fichas", "hace": "Lee lo ya documentado para no pisarlo.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "documentar-script", "padre": "conocimiento", "modo": "normal", "orden": 3, "nombre": "Script del día", "hace": "Lee el procedimiento vigente y, si falta, PREVERSION.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "documentar-ficha", "padre": "conocimiento", "modo": "normal", "orden": 4, "nombre": "Escribir ficha", "hace": "Completa métodos que aún no tienen texto.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "conocimiento-pendientes", "padre": "conocimiento", "modo": "normal", "orden": 5, "nombre": "Pendientes", "hace": "Sin cola ni tarea: toma el pendiente abierto de mayor prioridad (pendientes.json ya viene ordenado).", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "analista-proceso", "padre": "requerimientos", "modo": "analisis", "orden": 1, "nombre": "Proceso", "hace": "Ubica proceso y control con el índice de la base (_indice_busqueda.json).", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "analista-pantalla", "padre": "requerimientos", "modo": "analisis", "orden": 3, "nombre": "Pantalla", "hace": "Solo si la base no cubre: mira en Qrystalos2 los caminos del control.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "analista-fichas", "padre": "requerimientos", "modo": "analisis", "orden": 2, "nombre": "Fichas", "hace": "Lee SOLO las fichas SP/METODO del control (línea indicada por el índice), nunca el sps.json entero.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "analista-desaix", "padre": "requerimientos", "modo": "analisis", "orden": 5, "nombre": "DESAIX", "hace": "Compara PREVERSION con la última cerrada solo si la ficha no alcanza.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "analista-redaccion", "padre": "requerimientos", "modo": "analisis", "orden": 7, "nombre": "Redacción", "hace": "Completa criterios, alcance y recomendación si están vacíos.", "motor": "cursor", "motores": ["local", "cursor"]},
+    {"id": "analista-documentacion", "padre": "requerimientos", "modo": "analisis", "orden": 4, "nombre": "Documentación", "hace": "Solo para huecos: qrystalos.documentacion (tablas, runbooks).", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "analista-escalar", "padre": "requerimientos", "modo": "analisis", "orden": 6, "nombre": "Escalar hueco", "hace": "Lo que la base no tiene va como handoff a Conocimiento (conocimiento/handoffs/cola.json).", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "analista-chat", "padre": "requerimientos", "modo": "analisis", "orden": 8, "nombre": "Chat", "hace": "Responde el chat del caso.", "motor": "cursor", "motores": ["local", "cursor"]},
     {"id": "revisar-estructura", "padre": "revisar-sql", "orden": 1, "nombre": "Estructura y sintaxis", "hace": "Lee los avisos estáticos ya calculados. No vuelve a parsear el script.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "revisar-diff", "padre": "revisar-sql", "orden": 2, "nombre": "Cambios", "hace": "Lee la diferencia PREVERSION contra la última cerrada, o el archivo local contra el catálogo.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "revisar-efectos", "padre": "revisar-sql", "orden": 3, "nombre": "Efectos", "hace": "Dice si el cambio se ve correcto y qué efectos nocivos puede tener.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "revisar-chat", "padre": "revisar-sql", "orden": 4, "nombre": "Chat", "hace": "Responde una pregunta sobre esta misma revisión.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-factura", "padre": "contabilidad", "orden": 1, "nombre": "Factura", "hace": "SPK_NC_CONTAB_FTR. Variantes de DIAN, anticipo de impuestos, tipo y modelo.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-caja", "padre": "contabilidad", "orden": 2, "nombre": "Caja", "hace": "Cobro SPK_NC_CONTAB_CAJA_ING, pago SPK_NC_CONTAB_CAJA_EGR. La clase del recibo elige el procedimiento.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-cxc", "padre": "contabilidad", "orden": 3, "nombre": "Recaudo", "hace": "SPK_NC_CONTAB_CXC. Impuesto, descuento y puente según la variable.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-cxp", "padre": "contabilidad", "orden": 4, "nombre": "Cuenta por pagar", "hace": "SPK_NC_CONTAB_CXP. Fecha contable y tipo según la clase de la CxP.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-notdbcrcxp", "padre": "contabilidad", "orden": 5, "nombre": "Nota de CxP", "hace": "SPK_NC_CONTAB_CXPFNT. Inventario ligado e IVA de la nota.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-notdbcr", "padre": "contabilidad", "orden": 6, "nombre": "Nota de factura", "hace": "SPK_NC_CONTAB_FNOT. Cuenta del concepto de la nota.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-inv", "padre": "contabilidad", "orden": 7, "nombre": "Inventario", "hace": "SPK_NC_CONTAB_INV. KMCOM por tipo de movimiento, centro y área.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-bmov", "padre": "contabilidad", "orden": 8, "nombre": "Bancos", "hace": "SPK_NC_CONTAB_BMOV. El comprobante es BMOV.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-rglo", "padre": "contabilidad", "orden": 9, "nombre": "Glosa", "hace": "SPK_CONTAB_FGLO. Aceptada y recuperación usan cuentas distintas.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-conci", "padre": "contabilidad", "orden": 10, "nombre": "Conciliación", "hace": "SPK_CONTAB_CONCI. El cuerpo aún no está en la carpeta: se baja y se ficha en el primer errado.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-rad", "padre": "contabilidad", "orden": 11, "nombre": "Radicación", "hace": "SPK_CONTAB_RADICACXC en cero. Con abonos, SPK_CONTAB_RADICACXC_1.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-nomina", "padre": "contabilidad", "orden": 12, "nombre": "Nómina", "hace": "SPK_NC_CONTAB_NOMINA. El cuerpo aún no está en la carpeta.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-anticipos", "padre": "contabilidad", "orden": 13, "nombre": "Anticipos", "hace": "SPK_NC_CONTAB_ANTICIPO. Débito del tipo de anticipo o de la CxP ligada.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-ajdep", "padre": "contabilidad", "orden": 14, "nombre": "Depreciación", "hace": "SPK_APL_AJDEPRECIACION. Tipo por sede o IDCON_TCOM_DEPR.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-iact", "padre": "contabilidad", "orden": 15, "nombre": "Activo", "hace": "SPK_CONTAB_IACT. El cuerpo aún no está en la carpeta. No es la depreciación del mes.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-cesiones", "padre": "contabilidad", "orden": 16, "nombre": "Cesiones", "hace": "SPK_CONTAB_FCES. El cuerpo aún no está en la carpeta.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-legalizacion", "padre": "contabilidad", "orden": 17, "nombre": "Legalización", "hace": "SPK_CONTAB_FLEG. El cuerpo aún no está en la carpeta.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-reversos", "padre": "contabilidad", "orden": 18, "nombre": "Reversos", "hace": "SPK_REVERSAR_MCP. REVCAJAING, REVCAJAEGR y REVNOTDBCR.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "contab-manual", "padre": "contabilidad", "orden": 19, "nombre": "Manual", "hace": "No se reconstruye. Se corrige en Movimiento Diario.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-factura", "padre": "requerimientos", "modo": "contable", "orden": 1, "nombre": "Factura", "hace": "SPK_NC_CONTAB_FTR. Variantes de DIAN, anticipo de impuestos, tipo y modelo.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-caja", "padre": "requerimientos", "modo": "contable", "orden": 2, "nombre": "Caja", "hace": "Cobro SPK_NC_CONTAB_CAJA_ING, pago SPK_NC_CONTAB_CAJA_EGR. La clase del recibo elige el procedimiento.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-cxc", "padre": "requerimientos", "modo": "contable", "orden": 3, "nombre": "Recaudo", "hace": "SPK_NC_CONTAB_CXC. Impuesto, descuento y puente según la variable.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-cxp", "padre": "requerimientos", "modo": "contable", "orden": 4, "nombre": "Cuenta por pagar", "hace": "SPK_NC_CONTAB_CXP. Fecha contable y tipo según la clase de la CxP.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-notdbcrcxp", "padre": "requerimientos", "modo": "contable", "orden": 5, "nombre": "Nota de CxP", "hace": "SPK_NC_CONTAB_CXPFNT. Inventario ligado e IVA de la nota.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-notdbcr", "padre": "requerimientos", "modo": "contable", "orden": 6, "nombre": "Nota de factura", "hace": "SPK_NC_CONTAB_FNOT. Cuenta del concepto de la nota.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-inv", "padre": "requerimientos", "modo": "contable", "orden": 7, "nombre": "Inventario", "hace": "SPK_NC_CONTAB_INV. KMCOM por tipo de movimiento, centro y área.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-bmov", "padre": "requerimientos", "modo": "contable", "orden": 8, "nombre": "Bancos", "hace": "SPK_NC_CONTAB_BMOV. El comprobante es BMOV.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-rglo", "padre": "requerimientos", "modo": "contable", "orden": 9, "nombre": "Glosa", "hace": "SPK_CONTAB_FGLO. Aceptada y recuperación usan cuentas distintas.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-conci", "padre": "requerimientos", "modo": "contable", "orden": 10, "nombre": "Conciliación", "hace": "SPK_CONTAB_CONCI. El cuerpo aún no está en la carpeta: se baja y se ficha en el primer errado.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-rad", "padre": "requerimientos", "modo": "contable", "orden": 11, "nombre": "Radicación", "hace": "SPK_CONTAB_RADICACXC en cero. Con abonos, SPK_CONTAB_RADICACXC_1.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-nomina", "padre": "requerimientos", "modo": "contable", "orden": 12, "nombre": "Nómina", "hace": "SPK_NC_CONTAB_NOMINA. El cuerpo aún no está en la carpeta.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-anticipos", "padre": "requerimientos", "modo": "contable", "orden": 13, "nombre": "Anticipos", "hace": "SPK_NC_CONTAB_ANTICIPO. Débito del tipo de anticipo o de la CxP ligada.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-ajdep", "padre": "requerimientos", "modo": "contable", "orden": 14, "nombre": "Depreciación", "hace": "SPK_APL_AJDEPRECIACION. Tipo por sede o IDCON_TCOM_DEPR.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-iact", "padre": "requerimientos", "modo": "contable", "orden": 15, "nombre": "Activo", "hace": "SPK_CONTAB_IACT. El cuerpo aún no está en la carpeta. No es la depreciación del mes.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-cesiones", "padre": "requerimientos", "modo": "contable", "orden": 16, "nombre": "Cesiones", "hace": "SPK_CONTAB_FCES. El cuerpo aún no está en la carpeta.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-legalizacion", "padre": "requerimientos", "modo": "contable", "orden": 17, "nombre": "Legalización", "hace": "SPK_CONTAB_FLEG. El cuerpo aún no está en la carpeta.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-reversos", "padre": "requerimientos", "modo": "contable", "orden": 18, "nombre": "Reversos", "hace": "SPK_REVERSAR_MCP. REVCAJAING, REVCAJAEGR y REVNOTDBCR.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "contab-manual", "padre": "requerimientos", "modo": "contable", "orden": 19, "nombre": "Manual", "hace": "No se reconstruye. Se corrige en Movimiento Diario.", "motor": "cursor", "motores": ["cursor"]},
 ]
 
 
@@ -183,11 +209,16 @@ def _motores_sub_guardados() -> dict:
     return salida
 
 
-def subagentes_de(padre: str) -> list[dict]:
+def subagentes_de(padre: str, modo: str | None = None) -> list[dict]:
+    """Pasos de un rol (y modo). Acepta ids viejos: subagentes_de("solicitar") = requerimientos/comite."""
+    if padre in ALIAS:
+        padre, modo = ALIAS[padre]
     guardados = _motores_sub_guardados()
     salida = []
     for base in SUBAGENTES:
         if base.get("padre") != padre:
+            continue
+        if modo and base.get("modo") and base.get("modo") != modo:
             continue
         motores = list(base.get("motores") or ["cursor"])
         motor = guardados.get(base["id"], base.get("motor"))
@@ -197,17 +228,19 @@ def subagentes_de(padre: str) -> list[dict]:
         fila["motor"] = motor
         fila["motores"] = motores
         salida.append(fila)
-    salida.sort(key=lambda fila: fila.get("orden") or 0)
+    salida.sort(key=lambda fila: (fila.get("modo") or "", fila.get("orden") or 0))
     return salida
 
 
-def publicar_plan(agente_id: str, id_caso: str) -> str:
-    """Deja el plan de motores para que el turno de Cursor haga solo sus pasos."""
+def publicar_plan(agente_id: str, id_caso: str, modo: str | None = None) -> str:
+    """Deja el plan de pasos para que el turno de Cursor haga solo los suyos, en orden."""
     from cursor_bot import caso_dir
 
-    subs = subagentes_de(agente_id)
+    rol, modo_def = resolver(agente_id)
+    subs = subagentes_de(rol, modo or modo_def)
     lineas = [
-        "Plan de este turno.",
+        f"Plan de este turno. Agente: {rol} · modo: {modo or modo_def}.",
+        "Orden de fuentes: base (índice → ficha puntual) → Qrystalos2 → qrystalos.documentacion → DESAIX. Hueco → handoff a Conocimiento.",
         "Haga solo los pasos marcados en Cursor.",
         "Un paso en local lo resuelve la oficina o se limita a la ficha de ese proceso: no lo rehaga ni reescriba sus campos.",
         "",
@@ -266,6 +299,7 @@ def asignar_modelo(nombre: str) -> str:
 
 
 def motor_de(agente_id: str) -> str:
+    agente_id = ALIAS.get(agente_id, (agente_id,))[0]
     for fila in catalogo():
         if fila["id"] == agente_id:
             return fila["motor"]
@@ -343,28 +377,30 @@ def registrar(agente: dict) -> dict:
 
 
 def lanzar(agente_id: str, id_caso: str, motivo: str, turno: str = "analizar") -> dict:
-    """Si hay subagentes, manda el motor de cada paso. Si no, el del agente."""
-    subs = subagentes_de(agente_id)
-    if subs and agente_id == "solicitar":
+    """Acepta el rol nuevo o el perfil viejo. Mantiene los corredores que ya existían."""
+    rol, modo = resolver(agente_id, motivo)
+    if rol == "requerimientos" and modo == "comite":
         import agente_solicitud
 
         return agente_solicitud.lanzar(id_caso, turno)
+    subs = subagentes_de(rol, modo)
+    legacy_local = _LOCAL_LEGACY.get((rol, modo))
     if subs:
         motores = {fila["motor"] for fila in subs}
-        if motores == {"local"}:
+        if motores == {"local"} and legacy_local:
             import agente_oficina
 
-            return agente_oficina.lanzar(agente_id, id_caso, motivo)
-        publicar_plan(agente_id, id_caso)
+            return agente_oficina.lanzar(legacy_local, id_caso, motivo)
+        publicar_plan(rol, id_caso, modo)
         from cursor_bot import lanzar_bot
 
         return lanzar_bot(id_caso, motivo)
-    motor = motor_de(agente_id)
+    motor = motor_de(rol)
     if motor == "local":
-        if agente_id in ("consultas", "documentar", "analista"):
+        if legacy_local:
             import agente_oficina
 
-            return agente_oficina.lanzar(agente_id, id_caso, motivo)
+            return agente_oficina.lanzar(legacy_local, id_caso, motivo)
         return {
             "ok": False,
             "error": "sin_local",

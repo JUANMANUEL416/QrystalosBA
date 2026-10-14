@@ -2,6 +2,19 @@
 
 Proyecto de **coordinación técnica** para Qrystalos. No contiene código de la aplicación; genera dictámenes HTML para desarrolladores a partir de requerimientos del cliente.
 
+## Agentes (3 roles + 1 herramienta)
+
+| Agente | Modos | Hace | Escribe |
+|--------|-------|------|---------|
+| **Conocimiento** | normal | Atiende la cola de handoffs, documenta el SP del día, cierra pendientes (por prioridad) | `conocimiento/{proceso}/sps.json`, `proceso.json`, `pendientes.json`, `handoffs/cola.json` |
+| **Consultas** | normal · soporte | Responde desde la base (índice → ficha); si falta, escala | chat de Consultas / `data/soporte-consultas/{id}`; handoffs salientes |
+| **Requerimientos** | analisis · comite · contable | REQ/necesidad: base → Qrystalos2 → documentación → DESAIX; dudas, cambio e impactos | `activo/{id}/`, `solicitudes/{id}/`, `dictamenes/`; handoffs salientes |
+| Revisar SQL (herramienta) | — | Dictamen de un script contra PREVERSION/cerrada | `revisiones/` |
+
+Ids viejos (`analista`, `solicitar`, `contabilidad`, `documentar`, `soporte-consultas`) siguen funcionando: `scripts/agentes_panel.py → ALIAS`. Cada rol tiene su propia sesión (Requerimientos: una por caso). Contrato entre agentes: `conocimiento/HANDOFF.md`. Reglas: `.cursor/rules/router-agentes.mdc` y `agente-*.mdc`.
+
+**Base de conocimiento:** buscar en `conocimiento/_indice_busqueda.json` (o `python scripts/kb_buscar.py CLAVE`, `GET /api/kb/buscar?q=`) y abrir solo la línea indicada. Validar con `python scripts/kb_validar.py`.
+
 ## Rol del agente
 
 Coordinador experto en:
@@ -20,7 +33,7 @@ Coordinador experto en:
 2. Ubicar el proceso en `conocimiento/INDICE.json`. Si no existe, esqueleto + pendientes.
 3. Agente verifica solicitud; si hay `sql.usarDocumentacion`, usa `sps.json` y en el Chat valida si hay que releer. Si falta un SP no documentado: **bajar de DESAIX/SQLIX a la carpeta de ese análisis** (`activo/{id-caso}/sql/` o `solicitudes/{id}/sql/`; primero `PREVERSION`, luego última `Cerrada`; comparar ambas). Si el arreglo ya está en PREVERSION, avisar y no pedirlo. Detenerse solo si no está en PREVERSION, liberada ni `IDANT`, o si falta aclaración/cola. No mezclar scripts en `sql/`.
 4. **Paso 0:** ¿el sistema ya lo hace? Contrastar texto del REQ vs captura vs todos los caminos del control (botones, ayuda, `necesidadesYaCubiertas`). Clasificar: capacitación | defecto | hueco. No proponer desarrollo si es desconocimiento del proceso.
-5. Investiga **primero** el flujo y las fichas en `conocimiento/`; **después**, solo para huecos, Qrystalos2 y documentación de tablas viva (registrar el hueco en `conocimiento/pendientes.json`).
+5. Investiga **primero** la base vía `conocimiento/_indice_busqueda.json` (solo las fichas del control); **después**, solo para huecos: Qrystalos2 → documentación de tablas viva → DESAIX. Cada hueco va como handoff a Conocimiento (`conocimiento/handoffs/cola.json`).
 6. Genera `dictamenes/<ID>.html` (sección 5.2.1 incrusta `contenido.cambioPropuestoSql` si el análisis identificó cambios SQL). En el HTML **no** figuran rutas ni comandos internos del BA (`activo/…/sql/`, `sql_refe/…`, `python scripts/sqlix_bajar_objeto.py`); la fuente SQL se cita como **IXONLINE/SQL** + nombre del objeto.
 7. Responde con resumen + ruta del archivo.
 

@@ -27,6 +27,14 @@ Mapa de **flujos de proceso** para coordinar requerimientos y atender consultas 
 | Consultas | Flujo (capa → control) y Procedimientos (SP → método) |
 | Documentar | Pendientes, indicar SP del día, Chat de proceso |
 
+## Búsqueda, validación y cola
+
+- **Índice:** `_indice_busqueda.json` (generado por `scripts/kb_indice.py`, se regenera solo tras cada escritura y al arrancar el servidor). Una clave por línea: grep `"SP/METODO"` y abrir el `archivo` desde `linea`. Buscador: `python scripts/kb_buscar.py CLAVE` o `GET /api/kb/buscar?q=CLAVE`.
+- **SP repetidos:** `_sp_canonico.json` dice qué proceso manda.
+- **Esquemas:** `_schema/*.json`; validar con `python scripts/kb_validar.py` (`--degradar` pasa a `parcial` las fichas `leido` vacías; lista en `_schema/degradados.json`).
+- **Pendientes:** `pendientes.json` solo abiertos, con `prioridad`; cerrados en `pendientes-archivo.json` (`scripts/kb_pendientes.py`).
+- **Handoffs:** `handoffs/cola.json`, contrato `HANDOFF.md`.
+
 ## Regla para el agente
 
 1. En cada REQ: abrir `INDICE.json`, ubicar el proceso. Si no existe, crear esqueleto y dejar pendientes.
