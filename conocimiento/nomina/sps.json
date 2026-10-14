@@ -1,6 +1,6 @@
 {
   "procesoId": "nomina",
-  "actualizado": "2026-10-04T06:40:00",
+  "actualizado": "2026-10-14T09:00:00",
   "nota": "Leídos 2026-10-03 desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7; anterior 2.0.6). Fichas de 2026-09-12 (DIAN, motor, retiros) conservadas. Hallazgos: REQ 0100016359 y 0100016378 ya implementados; retefuente sin tope de renta exenta; NEDIA·GUARDAR y PRSD·ELIMINAR no validan período/cuota; GENERATE_NIEPEG no exige CERRADO. Añadidos 2026-10-04 desde IXONLINE/SQL (PREVERSION idéntica a 2.0.7): SPQ_NCINGRET_COL, SPQ_CONTRATOS_NOM, SPQ_FORMATOS_NOMINA, SPQ_NSOLICERT, SPQ_TURNOS_NOMINA, SPK_RESUMEN_TURNOS, SPQ_CAP, SPQ_TALL, SPQ_FORMULARIO_TALLER, SPQ_EMPLEADOS_TALL, SPQ_CALIFICAR_RESPUESTAS_TEXTO; SPQ_NOM_REPORTES con sus 13 métodos.",
   "sps": [
     {
@@ -3404,6 +3404,248 @@
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_NOMINA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_NOMINA.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_MCPE_COL · RECONSTRUIR (PROCEDENCIA NOMINA, sql:368)"
+      ],
+      "nota": "Generador del comprobante de nómina por empleado (PROCEDENCIA NOMINA). En el SQL disponible solo lo invoca RECONSTRUIR; el envío desde la pantalla de nómina lo hace SPQ_NC_CONTAB_NOMINA · CONTABILIZAR con su propia lógica (variante NOMINATIPOCONTAB=3 solo existe allí).",
+      "tablas": [
+        "NIEPE",
+        "NIEPED",
+        "NEMP",
+        "NOMI",
+        "NDIS",
+        "NCON",
+        "NCOND",
+        "NEDIA",
+        "NEMPFD",
+        "NEVE",
+        "NPER",
+        "PRI",
+        "COMMS",
+        "MCPE",
+        "MCHE"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Contabiliza el pago @CNSPAGO del empleado @NUMDOC en MCPE/MCHE con fecha @FECHACONTABLE. Comprobante COMMS (CLASE/TIPO NOMINA) si COMPROBMULTISEDE='SI', si no IDCON_TCOM_NOMINA, luego IDCON_TCOM_DEFAULT. Por concepto NIEPED (INFO='No'): Ingreso DB / Egreso CR con FNK_NC_CUENTA_KMCOM('NOMINA'); aportes empresa DB y CR; neto a pagar CR prorrateado sobre ingresos deducibles más ingresos SINDEDUC completos, con ajuste de centavos al último renglón. Tercero: IDTERCERO_RECO si RECOBRO=1, si no IDTERCERO_PRF. NOMINATIPOCONTAB='2' (solo si hay NDIS) reparte por centro de costo/área de NDIS; sin NDIS fuerza '1'. Recobro por incapacidad (NEDIA.RECOBRO=1) pasa el tercero al empleado en los DB.",
+          "valida": [
+            "PRI de COMPANIA/ANO/MES debe existir",
+            "Tipo de comprobante: si COMMS/IDCON_TCOM_NOMINA e IDCON_TCOM_DEFAULT están vacíos, corta"
+          ],
+          "noValida": [
+            "Periodo cerrado (no consulta PRI.CERRADO)",
+            "Cuadre DB=CR antes de revisar",
+            "Porcentaje NDIS nulo (CASE ... WHEN NULL nunca aplica: valor nulo)"
+          ],
+          "errores": [
+            "Periodo Contable NO Existe",
+            "La variable de Sistemas IDCON_TCOM_DEFAULT está sin Definir."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "FNK_NC_CUENTA_KMCOM",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "INSERT MCPE (PROCEDENCIA NOMINA, REFERENCIA1=NUMDOC, REFERENCIA2=CNSPAGO, REFERENCIA3=CNSNIEPE, IDTERCERO=NEMP.TERCEROID) o DELETE MCHE NOMINA al reconstruir; INSERT MCHE (PROCESO NOMINA_NCON, NOMINA_NETO; REFERENCIA_PRO=TERCEROID); UPDATE NIEPE/NIEPED CONTABILIZADA=1, NROCOMPROBANTE, COMPROBANTE, NOREFERENCIA; UPDATE NPER CONTABILIZADA=1 cuando ya no quedan NIEPE sin contabilizar.",
+          "variables": [
+            "IDMODELOCONTABLE",
+            "NOMINATIPOCONTAB",
+            "COMPROBMULTISEDE",
+            "IDCON_TCOM_NOMINA",
+            "IDCON_TCOM_DEFAULT"
+          ],
+          "observaciones": [
+            "@ESTADO nunca se asigna: la rama de anulación (sql:128-138) no se ejecuta."
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_RECOBRONOMI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_RECOBRONOMI.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_NIEPER · PROC_PAGO (sql:76)"
+      ],
+      "nota": "Legaliza el recobro de prestaciones sociales cuando entra el pago (bancos) de un renglón NIEPER. Distinto del comprobante de nómina.",
+      "tablas": [
+        "NIEPER",
+        "NIEPE",
+        "MCH",
+        "MCHE",
+        "MCPE",
+        "BMOV",
+        "BMOVD",
+        "OFIN",
+        "PRI",
+        "COMMS"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Crea comprobante MCPE PROCEDENCIA NOMINA ('RECOBROS DE NOMINA', REFERENCIA1=CNSPAGO, REFERENCIA2=NUMDOC, REFERENCIA3=ITEM). CR: copia los DB del comprobante original de nómina (NIEPE.NROCOMPROBANTE) con PREFIJO = concepto del NIEPER, por VLRPAGO. DB: cuenta de la operación bancaria (OFIN.CUENTA) del BMOVD indicado en NIEPER. Comprobante igual que la nómina (COMMS / IDCON_TCOM_NOMINA / IDCON_TCOM_DEFAULT).",
+          "valida": [
+            "PRI de COMPANIA/ANO/MES de @FECHACONTABLE debe existir",
+            "Tipo de comprobante definido (IDCON_TCOM_DEFAULT de respaldo)"
+          ],
+          "noValida": [
+            "Que el comprobante original esté en MCP (lee MCH; si sigue en MCPE no copia nada)",
+            "Que existan el BMOVD/OFIN referenciados",
+            "Periodo cerrado"
+          ],
+          "errores": [
+            "Periodo Contable NO Existe",
+            "La variable de Sistemas IDCON_TCOM_DEFAULT está sin Definir."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "INSERT MCPE; DELETE/INSERT MCHE (CR copiado de MCH original; DB OFIN.CUENTA con PROCESO NOMINA, REFERENCIA_PRO NOMINA_NCON); UPDATE NIEPER CONTABILIZADA=1, NROCOMPROBANTE.",
+          "observaciones": [
+            "El renglón DB se inserta con COMPANIA='01' fija (sql:152)."
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENCXP_NOMINA_UNO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENCXP_NOMINA_UNO.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_NC_CONTAB_NOMINA · GENERATE_CxP_NOM (sql:1179)"
+      ],
+      "nota": "CxP de nómina para un tercero (@NUMDOCR): salario del empleado y conceptos con GENERA_CXP de terceros (EPS, AFP, embargos…). Integra presupuesto (RP) si está activo.",
+      "tablas": [
+        "FCXP",
+        "FCXPD",
+        "FCXPP",
+        "NPER",
+        "NEMPF",
+        "NEMPFD",
+        "NEMP",
+        "NPRF",
+        "NCOND",
+        "NCON",
+        "NIEPE",
+        "NIEPED",
+        "MCP",
+        "MCH",
+        "MCHE",
+        "TER",
+        "NPLTCO",
+        "PTRUB",
+        "PTPTO",
+        "PTCDP",
+        "PTRP",
+        "PTRPD",
+        "PTCDPD"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Borra las FCXP Nomina del CNSPAGO para el tercero sin pagos (sin FCXPP). Por tercero/perfil: salario (NPRF.CLASE='Salario', neto NEMPF) más conceptos NCOND.GENERA_CXP='Si' liquidados; reutiliza CNSFCXP de NIEPED o genera '@FCXPNM'. FCXPD por concepto, con descuento proporcional de egresos sobre ingresos deducibles (SINDEDUC). Cuenta crédito = CR del comprobante de nómina del tercero (MCH o MCHE). Si el empleado queda con diferencia contra el neto, ajusta el ítem 1. Rubro de NCOND o de NPLTCO si TOMA_RUBROENVIO_NOMI='NPLTCO'. Con PRESUP_CXP_ACTIVADO y ENVIARNOMI_PPTO_AUTO en 'SI' y CDP/presupuesto en NPER: crea RP confirmado (PTRP/PTRPD) y lo entrega (SPK_ENTREGA_CXP_PTTO).",
+          "valida": [
+            "No regenera terceros que ya tienen FCXP Nomina no anulada del CNSPAGO (NOT EXISTS)",
+            "No borra CxP con pagos (FCXPP)"
+          ],
+          "noValida": [
+            "Que exista el comprobante de nómina (CUECREDITO puede quedar nula)",
+            "Saldo presupuestal del CDP al crear el RP"
+          ],
+          "errores": "no aplica (no lanza RAISERROR)",
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "FNK_CUENTA_KMCOM",
+            "FNK_REDONDEA_MAS_EXCEL",
+            "SPK_CALCULOVALORESCXP",
+            "SPK_ENTREGA_CXP_PTTO"
+          ],
+          "efecto": "DELETE/INSERT FCXP (PROCEDENCIA Nomina, NOREFERENCIA=CNSPAGO, TIPOCXP=IDTIPOCXP_DEFAULT, CNSPPTO/CNSCDP/CNSRP) y FCXPD; UPDATE FCXP.CUECREDITO; INSERT PTRP/PTRPD, UPDATE PTPTO.CONTADOR_RP; UPDATE NIEPED.CNSFCXP.",
+          "variables": [
+            "IDMODELOCONTABLE",
+            "IDTIPOCXP_DEFAULT",
+            "TOMA_RUBROENVIO_NOMI",
+            "PRESUP_CXP_ACTIVADO",
+            "ENVIARNOMI_PPTO_AUTO",
+            "PRESUP_CCOSTO",
+            "JEFE_PRESUPUESTO_USU"
+          ],
+          "observaciones": [
+            "La rama de salario calcula la cuenta con modelo '01' fijo (sql:217) y presupuesto usa COMPANIA='01' fija (sql:333-366).",
+            "FCXPD.NOLOTE se graba con el tercero (sql:280) pero el UPDATE final de NIEPED cruza NOLOTE=NIEPE.NUMDOC (sql:386): solo enlaza si tercero y documento coinciden."
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GENCXP_NOMINA_PROVI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENCXP_NOMINA_PROVI.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_NC_CONTAB_NOMINA · GENERATE_CxP_NOM (sql:1115)"
+      ],
+      "nota": "CxP de nómina para los conceptos de adición/provisión listados en COD_NOMI_CXP_ADICION.",
+      "tablas": [
+        "FCXP",
+        "FCXPD",
+        "NEMPFD",
+        "NPER",
+        "NPRF",
+        "NCOND",
+        "NCON",
+        "NEMPF",
+        "NEMP",
+        "TER",
+        "NIEPE",
+        "NIEPED",
+        "MCP",
+        "MCH",
+        "MCHE"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Por perfil/concepto/tercero de NEMPFD del CNSPAGO con CODCONCEPTO en COD_NOMI_CXP_ADICION y LIQUIDAR='Si': crea FCXP (PROCEDENCIA Nomina, valor = VALOR+VALOR_EMPRESA) reutilizando el CNSFCXP de NIEPED o generando '@FCXPNM'; cuenta crédito del comprobante de nómina del tercero; FCXPD por línea con cuenta KMCOM NOMINA DB; recalcula con SPK_CALCULOVALORESCXP.",
+          "valida": "no aplica (no valida estados ni duplicados)",
+          "noValida": [
+            "CxP ya generada para el mismo concepto/tercero (no borra antes: puede duplicar FCXPD)",
+            "Que COD_NOMI_CXP_ADICION tenga valor"
+          ],
+          "errores": "no aplica (no lanza RAISERROR)",
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "FNK_TABLA_DESTRING",
+            "FNK_CUENTA_KMCOM",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "INSERT FCXP y FCXPD (PROCEDENCIA Nomina); UPDATE NIEPED.CNSFCXP.",
+          "variables": [
+            "IDMODELOCONTABLE",
+            "COD_NOMI_CXP_ADICION"
+          ]
         }
       ]
     }

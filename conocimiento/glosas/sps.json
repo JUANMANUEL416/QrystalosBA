@@ -1,6 +1,6 @@
 {
   "procesoId": "glosas",
-  "actualizado": "2026-10-03T19:45:00",
+  "actualizado": "2026-10-14T09:00:00",
   "nota": "SP → METODO. SPQ_FGLO_COL y SPK_RESPUESTAGLOSA releídos 2026-10-03 desde DESAIX (PREVERSION idéntica a liberada 2.0.7, IDANT 2.0.6). 38/38 METODOs: se añadió ASIGNAR_RESPONSABLE_GLOSA (nuevo frente a la lectura del 2026-09-06). SPK_FINALIDAD_GLOSAS leído 2026-09-06.",
   "sps": [
     {
@@ -803,6 +803,109 @@
       "fuente": "",
       "cola": "OMGlosasComponent: DETALLE_OM_GLOSAS, ITEMS_OM_GLOSAS, ENV_CONTA_OTROS_MODULS. Proceso Contabilidad; fichas pendientes.",
       "metodos": []
+    },
+    {
+      "nombre": "SPK_CONTAB_FGLO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_FGLO.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_RESPUESTAGLOSA (sql:335, 342)",
+        "SPK_CONTAB_MASIVA (sql:148)",
+        "SPQ_MCPE_COL · RECONSTRUIR (PROCEDENCIA RGLO, sql:318)"
+      ],
+      "nota": "Generador del comprobante de respuesta de glosa (PROCEDENCIA RGLO). Arma en MCPE/MCHE y revisa con SPK_NC_REVISAMCPE. No llama SPK_PASA_MCP_MCPNIIF.",
+      "tablas": [
+        "FGLO",
+        "PAR",
+        "PRI",
+        "COMMS",
+        "MCPE",
+        "MCHE",
+        "MCP",
+        "MCH",
+        "FTR",
+        "TTEC",
+        "CUE"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Contabiliza la glosa @CNSGLO. Si FGLO.FCIERRE es nulo lo fija en GETDATE(); el periodo sale de COALESCE(FCIERRE,FECHARESP). Comprobante por COMMS (CLASE/TIPO FGLO) si COMPROBMULTISEDE='SI', si no IDCON_TCOM_RGLO. Con PAR.MCUEORDEN_GLOSAS='Si': cuentas de orden para VLRRECUPERAR (TTEC.CUEORDENGLOSACR/DB) y, para VLRACEPTADO, reversa proporcional de los DB CXC de la factura (CUENTAGLOSAACEPTADA / FTR.CUENTACXC_RAD) o, si la factura no tiene esos MCH, CR TTEC.CUENTARAD y DB TTEC.CTAGLOSADB. Sin cuentas de orden: recuperación DB TTEC.CUENTARAD (o CUENTALG si CONTABCXC='SI') contra CR TTEC.CTAGLOSADB.",
+          "valida": [
+            "Sin VLRRECUPERAR>0 y sin cuentas de orden → sale sin contabilizar (PRINT 'NO HAY VALORES A RECUPERAR')",
+            "PRI de ANO/MES debe existir con CERRADO=0 y CERRADO_CARTERA=0"
+          ],
+          "noValida": [
+            "Que exista COMMS/IDCON_TCOM_RGLO (no hay respaldo IDCON_TCOM_DEFAULT ni 'IX')",
+            "Cuentas de TTEC nulas (pasan como cuenta vacía o 'NO CUEORDENGLOSA')"
+          ],
+          "errores": [
+            "Periodo Contable NO Existe o se encuentrar cerrado"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE"
+          ],
+          "efecto": "UPDATE FGLO.FCIERRE si era nulo; INSERT MCPE (PROCEDENCIA RGLO, REFERENCIA1=CNSGLO); si ya estaba en MCP lo copia a MCPE y borra MCP/MCH; DELETE/INSERT MCHE (PROCESO CUEORDENGLOSADB/CR, RGLOCXCDB/CR, REC_GLOSAS; REFERENCIA_PRO=CNSGLO). Si tras revisar quedó en MCP y MCPE, borra MCPE/MCHE.",
+          "variables": [
+            "IDCON_TCOM_RGLO",
+            "COMPROBMULTISEDE",
+            "IDMODELOCONTABLE",
+            "CUENTAGLOSAACEPTADA",
+            "CONTABCXC",
+            "PAR.MCUEORDEN_GLOSAS"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_RADICAGLOSAS",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RADICAGLOSAS.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_FGLO_COL · ENVIAR_RESPUESTA (sql:1033)",
+        "SPQ_FGLO_COL · FGLOI_RADICA (sql:1575)"
+      ],
+      "nota": "Radica el lote de respuestas de glosa FGLOI ante la EPS y ajusta saldos de cartera. No contabiliza.",
+      "tablas": [
+        "FGLO",
+        "FGLOI",
+        "FGLOID",
+        "FCXCDV",
+        "FTR",
+        "PPT",
+        "FTRCXC",
+        "TTEC"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Para el lote @CNSGLOI: en FCXCDV tipo G/R fija F_RECIBIDO=@FECHARAD y F_VENCE=@FECHARAD + PPT.DIASVTO (30 si 0); marca FGLOI radicado; reliquida la cuenta de cobro (SPK_RELIQUIDACXCQX). Por factura del lote suma VLRRECUPERAR: aumenta proporcionalmente el saldo FTRCXC en la cuenta TTEC.CUENTARAD y descuenta ese valor en la cuenta TTEC.CTAGLOSADB; luego SPK_RELIQUIDA_FTR.",
+          "valida": [
+            "@FECHARAD vacío → sale sin hacer nada",
+            "@USUARIO vacío → sale sin hacer nada"
+          ],
+          "noValida": [
+            "Que el lote ya esté radicado (vuelve a sumar saldos)",
+            "Saldo FTRCXC en cero (división por cero en el porcentaje)"
+          ],
+          "errores": "no aplica (no lanza RAISERROR; las salidas son RETURN silenciosos)",
+          "llama": [
+            "SPK_RELIQUIDACXCQX",
+            "SPK_RELIQUIDA_FTR"
+          ],
+          "efecto": "UPDATE FCXCDV F_RECIBIDO/F_VENCE; UPDATE FGLOI RADICADO=1, FECHARAD, USUARIORAD, FECHADIG; UPDATE FTRCXC SALDO (cuentas CUENTARAD y CTAGLOSADB).",
+          "observaciones": [
+            "EXEC SPK_RELIQUIDA_FTR va después del FETCH NEXT (sql:71-74): reliquida la factura siguiente, la primera del lote no se reliquida y la última se reliquida dos veces."
+          ]
+        }
+      ]
     }
   ]
 }

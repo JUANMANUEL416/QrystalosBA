@@ -1,6 +1,6 @@
 {
   "procesoId": "activos-fijos",
-  "actualizado": "2026-10-13T23:35:00",
+  "actualizado": "2026-10-14T09:00:00",
   "notaCatalogo": "activos-fijos/catalogo-sp-fe.json",
   "nota": "2026-10-13: IACT, IACTH, APLICAR_IACTH, CONTAB_IACT, GEN_DEPRECIACION, SPK_GEN_DEPRECIACION en sql/ 2.0.9. Fichas IACT* operativas profundizadas. No leídos: SPK_APL_AJDEPRECIACION_UNA_IACTD, SPQ_NC_REVISAMCPE, SPK_PASA_MCP_MCPNIIF, FNK_CUENTA_KMCOM, SPQ_IART, SPQ_TER_COL.",
   "sps": [
@@ -926,6 +926,62 @@
             "@USUARIO",
             "@SYS_COMPUTERNAME",
             "@NROCOMPROBANTE (opcional)"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CONTAB_IACT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_IACT.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_MCPE_COL · RECONSTRUIR (PROCEDENCIA IACT, sql:294)",
+        "Confirmación de evento de activo (grafo iact N2)"
+      ],
+      "nota": "Generador del comprobante de eventos de activo fijo (PROCEDENCIA IACT): entrada, salida/baja y traslado. No contabiliza depreciación (eso es SPK_APL_AJDEPRECIACION, grafo ajdep).",
+      "tablas": [
+        "IACTH",
+        "IACTE",
+        "IACT",
+        "PRI",
+        "COMMS",
+        "MCPE",
+        "MCHE",
+        "MCP",
+        "MCH"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Contabiliza el evento IACTH (@CNSIACTH) según IACTE.TIPO, tercero = IDTERCEROINSTALADO. Entrada: DB IACT.CUENTA / CR KMCOM MOV_ACTIVOS. Salida con IACTE.BAJA=1: DB depreciación acumulada y ajuste (KMCOM DEPRECIACION / DEPRECIACION_AJI), DB gasto por baja (precio comercial + ajuste − depreciaciones), CR IACT.CUENTA por precio comercial y CR ajuste por inflación. Salida sin baja: DB MOV_ACTIVOS / CR IACT.CUENTA. Traslado: DB MOV_ACTIVOS con centro destino / CR IACT.CUENTA con centro y área del activo. Comprobante COMMS (CLASE IACT) si COMPROBMULTISEDE='SI', si no IACTE.COMPROBANTE, luego IDCON_TCOM_DEFAULT, luego 'IX'. @NROCOMPROBANTE que empieza por 'IX' es simulación: no marca IACTH.",
+          "valida": [
+            "PRI de COMPANIA/ANO/MES (FECHAEVENTO) debe existir"
+          ],
+          "noValida": [
+            "Periodo cerrado (no consulta PRI.CERRADO)",
+            "TIPO de evento desconocido: solo PRINT 'No Existe el TIPO de Evento', deja MCPE sin renglones"
+          ],
+          "errores": [
+            "Periodo Contable NO Existe"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "FNK_CUENTA_KMCOM",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "INSERT MCPE (PROCEDENCIA IACT, REFERENCIA1=CNSIACTH, REFERENCIA2=IDEVENTO); reconstruir: copia MCP→MCPE y borra MCP/MCH, o borra MCHE; INSERT MCHE (PROCESO MOV_ENT_ACT, DEP_BAJ_ACUMULADA, IACT_BAJ_GASTO, IACT_BAJA_ACT, IACT_BAJA_AJI, MOV_TRASL_ACT; REFERENCIA_PRO=CNSIACTH); UPDATE IACTH CONTABILIZADA=1, MARCACONT=0, NROCOMPROBANTE, APLICADA=1.",
+          "variables": [
+            "IDTERCEROINSTALADO",
+            "IDMODELOCONTABLE",
+            "COMPROBMULTISEDE",
+            "IDCON_TCOM_DEFAULT"
+          ],
+          "observaciones": [
+            "La baja del ajuste de depreciación inserta PROCESO='V' (sql:210), distinto del patrón de nombres del resto."
           ]
         }
       ]

@@ -1,6 +1,6 @@
 {
   "procesoId": "notas-dbcr",
-  "actualizado": "2026-10-03T18:35:00",
+  "actualizado": "2026-10-14T09:00:00",
   "nota": "SP → METODO + SPKs anidados. SPQ_FNOT_COL releído 2026-10-03 desde DESAIX (PREVERSION idéntica a liberada 2.0.7, IDANT 2.0.6): 14/14 METODOs sin cambios. CPNT + FNT config leídos 2026-09-06.",
   "sps": [
     {
@@ -356,6 +356,65 @@
         }
       ],
       "cola": "Releído 2026-10-03: 14 METODOs, idéntico a 2.0.7. FE adicional sin SP: Impresión masiva ZIP (PDF por nota, JSZip, 2000 por archivo) y Exportar Excel."
+    },
+    {
+      "nombre": "SPK_GENITEMS_NOTACR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_GENITEMS_NOTACR.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_FNOT_COL · FNOT_CRUD (NC+CONCEPTO)",
+        "SPQ_FNOT_COL · FNOT_ADDDETA",
+        "SPQ_FCONCI_COL (conciliación aceptada)",
+        "SPK_RESPUESTAGLOSA (glosa aceptada)",
+        "anulación de factura financiera (facturacion)",
+        "recaudos"
+      ],
+      "nota": "Genera el detalle FNOTD de una nota crédito por concepto (porcentaje o valor) a partir de las líneas de la factura.",
+      "tablas": [
+        "FNOT",
+        "FNOTD",
+        "FTR",
+        "FTRD",
+        "VWK_FTRNDCR",
+        "HADM",
+        "SER",
+        "PLN"
+      ],
+      "gateId": "detalle-nota",
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Para la nota @CNSFNOT/@CLASE con CONCEPTO=1 y DETGENERADOS=0: borra FNOTD y la regenera desde FTRD. TIPOCONCEPTO 'V' (valor) convierte el valor a % del total de la factura; 'P' usa el %. Si el total supera el saldo en cartera (VWK_FTRNDCR) recalcula el %. Variantes: @ITEM_UNICO=1 (no Perú) pone toda la nota en la línea con neto suficiente; paquete (FTR.PAQUETE=1) incluye líneas de paquete; Perú paquete/tipo M usa servicio de paquete o plan, y MAD/CMV con PPS/MER una sola línea desde FTR.VR_TOTAL; resto reparte por línea neto de copagos (salvo COPAPROPIO). FINANCIERO con COPAPROPIO descuenta el copago de un ítem. Ajusta la diferencia contra el valor del concepto en el último ítem. Actualiza FNOT.VR_TOTAL y DETGENERADOS=1; si PROCEDENCIA FACTURA sin IDCONCEPTO usa IDCONCEP_ANULAFTRCE.",
+          "valida": [
+            "CONCEPTO=0 o nulo → sale sin generar",
+            "DETGENERADOS=1 → sale sin regenerar",
+            "Copago propio mayor que el ítem → corta",
+            "Diferencia a absorber sin ítems con saldo → corta",
+            "Ítems con valor negativo al final → corta"
+          ],
+          "noValida": [
+            "Que la suma final iguale el valor del concepto en 'V' (solo PRINT 'ERROR EN VALORES')",
+            "Total de factura en cero (división)"
+          ],
+          "errores": [
+            "No es posible descontar el copago propio: el valor del ítem quedaría negativo.",
+            "No es posible ajustar la nota crédito: no hay ítems con saldo para absorber la diferencia.",
+            "Se detectaron ítems con valor negativo al generar la nota crédito."
+          ],
+          "llama": [
+            "FNK_LIMPIATEXTO"
+          ],
+          "efecto": "DELETE/INSERT FNOTD (COMPANIA '01'); UPDATE FNOT VR_TOTAL, DETGENERADOS=1, IDCONCEPTO.",
+          "variables": [
+            "IXCOUNTRY",
+            "PROVEEDOR_FACTUELECT",
+            "IDCONCEP_ANULAFTRCE"
+          ]
+        }
+      ]
     }
   ],
   "spksAnidados": [
@@ -410,22 +469,6 @@
         "SPK_RELIQUIDA_FTR"
       ],
       "gateId": "reverso-anulacion"
-    },
-    {
-      "nombre": "SPK_GENITEMS_NOTACR",
-      "tipo": "SPK",
-      "estado": "leido",
-      "fuente": "sql/SPK_GENITEMS_NOTACR.sql",
-      "llamadoDesde": [
-        "FNOT_CRUD (NC+CONCEPTO)",
-        "FNOT_ADDDETA"
-      ],
-      "hace": "Genera FNOTD desde FTRD según concepto %/valor; distribuye sobre líneas factura; respeta COPAPROPIO y saldo VWK.",
-      "valida": [
-        "CONCEPTO=1",
-        "DETGENERADOS=0 antes de regenerar"
-      ],
-      "gateId": "detalle-nota"
     },
     {
       "nombre": "SPK_APLICA_FNOT_MASIVA",

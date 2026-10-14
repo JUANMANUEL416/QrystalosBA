@@ -3707,6 +3707,214 @@
       "fuente": "sql/SPK_CONTAB_RADICACXC_1.sql (IXONLINE/SQL PREVERSION)",
       "nota": "Contabilizacion radicacion cartera (variante _1).",
       "metodos": [{ "id": "(cuerpo)", "hace": "Genera asiento MCP por radicacion FCXC segun KMCOM.", "valida": ["Periodo abierto", "Documento no contabilizado"], "noValida": [], "errores": [], "llama": ["SPK_NC_REVISAMCPE"], "efecto": "MCPE/MCPE→MCP.", "estado": "leido" }]
+    },
+    {
+      "nombre": "SPK_CONTAB_FCES",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_FCES.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_MCPE_COL · RECONSTRUIR (PROCEDENCIA CESIONES, sql/SPQ_MCPE_COL.sql:339)"
+      ],
+      "nota": "Generador del comprobante de cesiones de crédito (PROCEDENCIA CESIONES). Escribe directo en MCP/MCH (no pasa por MCPE). La pantalla que registra la cesión (comodín SPQ_FCES* del grafo) no está identificada: no hay MODELO FCES en Qrystalos2.",
+      "tablas": [
+        "FCES",
+        "FCESCXP",
+        "FCESCXC",
+        "FCXP",
+        "FCXPD",
+        "FTR",
+        "FTRD",
+        "CNTPC",
+        "CNT",
+        "CNTCF",
+        "TER",
+        "PRI",
+        "MCP",
+        "MCH"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Contabiliza la cesión FCES (@CNSCES): débito a la CxP cedida por cada FCESCXP (prorrateado por FCXPD.VLR_NETO, ajuste de centavos al último renglón) y crédito a la CxC por cada factura de FCESCXC. Comprobante IDCON_TCOM_FCES → IDCON_TCOM_DEFAULT → 'IX'. Con @NROCOMPROBANTE informado reutiliza el MCP y borra solo sus MCH CESIONES. Si FCES.ESTADO='A' borra los MCH y anula el MCP si quedó vacío.",
+          "valida": [
+            "PRI.CERRADO=1 para ANO/MES de FECHACES → corta (solo en comprobante nuevo; sql:47-52)",
+            "PRI de COMPANIA/ANO/MES debe existir (solo en comprobante nuevo; sql:65-68)"
+          ],
+          "noValida": [
+            "Periodo cerrado cuando se reconstruye con @NROCOMPROBANTE",
+            "Que la CxP cedida tenga saldo ni que FCXP.VLR_NETO sea distinto de 0 (división)",
+            "Cuadre DB=CR antes de SPK_REVISAR_COMPROBANTE"
+          ],
+          "errores": [
+            "PERIODO CERRADO ",
+            "Periodo Contable NO Existe"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_SUMA_DBCR",
+            "SPK_REVISAR_COMPROBANTE"
+          ],
+          "efecto": "INSERT MCP (PROCEDENCIA CESIONES, REFERENCIA1=CNSCES); DELETE/INSERT MCH (PROCESO CESIONES_DB cuenta FCESCXP.CUENTA_CXP / CESIONES_CR cuenta FCESCXC.CUENTA_CXC, REFERENCIA_PRO=CNSCES); UPDATE FCES CONTABILIZADA=1, MARCACONT=0, NROCOMPROBANTE. Anulada: UPDATE MCP ESTADO=2, ANULADO=1 si no quedan MCH.",
+          "observaciones": [
+            "El ajuste de centavos del débito filtra MCH por @NROCOMPROBANTE (parámetro) y REFERENCIA_PRO IS NULL, pero los renglones se insertan con @MAUX y REFERENCIA_PRO=CNSCES: el ajuste no encuentra filas (sql:135-141)."
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_PRI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PRI.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_FTR (sql:121)",
+        "SPK_NC_CONTAB_INV (sql:54)",
+        "SPQ_FTR_COL",
+        "SPQ_FPAG_COL"
+      ],
+      "nota": "Creación automática del periodo contable del mes en curso. Rama automática del control N6 del grafo de cierre de periodo (la manual es SPQ_PRI · CRUDPRI).",
+      "tablas": [
+        "PRI"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Si no existe PRI para @COMPANIA (por defecto '01') y el año/mes de GETDATE(), lo inserta abierto: NOMPERIODO 'MES AAAA', FECHA_INI día 1, FECHA_FIN último día 23:59:59, TIPO_AJ 'Mensual' y todas las banderas de cierre en 0.",
+          "valida": [
+            "Existencia previa de PRI para COMPANIA/ANO/MES de hoy (si existe no hace nada)"
+          ],
+          "noValida": [
+            "Periodos de meses distintos al actual (no crea el del documento si es de otro mes)",
+            "Que el mes anterior esté cerrado"
+          ],
+          "errores": "no aplica (no lanza RAISERROR)",
+          "llama": [],
+          "efecto": "INSERT PRI (CERRADO, CERRADO_INV, CERRADO_CARTERA, CERRADO_FAC, CERRADO_CXP, CERRADO_PPTO, CERRADONIIF = 0)."
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_SUMA_DBCR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_SUMA_DBCR.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_FTR",
+        "SPK_NC_CONTAB_INV",
+        "SPK_NC_CONTAB_FNOT",
+        "SPK_NC_CONTAB_CAJA_EGR",
+        "SPK_NC_CONTAB_CIERRE_CAJ",
+        "SPK_NC_CONTAB_CXPFNT",
+        "SPK_NC_REVISAMCPE",
+        "SPK_NC_BALANCEO_CENTAVOS",
+        "SPK_REVERSAR_RECUADO",
+        "SPK_ANULAR_FCXPDBCR"
+      ],
+      "nota": "Versión MCPE/MCHE (errados) de SPK_SUMA_DBCR: recalcula totales y estado del comprobante en preparación.",
+      "tablas": [
+        "MCPE",
+        "MCHE"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Suma MCHE por TIPO del comprobante y actualiza MCPE.TOTALDEBITO/TOTALCREDITO. ESTADO=2 si DB>0, DB=CR y todos los renglones están en ESTADO 2; ESTADO=1 si cuadra y todos están en ESTADO 1; si no, 0.",
+          "valida": "no aplica (solo recalcula)",
+          "noValida": [
+            "Que el comprobante exista en MCPE (si no, no actualiza nada)"
+          ],
+          "errores": "no aplica (no lanza RAISERROR)",
+          "llama": [],
+          "efecto": "UPDATE MCPE TOTALDEBITO, TOTALCREDITO, ESTADO (0 descuadrado / 1 revisado / 2 confirmado)."
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_NC_CUENTA_KMCOM",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_NC_CUENTA_KMCOM.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_FTR",
+        "SPK_NC_CONTAB_FNOT",
+        "SPK_NC_CONTAB_INV",
+        "SPK_NC_CONTAB_CXP",
+        "SPK_NC_CONTAB_CXPFNT",
+        "SPK_NC_CONTAB_CAJA_ING",
+        "SPK_NC_CONTAB_CAJA_EGR",
+        "SPK_NC_CONTAB_NOMINA",
+        "SPQ_NC_CONTAB_NOMINA",
+        "y otros (16 objetos en sql/)"
+      ],
+      "nota": "Resuelve la cuenta del modelo contable para los generadores NC. Devuelve 'NO DEF.KMCOM' cuando no hay parametrización: ese texto en MCHE.CUENTA es la marca del errado por cuenta faltante.",
+      "tablas": [
+        "KMCOMS",
+        "KMCOM",
+        "CEN",
+        "PRE"
+      ],
+      "metodos": [
+        {
+          "id": "(funcion)",
+          "estado": "leido",
+          "hace": "Busca la cuenta por IDMODELOCONT + IDTIPOCONT + TIPO (DB/CR) + PREFIJO + CCOSTO: primero en KMCOMS (además por IDSERVICIO), luego en KMCOM. @PGP=1 usa CUEPGP/CUECRPGP si el registro es PGP; @PGP=2 usa CUECAPITA/CUECRCAP si es cápita. Si el centro de costo no está Activo usa CEN.HOMOLOGO. Con IDTIPOCONT='VENTAS' y CONTAB_VENT_GRUPOPRE='SI' reemplaza el prefijo por PRE.GRUPO.",
+          "valida": "no aplica (función de consulta)",
+          "noValida": [
+            "Que la cuenta devuelta exista en CUE o sea de movimiento",
+            "Que el centro homólogo esté Activo"
+          ],
+          "errores": [
+            "Devuelve 'NO DEF.KMCOM' si no encuentra cuenta (no es RAISERROR)"
+          ],
+          "llama": [],
+          "efecto": "no aplica (solo lectura; RETURNS VARCHAR(16))",
+          "variables": [
+            "CONTAB_VENT_GRUPOPRE"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_CALCULO_IMPUESTO",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_CALCULO_IMPUESTO.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPK_NC_CONTAB_FTR (sql:306, 1227)",
+        "SPQ_FCXP",
+        "SPQ_CONF_CAJA"
+      ],
+      "nota": "Función tabla: renglones de impuesto vigentes para una clase de impuesto y un valor.",
+      "tablas": [
+        "FIMPD",
+        "FIMPDV"
+      ],
+      "metodos": [
+        {
+          "id": "(funcion)",
+          "estado": "leido",
+          "hace": "Devuelve por cada FIMPD/FIMPDV de @IDIMPUESTO + @IDCLASE vigente a @FECHA: ITEM, VALOR (=@VALOR_NETO × porcentaje, redondeado con FNK_DECIMALES_IMP_CXP), porcentaje, BASE, CUENTA, CUENTA_ASUM, MUVT y valor UVT. Con @VALOR_NETO>0 filtra además el rango VALOR_INICIAL..VALOR_FINAL (VALOR_FINAL 0 = sin tope); con valor 0 o negativo no filtra rango.",
+          "valida": "no aplica (función de consulta)",
+          "noValida": [
+            "Base mínima (BASE se devuelve, quien llama decide si aplica)",
+            "Topes en UVT (MUVT/VRLUVT se devuelven sin aplicar)"
+          ],
+          "errores": "no aplica",
+          "llama": [
+            "FNK_DECIMALES_IMP_CXP"
+          ],
+          "efecto": "no aplica (solo lectura; RETURNS TABLE)"
+        }
+      ]
     }
   ]
 }
