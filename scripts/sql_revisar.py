@@ -15,6 +15,15 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+try:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import sin_consola as _sc
+
+    _sc.instalar()
+except ImportError:
+    pass
+
 ROOT = Path(__file__).resolve().parents[1]
 REV_DIR = ROOT / "revisiones"
 ENV = ROOT / ".env.local"

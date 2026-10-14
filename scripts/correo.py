@@ -13,6 +13,15 @@ from datetime import date, datetime
 from email.message import EmailMessage
 from pathlib import Path
 
+try:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import sin_consola as _sc
+
+    _sc.instalar()
+except ImportError:
+    pass
+
 import desarrolladores as devs
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
