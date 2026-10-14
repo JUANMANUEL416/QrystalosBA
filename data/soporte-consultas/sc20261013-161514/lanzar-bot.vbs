@@ -1,3 +1,0 @@
-Set sh = CreateObject("WScript.Shell")
-sh.CurrentDirectory = "C:\\DevQuasar\\Qrystalos\\QrystalosBA"
-sh.Run """C:\Users\JOSE MANUEL\AppData\Local\Programs\Python\Python312\pythonw.exe"" C:\DevQuasar\Qrystalos\QrystalosBA\scripts\cursor_bot.py --caso sc20261013-161514 --motivo soporte-consulta-chat", 0, False
