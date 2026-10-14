@@ -32,7 +32,7 @@ def validar(path: Path) -> list[str]:
             m = re.match(r"N(\d+)-", n.get("id") or "")
             if not m or int(m.group(1)) != n.get("orden"):
                 err.append(f"id/orden no coinciden: {n.get('id')} orden={n.get('orden')}")
-            if n.get("ordenEstado") not in ("evidenciado", "por_confirmar"):
+            if n.get("ordenEstado") not in ("evidenciado", "por_confirmar", "confirmado_usuario"):
                 err.append(f"ordenEstado inválido en {n.get('id')}")
     g = defaultdict(list)
     for a, b in aristas:
