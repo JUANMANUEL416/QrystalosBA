@@ -1,6 +1,6 @@
 {
   "procesoId": "recaudos",
-  "actualizado": "2026-10-03T16:40:00",
+  "actualizado": "2026-10-14T09:00:00",
   "nota": "SP → METODO. SPQ_FPAG_COL 51/51 leído: 46 el 2026-09-06 y 5 de aval contable el 2026-10-03 (sql/SPQ_FPAG_COL.sql = PREVERSION; la última Cerrada 2.0.7 no trae los de aval). SPKs núcleo leídos. No copiar cuerpos.",
   "sps": [
     {
@@ -907,6 +907,59 @@
       ],
       "hace": "Crea el comprobante de reversión del recaudo (MCP con REFERENCIA3 = comprobante original, lote REV). Cuerpo no leído; se conoce por los llamadores.",
       "gateId": "desaplicar-con-aval"
+    },
+    {
+      "nombre": "SPK_CONTAB_FLEG",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CONTAB_FLEG.sql (IXONLINE/SQL PREVERSION = liberada 2.0.9, comparado 2026-10-14)",
+      "actualizado": "2026-10-14",
+      "llamadoDesde": [
+        "SPQ_MCPE_COL · RECONSTRUIR (PROCEDENCIA LEGALIZACION, sql:345)"
+      ],
+      "nota": "Generador del comprobante de legalización de pagos de facturas (FLEG = 'Legalizacion de Pago Facturas ARS' en el diccionario). Acredita la CxC por factura de FLEGD y debita la cuenta de recaudo. El grafo legalizacion y flujo-legalizacion-contab lo describen como caja menor: el cuerpo no toca CAJ, CPCJ ni IDCON_TCOM_LEG (pendiente de corregir el texto del grafo).",
+      "tablas": [
+        "FLEG",
+        "FLEGD",
+        "BMOV",
+        "BMOVD",
+        "FTR",
+        "FTRD",
+        "CNTPC",
+        "CNT",
+        "CNTCF",
+        "TER",
+        "PRI",
+        "MCP",
+        "MCH"
+      ],
+      "metodos": [
+        {
+          "id": "(procedimiento)",
+          "estado": "leido",
+          "hace": "Contabiliza FLEG (@CNSFLEG) directo en MCP/MCH con comprobante IDCON_TCOM_CXC → IDCON_TCOM_DEFAULT → 'IX'. DB: pago a FLEG.CUENTA_REC si VALORPAGO≠0 e INGRESO BANCOS o CXP (documento de BMOVD); descuento financiero a CUENTA_DTO; ajuste al peso a CUENTA_AJP (CR si negativo). CR: por cada FLEGD, FLEGD.CUENTA_CXC con VLRTOTAL, factura y concepto. INGRESO='CAJA' no genera débito de pago. Con @NROCOMPROBANTE reutiliza el MCP. ESTADO='A' borra MCH y anula el MCP si quedó vacío.",
+          "valida": [
+            "PRI de COMPANIA/ANO/MES debe existir (solo en comprobante nuevo; sql:71-74)"
+          ],
+          "noValida": [
+            "Periodo cerrado (no consulta PRI.CERRADO)",
+            "Cuadre DB=CR (INGRESO='CAJA' deja el comprobante sin débito de pago)"
+          ],
+          "errores": [
+            "Periodo Contable NO Existe"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_SUMA_DBCR",
+            "SPK_REVISAR_COMPROBANTE"
+          ],
+          "efecto": "INSERT MCP (PROCEDENCIA LEGALIZACION, REFERENCIA1=CNSFLEG); DELETE/INSERT MCH (PROCESO FLEG_DB_PAGO, FLEG_DB_DTOFIN, FLEG_DB_AJPESO, FLEG_CR; REFERENCIA_PRO=CNSFLEG); UPDATE FLEG CONTABILIZADO=1, MARCACONT=0, NROCOMPROBANTE.",
+          "variables": [
+            "IDCON_TCOM_CXC",
+            "IDCON_TCOM_DEFAULT"
+          ]
+        }
+      ]
     }
   ]
 }
