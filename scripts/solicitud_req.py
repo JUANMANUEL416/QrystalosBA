@@ -23,6 +23,15 @@ INDICE = os.path.join(ROOT, "conocimiento", "INDICE.json")
 
 import sys
 
+try:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import sin_consola as _sc
+
+    _sc.instalar()
+except ImportError:
+    pass
+
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 

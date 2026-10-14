@@ -16,6 +16,10 @@ ROOT = os.path.dirname(SCRIPT_DIR)
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
+import sin_consola  # noqa: E402
+
+sin_consola.instalar()
+
 from qrystalos_ba_db import get_db  # noqa: E402
 
 ACTIVO = os.path.join(ROOT, "activo")
@@ -415,6 +419,7 @@ Este turno (ya pegado; NO abra el chat.json):
 {tarea}
 
 Método: INDICE.json solo para ubicar el proceso nombrado. Luego SOLO conocimiento/{{id}}/proceso.json y sps.json de ese id.
+Si la KB no alcanza: NO abra Qrystalos2 ni la documentación. Responda lo que la KB sí cubre, diga «Escalado a Conocimiento» y agregue un ítem en conocimiento/pendientes.json (origen: consultas, pregunta literal, procesoId).
 Responda en {ruta} autor agente, campo "en". Español. No invente columnas ni SP.
 {_plan_subagentes(id_caso)}
 """
@@ -444,7 +449,8 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "- Método obligatorio (en este orden):\n"
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
             "  2) Contrastar con conocimiento/: INDICE → proceso → proceso.json + sps.json "
-            "(y sql_refe si hace falta la línea exacta). También Qrystalos2/docs vivos.\n"
+            "(y sql_refe si hace falta la línea exacta). SOLO DESPUÉS, y únicamente para huecos "
+            "de la KB, Qrystalos2/docs vivos; anote el hueco en conocimiento/pendientes.json.\n"
             "  2b) PASO 0 ¿YA EXISTE?: texto del REQ ≠ captura. Inventariar TODOS los "
             "caminos del control (botones v-if, Help*, necesidadesYaCubiertas, no solo "
             "los METODOs del formulario). Clasificar: capacitación | defecto | hueco. "
@@ -579,8 +585,9 @@ Lea del disco, en este orden:
 1. activo/{id_caso}/INSTRUCCION-AGENTE.md
 2. activo/{id_caso}/solicitud.json
 3. activo/{id_caso}/chat.json
-4. cola/ y activo/{id_caso}/sql/ si aplican
-5. Qrystalos2 y qrystalos.documentacion según config/rutas.json
+4. conocimiento/INDICE.json → conocimiento/{{proceso}}/proceso.json + sps.json (BASE DE CONOCIMIENTO, SIEMPRE ANTES DEL CÓDIGO)
+5. cola/ y activo/{id_caso}/sql/ si aplican
+6. SOLO si la KB no cubre el punto: Qrystalos2 y qrystalos.documentacion según config/rutas.json. Diga en el Chat qué hueco de la KB lo obligó y regístrelo en conocimiento/pendientes.json (origen: {id_caso}).
 
 Reglas:
 - Responda en español.
@@ -1185,8 +1192,9 @@ def _pythonw(exe: list[str]) -> list[str]:
 def _escribir_vbs_bot(exe: list[str], script: str, id_caso: str, motivo: str) -> str:
     import subprocess
 
+    # sh.Run ..., 0 oculta la consola de python.exe; los hijos la heredan oculta.
     linea = subprocess.list2cmdline(
-        _pythonw(exe) + [script, "--caso", id_caso, "--motivo", motivo]
+        list(exe) + [script, "--caso", id_caso, "--motivo", motivo]
     )
     vbs_cmd = linea.replace('"', '""')
     vbs_path = os.path.join(caso_dir(id_caso), "lanzar-bot.vbs")
@@ -1309,8 +1317,10 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
     if os.name == "nt":
         creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     with open(log_path, "a", encoding="utf-8") as log:
+        # python.exe + CREATE_NO_WINDOW: consola oculta que heredan node y los shells del SDK.
+        # Con pythonw cada hijo de consola abría su propia ventana negra.
         proc = subprocess.Popen(
-            _pythonw(exe) + [script, "--caso", id_caso, "--motivo", motivo],
+            list(exe) + [script, "--caso", id_caso, "--motivo", motivo],
             cwd=ROOT,
             stdout=log,
             stderr=subprocess.STDOUT,
