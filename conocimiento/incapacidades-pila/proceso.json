@@ -1,0 +1,139 @@
+{
+  "id": "incapacidades-pila",
+  "nombre": "Radicaciones · Incapacidades / PILA",
+  "modulo": "INC_LOTE",
+  "familia": "radicaciones",
+  "prioridad": 22,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "SPQ INC_LOTE / PILA_CARGA / INC_CREDENCIAL + motor y FNK días LM leídos 2026-09-19 (PREVERSION=2.0.3). Semáforo INCA 1–10/12/13. Pagar no contabiliza.",
+  "actualizado": "2026-09-19T16:20:00",
+  "notaSql": "sql/ PREVERSION idéntica a 2.0.3. Tablas INCA/INC_*/PILA_* no están en INDICE_TABLAS viva.",
+  "alcanceHasta": "Inventario de pantallas y llamadas JSON del FE. No es radicación de cuentas médicas (RLOT), ni PQR, ni nómina (incapacidad como concepto).",
+  "hermanoDe": "radicaciones",
+  "ventanas": [
+    {
+      "uso": "Cargue PILA (planillas)",
+      "ruta": "rad.pila",
+      "path": "/rad/pila",
+      "vue": "CarguesPilaPage → CarguesPilaComponent",
+      "entrada": "Radicaciones → Ingesta planillas PILA. MODELO PILA_CARGA · LISTAR_CONFIGS / CARGAR_PILA_LOTE. Tabla FE: PILA_CARGA."
+    },
+    {
+      "uso": "Configuración de incapacidades",
+      "ruta": "rad.incaconfig",
+      "path": "/rad/incaconfig",
+      "vue": "ConfiguracionIncapacidadPage → ConfiguracionParametrosLegales + ConfiguracionOperadoresPila",
+      "entrada": "INC_LOTE · GUARDAR/ELIMINAR_PARAMETRO_LEGAL. PILA_CARGA · LISTAR_CONFIGS / GUARDAR_CONFIG."
+    },
+    {
+      "uso": "Cargue lote (externo)",
+      "ruta": "rad.gcargueinca",
+      "path": "/rad/gcargueinca",
+      "vue": "CargueIncapacidadPage → CargueIncapacidadComponent",
+      "entrada": "INC_LOTE · CARGAR_LOTE / REGISTRAR_INDIVIDUAL / CORREGIR_INCA."
+    },
+    {
+      "uso": "Gestionar incapacidad (interno)",
+      "ruta": "rad.gcargueincainterno",
+      "path": "/rad/gcargueincainterno",
+      "vue": "GestionarIncapacidadPage → CargueIncapacidadInternoComponent",
+      "entrada": "INC_LOTE: CARGAR_LOTE, REGISTRAR_INDIVIDUAL, ACTIVACION_LOTE, CAMBIAR_ESTADO, ACTUALIZAR_IBC, ACTUALIZAR_INCA, LIMPIAR_TABLAS, VER_TRAZABILIDAD. DOCS_VISOR · TRAZA_POR_REGISTRO."
+    },
+    {
+      "uso": "Radicados pendientes / cola",
+      "ruta": "rad.radpendientes",
+      "path": "/rad/radpendientes",
+      "vue": "RadicacionesPendientesPage → tabs (Cola, Mis casos, Radicados, Aprobados, Rechazos)",
+      "entrada": "INC_LOTE: REASIGNAR_INCA, ASIGNAR_UNO_INCA, REGISTRAR_RADICADO_EPS, APROBAR_INCA, RECHAZAR_RADICADO, PAGAR_INCA, OBTENER_DATOS_PAGO, REVERTIR_RECHAZO, APROBAR_RECHAZO_DEFINITIVO."
+    },
+    {
+      "uso": "Dashboard / filtro / colaborador / control 180",
+      "ruta": "rad.dashboard.incapacidades / rad.filtroincapacidades / rad.inca.colaborador / rad.control-casos",
+      "path": "/rad/dashboard-incapacidades, /rad/filtroincapacidades, /rad/consulta-colaborador, /rad/control-casos",
+      "vue": "DashboardIncapacidadesPage, FiltroIncapacidadPage, ConsultaColaboradorPage, ControlCasos180Page",
+      "entrada": "Consultas. MODELO no inventado si la página solo lee grillas."
+    },
+    {
+      "uso": "Gestor de credenciales",
+      "ruta": "rad.gcredenciales",
+      "path": "/rad/gcredenciales",
+      "vue": "GestorCredencialesPage → GestorCredencialesComponent",
+      "entrada": "INC_CREDENCIAL · GUARDAR / EDITAR / ELIMINAR / REVELAR / VER_TRAZABILIDAD."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "/rad/incaconfig: INC_PARAMETROS_LEGALES y PILA_OPERADOR_CONFIG. /rad/gcredenciales: INC_CREDENCIAL. Catálogos que LIMPIAR_TABLAS no borra: INC_ESTADO, INC_PARAMETROS_LEGALES, INCA_OPTION, PILA_OPERADOR_CONFIG.",
+      "tablasClave": ["PILA_OPERADOR_CONFIG", "INC_PARAMETROS_LEGALES", "INC_CREDENCIAL", "INC_ESTADO"],
+      "controles": [
+        {
+          "id": "config-pila-operador",
+          "nombre": "Config operador PILA",
+          "explicacion": "JSON de mapeo Excel (hoja, H1, H2, fila_inicio_datos, id_fusionado).",
+          "invariante": "ISJSON=1 y claves mínimas o KO.",
+          "sps": [{ "nombre": "SPQ_PILA_CARGA", "metodo": "GUARDAR_CONFIG", "rol": "Leído." }]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "INCA: 1 interno, 2 externo, 3 revisión, 4 devuelto empresa, 5 subsanado, 6 validado (dispara motor), 7 radicado, 8 pte. validar rechazo, 12 definitivo, 13 recurrible, 9 aprobada, 10 pagada. Validar exige orden cronológico 90 días e IBC>0.",
+      "tablasClave": ["INCA", "INC_CARGA", "INC_AFILIADO", "INC_LOG", "INC_LIQUIDACION_DIARIA"],
+      "controles": [
+        {
+          "id": "validar-cronologico",
+          "nombre": "Validar en orden (motor)",
+          "explicacion": "CAMBIAR_ESTADO a Validado=6 llama SPQ_INC_MOTOR_LIQUIDACION. Niega si hay INCA más antigua pendiente (traslape o misma CIE10 ≤30 días).",
+          "invariante": "No Validado si hay casos viejos pendientes del mismo afiliado.",
+          "sps": [
+            { "nombre": "SPQ_INC_LOTE", "metodo": "CAMBIAR_ESTADO", "rol": "Leído." },
+            { "nombre": "SPQ_INC_MOTOR_LIQUIDACION", "metodo": "SPQ_INC_MOTOR_LIQUIDACION", "rol": "Leído." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "PILA_CARGA/EMPRESA/DETALLE (planilla) e INC_CARGA/INCA (certificados). PILA no crea INCA. CARGAR_LOTE exige certificado único (tipo+número+fecha) y tope días LM.",
+      "tablasClave": ["PILA_CARGA", "PILA_EMPRESA", "PILA_DETALLE", "INC_CARGA", "INCA"],
+      "controles": []
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "Hermano radicaciones (RLOT). Nómina: otro proceso. PAGAR_INCA compara valor EPS vs motor (margen INC_PARAMETROS_LEGALES o 50000) y deja INCA=10. No llama FCXP/BMOV/MCP.",
+      "tablasClave": ["INCA", "INC_LIQUIDACION_DIARIA"],
+      "controles": [
+        {
+          "id": "pagar-margen",
+          "nombre": "Pagar vs motor",
+          "explicacion": "Si |EPS−motor| > margen y no CONFIRMAR_FUERA_MARGEN → KO con REQUIERE_CONFIRMACION=1.",
+          "invariante": "Solo estado Aprobada y con liquidación diaria.",
+          "sps": [{ "nombre": "SPQ_INC_LOTE", "metodo": "PAGAR_INCA", "rol": "Leído." }]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "PAGAR_INCA no genera MCP/OM. Sin evidencia de asiento en este circuito.",
+      "tablasClave": [],
+      "controles": []
+    }
+  ]
+}

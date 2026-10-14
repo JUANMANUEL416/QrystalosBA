@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>COESME643 — Flujo del loteo de factura en el tránsito</title>
+<style>
+  @page { size: A4 landscape; margin: 10mm 12mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", Calibri, sans-serif;
+    color: #1c2b33;
+    font-size: 11px;
+    line-height: 1.35;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  h1 { font-size: 18px; margin: 0 0 2px; letter-spacing: 0.01em; }
+  .sub { margin: 0 0 8px; color: #4a5c66; font-size: 11.5px; }
+  .meta { font-size: 10px; color: #5c6e78; margin-bottom: 10px; }
+  .pagina { break-after: page; }
+  .pagina:last-child { break-after: auto; }
+
+  .flujo { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .paso, .decision, .nota, .fin, .alto {
+    border-radius: 8px;
+    padding: 7px 10px;
+    text-align: center;
+    max-width: 520px;
+  }
+  .paso {
+    background: #f7fafc;
+    border: 1.5px solid #2c5270;
+    min-width: 280px;
+  }
+  .paso b, .decision b, .fin b, .alto b { display: block; font-size: 12px; margin-bottom: 1px; }
+  .decision {
+    background: #fff6d8;
+    border: 1.5px solid #b8860b;
+    min-width: 340px;
+    clip-path: none;
+    transform: none;
+  }
+  .fin {
+    background: #e5f6ec;
+    border: 1.5px solid #1e7a46;
+    min-width: 300px;
+  }
+  .alto {
+    background: #fdeCEC;
+    border: 1.5px solid #b42318;
+    min-width: 260px;
+  }
+  .nota {
+    background: #eef4f8;
+    border: 1.5px dashed #5b7c93;
+    text-align: left;
+    max-width: 980px;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .flecha {
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2c5270;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .ramas {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .rama {
+    border: 1px solid #d5e0e8;
+    border-radius: 10px;
+    padding: 8px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .rama h2 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #2c5270;
+  }
+  .etiq {
+    font-size: 10px;
+    font-weight: 700;
+    color: #8a6508;
+    margin-bottom: 4px;
+  }
+  .duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+  }
+  .ejemplo {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 12px;
+    width: 100%;
+    margin-top: 8px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #c5d4de; padding: 5px 7px; text-align: left; }
+  th { background: #e8f0f5; }
+  td.num, th.num { text-align: right; }
+  .si { color: #1e7a46; font-weight: 700; }
+  .no { color: #b42318; font-weight: 700; }
+  .pie { margin-top: 8px; font-size: 10px; color: #5c6e78; }
+  ul { margin: 4px 0 0; padding-left: 16px; }
+  li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<section class="pagina">
+  <h1>Loteo de factura en el tránsito</h1>
+  <p class="sub">La referencia del cuadre es la factura. Solo entra lo loteado: la orden puede pedir más de lo que llegó.</p>
+  <p class="meta">COESME643 · Inventario → Movimientos → Traer del tránsito · Variable INV_CUFE_LOTEO</p>
+
+  <div class="flujo">
+    <div class="paso"><b>Orden de compra confirmada</b>Nace el tránsito de la compra.</div>
+    <div class="flecha">▼</div>
+    <div class="paso"><b>Traer del tránsito</b>El usuario abre el loteo de esa orden.</div>
+    <div class="flecha">▼</div>
+    <div class="decision"><b>¿INV_CUFE_LOTEO está en SI y el tránsito tiene orden?</b>Si la variable está en NO, o no hay orden, el loteo sigue como hasta ahora.</div>
+  </div>
+
+  <div class="ramas">
+    <div class="rama">
+      <div class="etiq">No</div>
+      <h2>Loteo habitual</h2>
+      <div class="paso"><b>Sin factura ni CUFE</b>No se consulta RADIAN ni se comparan totales.</div>
+      <div class="flecha">▼</div>
+      <div class="paso">Procesar guarda los lotes en el movimiento.</div>
+    </div>
+    <div class="rama">
+      <div class="etiq">Sí · Remisión</div>
+      <h2>Documento remisión</h2>
+      <div class="paso"><b>Tipo R, CUFE vacío</b>El loteo no cruza la factura electrónica.</div>
+      <div class="flecha">▼</div>
+      <div class="paso">Procesar guarda los lotes. No exige cuadre de bruto, IVA ni total.</div>
+    </div>
+    <div class="rama">
+      <div class="etiq">Sí · Factura</div>
+      <h2>Documento factura</h2>
+      <div class="paso"><b>Elegir la factura en RADIAN</b>CUFE del proveedor, fecha igual o posterior a la orden, sin cuenta por pagar.</div>
+      <div class="flecha">▼</div>
+      <div class="paso"><b>Lotear lo que trae la factura</b>Lote, unidades y valor. Lo que la orden pidió de más queda pendiente.</div>
+      <div class="flecha">▼</div>
+      <div class="decision"><b>¿Lo loteado iguala la factura?</b>Bruto, IVA y total. Tolerancia $0,05 en cada uno.</div>
+    </div>
+  </div>
+
+  <div class="ejemplo">
+    <div class="nota">
+      <b>Ejemplo.</b> La orden pide 10 y la factura trae 6. Se lotean esos 6. Los 4 que no llegaron siguen pendientes y no entran en la suma.
+      El valor de referencia es el de la factura (bruto, IVA y total de esos 6), no el valor de los 10 de la orden.
+      Si el loteado no coincide con la factura, Procesar no continúa y muestra la diferencia.
+    </div>
+    <table>
+      <thead>
+        <tr><th></th><th class="num">Orden</th><th class="num">Factura</th><th class="num">Loteado</th><th>Entra al cuadre</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cantidad</td><td class="num">10</td><td class="num">6</td><td class="num">6</td><td>Solo los 6</td></tr>
+        <tr><td>Pendiente</td><td class="num">4</td><td class="num">—</td><td class="num">—</td><td>No</td></tr>
+        <tr><td>Bruto, IVA y total</td><td class="num">de 10</td><td class="num">de 6</td><td class="num">de 6</td><td>Loteado = factura</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="pagina">
+  <h1>Procesar, aceptar y entrada</h1>
+  <p class="sub">Procesar compara lo loteado con la factura. Aceptar el tránsito no vuelve a hacer ese cuadre: mira las causas de lo que no llegó.</p>
+
+  <div class="duo">
+    <div class="flujo">
+      <div class="decision"><b>Procesar</b>Solo si la variable está en SI, el documento es factura y hay CUFE en RADIAN.</div>
+      <div class="flecha">▼</div>
+      <div class="ramas" style="grid-template-columns: 1fr 1fr;">
+        <div class="rama">
+          <div class="etiq no">No cuadra</div>
+          <div class="alto"><b>No se procesa</b>Avisa bruto, IVA o total, y en qué artículo está el IVA. Los lotes no pasan al movimiento.</div>
+        </div>
+        <div class="rama">
+          <div class="etiq si">Cuadra</div>
+          <div class="fin"><b>Pasan los lotes</b>Lo loteado queda en el movimiento. El faltante de la orden sigue pendiente en el tránsito.</div>
+        </div>
+      </div>
+      <div class="flecha">▼</div>
+      <div class="decision"><b>Aceptar tránsito</b>¿Hay artículos pendientes por no loteo sin causa?</div>
+      <div class="flecha">▼</div>
+      <div class="ramas" style="grid-template-columns: 1fr 1fr;">
+        <div class="rama">
+          <div class="etiq no">Sí, sin causa</div>
+          <div class="alto"><b>No acepta</b>Hay que registrar la causa, uno a uno o para todos, y volver a aceptar.</div>
+        </div>
+        <div class="rama">
+          <div class="etiq si">No</div>
+          <div class="fin"><b>Nace la entrada</b>Movimiento en estado pendiente. Si es factura, copia CUFE, número, fecha y vencimiento desde RADIAN.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="nota">
+        <b>Qué se compara al procesar</b>
+        <ul>
+          <li>Entran los lotes abiertos y los que ya están en el movimiento.</li>
+          <li>No entra la cantidad ni el valor de la orden que todavía no se loteó.</li>
+          <li>Tienen que coincidir los tres: bruto, IVA y total. Si solo el IVA difiere, tampoco procesa.</li>
+          <li>Si el porcentaje de IVA de la línea es 0, la diferencia de centavos entre costo y valor sin IVA no es impuesto.</li>
+          <li>Tolerancia de $0,05 en cada valor.</li>
+        </ul>
+      </div>
+      <div class="nota">
+        <b>Qué queda bloqueado en la entrada</b>
+        <ul>
+          <li>Editar CUFE, tipo de movimiento, tipo de documento, número, fecha de factura y vencimiento.</li>
+          <li>Esos datos vienen del loteo y de RADIAN. El tipo de movimiento sale de la variable de compras.</li>
+          <li>Remisión y traslado sin orden no usan este bloqueo.</li>
+        </ul>
+      </div>
+      <div class="nota">
+        <b>Aceptar no repite el cuadre</b>
+        <ul>
+          <li>Aceptar tránsito solo exige causa en lo que quedó sin lotear.</li>
+          <li>El cuadre de bruto, IVA y total ya se exigió en Procesar.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <p class="pie">Pantalla: Traer del tránsito. Procesar: IZSOL_TRANSITO · ON_PROCESAR. Aceptar: IZSOL · ON_ACEPTA_TRANSITO. La entrada la crea el procedimiento de inserción del tránsito.</p>
+</section>
+
+</body>
+</html>

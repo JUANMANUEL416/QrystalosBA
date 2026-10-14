@@ -1,0 +1,188 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-13T19:24:39.254Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016696",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261013-0100016696",
+    "idReq": "0100016696",
+    "fecha": "2026-10-13",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "SermultiSalud",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CARTERA · Cartera",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "EDGARDO MARTINEZ",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/SERMUS106",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CARTERA · Cartera",
+    "requerimiento": "En Consultas y Reportes de cartera, pestaña Facturas CXC, al descargar el listado el archivo no sale. La pantalla avisa que la conexión se demoró o que no hubo respuesta rápida. El usuario necesita el Excel de las facturas que cumplen el filtro, también cuando son muchas.\n\n Por qué soporte pidió pasar esta solicitud a requerimiento.\n\nEn Consultas y Reportes de cartera, pestaña Facturas CXC, al descargar el listado el archivo no sale. La pantalla avisa que la conexión se demoró o que no hubo respuesta rápida. El usuario necesita el Excel de las facturas que cumplen el filtro, también cuando son muchas.",
+    "criteriosAceptacion": "1. En Facturas CXC (Consultas y Reportes de cartera), con el mismo filtro que hoy dispara el aviso de conexión, Exportar entrega el archivo Excel.\n2. El Excel incluye todas las filas que cumplen el filtro activo (condición de la grilla + filtros del fieldset), no solo la página visible.\n3. Durante la descarga válida no aparece el mensaje «Conexión demorada ó no hay conexión a internet…»; se muestra progreso de obtención de datos.\n4. Con filtros que devuelven pocas filas, la descarga sigue funcionando como hoy (mismas columnas y nombre de archivo razonable).\n5. Si el filtro no tiene filas, la pantalla informa que no hay datos para exportar y no dispara el aviso genérico de internet.\n6. No se alteran Detalle, Reliquidar ni Consulta masiva FCXCDV del mismo informe.",
+    "alcance": "Control Exportar Excel de la pestaña Facturas CXC en Administrativo → Consultas y Reportes (`ConsRptCarteraPage` → `FactEnCxcComponent`), sobre la vista `VWK_FACTURAS_ENCXC` y los filtros ya existentes en pantalla.",
+    "restricciones": "Fuera de alcance: impresión PDF de factura, Reliquidar, Detalle con ajuste NC, export del Histórico de vencimientos (REQ SR20261006-002) y el Excel de Consulta masiva FCXCDV (ya es cliente-side tras lectura por lotes). Si el arreglo toca `ServerSideTableComponent.vue` compartido, regresión en otras grillas con Exportar (descargas pequeñas). No se exige nuevo METODO en `SPQ_CARTERA_RPT` si la solución reutiliza `POST /read` por lotes como en Vencimientos.",
+    "analisis": "Clasificación: **defecto** (no capacitación). El texto del REQ coincide con la pestaña Facturas CXC; no es otro informe del hub.\n\n**Caminos del control (Facturas CXC):** grilla paginada (`AppStore.read` + `wherevk`); botón Exportar de `ServerSideTableComponent` (`permiteExportarExcel`); Detalle → `CARTERA_RPT · TRAE_DETALLES`; Reliquidar → `RELIQUIDA_FTR`; Consultar listado FCXCDV → lecturas por lotes + Excel en el navegador; filtros (fecha Todas/Radicada/Factura, tercero, CnsCxC, N. factura, radicado, tipo tercero, valor, glosas). El libro `reportes-cartera` documenta que Exportar debe entregar lo filtrado.\n\n**Causa:** `exportarExcel()` en `ServerSideTableComponent.vue` vuelve a llamar `AppStore.read` con `TamPagina: 214748364` en una sola petición, sin progreso ni lectura fraccionada. La grilla paginada (10 filas) responde; el volumen completo supera el timeout del cliente y el interceptor de axios muestra el aviso de «conexión demorada» (`boot/axios.js`), aunque la red esté bien. Contraste con Vencimientos (p. ej. `VtosTipoRegimenComponent`), que ya exporta con `fetchAllForExcelExport` / `fetchAllServerSideRows` (`useExportServerSideTable.js`, lotes de 10 000).\n\n**¿Ya existe?** No hay botón alterno en Facturas CXC para el mismo Excel masivo. Consulta masiva resuelve otro caso (lista de N_FACTURA). No confundir con Histórico sin `TRAER_DETALLE_HISTORICO`.\n\n**Solución propuesta:** Replicar el patrón de exportación por lotes ya usado en informes de Vencimientos: desactivar o reemplazar el Exportar único de la grilla en `FactEnCxcComponent` (o añadir prop opcional en `ServerSideTableComponent` que delegue a `fetchAllForExcelExport`), respetar `wherevk`/`columnas_visibles`, mostrar loading con avance, validar cero filas y generar `.xlsx` con columnas alineadas a la grilla. Impacto API: varias llamadas `POST /read` acotadas; impacto SQL: ninguno (solo lectura de vista). Comité SR20261006-027 ya aprobó la misma necesidad para SermultiSalud.",
+    "opciones": [
+      {
+        "titulo": "Export dedicado en FactEnCxc (recomendada)",
+        "descripcion": "Ocultar export nativo de la grilla y botón Exportar que use `fetchAllForExcelExport` + columnas de `dtftrencxc`, igual que Vencimientos. Menor riesgo para otras pantallas."
+      },
+      {
+        "titulo": "Prop en ServerSideTableComponent",
+        "descripcion": "`exportEnLotes` reutiliza el composable para todas las grillas; exige regresión transversal."
+      },
+      {
+        "titulo": "Excel en servidor (CARTERA_RPT nuevo METODO)",
+        "descripcion": "Solo si lotes en FE no alcanzan; mayor alcance backend/SQL."
+      }
+    ],
+    "recomendacion": "Implementar opción A (o B con pruebas de regresión explícitas). Medir en SermultiSalud el filtro que falla hoy (fecha Todas, sin tercero) y validar Excel completo + progreso. Sin cambio contable. Prioridad Performance coherente con rama `bugfix/SERMUS106`.",
+    "cambioPropuestoSimple": "Hoy, al pulsar Exportar en Facturas CXC, el sistema pide todas las facturas del filtro de una sola vez y la conexión se corta antes de entregar el Excel. Se propone descargar en bloques (como ya hace el informe de Vencimientos), mostrar avance mientras arma el archivo y avisar claro si no hay filas, sin culpar a internet.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Parcial",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Export Excel de consulta sobre VWK_FACTURAS_ENCXC; no genera asientos ni toca MCUE, CON, MCPE.",
+        "validadoEn": "2026-10-13T19:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "SR20261006-027-diagrama-flujo.png",
+        "ruta": "activo/20261013-0100016696/imagenes/SR20261006-027-diagrama-flujo.png",
+        "subidaEn": "2026-10-13T14:21:00",
+        "url": "/api/caso/20261013-0100016696/imagen/SR20261006-027-diagrama-flujo.png"
+      }
+    ],
+    "archivosAnalisis": [
+      {
+        "nombre": "SR20261006-027-documento-comite.pdf",
+        "ruta": "activo/20261013-0100016696/archivos/SR20261006-027-documento-comite.pdf",
+        "extracto": "SR20261006-027-documento-comite.extracto.txt",
+        "extractoRuta": "activo/20261013-0100016696/archivos/SR20261006-027-documento-comite.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 274823,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-13T14:21:23",
+        "url": "/api/caso/20261013-0100016696/archivo/SR20261006-027-documento-comite.pdf",
+        "urlExtracto": "/api/caso/20261013-0100016696/archivo/SR20261006-027-documento-comite.extracto.txt"
+      },
+      {
+        "nombre": "SR20261006-027-mockups.pdf",
+        "ruta": "activo/20261013-0100016696/archivos/SR20261006-027-mockups.pdf",
+        "extracto": "SR20261006-027-mockups.extracto.txt",
+        "extractoRuta": "activo/20261013-0100016696/archivos/SR20261006-027-mockups.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 71033,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-13T14:21:23",
+        "url": "/api/caso/20261013-0100016696/archivo/SR20261006-027-mockups.pdf",
+        "urlExtracto": "/api/caso/20261013-0100016696/archivo/SR20261006-027-mockups.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1. En Facturas CXC (Consultas y Reportes de cartera), con el mismo filtro que hoy dispara el aviso de conexión, Exportar entrega el archivo Excel.\n2. El Excel incluye todas las filas que cumplen el filtro activo (condición de la grilla + filtros del fieldset), no solo la página visible.\n3. Durante la descarga válida no aparece el mensaje «Conexión demorada ó no hay conexión a internet…»; se muestra progreso de obtención de datos.\n4. Con filtros que devuelven pocas filas, la descarga sigue funcionando como hoy (mismas columnas y nombre de archivo razonable).\n5. Si el filtro no tiene filas, la pantalla informa que no hay datos para exportar y no dispara el aviso genérico de internet.\n6. No se alteran Detalle, Reliquidar ni Consulta masiva FCXCDV del mismo informe.",
+      "originalesEn": "2026-10-13T19:23:54.502Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. En Facturas CXC (Consultas y Reportes de cartera), con el mismo filtro que hoy dispara el aviso de conexión, Exportar entrega el archivo Excel.\n2. El Excel incluye todas las filas que cumplen el filtro activo (condición de la grilla + filtros del fieldset), no solo la página visible.\n3. Durante la descarga válida no aparece el mensaje «Conexión demorada ó no hay conexión a internet…»; se muestra progreso de obtención de datos.\n4. Con filtros que devuelven pocas filas, la descarga sigue funcionando como hoy (mismas columnas y nombre de archivo razonable).\n5. Si el filtro no tiene filas, la pantalla informa que no hay datos para exportar y no dispara el aviso genérico de internet.\n6. No se alteran Detalle, Reliquidar ni Consulta masiva FCXCDV del mismo informe.",
+      "trasAnalisisEn": "2026-10-13T19:23:57.790Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ alineado con comité SR20261006-027. Proceso reportes-cartera; causa en FE (export monolítico ServerSideTable). Solución: fetchAllForExcelExport por lotes. Sin cambio SQL obligatorio; no hace falta bajar SPQ_CARTERA_RPT para este fix.",
+      "fecha": "2026-10-13T19:45:00.000Z",
+      "estado": "listo",
+      "sps": "Export: POST /read · Tabla VWK_FACTURAS_ENCXC (vista). SPQ no interviene en el botón Exportar de la grilla."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261013-0100016696/diagramas/flujo.html",
+      "subidaEn": "2026-10-13T14:24:23",
+      "url": "/api/caso/20261013-0100016696/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "reportes-cartera",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261013-0100016696-flujo.html"
+    },
+    "mockups": [
+      "activo/20261013-0100016696/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": "Mockup UX aprobado en comité: solicitudes/SR20261006-027/mockups/mockup-ux-pantalla.html (export con progreso por lotes y aviso si no hay filas). Al implementar, regenerar mockup en este caso si el coordinador pulsa Generar mockups."
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261013-0100016696\\sql\\",
+    "carpetaRelativa": "activo/20261013-0100016696/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016696\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "reportes-cartera",
+    "catalogo": "conocimiento/reportes-cartera/sps.json",
+    "metodosDocumentados": [],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261013-0100016696.html",
+    "aprobados": "aprobados/20261013-0100016696/",
+    "imagenes": "aprobados/20261013-0100016696/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-13",
+    "ultimoEnvio": "2026-10-13T14:27:33",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

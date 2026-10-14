@@ -1,0 +1,156 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-12T20:48:59.540Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016671",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261008-0100016671",
+    "idReq": "0100016671",
+    "fecha": "2026-10-08",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Maicao",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CONTABILIDAD · Contabilidad",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CMAICA196",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CONTABILIDAD · Contabilidad",
+    "requerimiento": "Solicitud de ajuste en descarga de libro auxiliar en Excel\n\nEl usuario solicita que al descargar el archivo en Excel del libro auxiliar, se incluya toda la información completa, tal como se mostraba anteriormente, incluyendo los elementos resaltados en color amarillo.\nLINK\nhttps://docs.google.com/spreadsheets/d/1C7CGU9auBrBT6lWyWdBx88nVNImBayZ5/edit?usp=sharing&ouid=114590963236943731678&rtpof=true&sd=true\n1. Acceder al módulo de libro auxiliar.\n2. Realizar la descarga del archivo en formato Excel. DETALLE: Se solicita ajustar el auxiliar de contabilidad para que este traiga información como antes lo hacía.\n\nSin embargo, desde una versión en adelante no se incluye.\n\nSe adjunta el auxiliar que salió en versiones anteriores.\n\nSe solicita ajustar el auxiliar de contabilidad para que este traiga información como antes lo hacía.\n\nSin embargo, desde una versión en adelante no se incluye.\n\nSe adjunta el auxiliar que salió en versiones anteriores.",
+    "criteriosAceptacion": "1) En Contable → Consultas → Libros auxiliares, con una búsqueda COMPLETADA, Exportar a Excel incluye las columnas DETALLE y COMPROBANTE (código de tipo de comprobante, p. ej. 09, 02) con el mismo valor que la grilla en pantalla.\n2) El orden y encabezados del archivo coinciden con la plantilla de referencia del REQ (TIPO, Cuenta, CCosto, Tercero, FECHA, DOCUMENTO, SI, DB, CR, SF, NOMBRE CUENTA, NOMBRE CCOSTO, RAZÓN SOCIAL, DETALLE, COMPROBANTE); se mantiene NRO.COMPROBANTE si el cliente lo usa, sin quitar columnas ya publicadas.\n3) Filas SI y MOV exportan detalle y comprobante cuando existen en RPDX2 (STRINGGRANDE1 e ID5).\n4) Exportaciones >75k filas o la pestaña Libro Auxiliar de Balance de prueba no se alteran salvo regresión.\n5) Prueba en test con el mismo filtro del ticket: comparar Excel vs grilla y vs archivo histórico adjunto.",
+    "alcance": "Ajuste en Qrystalos2 del botón Exportar a Excel del control Libros auxiliares (LibrosAuxiliaresComponent): mapeo de columnas al generar el XLSX desde lectura genérica de RPDX2 (CNS del job). Incluir DETALLE y COMPROBANTE (tipoComprobante) omitidos hoy. Alinear orden de columnas con el formato legacy del cliente cuando sea posible sin romper consumidores actuales.",
+    "restricciones": "No modificar NC_SPK_GEN_LIBROAUXILIAR ni SPQ_CONTABILIDAD_2 salvo que en prueba falte dato en RPDX2 (no evidenciado: la grilla ya muestra Detalle y T.Comprobante). No cambiar la exportación Excel/CSV de Balance de prueba → pestaña Libro Auxiliar (otro control). No tocar PDF acumulados ni otros tipos de reporte S.Acum/S.Agrup más allá del Excel detallado.",
+    "analisis": "Paso 0 — ¿Ya existe? El REQ pide el Excel del libro auxiliar «como antes», con DETALLE y COMPROBANTE resaltados (captura/plantilla LIBRO_AUXILIAR.jpg). Hay dos caminos en menú Consultas: (A) Balance de Prueba y Libro Auxiliar → pestaña Libro Auxiliar → Exportar (BalanceAuxiliarComponent, BALANCE_COL · OBTENER_AUXILIAR) ya exporta Detalle y Comprobante en COLUMNAS_EXPORT_LIBRO_AUXILIAR_EXCEL; (B) Libros auxiliares → Buscar (job async) → Exportar a Excel (LibrosAuxiliaresComponent, CONTABILIDAD_2 · INICIAR/EJECUTAR/CONSULTAR job, datos en RPDX2). La plantilla del ticket (TIPO SI/MV, CCosto antes de tercero, SI/DB/CR/SF, nombres al final, DETALLE y COMPROBANTE en amarillo) corresponde al camino (B), no a la pestaña del balance.\n\nClasificación: defecto de regresión en frontend. En exportarExcel() la lectura AppStore.read sobre RPDX2 ya trae detalle (STRINGGRANDE1) y tipoComprobante (ID5), y la grilla los muestra; el objeto excelData que arma el XLSX omite esas propiedades y solo deja NRO.COMPROBANTE al final. No es hueco funcional ni capacitación: el usuario está en el control correcto pero el archivo sale incompleto.\n\nBackend: fichas leídas — EJECUTAR_BUSQUEDA_ASYNC llama NC_SPK_GEN_LIBROAUXILIAR y llena RPDX2; no se requiere cambio SQL para restaurar columnas si la pantalla ya las lista. Impacto contable: ninguno (solo salida de informe).",
+    "opciones": [],
+    "recomendacion": "Desarrollo acotado en LibrosAuxiliaresComponent.vue (exportarExcel): añadir al excelData las columnas DETALLE (row.detalle) y COMPROBANTE (row.tipoComprobante, etiqueta legacy del ticket); revisar orden respecto a la plantilla; ampliar !cols. Validar con búsqueda real en rama bugfix/CMAICA196. Si tras el fix algún filtro dejara DETALLE vacío en grilla y en Excel, entonces sí releer NC_SPK_GEN_LIBROAUXILIAR en PREVERSION — hoy no es el caso.",
+    "cambioPropuestoSimple": "Al descargar Excel desde Libros auxiliares, el archivo volverá a traer el texto del movimiento (DETALLE) y el código del tipo de comprobante (COMPROBANTE), igual que en pantalla y como en versiones anteriores del cliente.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Exportación de consulta desde RPDX2; no modifica MCP, MCH, confirmación ni comprobantes contables.",
+        "validadoEn": "2026-10-12T20:55:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "LIBRO_AUXILIAR.jpg",
+        "ruta": "activo/20261008-0100016671/imagenes/LIBRO_AUXILIAR.jpg",
+        "subidaEn": "2026-10-12T15:42:23",
+        "url": "/api/caso/20261008-0100016671/imagen/LIBRO_AUXILIAR.jpg"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Contable → Consultas → Libros auxiliares, con una búsqueda COMPLETADA, Exportar a Excel incluye las columnas DETALLE y COMPROBANTE (código de tipo de comprobante, p. ej. 09, 02) con el mismo valor que la grilla en pantalla.\n2) El orden y encabezados del archivo coinciden con la plantilla de referencia del REQ (TIPO, Cuenta, CCosto, Tercero, FECHA, DOCUMENTO, SI, DB, CR, SF, NOMBRE CUENTA, NOMBRE CCOSTO, RAZÓN SOCIAL, DETALLE, COMPROBANTE); se mantiene NRO.COMPROBANTE si el cliente lo usa, sin quitar columnas ya publicadas.\n3) Filas SI y MOV exportan detalle y comprobante cuando existen en RPDX2 (STRINGGRANDE1 e ID5).\n4) Exportaciones >75k filas o la pestaña Libro Auxiliar de Balance de prueba no se alteran salvo regresión.\n5) Prueba en test con el mismo filtro del ticket: comparar Excel vs grilla y vs archivo histórico adjunto.",
+      "originalesEn": "2026-10-12T20:47:45.028Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Contable → Consultas → Libros auxiliares, con una búsqueda COMPLETADA, Exportar a Excel incluye las columnas DETALLE y COMPROBANTE (código de tipo de comprobante, p. ej. 09, 02) con el mismo valor que la grilla en pantalla.\n2) El orden y encabezados del archivo coinciden con la plantilla de referencia del REQ (TIPO, Cuenta, CCosto, Tercero, FECHA, DOCUMENTO, SI, DB, CR, SF, NOMBRE CUENTA, NOMBRE CCOSTO, RAZÓN SOCIAL, DETALLE, COMPROBANTE); se mantiene NRO.COMPROBANTE si el cliente lo usa, sin quitar columnas ya publicadas.\n3) Filas SI y MOV exportan detalle y comprobante cuando existen en RPDX2 (STRINGGRANDE1 e ID5).\n4) Exportaciones >75k filas o la pestaña Libro Auxiliar de Balance de prueba no se alteran salvo regresión.\n5) Prueba en test con el mismo filtro del ticket: comparar Excel vs grilla y vs archivo histórico adjunto.",
+      "trasAnalisisEn": "2026-10-12T20:47:53.500Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso contabilidad (Libros auxiliares async vs Balance). Defecto FE en exportarExcel omitiendo columnas ya leídas de RPDX2. SPs del job documentados y leídos; sin cambio SQL. Listo para dictamen Fase 1.",
+      "fecha": "2026-10-12T20:55:00.000Z",
+      "estado": "listo",
+      "sps": "NC_SPK_GEN_LIBROAUXILIAR — no releer salvo vacíos en grilla; fix esperado solo en Vue."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261008-0100016671/diagramas/flujo.html",
+      "subidaEn": "2026-10-12T15:48:30",
+      "url": "/api/caso/20261008-0100016671/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "contabilidad",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261008-0100016671-flujo.html"
+    },
+    "mockups": [
+      "activo/20261008-0100016671/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261008-0100016671\\sql\\",
+    "carpetaRelativa": "activo/20261008-0100016671/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016671\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "contabilidad",
+    "catalogo": "conocimiento/contabilidad/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_CONTABILIDAD_2",
+        "metodo": "EJECUTAR_BUSQUEDA_ASYNC",
+        "estado": "leido",
+        "hace": "Async: NC_SPK_GEN_LIBROAUXILIAR llena RPDX2; job COMPLETADO/ERROR.",
+        "llama": [
+          "NC_SPK_GEN_LIBROAUXILIAR"
+        ]
+      }
+    ],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261008-0100016671.html",
+    "aprobados": "aprobados/20261008-0100016671/",
+    "imagenes": "aprobados/20261008-0100016671/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-12",
+    "ultimoEnvio": "2026-10-12T15:58:59",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

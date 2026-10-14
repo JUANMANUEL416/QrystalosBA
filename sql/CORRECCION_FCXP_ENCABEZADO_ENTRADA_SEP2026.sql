@@ -1,0 +1,144 @@
+/*
+  Corrección de encabezado. CEM. Septiembre 2026.
+  La cuenta por pagar nace de la entrada. Estas tres quedaron con el total
+  de la orden en el encabezado y con lo recibido en el detalle.
+  No están contabilizadas. No se toca el detalle ni el inventario.
+
+    26CM000528  DPE11790   106.891.881,12  ->  74.065.751,04
+    03CM001951  DPE11721     5.680.472,00  ->     132.810,00
+    34CM000083  DPE12636     5.680.472,00  ->   4.955.910,00
+
+  03CM001951 y 34CM000083 son la misma orden 2600001259.
+  MX1203-2 llegó en dos entradas (570 y 21.270). MX1206-1 (2.800 und, 591.752)
+  no ha entrado: queda en la orden para otra cuenta por pagar.
+
+  Si el detalle no coincide con la entrada, o si alguna ya está contabilizada,
+  no deja nada grabado. Ejecutar el bloque completo.
+*/
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+BEGIN TRAN;
+
+IF (
+  SELECT COUNT(*)
+  FROM FCXP
+  WHERE CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+    AND ESTADO = N'N'
+    AND COALESCE(CONTABILIZADA, 0) = 0
+    AND COALESCE(NROCOMPROBANTE, N'') = N''
+    AND COALESCE(VLR_ABONOS, 0) = 0
+    AND COALESCE(VLR_NOTASDEBITO, 0) = 0
+    AND COALESCE(VLR_NOTASCREDITO, 0) = 0
+    AND COALESCE(VLR_IMPUESTOS, 0) = 0
+    AND COALESCE(VLR_FLETE, 0) = 0
+    AND COALESCE(VLR_DESCUENTO, 0) = 0
+) <> 3
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50001, 'Alguna CxP no esta en estado N, ya tiene comprobante, abono, nota, impuesto, flete o descuento. No se cambio nada.', 1;
+END;
+
+IF EXISTS (
+  SELECT 1
+  FROM FCXP C
+  INNER JOIN FCOM F ON F.CNSFCOM = C.CNSFCOM
+  WHERE C.CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+    AND ABS(C.VLR_NETO - (F.VR_ANTESIVA + COALESCE(F.IVA, 0))) > 0.02
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50002, 'El encabezado ya no es el total de la orden. No se cambio nada.', 1;
+END;
+
+IF EXISTS (
+  SELECT 1
+  FROM (
+    SELECT CNSFCXP, SUM(VLR_NETO) AS DETALLE
+    FROM FCXPD
+    WHERE CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+    GROUP BY CNSFCXP
+  ) D
+  INNER JOIN (
+    SELECT *
+    FROM (VALUES
+      (N'26CM000528', CAST(74065751.04 AS DECIMAL(14, 2))),
+      (N'03CM001951', CAST(132810.00 AS DECIMAL(14, 2))),
+      (N'34CM000083', CAST(4955910.00 AS DECIMAL(14, 2)))
+    ) E (CNSFCXP, ESPERADO)
+  ) E ON E.CNSFCXP = D.CNSFCXP
+  WHERE ABS(D.DETALLE - E.ESPERADO) > 0.02
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50003, 'El detalle ya no es lo recibido. No se cambio nada.', 1;
+END;
+
+IF EXISTS (
+  SELECT 1
+  FROM (
+    SELECT X.CNSFCXP, ROUND(SUM(H.CANTIDAD * H.PCOSTO + COALESCE(H.VLRIVA, 0)), 2) AS ENTRADA
+    FROM (
+      SELECT DISTINCT CNSFCXP, N_PRESUP
+      FROM FCXPD
+      WHERE CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+    ) X
+    INNER JOIN IMOVH H ON H.CNSMOV = X.N_PRESUP
+    GROUP BY X.CNSFCXP
+  ) H
+  INNER JOIN (
+    SELECT CNSFCXP, SUM(VLR_NETO) AS DETALLE
+    FROM FCXPD
+    WHERE CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+    GROUP BY CNSFCXP
+  ) D ON D.CNSFCXP = H.CNSFCXP
+  WHERE ABS(H.ENTRADA - D.DETALLE) > 0.02
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50004, 'El detalle no coincide con la entrada. No se cambio nada.', 1;
+END;
+
+UPDATE C
+SET VALOR = X.BASE,
+    VLR_IVA = X.IVA,
+    VLR_NETO = X.NETO,
+    SALDO = X.NETO
+FROM FCXP C
+INNER JOIN (
+  SELECT CNSFCXP,
+         SUM(VALOR * CANTIDAD) AS BASE,
+         SUM(VLR_IVA) AS IVA,
+         SUM(VLR_NETO) AS NETO
+  FROM FCXPD
+  WHERE CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+  GROUP BY CNSFCXP
+) X ON X.CNSFCXP = C.CNSFCXP
+WHERE C.CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083');
+
+IF EXISTS (
+  SELECT 1
+  FROM FCXP C
+  INNER JOIN (
+    SELECT *
+    FROM (VALUES
+      (N'26CM000528', CAST(74065751.04 AS DECIMAL(14, 2))),
+      (N'03CM001951', CAST(132810.00 AS DECIMAL(14, 2))),
+      (N'34CM000083', CAST(4955910.00 AS DECIMAL(14, 2)))
+    ) E (CNSFCXP, ESPERADO)
+  ) E ON E.CNSFCXP = C.CNSFCXP
+  WHERE ABS(C.VALOR - E.ESPERADO) > 0.02
+     OR ABS(C.VLR_NETO - E.ESPERADO) > 0.02
+     OR ABS(C.SALDO - E.ESPERADO) > 0.02
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50005, 'El encabezado no quedo en lo recibido. No se cambio nada.', 1;
+END;
+
+COMMIT TRAN;
+
+SELECT C.CNSFCXP, C.NOREFERENCIA, C.VALOR, C.VLR_NETO, C.SALDO, C.CONTABILIZADA
+FROM FCXP C
+WHERE C.CNSFCXP IN (N'26CM000528', N'03CM001951', N'34CM000083')
+ORDER BY C.CNSFCXP;

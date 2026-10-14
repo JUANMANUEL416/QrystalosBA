@@ -1,0 +1,610 @@
+{
+  "procedencia": "CAJA",
+  "actualizado": "2026-10-13",
+  "fuenteSql": "sql/SPK_NC_CONTAB_CAJA_ING.sql, SPK_NC_CONTAB_CAJA_EGR.sql, SPK_CIERRERECIBO_CAJA.sql; SPQ_CONF_CAJA · CONFIRMAR_RECIBO / CONFIRMAR_RECIBO_EGRESO (conocimiento/caja/sps.json)",
+  "documentoOrigen": {
+    "tabla": "FCJ",
+    "claves": [
+      "CODCAJA",
+      "CNSFACJ"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFACJ",
+      "REFERENCIA2": "CODCAJA"
+    }
+  },
+  "variantesGenerador": [
+    {
+      "id": "caja-ing",
+      "nombre": "Ingreso / cobro",
+      "condicion": "FCJ.CLASE_FAC = COBRO (habitual)",
+      "generador": "SPK_NC_CONTAB_CAJA_ING",
+      "tipoComprobanteUsvgs": "IDCON_TCOM_ICAJ (fallback IDCON_TCOM_DEFAULT, COMMS si COMPROBMULTISEDE)"
+    },
+    {
+      "id": "caja-egr",
+      "nombre": "Egreso / pago",
+      "condicion": "FCJ.CLASE_FAC = PAGO",
+      "generador": "SPK_NC_CONTAB_CAJA_EGR",
+      "tipoComprobanteUsvgs": "IDCON_TCOM_ECAJ",
+      "nota": "Caja MENOR: si HABILITA_CCAFCJMENOR=NO, el egreso no genera MCP (reembolso aparte)"
+    }
+  ],
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "SPK_NC_CONTAB_CAJA_ING / EGR al insertar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "llamaAnterior": [
+        "N3-contab-caja-ing",
+        "N3-contab-caja-egr"
+      ],
+      "nota": "Errores de línea (cuenta no existe, no detalle, tercero) → MCPE estado 0. Ver SPK_REVISAR_COMPROBANTE."
+    },
+    {
+      "id": "N3-contab-caja-egr",
+      "orden": 3,
+      "nombre": "Generar comprobante egreso (PROCEDENCIA CAJA)",
+      "sp": "SPK_NC_CONTAB_CAJA_EGR",
+      "metodoUi": [
+        "SPQ_CONF_CAJA · CONFIRMAR_RECIBO_EGRESO",
+        "OM Caja / reproceso"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcj-pago",
+          "desc": "FCJ egreso con FCJD/PCJ",
+          "obligatorio": true
+        },
+        {
+          "id": "fcj-cerrada",
+          "desc": "CERRADA=1 (tras cierre)",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-existe",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "caj-clase-menor",
+          "usvgs": "HABILITA_CCAFCJMENOR",
+          "desc": "MENOR sin habilitar → RETURN sin MCP",
+          "obligatorio": "si CAJ.CLASE=MENOR"
+        },
+        {
+          "id": "tcom-ecaj",
+          "usvgs": "IDCON_TCOM_ECAJ",
+          "obligatorio": true
+        },
+        {
+          "id": "mterctabco",
+          "usvgs": "MTERCEROCTABCOCONTA",
+          "obligatorio": true
+        },
+        {
+          "id": "cpcj-fpa",
+          "desc": "Igual familia ingreso: conceptos, formas pago, cuentas CxP si aplica",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-spk-leidas",
+          "usvgs": [
+            "COMEGRESO_FPA",
+            "COMPROBMULTISEDE",
+            "CONFIRCONT_CAJA_ATM",
+            "HABILITA_CCAFCJMENOR",
+            "IDCJFPACHEQUE",
+            "IDCJFPLEGANTICIPOS",
+            "IDCJTEARS",
+            "IDCJTECONSIGNACION",
+            "IDCJTECXP",
+            "IDCJTEDEVOLDEPOSITO",
+            "IDCJTEDEVOLDOCUMENTO",
+            "IDCJTENOMINA",
+            "IDCJTETRASBCOCAJA",
+            "IDCJTETRASLADO",
+            "IDCJTETRASLADOBCO",
+            "IDCON_TCOM_DEFAULT",
+            "IDCON_TCOM_ECAJ",
+            "IDFCJEGRECHEQUE",
+            "IDMODELOCONTABLE",
+            "IDTERCEROINSTALADO",
+            "MTERCEROCTABCOCONTA",
+            "TERCATBANCO"
+          ],
+          "desc": "Variables USVGS referenciadas en el SP (lectura automática)",
+          "obligatorio": "según rama del SP"
+        }
+      ],
+      "llamaAnterior": [
+        "N2-cierre-recibo-egr"
+      ],
+      "puntosCriticos": [
+        "PC-CAJ-06"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_CAJA_EGR.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMEGRESO_FPA",
+          "COMPROBMULTISEDE",
+          "CONFIRCONT_CAJA_ATM",
+          "HABILITA_CCAFCJMENOR",
+          "IDCJFPACHEQUE",
+          "IDCJFPLEGANTICIPOS",
+          "IDCJTEARS",
+          "IDCJTECONSIGNACION",
+          "IDCJTECXP",
+          "IDCJTEDEVOLDEPOSITO",
+          "IDCJTEDEVOLDOCUMENTO",
+          "IDCJTENOMINA",
+          "IDCJTETRASBCOCAJA",
+          "IDCJTETRASLADO",
+          "IDCJTETRASLADOBCO",
+          "IDCON_TCOM_DEFAULT",
+          "IDCON_TCOM_ECAJ",
+          "IDFCJEGRECHEQUE",
+          "IDMODELOCONTABLE",
+          "IDTERCEROINSTALADO",
+          "MTERCEROCTABCOCONTA",
+          "TERCATBANCO"
+        ],
+        "validacionesKo": [
+          "Per�odo Contable No Existe",
+          "Recibo ya se encuentra en contabilidad, Posible duplicidad"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "notaTecnica": "N3 ya detallado; revisar HABILITA_CCAFCJMENOR y MTERCEROCTABCOCONTA en catalogoSql"
+    },
+    {
+      "id": "N3-contab-caja-ing",
+      "orden": 3,
+      "nombre": "Generar comprobante ingreso (PROCEDENCIA CAJA)",
+      "sp": "SPK_NC_CONTAB_CAJA_ING",
+      "metodoUi": [
+        "SPQ_CONF_CAJA · CONFIRMAR_RECIBO (inline)",
+        "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS pestaña Caja",
+        "Procesos caja masivo"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcj-existe",
+          "desc": "FCJ + FCJD + PCJ para CODCAJA/CNSFACJ",
+          "obligatorio": true
+        },
+        {
+          "id": "fcj-no-duplicado-mcp",
+          "desc": "No MCP CAJA vigente mismo REF1/REF2 (salvo rama FACTURAPOS copago)",
+          "obligatorio": true
+        },
+        {
+          "id": "fcj-estado-p",
+          "desc": "ESTADO=P (confirmado)",
+          "obligatorio": true
+        },
+        {
+          "id": "pcj-cuadre",
+          "desc": "SUM(PCJ.VALOR) coherente con FCJD (SP sincroniza si 1 línea)",
+          "obligatorio": true
+        },
+        {
+          "id": "tercero-resoluble",
+          "desc": "IDTERCERO en TER o AFI→SPK_INSERT_TERDEAFI (TERCATAFILIADO)",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-existe",
+          "tabla": "PRI",
+          "desc": "Periodo año/mes de FCJ.FECHA existe",
+          "obligatorio": true
+        },
+        {
+          "id": "caj-nocontab",
+          "tabla": "CAJ",
+          "campo": "NOCONTAB",
+          "desc": "Si CAJ.NOCONTAB=1 → marca NOCONTAB y no MCP",
+          "obligatorio": false
+        },
+        {
+          "id": "cpcj-com",
+          "tablas": [
+            "CPCJ",
+            "COM"
+          ],
+          "desc": "Cada FCJD.CONCEPTO → CPCJ.CODIGO con COM.COMPROBANTE válido",
+          "obligatorio": true
+        },
+        {
+          "id": "cpcj-cuenta",
+          "tabla": "CPCJ",
+          "campo": "CUENTA",
+          "desc": "Cuenta del concepto → CUE Detalle (líneas CR concepto)",
+          "obligatorio": true
+        },
+        {
+          "id": "fpa-cuentas",
+          "tablas": [
+            "FPA",
+            "CAJ",
+            "BCT"
+          ],
+          "desc": "PCJ: FPA.CUENTA o CAJ.CUENTA o BCT.COD_CONTABLE según USAR_CUENTACAJA/REQBCO",
+          "obligatorio": true
+        },
+        {
+          "id": "idmodelo",
+          "usvgs": "IDMODELOCONTABLE",
+          "desc": "Modelo KMCOM / plan contable",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-icaj",
+          "usvgs": "IDCON_TCOM_ICAJ",
+          "desc": "Tipo comprobante ingreso caja",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-conceptos",
+          "usvgs": [
+            "IDCJAPERTURACAJA",
+            "IDCJRECEPCIONTRAS",
+            "CPCJ_REEMB",
+            "IDCJLEGDEPOSITO",
+            "IDCJCOPA",
+            "IDCJABONOCP",
+            "IDCJBONO",
+            "IDCJMODE",
+            "IDCJPACO",
+            "IDCJDEPCLIATER",
+            "IDCJFPADESCUENT_NOMI",
+            "FACTURAPOS_ACTIVA",
+            "USARCUEPUENTE",
+            "IDTERCONTABLEPART",
+            "TERCATAFILIADO",
+            "COMPROBMULTISEDE"
+          ],
+          "desc": "Ramas del ingreso (apertura, traslado, reembolso, POS, copago, etc.)",
+          "obligatorio": "según PROCEDENCIA/concepto"
+        },
+        {
+          "id": "usvgs-spk-leidas",
+          "usvgs": [
+            "COMPROBMULTISEDE",
+            "CPCJ_REEMB",
+            "FACTURAPOS_ACTIVA",
+            "IDCJABONOCP",
+            "IDCJAPERTURACAJA",
+            "IDCJBONO",
+            "IDCJCOPA",
+            "IDCJDEPCLIATER",
+            "IDCJFPADESCUENT_NOMI",
+            "IDCJLEGDEPOSITO",
+            "IDCJMODE",
+            "IDCJPACO",
+            "IDCJRECEPCIONTRAS",
+            "IDCON_TCOM_DEFAULT",
+            "IDCON_TCOM_ICAJ",
+            "IDMODELOCONTABLE",
+            "IDTERCEROCAJACOM",
+            "IDTERCONTABLEPART",
+            "TERCATAFILIADO",
+            "USARCUEPUENTE"
+          ],
+          "desc": "Variables USVGS referenciadas en el SP (lectura automática)",
+          "obligatorio": "según rama del SP"
+        }
+      ],
+      "salidasSinMcp": [
+        "Concepto = CPCJ_REEMB (reembolso caja menor)",
+        "Concepto = IDCJRECEPCIONTRAS sin comprobante IX",
+        "CAJ.NOCONTAB=1 → NROCOMPROBANTE='NOCONTAB'"
+      ],
+      "llamaAnterior": [
+        "N2-cierre-recibo"
+      ],
+      "puntosCriticos": [
+        "PC-CAJ-03",
+        "PC-CAJ-04",
+        "PC-CAJ-05"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_CAJA_ING.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "CPCJ_REEMB",
+          "FACTURAPOS_ACTIVA",
+          "IDCJABONOCP",
+          "IDCJAPERTURACAJA",
+          "IDCJBONO",
+          "IDCJCOPA",
+          "IDCJDEPCLIATER",
+          "IDCJFPADESCUENT_NOMI",
+          "IDCJLEGDEPOSITO",
+          "IDCJMODE",
+          "IDCJPACO",
+          "IDCJRECEPCIONTRAS",
+          "IDCON_TCOM_DEFAULT",
+          "IDCON_TCOM_ICAJ",
+          "IDMODELOCONTABLE",
+          "IDTERCEROCAJACOM",
+          "IDTERCONTABLEPART",
+          "TERCATAFILIADO",
+          "USARCUEPUENTE"
+        ],
+        "validacionesKo": [
+          "PERIODO NO EXISTE.",
+          "Recibo ya se encuentra en contabilidad, Posible duplicidad"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "notaTecnica": "N3 ya detallado en grafo; catalogoSql lista USVGS del SPK_NC_CONTAB_CAJA_ING"
+    },
+    {
+      "id": "N2-cierre-recibo",
+      "orden": 2,
+      "nombre": "Cierre operativo ingreso",
+      "sp": "SPK_CIERRERECIBO_CAJA",
+      "metodoUi": "SPQ_CONF_CAJA · CONFIRMAR_RECIBO",
+      "requiresDocumento": [
+        {
+          "id": "pri-abierto",
+          "tabla": "PRI",
+          "desc": "PRI.CERRADO=0 para mes de FCJ.FECHA",
+          "obligatorio": true
+        },
+        {
+          "id": "pcj-existe",
+          "tabla": "PCJ",
+          "desc": "Al menos una forma de pago",
+          "obligatorio": true
+        },
+        {
+          "id": "estado-no-anulado",
+          "desc": "ESTADO <> A para cobro",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "usvgs-fpa",
+          "usvgs": [
+            "IDCJFPACHEQUE",
+            "IDCJFPAEFECTIVO",
+            "IDCJAPERTURACAJA",
+            "IDCPCJPAGARE",
+            "IDCJPART"
+          ],
+          "desc": "Formas y conceptos especiales en cierre",
+          "obligatorio": "según flujo"
+        }
+      ],
+      "efecto": "FCJ.CERRADA=1; dispara SPK_ACTUALIZA_SALDO_BANCO (ingreso); luego SPK_NC_CONTAB_CAJA_ING",
+      "llamaAnterior": [
+        "N1-armar-recibo-ing"
+      ],
+      "puntosCriticos": [
+        "PC-CAJ-01",
+        "PC-CAJ-02"
+      ]
+    },
+    {
+      "id": "N2-cierre-recibo-egr",
+      "orden": 2,
+      "nombre": "Cierre operativo egreso",
+      "sp": "SPK_CIERRERECIBO_CAJA",
+      "metodoUi": "SPQ_CONF_CAJA · CONFIRMAR_RECIBO_EGRESO",
+      "requiresDocumento": [
+        {
+          "id": "pri-abierto",
+          "obligatorio": true
+        },
+        {
+          "id": "pcj-cuadre",
+          "desc": "Suma PCJ = VALORTOTAL",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "CERRADA=1; SPK_NC_CONTAB_CAJA_EGR (sin SPK_ACTUALIZA_SALDO_BANCO en egreso estándar)",
+      "llamaAnterior": [
+        "N1-armar-recibo-egr"
+      ]
+    },
+    {
+      "id": "N1-armar-recibo-egr",
+      "orden": 1,
+      "nombre": "Armar recibo de egreso",
+      "sp": "SPQ_CONF_CAJA",
+      "metodos": [
+        "NUEVO_RECIBO_EGRESO",
+        "INSERT_FCJD_EGRESO",
+        "CRUDFPA_EGRESO"
+      ],
+      "requiresConfig": [
+        {
+          "id": "cjte",
+          "tabla": "CJTE",
+          "desc": "Tipo egreso → IDCATEGORIA tercero",
+          "obligatorio": "según TIPOEGRESO"
+        },
+        {
+          "id": "cxp-orden",
+          "desc": "Si pago CxP: FCXP/orden pago autorizada",
+          "obligatorio": "si aplica"
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-caja"
+      ]
+    },
+    {
+      "id": "N1-armar-recibo-ing",
+      "orden": 1,
+      "nombre": "Armar recibo de ingreso",
+      "sp": "SPQ_CONF_CAJA",
+      "metodos": [
+        "INSERTA_RECIBO",
+        "INSERTA_FCJD",
+        "CRUDFPA",
+        "TRAER_COMPROBANTE",
+        "EDITA_FCJ"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "acj-abierta",
+          "tablas": [
+            "ACJ",
+            "CAJ"
+          ],
+          "desc": "Sesión caja abierta (salvo procaja)",
+          "obligatorio": true
+        },
+        {
+          "id": "ubreq",
+          "tabla": "UBEQ",
+          "desc": "Equipo con caja asignada",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "cpcj-catalogo",
+          "tabla": "CPCJ",
+          "desc": "Conceptos ingreso con CUENTA",
+          "obligatorio": true
+        },
+        {
+          "id": "fpa-catalogo",
+          "tabla": "FPA",
+          "desc": "Formas de pago activas",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-caja"
+      ]
+    },
+    {
+      "id": "N0-config-caja",
+      "orden": 0,
+      "nombre": "Configuración previa institucional",
+      "pantallas": [
+        "/conf/cpcj",
+        "/conf/fpa",
+        "/conf/caj",
+        "/conf/caja",
+        "/conf/usvgs",
+        "Configuración contable KMCOM caja"
+      ],
+      "requiresConfig": [
+        {
+          "id": "caj-cuenta",
+          "tabla": "CAJ",
+          "campo": "CUENTA",
+          "desc": "Cuenta puente caja física",
+          "obligatorio": true
+        },
+        {
+          "id": "pri-mes",
+          "tabla": "PRI",
+          "desc": "Periodos creados y abiertos para operar",
+          "obligatorio": true
+        },
+        {
+          "id": "cue-plan",
+          "tabla": "CUE",
+          "desc": "Plan con cuentas Detalle usadas en CPCJ/FPA/CAJ/BCT",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom-caja",
+          "tabla": "KMCOM",
+          "desc": "Procesos caja en modelo IDMODELOCONTABLE (si ramas KMCOM)",
+          "obligatorio": "según concepto"
+        },
+        {
+          "id": "usvgs-idcj",
+          "desc": "Todas las IDCJ* y CPCJ_* referenciadas en SPK contab y cierre",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": []
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS",
+    "procedencia": "CAJA",
+    "tablaOrigen": "FCJ",
+    "filtro": "Recibos cerrados pendientes CONTABILIZADA",
+    "dispara": [
+      "SPK_NC_CONTAB_CAJA_ING",
+      "SPK_NC_CONTAB_CAJA_EGR"
+    ]
+  },
+  "enlaceRecaudos": {
+    "desc": "Recaudo CAJA exige FCJ previo RECAUDO=1, CERRADA=1, ESTADO=P; contabilidad CXC es otro comprobante (SPK_NC_CONTAB_CXC)",
+    "procesoHermano": "flujo-recaudos-cartera-contab",
+    "grafo": "grafo-contabilizacion/cxc.json"
+  },
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "auditoria_procesos.validar_config_contabilidad + traza FCJ/PCJ/CPCJ por CNSFPAG",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "TTEC",
+      "CPCJ",
+      "CAJ",
+      "FPA",
+      "FIMPDV",
+      "documento-CNSFPAG"
+    ]
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/caja.json",
+    "procesoHermano": "caja",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-caja.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

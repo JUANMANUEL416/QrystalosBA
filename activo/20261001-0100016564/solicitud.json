@@ -1,0 +1,208 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-02T17:14:59.801Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016564",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261001-0100016564",
+    "idReq": "0100016564",
+    "fecha": "2026-09-30",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Hospital de Uribia",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "PPTO · PRESUPUESTO",
+    "rutaPantalla": "/ppto/ptcdp (ptcdp.certificados) — cadena CDP → RP → CxP → Pago"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "MARCOS MANUEL CONTRERAS MARIANO",
+    "desarrollador": "GUILLERMO GARCIA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/HURIBI52",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Mejora"
+  },
+  "contenido": {
+    "titulo": "PPTO · Vista previa PDF automática tras confirmar CDP/RP/CXP/Pago",
+    "requerimiento": "Automatización de vista previa para impresión tras confirmación de CDP, RP, CXP y pago\n\nSe solicita que el sistema abra automáticamente la vista previa para imprimir después de confirmar un Certificado de Disponibilidad (CDP), Requisición de Pago (RP), Cuentas por Pagar (CXP) y pago. Actualmente, se debe realizar este paso manualmente, lo que podría optimizarse.\n\n1. Acceder a la ruta: Presupuesto/movimiento/Gasto/Certificado de disponibilidad.\n2. Confirmar un CDP, RP, CXP o pago haciendo clic en el botón de confirmar. DETALLE: Se levanta el presente ticket para solicitar la viabilidad y desarrollo de una nueva mejora funcional dentro del Módulo de Presupuesto, orientada a optimizar la experiencia del usuario y reducir la cantidad de clics en la operación diaria.\n\nActualmente, el flujo del sistema requiere que el usuario busque la opción de imprimir de forma manual tras confirmar un movimiento presupuestal.\nSe solicita que, al momento de ejecutar la acción de \"Confirmar\" de manera exitosa sobre los siguientes documentos, el sistema dispare o levante automáticamente la pantalla/modal de impresión en formato PDF:\n\nCDP (Certificado de Disponibilidad Presupuestal)\n\nRP (Registro Presupuestal)\n\nCXP (Cuenta Por Pagar)\n\nSe adjunta un video de prueba evidenciando el flujo actual del sistema y el momento exacto en el que se espera que se lance la función de impresión (inmediatamente después del retorno exitoso de la confirmación en base de datos).",
+    "criteriosAceptacion": "1) Tras CONFIRMAR exitoso (OK=OK) de un CDP en Gastos → Certificado de disponibilidad, el sistema abre solo la vista previa PDF del mismo CDP (mismo formato que el botón Imprimir actual), sin clic adicional en Imprimir.\n2) Idem para RP confirmado: vista previa del RP; si CLASEIMP=ARBOL, se respeta el diálogo de nivel ya existente y luego el PDF.\n3) Idem para CXP (obligación presupuestal PTCXP) y Pago (PTPAG) confirmados: vista previa del documento confirmado.\n4) Si la confirmación falla (KO o excepción), no se abre PDF ni se simula impresión.\n5) El botón Imprimir manual sigue disponible y genera el mismo PDF que el disparo automático.\n6) Desconfirmar / Anular no abren vista previa.\n7) No se inventan formatos nuevos: se reutilizan RptCDP / RptPTRP / RptPTCXP / RptPTPAG vía composable ppto.getPDFReporte (MODELO PTPTO_IMPRESION · PPTO_PROCESOS).",
+    "alcance": "Frontend Qrystalos2 — cadena de gastos presupuestales:\n- PTCDPComponent (CDP)\n- PTRPComponent (RP)\n- PTCXPComponent (CXP presupuestal)\n- PTPAGComponent (Pago)\nSolo el éxito de PROCESO=CONFIRMAR debe invocar la función de impresión ya existente (onImprimirCDP / onImprimirRP / onImprimirCXP / onImprimirPAG).\nIncluye el mismo comportamiento si esos componentes se usan en flujo guiado / modal desde el CDP.\nFuera de alcance: ingresos (RECO/RECA/PTMOV/PTNOT), informes Infoppto, Seguimiento Gastos en construcción, cambios de layout PDF, nuevos METODOs SQL, contabilidad/MCP.",
+    "restricciones": "- No modificar SPQ_PPTO_PTCDP ni SPQ_PTPTO_IMPRESION: la confirmación y la impresión ya existen; el hueco es solo el encadenamiento en FE.\n- No abrir PDF si CONFIRMAR no retorna OK.\n- No forzar impresión al confirmar desde estados inválidos (permiso BTN_CONFIRMAR_* / validaciones actuales del SP).\n- RP con impresión árbol: no saltarse el selector de nivel.\n- No mezclar con CxP administrativa (FCXP) ni anticipos; este REQ es presupuesto (PT*).\n- PDF adjunto Desarrollo_Presupuesto.pdf: extracto vacío (falta pypdf); no se citó contenido del PDF en este análisis. Si aporta reglas distintas al REQ, el coordinador lo aclara antes del dictamen.",
+    "analisis": "Paso 0 — ¿Ya existe?\nTexto del REQ: automatizar la vista previa PDF inmediatamente después de confirmar CDP, RP, CXP y pago en Presupuesto → Gastos. No es un fallo de confirmación ni de impresión: el usuario ya sabe que debe imprimir a mano.\n\nInventario de caminos del control (cadena-gastos):\n1) Confirmar CDP — PTCDPComponent · permiso BTN_CONFIRMAR_CDP · AppStore.json MODELO PPTO_PTCDP · METODO CRUDPTCDP · PROCESO CONFIRMAR → SPQ_PPTO_PTCDP. Tras OK solo notify + refresh; no llama onImprimirCDP.\n2) Imprimir CDP (manual) — botón print · onImprimirCDP → ppto.getPDFReporte(tabla PTCDP) → PTPTO_IMPRESION · PPTO_PROCESOS → modal PDF. Visible si estado NoConfirmado o Confirmado (puedeImprimir).\n3) Confirmar RP — PTRPComponent · CRUDPTRP CONFIRMAR. Tras OK: refresh; en modoFlujoGuiado puede abrir modal CXP. No imprime.\n4) Imprimir RP — onImprimirRP / ejecutarImpresionRP (si CLASEIMP=ARBOL pide nivel). Manual.\n5) Confirmar CXP — PTCXPComponent · CRUDPTCXP CONFIRMAR. Tras OK: refresh; no imprime.\n6) Imprimir CXP — onImprimirCXP. Manual.\n7) Confirmar Pago — PTPAGComponent · CRUDPTPAG CONFIRMAR. Tras OK: refresh; no imprime.\n8) Imprimir Pago — onImprimirPAG. Manual.\nHelpManualPTCDP: documenta Confirmar e Imprimir como acciones separadas; no menciona auto-impresión.\nnecesidadesYaCubiertas en proceso.json: solo «número de contrato en impresión RP» (otro REQ); no cubre auto-vista previa tras confirmar.\n\nClasificación: HUECO (mejora UX). No es capacitación (el camino manual existe y el cliente pide eliminarlo). No es defecto (CONFIRMAR e Imprimir funcionan por separado).\n\nCausa: el FE trata confirmación e impresión como dos clics independientes; no hay hook post-OK=OK hacia getPDFReporte.\n\nSolución concreta: en procesarCambioEstado* de los cuatro componentes, si proceso===CONFIRMAR y respuesta OK, invocar la misma función de impresión del documento (await), reutilizando loading/notify existentes. Impacto FE Sí; API No (mismas llamadas); SQL No (sin cambio de procedimiento). Contabilidad: no afecta.\n\nNota de caso: un turno anterior de este mismo ID trató anulación de anticipo CxP (capacitación). El formulario vigente y el archivo Desarrollo_Presupuesto.pdf corresponden a este REQ de Presupuesto; el análisis actual sustituye ese hilo para la solución.",
+    "opciones": [
+      {
+        "titulo": "Auto-vista previa tras CONFIRMAR (recomendada)",
+        "descripcion": "Tras OK de CONFIRMAR en CDP/RP/CXP/Pago, llamar onImprimir* existente. Un clic menos; mismo PDF."
+      },
+      {
+        "titulo": "Preguntar al usuario (¿Imprimir?)",
+        "descripcion": "Diálogo Sí/No después de confirmar. Más control, menos ahorro de clics; no es lo pedido en el video/REQ."
+      },
+      {
+        "titulo": "Solo capacitación (usar Imprimir manual)",
+        "descripcion": "No cumple el REQ: el cliente pide disparo automático tras confirmación exitosa."
+      }
+    ],
+    "recomendacion": "Opción A. En PTCDPComponent, PTRPComponent, PTCXPComponent y PTPAGComponent, tras CONFIRMAR con OK=OK, invocar la función de impresión ya existente del mismo documento. No tocar SQL. Mantener Imprimir manual. En RP con ARBOL, conservar el diálogo de nivel. Criterios de aceptación del formulario. Rama feature/HURIBI52 · desarrollador Guillermo Garcia.",
+    "cambioPropuestoSimple": "Hoy: confirma el CDP (o RP, CXP, pago) y después busca el botón Imprimir para ver el PDF. Propuesta: al confirmar con éxito, el sistema abre solo la misma vista previa PDF que ya genera Imprimir, sin un clic extra. Si la confirmación falla, no se abre nada. El botón Imprimir sigue igual para reimprimir cuando quiera.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Mejora UX de impresión presupuestal (PDF cliente). No genera ni modifica asientos MCP/MCUE/MCPE ni comprobantes. Afecta contabilidad: No.",
+        "validadoEn": "2026-10-02T17:15:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En test/preversión: confirmar un CDP, un RP, una CXP y un pago y verificar que hoy NO se abre el PDF solo (confirmar el hueco). Luego imprimir a mano y comprobar que el PDF es el esperado. Si en alguna sede ya se abre solo tras confirmar, reportarlo antes de desarrollar (posible rama local)."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [
+      {
+        "nombre": "Desarrollo_Presupuesto.pdf",
+        "ruta": "activo/20261001-0100016564/archivos/Desarrollo_Presupuesto.pdf",
+        "extracto": "Desarrollo_Presupuesto.extracto.txt",
+        "extractoRuta": "activo/20261001-0100016564/archivos/Desarrollo_Presupuesto.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 110088,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-02T12:06:34",
+        "url": "/api/caso/20261001-0100016564/archivo/Desarrollo_Presupuesto.pdf",
+        "urlExtracto": "/api/caso/20261001-0100016564/archivo/Desarrollo_Presupuesto.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1) Tras CONFIRMAR exitoso (OK=OK) de un CDP en Gastos → Certificado de disponibilidad, el sistema abre solo la vista previa PDF del mismo CDP (mismo formato que el botón Imprimir actual), sin clic adicional en Imprimir.\n2) Idem para RP confirmado: vista previa del RP; si CLASEIMP=ARBOL, se respeta el diálogo de nivel ya existente y luego el PDF.\n3) Idem para CXP (obligación presupuestal PTCXP) y Pago (PTPAG) confirmados: vista previa del documento confirmado.\n4) Si la confirmación falla (KO o excepción), no se abre PDF ni se simula impresión.\n5) El botón Imprimir manual sigue disponible y genera el mismo PDF que el disparo automático.\n6) Desconfirmar / Anular no abren vista previa.\n7) No se inventan formatos nuevos: se reutilizan RptCDP / RptPTRP / RptPTCXP / RptPTPAG vía composable ppto.getPDFReporte (MODELO PTPTO_IMPRESION · PPTO_PROCESOS).",
+      "originalesEn": "2026-10-02T17:13:39.169Z",
+      "sugeridos": "1) Auto PDF tras CONFIRMAR OK en CDP/RP/CXP/Pago. 2) Fallo de confirmación no imprime. 3) Imprimir manual intacto. 4) RP ARBOL conserva nivel. 5) Sin cambio SQL.",
+      "sugeridosEn": "2026-10-02T17:15:00.000Z",
+      "fuente": "agente",
+      "trasAnalisis": "1) Tras CONFIRMAR exitoso (OK=OK) de un CDP en Gastos → Certificado de disponibilidad, el sistema abre solo la vista previa PDF del mismo CDP (mismo formato que el botón Imprimir actual), sin clic adicional en Imprimir.\n2) Idem para RP confirmado: vista previa del RP; si CLASEIMP=ARBOL, se respeta el diálogo de nivel ya existente y luego el PDF.\n3) Idem para CXP (obligación presupuestal PTCXP) y Pago (PTPAG) confirmados: vista previa del documento confirmado.\n4) Si la confirmación falla (KO o excepción), no se abre PDF ni se simula impresión.\n5) El botón Imprimir manual sigue disponible y genera el mismo PDF que el disparo automático.\n6) Desconfirmar / Anular no abren vista previa.\n7) No se inventan formatos nuevos: se reutilizan RptCDP / RptPTRP / RptPTCXP / RptPTPAG vía composable ppto.getPDFReporte (MODELO PTPTO_IMPRESION · PPTO_PROCESOS).",
+      "trasAnalisisEn": "2026-10-02T17:13:47.784Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Hueco FE: encadenar impresión existente tras CONFIRMAR OK en CDP/RP/CXP/Pago. SQL sin cambio. SPQ_PTPTO_IMPRESION no está fichado en conocimiento/presupuesto/sps.json; no hace falta bajarlo para este fix (solo se reutiliza). PDF adjunto sin extracto textual.",
+      "fecha": "2026-10-02T17:15:00.000Z",
+      "estado": "listo",
+      "clasificacion": "hueco",
+      "sps": [
+        {
+          "sp": "SPQ_PPTO_PTCDP",
+          "metodo": "CRUDPTCDP / CRUDPTRP / CRUDPTCXP / CRUDPTPAG",
+          "nota": "Trigger CONFIRMAR — leido; sin modificación"
+        },
+        {
+          "sp": "SPQ_PTPTO_IMPRESION",
+          "metodo": "PPTO_PROCESOS",
+          "nota": "Impresión — no en sps.json del proceso; reutilizar; no releer salvo fallo de PDF en validarAntes"
+        }
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261001-0100016564/diagramas/flujo.html",
+      "subidaEn": "2026-10-02T12:14:37",
+      "url": "/api/caso/20261001-0100016564/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "presupuesto",
+      "aviso": null,
+      "dictamenIncrustado": true,
+      "sidecar": "dictamenes/20261001-0100016564-flujo.html"
+    },
+    "mockups": [
+      "activo/20261001-0100016564/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": "Mockup de la ventana propuesta: tras Confirmar OK se abre vista previa PDF (mismo reporte actual). No es captura del problema ni guía de CxP anticipo."
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261001-0100016564\\sql\\",
+    "carpetaRelativa": "activo/20261001-0100016564/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016564\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "presupuesto",
+    "catalogo": "conocimiento/presupuesto/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_PPTO_PTCDP",
+        "metodo": "CRUDPTCDP",
+        "estado": "leido",
+        "hace": "Cabecera CDP: INSERTAR (consecutivo CDP vía SPK_GENCONSECUTIVO_PPTO), EDITAR, ANULAR, CONFIRMAR, DESCONFIRMAR sobre PTCDP.",
+        "llama": [
+          "SPK_GENCONSECUTIVO_PPTO",
+          "FNK_VALORVARIABLE(PPTO_CDP_DESCONFMOV)"
+        ]
+      },
+      {
+        "sp": "SPQ_PPTO_PTCDP",
+        "metodo": "CRUDPTRP",
+        "estado": "leido",
+        "hace": "Registro presupuestal (PTRP) por CDP: CRUD y CONFIRMAR/DESCONFIRMAR/eliminar.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_PPTO_PTCDP",
+        "metodo": "CRUDPTCXP",
+        "estado": "leido",
+        "hace": "Obligación presupuestal PTCXP ligada a CDP/RP: alta, edición, baja, anular, confirmar, desconfirmar.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_PPTO_PTCDP",
+        "metodo": "CRUDPTPAG",
+        "estado": "leido",
+        "hace": "Pago presupuestal PTPAG contra CxP: CRUD y estados (incluye datos caja/banco opcionales).",
+        "llama": []
+      }
+    ],
+    "notas": "Proceso presupuesto (no cxp-fcxp). Impresión usa MODELO PTPTO_IMPRESION · PPTO_PROCESOS (no fichado en sps.json); no se modifica. No bajar .sql salvo que validarAntes falle en generación de PDF.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261001-0100016564.html",
+    "aprobados": "aprobados/20261001-0100016564/",
+    "imagenes": "aprobados/20261001-0100016564/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-02",
+    "destinatario": "guillermo.garcia@ixcolombia.com"
+  }
+}

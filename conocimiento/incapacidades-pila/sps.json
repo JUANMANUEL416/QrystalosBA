@@ -1,0 +1,662 @@
+{
+  "procesoId": "incapacidades-pila",
+  "actualizado": "2026-09-19T16:20:00",
+  "nota": "DESAIX SQLIX PREVERSION = 2.0.3 idénticas (2026-09-19). Tablas INCA/INC_* / PILA_* no están en INDICE_TABLAS viva.",
+  "sps": [
+    {
+      "nombre": "SPQ_INC_LOTE",
+      "tipo": "SPQ",
+      "modelo": "INC_LOTE",
+      "estado": "leido",
+      "fuente": "sql/SPQ_INC_LOTE.sql",
+      "notaArchivo": "PREVERSION=2.0.3. Constantes INC_ESTADO 1..10/12/13 alineadas al FE.",
+      "metodos": [
+        {
+          "id": "CARGAR_LOTE",
+          "hace": "Carga masiva Excel→JSON a INC_CARGA + INCA + INC_AFILIADO (upsert afiliado).",
+          "valida": [
+            "IDTERCERO, USUARIO, IDESTADO_INICIAL",
+            "Detalle no vacío",
+            "Doc, fecha inicio, días>0, CIE10, origen",
+            "Maternidad: TIPO_LM NORMAL/PREMATURO/MULTIPLE",
+            "FNK_INC_VALIDAR_DIAS_LM",
+            "No duplicar tipo+número+fecha en archivo ni en INCA",
+            "CIE10 activo en MDX"
+          ],
+          "noValida": [
+            "No exige IBC>0 en carga",
+            "No corre motor de liquidación"
+          ],
+          "errores": [
+            "Faltan parámetros obligatorios.",
+            "El archivo Excel no contiene registros.",
+            "Carga fallida. Hay N registro(s) con errores. Descargue el archivo."
+          ],
+          "llama": [
+            "FNK_INC_VALIDAR_DIAS_LM",
+            "FNK_VALORVARIABLE TERCATCONTRATANTE/TERCATIPS"
+          ],
+          "efecto": "Lote INC_CARGA ESTADO_LOTE=0 e INCA en IDESTADO_INICIAL. Log INC_LOG.",
+          "capaId": "03-alimentadores",
+          "estado": "leido"
+        },
+        {
+          "id": "REGISTRAR_INDIVIDUAL",
+          "hace": "Alta de una incapacidad (envuelve el JSON como array de 1).",
+          "valida": [
+            "Mismas reglas de CARGAR_LOTE (días LM, duplicado certificado, CIE10)"
+          ],
+          "noValida": [
+            "No activa el lote"
+          ],
+          "errores": [
+            "Faltan parámetros obligatorios.",
+            "Errores de validación del registro."
+          ],
+          "llama": [
+            "FNK_INC_VALIDAR_DIAS_LM"
+          ],
+          "efecto": "Nueva INCA + INC_AFILIADO si hace falta. Devuelve ID.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTIVACION_LOTE",
+          "hace": "PROCESO=ACTIVAR: INC_CARGA.ESTADO_LOTE 0→1. PROCESO=ELIMINAR: borra lote inactivo y dependientes.",
+          "valida": [
+            "ACTIVAR: IDCARGA y USUARIO; lote ESTADO_LOTE=0",
+            "ELIMINAR: solo lotes inactivos"
+          ],
+          "noValida": [
+            "ACTIVAR no valida que existan INCA"
+          ],
+          "errores": [
+            "Faltan parámetros para activar el lote.",
+            "El lote no se encontró o ya está activo.",
+            "Solo se pueden eliminar lotes inactivos."
+          ],
+          "llama": [],
+          "efecto": "ACTIVAR deja lote usable. ELIMINAR quita INCA/adjuntos/liquidación/log y afiliados huérfanos.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CAMBIAR_ESTADO",
+          "hace": "Cambia INCA.IDESTADO (p. ej. revisión, devolución empresa, Validado=6).",
+          "valida": [
+            "IDINCAPACIDAD e IDESTADO_NUEVO",
+            "Si va a Validado: orden cronológico 90 días (prórroga/traslape)",
+            "IBC>0 antes de validar"
+          ],
+          "noValida": [
+            "No recorre todo el semáforo; APROBAR/PAGAR/RECHAZAR tienen METODO propio"
+          ],
+          "errores": [
+            "Faltan parámetros IDINCAPACIDAD o IDESTADO_NUEVO",
+            "No se encontró la incapacidad",
+            "Validación denegada. El paciente tiene incapacidades más antiguas pendientes…"
+          ],
+          "llama": [
+            "SPQ_INC_MOTOR_LIQUIDACION (solo al pasar a Validado)"
+          ],
+          "efecto": "UPDATE INCA + INC_LOG. Si Validado: liquida INC_LIQUIDACION_DIARIA (el motor emite su propio OK).",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR_IBC",
+          "hace": "Ajusta IBC antes de Validado.",
+          "valida": [
+            "IDINCAPACIDAD, IBC_NUEVO>0, USUARIO",
+            "Estado < Validado"
+          ],
+          "noValida": [
+            "No reliquida hasta CAMBIAR_ESTADO a Validado"
+          ],
+          "errores": [
+            "El IBC debe ser mayor a cero.",
+            "Faltan parámetros obligatorios: IDINCAPACIDAD, IBC_NUEVO, USUARIO."
+          ],
+          "llama": [],
+          "efecto": "INCA.IBC actualizado + INC_LOG.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CORREGIR_INCA",
+          "hace": "Corrige datos de una INCA (días, CIE10, origen, etc.).",
+          "valida": [
+            "Parámetros de corrección",
+            "FNK_INC_VALIDAR_DIAS_LM",
+            "CIE10 activo",
+            "No duplicar certificado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Val. Diagnóstico: El código CIE10 (…) no existe o está Inactivo."
+          ],
+          "llama": [
+            "FNK_INC_VALIDAR_DIAS_LM"
+          ],
+          "efecto": "UPDATE INCA + log.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR_INCA",
+          "hace": "Actualiza campos de INCA (variante de corrección).",
+          "valida": [
+            "IDINCAPACIDAD",
+            "días LM / CIE10 / origen según rama"
+          ],
+          "noValida": [],
+          "errores": [
+            "Val. Diagnóstico: El código CIE10 (…) no existe o está Inactivo."
+          ],
+          "llama": [
+            "FNK_INC_VALIDAR_DIAS_LM"
+          ],
+          "efecto": "UPDATE INCA + log.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "REASIGNAR_INCA",
+          "hace": "Reasigna lista de incapacidades a otro usuario.",
+          "valida": [
+            "Lista IDINCAPACIDADES y usuario destino"
+          ],
+          "noValida": [],
+          "errores": [
+            "Faltan parámetros."
+          ],
+          "llama": [],
+          "efecto": "Cambia asignación + INC_LOG.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNAR_UNO_INCA",
+          "hace": "Asigna un caso de la cola.",
+          "valida": [
+            "IDINCAPACIDAD / usuario"
+          ],
+          "noValida": [],
+          "errores": [
+            "Faltan parámetros."
+          ],
+          "llama": [],
+          "efecto": "Caso asignado + log.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "REGISTRAR_RADICADO_EPS",
+          "hace": "Pasa a Radicado (7) con datos de radicado EPS.",
+          "valida": [
+            "IDINCAPACIDAD, usuario, datos radicado"
+          ],
+          "noValida": [
+            "No exige liquidación previa en este METODO"
+          ],
+          "errores": [
+            "Faltan parámetros.",
+            "No se encontró la incapacidad"
+          ],
+          "llama": [],
+          "efecto": "INCA IDESTADO=7 + log.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "APROBAR_INCA",
+          "hace": "Radicado (7) → Aprobada (9) con observación.",
+          "valida": [
+            "IDINCAPACIDAD, USUARIO, OBSERVACION_APROBADA",
+            "Estado actual = Radicado"
+          ],
+          "noValida": [
+            "No compara valores de pago"
+          ],
+          "errores": [
+            "Faltan parámetros obligatorios: IDINCAPACIDAD, USUARIO y OBSERVACION_APROBADA",
+            "Solo se puede aprobar una incapacidad en estado Radicado"
+          ],
+          "llama": [],
+          "efecto": "INCA IDESTADO=9, OBSERVACION_APROBADA, semáforo AZUL + INC_LOG.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_DATOS_PAGO",
+          "hace": "Lee liquidación y margen legal para pagar.",
+          "valida": [
+            "IDINCAPACIDAD",
+            "Estado = Aprobada",
+            "Existe INC_LIQUIDACION_DIARIA"
+          ],
+          "noValida": [],
+          "errores": [
+            "Solo se puede consultar datos de pago en estado Aprobada",
+            "No hay liquidación calculada para esta incapacidad."
+          ],
+          "llama": [],
+          "efecto": "Devuelve VALOR_LIQUIDADO_MOTOR, MARGEN_ERROR_PESOS (INC_PARAMETROS_LEGALES o 50000), EPS_SIN_PAGO.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "PAGAR_INCA",
+          "hace": "Aprobada (9) → Pagada (10). Compara valor EPS vs motor.",
+          "valida": [
+            "Estado Aprobado",
+            "Hay liquidación diaria",
+            "Valor EPS coherente con motor (0 si motor=0)",
+            "Si |diff| > margen exige CONFIRMAR_FUERA_MARGEN"
+          ],
+          "noValida": [
+            "No crea FCXP, BMOV ni MCP"
+          ],
+          "errores": [
+            "Solo se puede pagar una incapacidad en estado Aprobado",
+            "No hay liquidación calculada…",
+            "La diferencia entre el valor pagado por la EPS y el liquidado por el motor supera el margen…"
+          ],
+          "llama": [],
+          "efecto": "INCA Pagada + valores motor/EPS/diferencia + INC_LOG. Sin asiento.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "RECHAZAR_RADICADO",
+          "hace": "Rechazo recurrible o camino a validación de rechazo.",
+          "valida": [
+            "No estado final (Aprobada/Pagada)",
+            "Tipo de rechazo válido"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se puede rechazar una incapacidad que ya se encuentra en un estado final (Aprobada, Pagada, etc.).",
+            "Tipo de rechazo inválido."
+          ],
+          "llama": [],
+          "efecto": "Cambia estado + log de rechazo.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "APROBAR_RECHAZO_DEFINITIVO",
+          "hace": "Confirma rechazo definitivo (12).",
+          "valida": [
+            "Estado pendiente validación de rechazo",
+            "Parámetros obligatorios"
+          ],
+          "noValida": [],
+          "errores": [
+            "Faltan parámetros obligatorios.",
+            "La incapacidad no está pendiente de validación de rechazo."
+          ],
+          "llama": [],
+          "efecto": "INCA rechazo definitivo + log.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "REVERTIR_RECHAZO",
+          "hace": "Revierte rechazo recurrible si < 3 años desde radicación.",
+          "valida": [
+            "Solo rechazos recurribles",
+            "≤ 3 años desde radicación"
+          ],
+          "noValida": [],
+          "errores": [
+            "Solo se pueden revertir rechazos recurribles.",
+            "No se puede revertir el rechazo. Han pasado más de 3 años desde la radicación."
+          ],
+          "llama": [],
+          "efecto": "Vuelve a estado operable + log.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "VER_TRAZABILIDAD",
+          "hace": "Lista INC_LOG de la incapacidad.",
+          "valida": [
+            "IDINCAPACIDAD"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT de traza. Solo lectura.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "OBTENER_LIQUIDACION_DETALLE",
+          "hace": "Detalle INC_LIQUIDACION_DIARIA.",
+          "valida": [
+            "IDINCAPACIDAD"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT liquidación diaria. Solo lectura.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_PARAMETRO_LEGAL",
+          "hace": "Alta/edita INC_PARAMETROS_LEGALES (año, márgenes).",
+          "valida": [
+            "Año / campos del JSON"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Parámetro legal activo.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_PARAMETRO_LEGAL",
+          "hace": "Borra o inactiva parámetro legal.",
+          "valida": [
+            "Id parámetro"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Registro legal eliminado.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_TABLAS",
+          "hace": "DELETE masivo de operación: devoluciones, adjuntos, liquidación, log, INCA, cargas, afiliados, credenciales y PILA.",
+          "valida": [
+            "Ninguna (no pide confirmación ni usuario)"
+          ],
+          "noValida": [
+            "No toca INC_ESTADO, INC_PARAMETROS_LEGALES, INCA_OPTION, PILA_OPERADOR_CONFIG"
+          ],
+          "errores": [
+            "Error al limpiar tablas: …"
+          ],
+          "llama": [],
+          "efecto": "Vacía datos operativos INC/PILA. Peligroso en producción.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_INCAPACIDAD",
+          "hace": "Elimina una INCA y dependientes.",
+          "valida": [
+            "IDINCAPACIDAD"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "INCA y detalles borrados.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "VINCULAR_ADJUNTO",
+          "hace": "Asocia archivo a INCA (INC_INCAPACIDAD_ADJUNTO).",
+          "valida": [
+            "IDINCAPACIDAD / datos adjunto"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Adjunto vinculado.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "REEMPLAZAR_ADJUNTO",
+          "hace": "Reemplaza adjunto existente.",
+          "valida": [
+            "Id adjunto"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Adjunto reemplazado.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_ADJUNTOS_INCA",
+          "hace": "Lista adjuntos de la INCA.",
+          "valida": [
+            "IDINCAPACIDAD"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT adjuntos.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PILA_CARGA",
+      "tipo": "SPQ",
+      "modelo": "PILA_CARGA",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PILA_CARGA.sql",
+      "notaArchivo": "PREVERSION=2.0.3.",
+      "metodos": [
+        {
+          "id": "LISTAR_CONFIGS",
+          "hace": "Lista PILA_OPERADOR_CONFIG activos.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset de configs. Sin OK/KO.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_CONFIG",
+          "hace": "Inserta o actualiza config de operador (mapeo Excel).",
+          "valida": [
+            "OPERADOR, CONFIG_JSON, USUARIO",
+            "ISJSON=1",
+            "JSON con hoja, H1, H2, H2.fila_inicio_datos, H2.columnas.id_fusionado"
+          ],
+          "noValida": [
+            "No valida regex de planilla contra un archivo"
+          ],
+          "errores": [
+            "Faltan parámetros obligatorios: OPERADOR, CONFIG_JSON, USUARIO.",
+            "El CONFIG_JSON no es un JSON válido.",
+            "El JSON no tiene la estructura mínima requerida…"
+          ],
+          "llama": [],
+          "efecto": "PILA_OPERADOR_CONFIG upsert.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "CARGAR_PILA_LOTE",
+          "hace": "Persiste planilla: PILA_CARGA + PILA_EMPRESA + PILA_DETALLE.",
+          "valida": [
+            "IDTERCERO, OPERADOR, USUARIO",
+            "Empresa y empleados en JSON",
+            "Al menos un documento válido"
+          ],
+          "noValida": [
+            "No cruza contra INCA ni liquidación de incapacidades"
+          ],
+          "errores": [
+            "Faltan parámetros obligatorios: IDTERCERO, OPERADOR, USUARIO.",
+            "El archivo no contiene datos de empresa o empleados.",
+            "El detalle no contiene registros con número de documento válido."
+          ],
+          "llama": [],
+          "efecto": "Nuevo lote PILA. No crea INCA.",
+          "capaId": "03-alimentadores",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_INC_CREDENCIAL",
+      "tipo": "SPQ",
+      "modelo": "INC_CREDENCIAL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_INC_CREDENCIAL.sql",
+      "notaArchivo": "PREVERSION=2.0.3.",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Alta credencial de portal (empresa, EPS, link, usuario, clave, estado).",
+          "valida": [
+            "Campos obligatorios",
+            "Empresa y EPS existen",
+            "Estado de acceso válido"
+          ],
+          "noValida": [],
+          "errores": [
+            "Empresa, EPS, link, usuario, contraseña y estado son obligatorios.",
+            "La empresa no existe.",
+            "La EPS no existe.",
+            "El estado del acceso no es válido."
+          ],
+          "llama": [],
+          "efecto": "Fila INC_CREDENCIAL + log.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITAR",
+          "hace": "Edita credencial activa.",
+          "valida": [
+            "IDCREDENCIAL",
+            "Mismas reglas de GUARDAR"
+          ],
+          "noValida": [],
+          "errores": [
+            "IDCREDENCIAL es obligatorio para editar.",
+            "La credencial no existe o está inactiva."
+          ],
+          "llama": [],
+          "efecto": "UPDATE credencial + log.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "Inactiva credencial (no hard-delete operativo de INCA).",
+          "valida": [
+            "IDCREDENCIAL existente y activa"
+          ],
+          "noValida": [],
+          "errores": [
+            "IDCREDENCIAL es obligatorio.",
+            "La credencial no existe o ya está inactiva."
+          ],
+          "llama": [],
+          "efecto": "Credencial inactiva + log.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "REVELAR",
+          "hace": "Devuelve CONTRASENA o CLAVE_ESPECIAL.",
+          "valida": [
+            "IDCREDENCIAL",
+            "CAMPO CONTRASENA o CLAVE_ESPECIAL",
+            "Hay valor"
+          ],
+          "noValida": [],
+          "errores": [
+            "IDCREDENCIAL y CAMPO son obligatorios.",
+            "CAMPO no válido. CONTRASENA o CLAVE_ESPECIAL.",
+            "No hay valor para revelar en este campo."
+          ],
+          "llama": [],
+          "efecto": "SELECT del secreto. No cambia estado.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "VER_TRAZABILIDAD",
+          "hace": "Traza INC_CREDENCIAL_LOG.",
+          "valida": [
+            "IDCREDENCIAL"
+          ],
+          "noValida": [],
+          "errores": [
+            "IDCREDENCIAL es requerido."
+          ],
+          "llama": [],
+          "efecto": "SELECT log.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_INC_VALIDAR_DIAS_LM",
+      "tipo": "FNK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/FNK_INC_VALIDAR_DIAS_LM.sql",
+      "metodos": [
+        {
+          "id": "FNK_INC_VALIDAR_DIAS_LM",
+          "hace": "Tope de días: Paternidad 126; Maternidad NORMAL 126, MULTIPLE 140, PREMATURO 220. Otros orígenes: válido.",
+          "valida": [
+            "ORIGEN/TIPO_LM/DIAS"
+          ],
+          "noValida": [
+            "EG/ARL no recorta días"
+          ],
+          "errores": [
+            "Val. Días LM: Paternidad/Maternidad … máximo N días."
+          ],
+          "llama": [],
+          "efecto": "Tabla ES_VALIDO + MENSAJE.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_INC_MOTOR_LIQUIDACION",
+      "tipo": "SPQ",
+      "modelo": "INC_MOTOR_LIQUIDACION",
+      "estado": "leido",
+      "fuente": "sql/SPQ_INC_MOTOR_LIQUIDACION.sql",
+      "notaArchivo": "Lo llama CAMBIAR_ESTADO al Validado. PREVERSION=2.0.3.",
+      "metodos": [
+        {
+          "id": "SPQ_INC_MOTOR_LIQUIDACION",
+          "hace": "Calcula INC_LIQUIDACION_DIARIA; marca antecesor de prórroga.",
+          "valida": [
+            "INCA existe",
+            "Días LM vía FNK_INC_VALIDAR_DIAS_LM"
+          ],
+          "noValida": [
+            "No paga ni contabiliza"
+          ],
+          "errores": [
+            "Incapacidad no encontrada",
+            "Error al liquidar: …"
+          ],
+          "llama": [
+            "FNK_INC_VALIDAR_DIAS_LM"
+          ],
+          "efecto": "INSERT INC_LIQUIDACION_DIARIA. UPDATE INCA.ID_ANTECESOR.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

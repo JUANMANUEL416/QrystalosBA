@@ -1,7 +1,7 @@
 {
   "procesoId": "caja",
-  "actualizado": "2026-09-06T09:21:00",
-  "nota": "Operación CONF_CAJA 39/39 leído. Config COL 2026-09-06: CPCJ 3/3 + CJR + FPA 3/3 + TUR + CXT leídos. CAJ: re-export 9:20 sigue igual — solo CRUDCAJ INSERT/EDIT; CREA/ACTUALIZA/ELIMINAR FE≠export.",
+  "actualizado": "2026-10-04T17:10:00",
+  "nota": "Contraste vigente IXONLINE/SQL: PREVERSION y 2.0.7 idénticas para CONF_CAJA, CONF_CAJA_2, CAJA_RPT, CAJ_COL y cierre contable. CONF_CAJA 39/39, CONF_CAJA_2 14/14 y CAJA_RPT 21/21 leídos. CAJ_COL real: solo CRUDCAJ INSERTAR/EDITAR; CREA_CAJ, ACTUALIZA_CAJ y ELIMINAR no existen en el objeto vigente.",
   "sps": [
     {
       "nombre": "SPQ_CONF_CAJA",
@@ -823,9 +823,9 @@
       "nombre": "SPQ_CONF_CAJA_2",
       "tipo": "SPQ",
       "modelo": "CONF_CAJA",
-      "estado": "parcial",
+      "estado": "leido",
       "fuente": "sql/SPQ_CONF_CAJA_2.sql",
-      "cola": "Recibe el JSON que SPQ_CONF_CAJA no reconoció (ELSE final en SPQ_CONF_CAJA).",
+      "cola": "14/14 METODO documentados. Recibe el JSON que SPQ_CONF_CAJA no reconoció; anticipos delegan a SPQ_CAJA_EDIT_ANTICIPO.",
       "metodos": [
         {
           "id": "INSERTA_RECIBO",
@@ -926,22 +926,144 @@
         },
         {
           "id": "IMPRIME_ARQUEO_EGRESO",
-          "hace": "Recordsets para PDF arqueo de egreso (procaja).",
-          "estado": "listado",
+          "hace": "Devuelve recordsets del cuadre de la sesión: cabecera ACJ, recibos COBRO/PAGO/apertura, totales y subtotales por forma de pago.",
+          "valida": ["Existe la sesión ACJ para CODCAJA y CNSACJ"],
+          "noValida": ["No captura conteo físico; usa valores registrados por el sistema", "Aunque el nombre dice egreso, incluye cobros y apertura"],
+          "errores": ["No cuenta con Arquedo de Caja.", "ERROR_MESSAGE() del CATCH"],
+          "llama": [],
+          "efecto": "Solo lectura para reporte; funcionalmente duplicado por CAJA_RPT en Procesos de Caja.",
+          "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "ingreso-egreso"
         },
         {
           "id": "ESTADO_CAJA",
-          "hace": "Consulta estado de caja/sesión (apoyo FE).",
-          "estado": "listado",
+          "hace": "Devuelve CAJ y el texto Abierta, Cerrada o ABIERTA ERROR según CAJ.ABIERTA y las sesiones ACJ.",
+          "valida": ["CODCAJA", "CAJ.ESTADO Activo o Inactivo"],
+          "noValida": ["No valida turno ni cajero"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para mostrar el estado operativo del puesto.",
+          "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "entrar-pantalla"
         },
         {
-          "id": "(otros: FORMA_PAGO_EGRESO_NO, FORMA_TIPOEGRESO, BUSCA_CHEQUE, EDIT_EGRESO…)",
-          "hace": "Egresos, cheques y catálogos auxiliares. Listado hasta profundizar.",
-          "estado": "listado",
+          "id": "FORMA_PAGO_EGRESO_NO",
+          "hace": "Lista tipos de egreso CJTE y formas FPA habilitadas para la caja mediante TGEN; incluye reglas y terceros bancarios por categoría.",
+          "valida": ["CODCAJA", "Relaciones TGEN y VWK_TEXCA activas"],
+          "noValida": ["No exige sesión abierta"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Dos recordsets de solo lectura para armar el egreso.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "FORMA_TIPOEGRESO",
+          "hace": "Lista CJTE permitidos para la combinación caja y forma de pago, con terceros disponibles por categoría.",
+          "valida": ["CODCAJA y FORMAPAGO del JSON"],
+          "noValida": ["Conserva la comparación heredada FORMAPAGO contra CJTE.TIPOEGRESO"],
+          "errores": ["ERROR_MESSAGE() del CATCH"],
+          "llama": [],
+          "efecto": "Solo lectura para seleccionar el tipo de egreso.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "BUSCA_CHEQUE",
+          "hace": "Lista consecutivos de chequera BCTDD disponibles para banco, sucursal, cuenta y tipo de pago.",
+          "valida": ["BANCO, SUCURSAL, CTA_BCO y TIPOPAGO"],
+          "noValida": ["No reserva el cheque ni valida saldo"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para seleccionar CNSDOC.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "BUSCA_NODOCUMENTO_CHEQUE",
+          "hace": "Obtiene el siguiente número de cheque disponible y señala si la chequera exige consecutivo alfanumérico.",
+          "valida": ["BANCO, SUCURSAL, CTA_BCO y CNSDOC"],
+          "noValida": ["No marca el cheque como utilizado"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para completar la forma de pago del egreso.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "EDIT_EGRESO",
+          "hace": "Edita fecha, tercero, tipo, datos bancarios y observación del FCJ de egreso; en anticipos sincroniza FCXP, FCXPP y FCOM.",
+          "valida": ["Recibo no cerrado", "CXP editable según IDCJTECXP_EDITAR", "CXP no anulada", "Periodos contable y CXP abiertos"],
+          "noValida": ["La validación específica de caja Menor está comentada en el objeto"],
+          "errores": ["El registro ya se encuentra cerrado", "Egreso CXP: no se permite modificar el encabezado.", "El egreso está anulado.", "Mensajes de periodo cerrado", "ERROR_MESSAGE() del CATCH"],
+          "llama": [],
+          "efecto": "Actualiza FCJ y, cuando aplica, las fechas relacionadas de FCXP/FCXPP/FCOM.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "TRAER_ANTICIPO_CAJA",
+          "hace": "Enrutador que reenvía el JSON sin transformación al método homónimo de SPQ_CAJA_EDIT_ANTICIPO.",
+          "valida": [],
+          "noValida": [],
+          "errores": ["Los del SP hijo"],
+          "llama": ["SPQ_CAJA_EDIT_ANTICIPO"],
+          "efecto": "Devuelve la información y las reglas para editar el anticipo.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "EDIT_ANTICIPO_DESDE_CAJA",
+          "hace": "Enrutador que reenvía el JSON sin transformación al método homónimo de SPQ_CAJA_EDIT_ANTICIPO.",
+          "valida": [],
+          "noValida": [],
+          "errores": ["Los del SP hijo"],
+          "llama": ["SPQ_CAJA_EDIT_ANTICIPO"],
+          "efecto": "Persiste los cambios permitidos del anticipo mediante el SP hijo.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CAJA_EDIT_ANTICIPO",
+      "tipo": "SPQ",
+      "modelo": "CAJA_EDIT_ANTICIPO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CAJA_EDIT_ANTICIPO.sql",
+      "nota": "PREVERSION y 2.0.7 idénticas. Invocado por SPQ_CONF_CAJA_2 con el JSON completo.",
+      "cola": "2/2 METODO documentados.",
+      "metodos": [
+        {
+          "id": "TRAER_ANTICIPO_CAJA",
+          "hace": "Precarga el vínculo FCJ→FCXPP→FCXP→FCOM, informa si es anticipo y si puede cambiarse su tipo, y devuelve el catálogo TANT.",
+          "valida": ["CODCAJA y CNSFACJ informados"],
+          "noValida": ["No exige que sea anticipo para consultar", "No valida recibo cerrado o anulado porque no modifica"],
+          "errores": ["Debe indicar caja y consecutivo del recibo."],
+          "llama": [],
+          "efecto": "Dos recordsets de solo lectura: estado del anticipo y tipos TANT.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "ingreso-egreso"
+        },
+        {
+          "id": "EDIT_ANTICIPO_DESDE_CAJA",
+          "hace": "Actualiza fecha y observación en FCJ y documentos relacionados; si está permitido, cambia TIPOANTICIPO y las cuentas/comprobante de FCXP desde TANT.",
+          "valida": ["El recibo corresponde a un anticipo", "IDCJTECXP_EDITAR=SI", "FCJ existe, no está anulado ni confirmado", "CXP no anulada", "Fecha válida", "Periodos contable y CXP abiertos", "Cambio de tipo permitido y código existente en TANT"],
+          "noValida": ["No revalida TIPOEGRESO=IDCJTECXP", "Columnas opcionales se actualizan solo si existen"],
+          "errores": ["Método no soportado.", "El recibo no corresponde a un anticipo.", "Egreso CXP: no se permite modificar fecha ni tipo de anticipo.", "El egreso está anulado o confirmado.", "La CXP del anticipo está anulada.", "Mensajes de fecha, periodo o tipo de anticipo inválido", "ERROR_MESSAGE() del CATCH"],
+          "llama": ["SP_EXECUTESQL para columnas opcionales"],
+          "efecto": "Actualiza FCJ, FCXP, FCXPP y FCOM; devuelve los consecutivos y el tipo resultante.",
+          "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "ingreso-egreso"
         }
@@ -951,9 +1073,10 @@
       "nombre": "SPQ_CAJA_RPT",
       "tipo": "SPQ",
       "modelo": "CAJA_RPT",
-      "estado": "parcial",
-      "fuente": "sql/SPQ_CAJA_RPT.sql (2026-09-06). Reportes e impresión procaja; no es CONF_CAJA.",
-      "cola": "METODO no listado → el SP no tiene ELSE; no hay resultset.",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CAJA_RPT.sql",
+      "nota": "PREVERSION y 2.0.7 idénticas. 21/21 METODO reales documentados; IMPRIMIR_RECIBO no existe en este objeto vigente.",
+      "cola": "METODO no reconocido no produce resultset porque el SP no tiene ELSE.",
       "metodos": [
         {
           "id": "IMPRIMIR_RECIBO_FCJ",
@@ -969,20 +1092,6 @@
           "capaId": "02-operacion",
           "gateId": "ingreso-egreso",
           "estado": "leido"
-        },
-        {
-          "id": "IMPRIMIR_RECIBO",
-          "hace": "useFCJ.js lo invoca (CAJA_RPT · IMPRIMIR_RECIBO) desde flujos externos (Autorizador, etc.).",
-          "valida": [],
-          "noValida": [
-            "No existe rama IF @METODO = 'IMPRIMIR_RECIBO' en SPQ_CAJA_RPT.sql de hoy — posible SPQ distinto, legacy o KO silencioso."
-          ],
-          "errores": [],
-          "llama": [],
-          "efecto": "Fuera del alcance de Administrativo → Caja (ese usa IMPRIMIR_RECIBO_FCJ). Si el FE llama este METODO, el SP de hoy no entra a ningún IF.",
-          "estado": "leido",
-          "capaId": "02-operacion",
-          "gateId": "ingreso-egreso"
         },
         {
           "id": "UPDATE_PRINT",
@@ -1002,35 +1111,120 @@
         },
         {
           "id": "RPT_RECIBOS_PAGADOS_TURNO",
-          "hace": "Reportes procaja → Reportes: recibos pagados del turno/sesión.",
+          "hace": "Devuelve cabecera ACJ, recibos COBRO/PAGO del turno y totales para el reporte de recibos pagados.",
+          "valida": ["CNSACJ de una sesión"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para reporte de cierre.",
           "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "procaja-reportes"
         },
         {
           "id": "RPT_FORMA_PAGO_TURNO",
-          "hace": "Reportes procaja: totales por forma de pago del turno.",
+          "hace": "Devuelve cabecera ACJ, pagos PCJ/FPA de ingresos y egresos y sus totales por forma de pago.",
+          "valida": ["CNSACJ de una sesión"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para reporte de cierre.",
           "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "procaja-reportes"
         },
         {
           "id": "IMPRIME_ARQUEO_EGRESO",
-          "hace": "Arqueo de egreso (ReportesCajaComponent). Recordsets para PDF jsPDF.",
+          "hace": "Cuadre de sesión con recibos COBRO/PAGO/apertura y totales; no es un conteo físico digitado.",
+          "valida": ["Existe ACJ para la caja y sesión"],
+          "noValida": ["El nombre histórico dice egreso, pero incluye ingresos y apertura"],
+          "errores": ["No cuenta con Arqueo de Caja."],
+          "llama": [],
+          "efecto": "Solo lectura para PDF de cierre.",
           "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "procaja-reportes"
         },
         {
           "id": "IMPRIME_ARQUEO_EGRESO_FPA",
-          "hace": "Arqueo egreso desglosado por forma de pago.",
+          "hace": "Cuadre de la sesión desglosado por forma de pago FPA.",
+          "valida": ["Existe ACJ para la caja y sesión"],
+          "noValida": ["No captura denominaciones ni conteo físico"],
+          "errores": ["No cuenta con Arqueo de Caja."],
+          "llama": [],
+          "efecto": "Solo lectura para PDF de cierre por forma de pago.",
           "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "procaja-reportes"
         },
         {
-          "id": "rptRPF_LGD / rptRPF_FPDSUB / rptRPF_FPA / rptRPF_CDSUB / rptRPF_CA / rptRPF_MB",
-          "hace": "Recaudo por fecha: 6 variantes de reporte (legalizado, FPA, concepto, caja, etc.).",
+          "id": "rptRPF_LGD",
+          "hace": "Reporte legalizado general detallado de recaudos por rango, clase y filtros opcionales.",
+          "valida": ["FECHAINI, FECHAFIN, CLASE_FAC y selección de cajas"],
+          "noValida": ["Los subreportes no aplican de forma uniforme el mismo filtro de confirmación"],
+          "errores": [],
+          "llama": ["FNK_ESTADOFCJ", "FNK_SPLIT1", "OPENJSON"],
+          "efecto": "Solo lectura; devuelve detalle y resúmenes.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "procaja-recaudo-fecha"
+        },
+        {
+          "id": "rptRPF_FPDSUB",
+          "hace": "Reporte de recaudo detallado con subtotales por forma de pago.",
+          "valida": ["Rango de fechas, clase y filtros de caja"],
+          "noValida": [],
+          "errores": [],
+          "llama": ["OPENJSON"],
+          "efecto": "Solo lectura.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "procaja-recaudo-fecha"
+        },
+        {
+          "id": "rptRPF_FPA",
+          "hace": "Resumen de recaudos agrupado por forma de pago.",
+          "valida": ["Rango de fechas, clase y filtros de caja"],
+          "noValida": [],
+          "errores": [],
+          "llama": ["OPENJSON"],
+          "efecto": "Solo lectura.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "procaja-recaudo-fecha"
+        },
+        {
+          "id": "rptRPF_CDSUB",
+          "hace": "Reporte de recaudos con subtotales por concepto de caja.",
+          "valida": ["Rango de fechas, clase y filtros de caja"],
+          "noValida": [],
+          "errores": [],
+          "llama": ["OPENJSON"],
+          "efecto": "Solo lectura.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "procaja-recaudo-fecha"
+        },
+        {
+          "id": "rptRPF_CA",
+          "hace": "Consolidado de recaudos agrupado por caja.",
+          "valida": ["Rango de fechas, clase y filtros de caja"],
+          "noValida": [],
+          "errores": [],
+          "llama": ["OPENJSON"],
+          "efecto": "Solo lectura.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "procaja-recaudo-fecha"
+        },
+        {
+          "id": "rptRPF_MB",
+          "hace": "Reporte de movimientos bancarios y transferencias asociados al recaudo.",
+          "valida": ["Rango de fechas, clase y filtros de caja"],
+          "noValida": [],
+          "errores": [],
+          "llama": ["OPENJSON"],
+          "efecto": "Solo lectura.",
           "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "procaja-recaudo-fecha"
@@ -1064,15 +1258,61 @@
           "gateId": "procaja-seguimiento"
         },
         {
-          "id": "AUX_CAJA / GET_CUENTAS / LIMPIA_RPDX",
-          "hace": "Auxiliar de caja: cruza movimientos con cuentas contables vía RPDX staging.",
+          "id": "GET_CUENTAS",
+          "hace": "Genera un consecutivo RPDX y devuelve la cuenta mínima y máxima configuradas en CAJ.",
+          "valida": [],
+          "noValida": [],
+          "errores": ["Errores del generador de secuencia"],
+          "llama": ["SPQ_GENSEQUENCE"],
+          "efecto": "Prepara el rango y staging del auxiliar de caja.",
           "estado": "leido",
           "capaId": "05-contabilidad",
           "gateId": "procaja-auxiliar"
         },
         {
-          "id": "rpt_R_A / rpt_TO_CON_SER",
-          "hace": "Reportes auxiliares (recibos anulados / total concepto servicio en cierre).",
+          "id": "LIMPIA_RPDX",
+          "hace": "Elimina del staging RPDX las filas del consecutivo indicado.",
+          "valida": ["CNSRPDX"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Limpia el staging del auxiliar.",
+          "estado": "leido",
+          "capaId": "05-contabilidad",
+          "gateId": "procaja-auxiliar"
+        },
+        {
+          "id": "AUX_CAJA",
+          "hace": "Genera el libro auxiliar de caja por rango de cuentas y fechas y lo deja disponible en RPDX.",
+          "valida": ["Rango de cuentas, fechas y CNSRPDX"],
+          "noValida": [],
+          "errores": ["ERROR_MESSAGE() del CATCH"],
+          "llama": ["NC_SPK_GEN_LIBROAUXILIAR"],
+          "efecto": "Repuebla RPDX y devuelve el consecutivo del auxiliar.",
+          "estado": "leido",
+          "capaId": "05-contabilidad",
+          "gateId": "procaja-auxiliar"
+        },
+        {
+          "id": "rpt_R_A",
+          "hace": "Lista recibos anulados por caja y rango de fechas con su causal.",
+          "valida": ["FECHAINI, FECHAFIN y CODCAJA"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para auditoría de anulaciones.",
+          "estado": "leido",
+          "capaId": "02-operacion",
+          "gateId": "procaja-reportes"
+        },
+        {
+          "id": "rpt_TO_CON_SER",
+          "hace": "Devuelve totales por concepto y servicio de una sesión desde VWK_CJCPT.",
+          "valida": ["CNSACJ"],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura para reporte de cierre.",
           "estado": "leido",
           "capaId": "02-operacion",
           "gateId": "procaja-reportes"
@@ -1233,29 +1473,37 @@
     {
       "nombre": "SPK_NC_CONTAB_CAJA_ING",
       "tipo": "SPK",
-      "estado": "parcial",
+      "estado": "leido",
       "fuente": "sql/SPK_NC_CONTAB_CAJA_ING.sql",
+      "nota": "Cuerpo completo leído 2026-10-04; documentadas las salidas sin MCP y la rama FACTURAPOS/DESDEFTR.",
       "metodos": [
         {
           "id": "(cuerpo único)",
-          "hace": "Asiento MCP ingreso: cruza FCJD.CONCEPTO con CPCJ.CUENTA; ramas apertura, traslado, depósito, POS (N_FACTURAPOS), CxP, reembolso. Actualiza FCJ.CONTABILIZADA/NROCOMPROBANTE.",
+          "hace": "Contabiliza el FCJ de ingreso: arma MCPE/MCHE procedencia CAJA para cobros externos, crédito, recaudos, conceptos, servicios, depósitos y costos; en flujo normal revisa el comprobante y lo pasa a MCP. FACTURAPOS puede llevar el asiento embebido desde la factura.",
           "valida": [
-            "PRI abierto",
-            "Recibo no duplicado en MCP",
-            "CPCJ+COM para cada concepto"
+            "Existe PRI para el mes del recibo",
+            "No existe MCP CAJA duplicado para caja y recibo",
+            "Si se recibe comprobante vacío o IX, FCJ no debe estar contabilizado previamente"
           ],
           "noValida": [
-            "Si CONCEPTO ∉ CPCJ, falla aquí aunque CONFIRMAR_RECIBO pasó"
+            "No exige antes de armar el asiento que cada FCJD.CONCEPTO exista en CPCJ",
+            "El recibo puede quedar confirmado sin MCP por retorno temprano de reembolso, recepción de traslado, duplicado o rama DESDEFTR"
           ],
           "errores": [
             "PERIODO NO EXISTE.",
-            "Recibo ya se encuentra en contabilidad, Posible duplicidad"
+            "Recibo ya se encuentra en contabilidad, Posible duplicidad",
+            "ERROR_MESSAGE() del CATCH"
           ],
           "llama": [
-            "SPK_NC_CONFIRMAR_CONTAB (al final si aplica)"
+            "SPK_GENCONSECUTIVO",
+            "SPK_INSERT_TERDEAFI",
+            "SPK_ADMIN_CXP_CONTAB",
+            "FNK_NC_CUENTA_KMCOM",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
           ],
-          "efecto": "MCP/MCPE procedencia CAJA; punto donde explota el hueco CPCJ.",
-          "estado": "parcial",
+          "efecto": "Genera MCPE/MCHE y, en flujo normal, MCP/MCH; REVISAMCPE marca FCJ.CONTABILIZADA y NROCOMPROBANTE. Si CAJ.NOCONTAB=1 marca CONTABILIZADA=1 y NROCOMPROBANTE=NOCONTAB sin asiento.",
+          "estado": "leido",
           "capaId": "05-contabilidad",
           "gateId": "contabilizar-al-confirmar"
         }
@@ -1350,21 +1598,33 @@
     {
       "nombre": "SPK_NC_CONTAB_CIERRE_CAJ",
       "tipo": "SPK",
-      "estado": "parcial",
+      "estado": "leido",
       "fuente": "sql/SPK_NC_CONTAB_CIERRE_CAJ.sql",
+      "nota": "PREVERSION y 2.0.7 idénticas; cuerpo completo leído 2026-10-04.",
       "metodos": [
         {
           "id": "(cuerpo único)",
-          "hace": "Asiento al cerrar turno (CERRAR_CAJA): tipos 00/01/02 según ingresos/egresos físicos sin traslado. Caja Menor: no contabiliza.",
+          "hace": "Genera o rehace el comprobante del cierre ACJ. Clasifica 00 sin movimiento, 01 ingresos, 02 ingresos y egresos o 03 solo egresos; reclasifica los débitos/créditos de recibos contabilizados y ajusta el saldo no trasladado.",
           "valida": [
-            "ACJ con FECHACIERRE",
-            "Recibos contabilizados de la sesión"
+            "Caja Menor no se contabiliza por este objeto",
+            "Existe PRI abierto para el mes de ACJ.FECHACIERRE",
+            "Un MCP confirmado y no anulado no puede rehacerse"
+          ],
+          "noValida": [],
+          "errores": [
+            "Período Contable No Existe",
+            "Período Contable Cerrado, No se Puede Continuar",
+            "Comprobante Contabilizado, No se puede Continuar"
           ],
           "llama": [
-            "SPK_NC_CONFIRMAR_CONTAB (si aplica)"
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_SUMA_DBCR",
+            "SPK_NC_BALANCEO_CENTAVOS",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
           ],
-          "efecto": "Comprobante cierre de caja.",
-          "estado": "parcial",
+          "efecto": "Genera el comprobante de reclasificación del cierre y marca ACJ.CONTABILIZADA=1; TIPOCIERRE 00 elimina el borrador y no genera asiento.",
+          "estado": "leido",
           "capaId": "05-contabilidad",
           "gateId": "abrir-cerrar"
         }
@@ -1598,9 +1858,9 @@
       "nombre": "SPQ_CAJ_COL",
       "tipo": "SPQ",
       "modelo": "CAJ_COL",
-      "estado": "parcial",
+      "estado": "leido",
       "fuente": "sql/SPQ_CAJ_COL.sql",
-      "nota": "Re-export 2026-09-06 9:20: contenido idéntico al anterior — solo rama CRUDCAJ (INSERTAR/EDITAR). FE también usa CREA_CAJ/ACTUALIZA_CAJ (CnfCajPage) y ELIMINAR (CAJComponent) — no están en el script.",
+      "nota": "PREVERSION y 2.0.7 idénticas. El objeto vigente contiene 1/1 METODO real: CRUDCAJ, con PROCESO INSERTAR o EDITAR. CREA_CAJ, ACTUALIZA_CAJ y ELIMINAR son referencias históricas del frontend, no ramas SQL documentables de este objeto.",
       "metodos": [
         {
           "id": "CRUDCAJ",
@@ -1624,30 +1884,6 @@
           "capaId": "01-configuracion",
           "gateId": "catalogos-caj",
           "estado": "leido"
-        },
-        {
-          "id": "CREA_CAJ",
-          "hace": "Alta CAJ desde CnfCajPage (PARAMETROS planos, sin REGISTRO).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "FE invoca; no existe rama en SPQ_CAJ_COL exportado — posible KO o SP distinto en BD.",
-          "capaId": "01-configuracion",
-          "gateId": "catalogos-caj",
-          "estado": "no_leido"
-        },
-        {
-          "id": "ACTUALIZA_CAJ",
-          "hace": "Update CAJ desde CnfCajPage (PARAMETROS planos).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "FE invoca; no existe rama en SPQ_CAJ_COL exportado.",
-          "capaId": "01-configuracion",
-          "gateId": "catalogos-caj",
-          "estado": "no_leido"
         }
       ]
     },
@@ -1889,6 +2125,47 @@
           "efecto": "DELETE FPA WHERE FORMAPAGO=@FORMAPAGO.",
           "capaId": "01-configuracion",
           "gateId": "formas-pago-fpa",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CREA_FACTURA_POS_CAJA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "Qrystalos2/sql/SPK_CREA_FACTURA_POS_CAJA.sql",
+      "metodos": [
+        {
+          "id": "(cuerpo único)",
+          "hace": "Genera automáticamente la Factura Electrónica de Venta (FTR/FTRD) para copagos y cuotas moderadoras recaudados en ventanilla (FCJ). Valida resolución DIAN en FDIAN, clasifica procedencia (FPOS o FTR según tope UVT), inserta cabecera FTR con PROCEDENCIA='CAJA' y contado a nombre del afiliado, actualiza trazabilidad asistencial (CIT.NFACTURA, AUTD.NFACTURA o HADMF 'COPAGOS'), causa cuenta por cobrar en FCXC mediante SPK_ADMIN_CXC_CONTAB y recaudo inmediato en FPAG mediante SPK_ADMIN_PAGOS (saldo en cartera $0), cruza en FCJPCXC, asigna FCJ.N_FACTURAPOS=@N_FACTURA y ejecuta SPK_NC_CONTAB_FTR para asentar la factura en contabilidad MCP/MCH.",
+          "valida": [
+            "FCJ no tenga ya N_FACTURAPOS asignado previamente (evita doble facturación)",
+            "Caja emita factura (CAJ.CLASEFAC <> 'NA')",
+            "Concepto FCJD sea electrónico (cruce con MOCC.CODIGOCPCJ o CPCJ.NDIAN=1)",
+            "Existencia y configuración de variables USVGS: IDPLANPART, IDTERCONTABLEPART, IDTERCEROPARTICULAR",
+            "Resolución DIAN activa y no vencida en FDIAN para la sede y procedencia",
+            "Centro de costo CCOSTO obligatorio determinado desde FCJ, FCJD o estación UBEQ"
+          ],
+          "noValida": [
+            "No bloquea si el paciente no tiene correo electrónico (se encola en FTRE para contingencia o impresión física)"
+          ],
+          "errores": [
+            "la fatura es de particular pero no esta configurada la variable IDPLANPART o IDTERCONTABLEPART o IDTERCEROPARTICULAR",
+            "No se pudo determinar el centro de costo (CCOSTO) del recibo de caja. Configure CCOSTO en la caja, estación (UBEQ) o área funcional.",
+            "No se pudo determinar el centro de costo (CCOSTO) para generar la CXC de la factura POS.",
+            "No Fue Genereada la Factura del Copago, Comuniquese con el Administrador del sistema..."
+          ],
+          "llama": [
+            "SPK_INSERT_TERDEAFI",
+            "SPK_GENCONSECUTIVO",
+            "SPK_GENNUMEROFACTURA",
+            "SPK_ADMIN_CXC_CONTAB",
+            "SPK_ADMIN_PAGOS",
+            "SPK_NC_CONTAB_FTR"
+          ],
+          "efecto": "Inserta FTR, FTRD; crea FCXC, FCXCD, FCXCDV (cartera particular); crea FPAG, FPAGD (recaudo automático con saldo $0); inserta cruce FCJPCXC; actualiza FCJ.N_FACTURAPOS y RECAUDO=1; actualiza CIT.NFACTURA / AUTD.NFACTURA / HADMF; genera comprobante contable MCP/MCH.",
+          "capaId": "02-operacion",
+          "gateId": "factura-copago",
           "estado": "leido"
         }
       ]

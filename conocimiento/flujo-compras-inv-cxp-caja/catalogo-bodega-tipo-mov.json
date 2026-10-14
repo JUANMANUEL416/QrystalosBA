@@ -1,0 +1,167 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "proposito": "Puente entre catálogo artículo (IART) y primera entrada real: bodega destino, tipo movimiento compras (USVGS) y flags contables.",
+  "continuaDesde": "catalogo-articulo.json",
+  "pantallas": {
+    "ibod": {
+      "path": "/conf/inv",
+      "vue": "IBODComponent",
+      "modelo": "IBOD",
+      "metodos": ["GUARDAR", "ACTUALIZAR", "BODEGASELECT", "ELIMINAR"],
+      "doc": "qrystalos.documentacion/tablas/IBOD.md"
+    },
+    "itmo": {
+      "path": "/conf/inv",
+      "vue": "ITMOComponent",
+      "modelo": "ITMO",
+      "metodos": ["GUARDAR", "ACTUALIZAR"],
+      "doc": "qrystalos.documentacion/tablas/ITMO.md"
+    },
+    "usvgs": {
+      "path": "/conf/sistemas",
+      "vue": "USVGS",
+      "nota": "IDINVMOV_COMPRAS debe coincidir con ITMO de compras usado en ITRA/IMOV.",
+      "doc": "USVGS-INVENTARIO.md"
+    }
+  },
+  "capas": [
+    {
+      "id": "capa-usvgs-movimiento",
+      "nombre": "Variable IDINVMOV_COMPRAS (USVGS)",
+      "impactoSiFalta": "SPK_INSERT_ITRA_REQ, SPK_INSERTENTTRANSITO e IZSOL_TRANSITO no reconocen compra; IMOV con tipo incorrecto.",
+      "camposClave": [
+        {
+          "campo": "USVGS.IDINVMOV_COMPRAS → ITMO.IDTIPOMOV",
+          "obligatorio": true,
+          "efecto": "ITRA al confirmar OC; comparación ESCOMPRA en SPQ_IZSOL_TRANSITO.VALIDA_TRAN."
+        },
+        {
+          "campo": "ITMO.TIPO = Crédito (entrada)",
+          "obligatorio": true,
+          "efecto": "IMOV entrada; opuesto en devoluciones vía IDTIPOMOVOP."
+        },
+        {
+          "campo": "ITMO.COMPRAS = 1",
+          "obligatorio": "recomendado",
+          "efecto": "Semántica compras; alineado con FCOM/FCXP."
+        },
+        {
+          "campo": "ITMO.ESTADO Activo",
+          "obligatorio": true,
+          "efecto": "Tipos inactivos no deben estar en USVGS."
+        },
+        {
+          "campo": "ITMO.AFECTAPROM / AFECTACOSTO",
+          "obligatorio": "política costo",
+          "efecto": "Promedio de costo en IEXI al CONF_ENTRADA."
+        },
+        {
+          "campo": "ITMO.GENTRANSITO",
+          "obligatorio": "compras con tránsito",
+          "efecto": "Coherente con flujo ITRA → loteo → INSERTENTTRANSITO."
+        }
+      ],
+      "puntosCriticos": ["PC-00g"],
+      "sps": ["SPK_INSERT_ITRA_REQ", "SPK_INSERTENTTRANSITO", "SPQ_IZSOL_TRANSITO"]
+    },
+    {
+      "id": "capa-bodega-ibod",
+      "nombre": "Bodega destino (IBOD)",
+      "impactoSiFalta": "OC sin bodega, usuario sin acceso IBODS, existencias en bodega equivocada o sin CCOSTO para KMCOM.",
+      "camposClave": [
+        {
+          "campo": "FCOM.IDBODEGA → IBOD.IDBODEGA",
+          "obligatorio": true,
+          "efecto": "Destino de ITRA/IMOV; debe ser la bodega que recepciona."
+        },
+        {
+          "campo": "IBOD.ESTADO = Activo",
+          "obligatorio": true,
+          "efecto": "Selectores y BODEGASELECT excluyen inactivas."
+        },
+        {
+          "campo": "MUEVEEXISTENCIAS",
+          "obligatorio": "bodega operativa",
+          "efecto": "Si No, no debe usarse para entradas que suben IEXI."
+        },
+        {
+          "campo": "CCOSTO + IDAREA",
+          "obligatorio": "si VALID_CCOSTO_CXP=SI",
+          "efecto": "CONF_ENTRADA / CRUD_IMOV validan KMCOM con prefijo SER."
+        },
+        {
+          "campo": "NOCONTABILIZA",
+          "obligatorio": "consciente",
+          "efecto": "Fuerza SECONTABILIZA=0 en IMOV vía SPK_NC_CONTAB_INV aunque ITMO.SECONTABILIZA=1."
+        },
+        {
+          "campo": "IBODS (usuario ↔ bodega)",
+          "obligatorio": "operación",
+          "efecto": "Sin ACCESO=SI el usuario no elige bodega en inv.ges / ordcom."
+        },
+        {
+          "campo": "IDXB (artículo en bodega)",
+          "obligatorio": "según cliente",
+          "efecto": "Algunos flujos exigen artículo habilitado en bodega antes de mover."
+        }
+      ],
+      "puntosCriticos": ["PC-00h"],
+      "sps": ["SPQ_IBOD", "SPQ_IMOV CRUD_IMOV"]
+    },
+    {
+      "id": "capa-itmo-contabilidad",
+      "nombre": "ITMO — contabilización efectiva",
+      "impactoSiFalta": "OM Inventario no encuentra movimientos o intenta contabilizar bodegas excluidas.",
+      "camposClave": [
+        {
+          "campo": "ITMO.SECONTABILIZA",
+          "obligatorio": "si contab INV",
+          "efecto": "Base; IMOV.SECONTABILIZA se deriva al contabilizar."
+        },
+        {
+          "campo": "IBOD.NOCONTABILIZA anula SECONTABILIZA",
+          "obligatorio": "regla SPK_NC_CONTAB_INV",
+          "efecto": "SECONTABILIZA_EFECTIVO = 0 si bodega NOCONTABILIZA=1."
+        },
+        {
+          "campo": "ITMO.CUENTA / COMPROBANTE",
+          "obligatorio": "legacy/alterno",
+          "efecto": "Complementa KMCOM por prefijo en clientes actuales."
+        },
+        {
+          "campo": "IEXCEP por bodega",
+          "obligatorio": "excepciones",
+          "efecto": "Ajustes contables por bodega (doc IBOD)."
+        }
+      ],
+      "puntosCriticos": ["PC-00i", "PC-12"],
+      "sps": ["SPK_NC_CONTAB_INV"]
+    }
+  ],
+  "variablesUsvgsCompras": [
+    "IDINVMOV_COMPRAS",
+    "IDINVMOV_PRESTAMOS",
+    "IDINVMOV_REMISION_EN",
+    "IDINVMOV_SI",
+    "IDBOD_HEMODERIVADOS",
+    "TRAN_EDIT_OC",
+    "VALID_CCOSTO_CXP",
+    "ASI_VAL_CCAF_CARGOS",
+    "IDINVDIASPARAVENCER"
+  ],
+  "siguienteCapa": "catalogo-oc-confirmacion-recepcion.json",
+  "matrizImpacto": [
+    { "etapaFlujo": "fcom", "requiere": ["FCOM.IDBODEGA activa", "ENINVENTARIO coherente"] },
+    { "etapaFlujo": "itra_transito", "requiere": ["ITRA.IDTIPOMOV = IDINVMOV_COMPRAS (salvo préstamo)", "IDBODEGA destino"] },
+    { "etapaFlujo": "imov_entrada", "requiere": ["IMOV.IDTIPOMOV", "IMOV.IDBODEGA", "CCOSTO si VALID_CCOSTO_CXP"] },
+    { "etapaFlujo": "contab_inv", "requiere": ["SECONTABILIZA efectivo", "KMCOM MOV_INVENTARIO", "ITMO+IBOD flags"] }
+  ],
+  "variantesTipoMov": [
+    {
+      "variable": "IDINVMOV_PRESTAMOS",
+      "cuando": "FCOM.IDTIPOSER = Presta",
+      "efecto": "SPK_INSERT_ITRA_REQ usa préstamo en lugar de compras."
+    }
+  ]
+}

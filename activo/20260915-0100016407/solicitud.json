@@ -1,0 +1,191 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-16T14:48:25.608Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016407",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260915-0100016407",
+    "idReq": "0100016407",
+    "fecha": "2026-09-14",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "COMITE DE ESTUDIOS MEDICOS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": "/nom/Nom_procesos"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/COESME612",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "se requiere poder exportar las novedades al nomina en el formato  presentado por aportes en linea y al final antes de cerrar la nomina poder subir la liquidacion de la pila y confrontar los valores y generar diferencias y ajustes de redondeos",
+    "criteriosAceptacion": "Entrega 1 (Liquidación): botón «Validar con la PILA» junto a «Cerrar Nomina», permiso MENUQ_NOMINA/BtnValidarPila; subir planilla integrada pagada (.xls/.xlsx); cruce por NEMP.DOCIDEMPLEADO (sumar varios NUMDOC); validar CODNOMINA del período vs planilla (CEM 01/02/09 vs Alcaldía 07); clasificar OK/REDONDEO/DIF/SOLO PILA/SOLO NÓMINA con tolerancia $150; sumar conceptos NIEPED §4.5 del spec (incl. CN04-1, CNSI07-1); «Aplicar redondeos PILA» actualiza VALOR/VALOR_APORTES en NIEPED sin recalcular toda la nómina; bloqueado si NPER.CERRADO=1; exportar Excel del cruce; casos de prueba CEM y Alcaldía julio 2026 del anexo. Entrega 2 (Prenómina): botón «Planilla de incapacidades», permiso BtnPlanillaIncapacidades; Excel layout «3. PLANILLA DE INCAPACIDADES.xlsx» (hoja Novedades fila 9+, DatosPruebaEmp intacta); filas desde NEDIA+NEVE mapeadas IGE/IRL/LMA; TIPO_DOC y DOCIDEMPLEADO desde NEMP; eventos sin mapeo listados en aviso; preview editable del valor; no alterar RegistNovedades ni carga masiva. Regresión: Cerrar/Abrir/Contabilizar/Generar CxP e impresiones/exportes actuales intactos.",
+    "alcance": "Módulo Nómina → Procesos (`ProcesosPage.vue`): pestaña Prenómina (`PreNominaComponent.vue`) — generación y descarga del Excel de incapacidades para operador de planilla integrada (Aportes en línea / equivalente). Pestaña Liquidación (`LiquidaNomComponent.vue`) — diálogo `ValidarPilaComponent.vue` (nuevo): parseo hoja 1 de planilla integrada pagada, cruce contra NIEPED del CNSPAGO seleccionado, ajustes de redondeo y ajuste manual por rubro. Backend: nuevos METODO en MODELO LIQUIDACION (SPQ_LIQUIDACION): PILA_CRUZAR, PILA_APLICAR_REDONDEO, PILA_AJUSTAR_RUBRO; auditoría de ajustes; permisos USGRUH. Fuera de v1: API al operador PILA, auto-corrección ARL/centro de trabajo, export de vacaciones/SLN/ING/RET en el mismo archivo, módulo radicaciones/PILA_CARGA (incapacidades administrativas).",
+    "restricciones": "Rama feature desde develop (formulario indica feature/COESME612); no tocar `src/components/genericos/`, `ServerSideTableComponent`, `SelectGenericoComponent`. Parseo Excel puede ser FE (SheetJS) + JSON al SP. Redondeo PILA sí se aplica en automático (≤$150); DIF real no se pisa sin acción del usuario. Ajuste solo con nómina abierta, post-generar liquidación y pre-cierre. Mapeo NEVE.IDEVENTO → tipo PILA (IGE/IRL/LMA) parametrizable por cliente (TGEN o similar), no hardcode hospital. Contabilizar y CxP deben consumir NIEPED ya ajustado (sin cambiar SPQ de cierre si no es necesario). Normativa adjunta: spec funcional 10-sep-2026 en archivos del caso (citar en dictamen §4.6 al cerrar Fase 1).",
+    "analisis": "Paso 0 — ¿Ya existe? El texto del REQ (exportar novedades al formato del operador + confrontar PILA antes de cerrar) no es lo mismo que las exportaciones actuales de Liquidación (SOI, Excel detalle, PDF): `LiquidaNomComponent` expone EXPORTAR_SOI y similares vía SPQ_LIQUIDACION, pero no genera «3. PLANILLA DE INCAPACIDADES.xlsx» ni cruza planilla integrada pagada contra aportes. La captura de novedades ya existe: Prenómina → «Gestionar Novedades» (`RegistNovedadesComponent`, `NovedadesMasivoComponent`) sobre NEDIA/NEVE; eso es capacitación, no desarrollo. El módulo Radicaciones → «Ingesta Planillas PILA» (`CarguesPilaComponent`, `usePilaExtractor`) es circuito distinto (incapacidades/radicación, tablas PILA_CARGA), no sustituye validación en Liquidación ni export desde prenómina. Clasificación: hueco funcional — dos entregas acotadas en el anexo del caso. Causa de negocio: la PILA redondea a centenas (`FNK_VALORCONCEPTO_NEMPFD_RUN` ya documenta redondeo @REDONDEO=-2 en motor de prenómina); tras GENERATE_NOMINA, NIEPED queda con totales Qrystalos y contabilidad/CxP leen esos valores — el usuario paga aportes con montos PILA y necesita alinear NIEPED antes de Cerrar → Contabilizar → Generar CxP. Entrega 2 elimina doble digitación de IGE/IRL/LMA hacia el operador. Controles: liquidación (`liquidacion`) + novedades (`nedia-novedades`). Impacto FE+API+SQL acorde al formulario; contabilidad directa (MCP) no cambia parametrización — solo montos en NIEPED que ya alimentan NC_CONTAB_NOMINA.",
+    "opciones": [],
+    "recomendacion": "Implementar las dos entregas del documento adjunto en la rama indicada, ancladas a `/nom/Nom_procesos` sin rutas nuevas. Prioridad sugerida: (1) Entrega 2 — valor visible rápido al usuario (Excel desde plantilla de referencia + read NEDIA/NEVE/NEMP + mapeo configurable); (2) Entrega 1 — extender SPQ_LIQUIDACION con cruce y UPDATE NIEPED prorrateado en conceptos patronales CN04/CN06/CN09/CN08 según rubro, tabla de auditoría, UI `ValidarPilaComponent`. Releer `SPQ_LIQUIDACION.sql` en PREVERSION al codificar PILA_* y validar que CONTABILIZAR (SPQ_NC_CONTAB_NOMINA, hoy sin ficha) lee NIEPED post-ajuste en preversión CEM/Alcaldía julio 2026. No mezclar con sql_refe de radicaciones PILA. Al dictaminar Fase 1, incrustar diagrama de flujo usuario (prenómina → Excel → operador → liquidar → validar PILA → cerrar) y apartes normativos del extracto §4.5–4.8 y §5.",
+    "cambioPropuestoSimple": "En prenómina, con las novedades que ya cargó en Qrystalos, descargar el Excel oficial de incapacidades para subirlo a la planilla integrada del operador (Aportes en línea). Después de liquidar y antes de cerrar, subir la planilla PILA pagada, ver persona a persona las diferencias (sobre todo redondeos a centenas), aplicar los redondeos aceptados en la liquidación y seguir cerrando, contabilizando y generando CxP con los mismos valores que pagó en la PILA.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "No se modifican reglas de MCP, cuentas KMCOM ni OM de CONTABILIZAR. Los ajustes PILA solo cambian montos en NIEPED antes del cierre; Contabilizar y CxP existentes deben reflejar esos montos — validar en prueba integrada, no es desarrollo contable nuevo.",
+        "validadoEn": "2026-09-16T15:10:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En test: generar liquidación julio 2026 (CEM y/o Alcaldía), ejecutar cruce con los .xls de referencia del anexo y confirmar que sin aplicar PILA el comportamiento actual se mantiene; tras aplicar redondeos, un segundo cruce debe quedar OK y Contabilizar/CxP deben coincidir con totales PILA a centenas."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [
+      {
+        "nombre": "REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.html",
+        "ruta": "activo/20260915-0100016407/archivos/REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.html",
+        "extracto": "REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.extracto.txt",
+        "extractoRuta": "activo/20260915-0100016407/archivos/REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.extracto.txt",
+        "tipo": "circular",
+        "mime": "text/html",
+        "bytes": 39855,
+        "charsExtracto": 20724,
+        "avisoExtracto": "",
+        "subidaEn": "2026-09-16T09:45:19",
+        "url": "/api/caso/20260915-0100016407/archivo/REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.html",
+        "urlExtracto": "/api/caso/20260915-0100016407/archivo/REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "Entrega 1 (Liquidación): botón «Validar con la PILA» junto a «Cerrar Nomina», permiso MENUQ_NOMINA/BtnValidarPila; subir planilla integrada pagada (.xls/.xlsx); cruce por NEMP.DOCIDEMPLEADO (sumar varios NUMDOC); validar CODNOMINA del período vs planilla (CEM 01/02/09 vs Alcaldía 07); clasificar OK/REDONDEO/DIF/SOLO PILA/SOLO NÓMINA con tolerancia $150; sumar conceptos NIEPED §4.5 del spec (incl. CN04-1, CNSI07-1); «Aplicar redondeos PILA» actualiza VALOR/VALOR_APORTES en NIEPED sin recalcular toda la nómina; bloqueado si NPER.CERRADO=1; exportar Excel del cruce; casos de prueba CEM y Alcaldía julio 2026 del anexo. Entrega 2 (Prenómina): botón «Planilla de incapacidades», permiso BtnPlanillaIncapacidades; Excel layout «3. PLANILLA DE INCAPACIDADES.xlsx» (hoja Novedades fila 9+, DatosPruebaEmp intacta); filas desde NEDIA+NEVE mapeadas IGE/IRL/LMA; TIPO_DOC y DOCIDEMPLEADO desde NEMP; eventos sin mapeo listados en aviso; preview editable del valor; no alterar RegistNovedades ni carga masiva. Regresión: Cerrar/Abrir/Contabilizar/Generar CxP e impresiones/exportes actuales intactos.",
+      "originalesEn": "2026-09-16T14:47:51.833Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "Entrega 1 (Liquidación): botón «Validar con la PILA» junto a «Cerrar Nomina», permiso MENUQ_NOMINA/BtnValidarPila; subir planilla integrada pagada (.xls/.xlsx); cruce por NEMP.DOCIDEMPLEADO (sumar varios NUMDOC); validar CODNOMINA del período vs planilla (CEM 01/02/09 vs Alcaldía 07); clasificar OK/REDONDEO/DIF/SOLO PILA/SOLO NÓMINA con tolerancia $150; sumar conceptos NIEPED §4.5 del spec (incl. CN04-1, CNSI07-1); «Aplicar redondeos PILA» actualiza VALOR/VALOR_APORTES en NIEPED sin recalcular toda la nómina; bloqueado si NPER.CERRADO=1; exportar Excel del cruce; casos de prueba CEM y Alcaldía julio 2026 del anexo. Entrega 2 (Prenómina): botón «Planilla de incapacidades», permiso BtnPlanillaIncapacidades; Excel layout «3. PLANILLA DE INCAPACIDADES.xlsx» (hoja Novedades fila 9+, DatosPruebaEmp intacta); filas desde NEDIA+NEVE mapeadas IGE/IRL/LMA; TIPO_DOC y DOCIDEMPLEADO desde NEMP; eventos sin mapeo listados en aviso; preview editable del valor; no alterar RegistNovedades ni carga masiva. Regresión: Cerrar/Abrir/Contabilizar/Generar CxP e impresiones/exportes actuales intactos.",
+      "trasAnalisisEn": "2026-09-16T14:47:57.608Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con conocimiento/nomina (proceso.json, sps.json) y Qrystalos2 vivo. Cola IX OnLine.htm no aporta detalle funcional; spec autocontenida en archivos del caso. Hueco confirmado: no hay BtnValidarPila, BtnPlanillaIncapacidades ni METODO PILA_* en código. SPQ_LIQUIDACION documentado hasta GENERATE/OPEN/exports; faltan fichas para PILA_CRUZAR, PILA_APLICAR_REDONDEO, PILA_AJUSTAR_RUBRO (releer sql/ PREVERSION al implementar). Entrega 2 puede arrancar con AppStore.read NEDIA+NEVE+NEMP; definir tabla mapeo eventos con coordinador si no existe TGEN equivalente. NC_CONTAB_NOMINA·CONTABILIZAR sin ficha — probar lectura NIEPED ajustado en preversión.",
+      "fecha": "2026-09-16T15:10:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_LIQUIDACION — PILA_CRUZAR / PILA_APLICAR_REDONDEO / PILA_AJUSTAR_RUBRO: nuevos, releer SPQ al codificar",
+        "SPQ_NOM_NEDIA / NOM_NOVEDADES: no documentados en sps.json; releer solo si el export requiere validaciones del GUARDAR",
+        "SPQ_NC_CONTAB_NOMINA — CONTABILIZAR: no leído; prueba de regresión post-ajuste NIEPED"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260915-0100016407/diagramas/flujo.html",
+      "subidaEn": "2026-09-16T09:48:08",
+      "url": "/api/caso/20260915-0100016407/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "nomina",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260915-0100016407-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016407\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "FNK_CALCULO_VLR_NOVEDAD_NOM",
+        "metodo": "CALCULO_VLR_NOVEDAD",
+        "estado": "leido",
+        "hace": "Agrega novedades NEDIA del empleado ligadas al concepto (vía NEVE.CODCONCEPTO o NEVEC.IDCONCEPTO): suma horas+minutos/60 aplicando FACTOR de la novedad y @VALOR_HORA; devuelve CANTIDAD, VALOR_CALCULO (con factor) y VALOR_CALCULO100P (sin factor).",
+        "llama": []
+      },
+      {
+        "sp": "FNK_LIQUIDAR_NOMI_NEMP",
+        "metodo": "LIQUIDAR_NEMP",
+        "estado": "leido",
+        "hace": "Función table-valued que arma el detalle de provisión/liquidación del empleado para NIEPED: cruza NEMPF+NEMPFD (solo LIQUIDAR='Si') del CNSPAGO con histórico FNK_INFO_NEMPHIS_NEMP a FECHAFIN, enriquece con área, cargo, concepto, parafiscal NPRF/tercero CXP, préstamos y sede NPLA; devuelve una fila por línea liquidable.",
+        "llama": [
+          "FNK_INFO_NEMPHIS_NEMP",
+          "FNK_NOMBRE_MES"
+        ]
+      },
+      {
+        "sp": "SPK_LIQUIDAR_NOMI_NEMP",
+        "metodo": "LIQUIDAR_NEMP",
+        "estado": "leido",
+        "hace": "Genera liquidación/provisión de un empleado en el período: purge NIEPE/NIEPED del NUMDOC, inserta cabecera NIEPE y detalle NIEPED desde FNK_LIQUIDAR_NOMI_NEMP, consolida totales empleado, arma NPERP/NPERPD por tercero/parafiscal, actualiza totales NPER y marca recobros NIEPER.",
+        "llama": [
+          "FNK_LIQUIDAR_NOMI_NEMP",
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_LIQUIDACION",
+        "metodo": "GENERATE_NOMINA",
+        "estado": "leido",
+        "hace": "Genera la liquidación del CNSPAGO (SPQ_LIQUIDAR_NOMI). Si PROCESO=CLOSE, además cierra (SPQ_CERRAR_NOMI) y vacaciones CIERRE.",
+        "llama": [
+          "SPQ_LIQUIDAR_NOMI",
+          "SPQ_CERRAR_NOMI (solo CLOSE)",
+          "SPQ_PROCESO_VACACIONES CIERRE (solo CLOSE)",
+          "SPQ_GENSEQUENCE",
+          "FNK_NC_CUENTA_KMCOM"
+        ]
+      }
+    ],
+    "notas": "METODO PILA_* aún no existen en sps.json — desarrollo los agrega en SPQ_LIQUIDACION. EXPORTAR_SOI (listado) no cubre este REQ.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260915-0100016407.html",
+    "aprobados": "aprobados/20260915-0100016407/",
+    "imagenes": "aprobados/20260915-0100016407/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-16",
+    "ultimoEnvio": "2026-09-16T09:51:16",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

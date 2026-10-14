@@ -5,31 +5,31 @@
   "familia": "cartera",
   "prioridad": 5,
   "estado": "parcial",
-  "resumen": "Cartera registra glosas en Recaudos (INGRESO=GLOSAS, MOTIVO1/MOTIVO2) → al aplicar nace FGLO (SPK_PAGOSCXC). Cartera envía a auditoría (ENVIAR_AUDIT / ENT). Auditoría recibe, responde motivos (FGLOCG/FGLOD), aplica respuesta y devuelve a cartera. Radicación e impresión de respuestas. Contabilidad vía SPK_RESPUESTAGLOSA y módulo OM Glosas (/cont). Gate REQ 6259: copiar MOTIVO1/MOTIVO2 de FPAGD a FGLOCG al aplicar.",
-  "actualizado": "2026-09-06T08:05:00",
-  "notaSql": "SPQ_FGLO_COL 37/37 leído + SPK_RESPUESTAGLOSA + SPK_FINALIDAD_GLOSAS en sql/ — fichas leído 2026-09-06. SPKs anidados opcionales: SPK_CONTAB_FGLO, SPK_GLOSAANULAFTR, SPK_RADICAGLOSAS.",
+  "resumen": "Recaudo GLOSAS → entrega a auditoría → responder (total/ítems) → aplicar (NC + por recuperar) → lote impresión → devolver → cartera recepciona y radica. Libro reorganizado 2026-10-03 en 13 capítulos con sketchnotes. SPQ_FGLO_COL 38/38 (nuevo ASIGNAR_RESPONSABLE_GLOSA); PREVERSION = 2.0.7.",
+  "actualizado": "2026-10-03T19:40:00",
+  "notaSql": "SPQ_FGLO_COL (38 METODOs) + SPK_RESPUESTAGLOSA releídos 2026-10-03 desde DESAIX: PREVERSION idéntica a liberada 2.0.7 (IDANT 2.0.6). SPK_FINALIDAD_GLOSAS leído 2026-09-06. Anidados opcionales: SPK_CONTAB_FGLO, SPK_GLOSAANULAFTR, SPK_RADICAGLOSAS.",
   "alcanceHasta": "Ciclo administrativo glosa: origen en recaudo → auditoría responde → devolución/radicación → contabilizar. Conciliaciones (FCONCI) es proceso hermano. No incluye implementación del gate motivos-desde-recaudo.",
   "ventanas": [
     {
-      "uso": "Recaudos — origen de glosas y motivos",
+      "uso": "Auditoría — recibir, responder, aplicar, imprimir y devolver",
+      "ruta": "auditoria.glosas",
+      "path": "/auditoria/Glosas",
+      "vue": "AdiGlosasPage.vue (RecepGlosas, RespGlosas, ImpRespGlo, DevolResGlo, ConfGlo)",
+      "entrada": "Auditoría → Glosas. Pestañas: Recepción, Responder Glosas, Respuestas (lotes de impresión), Devolver, Configurar Glosas."
+    },
+    {
+      "uso": "Cartera — enviar, recibir respuestas y radicar",
+      "ruta": "Admin.Glosas",
+      "path": "/admin/AdmGlosas",
+      "vue": "AdminGlosasPage.vue → AdminGlosasComponent, EnvioRecepGlo, RecepRtasG, RadRptaGlo",
+      "entrada": "Administrativo → Adm. glosas. Pestañas: Glosas (detalle), Envíos Auditoría, Recepción de Respuestas, CXC Glosas (radicar)."
+    },
+    {
+      "uso": "Recaudos — donde nace la glosa (ingreso GLOSAS)",
       "ruta": "admin.recaudos",
       "path": "/admin/Recaudos",
       "vue": "RecaudosPage.vue → cartera/FPAGComponent.vue",
       "entrada": "Administrativo → Cartera → Recaudos. INGRESO=GLOSAS. Plantilla con MOTIVO1/MOTIVO2. Botón Enviar a auditoría (ENVIAR_AUDIT). Permiso BEnviarAuditoriaFPAG."
-    },
-    {
-      "uso": "Auditoría — ciclo completo de glosas",
-      "ruta": "auditoria.glosas",
-      "path": "/audit/Glosas",
-      "vue": "AdiGlosasPage.vue (RecepGlosas, RespGlosas, ImpRespGlo, DevolResGlo, ConfGlo)",
-      "entrada": "Auditoría → Glosas. Pestañas: Recepción, Responder Glosas, Respuestas (imprimir), Devolver, Configurar Glosas."
-    },
-    {
-      "uso": "Administración cartera — seguimiento y envíos",
-      "ruta": "Admin.Glosas",
-      "path": "/admin/AdmGlosas",
-      "vue": "AdminGlosasPage.vue → AdminGlosasComponent, EnvioRecepGlo, RecepRtasG, RadRptaGlo",
-      "entrada": "Administrativo → Adm. glosas. Grilla FGLO por tercero/estado. Envíos auditoría, recepción respuestas, radicación CxC glosas."
     },
     {
       "uso": "Contabilidad — otros módulos glosas",
@@ -41,7 +41,7 @@
     {
       "uso": "Reportes glosas recibidas",
       "ruta": "auditoria.reporteGlosasRecibidas",
-      "path": "/audit/reporteGlosasRecibidas",
+      "path": "/auditoria/reporteGlosasRecibidas",
       "vue": "ReporteGlosasPage.vue",
       "entrada": "Auditoría → reporte glosas. REPORTES_GLOSAS / DETALLE_REPORTE_GLOSAS."
     }
@@ -275,7 +275,7 @@
         {
           "id": "circuito-automatico",
           "nombre": "Circuito automático (FINDEVOL 4/5/6)",
-          "explicacion": "Tras APLICARPAGO con INGRESO=GLOSAS: SPK_FINALIDAD_GLOSAS encadena ENVIAR_AUDIT → RECIBIR_GLOSA → (opcional FGLOCG/FGLOD desde RPDX) → SPK_RESPUESTAGLOSA → FGLOI → ENVIAR_RESPUESTA → RECIBIR_RPTASGLOSA. FINDEVOL 4=total automático; 5=solo detalle en auditoría; 6=detalle+responder automático.",
+          "explicacion": "Tras APLICARPAGO con INGRESO=GLOSAS y FINDEVOL 4, 5 o 6: SPK_FINALIDAD_GLOSAS hace ENVIAR_AUDIT y RECIBIR_GLOSA. 4 responde el total (SPK_RESPUESTAGLOSA, FGLOI, devuelve la respuesta a cartera). 5 solo deja FGLOCG/FGLOD; el auditor responde en Glosas. 6 deja el detalle y responde como el 4. FINDEVOL 3 (Recepcionar) no llama este SPK: Cartera usa el botón Enviar a auditoría.",
           "invariante": "Si falla auditoría/recepción/respuesta → RAISERROR en apply. DESAPLICAR bloqueado si FGLO.CERRADA=1.",
           "sps": [
             {
@@ -362,5 +362,1279 @@
     }
   ],
   "flujoPasado": true,
-  "pasadaEn": "2026-09-06T04:35:00"
+  "pasadaEn": "2026-09-06T04:35:00",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "Ciclo de las objeciones (glosas) que una EPS hace a facturas ya radicadas. Cartera las registra en un recaudo con ingreso GLOSAS, las envía a auditoría; el auditor las responde (acepta o defiende, total o ítem por ítem) y las aplica; las respuestas se imprimen, vuelven a cartera y se radican ante la EPS.",
+    "paraQueSirve": "Recuperar el valor que la EPS retuvo: lo aceptado se descuenta con una nota crédito automática y lo defendido queda como valor a recuperar en cartera, con soporte impreso, radicado y contabilizado.",
+    "proposito": "Que cada glosa tenga respuesta dentro de los 15 días hábiles, con trazabilidad de quién la recibió, quién la respondió, cuándo se radicó y qué efecto tuvo en la factura y en contabilidad."
+  },
+  "botones": [
+    {
+      "label": "Recepcionar Glosas",
+      "icono": "move_to_inbox",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Auditoría → Recepción. Solo con la entrega en Sin Recibir; recibe todas las glosas de la entrega y las pasa a la dependencia auditoría."
+    },
+    {
+      "label": "Edita Glosa",
+      "icono": "edit",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Responder Glosas, glosa abierta. Cabecera de la respuesta: tipo glosa, tipo respuesta, concepto, usuario, fecha, valor aceptado, observación, respuesta total y motivos."
+    },
+    {
+      "label": "Agregar Motivo",
+      "icono": "add",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Dentro de Edita Glosa (respuesta Total). Código del catálogo clase GLOSA, valor y observación. La suma debe igualar el valor glosado."
+    },
+    {
+      "label": "Agregar Item",
+      "icono": "playlist_add",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Respuesta por Ítems. Servicio o concepto, cantidad, valor unitario, código de glosa, código de respuesta, aceptado y respuesta."
+    },
+    {
+      "label": "Eliminar Todo",
+      "icono": "delete_sweep",
+      "color": "red-7",
+      "estilo": "outline",
+      "descripcion": "Respuesta por Ítems, glosa abierta. Borra todos los ítems y motivos para empezar de nuevo."
+    },
+    {
+      "label": "Aplicar Glosa",
+      "icono": "check_circle",
+      "color": "indigo-7",
+      "estilo": "outline",
+      "descripcion": "Glosa abierta y sumas iguales (motivos; e ítems si es tipo Item). Cierra la glosa, genera NC por lo aceptado, valor a recuperar y asiento contable."
+    },
+    {
+      "label": "Aplicar y Anula Factura",
+      "icono": "check_circle",
+      "color": "orange-10",
+      "estilo": "outline",
+      "descripcion": "Mismas condiciones que Aplicar; además el valor glosado debe ser igual al valor de la factura. Acepta todo y anula la factura."
+    },
+    {
+      "label": "Desaplicar Rpta",
+      "icono": "undo",
+      "color": "red-7",
+      "estilo": "outline",
+      "descripcion": "Glosa cerrada y no asignada a lote de impresión. Reversa la NC si hubo aceptado, limpia el comprobante y reabre la glosa."
+    },
+    {
+      "label": "Liberar pacientes",
+      "icono": "lock_open",
+      "color": "blue-grey-8",
+      "estilo": "outline",
+      "descripcion": "Glosa abierta + factura masiva CE/CI + permiso Brw:Glosas · PermitirLiberarPac. Libera citas facturadas para refacturar."
+    },
+    {
+      "label": "Rpta Det.",
+      "icono": "checklist",
+      "color": "teal-8",
+      "estilo": "outline",
+      "descripcion": "Respuesta por detalles con Excel: genera plantilla de ítems, valida (todo o nada) y envía. Obligatorios CODGLOSA, CODRPTA, CNSGLO, ITEM, VLRACEPTADO, RESPUESTA ≥ 10 caracteres."
+    },
+    {
+      "label": "Carga masiva",
+      "icono": "upload_file",
+      "color": "deep-purple-6",
+      "estilo": "outline",
+      "descripcion": "Plantilla de motivos/ítems. Reemplaza (borra e inserta) motivos e ítems de cada glosa del archivo. Errores en Reporte_Errores_Carga_Glosas.xlsx."
+    },
+    {
+      "label": "Inf. motivos",
+      "icono": "table_view",
+      "color": "green-9",
+      "estilo": "outline",
+      "descripcion": "Excel de las glosas filtradas con la descripción completa de cada motivo."
+    },
+    {
+      "label": "Asignar responsable",
+      "icono": "how_to_reg",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Permiso MENUQ_GLOSAS · BASIGNARRESPONSABLE. Asigna o quita (individual o masivo) usuario, fecha de asignación y fecha límite a glosas abiertas en auditoría."
+    },
+    {
+      "label": "Ord. días / filtro Días",
+      "icono": "sort",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Ordena por días hábiles restantes y filtra Todos / 6-15 (verde) / 1-5 (ámbar) / Venc. (rojo)."
+    },
+    {
+      "label": "Nueva Impresión",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Pestaña Respuestas. Crea un lote de respuestas por tercero (uno abierto por tercero y usuario)."
+    },
+    {
+      "label": "Asignar Todas / Retirar Todas",
+      "icono": "swap_horiz",
+      "color": "orange-8",
+      "estilo": "outline",
+      "descripcion": "Mueve glosas cerradas entre disponibles y el lote. Solo con Impresiones = 0."
+    },
+    {
+      "label": "Imprimir",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Imprime el lote; pregunta si incrementa el contador de impresiones."
+    },
+    {
+      "label": "Cerrar / Abrir",
+      "icono": "lock",
+      "color": "grey-8",
+      "estilo": "outline",
+      "descripcion": "Permiso MENUQ_GLOSAS · ABRIR_CERRAR_RESPUESTA. Cerrar: Impresiones = 0 y al menos una glosa. Abrir: impreso, no radicado y no en cartera."
+    },
+    {
+      "label": "Enviar a Cartera",
+      "icono": "send",
+      "color": "green-8",
+      "estilo": "outline",
+      "descripcion": "Lote impreso, sin radicar y aún no en cartera. Crea la entrega de respuestas hacia cartera."
+    },
+    {
+      "label": "Nueva Entrega / Traer Respuestas / Cerrar Envío",
+      "icono": "outbox",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Pestaña Devolver (auditoría) y Envíos Auditoría (cartera). Arma la entrega, agrega respuestas o recaudos y la cierra; Imprimir Entrega con la entrega cerrada o recibida."
+    },
+    {
+      "label": "Recepcionar Respuestas",
+      "icono": "move_to_inbox",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Adm. glosas → Recepción de Respuestas. Entrega Sin Recibir; confirma; devuelve las glosas a la dependencia cartera. No se revierte."
+    },
+    {
+      "label": "Radicar",
+      "icono": "task_alt",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Adm. glosas → CXC Glosas, lote sin radicar. Fecha de radicado no futura y máximo 30 días atrás. No se desradica."
+    },
+    {
+      "label": "FEVRIPS / Descargar FEV-RIPS",
+      "icono": "code",
+      "color": "deep-purple-6",
+      "estilo": "outline",
+      "descripcion": "Por factura solo si valor aceptado > 0: nota de ajuste electrónica y su XML con la DIAN. Descargar baja el archivo del lote."
+    },
+    {
+      "label": "Nuevo Código / Editar / Activar-Desactivar",
+      "icono": "settings",
+      "color": "grey-8",
+      "estilo": "outline",
+      "descripcion": "Configurar Glosas. Catálogo de códigos clase GLOSA, DEVOLUCION o RESPUESTA; desactive en lugar de eliminar."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "auditoria.glosas / admin.glosas (acceso a pantalla)",
+      "accion": "Entrar a Auditoría → Glosas y a Administrativo → Adm. glosas",
+      "rol": "Auditor / Analista de cartera",
+      "descripcion": "Las dos ventanas se controlan por acceso al menú. Los nombres GLOSAS_RECEPCION, GLOSAS_RESPONDER, etc. que cita el manual en pantalla son descriptivos, no controles USGRUH."
+    },
+    {
+      "codigo": "Brw:Glosas · PermitirLiberarPac",
+      "accion": "Botón Liberar pacientes en Responder Glosas",
+      "rol": "Auditor",
+      "descripcion": "Además exige glosa abierta y factura masiva CE/CI. Sin el control asignado el botón no aparece."
+    },
+    {
+      "codigo": "MENUQ_GLOSAS · ABRIR_CERRAR_RESPUESTA",
+      "accion": "Cerrar y Abrir lotes de impresión",
+      "rol": "Auditor líder",
+      "descripcion": "Pestaña Respuestas. Sin él se pueden armar e imprimir lotes pero no cerrarlos ni reabrirlos."
+    },
+    {
+      "codigo": "MENUQ_GLOSAS · BASIGNARRESPONSABLE",
+      "accion": "Botón Asignar responsable",
+      "rol": "Coordinador de auditoría",
+      "descripcion": "Asigna o quita responsable, fecha de asignación y fecha límite. No figura aún en el catálogo documentado de permisos (pendiente)."
+    },
+    {
+      "codigo": "BEnviarAuditoriaFPAG · BImpEntregaGloFPAG",
+      "accion": "Enviar a auditoría e imprimir entrega desde el recaudo",
+      "rol": "Analista de cartera",
+      "descripcion": "Controles de la ventana Recaudos (ver Cartera · Recaudos)."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDFDEPCARTERA",
+      "tipo": "Código de dependencia (FDEP)",
+      "valorSugerido": "Dependencia de cartera",
+      "descripcion": "Donde nace la glosa, donde vuelve al recepcionar respuestas y desde donde se radica. Sin ella las entregas fallan."
+    },
+    {
+      "nombre": "IDFDEPAUDITORIA",
+      "tipo": "Código de dependencia (FDEP)",
+      "valorSugerido": "Dependencia de auditoría",
+      "descripcion": "Donde se recibe, responde y aplica la glosa. «IDFDEPAUDITORIA no existe en FDEP» bloquea el envío."
+    },
+    {
+      "nombre": "IDCONCEPRPTAGLO_AUTO",
+      "tipo": "Código de concepto de respuesta",
+      "valorSugerido": "Concepto de respuesta automática",
+      "descripcion": "Concepto con el que el circuito automático (paso a seguir 4 y 6 del recaudo) responde la glosa. Sin él el apply del recaudo falla."
+    },
+    {
+      "nombre": "GLO_DIAS_HASTASABADO",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "SI cuenta el sábado como día hábil en el plazo de 15 días para responder. Domingos y festivos (FES) nunca cuentan."
+    },
+    {
+      "nombre": "RESTGLO_AUTOR_UNICO",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "SI restringe editar y borrar ítems y motivos al usuario que registró la glosa."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Registrar las glosas que llegaron en el pago de una EPS",
+      "donde": "Administrativo → Cartera → Recaudos → Nuevo recaudo, ingreso GLOSAS → facturas con valor glosado y motivos → Aplicar",
+      "condicion": "La factura debe estar en cartera con saldo. Los motivos deben existir en Configurar Glosas (clase GLOSA, activo).",
+      "noEs": "No es responder la glosa: eso lo hace auditoría después."
+    },
+    {
+      "necesidad": "Mandar las glosas al auditor",
+      "donde": "Recaudos → recaudo aplicado → Enviar a auditoría; o Adm. glosas → Envíos Auditoría → Nueva Entrega → Traer Recaudo → Cerrar Envío",
+      "condicion": "Glosas sin entrega previa y en la dependencia cartera. Permiso BEnviarAuditoriaFPAG en Recaudos.",
+      "noEs": "No es automático salvo paso a seguir 4, 5 o 6 en el recaudo."
+    },
+    {
+      "necesidad": "Que las glosas aparezcan en mi bandeja de auditoría",
+      "donde": "Auditoría → Glosas → Recepción → seleccionar la entrega Sin Recibir → Recepcionar Glosas",
+      "condicion": "Se recibe la entrega completa; no hay recepción parcial.",
+      "noEs": "Si no ve la entrega, cartera no la ha cerrado o está en otra dependencia."
+    },
+    {
+      "necesidad": "Aceptar parte de la glosa y defender el resto",
+      "donde": "Auditoría → Glosas → Responder Glosas → Edita Glosa → Vlr. Aceptado (recuperar se calcula) → motivos que sumen el valor glosado → Aplicar Glosa",
+      "condicion": "Glosa abierta; concepto y usuario de respuesta; periodos abiertos.",
+      "noEs": "No se crea la nota crédito a mano: la genera Aplicar por el valor aceptado."
+    },
+    {
+      "necesidad": "Responder línea por línea (servicio por servicio)",
+      "donde": "Edita Glosa → Tipo Respuesta = Item → Agregar Item (servicio/concepto, código glosa, código respuesta, aceptado) hasta cuadrar → Aplicar",
+      "condicion": "La suma de ítems y la de motivos deben igualar el valor glosado.",
+      "noEs": "Eliminar Todo borra ítems y motivos; no borra la glosa."
+    },
+    {
+      "necesidad": "Responder muchas glosas de una vez",
+      "donde": "Responder Glosas → Carga masiva (plantilla de motivos/ítems) o Rpta Det. (plantilla por ítem con validación estricta)",
+      "condicion": "Carga masiva reemplaza lo existente; Rpta Det. es todo o nada. Ambas dejan la glosa abierta: luego Aplicar.",
+      "noEs": "Ninguna de las dos aplica la glosa por sí sola."
+    },
+    {
+      "necesidad": "Aceptar toda la glosa y anular la factura",
+      "donde": "Responder Glosas → Aplicar y Anula Factura",
+      "condicion": "Valor glosado igual al valor de la factura y sumas cuadradas.",
+      "noEs": "Si la glosa es parcial, use Aplicar Glosa normal."
+    },
+    {
+      "necesidad": "Corregir una respuesta que ya apliqué",
+      "donde": "Responder Glosas → glosa cerrada → Desaplicar Rpta → corregir → Aplicar",
+      "condicion": "La glosa no debe estar en un lote de impresión (retírela primero) ni la factura anulada.",
+      "noEs": "Si el lote ya se radicó no se desaplica: la corrección va por nota."
+    },
+    {
+      "necesidad": "Saber cuánto tiempo me queda para responder",
+      "donde": "Responder Glosas → columna Días (verde 6-15, ámbar 1-5, rojo vencida) → filtro Días u Ord. días",
+      "condicion": "15 días hábiles desde el día siguiente al pago; sábado según GLO_DIAS_HASTASABADO.",
+      "noEs": "La glosa cerrada deja de contar."
+    },
+    {
+      "necesidad": "Repartir las glosas entre los auditores",
+      "donde": "Responder Glosas → Asignar responsable → filtrar → asignar (individual o masivo) usuario, fecha y fecha límite; cada auditor filtra con Asignado A",
+      "condicion": "Permiso MENUQ_GLOSAS · BASIGNARRESPONSABLE. Glosas abiertas y recibidas en auditoría.",
+      "noEs": "No bloquea a otros usuarios salvo que RESTGLO_AUTOR_UNICO = SI."
+    },
+    {
+      "necesidad": "Imprimir las respuestas para la EPS",
+      "donde": "Auditoría → Glosas → Respuestas → Nueva Impresión (tercero) → asignar glosas cerradas → Imprimir → Cerrar",
+      "condicion": "Solo glosas aplicadas (cerradas) y no asignadas a otro lote. Cerrar exige permiso ABRIR_CERRAR_RESPUESTA.",
+      "noEs": "No es la impresión del comprobante de entrega (eso está en Devolver / Envíos)."
+    },
+    {
+      "necesidad": "Devolver las respuestas a cartera",
+      "donde": "Respuestas → lote impreso → Enviar a Cartera; o Devolver → Nueva Entrega → Traer Respuestas → Cerrar Envío",
+      "condicion": "Lote impreso, sin radicar y no en cartera.",
+      "noEs": "Cartera debe Recepcionar Respuestas para que cuenten."
+    },
+    {
+      "necesidad": "Recibir en cartera lo que respondió auditoría",
+      "donde": "Administrativo → Adm. glosas → Recepción de Respuestas → entrega Sin Recibir → Recepcionar Respuestas",
+      "condicion": "Toda la entrega; no se revierte.",
+      "noEs": "No radica: eso es la pestaña CXC Glosas."
+    },
+    {
+      "necesidad": "Radicar la respuesta ante la EPS",
+      "donde": "Adm. glosas → CXC Glosas → lote Sin Radicar → Radicar → Fecha Radicado → Radicar",
+      "condicion": "Fecha no futura y máximo 30 días atrás. No se desradica.",
+      "noEs": "FEVRIPS por factura solo aparece si hubo valor aceptado."
+    },
+    {
+      "necesidad": "Entregar la nota crédito electrónica de la glosa",
+      "donde": "CXC Glosas → detalle → FEVRIPS (por factura) o Descargar FEV-RIPS (lote)",
+      "condicion": "Valor aceptado > 0; la NC debe estar notificada por la DIAN (ver Notas DB/CR → Encolar).",
+      "noEs": "No se encola desde aquí: la NC se gestiona en Notas DB/CR con procedencia AUDITORIA."
+    },
+    {
+      "necesidad": "Agregar un código de glosa o de respuesta nuevo",
+      "donde": "Auditoría → Glosas → Configurar Glosas → Nuevo Código → clase GLOSA / DEVOLUCION / RESPUESTA → Activo",
+      "condicion": "Código único. Desactive en vez de eliminar los que están en uso.",
+      "noEs": "No se configuran aquí las dependencias ni variables: Configuración → Variables."
+    },
+    {
+      "necesidad": "Ver el estado de todas las glosas de una EPS",
+      "donde": "Adm. glosas → pestaña Glosas → filtro tercero / Estado (Recepcionada, SinRespuesta, Respuesta, SinRadicar, Radicada)",
+      "condicion": "Vea el capítulo de estados: las glosas ya devueltas a cartera muestran Estado vacío (pendiente de ajuste).",
+      "noEs": "Para el detalle de motivos y respuesta use Responder Glosas o Inf. motivos."
+    }
+  ],
+  "estadosGlosa": {
+    "titulo": "Cómo leer el estado de una glosa",
+    "descripcion": "La glosa tiene tres lecturas que se combinan: dónde está (cartera o auditoría), si está respondida (Abierta / Cerrada) y qué pasó con la respuesta (lote, devuelta, radicada, contabilizada). Además, en Responder Glosas, la columna Días marca el plazo.",
+    "columnas": [
+      "Estado",
+      "Qué significa",
+      "Qué hacer"
+    ],
+    "filas": [
+      {
+        "codigo": "RC",
+        "tono": "ambar",
+        "etiquetas": [
+          "Recepcionada en cartera",
+          "Adm. glosas · Estado = Recepcionada (dependencia cartera, abierta)"
+        ],
+        "significa": "Nació del recaudo y aún no se ha enviado a auditoría (o se retiró de la entrega).",
+        "queHacer": "Enviar a auditoría desde el recaudo o Envíos Auditoría."
+      },
+      {
+        "codigo": "EN",
+        "tono": "azul",
+        "etiquetas": [
+          "En entrega",
+          "Entrega Sin Recibir (cartera → auditoría)"
+        ],
+        "significa": "Va dentro de una entrega cerrada que auditoría no ha recepcionado.",
+        "queHacer": "Auditoría → Recepción → Recepcionar Glosas. Retirar solo si la entrega sigue abierta."
+      },
+      {
+        "codigo": "SR",
+        "tono": "ambar",
+        "etiquetas": [
+          "Sin respuesta",
+          "Adm. glosas · Estado = SinRespuesta · Responder Glosas · Estado = Sin Aplicar"
+        ],
+        "significa": "Recibida en auditoría, abierta. Corre el plazo de 15 días hábiles.",
+        "queHacer": "Edita Glosa → motivos o ítems → Aplicar. Asignar responsable si hace falta."
+      },
+      {
+        "codigo": "D+",
+        "tono": "verde",
+        "etiquetas": [
+          "Días 6–15",
+          "Responder Glosas · columna Días verde"
+        ],
+        "significa": "Plazo con margen.",
+        "queHacer": "Responder en orden de Ord. días."
+      },
+      {
+        "codigo": "D-",
+        "tono": "rojo",
+        "etiquetas": [
+          "Días 1–5 o vencida",
+          "Columna Días ámbar (1–5) o roja (0 o negativa)"
+        ],
+        "significa": "Próxima a vencer o ya vencida frente a la EPS.",
+        "queHacer": "Priorizar: filtro Días = 1-5 o Venc."
+      },
+      {
+        "codigo": "AP",
+        "tono": "verde",
+        "etiquetas": [
+          "Respondida (Cerrada)",
+          "Adm. glosas · Estado = Respuesta · Responder Glosas · Estado = Aplicadas"
+        ],
+        "significa": "Aplicada: NC por lo aceptado, valor a recuperar registrado, asiento contable generado.",
+        "queHacer": "Asignarla a un lote en Respuestas. Desaplicar Rpta si hay que corregir (antes del lote)."
+      },
+      {
+        "codigo": "LT",
+        "tono": "azul",
+        "etiquetas": [
+          "En lote de impresión",
+          "Pestaña Respuestas · glosa asignada (Asignada imp. = 1)"
+        ],
+        "significa": "Agrupada por tercero para imprimir; ya no se puede desaplicar.",
+        "queHacer": "Imprimir → Cerrar → Enviar a Cartera. Retirar del lote si hay que corregir."
+      },
+      {
+        "codigo": "DV",
+        "tono": "azul",
+        "etiquetas": [
+          "Devuelta a cartera",
+          "Entrega de respuestas Sin Recibir (auditoría → cartera)"
+        ],
+        "significa": "El lote viaja a cartera; aún no recepcionado.",
+        "queHacer": "Adm. glosas → Recepción de Respuestas → Recepcionar Respuestas."
+      },
+      {
+        "codigo": "SX",
+        "tono": "ambar",
+        "etiquetas": [
+          "Sin radicar",
+          "CXC Glosas · Radicado = 0"
+        ],
+        "significa": "Recibida en cartera con valor a recuperar; falta radicar ante la EPS.",
+        "queHacer": "CXC Glosas → Radicar con fecha. Descargar FEV-RIPS."
+      },
+      {
+        "codigo": "RD",
+        "tono": "verde",
+        "etiquetas": [
+          "Radicada",
+          "CXC Glosas · Radicado = 1"
+        ],
+        "significa": "Radicada ante la EPS con fecha y usuario. Punto de no retorno.",
+        "queHacer": "Nada; el valor a recuperar espera el siguiente pago de la EPS."
+      },
+      {
+        "codigo": "CT",
+        "tono": "gris",
+        "etiquetas": [
+          "Contabilizada 0 / 1 / 2",
+          "Contabilidad → Otros módulos → Glosas"
+        ],
+        "significa": "0 pendiente de envío, 1 enviada, 2 con error contable.",
+        "queHacer": "Contabilidad marca y envía las pendientes; si 2, revisar el error del comprobante."
+      }
+    ],
+    "nota": "Detalle de pantalla: en Adm. glosas → pestaña Glosas, la columna Estado queda vacía para las glosas ya devueltas a cartera y las opciones SinRadicar / Radicada del filtro buscan en la dependencia auditoría, así que no listan nada después de recepcionar. Use CXC Glosas para ver radicadas. Reportado como pendiente."
+  },
+  "flujos": [
+    {
+      "id": "flujo-ciclo",
+      "titulo": "El ciclo completo de una glosa",
+      "descripcion": "Siete momentos que alternan entre cartera y auditoría.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Cartera registra el recaudo GLOSAS",
+          "descripcion": "Nuevo recaudo con ingreso GLOSAS, facturas con valor glosado y motivos. Al aplicar nace una glosa por factura.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "tablas": [
+            "FPAG",
+            "FPAGD",
+            "FGLO",
+            "FGLOCG"
+          ],
+          "sp": "SPQ_FPAG_COL · APLICARPAGO → SPK_PAGOSCXC"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Cartera envía a auditoría",
+          "descripcion": "Enviar a auditoría desde el recaudo, o Envíos Auditoría → Nueva Entrega → Traer Recaudo → Cerrar Envío.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Cartera → Recaudos / Administrativo → Adm. glosas",
+          "tablas": [
+            "ENT",
+            "ENTD",
+            "FGLO"
+          ],
+          "sp": "SPQ_FPAG_COL · ENVIAR_AUDIT · SPQ_FGLO_COL · ENT_ENVGLOSA / ENT_ADDRECAUDO"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Auditoría recepciona la entrega",
+          "descripcion": "Recepción → entrega Sin Recibir → Recepcionar Glosas. Las glosas pasan a la dependencia auditoría.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Recepción",
+          "tablas": [
+            "ENT",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · RECIBIR_GLOSA"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Auditoría responde y aplica",
+          "descripcion": "Edita Glosa (total o ítems), motivos que cuadren, Aplicar Glosa. Nace la NC por lo aceptado y el valor a recuperar.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "FGLO",
+            "FGLOCG",
+            "FGLOD",
+            "FNOT",
+            "FCXCDV",
+            "MCP"
+          ],
+          "sp": "SPQ_FGLO_COL · CRUD_FGLO · APLICAR_GLOSA → SPK_RESPUESTAGLOSA"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Auditoría imprime y devuelve",
+          "descripcion": "Respuestas → Nueva Impresión → asignar glosas → Imprimir → Cerrar → Enviar a Cartera (o Devolver → Nueva Entrega → Traer Respuestas → Cerrar Envío).",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Respuestas / Devolver",
+          "tablas": [
+            "FGLOI",
+            "FGLOID",
+            "ENT",
+            "ENTD"
+          ],
+          "sp": "SPQ_FGLO_COL · CRUD_FGLOI · CRUD_FGLOID · IMP_RESPUESTA · ENVIAR_RESPUESTA"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Cartera recepciona las respuestas",
+          "descripcion": "Recepción de Respuestas → entrega Sin Recibir → Recepcionar Respuestas. Las glosas vuelven a cartera.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Adm. glosas → Recepción de Respuestas",
+          "tablas": [
+            "ENT",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · RECIBIR_RPTASGLOSA"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Cartera radica ante la EPS",
+          "descripcion": "CXC Glosas → Radicar con fecha (no futura, ≤ 30 días). FEV-RIPS para la nota crédito electrónica. Contabilidad envía lo pendiente.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Adm. glosas → CXC Glosas",
+          "tablas": [
+            "FGLOI",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · FGLOI_RADICA → SPK_RADICAGLOSAS"
+        }
+      ]
+    },
+    {
+      "id": "flujo-origen",
+      "titulo": "Dónde nace la glosa: el recaudo GLOSAS",
+      "descripcion": "Lo que cartera digita en el recaudo es lo que el auditor verá como motivos.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo recaudo con ingreso GLOSAS",
+          "descripcion": "Tercero (EPS), fecha de pago, ingreso GLOSAS y paso a seguir (3 Recepcionar, 4 Responder, 5 Detalle, 6 Detalle y responde). Desde el día siguiente a la fecha de pago corre el plazo de 15 días hábiles.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "tablas": [
+            "FPAG"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Facturas con valor glosado y motivos",
+          "descripcion": "Traer Varias o plantilla Excel con N_FACTURA, VLRGLOSA, MOTIVO1 y MOTIVO2. Los códigos deben existir en Configurar Glosas como clase GLOSA y activos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "tablas": [
+            "RPDX",
+            "FPAGD",
+            "FCGLO"
+          ],
+          "sp": "SPQ_FPAG_COL · SUBIR_TXT / CARGAR_FACTURAS / ASIGNAR → SPK_CARGA_MASIVA_FAC_CXC_02"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿El código de motivo existe y está activo?",
+          "descripcion": "Si existe, la glosa nace con sus motivos ya cargados. Si no, nace sin motivos y el auditor deberá agregarlos a mano (el sistema no detiene el recaudo).",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "si": "Glosa con motivos (FGLOCG).",
+          "no": "Glosa sin motivos; auditoría los agrega con Edita Glosa → Agregar Motivo."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Aplicar el recaudo crea la glosa",
+          "descripcion": "Una glosa por factura con valor glosado, procedencia Recaudo, dependencia cartera, Abierta. La factura queda con el valor glosado pendiente.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "tablas": [
+            "FGLO",
+            "FGLOCG",
+            "FCXC"
+          ],
+          "sp": "SPQ_FPAG_COL · APLICARPAGO → SPK_PAGOSCXC"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Qué paso a seguir tiene el recaudo?",
+          "descripcion": "Con 3 no pasa nada automático: cartera envía a mano. Con 4, 5 o 6 el sistema envía y recibe en auditoría; 4 y 6 además responden, imprimen y devuelven; 5 solo deja el detalle cargado.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "si": "4 o 6: ciclo automático completo (exige IDCONCEPRPTAGLO_AUTO).",
+          "no": "3: Enviar a auditoría manual. 5: detalle listo; el auditor responde.",
+          "sp": "SPK_FINALIDAD_GLOSAS"
+        }
+      ]
+    },
+    {
+      "id": "flujo-entrega",
+      "titulo": "La entrega: enviar y recibir",
+      "descripcion": "La entrega es el sobre; las glosas, su contenido. Sin recepción no hay respuesta.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Enviar a auditoría desde el recaudo",
+          "descripcion": "En el recaudo aplicado, botón Enviar a auditoría (permiso BEnviarAuditoriaFPAG). Crea una entrega GLOSAS con todas las glosas del recaudo que estén en cartera y sin entrega previa.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "tablas": [
+            "ENT",
+            "ENTD",
+            "FGLO",
+            "FPAG"
+          ],
+          "sp": "SPQ_FPAG_COL · ENVIAR_AUDIT"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "O armar la entrega en Adm. glosas",
+          "descripcion": "Envíos Auditoría → Nueva Entrega → Traer Recaudo (recaudo completo) o Respuesta (facturas sueltas) → Retirar si sobra → Cerrar Envío → Imprimir Entrega.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Adm. glosas → Envíos Auditoría",
+          "tablas": [
+            "ENT",
+            "ENTD",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · ENT_ENVGLOSA · ENT_ADDRECAUDO · ENTD_DELITEMENVIO"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Reglas de la entrega",
+          "descripcion": "Deben existir las dependencias IDFDEPCARTERA e IDFDEPAUDITORIA. Un usuario no puede tener dos entregas abiertas. Una glosa con entrega activa no entra en otra.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Adm. glosas",
+          "tablas": [
+            "FDEP",
+            "ENT"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Auditoría recepciona",
+          "descripcion": "Recepción → filtrar (consecutivo, usuario, estado, fechas) → entrega Sin Recibir → ver detalle → Recepcionar Glosas. Todas las glosas de la entrega a la vez.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Recepción",
+          "tablas": [
+            "ENT",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · RECIBIR_GLOSA"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Glosas en la bandeja del auditor",
+          "descripcion": "Las glosas pasan a la dependencia auditoría (En auditoría = 1) y aparecen en Responder Glosas. La entrega queda Recibido con usuario y fecha.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas",
+          "tablas": [
+            "FGLO",
+            "ENT"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-responder",
+      "titulo": "Responder la glosa: total o ítem por ítem",
+      "descripcion": "El auditor decide cuánto acepta y cuánto defiende; la suma de motivos debe cuadrar.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Seleccionar la glosa",
+          "descripcion": "Responder Glosas → filtros (tercero, Estado Sin Aplicar, sede, factura, entrega, Asignado A, Días). Al seleccionar se ve el detalle: valor glosado, aceptado, a recuperar, motivos e ítems.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "FGLO",
+            "FGLOCG",
+            "FGLOD"
+          ],
+          "sp": "SPQ_FGLO_COL · TRAE_MOTIGLO"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Edita Glosa: cabecera de la respuesta",
+          "descripcion": "Tipo Glosa (Total/Parcial), Tipo Respuesta (Total/Item), Radicado, Concepto de respuesta y Usuario de respuesta (obligatorios), Fecha de respuesta (hoy si vacía), Vlr. Aceptado (recuperar se calcula), Observación y Respuesta Total.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · CRUD_FGLO"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Respuesta Total o por Ítems?",
+          "descripcion": "Total: una sola respuesta y motivos (Agregar Motivo) cuya suma iguale el valor glosado. Item: Agregar Item por servicio o concepto con cantidad, valor, código de glosa, código de respuesta, aceptado y respuesta.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "si": "Total: motivos FGLOCG con suma = valor glosado; texto Respuesta Total obligatorio.",
+          "no": "Item: ítems FGLOD; la suma de ítems y de motivos debe igualar el valor glosado. Eliminar Todo reinicia.",
+          "sp": "SPQ_FGLO_COL · CRUD_FGLOCG · CRUD_FGLOD · BORRAR_TODO_ITEMS"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Validaciones al guardar",
+          "descripcion": "«El valor de los motivos no coincide con el valor total de la glosa» · «El valor aceptado no puede ser mayor que el valor de la glosa» · «Ya existe un motivo con este código» · glosa cerrada no se edita. Con RESTGLO_AUTOR_UNICO = SI solo el autor modifica ítems y motivos.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas",
+          "tablas": [
+            "FGLO",
+            "FGLOCG"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Aparece Aplicar Glosa",
+          "descripcion": "Cuando la glosa está abierta y las sumas cuadran, se habilitan Aplicar Glosa y Aplicar y Anula Factura. Hasta entonces la glosa sigue Sin Aplicar.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas"
+        }
+      ]
+    },
+    {
+      "id": "flujo-masiva",
+      "titulo": "Responder por Excel",
+      "descripcion": "Dos plantillas distintas; ninguna aplica la glosa por sí sola.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿Qué plantilla necesito?",
+          "descripcion": "Carga masiva: motivos (tipo Total) o ítems completos (tipo Item); reemplaza lo existente. Rpta Det.: responde ítem por ítem sobre el detalle ya cargado, con validación estricta.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "si": "Carga masiva: muchas glosas, motivos o ítems desde cero.",
+          "no": "Rpta Det.: glosas con ítems ya cargados (paso a seguir 5) que solo necesitan respuesta y valor aceptado."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Carga masiva: descargar, llenar, subir",
+          "descripcion": "Botón Carga masiva → confirmar que reemplaza → Descargar Plantilla → columnas CNSGLO, N_FACTURA, VLRGLOSA_TOTAL_GLOSA + (Total) CODGLOSA_MOTIVO, VLR_MOTIVO, OBSERVACION_MOTIVO o (Item) TIPO_ITEM C/S, IDSERVICIO_O_CONCEPTO, CODGLOSA_ITEM, CODRPTA_ITEM, RESPUESTA_ITEM, CANTIDAD, VR_UNITARIO, VLRGLOSA_ITEM, VLRACEPTADO_ITEM → Procesar Archivo.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "RPDX",
+            "FGLOCG",
+            "FGLOD"
+          ],
+          "sp": "SPQ_FGLO_COL · CARGA_MASIVA_RESPUESTA_GLOSA · TRAER_GLOSAS_VALIDADOS"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Errores de la carga masiva",
+          "descripcion": "Si alguna fila falla, descarga Reporte_Errores_Carga_Glosas.xlsx con fila y causa. Corrija y vuelva a subir. La operación no se deshace.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Rpta Det.: plantilla por detalle",
+          "descripcion": "Rpta Det. → Generar y descargar plantilla (.xlsx) con las glosas filtradas y sus ítems → llenar CODGLOSA, CODRPTA, CNSGLO, ITEM, VLRACEPTADO, RESPUESTA (≥ 10 caracteres) → subir → columna VALIDACION → Enviar al servidor.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "RPDX",
+            "FGLOD"
+          ],
+          "sp": "SPQ_FGLO_COL · PLANTILLA_RPTA_DETALLES · SUBIR_RPTA_DETALLES"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Todo o nada",
+          "descripcion": "Si el archivo de Rpta Det. no es válido no se procesa ninguna fila; devuelve un Excel solo con las filas con error. Tras VALIDACION hay columnas informativas (FRADICADO, FNOTIGLOSA, FFACTURA, FINGRESOPTE).",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Aplicar sigue siendo manual",
+          "descripcion": "Las dos cargas dejan la glosa abierta con motivos e ítems. Seleccione cada glosa y pulse Aplicar Glosa (o use el circuito automático del recaudo con paso a seguir 4 o 6).",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas"
+        }
+      ]
+    },
+    {
+      "id": "flujo-aplicar",
+      "titulo": "Qué pasa cuando el auditor pulsa Aplicar",
+      "descripcion": "Las validaciones corren en orden; el primer tropiezo detiene todo y la glosa sigue abierta.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "sistema",
+          "titulo": "La glosa y las sumas",
+          "descripcion": "Glosa abierta («No se encontró el Cnsglosa o ya fue aplicado»). Motivos = valor glosado; si es tipo Item también ítems = valor glosado.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "FGLO",
+            "FGLOCG",
+            "FGLOD"
+          ],
+          "sp": "SPQ_FGLO_COL · APLICAR_GLOSA"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Los periodos",
+          "descripcion": "Cartera y contabilidad abiertos en la fecha de respuesta: «Periodo contable, cerrado o no existe». Solución: abrir el mes o cambiar la fecha de respuesta en Edita Glosa.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas",
+          "tablas": [
+            "PRI"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Lo aceptado se vuelve nota crédito",
+          "descripcion": "Si Vlr. Aceptado > 0 genera una NC con procedencia AUDITORIA, su detalle, baja el saldo de la factura y la reliquida. Si no logra el detalle: «No se pudo generar el detalle de la nota crédito. La glosa no se aplicó».",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas",
+          "tablas": [
+            "FNOT",
+            "FNOTD",
+            "FCXC",
+            "FTR"
+          ],
+          "sp": "SPK_RESPUESTAGLOSA → SPK_GENITEMS_NOTACR · SPK_NOTASCXC · SPK_RELIQUIDA_FTR"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Lo defendido queda por recuperar",
+          "descripcion": "Si Vlr. Recuperar > 0 registra la cuenta por recuperar (G/R) para cobrarla a la EPS en el siguiente pago.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas",
+          "tablas": [
+            "FCXCDV"
+          ],
+          "sp": "SPK_RESPUESTAGLOSA"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Cierra y contabiliza",
+          "descripcion": "Cerrada = 1, fecha y usuario de respuesta. Genera el asiento de la respuesta con la cuenta del concepto. Contabilizada 0 queda para Contabilidad → Otros módulos → Glosas.",
+          "rol": "Sistema",
+          "pantalla": "Auditoría → Glosas",
+          "tablas": [
+            "FGLO",
+            "MCP"
+          ],
+          "sp": "SPK_CONTAB_FGLO"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿Aplicar y Anula Factura?",
+          "descripcion": "Si el valor glosado es igual al valor de la factura, este botón acepta todo y además anula la factura.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "si": "Valor glosado = valor factura → anula la factura.",
+          "no": "«El valor de la glosa debe ser igual al valor de la Factura».",
+          "sp": "SPQ_FGLO_COL · APLIANULA_FACTURA → SPK_GLOSAANULAFTR"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Desaplicar Rpta (volver atrás)",
+          "descripcion": "Glosa cerrada y aún no asignada a lote: reversa la NC si hubo aceptado, limpia el comprobante y reabre. Bloqueos: «La factura de esta glosa ya se encuentra anulada» · «Comprobante contable no confirmado».",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Responder Glosas",
+          "tablas": [
+            "FGLO",
+            "FNOT",
+            "MCPE"
+          ],
+          "sp": "SPQ_FGLO_COL · DESAPLICAR_GLOSA → SPK_ANULANOTA_CR"
+        }
+      ]
+    },
+    {
+      "id": "flujo-lotes",
+      "titulo": "Imprimir las respuestas y devolverlas a cartera",
+      "descripcion": "Las glosas cerradas se agrupan por tercero en un lote, se imprimen y viajan de vuelta en una entrega.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nueva Impresión",
+          "descripcion": "Respuestas → Nueva Impresión → tercero. Un lote abierto por tercero y usuario («Existe consecutivos abiertos para este tercero y este usuario»).",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Respuestas",
+          "tablas": [
+            "FGLOI"
+          ],
+          "sp": "SPQ_FGLO_COL · CRUD_FGLOI"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Asignar glosas al lote",
+          "descripcion": "Panel derecho: glosas cerradas disponibles → clic una a una o Asignar Todas. Panel izquierdo: las del lote → Retirar / Retirar Todas. Solo mientras Impresiones = 0.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Respuestas",
+          "tablas": [
+            "FGLOID",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · CRUD_FGLOID · VALIDAR_FGLOID"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Imprimir y Cerrar",
+          "descripcion": "Imprimir pregunta si incrementa el contador. Cerrar exige Impresiones = 0, al menos una glosa y permiso MENUQ_GLOSAS · ABRIR_CERRAR_RESPUESTA. Abrir reabre si no está radicado ni en cartera.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Respuestas",
+          "tablas": [
+            "FGLOI"
+          ],
+          "sp": "SPQ_FGLO_COL · IMP_RESPUESTA · CERRAR_IMPRESION · ABRIR_IMPRESION"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Enviar a Cartera desde el lote o armar la entrega a mano?",
+          "descripcion": "Enviar a Cartera (lote impreso, sin radicar, no en cartera) crea la entrega de respuestas. O en Devolver: Nueva Entrega → Traer Respuestas (todas del tercero) / Respuesta (una a una) → Cerrar Envío → Imprimir Entrega.",
+          "rol": "Auditor",
+          "pantalla": "Auditoría → Glosas → Respuestas / Devolver",
+          "si": "Enviar a Cartera: automático desde el lote.",
+          "no": "Devolver: entrega manual; Imprimir Entrega solo cerrada o recibida.",
+          "tablas": [
+            "ENT",
+            "ENTD",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · ENVIAR_RESPUESTA · ENT_RPTAGLOSA · ENT_ADDRESPGLO · ENT_CIERRARPTAGLOSA"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Respuestas en tránsito a cartera",
+          "descripcion": "Las glosas quedan marcadas con la entrega de devolución. Cartera las verá en Recepción de Respuestas como Sin Recibir.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Adm. glosas",
+          "tablas": [
+            "FGLO",
+            "ENT"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-radicar",
+      "titulo": "Cartera recibe las respuestas y las radica",
+      "descripcion": "Adm. glosas cierra el ciclo.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Recepcionar Respuestas",
+          "descripcion": "Recepción de Respuestas → filtrar → entrega Sin Recibir → revisar detalle → Recepcionar Respuestas → confirmar. Toda la entrega; no se revierte.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Adm. glosas → Recepción de Respuestas",
+          "tablas": [
+            "ENT",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · RECIBIR_RPTASGLOSA"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Las glosas vuelven a cartera",
+          "descripcion": "En auditoría = 0, dependencia cartera, siguen Cerradas. La entrega queda Recibido con usuario y fecha.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Adm. glosas",
+          "tablas": [
+            "FGLO",
+            "ENT"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Radicar el lote",
+          "descripcion": "CXC Glosas → filtro Sin Radicar → seleccionar lote → Radicar → Fecha Radicado → Radicar. Fecha no futura («No puede superar la fecha actual») y máximo 30 días atrás.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Adm. glosas → CXC Glosas",
+          "tablas": [
+            "FGLOI",
+            "FGLO"
+          ],
+          "sp": "SPQ_FGLO_COL · FGLOI_RADICA → SPK_RADICAGLOSAS"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "FEV-RIPS y comprobantes",
+          "descripcion": "Por factura con valor aceptado > 0, botón FEVRIPS muestra la nota de ajuste y su XML con la DIAN; Descargar FEV-RIPS baja el archivo del lote; filtro CUV Validados / Sin validar; Imprimir genera el comprobante de radicación.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Adm. glosas → CXC Glosas",
+          "tablas": [
+            "FNOT",
+            "FGLO"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Ciclo cerrado",
+          "descripcion": "Radicado = 1 con fecha y usuario; no se desradica. El valor a recuperar espera el siguiente pago de la EPS. Contabilidad → Otros módulos → Glosas envía las respuestas con Contabilizada = 0.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Adm. glosas",
+          "tablas": [
+            "FGLOI",
+            "FGLO",
+            "MCP"
+          ],
+          "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS"
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Guía rápida",
+      "titulo": "¿Qué necesita hacer?",
+      "intro": "Busque su caso y siga la ruta. Si no aparece, continúe con los capítulos."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "md": "Una **glosa** es la objeción que una EPS hace a una parte (o al total) de una factura que ya se le radicó: retiene ese valor hasta que la IPS la aclare. En Qrystalos la glosa nace cuando cartera aplica un **recaudo con ingreso GLOSAS**: por cada factura glosada se crea un documento de glosa con el valor objetado y hasta dos motivos (códigos del catálogo).\n\nParticipan **dos departamentos** y dos ventanas. **Cartera** (Administrativo → Adm. glosas) registra, envía a auditoría, recibe las respuestas y radica. **Auditoría** (Auditoría → Glosas) recepciona las entregas, responde cada glosa, la aplica, imprime el lote de respuestas y lo devuelve. La glosa siempre está en una de las dos dependencias; las variables `IDFDEPCARTERA` e `IDFDEPAUDITORIA` dicen cuál.\n\n**Responder** es decidir cuánto se **acepta** (la EPS tiene razón: se descuenta de la factura con una nota crédito automática) y cuánto se **defiende** (queda como valor a recuperar que la EPS deberá pagar). La respuesta puede ser **Total** (una sola respuesta con motivos que suman el valor glosado) o por **Ítems** (línea por línea con código de respuesta).\n\nLo que **no** se hace aquí: el acuerdo global con la EPS es **Cartera · Conciliaciones**; la devolución de la factura completa entra por Recaudos con ingreso DEVOLUCION; las glosas de proveedores están en Cuentas por pagar; y la nota crédito de la glosa **no** se crea a mano en Notas DB/CR, la genera el sistema al aplicar la respuesta.",
+      "kicker": "Conceptos",
+      "titulo": "Qué es una glosa y quién hace qué",
+      "intro": "Antes de tocar la pantalla: qué objeta la EPS, qué hace cartera, qué hace auditoría y qué no se hace aquí.",
+      "imagen": "img/glosas_que_es_sketchnote.jpg",
+      "imagenAlt": "Qué es una glosa y quién hace qué",
+      "puntosClave": [
+        "La glosa nace del recaudo con ingreso GLOSAS; una por factura.",
+        "Cartera registra, envía, recibe y radica; auditoría responde, aplica e imprime.",
+        "Aceptar = nota crédito automática; defender = valor a recuperar."
+      ]
+    },
+    {
+      "id": "ciclo",
+      "tipo": "flujo",
+      "flujoId": "flujo-ciclo",
+      "kicker": "Panorama",
+      "titulo": "El ciclo completo: de la objeción a la radicación",
+      "intro": "Siete momentos que alternan entre cartera y auditoría. Apréndase este capítulo; los siguientes detallan cada uno.",
+      "imagen": "img/glosas_ciclo_sketchnote.jpg",
+      "imagenAlt": "El ciclo completo de una glosa",
+      "puntosClave": [
+        "Registrar → enviar → recibir → responder/aplicar → imprimir/devolver → recepcionar → radicar.",
+        "Con paso a seguir 4 o 6 el recaudo hace solo los pasos 2 a 6.",
+        "Nada se responde sin recepcionar; nada se radica sin recepcionar la respuesta."
+      ]
+    },
+    {
+      "id": "origen",
+      "tipo": "flujo",
+      "flujoId": "flujo-origen",
+      "kicker": "Origen",
+      "titulo": "Dónde nace la glosa: el recaudo con ingreso GLOSAS",
+      "intro": "Lo que cartera digita en el recaudo (factura, valor, motivos) es lo que el auditor verá. El paso a seguir decide cuánto hace el sistema solo.",
+      "imagen": "img/glosas_origen_sketchnote.jpg",
+      "imagenAlt": "Dónde nace la glosa",
+      "puntosClave": [
+        "Los motivos deben existir en Configurar Glosas (clase GLOSA, activo); si no, la glosa nace sin motivos.",
+        "Paso a seguir 3 manual; 4 y 6 responden solos; 5 deja el detalle.",
+        "El plazo de 15 días hábiles corre desde el día siguiente a la fecha de pago."
+      ]
+    },
+    {
+      "id": "entrega",
+      "tipo": "flujo",
+      "flujoId": "flujo-entrega",
+      "kicker": "Entrega",
+      "titulo": "La entrega: cómo viaja la glosa de cartera a auditoría",
+      "intro": "La entrega es el sobre; las glosas, su contenido. Sin recepción en auditoría no hay respuesta.",
+      "imagen": "img/glosas_entrega_sketchnote.jpg",
+      "imagenAlt": "Enviar y recibir la entrega",
+      "puntosClave": [
+        "Enviar a auditoría (recaudo) o Envíos Auditoría (Adm. glosas).",
+        "Recepcionar Glosas recibe la entrega completa; no hay parcial.",
+        "Una glosa con entrega activa no entra en otra; Retirar la libera."
+      ]
+    },
+    {
+      "id": "responder",
+      "tipo": "flujo",
+      "flujoId": "flujo-responder",
+      "kicker": "Auditoría",
+      "titulo": "Responder la glosa: total o ítem por ítem",
+      "intro": "El auditor decide cuánto acepta y cuánto defiende. La suma de motivos (y de ítems) debe cuadrar con el valor glosado.",
+      "imagen": "img/glosas_responder_sketchnote.jpg",
+      "imagenAlt": "Responder la glosa",
+      "puntosClave": [
+        "Edita Glosa: tipo, concepto, usuario, valor aceptado.",
+        "Total: motivos que sumen el valor glosado. Item: línea por línea con código de respuesta.",
+        "Aplicar aparece solo cuando las sumas cuadran."
+      ]
+    },
+    {
+      "id": "masiva",
+      "tipo": "flujo",
+      "flujoId": "flujo-masiva",
+      "kicker": "Auditoría",
+      "titulo": "Responder por Excel: dos plantillas distintas",
+      "intro": "Carga masiva reemplaza motivos e ítems completos; Rpta Det. responde ítem por ítem con validación estricta. Ninguna aplica por sí sola.",
+      "imagen": "img/glosas_masiva_sketchnote.jpg",
+      "imagenAlt": "Responder por Excel",
+      "puntosClave": [
+        "Carga masiva borra e inserta; no se deshace.",
+        "Rpta Det. es todo o nada; RESPUESTA ≥ 10 caracteres.",
+        "Después de cualquiera de las dos hay que Aplicar."
+      ]
+    },
+    {
+      "id": "aplicar",
+      "tipo": "flujo",
+      "flujoId": "flujo-aplicar",
+      "kicker": "El momento clave",
+      "titulo": "Qué pasa cuando el auditor pulsa Aplicar",
+      "intro": "Cierra la glosa, genera la nota crédito por lo aceptado y deja por recuperar lo defendido. El primer tropiezo detiene todo.",
+      "imagen": "img/glosas_aplicar_sketchnote.jpg",
+      "imagenAlt": "Qué revisa el sistema al aplicar",
+      "puntosClave": [
+        "Aceptado → nota crédito automática (procedencia AUDITORIA).",
+        "Recuperar → cuenta por recuperar para el siguiente pago.",
+        "Desaplicar solo antes del lote de impresión."
+      ]
+    },
+    {
+      "id": "plazo",
+      "tipo": "texto",
+      "md": "**Cómo se cuenta el plazo.** La EPS espera respuesta en **15 días hábiles**. Qrystalos los cuenta desde el **día siguiente a la fecha de pago** del recaudo (ese día no cuenta). Domingos y festivos (calendario del sistema) no son hábiles; el sábado solo cuenta si la variable `GLO_DIAS_HASTASABADO` está en SI. En **Responder Glosas** la columna **Días** muestra los hábiles que quedan: el último día hábil marca 1, el primer hábil después del vencimiento marca 0 y de ahí en adelante −1, −2… La glosa aplicada (cerrada) deja de contar.\n\n**Colores y filtros.** Verde 6–15 (hay margen), ámbar 1–5 (próxima a vencer), rojo **Venc.** (0 o negativo). El filtro **Días** (Todos / 6-15 / 1-5 / Venc.) y el botón **Ord. días** ordenan la grilla por urgencia. El cálculo lo hace la consulta de la grilla, no un procedimiento: si cambia la variable del sábado, cambia el conteo al refrescar.\n\n**Asignar responsable.** Botón de la barra superior de Responder Glosas, visible solo con el permiso `MENUQ_GLOSAS · BASIGNARRESPONSABLE`. Abre un diálogo con filtros (tercero, recaudo, factura, entrega, fechas de pago, sede) para asignar **una glosa o varias** (modo masivo) a un **usuario activo** con **fecha de asignación** y **fecha límite**. También permite **Quitar** la asignación (individual o masiva) y ver las asignaciones registradas. Solo aplica a glosas **recibidas en auditoría y abiertas**: «La glosa no está en auditoría o ya está cerrada». Todo queda en el log de cambios.\n\nCada auditor filtra las suyas con **Asignado A**. La asignación no bloquea a otros usuarios; para eso existe `RESTGLO_AUTOR_UNICO` = SI, que restringe editar y borrar ítems y motivos a quien registró la glosa.\n\n**Liberar pacientes.** En facturas masivas de consulta externa o citas (CE/CI) con glosa abierta, y solo con el permiso `Brw:Glosas · PermitirLiberarPac`, el botón abre el detalle de la factura y permite liberar las citas facturadas (vuelven a quedar sin factura) para refacturarlas.",
+      "kicker": "Control",
+      "titulo": "El plazo de 15 días y el responsable de cada glosa",
+      "intro": "La grilla de Responder Glosas pinta en colores los días hábiles que quedan y permite repartir las glosas entre auditores.",
+      "imagen": "img/glosas_plazo_sketchnote.jpg",
+      "imagenAlt": "Plazo de respuesta y responsables",
+      "puntosClave": [
+        "15 días hábiles desde el día siguiente al pago; sábado según variable; festivos nunca.",
+        "Verde 6–15, ámbar 1–5, rojo vencida; Ord. días ordena por urgencia.",
+        "Asignar responsable exige permiso MENUQ_GLOSAS · BASIGNARRESPONSABLE."
+      ]
+    },
+    {
+      "id": "lotes",
+      "tipo": "flujo",
+      "flujoId": "flujo-lotes",
+      "kicker": "Auditoría",
+      "titulo": "Imprimir las respuestas y devolverlas a cartera",
+      "intro": "Las glosas cerradas se agrupan por tercero en un lote, se imprimen y viajan de vuelta a cartera en una entrega.",
+      "imagen": "img/glosas_lotes_sketchnote.jpg",
+      "imagenAlt": "Lotes de impresión y devolución",
+      "puntosClave": [
+        "Un lote abierto por tercero y usuario; solo glosas cerradas.",
+        "Cerrar/Abrir con permiso ABRIR_CERRAR_RESPUESTA.",
+        "Enviar a Cartera desde el lote, o entrega manual en Devolver."
+      ]
+    },
+    {
+      "id": "radicar",
+      "tipo": "flujo",
+      "flujoId": "flujo-radicar",
+      "kicker": "Cartera",
+      "titulo": "Cartera recibe las respuestas y las radica ante la EPS",
+      "intro": "Adm. glosas cierra el ciclo: recepcionar la entrega, radicar el lote y entregar la nota crédito electrónica.",
+      "imagen": "img/glosas_radicar_sketchnote.jpg",
+      "imagenAlt": "Recepcionar y radicar",
+      "puntosClave": [
+        "Recepcionar Respuestas no se revierte.",
+        "Radicar: fecha no futura, máximo 30 días atrás; no se desradica.",
+        "FEVRIPS por factura solo si hubo valor aceptado."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosGlosa",
+      "kicker": "Estados",
+      "titulo": "Cómo leer el estado de una glosa",
+      "intro": "Dónde está (cartera o auditoría), si está respondida y qué pasó con la respuesta se leen juntos.",
+      "puntosClave": [
+        "Abierta / Cerrada es la respuesta; la dependencia dice quién la tiene.",
+        "Radicada = punto de no retorno.",
+        "Contabilizada 0/1/2 igual que recaudos."
+      ]
+    },
+    {
+      "id": "config",
+      "tipo": "texto",
+      "md": "**Configurar Glosas** (Auditoría → Glosas → última pestaña) mantiene el catálogo de códigos. Cada código tiene **clase**: `GLOSA` (motivos que usa la EPS y que cartera digita en la plantilla del recaudo), `DEVOLUCION` (causales de devolución de factura) y `RESPUESTA` (códigos con los que la IPS responde cada ítem). Un código **Inactivo** no se puede usar en glosas nuevas, pero las existentes conservan la referencia: por eso se recomienda **desactivar, no eliminar**.\n\nSi un código llega en la plantilla del recaudo y no existe o está inactivo, la glosa **nace igual pero sin motivos**; el auditor debe agregarlos con Edita Glosa → Agregar Motivo antes de poder aplicar.\n\n**Variables del sistema** que condicionan el proceso: `IDFDEPCARTERA` e `IDFDEPAUDITORIA` (dependencias; sin ellas ninguna entrega funciona), `IDCONCEPRPTAGLO_AUTO` (concepto de respuesta del circuito automático con paso a seguir 4 y 6), `GLO_DIAS_HASTASABADO` (si el sábado cuenta como hábil en el plazo de 15 días) y `RESTGLO_AUTOR_UNICO` (solo quien registró la glosa modifica ítems y motivos).\n\n**Permisos** por control (USGRUH): `Brw:Glosas · PermitirLiberarPac` (botón Liberar pacientes), `MENUQ_GLOSAS · ABRIR_CERRAR_RESPUESTA` (Cerrar/Abrir lotes de impresión), `MENUQ_GLOSAS · BASIGNARRESPONSABLE` (botón Asignar responsable) y, en Recaudos, `BEnviarAuditoriaFPAG` y `BImpEntregaGloFPAG`. El resto de botones solo dependen del acceso a la pantalla.",
+      "kicker": "Configuración",
+      "titulo": "Configurar glosas: catálogo de códigos, variables y permisos",
+      "intro": "Lo que debe existir antes de la primera glosa.",
+      "imagen": "img/glosas_config_sketchnote.jpg",
+      "imagenAlt": "Configurar glosas",
+      "puntosClave": [
+        "Códigos clase GLOSA, DEVOLUCION y RESPUESTA; desactive, no elimine.",
+        "Sin IDFDEPCARTERA / IDFDEPAUDITORIA no hay entregas.",
+        "Tres controles USGRUH: PermitirLiberarPac, ABRIR_CERRAR_RESPUESTA, BASIGNARRESPONSABLE."
+      ]
+    }
+  ]
 }

@@ -1,0 +1,243 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-12T21:24:48.083Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016668",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261008-0100016668",
+    "idReq": "0100016668",
+    "fecha": "2026-10-08",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Maicao",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": "/nom/Nom_procesos — control propuesto «Nómina de ajuste»"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/CMAICA193",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "Apertura de nómina de agosto para corrección de liquidación\n\nSe solicita la apertura de la nómina del mes de agosto, que actualmente está cerrada, para poder corregir una liquidación de una empleada que no fue ajustada correctamente.\n\n1. Acceder al módulo de nómina\n2. Intentar abrir la nómina de agosto DETALLE: Se solicita que se pueda hacer una nómina de reemplazo para cuando la nómina que está pagada en su totalidad presenta un error en la liquidación de uno o varios empleados.\n\nHoy se tiene que anular todos los pagos efectuados y abrir la nómina en su totalidad para corregir 2 o 3 empleados. En muchos casos, solo es para un solo empleado.\n\nSe solicita que se tenga la posibilidad de generar nóminas de reemplazo y que esta modifique o cree ajustes a todos los registros contables y financieros, además de enviar de forma clara una nómina de ajuste.\n\ncontexto , valida que ya existe un requerimiento previo de la nomina de correccion, verifca antes de hacer un nuevo dictamente si ya existe  copialo y especifica que ya existe",
+    "criteriosAceptacion": "1) Crear un documento de nómina de ajuste vinculado al CNSPAGO de agosto (u otro mes) ya cerrado, sin reabrir ni anular pagos del origen.\n2) Seleccionar uno o varios empleados del origen; prenómina y recálculo (PRENOMINA) solo sobre ellos en el CNSPAGO de ajuste.\n3) Al cerrar el ajuste, comparar contra la liquidación original; en fase 1 rechazar deltas negativos con mensaje claro.\n4) Contabilizar y generar CxP únicamente por el delta positivo (NOREFERENCIA = CNSPAGO del ajuste).\n5) DIAN: nómina de reemplazo (TIPONOTA=1) con XML 102/103 y CUNE del predecesor, tras NE origen notificada.\n6) Trazabilidad visible origen ↔ ajuste; sin regresión en período abierto ni en OPEN_NOMINA.\n7) Caso Clínica Maicao (agosto / empleada mal liquidada): mismo flujo que el comité ya dictaminó en REQ 0100014675.",
+    "alcance": "Incluye (fase 1, alineado a dictamen 20261001-0100014675): nuevo control «Nómina de ajuste» en Talento humano → Procesos nómina (`ProcesosPage.vue`, ruta `/nom/Nom_procesos`); alta de CNSPAGO de ajuste referenciado al origen cerrado; subset de empleados; novedades y recálculo; cierre con validación de delta; contabilización y CxP por diferencia; encolado y reemplazo DIAN. Caso de uso explícito del REQ: corregir liquidación de una empleada en nómina de agosto ya pagada sin revertir toda la nómina.\nReutiliza: PRENOMINA, patrón GENERATE_NOMINA/CERRAR, SPQ_NC_CONTAB_NOMINA (CONTABILIZAR, GENERATE_CxP_NOM), SPQ_NOM_DIAN (CHANGE_NOM_NIEPEG, PROCESAR_NIE) y SPK_GENERAR_XML_NOMINA documentados en proceso nomina.",
+    "restricciones": "Fase 1: solo deltas positivos (no restar devengados ya pagados). No usar OPEN_NOMINA como vía habitual cuando existen órdenes de pago o la nómina está pagada en su totalidad (validaciones ya documentadas en OPEN_NOMINA). No modificar silenciosamente el CNSPAGO origen ni NIEPED cerrado. NE origen con estado DIAN apto para reemplazo. PRI abierto en la fecha contable del ajuste. Permisos USGRUH dedicados. Fuera de alcance: SPQ_NOM_NAJUST (ajuste salarial por cargo); pantalla Ajustes salarial; flujo vacaciones AjusteVaca; corrección masiva de PILA ya presentada; fase 2 (ajustes negativos / eliminación DIAN).",
+    "analisis": "REQ 0100016668 (Clínica Maicao): abrir agosto cerrado para corregir una empleada; hoy implica anular pagos y reabrir toda la nómina. El texto pide nómina de reemplazo con impacto contable, financiero y DIAN.\n\nPaso 0 — ¿Ya existe? Texto del REQ ≠ pantalla de la captura: la captura muestra Prenómina sin período elegido («Sin datos»); el problema de negocio es liquidación errónea en mes ya cerrado y pagado, no falta de botones en vacío.\n\nCaminos del control inventariados:\n| Camino | ¿Cubre el REQ? |\n| Prenómina → Recalcular / Novedades / Conceptos (CERRADO=0) | No: PreNominaComponent deshabilita acciones si NPER.CERRADO=1. |\n| Liquidación → Abrir nómina (OPEN_NOMINA, BtnAbrirNomina) | Parcial solo sin pagos: bloquea con FCXPP/FCXPDBCR; revierte contab/CxP de todo el CNSPAGO. |\n| Envío DIAN → CHANGE_NOM_NIEPEG (reemplazo) | No calcula nómina ni delta NIEPED/CxP; es nota sobre NE ya generada. |\n| NOM_NAJUST / Ajustes salarial | No: ajuste de salario en plantilla (NCARNGV), no liquidación post-cierre. |\n| Manuales / siguiente período | Workaround operativo; no es «nómina de reemplazo» ni delta contable/DIAN del mes origen. |\n\nClasificación: hueco funcional (desarrollo), no capacitación.\n\nDictamen previo: el mismo alcance fue analizado y propuesto en caso 20261001-0100014675 (REQ 0100014675, aprobados/20261001-0100014675/). Este REQ 6668 es duplicado funcional para otro cliente (Maicao); la solución técnica es la misma — no redictaminar desde cero salvo variante de despliegue/rama (feature/CMAICA193 vs bugfix/COESME443).\n\nContabilidad: sí afecta (MCPE/MCHE vía CONTABILIZAR; FCXP Nómina vía GENERATE_CxP_NOM solo por delta; CNSPAGO ajuste distinto del origen).",
+    "opciones": [
+      {
+        "titulo": "Implementar «Nómina de ajuste» (dictamen 4675)",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Seguir con OPEN_NOMINA + anular pagos",
+        "descripcion": ""
+      }
+    ],
+    "recomendacion": "Tratar REQ 0100016668 como extensión del mismo entregable del dictamen 20261001-0100014675: implementar el control «Nómina de ajuste» (wizard + SPQ_NOM_AJUSTE o METODOs equivalentes) y validar en preversión el escenario Maicao (agosto, un empleado). Si desarrollo ya avanzó en rama COESME443, portar/merge a feature/CMAICA193 o unificar en una sola rama de producto. No abrir un segundo diseño divergente. Prioridad operativa del cliente es baja en cola, pero el impacto funcional es alto cuando ocurre el error.",
+    "cambioPropuestoSimple": "Cuando una nómina del mes ya está cerrada y pagada y solo falló la liquidación de uno o pocos empleados, el usuario podrá crear una «nómina de ajuste» aparte: elige el mes original y los empleados, corrige novedades y recalcula; al cerrar, el sistema contabiliza y genera cuentas por pagar solo por lo que falta pagar, y envía a la DIAN la nómina de reemplazo de esos empleados, sin tocar el resto del mes ni anular todos los pagos.",
+    "cambioPropuestoSql": "-- ESPECIFICACIÓN (IXONLINE/SQL). Misma línea que dictamen 20261001-0100014675.\n-- Fuente fichas: conocimiento/nomina/sps.json (PRENOMINA, GENERATE_NOMINA, OPEN_NOMINA, CONTABILIZAR, GENERATE_CxP_NOM, CHANGE_NOM_NIEPEG, SPK_GENERAR_XML_NOMINA).\n\n-- A) SPQ_NOM_AJUSTE · CREAR_AJUSTE\n-- @CNSPAGO_ORIGEN, @NUMDOCS (JSON), @USUARIO → @CNSPAGO_AJUSTE\n-- Validar: NPER origen CERRADO=1; NUMDOC ∈ NIEPE origen\n\n-- B) SPQ_NOM_AJUSTE · CERRAR_AJUSTE\n-- Liquidar ajuste (patrón SPQ_LIQUIDACION · GENERATE_NOMINA)\n-- #DELTA: NIEPED ajuste vs origen por NUMDOC/CODCONCEPTO/tercero\n-- IF EXISTS (SELECT 1 FROM #DELTA WHERE VLR_DELTA < 0) RAISERROR (fase 1, 16, 1)\n-- Recortar NIEPED/NEMPFD del CNSPAGO_AJUSTE a VLR_DELTA > 0\n\n-- C) SPQ_NC_CONTAB_NOMINA · CONTABILIZAR — @CNSPAGO = CNSPAGO ajuste (solo líneas delta en NIEPED)\n-- D) SPQ_NC_CONTAB_NOMINA · GENERATE_CxP_NOM — NOREFERENCIA=@CNSPAGO_AJUSTE, PROCEDENCIA Nomina\n-- E) SPQ_NOM_DIAN · CHANGE_NOM_NIEPEG (@TIPONOTA=1) + PROCESAR_NIE → SPK_GENERAR_XML_NOMINA\n\n-- Validación: FCXP por NOREFERENCIA (origen vs ajuste); NDIS (CNSPAGO, NUMDOC); origen sin cambios.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": true,
+      "comoAfecta": "Al cerrar el ajuste se generan comprobantes de nómina (SPQ_NC_CONTAB_NOMINA · CONTABILIZAR sobre NIEPED del CNSPAGO de ajuste) y FCXP procedencia Nómina (GENERATE_CxP_NOM) solo por montos delta, con NOREFERENCIA = CNSPAGO del ajuste. El CNSPAGO origen (agosto) no se recontabiliza.",
+      "desarrollo": "Tras calcular #DELTA, normalizar NIEPED/NEMPFD del CNSPAGO de ajuste a líneas delta-only antes de CONTABILIZAR y GENERATE_CxP_NOM (o parámetro @MODO='DELTA'). NDIS distinto por (CNSPAGO_AJUSTE, NUMDOC). Validar KMCOM con FNK_NC_CUENTA_KMCOM como cierre normal.",
+      "validacion": {
+        "estado": "ok",
+        "texto": "Coherente con LiquidaNomComponent y fichas leídas de SPQ_NC_CONTAB_NOMINA: CONTABILIZAR carga NIEPED del @CNSPAGO; GENERATE_CxP_NOM agrupa NEMPFD/NEMPF con NOREFERENCIA=@CNSPAGO — usar CNSPAGO de ajuste evita pisar CxP/comprobantes del origen. Misma validación que dictamen 20261001-0100014675.",
+        "validadoEn": "2026-10-12T21:20:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de codificar de nuevo: confirmar en Qrystalos2/PREVERSION que no existe ya pestaña o MODELO NOM_AJUSTE (búsqueda vacía hoy). Reproducir en Maicao: período agosto CERRADO=1, CxP pagadas → OPEN_NOMINA debe bloquear; Prenómina con CERRADO=1 debe deshabilitar Recalcular/Novedades. Si en una rama ya está el entregable del REQ 0100014675, validar ahí el caso de un empleado y no duplicar diseño."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-10-07_121704.png",
+        "ruta": "activo/20261008-0100016668/imagenes/Captura_de_pantalla_2026-10-07_121704.png",
+        "subidaEn": "2026-10-12T16:10:21",
+        "url": "/api/caso/20261008-0100016668/imagen/Captura_de_pantalla_2026-10-07_121704.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Crear un documento de nómina de ajuste vinculado al CNSPAGO de agosto (u otro mes) ya cerrado, sin reabrir ni anular pagos del origen.\n2) Seleccionar uno o varios empleados del origen; prenómina y recálculo (PRENOMINA) solo sobre ellos en el CNSPAGO de ajuste.\n3) Al cerrar el ajuste, comparar contra la liquidación original; en fase 1 rechazar deltas negativos con mensaje claro.\n4) Contabilizar y generar CxP únicamente por el delta positivo (NOREFERENCIA = CNSPAGO del ajuste).\n5) DIAN: nómina de reemplazo (TIPONOTA=1) con XML 102/103 y CUNE del predecesor, tras NE origen notificada.\n6) Trazabilidad visible origen ↔ ajuste; sin regresión en período abierto ni en OPEN_NOMINA.\n7) Caso Clínica Maicao (agosto / empleada mal liquidada): mismo flujo que el comité ya dictaminó en REQ 0100014675.",
+      "originalesEn": "2026-10-12T21:20:14.923Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Crear un documento de nómina de ajuste vinculado al CNSPAGO de agosto (u otro mes) ya cerrado, sin reabrir ni anular pagos del origen.\n2) Seleccionar uno o varios empleados del origen; prenómina y recálculo (PRENOMINA) solo sobre ellos en el CNSPAGO de ajuste.\n3) Al cerrar el ajuste, comparar contra la liquidación original; en fase 1 rechazar deltas negativos con mensaje claro.\n4) Contabilizar y generar CxP únicamente por el delta positivo (NOREFERENCIA = CNSPAGO del ajuste).\n5) DIAN: nómina de reemplazo (TIPONOTA=1) con XML 102/103 y CUNE del predecesor, tras NE origen notificada.\n6) Trazabilidad visible origen ↔ ajuste; sin regresión en período abierto ni en OPEN_NOMINA.\n7) Caso Clínica Maicao (agosto / empleada mal liquidada): mismo flujo que el comité ya dictaminó en REQ 0100014675.",
+      "trasAnalisisEn": "2026-10-12T21:22:07.348Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Hueco funcional; solución = dictamen previo 20261001-0100014675 (nómina de ajuste fase 1). REQ 6668 duplicado para Clínica Maicao. Fichas SQL leídas en conocimiento/nomina; SPQ_NOM_AJUSTE aún no en Q2 ni catálogo — especificación en cambioPropuestoSql.",
+      "fecha": "2026-10-12T21:20:00.000Z",
+      "estado": "listo",
+      "dictamenPrevio": "20261001-0100014675",
+      "sps": "No requiere bajar scripts al caso salvo al implementar CERRAR_AJUSTE; releer SPQ_NC_CONTAB_NOMINA en PREVERSION al codificar delta."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261008-0100016668/diagramas/flujo.html",
+      "subidaEn": "2026-10-12T16:23:09",
+      "url": "/api/caso/20261008-0100016668/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "nomina",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261008-0100016668-flujo.html"
+    },
+    "mockups": [
+      "activo/20261008-0100016668/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261008-0100016668\\sql\\",
+    "carpetaRelativa": "activo/20261008-0100016668/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016668\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+        "metodo": "PRENOMINA",
+        "estado": "leido",
+        "hace": "Recalcula y persiste conceptos de nómina de un empleado en un período: borra NEMPFD/NEMPF previos, arma staging NEMPFD_RUN (ingresos y egresos por plantilla/cargo/novedades), vuelca a NEMPFD, aplica retiros, retención en la fuente, totales NEMPF y NPER.",
+        "llama": [
+          "FNK_INFO_NEMPHIS_NEMP",
+          "FNK_VALORCONCEPTO_NEMPFD_RUN",
+          "SPK_CALCULAR_RETIROS",
+          "SPK_CALCULA_REFTE_NOMI",
+          "SPK_CALCULAR_NEMPF",
+          "FNK_VALORVARIABLE",
+          "FNK_REDONDEA_MAS_EXCEL"
+        ]
+      },
+      {
+        "sp": "SPQ_NOM_DIAN",
+        "metodo": "PROCESAR_NIE",
+        "estado": "leido",
+        "hace": "Pone ESTADODIAN=1 en un CNSNIEPEG si estaba 0 o 3 (encola para el proceso externo).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_NOM_DIAN",
+        "metodo": "CHANGE_NOM_NIEPEG",
+        "estado": "leido",
+        "hace": "Nota reemplazo/eliminación: inserta NIEPEG nuevo (ESTADODIAN=1) y anula el base.",
+        "llama": []
+      },
+      {
+        "sp": "SPK_GENERAR_XML_NOMINA",
+        "metodo": "(procedimiento)",
+        "estado": "leido",
+        "hace": "Arma XML de nómina electrónica (tipo 102 o 103 ajuste) para un CNSNIEPEG. Con @PATH_URL NULL devuelve el XML; si hay ruta, llama SPK_GUARDAR_ARCHIVO.",
+        "llama": [
+          "SPK_GUARDAR_ARCHIVO (solo si @PATH_URL informado)",
+          "FNK_LIMPIATEXTO",
+          "FNK_VALORVARIABLE"
+        ]
+      },
+      {
+        "sp": "SPQ_LIQUIDACION",
+        "metodo": "GENERATE_NOMINA",
+        "estado": "leido",
+        "hace": "Genera la liquidación del CNSPAGO (SPQ_LIQUIDAR_NOMI). Si PROCESO=CLOSE, además cierra (SPQ_CERRAR_NOMI) y vacaciones CIERRE.",
+        "llama": [
+          "SPQ_LIQUIDAR_NOMI",
+          "SPQ_CERRAR_NOMI (solo CLOSE)",
+          "SPQ_PROCESO_VACACIONES CIERRE (solo CLOSE)",
+          "SPQ_GENSEQUENCE",
+          "FNK_NC_CUENTA_KMCOM"
+        ]
+      },
+      {
+        "sp": "SPQ_LIQUIDACION",
+        "metodo": "OPEN_NOMINA",
+        "estado": "leido",
+        "hace": "Reabre el período: SPQ_ABRIR_NOMI + vacaciones ABRE.",
+        "llama": [
+          "SPQ_ABRIR_NOMI",
+          "SPQ_PROCESO_VACACIONES ABRE"
+        ]
+      },
+      {
+        "sp": "SPQ_NC_CONTAB_NOMINA",
+        "metodo": "CONTABILIZAR",
+        "estado": "leido",
+        "hace": "Por empleado (NUMDOC, CNSPAGO, FECHACONTABLE): resuelve tipo de comprobante IDCON_TCOM_NOMINA (o por sede / IDCON_TCOM_DEFAULT), valida período contable, arma MCPE/MCHE con cuentas FNK_NC_CUENTA_KMCOM por concepto/DB-CR/centro/nómina; NOMINATIPOCONTAB=3 distribuye por centros de la planta si suma 100 %; marca NROCOMPROBANTE en NIEPE/NIEPED y CONTABILIZADA en NPER; revisa con SPK_NC_REVISAMCPE y pasa NIIF (SPK_PASA_MCP_MCPNIIF).",
+        "llama": [
+          "SPK_GENCONSECUTIVO",
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ]
+      },
+      {
+        "sp": "SPQ_NC_CONTAB_NOMINA",
+        "metodo": "GENERATE_CxP_NOM",
+        "estado": "leido",
+        "hace": "CxP por tercero del CNSPAGO (PROCEDENCIA Nomina, NOREFERENCIA=CNSPAGO) con SPK_GENCXP_NOMINA_UNO / SPK_GENCXP_NOMINA_PROVI; valores con SPK_CALCULOVALORESCXP; retefuente por CxP (SPK_CALCULA_REFTE_NOMI CXP); si presupuesto activo, SPK_ENTREGA_CXP_PTTO (PTRP/PTRPD).",
+        "llama": [
+          "SPK_GENCXP_NOMINA_UNO",
+          "SPK_GENCXP_NOMINA_PROVI",
+          "SPK_CALCULOVALORESCXP",
+          "SPK_ENTREGA_CXP_PTTO"
+        ]
+      }
+    ],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261008-0100016668.html",
+    "aprobados": "aprobados/20261008-0100016668/",
+    "imagenes": "aprobados/20261008-0100016668/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-12",
+    "ultimoEnvio": "2026-10-12T16:41:27",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

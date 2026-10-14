@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-05T23:19:57.068Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016623",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261005-0100016623",
+    "idReq": "0100016623",
+    "fecha": "2026-10-05",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "ACCTRAN · Accidentes de Transito SOAT",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "JUAN LLAMAS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/ASOCAB210",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "ACCTRAN · Accidentes de Transito SOAT",
+    "requerimiento": "Se solicita que en el formato del aviso a la autoridad policial, se visualice el nombre del responsable quien diligenció el soat, adicionalmente el cargo y firma del funcionario y firma del representante legal DETALLE: Se solicita que el formato del aviso a la autoridad policial esté a la altura de lo requerido.\n\n1. Nombre del responsable, cargo y firma del admisionista que creó el accidente.\n2. En la parte donde va la firma y sello de la IPS, debe aparecer el mismo que firma el FURIPS.\n3. Respecto al sello, se solicita que se deje una foto en alguna configuración para que ellos puedan colocarla. Sin embargo, se solicita que dicho sello especifique el tamaño que se necesita.",
+    "criteriosAceptacion": "1) Al generar «Aviso Aut. Policial» desde Procesos SOAT (misma admisión/procedencia del expediente), la sección «Responsable del aviso en la IPS» muestra nombre y cargo del usuario registrado en HACTRAN.USUARIO al crear el accidente, y su firma digital (USUSU.IDFIRMA → ARCHIVOS) sobre la línea «Firma:».\n2) El recuadro «Firma y sello de la IPS» muestra la misma firma del representante legal que el PDF FURIPS (variable IDFIRMA_FURRIPS) y el nombre/documento del representante tomados del tercero instalado (misma regla que PDFFURIPS).\n3) Existe variable de sistema para imagen del sello (propuesta IDSELLO_AVISO_POLICIAL = ID en ARCHIVOS); la ayuda de la variable indica tamaño recomendado acorde al recuadro del PDF (~65 mm × 20 mm; imagen JPG/PNG proporcional, orientación horizontal).\n4) Si falta firma del responsable, firma del representante o sello configurado, el PDF se genera con campos vacíos y/o aviso informativo coherente con FURIPS (no bloqueo silencioso).\n5) Regresión: resto de páginas del aviso y otros formatos SOAT (FURIPS PDF, certificados) sin cambio de contenido.",
+    "alcance": "PDF «Aviso Aut. Policial» del módulo SOAT: control de descarga en ProcesosSoat.vue → useHACTRANPrint.getAvisoAutoridad / rptPDFAvisoAutoridad. Backend: SPQ_HACTRAN · METODO AVISO_AUT_POLICIAL (datos del responsable, firma representante legal alineada a FURIPS, imagen de sello parametrizable). Configuración: nueva variable de sello + reutilización de IDFIRMA_FURRIPS y datos de representante en TER. Documentación breve de tamaño de sello para el cliente.",
+    "restricciones": "No modifica cuerpo normativo del formulario (Resolución 0199844/2024) salvo poblar firmas/nombres/sello. No incluye rediseño del modal HACTRAN ni exportaciones TXT/FURIPS planos. No afecta contabilidad. El cargo del responsable depende de USUSU.CARGO mantenido en configuración de usuarios. No se inventa sello por defecto si la variable está vacía.",
+    "analisis": "Paso 0 — ¿Ya existe? Sí existe el camino funcional: Asistencial → SOAT → Procesos SOAT → formato «Aviso Aut. Policial» (ProcesosSoat.vue llama useHACTRANPrint.getAvisoAutoridad). No es capacitación pura: la captura (pág. 9) muestra líneas vacías en nombre, cargo, firma y recuadro «Firma y sello de la IPS». Clasificación: defecto de implementación + hueco de parametrización del sello.\n\nCausa técnica: AVISO_AUT_POLICIAL (SPQ_HACTRAN) arma FIRMA desde MED.IDFIRMA del médico de la atención (urgencias/admisión), no desde HACTRAN.USUARIO (quien creó el expediente). No expone nombre ni cargo del admisionista. En el FE (rptPDFAvisoAutoridad) el bloque «Responsable…» solo escribe texto si MUESTRAIDMEDICO_POL='SI' usando MEDICOACTADEFUNCION — invertido respecto al SQL (cuando la variable es SI el SP deja ese campo vacío) y conceptualmente incorrecto para «admisionista que creó el accidente». El recuadro IPS no pinta firma ni sello (solo marco y leyenda).\n\nReferencia FURIPS: PDFFURIPS (SPQ_FURIPS) ya resuelve firma del representante vía IDFIRMA_FURRIPS + datos TER/NOMBREREPRE; useFURIPSPrint.js la dibuja al pie del PDF. El REQ pide reutilizar esa misma firma en el aviso policial.\n\nSello: hoy no hay variable/imagen para sello en el aviso; el cliente pide carga configurable con especificación de tamaño (recuadro actual ~65×20 mm en jsPDF).",
+    "opciones": [],
+    "recomendacion": "Desarrollo acotado FE + SPQ_HACTRAN.AVISO_AUT_POLICIAL: (1) En SQL, JOIN USUSU por HACTRAN.USUARIO → RESPONSABLE_NOMBRE, RESPONSABLE_CARGO, FIRMA_RESPONSABLE (DICOM); replicar bloque de representante legal de PDFFURIPS → FIRMA_REPRESENTANTE, NOMBREREPRE, TIPOIDREPRE, NITREPRE; nueva variable IDSELLO_AVISO_POLICIAL (ID ARCHIVOS) → SELLO_IPS DICOM. (2) En useHACTRANPrint.js, sección pág. 9: imprimir siempre los tres campos del responsable; en el recuadro IPS superponer firma representante + imagen sello (escala al rectángulo). (3) Alta de variable con texto de ayuda (dimensiones). Validar en test con expediente QX: usuario creador con firma y cargo, IDFIRMA_FURRIPS y sello cargados; contrastar con PDF FURIPS del mismo CNSHACTRAN.",
+    "cambioPropuestoSimple": "Hoy el aviso a la policía se puede descargar, pero la última página sale casi en blanco en quien diligenció el SOAT y en el sello de la IPS. Se propone que ahí aparezcan el nombre, cargo y firma de quien creó el accidente en el sistema; que en el recuadro de la IPS salga la misma firma del representante legal que ya usa el FURIPS; y que el sello sea una imagen que la institución suba una vez en configuración, con indicación clara del tamaño de la foto.",
+    "cambioPropuestoSql": "-- Objeto: SPQ_HACTRAN · METODO AVISO_AUT_POLICIAL (IXONLINE/SQL; validar en PREVERSION antes de publicar)\n-- 1) JOIN responsable (admisionista / usuario creador del expediente)\nLEFT JOIN USUSU USU_CREA ON USU_CREA.USUARIO = HACTRAN.USUARIO\n\n-- 2) Columnas nuevas en el SELECT principal (además de las actuales; FIRMA médico puede conservarse para otros usos del recordset si aplica)\n, RESPONSABLE_NOMBRE = COALESCE(USU_CREA.NOMBRE, '')\n, RESPONSABLE_CARGO   = COALESCE(USU_CREA.CARGO, '')\n, FIRMA_RESPONSABLE   = (SELECT A.DICOM FROM ARCHIVOS A INNER JOIN USUSU U ON U.IDFIRMA = A.ID WHERE U.USUARIO = HACTRAN.USUARIO)\n\n-- 3) Misma firma representante legal que PDFFURIPS (patrón SPQ_FURIPS)\n, FIRMA_REPRESENTANTE = (SELECT AR.DICOM FROM USUSU UR INNER JOIN ARCHIVOS AR ON AR.ID = UR.IDFIRMA WHERE UR.USUARIO = DBO.FNK_VALORVARIABLE('IDFIRMA_FURRIPS'))\n, NOMBREREPRE = /* TOP 1 COALESCE(TER_REP.RAZONSOCIAL, CONCAT(TER.NOMBRES_R_LEGAL, TER.P_APELLIDO_R_LEGAL, TER.S_APELLIDO_R_LEGAL)) */\n, TIPOIDREPRE = /* COALESCE(TER_REP.TIPO_ID, TER.TIPO_ID_R) */\n, NITREPRE    = /* COALESCE(TER_REP.NIT, TER.NIT_R) */\n\n-- 4) Sello IPS parametrizable (nueva variable; valor = ID numérico ARCHIVOS)\n, SELLO_IPS = (SELECT DICOM FROM ARCHIVOS WHERE ID = TRY_CAST(NULLIF(LTRIM(RTRIM(DBO.FNK_VALORVARIABLE('IDSELLO_AVISO_POLICIAL'))), '') AS INT))\n\n-- Validación sugerida (solo lectura, preversión):\n-- SELECT HACTRAN.CNSHACTRAN, HACTRAN.USUARIO, USU_CREA.NOMBRE, USU_CREA.CARGO,\n--        CASE WHEN USU_CREA.IDFIRMA IS NULL THEN 'SIN_FIRMA_RESP' ELSE 'OK' END,\n--        DBO.FNK_VALORVARIABLE('IDFIRMA_FURRIPS') AS USR_REP,\n--        DBO.FNK_VALORVARIABLE('IDSELLO_AVISO_POLICIAL') AS ID_SELLO\n-- FROM HACTRAN LEFT JOIN USUSU USU_CREA ON USU_CREA.USUARIO = HACTRAN.USUARIO\n-- WHERE CNSHACTRAN = @CNSHACTRAN;",
+    "impactoFe": "Sí",
+    "impactoApi": "Parcial",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Consulta y filtros sobre HACTRAN/HADM/AUT/CIT/FTR; no genera comprobantes ni mueve MCP/MCH/MCPE.",
+        "validadoEn": "2026-10-05T23:05:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Aviso_Policial.png",
+        "ruta": "activo/20261005-0100016623/imagenes/Aviso_Policial.png",
+        "subidaEn": "2026-10-05T18:14:48",
+        "url": "/api/caso/20261005-0100016623/imagen/Aviso_Policial.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Al generar «Aviso Aut. Policial» desde Procesos SOAT (misma admisión/procedencia del expediente), la sección «Responsable del aviso en la IPS» muestra nombre y cargo del usuario registrado en HACTRAN.USUARIO al crear el accidente, y su firma digital (USUSU.IDFIRMA → ARCHIVOS) sobre la línea «Firma:».\n2) El recuadro «Firma y sello de la IPS» muestra la misma firma del representante legal que el PDF FURIPS (variable IDFIRMA_FURRIPS) y el nombre/documento del representante tomados del tercero instalado (misma regla que PDFFURIPS).\n3) Existe variable de sistema para imagen del sello (propuesta IDSELLO_AVISO_POLICIAL = ID en ARCHIVOS); la ayuda de la variable indica tamaño recomendado acorde al recuadro del PDF (~65 mm × 20 mm; imagen JPG/PNG proporcional, orientación horizontal).\n4) Si falta firma del responsable, firma del representante o sello configurado, el PDF se genera con campos vacíos y/o aviso informativo coherente con FURIPS (no bloqueo silencioso).\n5) Regresión: resto de páginas del aviso y otros formatos SOAT (FURIPS PDF, certificados) sin cambio de contenido.",
+      "originalesEn": "2026-10-05T23:18:39.095Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Al generar «Aviso Aut. Policial» desde Procesos SOAT (misma admisión/procedencia del expediente), la sección «Responsable del aviso en la IPS» muestra nombre y cargo del usuario registrado en HACTRAN.USUARIO al crear el accidente, y su firma digital (USUSU.IDFIRMA → ARCHIVOS) sobre la línea «Firma:».\n2) El recuadro «Firma y sello de la IPS» muestra la misma firma del representante legal que el PDF FURIPS (variable IDFIRMA_FURRIPS) y el nombre/documento del representante tomados del tercero instalado (misma regla que PDFFURIPS).\n3) Existe variable de sistema para imagen del sello (propuesta IDSELLO_AVISO_POLICIAL = ID en ARCHIVOS); la ayuda de la variable indica tamaño recomendado acorde al recuadro del PDF (~65 mm × 20 mm; imagen JPG/PNG proporcional, orientación horizontal).\n4) Si falta firma del responsable, firma del representante o sello configurado, el PDF se genera con campos vacíos y/o aviso informativo coherente con FURIPS (no bloqueo silencioso).\n5) Regresión: resto de páginas del aviso y otros formatos SOAT (FURIPS PDF, certificados) sin cambio de contenido.",
+      "trasAnalisisEn": "2026-10-05T23:18:42.055Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso acctran, FE (ProcesosSoat, useHACTRANPrint) y AVISO_AUT_POLICIAL (referencia sql_refe/0100016279; METODO no fichado leido en sps.json — bajar SPQ_HACTRAN PREVERSION al implementar). Solución: defecto/hueco sello; no capacitación.",
+      "fecha": "2026-10-05T23:20:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_HACTRAN.AVISO_AUT_POLICIAL pendiente releer en carpeta del caso; SPQ_FURIPS.PDFFURIPS patrón leido (sql_refe/0100016340) solo referencia."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261005-0100016623/diagramas/flujo.html",
+      "subidaEn": "2026-10-05T18:19:24",
+      "url": "/api/caso/20261005-0100016623/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "acctran",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261005-0100016623-flujo.html"
+    },
+    "mockups": [
+      "activo/20261005-0100016623/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261005-0100016623\\sql\\",
+    "carpetaRelativa": "activo/20261005-0100016623/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016623\\",
+    "archivosEsperados": [
+      "no require"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "acctran",
+    "catalogo": "conocimiento/acctran/sps.json",
+    "metodosDocumentados": [],
+    "notas": "Patrón representante legal: SPQ_FURIPS · PDFFURIPS (documentado leido; no se modifica salvo extracción acordada). Releer SPQ_HACTRAN en activo/.../sql/ desde PREVERSION antes del dictamen final.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261005-0100016623.html",
+    "aprobados": "aprobados/20261005-0100016623/",
+    "imagenes": "aprobados/20261005-0100016623/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-05",
+    "ultimoEnvio": "2026-10-05T18:35:06",
+    "reenvios": 0,
+    "destinatario": "juan.llamas@ixcolombia.com",
+    "via": "smtp"
+  }
+}

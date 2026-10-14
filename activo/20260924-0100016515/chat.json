@@ -1,0 +1,52 @@
+{
+  "mensajes": [
+    {
+      "id": "20260924121329555915",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos). Hay capturas en activo/20260924-0100016515/imagenes/ (esta.png). Léalas y contrástelas con el REQ.",
+      "fecha": "2026-09-24T12:13:29"
+    },
+    {
+      "id": "20260924121329581739w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-24T12:13:29"
+    },
+    {
+      "id": "20260924173000agente6515",
+      "autor": "agente",
+      "texto": "## Análisis de solución — REQ 0100016515 (HPRE · Cargos / catálogo)\n\n**REQ (cola IX OnLine + formulario):** ajustar visual de la pantalla de cargos; validar que con pedido a inventario no se trasladen prestaciones; además reportan que **no deja reorganizar las cuentas**.\n\n**Captura `esta.png`:** pestaña **Cargos** de admisión (HPREComponent): filtros en acordeón, totales, tabla con detalle expandido (Pedir inventario / Deshacer pedido en prestación MEDICAMENTOS). El texto del REQ mezcla esta pantalla con controles SOAT («cuentas» = responsables Aseguradora/ADRES/EPS).\n\n### Paso 0 — ¿Ya existe?\n**No es capacitación.** Clasificación: **mejora UX/performance** en Cargos + **defecto** traslado con PEDIDOINV + **defecto** Reorganizar SOAT.\n\n| Control | Caminos relevantes |\n|--------|---------------------|\n| Cargos (HPREComponent) | Filtros, refrescar, detalle expandido, carrito/catálogo multi-prefijo, Pedir/Deshacer inv. Ya bloquea editar/borrar/agregar si `HPRE.PEDIDOINV=1`. |\n| Cargos SOAT (HPRESOATComponent) | Trasladar ítem (`MOVER_ITEM_PARCIAL`), Trasladar masivo (`MOVER_MASIVO`), **Reorganizar** (`REORGANIZAR_TODO`). |\n\n**Causa (KB + código):** `validarAjusteHpredSoat` al trasladar solo revisa `HPRED.PEDIDOINV` en la fila; el pedido de farmacia deja **`HPRE.PEDIDOINV=1`** (SPQ_HPRE · PEDIR_INV → SPK_PEDIDOINVQX). El traslado masivo no filtra pedidos. Reorganizar puede fallar por reglas SOAT (topes, ADRES/EPS) o por validación de inventario pendiente (REQ 6468 / `SOATVALSINPEDIRINV`) — hay que reproducir en la admisión del caso (`validarAntes` en formulario).\n\n### Solución propuesta\n1. **FE `HPREComponent.vue`:** ajustes visuales y rendimiento (menos carga/render del detalle HPRED en cada página; barra y filtros como en captura).\n2. **FE `HPRESOATComponent.vue` (+ ServiciosPrefijo si aplica):** bloquear Trasladar ítem y Trasladar masivo si la prestación tiene pedido inventario (mismo mensaje que Cargos).\n3. **SQL `SPQ_DISTRIHPRED_SOAT`:** validación server-side en `MOVER_ITEM_PARCIAL` y `MOVER_MASIVO`; revisar `REORGANIZAR_TODO` según error reproducido.\n4. **Reorganizar:** corregir causa concreta tras prueba en test (mensaje claro al usuario).\n\n**Contabilidad:** no afecta (ver formulario).\n\n### Criterios / alcance / restricciones\nQuedaron en **solicitud.contenido** (criteriosAceptacion, alcance, restricciones).\n\n### SP · METODO · estado · rol en el fix\n| SP | METODO | Estado | Rol |\n|----|--------|--------|-----|\n| SPQ_HPRE | HPRE · PEDIR_INV | leido (sps.json) | Marca pedido; referencia de regla negocio |\n| SPQ_HPRE | HPRE · DESHACER_PEDIDO | leido | Reverso pedido |\n| SPQ_HPRE | HPRED · EDITAR | leido | Mensaje «solicitado a inventario» en SQL |\n| SPQ_DISTRIHPRED_SOAT | MOVER_ITEM_PARCIAL | no fichado (sql_refe 0100016305) | Traslado ítem — agregar validación PEDIDOINV |\n| SPQ_DISTRIHPRED_SOAT | MOVER_MASIVO | no fichado | Traslado masivo — misma validación |\n| SPQ_DISTRIHPRED_SOAT | REORGANIZAR_TODO | no fichado | Reorganizar cuentas SOAT — investigar KO actual |\n\n**cambioPropuestoSql:** sí, fragmentos en `solicitud.contenido.cambioPropuestoSql` (confirmar en PREVERSION antes de implementar).\n\n**Siguiente paso:** cuando aprueben el análisis, dictamen HTML; bajar `SPQ_DISTRIHPRED_SOAT` a `activo/20260924-0100016515/sql/` si hace falta la línea exacta de preversión.",
+      "fecha": "2026-09-24T12:30:00"
+    },
+    {
+      "id": "20260924143555172438d",
+      "autor": "sistema",
+      "texto": "Diagrama de flujo generado desde conocimiento/hpre/ y el análisis del REQ. Quedó **adjunto en el dictamen** (sección 4.5) y en dictamenes/20260924-0100016515-flujo.html.",
+      "fecha": "2026-09-24T14:35:55"
+    },
+    {
+      "id": "20260924143602520371m",
+      "autor": "sistema",
+      "texto": "Mockups generados **alineados a la propuesta de desarrollo** (no a la captura del problema): `activo/20260924-0100016515/mockups/mockup-ux-pantalla.html`. Quedan registrados en solicitud.json → contenido.mockups (correo y dictamen).",
+      "fecha": "2026-09-24T14:36:02"
+    },
+    {
+      "id": "20260924143700agente6515act",
+      "autor": "agente",
+      "texto": "Caso **activado** — dictamen de Fase 1 listo.\n\n**Resumen:** Tres líneas de trabajo en `feature/MDICAL817`: UX/performance en pestaña Cargos (`HPREComponent`), bloqueo de traslado SOAT cuando `HPRE.PEDIDOINV=1` (FE + `SPQ_DISTRIHPRED_SOAT` MOVER_*), y corrección/mensaje claro en **Reorganizar** (`REORGANIZAR_TODO`). Contabilidad: no afecta.\n\n**Validar antes:** obligatorio reproducir Reorganizar y traslado con pedido inventario en la admisión de la captura (texto en formulario).\n\n**Documento:** [dictamenes/20260924-0100016515.html](dictamenes/20260924-0100016515.html) — diagrama incrustado en §4.5; copia en `dictamenes/20260924-0100016515-flujo.html`. Mockup propuesto en `activo/20260924-0100016515/mockups/mockup-ux-pantalla.html`.\n\n**SQL:** No hay `.sql` en carpeta del caso; usar fichas `leido` de SPQ_HPRE en `conocimiento/hpre/sps.json`. Para DISTRIHPRED_SOAT bajar PREVERSION a `activo/20260924-0100016515/sql/` al implementar (fragmentos en formulario §5.2.1).\n\nRevise criterios en el formulario; cuando apruebe, **Cerrar fase 1** en la app.",
+      "fecha": "2026-09-24T14:37:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-24T14:39:10"
+    },
+    {
+      "id": "correo-cierre-20260924-0100016515",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a juan.llamas@ixcolombia.com.",
+      "fecha": "2026-09-24T14:39:43"
+    }
+  ]
+}

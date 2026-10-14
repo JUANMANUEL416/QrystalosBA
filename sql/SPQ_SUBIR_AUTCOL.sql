@@ -1,0 +1,654 @@
+CREATE OR ALTER PROCEDURE DBO.SPQ_SUBIR_AUTCOL @JSON NVARCHAR(MAX)
+	WITH ENCRYPTION 
+AS
+SET DATEFORMAT dmy
+DECLARE @TBLERRORES TABLE (ERROR VARCHAR(MAX))
+DECLARE  @PARAMETROS NVARCHAR(MAX)			,@MODELO VARCHAR(100)			   ,@METODO VARCHAR(100)
+		,@USUARIO VARCHAR(12)				   ,@COMPANIA VARCHAR(2)		      ,@IDSEDE      VARCHAR(5)		
+      ,@SYS_COMPUTERNAME VARCHAR(200)     ,@DATOS    VARCHAR(MAX)          ,@BASE VARCHAR(MAX)
+      ,@TIPO_DOC VARCHAR(20)              ,@DOCIDAFILIADO VARCHAR(20)      ,@FECHA DATETIME
+      ,@PREFIJO VARCHAR(20)               ,@IDSERVICIO VARCHAR(20)         ,@CANT INT
+      ,@VLR_UNIT DECIMAL(14,2)            ,@VLR_COPA VARCHAR(20)           ,@IDMIPRESS  VARCHAR(20)
+      ,@IDTERCERO VARCHAR(20)             ,@NIT VARCHAR(20)                ,@RAZONSOCIAL VARCHAR(46)
+      ,@IDPLAN VARCHAR(7)                 ,@DESCPLAN VARCHAR(20)           ,@DXPPAL VARCHAR(10)
+      ,@NOMBREDXPPAL VARCHAR(20)          ,@DXREAL VARCHAR(20)             ,@NOMBREDXREAL VARCHAR(20)
+      ,@IDMEDICO VARCHAR(20)              ,@NOMBREMEDICO VARCHAR(20)       ,@CNSRPDX VARCHAR(20)
+      ,@NROAUTORIZACION VARCHAR(45)       ,@CNSMASI VARCHAR(20)            ,@CNSFCT VARCHAR(20)
+      ,@N_FACTURA VARCHAR(20)             ,@TIPOUSUARIO VARCHAR(2)         ,@TIPOSISTEMA VARCHAR(20)
+      ,@ID INT                            ,@ACCION VARCHAR(20)             ,@ARCHIVO VARCHAR(255)
+      ,@IDPESPECIAL VARCHAR(5)           ,@CODCUM_DISP VARCHAR(50)
+      ,@IDSEDE_AFI VARCHAR(5)         ,@IDADMIN_FTR VARCHAR(20)    ,@SEXO_RIPS VARCHAR(20)
+      ,@FNAC_RIPS VARCHAR(20)         ,@MUNI_RIPS VARCHAR(20)      ,@JSON_AFI_RIPS NVARCHAR(MAX)
+      ,@FNAC_DATE DATETIME            ,@TIPOUSU_RIPS VARCHAR(20)
+
+BEGIN
+	SELECT *
+	INTO #JSON
+	FROM OPENJSON(@json) WITH (
+			 MODELO VARCHAR(100) '$.MODELO'
+			,METODO VARCHAR(100) '$.METODO'
+			,USUARIO VARCHAR(12) '$.USUARIO'
+			,PARAMETROS NVARCHAR(MAX) AS JSON
+	)
+
+	SELECT   @MODELO = MODELO			,@METODO = METODO
+			,@PARAMETROS = PARAMETROS	,@USUARIO = USUARIO
+	FROM #JSON
+   
+   SELECT @IDSEDE=COALESCE(UBEQ.IDSEDE,USUSU.IDSEDE),@COMPANIA=COALESCE(UBEQ.COMPANIA,USUSU.COMPANIA),  @SYS_COMPUTERNAME=COALESCE(USUSU.SYS_ComputerName,HOST_NAME())   FROM USUSU LEFT JOIN UBEQ ON USUSU.SYS_ComputerName=UBEQ.SYS_ComputerName
+    WHERE USUSU.USUARIO=@USUARIO
+
+
+   IF @METODO='SUBIR_PRESTACIONES'     
+   BEGIN         
+      SELECT @DATOS=DATOS,@BASE=BASE       
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      DATOS NVARCHAR(MAX) AS JSON,
+      BASE NVARCHAR(MAX) AS JSON 
+      )
+                 
+      SELECT * INTO #DATOS        
+      FROM   OPENJSON (@DATOS)
+      WITH   (   
+         TIPO_DOC VARCHAR(20)         '$.TIPO_DOC',
+         DOCIDAFILIADO VARCHAR(20)    '$.DOCIDAFILIADO',
+         FECHA VARCHAR(20)            '$.FECHA',
+         PREFIJO VARCHAR(20)          '$.PREFIJO',
+         DXPPAL  VARCHAR(10)          '$.DXPPAL',
+         DXREAL  VARCHAR(10)          '$.DXREAL',
+         IDSERVICIO VARCHAR(20)       '$.IDSERVICIO',
+         CANT  INT                    '$.CANT',
+         VLR_UNIT DECIMAL(14,2)       '$.VLR_UNIT',
+         VLR_COPA DECIMAL(14,2)         '$.VLR_COPA',
+         IDSEDE VARCHAR(6)           '$.IDSEDE',
+         IDMIPRESS VARCHAR(20)      '$.IDMIPRESS',
+         NROAUTORIZACION  VARCHAR(20)   '$.NROAUTORIZACION',
+         IDPESPECIAL VARCHAR(5)     '$.IDPESPECIAL',
+         CODCUM_DISP VARCHAR(50)    '$.CODCUM_DISP'
+      )
+      SELECT @IDTERCERO=IDTERCERO, @NIT=NIT,@IDPLAN=IDPLAN,@DXPPAL=DXPPAL,@DXREAL=DXREAL, @IDMEDICO=IDMEDICO,@NOMBREMEDICO=NOMBREMEDICO
+      FROM   OPENJSON (@BASE)
+      WITH   (
+         IDTERCERO VARCHAR(20)       '$.IDTERCERO',
+         NIT VARCHAR(20)             '$.NIT',
+         IDPLAN VARCHAR(20)          '$.IDPLAN',
+         DXPPAL VARCHAR(20)          '$.DXPPAL',
+         DXREAL VARCHAR(20)          '$.DXREAL',
+         IDMEDICO VARCHAR(20)        '$.IDMEDICO',
+         NOMBREMEDICO VARCHAR(20)    '$.NOMBREMEDICO'     
+      )
+
+
+       EXEC SPK_GENCONSECUTIVO '01',@IDSEDE,'@RPDX',@CNSRPDX OUTPUT
+	    SELECT @CNSRPDX = @IDSEDE + RIGHT('00000000'+CONVERT(VARCHAR(8),@CNSRPDX),8)
+
+       PRINT '@CNSRPDX='+ @CNSRPDX
+
+       EXEC SPK_GENCONSECUTIVO '01',@IDSEDE,'@AUTMASI',@CNSMASI OUTPUT
+	    SELECT @CNSMASI = @IDSEDE + RIGHT('00000000'+CONVERT(VARCHAR(8),@CNSMASI),8)
+
+       INSERT INTO AUT_MASI(CNSMASI,FECHA,USUARIO,ESTADO)
+       SELECT @CNSMASI,DBO.FNK_GETDATE(),@USUARIO,'PROCESO'
+
+      DECLARE @IDAFILIADO VARCHAR(20)
+      DECLARE @IDAUT VARCHAR(20)
+      DECLARE @NOAUT VARCHAR(20)
+      DECLARE @NOITEM SMALLINT
+
+      DECLARE PG_CURSOR_AUT CURSOR FOR 
+      SELECT TIPO_DOC,DOCIDAFILIADO,DXPPAL,DXREAL,FECHA,PREFIJO,IDSERVICIO,CANT,VLR_UNIT,VLR_COPA,IDSEDE,IDMIPRESS,NROAUTORIZACION,IDPESPECIAL,CODCUM_DISP FROM #DATOS
+      ORDER BY TIPO_DOC,DOCIDAFILIADO,PREFIJO
+      OPEN PG_CURSOR_AUT    
+      FETCH NEXT FROM PG_CURSOR_AUT    
+      INTO @TIPO_DOC,@DOCIDAFILIADO,@DXPPAL,@DXREAL,@FECHA,@PREFIJO,@IDSERVICIO,@CANT,@VLR_UNIT,@VLR_COPA,@IDSEDE,@IDMIPRESS,@NROAUTORIZACION,@IDPESPECIAL,@CODCUM_DISP
+      WHILE @@FETCH_STATUS = 0    
+      BEGIN 
+         PRINT 'RECORRO CURSOR '+@TIPO_DOC+ '@DOCIDAFILIADO '+@DOCIDAFILIADO
+
+         IF NOT EXISTS(SELECT * FROM AFI WHERE DOCIDAFILIADO=@DOCIDAFILIADO AND TIPO_DOC=@TIPO_DOC AND ESTADO='Activo')
+         BEGIN
+            INSERT INTO RPDX (CNS,ID1,ID2,ID3,STRINGMEDIO1)
+            SELECT @CNSRPDX,@TIPO_DOC,@DOCIDAFILIADO,'AFILIADO','Afiliado no existe o se encuentra Inactivo'
+
+            FETCH NEXT FROM PG_CURSOR_AUT    
+            INTO @TIPO_DOC,@DOCIDAFILIADO,@DXPPAL,@DXREAL,@FECHA,@PREFIJO,@IDSERVICIO,@CANT,@VLR_UNIT,@VLR_COPA,@IDSEDE,@IDMIPRESS,@NROAUTORIZACION,@IDPESPECIAL,@CODCUM_DISP
+            CONTINUE
+         END
+         ELSE
+         BEGIN
+            SELECT @IDAFILIADO=IDAFILIADO FROM AFI WHERE TIPO_DOC=@TIPO_DOC AND DOCIDAFILIADO=@DOCIDAFILIADO AND ESTADO='Activo'
+         END
+         IF NOT EXISTS(SELECT  * FROM SER WHERE (IDSERVICIO=@IDSERVICIO OR CODCUPS=@IDSERVICIO))
+         BEGIN
+            INSERT INTO RPDX (CNS,ID1,ID2,ID3,STRINGMEDIO1)
+            SELECT @CNSRPDX,@TIPO_DOC,@DOCIDAFILIADO,@IDSERVICIO,'No existe el servicio en el maestro de servicios  codcups'
+
+            FETCH NEXT FROM PG_CURSOR_AUT    
+            INTO @TIPO_DOC,@DOCIDAFILIADO,@DXPPAL,@DXREAL,@FECHA,@PREFIJO,@IDSERVICIO,@CANT,@VLR_UNIT,@VLR_COPA,@IDSEDE,@IDMIPRESS,@NROAUTORIZACION,@IDPESPECIAL,@CODCUM_DISP 
+            CONTINUE
+         END 
+         IF NOT EXISTS(SELECT * FROM MDX WHERE IDDX=@DXPPAL)
+         BEGIN
+            INSERT INTO RPDX (CNS,ID1,ID2,ID3,STRINGMEDIO1)
+            SELECT @CNSRPDX,@TIPO_DOC,@DOCIDAFILIADO,@DXPPAL,'No existe el Diagnostico en el maestro de Diagnosticos '
+
+            FETCH NEXT FROM PG_CURSOR_AUT    
+            INTO @TIPO_DOC,@DOCIDAFILIADO,@DXPPAL,@DXREAL,@FECHA,@PREFIJO,@IDSERVICIO,@CANT,@VLR_UNIT,@VLR_COPA,@IDSEDE,@IDMIPRESS,@NROAUTORIZACION,@IDPESPECIAL,@CODCUM_DISP 
+            CONTINUE
+         END
+         IF NOT EXISTS(SELECT * FROM MDX WHERE IDDX=@DXREAL)
+         BEGIN
+            SELECT @DXREAL=@DXPPAL
+         END
+         IF NOT EXISTS(SELECT * FROM PRE WHERE PREFIJO=@PREFIJO)
+         BEGIN
+            SELECT @PREFIJO=PREFIJO FROM SER WHERE  (IDSERVICIO=@IDSERVICIO OR CODCUPS=@IDSERVICIO)
+         END
+         IF @FECHA IS NULL OR ISDATE(@FECHA)=0
+         BEGIN
+            SELECT @FECHA=DBO.FNK_GETDATE()
+         END
+        IF NOT EXISTS(SELECT * FROM AUT WHERE IDAFILIADO=@IDAFILIADO AND IDTERCEROCA=@IDTERCERO AND IDPLAN=@IDPLAN AND PREFIJO=@PREFIJO AND PROCEDENCIA='EXTERNO' AND CONVERT(DATE,FECHA)=CONVERT(DATE,@FECHA))
+        BEGIN
+            PRINT 'VOY A CREAR AUT'
+           EXEC SPK_GENCONSECUTIVO '01',@IDSEDE,'@AUT',@IDAUT OUTPUT
+	        SELECT @IDAUT = @IDSEDE + RIGHT('00000000'+CONVERT(VARCHAR(8),@IDAUT),8)
+      
+	       EXEC SPK_GENCONSECUTIVO '01',@IDSEDE,'@AUTF',@NOAUT OUTPUT
+	       SELECT @NOAUT = @IDSEDE + RIGHT('00000000'+CONVERT(VARCHAR(8),@NOAUT),8)
+
+          PRINT '@IDAUT ='+@IDAUT
+          PRINT '@NOAUT ='+@NOAUT
+
+	       INSERT INTO AUT (
+		       IDAUT, NOAUT, FECHA, FECHAVENCE, IDAFILIADO, NUMCARNET, IDPLAN, PREFIJO, IDSEDE, TIPOAUTORIZACION, 
+		       ALTOCOSTO, ATENCION, IMPUTABLE_A, IDSOLICITANTE, IDPROVEEDOR, ESTADO, AUTORIZADOPOR, FECHAAUTORIZA, IDPESPECIAL, AUTORIZADO, 
+		       USUARIO, IDCAUSAEXT, AMBITO, FINALIDAD, PERSONAL_AT, DXPPAL,DXRELACIONADO, TIPOURGENCIA, SPD, IDCONTRATANTE, TIPOCOPAGO, 
+		       CLASECONT, FECHAGEN, PROCEDENCIA, IDAREAH, IDAREA, CCOSTO, NIVELATENCION, FACTURADA, FACTURABLE, IDIPS, 
+		       CLASECONTRATO, ENPAQUETE, SOAT, COBRARA, IDTERCEROCA, CONSECUTIVOHCA, SYS_COMPUTERNAME, TIPOUSUARIO, IDPLAN_AFI, IDTERCERO_AFI, 
+		       CLASEORDEN, URGENCIA, VALORBENEFICIO, VALOREXEDENTE, VALORTOTALCOSTO, VALORCOPAGOCOSTO, IMPRESO, CXPGEN, CXCGEN, PEDIDOINV,
+		       ESCONTINUACION, SEMANASCOT, LIQUIDAPC, ESDEINV, VFACTURAS, DESCUENTO, MARCAFAC, PERIODICIDAD, CONTINUACION, MARCAENV,
+		       COPAGOPROPIO, ESDELAB, ENLAB, PIDECCOSTO, RIESGO, NUMAUTORIZA, TIPOAFILIADO, MENTREGA, CONSECUTIVOCIT, TIPOPREVIO, GENERADO, 
+		       ESPROGRAMAS, IDFARMACIA, IDCANASTA, IDMEDICOSOLICITA,CNSMASI
+	       )
+	       SELECT @IDAUT, @NOAUT,@FECHA FECHA , @FECHA+45,@IDAFILIADO,@DOCIDAFILIADO, @IDPLAN, @PREFIJO, @IDSEDE, 'Previa' TIPOAUTORIZACION,
+		       'No' ALTOCOSTO, 'Ambulatoria' ATENCION, 'Administradora' IMPUTABLE_A,@IDMEDICO IDSOLICITANTE,AFI.IDPROVEEDOR IDPROVEEDOR,
+             'Pendiente' ESTADO, @USUARIO AUTORIZADOPOR,@FECHA FECHAAUTORIZA,
+             CASE WHEN COALESCE(LTRIM(RTRIM(@IDPESPECIAL)),'')<>'' THEN LTRIM(RTRIM(@IDPESPECIAL)) ELSE NULL END,
+             0 AUTORIZADO, @USUARIO, '44' IDCAUSAEXT,1 AMBITO,DBO.FNK_VALORVARIABLE('FINCONSULTADEFAULT') AS FINALIDAD, 
+               1,@DXPPAL DXPPAL,@DXREAL, 'NA' TIPOURGENCIA, 0 SPD, @IDTERCERO IDCONTRATANTE, 'N' TIPOCOPAGO, 'ENGE' CLASECONT, DBO.FNK_GETDATE() FECHAGEN, 'EXTERNO' PROCEDENCIA, 
+               NULL ,NULL IDAREA, NULL CCOSTO, '1' NIVELATENCION,  0 FACTURADA, 1 FACTURABLE, AFI.IDPROVEEDOR IDIPS, 'C' CLASECONTRARTO, 
+		       0 ENPAQUETE, 0 SOAT, 'C' COBRARA, @IDTERCERO IDTERCEROCA,NULL CONSECUTIVOHCA, @SYS_COMPUTERNAME SYS_COMPUTERNAME
+		       ,NULL, AFI.IDPLAN IDPLAN_AFI, AFI.IDADMINISTRADORA IDTERCERO_AFI,
+             CASE WHEN COALESCE(LTRIM(RTRIM(@IDPESPECIAL)),'')<>'' THEN 'Modelo' ELSE 'Normal' END,
+             0 URGENCIA, 0 VALORBENEFICIO, 0 VALOREXEDENTE,
+             0 VALORTOTALCOSTO, 0 VALORCOPAGOCOSTO, 0 IMPRESO, 0 CXPGEN, 0 CXCGEN, 0 PEDIDOINV,
+		       0 ESCONTINUACION, 0 SEMANASCOT, 0 LIQUIDAPC, 0 ESDEINV, 0 VFACTURAS, 0 DESCUENTO, 0 MARCAFAC, 0 PERIODICIDAD, 0 CONTINUACION, 0 MARCAENV,
+		       0 COPAGOPROPIO, 0 ESDELAB, 0 ENLAB, 0 PIDECCOSTO,NULL RIESGO, 
+		       @NROAUTORIZACION NUMAUTORIZA, LEFT(AFI.TIPOAFILIADO,1) TIPOAFILIADO, NULL, NULL CONSECUTIVO, 0, 0, 0, '', NULL,  @IDMEDICO,
+             @CNSMASI
+             FROM AFI WHERE IDAFILIADO=@IDAFILIADO
+       END
+       PRINT 'PASO A AUTD '
+       SELECT @IDAUT=IDAUT,@NOAUT=NOAUT FROM AUT WHERE IDAFILIADO=@IDAFILIADO AND IDTERCEROCA=@IDTERCERO AND IDPLAN=@IDPLAN AND PREFIJO=@PREFIJO AND PROCEDENCIA='EXTERNO' AND FECHA=@FECHA
+
+       IF COALESCE(LTRIM(RTRIM(@IDPESPECIAL)),'')<>''
+       BEGIN
+          UPDATE AUT
+          SET IDPESPECIAL = LTRIM(RTRIM(@IDPESPECIAL)),
+              CLASEORDEN  = 'Modelo'
+          WHERE IDAUT = @IDAUT
+       END
+
+       SELECT @NOITEM=COALESCE(MAX(NO_ITEM),0)+1 FROM AUTD WHERE IDAUT=@IDAUT
+       IF NOT EXISTS(SELECT * FROM AUTD WHERE IDAUT=@IDAUT AND IDSERVICIO=@IDSERVICIO)
+       BEGIN
+           INSERT INTO AUTD (
+		       IDAUT, NO_ITEM, IDSERVICIO, CANTIDAD, VALOR, VALORCOPAGO, VALORCOPAGOCOSTO, VALOREXCEDENTE, VALORTOTALCOSTO, IDPLAN, 
+		       IMPRESO, AUTORIZADO, COMENTARIOS, PCOBERTURA, OBS, NORDEN, CCOSTO, CODIGOCPCJ, MARCAPAGO, NOAUTORIZEXT, 
+		       ESDELAB, ENLAB, IDTERCEROCA, IDCONTRATO, FACTURADA, N_FACTURA, CNSFCT, AQUIENCOBRO, MARCACOPAGOORDEN, VALORPROV, 
+		       PCOSTO, ITFC, CNSITFC, SYS_COMPUTERNAME, NOCOBRABLE, MDOSIFICACION, CANTIDIA, DIAS, FRECUENCIA, CODCUPS, 
+		       POSOLOGIA, SINCRONIZADO, APOYODG_AMBITO, CITAAUTORIZADA, CLASEPOSOLOGIA, MARCA, USUARIOMARCA, 
+		       NUM_ORDEN, PROCESADA, PRIORIDAD, GENERADO, PROTOCOLO, CODCUM_DISP
+	       )
+	       SELECT 
+		       @IDAUT,@NOITEM, SER.IDSERVICIO, @CANT, @VLR_UNIT, @VLR_COPA, 0, 0, ((@VLR_UNIT*@CANT)-@VLR_COPA), @IDPLAN,
+		       0, 0, NULL, 100, '', '', NULL CCOSTO, '', 0, '', 
+		       0, 0, @IDTERCERO, 'SIN_DEFINIR', 0, '', '', 'N', 0, NULL, 
+		       0, 0, NULL, @SYS_COMPUTERNAME, 0, 0, 0, 0, 0, SER.CODCUPS,
+		       '', 0, SER.AMBITO, 0, 'Tomar', 0, '',
+		       0, 0, 0, 0, 0,
+             CASE WHEN COALESCE(LTRIM(RTRIM(@CODCUM_DISP)),'')<>'' THEN LTRIM(RTRIM(@CODCUM_DISP)) ELSE NULL END
+             FROM SER 
+             WHERE IDSERVICIO=@IDSERVICIO 
+             AND PREFIJO=@PREFIJO
+      END
+         EXEC SPK_TOTALESAUT_CJN @IDAUT
+         FETCH NEXT FROM PG_CURSOR_AUT    
+         INTO @TIPO_DOC,@DOCIDAFILIADO,@DXPPAL,@DXREAL,@FECHA,@PREFIJO,@IDSERVICIO,@CANT,@VLR_UNIT,@VLR_COPA,@IDSEDE,@IDMIPRESS,@NROAUTORIZACION,@IDPESPECIAL,@CODCUM_DISP
+      END
+      CLOSE PG_CURSOR_AUT
+      DEALLOCATE PG_CURSOR_AUT
+      UPDATE AUT_MASI SET ESTADO='SUBIDO' WHERE CNSMASI=@CNSMASI
+      SELECT 'OK' OK
+      SELECT ID1 TIPO_DOC,ID2 DOCIDAFILIADO,ID3 CAMPO,STRINGMEDIO1 ERROR FROM RPDX WHERE CNS=@CNSRPDX
+      RETURN
+   END  
+   IF @METODO='SUBIR_JSON_EXTERNO'     
+   BEGIN         
+      SELECT @DATOS=DATOS,@CNSFCT=CNSFTR,@N_FACTURA=N_FACTURA       
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      DATOS NVARCHAR(MAX) AS JSON ,
+      CNSFTR  VARCHAR(20)   '$.CNSFTR',
+      N_FACTURA  VARCHAR(20)   '$.N_FACTURA'
+      )
+
+      SELECT @IDPLAN=IDPLAN, @IDADMIN_FTR=IDTERCERO, @IDSEDE_AFI=COALESCE(NULLIF(@IDSEDE,''), IDSEDE)
+      FROM FTR WHERE N_FACTURA=@N_FACTURA OR CNSFCT=@CNSFCT
+      SELECT @TIPOSISTEMA=TIPOSISTEMA FROM PLN WHERE IDPLAN=@IDPLAN
+      IF COALESCE(@TIPOSISTEMA,'')=''
+      BEGIN 
+         SELECT 'KO'OK, 'Contrato sin Configuraci�n No se puede Continuar'ERROR
+         RETURN
+      END
+      IF @TIPOSISTEMA='Contributivo'
+      BEGIN
+         SELECT @TIPOUSUARIO='01'
+      END
+      ELSE
+      BEGIN
+          IF @TIPOSISTEMA='Subsidiado'
+          BEGIN
+            SELECT @TIPOUSUARIO='04'
+          END
+      END
+      BEGIN TRY
+         /* bugfix/COESME600 -- 2026-09-07
+            JSON_AFI: persistir todos los campos RIPS del usuario (no solo tipo/doc/tipoUsuario). */
+         SELECT @CNSFCT CNSFTR,
+            JSON_VALUE(archivo.value,'$.nombre')ARCHIVO_EXT,
+             u_parsed.tipoDocumentoIdentificacion TIPODOC_EXT,
+             u_parsed.numDocumentoIdentificacion IDAFI_EXT,
+             u_parsed.tipoUsuario TIPO_USU,
+             CONVERT(NVARCHAR(MAX), (
+                SELECT
+                   u_parsed.tipoDocumentoIdentificacion AS [tipoDocumentoIdentificacion],
+                   u_parsed.numDocumentoIdentificacion AS [numDocumentoIdentificacion],
+                   u_parsed.tipoUsuario AS [tipoUsuario],
+                   u_parsed.fechaNacimiento AS [fechaNacimiento],
+                   u_parsed.codSexo AS [codSexo],
+                   u_parsed.codPaisResidencia AS [codPaisResidencia],
+                   u_parsed.codMunicipioResidencia AS [codMunicipioResidencia],
+                   u_parsed.codZonaTerritorialResidencia AS [codZonaTerritorialResidencia],
+                   u_parsed.incapacidad AS [incapacidad],
+                   u_parsed.consecutivo AS [consecutivo],
+                   u_parsed.codPaisOrigen AS [codPaisOrigen]
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+             )) AS JSON_AFI,
+             u_parsed.servicios AS JSON_SER INTO #FTRDJSON
+         FROM OPENJSON(@DATOS, '$.archivos') AS archivo
+         CROSS APPLY OPENJSON(archivo.value, '$.contenido.usuarios') AS u_json
+         CROSS APPLY OPENJSON(u_json.value)
+         WITH (
+             tipoDocumentoIdentificacion NVARCHAR(10),
+             numDocumentoIdentificacion NVARCHAR(20),
+             tipoUsuario VARCHAR(3),
+             fechaNacimiento VARCHAR(20),
+             codSexo VARCHAR(2),
+             codPaisResidencia VARCHAR(10),
+             codMunicipioResidencia VARCHAR(20),
+             codZonaTerritorialResidencia VARCHAR(10),
+             incapacidad VARCHAR(10),
+             consecutivo INT,
+             codPaisOrigen VARCHAR(10),
+             servicios NVARCHAR(MAX) AS JSON
+         ) AS u_parsed;
+
+         DELETE #FTRDJSON WHERE EXISTS(SELECT * FROM FTRDJSON WHERE  #FTRDJSON.CNSFTR=FTRDJSON.CNSFTR AND #FTRDJSON.ARCHIVO_EXT=FTRDJSON.ARCHIVO_EXT AND FTRDJSON.TIPODOC_EXT=#FTRDJSON.TIPODOC_EXT AND FTRDJSON.IDAFI_EXT=#FTRDJSON.IDAFI_EXT)
+         ALTER TABLE #FTRDJSON ADD VALIDADO VARCHAR(2)
+         ALTER TABLE #FTRDJSON ADD IDAFILIADO VARCHAR(20)
+
+         /* bugfix/COESME603 -- 2026-09-27
+            Si el paciente no existe en AFI, se crea con los datos b�sicos del RIPS
+            para poder registrarlo y listarlo en la factura. */
+         DECLARE @CREADOS TABLE (TIPO_DOC VARCHAR(3), DOCID VARCHAR(20))
+         DECLARE PG_NUEVO_AFI CURSOR LOCAL FAST_FORWARD FOR
+            SELECT DISTINCT T.TIPODOC_EXT, T.IDAFI_EXT, T.JSON_AFI
+            FROM #FTRDJSON T
+            WHERE COALESCE(T.TIPODOC_EXT,'')<>''
+              AND COALESCE(T.IDAFI_EXT,'')<>''
+              AND NOT EXISTS (
+                 SELECT 1 FROM AFI
+                 WHERE AFI.TIPO_DOC=T.TIPODOC_EXT AND AFI.DOCIDAFILIADO=T.IDAFI_EXT
+              )
+         OPEN PG_NUEVO_AFI
+         FETCH NEXT FROM PG_NUEVO_AFI INTO @TIPO_DOC, @DOCIDAFILIADO, @JSON_AFI_RIPS
+         WHILE @@FETCH_STATUS=0
+         BEGIN
+            SELECT @FNAC_RIPS=NULL, @SEXO_RIPS=NULL, @MUNI_RIPS=NULL, @FNAC_DATE=NULL, @IDAFILIADO=NULL, @TIPOUSU_RIPS=NULL
+            SELECT @FNAC_RIPS=fechaNacimiento, @SEXO_RIPS=codSexo, @MUNI_RIPS=codMunicipioResidencia, @TIPOUSU_RIPS=tipoUsuario
+            FROM OPENJSON(@JSON_AFI_RIPS)
+            WITH (
+               fechaNacimiento VARCHAR(20) '$.fechaNacimiento',
+               codSexo VARCHAR(20) '$.codSexo',
+               codMunicipioResidencia VARCHAR(20) '$.codMunicipioResidencia',
+               tipoUsuario VARCHAR(20) '$.tipoUsuario'
+            )
+            SET @FNAC_DATE=TRY_CONVERT(DATETIME, LEFT(@FNAC_RIPS,10), 23)
+            SET @SEXO_RIPS=CASE UPPER(LEFT(LTRIM(RTRIM(@SEXO_RIPS)),1))
+               WHEN 'M' THEN 'Masculino'
+               WHEN 'F' THEN 'Femenino'
+               ELSE NULL
+            END
+            IF @MUNI_RIPS IS NULL OR LEN(LTRIM(RTRIM(@MUNI_RIPS)))<>5
+               SET @MUNI_RIPS=NULL
+            ELSE
+               SET @MUNI_RIPS=LEFT(LTRIM(RTRIM(@MUNI_RIPS)),5)
+
+            IF COALESCE(@IDSEDE_AFI,'')=''
+            BEGIN
+               INSERT INTO @TBLERRORES(ERROR)
+               SELECT N'No hay sede para crear el paciente '+@TIPO_DOC+' '+@DOCIDAFILIADO
+            END
+            ELSE IF NOT EXISTS (SELECT 1 FROM AFI WHERE TIPO_DOC=@TIPO_DOC AND DOCIDAFILIADO=@DOCIDAFILIADO)
+            BEGIN
+               EXEC SPK_GENCONSECUTIVO '01', @IDSEDE_AFI, '@AFI', @IDAFILIADO OUTPUT
+               SELECT @IDAFILIADO=@IDSEDE_AFI+REPLACE(SPACE(8-LEN(@IDAFILIADO))+LTRIM(RTRIM(@IDAFILIADO)),SPACE(1),0)
+               INSERT INTO AFI (
+                  IDAFILIADO, IDSEDE, TIPO_DOC, DOCIDAFILIADO, ESTADO,
+                  PAPELLIDO, PNOMBRE, FNACIMIENTO, SEXO, CIUDAD,
+                  IDADMINISTRADORA, IDPLAN, TIPOUSUARIO, PROCEDENCIA, NUMCARNET, FECHAAFILIACION
+               )
+               VALUES (
+                  @IDAFILIADO, @IDSEDE_AFI, LEFT(@TIPO_DOC,3), @DOCIDAFILIADO, 'Activo',
+                  N'EXTERNO', LEFT(@DOCIDAFILIADO,30), @FNAC_DATE, @SEXO_RIPS, @MUNI_RIPS,
+                  @IDADMIN_FTR, LEFT(@IDPLAN,6), LEFT(@TIPOUSU_RIPS,12), N'JSONEXT', @IDAFILIADO, DBO.FNK_GETDATE()
+               )
+               INSERT INTO @CREADOS (TIPO_DOC, DOCID) VALUES (LEFT(@TIPO_DOC,3), @DOCIDAFILIADO)
+            END
+            FETCH NEXT FROM PG_NUEVO_AFI INTO @TIPO_DOC, @DOCIDAFILIADO, @JSON_AFI_RIPS
+         END
+         CLOSE PG_NUEVO_AFI
+         DEALLOCATE PG_NUEVO_AFI
+         
+         UPDATE #FTRDJSON SET VALIDADO=CASE WHEN @TIPOUSUARIO='01' AND TIPO_USU IN('01','02') THEN 'O'  WHEN  @TIPOUSUARIO='04' AND TIPO_USU='04' THEN 'O' ELSE 'P' END WHERE 1=1
+         UPDATE #FTRDJSON SET VALIDADO=CASE WHEN LEN(LTRIM(RTRIM(TIPODOC_EXT)))<>2 OR NOT EXISTS(SELECT *  FROM TGEN WHERE TABLA='General' AND CAMPO='TIPOIDENT' AND CODIGO=LTRIM(RTRIM(TIPODOC_EXT))) THEN 'S' ELSE 'O' END  WHERE VALIDADO='O'
+         UPDATE #FTRDJSON SET VALIDADO=CASE
+            WHEN EXISTS(SELECT * FROM AFI WHERE #FTRDJSON.TIPODOC_EXT=AFI.TIPO_DOC AND #FTRDJSON.IDAFI_EXT=AFI.DOCIDAFILIADO AND AFI.ESTADO='Activo') THEN 'O'
+            WHEN EXISTS(SELECT * FROM AFI WHERE #FTRDJSON.TIPODOC_EXT=AFI.TIPO_DOC AND #FTRDJSON.IDAFI_EXT=AFI.DOCIDAFILIADO) THEN 'I'
+            ELSE 'V'
+         END WHERE VALIDADO='O'
+
+         UPDATE T SET T.IDAFILIADO = AFI.IDAFILIADO
+         FROM #FTRDJSON T
+         INNER JOIN AFI ON T.TIPODOC_EXT = AFI.TIPO_DOC AND T.IDAFI_EXT = AFI.DOCIDAFILIADO
+         WHERE AFI.ESTADO = 'Activo' AND T.VALIDADO = 'O'
+
+         /* bugfix/COESME603 -- 2026-09-27
+            El paciente reci�n creado se lista en la factura. */
+         UPDATE T SET T.IDAFILIADO = AFI.IDAFILIADO, T.VALIDADO = 'O'
+         FROM #FTRDJSON T
+         INNER JOIN AFI ON T.TIPODOC_EXT = AFI.TIPO_DOC AND T.IDAFI_EXT = AFI.DOCIDAFILIADO
+         INNER JOIN @CREADOS C ON C.TIPO_DOC = LEFT(T.TIPODOC_EXT,3) AND C.DOCID = T.IDAFI_EXT
+         WHERE AFI.ESTADO = 'Activo'
+
+         /* bugfix/MEDICAL782 -- 2026-09-08
+            Mismo archivo y mismo paciente m�s de una vez: una fila con JSON_SER fusionado.
+            Evita el �ndice �nico FTRDJSONCNSFTRARCHIIVOTIPDOCIDAFI y no pierde atenciones. */
+         IF EXISTS (
+            SELECT 1
+            FROM #FTRDJSON
+            GROUP BY CNSFTR, ARCHIVO_EXT, TIPODOC_EXT, IDAFI_EXT
+            HAVING COUNT(*) > 1
+         )
+         BEGIN
+            SELECT
+               U.CNSFTR,
+               U.ARCHIVO_EXT,
+               U.TIPODOC_EXT,
+               U.IDAFI_EXT,
+               U.TIPO_USU,
+               U.JSON_AFI,
+               CONVERT(NVARCHAR(MAX), (
+                  SELECT
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.consultas') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [consultas],
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.procedimientos') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [procedimientos],
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.medicamentos') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [medicamentos],
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.otrosServicios') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [otrosServicios],
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.urgencias') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [urgencias],
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.hospitalizacion') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [hospitalizacion],
+                     JSON_QUERY(COALESCE((
+                        SELECT N'[' + STRING_AGG(CAST(X.[value] AS NVARCHAR(MAX)), N',') + N']'
+                        FROM #FTRDJSON T
+                        CROSS APPLY OPENJSON(COALESCE(T.JSON_SER, N'{}'), '$.recienNacidos') AS X
+                        WHERE T.CNSFTR = U.CNSFTR
+                          AND T.ARCHIVO_EXT = U.ARCHIVO_EXT
+                          AND T.TIPODOC_EXT = U.TIPODOC_EXT
+                          AND T.IDAFI_EXT = U.IDAFI_EXT
+                     ), N'[]')) AS [recienNacidos]
+                  FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+               )) AS JSON_SER,
+               U.VALIDADO,
+               U.IDAFILIADO
+            INTO #FTRDJSON_UNI
+            FROM (
+               SELECT *,
+                  ROW_NUMBER() OVER (
+                     PARTITION BY CNSFTR, ARCHIVO_EXT, TIPODOC_EXT, IDAFI_EXT
+                     ORDER BY CASE WHEN VALIDADO = 'O' THEN 0 ELSE 1 END
+                  ) AS RN
+               FROM #FTRDJSON
+            ) U
+            WHERE U.RN = 1
+
+            DELETE FROM #FTRDJSON
+
+            INSERT INTO #FTRDJSON (CNSFTR, ARCHIVO_EXT, TIPODOC_EXT, IDAFI_EXT, TIPO_USU, JSON_AFI, JSON_SER, VALIDADO, IDAFILIADO)
+            SELECT CNSFTR, ARCHIVO_EXT, TIPODOC_EXT, IDAFI_EXT, TIPO_USU, JSON_AFI, JSON_SER, VALIDADO, IDAFILIADO
+            FROM #FTRDJSON_UNI
+
+            DROP TABLE #FTRDJSON_UNI
+         END
+
+         /* bugfix/COESME600 -- 2026-09-07
+            Subida parcial: inserta solo v�lidos; no descarta el archivo entero
+            porque un paciente del mismo JSON haya fallado. */
+         /* bugfix/COESME603 -- 2026-09-27
+            El paciente reci�n creado queda visible con observaci�n propia. */
+         INSERT INTO FTRDJSON(CNSFTR,ARCHIVO_EXT,TIPODOC_EXT,IDAFI_EXT,IDAFILIADO,JSON_AFI,JSON_SER,VALIDADO,OBS_VALIDA)
+         SELECT CNSFTR,ARCHIVO_EXT,LEFT(TIPODOC_EXT,2),IDAFI_EXT,IDAFILIADO,JSON_AFI,JSON_SER,VALIDADO,
+            CASE WHEN EXISTS (SELECT 1 FROM @CREADOS C WHERE C.TIPO_DOC=LEFT(TIPODOC_EXT,3) AND C.DOCID=IDAFI_EXT)
+               THEN N'Creado en AFI' ELSE N'OK' END
+         FROM #FTRDJSON
+         WHERE VALIDADO = 'O'
+        
+      END TRY
+      BEGIN CATCH
+              IF CURSOR_STATUS('local','PG_NUEVO_AFI') > 0
+                 CLOSE PG_NUEVO_AFI
+              IF CURSOR_STATUS('local','PG_NUEVO_AFI') >= 0
+                 DEALLOCATE PG_NUEVO_AFI
+              INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+      END CATCH
+      IF OBJECT_ID('tempdb..#FTRDJSON_UNI') IS NOT NULL DROP TABLE #FTRDJSON_UNI
+      DROP TABLE #FTRDJSON
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+          RETURN
+      END
+      SELECT 'OK' OK 
+      RETURN 
+
+   END  
+   IF @METODO='APROBAR_JSON'     
+   BEGIN         
+      SELECT @CNSFCT=CNSFTR,@ID=ID        
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      CNSFTR  VARCHAR(20)   '$.CNSFTR',
+      ID  INT   '$.ID'
+      )
+      IF EXISTS(SELECT * FROM FTRDJSON WHERE CNSFTR=@CNSFCT AND ID=@ID)
+      BEGIN
+         
+         UPDATE FTRDJSON SET VALIDADO='O',OBS_VALIDA='Json Aprobado por Usuario:'+@USUARIO WHERE CNSFTR=@CNSFCT AND ID=@ID
+
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR)
+         SELECT 'Id. Json no encontrado, Verifique e intente de nuevo '
+      END
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+          RETURN
+      END
+      SELECT 'OK' OK 
+      RETURN 
+   END 
+   IF @METODO='BORRAR_JSON'     
+   BEGIN         
+      SELECT @CNSFCT= CNSFTR,@ACCION=ACCION,@ARCHIVO=ARCHIVO      
+      FROM   OPENJSON (@PARAMETROS)
+      WITH (           
+      CNSFTR  VARCHAR(20)   '$.CNSFTR',
+      ACCION  VARCHAR(20)   '$.ACCION',
+      ARCHIVO  VARCHAR(255)  '$.ARCHIVO'
+      )
+      IF EXISTS(SELECT * FROM FTRDJSON WHERE CNSFTR=@CNSFCT)
+      BEGIN
+         IF @ACCION='Todo'
+         BEGIN
+            DELETE FTRDJSON WHERE CNSFTR=@CNSFCT
+         END
+         IF @ACCION='individual'
+         BEGIN
+            DELETE FTRDJSON WHERE CNSFTR=@CNSFCT AND ID=CAST(@ARCHIVO AS INT)
+         END
+         IF @ACCION='Errores'
+         BEGIN
+            DELETE FTRDJSON WHERE CNSFTR=@CNSFCT AND COALESCE(VALIDADO,'')<>'O'
+         END
+         IF @ACCION='Archivo'
+         BEGIN
+            IF EXISTS(SELECT * FROM FTRDJSON WHERE CNSFTR=@CNSFCT AND ARCHIVO_EXT=@ARCHIVO)
+            BEGIN
+               DELETE  FTRDJSON WHERE CNSFTR=@CNSFCT AND ARCHIVO_EXT=@ARCHIVO
+            END
+            ELSE
+            BEGIN
+               INSERT INTO @TBLERRORES(ERROR)
+               SELECT 'No se encontro el Archivo Solicitado Verifique e intente de nuevo '
+            END
+         END
+      END
+      ELSE
+      BEGIN
+         INSERT INTO @TBLERRORES(ERROR)
+         SELECT 'No se Encontro Consecutivo asociado a la Factura, Verifique e intente de Nuevo '
+      END
+      IF(SELECT COUNT(*) FROM @TBLERRORES)>0
+      BEGIN
+         SELECT 'KO' OK, ERROR FROM @TBLERRORES
+          RETURN
+      END
+      SELECT 'OK' OK 
+      RETURN 
+                    
+   END
+   /* bugfix/COESME603 -- 2026-09-27
+      Una fila por RIPS externo (archivo): pacientes, servicios y valor. */
+   IF @METODO='TOTALES_JSON'
+   BEGIN
+      SELECT @CNSFCT=CNSFTR
+      FROM OPENJSON (@PARAMETROS)
+      WITH (
+         CNSFTR VARCHAR(20) '$.CNSFTR'
+      )
+
+      SELECT 'OK' OK,
+         CASE
+            WHEN RIGHT(LOWER(F.ARCHIVO_EXT), 5) = N'.json'
+               THEN LEFT(F.ARCHIVO_EXT, LEN(F.ARCHIVO_EXT) - 5)
+            ELSE F.ARCHIVO_EXT
+         END NRO_FACTURA,
+         COUNT(DISTINCT CONCAT(F.TIPODOC_EXT,'|',F.IDAFI_EXT)) PACIENTES,
+         SUM(ISNULL(X.CANT,0)) SERVICIOS,
+         SUM(ISNULL(X.VR,0)) VR_SERVICIO
+      FROM FTRDJSON F
+      OUTER APPLY (
+         SELECT COUNT(1) CANT, SUM(TRY_CONVERT(DECIMAL(18,2), J.VR)) VR
+         FROM (
+            SELECT vrServicio AS VR FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.consultas')) WITH (vrServicio NVARCHAR(40) '$.vrServicio')
+            UNION ALL
+            SELECT vrServicio FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.procedimientos')) WITH (vrServicio NVARCHAR(40) '$.vrServicio')
+            UNION ALL
+            SELECT vrServicio FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.medicamentos')) WITH (vrServicio NVARCHAR(40) '$.vrServicio')
+            UNION ALL
+            SELECT vrServicio FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.otrosServicios')) WITH (vrServicio NVARCHAR(40) '$.vrServicio')
+            UNION ALL
+            SELECT NULL FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.urgencias'))
+            UNION ALL
+            SELECT NULL FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.hospitalizacion'))
+            UNION ALL
+            SELECT NULL FROM OPENJSON(JSON_QUERY(CONVERT(NVARCHAR(MAX), F.JSON_SER), '$.recienNacidos'))
+         ) J
+      ) X
+      WHERE F.CNSFTR=@CNSFCT
+      GROUP BY F.ARCHIVO_EXT
+      ORDER BY F.ARCHIVO_EXT
+      RETURN
+   END
+END

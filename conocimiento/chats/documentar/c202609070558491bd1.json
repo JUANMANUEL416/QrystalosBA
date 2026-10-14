@@ -351,6 +351,49 @@
       "autor": "agente",
       "texto": "Completé las **capas 3–5** con FE y SP ya leídos. No inventé archivo bancario ni asiento.\n\n**3 Lo que llega.** Novedades `NEDIA` (unidad/masivo; el motor `FNK_CALCULO_VLR_NOVEDAD_NOM` está leído). Vacaciones → `GENERA_NOVEDAD_VACACIONES` (sin .sql) y `SPK_PROCESO_VACACIONES` (leído). Adelantos `NACE` → `SPQ_ADELANTO_CESAN` en retiro.\n\n**4 Unido.** Liquidación → CxP (`NC_CONTAB_NOMINA` · `GENERATE_CxP_NOM`; USVGS `NOMINA_AUTENVIO_CXP`). Prestaciones `NIEPER` · `PROC_PAGO` (Bancos o Caja). DIAN ya está en capa 2. No hay pantalla de dispersión de salarios.\n\n**5 Contabilidad.** El FE llama `CONTABILIZAR` empleado a empleado. Cerrar ya exige KMCOM; abrir bloquea PRI cerrado. El .sql de `NC_CONTAB_NOMINA` no está: no afirmo OM.\n\n**Capa 1** (secundarios) sigue abierta: NEMPHIS (6359) y colilla (6378).\n\nPendiente del esqueleto: **cerrado**. No pido SQL.",
       "en": "2026-09-12T21:40:00"
+    },
+    {
+      "id": "ff2cf4e3",
+      "autor": "coordinador",
+      "texto": "revisemos el proceso de vacaciones si hace falta algo o tiene algun cambio",
+      "en": "2026-09-27T09:10:18"
+    },
+    {
+      "id": "0d37c6fc",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-27T09:10:18"
+    },
+    {
+      "id": "b8e4vac27",
+      "autor": "agente",
+      "texto": "## Vacaciones — revisión (módulo nómina)\n\n**Ruta operativa:** Menú central → Talento humano → **Vacaciones** (`/nom/Vacaciones`, `VacacionNomPage.vue` → `VacacionesNominaComponent.vue`). Entrada documentada en `proceso.json` (secundarios) y control capa 3 `vacaciones-alimenta`.\n\n**Qué ya está cubierto (sin cambio de motor respecto a capas 3–5):**\n- Pantalla → novedad: `NOM_VACACIONES` · **`GENERA_NOVEDAD_VACACIONES`** alimenta **NEDIA**; la prenómina valora con la cadena de novedades (`FNK_CALCULO_VLR_NOVEDAD_NOM`, leído).\n- Provisión y cierre: **`SPK_PROCESO_VACACIONES`** fichado (**leido**) — `ACTUALIZA` en retiro rama OTRASIPS (tras `SPK_LIQUIDAR_NOMI_NEMP`); `CIERRE` / `ABRE` al cerrar o abrir liquidación (`SPQ_LIQUIDACION` · CLOSE / OPEN_NOMINA).\n- Retiro / conceptos vacaciones: días desde **`NEMPVD`** (`PROCE=Retiro`) vía `FNK_VALOR_CONCEP_RETIRO_RUN`; invariante en `proceso.json`.\n\n**Huecos que siguen abiertos:**\n1. **MODELO `NOM_VACACIONES`** (CRUD + `GENERA_NOVEDAD_VACACIONES`) — sin `.sql` en repo ni METODO en `sps.json`; no se afirman validaciones ni columnas de la novedad generada.\n2. **`PROCESO.md`** — no hay sección de flujo de la pantalla Vacaciones (solo referencias en prenómina/retiros y tabla de SP).\n3. **Trazabilidad liquidación:** la ficha de `SPQ_LIQUIDACION` cita `SPQ_PROCESO_VACACIONES` en `llama`; el objeto con ficha METODO es **`SPK_PROCESO_VACACIONES`** — revisar alias/wrapper al tener el .sql de liquidación a mano (no contradice comportamiento documentado).\n\n**Cambios hoy:** ninguno en `proceso.json` / `sps.json` (no hay tarea abierta; la base actual sigue siendo válida).\n\n**Siguiente paso sugerido:** bajar el SP del MODELO `NOM_VACACIONES` y abrir tarea Documentar para `GENERA_NOVEDAD_VACACIONES` (y GUARDAR si aplica); opcional párrafo operativo en `PROCESO.md`. Sin leer `.sql` ni FE hoy — la ficha de capa 3 cubre el pedido de revisión.",
+      "en": "2026-09-27T09:11:45"
+    },
+    {
+      "id": "d4a5a635",
+      "autor": "coordinador",
+      "texto": "que funcion cumple este sp SPK_CALCULA_REFTE_NOMI",
+      "en": "2026-09-27T09:15:56"
+    },
+    {
+      "id": "a34c7aa5",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. En unos segundos responde aquí (autor agente).",
+      "en": "2026-09-27T09:15:57"
+    },
+    {
+      "id": "c7refte27",
+      "autor": "agente",
+      "texto": "## SPK_CALCULA_REFTE_NOMI — función en nómina\n\n**Rol:** paso de **retención en la fuente** dentro de la cadena **PRENOMINA** (después de `SPK_CALCULAR_RETIROS`, antes de `SPK_CALCULAR_NEMPF`). Lo invoca `SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC.PRENOMINA` con `@PROCEDENCIA='Nomina'`, `@CNSPAGO` y `@NUMDOC`.\n\n**Qué hace (método Nomina):** para el empleado en el período, toma devengos y deducciones según configuración **RETTER** del tercero del empleado, aplica renta exenta (25 % documentada) y tabla **RETUVT** por UVT; persiste la liquidación en **RETEL** / **RETELD** y **actualiza o elimina** la línea del concepto variable **IDCONCEPTO_RETEFTE** en **NEMPFD** (si el valor calculado es ≤ 0, borra la línea).\n\n**Precondiciones documentadas:** tercero en RETTER, concepto de retención tipo egreso configurado, línea NEMPFD del concepto en el período (`ENPAGO=1`); si falta la línea, sale sin cambios.\n\n**Otro método:** **CXP** (`@PROCEDENCIA='CXP'`) — misma lógica UVT sobre factura proveedor (**FCXP**); escribe RETEL con procedencia CXP y **no** toca NEMPFD. Fuera del gate prenómina.\n\n**Base:** ficha **leido** en `conocimiento/nomina/sps.json`; sin leer `.sql` hoy — las respuestas aceptadas y la ficha cubren el pedido.",
+      "en": "2026-09-27T09:16:30",
+      "aceptada": true
+    },
+    {
+      "id": "doc-pend-des20261004",
+      "autor": "agente",
+      "texto": "## Pendientes Documentar — revisión DESAIX (2026-10-04)\n\n**Badge ~116–123:** cuenta todo lo **no completado** en `pendientes.json` (sobre todo **hallazgos** y **defectos** de REQ), no solo «falta bajar .sql».\n\n**Bajado hoy a `sql/` (PREVERSION = última 2.0.7, idénticas):**\n- Glosas: SPK_CONTAB_FGLO, SPK_GLOSAANULAFTR, SPK_RADICAGLOSAS\n- Aplicación: SPQ_APLI, SPQ_APLIS\n- Recaudos: SPK_REVERSAR_RECUADO\n- Nómina conceptos: FNK_VALOR_NCONDC, FNK_VALOR_NCONDTC, SPK_AJUSTE_SALARIO_NEMP; **SPQ_NOM_NFUTC**, SPQ_NOM_NFUN (el pendiente decía SPQ_NFUTC — nombre correcto en catálogo)\n- Nómina CxP: SPK_NC_CONTAB_RECOBRONOMI, SPK_GENCXP_NOMINA_UNO/PROVI, **SPK_GENCXP_NOMI_ESP**\n- Contabilidad (listados): SPK_CIERRE_MES_CONTABLE, SPK_CIERRE_SALDOS_INICIALES, NC_SPK_GEN_LIBROAUXILIAR, SPK_BALANCE, SPK_CIRCULARUNICA, SPK_NC_GENERA_EXOGENA, SPK_NC_ANAVTO, SPK_PASA_MCP_MCPNIIF, SPK_CONTAB_RADICACXC_1\n\n**Pendiente de trabajo (fichar, no bajar):**\n1. **Contabilidad** — METODOs de los SP anteriores en `sps.json` (ítem `contabilidad-sp-solo-listados`).\n2. **Aplicación medicamentos** — fichar SPQ_APLI / SPQ_APLIS (`.sql` listo).\n3. **Glosas** — fichar los tres SPK de contabilidad/radicación.\n4. **Nomina-conceptos** — fichar SPQ_NOM_NFUTC / NFUN.\n\n**Prioridad ruta:** caja → facturación → recaudos → … (`RUTA.json`).\n\n**Siguiente paso en app:** Chat Documentar o **Documentar SP** con proceso **aplicacion-medicamentos** o **contabilidad** (un turno por lote).",
+      "en": "2026-10-04T20:48:00"
     }
   ]
 }

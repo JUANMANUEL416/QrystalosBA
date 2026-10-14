@@ -1,0 +1,2073 @@
+{
+  "procesoId": "nomina-conceptos",
+  "actualizado": "2026-10-04T06:40:00",
+  "nota": "Leídos 2026-10-03 desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7). Hallazgos: REQ 0100016359 (IDAREA/CCOSTO en NEMPHIS) y REQ 0100016378 (nombre en colilla NCONCOL) ya implementados; ningún SP de configuración valida USGRUH por acción; ELIMINAR de NCON/NOMI no revisa uso. Añadidos 2026-10-04: SPQ_TH_NEMPPRUEBA (período de prueba) y SPQ_NDISP (distribución de planta), pestaña Empleados.",
+  "sps": [
+    {
+      "nombre": "SPQ_NOM_CONCEPTOS",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_CONCEPTOS",
+      "cola": "Maestro NCON + carga masiva de conceptos particulares (NEMPDA).",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR: valida código no repetido e inserta NCON (ESTADO Activo/Inactivo, INFO/SEREPITE/SEIMPRIME/CVALOR100P Si/No, NATURALEZA 'DB', VISIBLE 1, TIPOPREST, ID_DIAN, CODRET). EDITAR: si cambia el código valida que el nuevo no exista y actualiza por CODCONCEPTOEDITE.",
+          "valida": [
+            "Código único al insertar o al cambiarlo"
+          ],
+          "noValida": [
+            "No valida CLASE/TIPO contra listas",
+            "No valida ID_DIAN contra TGEN"
+          ],
+          "errores": [
+            "EL CODIGO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NCON insertado/actualizado.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-maestro",
+          "ventanaFe": "ConceptosComponent · Nuevo / Editar"
+        },
+        {
+          "id": "STATE",
+          "estado": "leido",
+          "hace": "Alterna ESTADO Activo ↔ Inactivo del concepto.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCON.ESTADO cambiado.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-maestro",
+          "ventanaFe": "ConceptosComponent · Activar/Inactivar"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NCON por CODCONCEPTO.",
+          "valida": [],
+          "noValida": [
+            "No revisa NCOND, NEMPFD, NIEPED ni NPLTCO: depende de integridad referencial"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCON borrado o KO por FK.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-maestro",
+          "ventanaFe": "ConceptosComponent · Eliminar"
+        },
+        {
+          "id": "GET_NPRF_DETAIL",
+          "estado": "leido",
+          "hace": "Lista agrupaciones NPRF activas de una CLASE con su vigencia NPRFD más reciente ≤ hoy.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset para el selector Destino del concepto.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "CARGAR_EMPLEADOS_CONCEPTOS",
+          "estado": "leido",
+          "hace": "Carga masiva a staging RPDX (CSV contrato, documento, concepto, valor, tercero, fechas); valida fila a fila.",
+          "valida": [
+            "Estructura",
+            "Fechas válidas y fin ≥ inicio",
+            "Contrato existe y documento coincide",
+            "Concepto existe, Activo y es Particular",
+            "Valor ≥ 0",
+            "Tercero existe",
+            "Empleado en plantilla de la nómina",
+            "Sin vigencia cruzada si SEREPITE=No"
+          ],
+          "noValida": [],
+          "errores": [
+            "Fecha de inicio no valida",
+            "Fecha de final no valida",
+            "Error de Estructura Campos",
+            "Codigo de contrato No existe",
+            "Documento del empleado no pertenece al numero de contrato",
+            "El id del concepto no existe / no se encuentra activo / no es un concepto particular",
+            "Valor debe ser positivo o 0",
+            "El idtercero no Existe",
+            "El Empleado … no existe dentro de la plantilla de la nomina",
+            "No se encontraron Datos para Procesar"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "RPDX con CANTIDAD10=1 en errores.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones",
+          "ventanaFe": "ConceptosMasivoComponent"
+        },
+        {
+          "id": "VALIDAR_RPDX_EMPLEADO_CONCEPTOS",
+          "estado": "leido",
+          "hace": "Revalida una fila RPDX editada en grilla (mismas reglas).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE RPDX.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones"
+        },
+        {
+          "id": "ELIMINAR_RPDX_EMPLEADO_CONCEPTOS",
+          "estado": "leido",
+          "hace": "Borra fila del staging.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE RPDX.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones"
+        },
+        {
+          "id": "AGREGAR_CONCEPTOS_EMPLEADOS",
+          "estado": "leido",
+          "hace": "Toma RPDX válidas (CANTIDAD10=0) de empleados activos en la nómina; descarta las que crucen vigencia en NEMPDA si SEREPITE<>Si; inserta NEMPDA (ITEM siguiente, TIPOCALCULO Valor, CODFINANCIACION '001', CNSMASIVO=CNS). Devuelve NUMDOC afectados para recalcular.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NEMPDA insertadas; resultset NUMDOC.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones",
+          "ventanaFe": "ConceptosMasivoComponent · Procesar"
+        },
+        {
+          "id": "EXPORTA_EMPLEADOS_CONCEPTOS",
+          "estado": "leido",
+          "hace": "Plantilla Excel (KEXCEL_FILL) de empleados del período.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "CNSEXCEL.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones"
+        },
+        {
+          "id": "DELETE_RPDX_MASIVE",
+          "estado": "leido",
+          "hace": "Quita masivo: borra NEMPDA / NEDIA por CNSMASIVO y limpia RPDX.",
+          "valida": [],
+          "noValida": [
+            "No revisa si el período está cerrado"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NEMPDA/NEDIA del lote eliminadas.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones",
+          "ventanaFe": "QuitaMasivoComponent"
+        },
+        {
+          "id": "CNS_RPDX_REMOVE_MASIVE_CON / CNS_RPDX_REMOVE_MASIVE_NOV",
+          "estado": "listado",
+          "hace": "Lista lotes masivos (CNSMASIVO) de conceptos o novedades para quitar.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset de lotes.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones"
+        },
+        {
+          "id": "VALIDAR_VALOR_CONCEPTO",
+          "estado": "leido",
+          "hace": "Valida un valor digitado contra la parametrización del concepto (RAISERROR si no existe NCOND).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "No existe parametrización del concepto"
+          ],
+          "llama": [],
+          "efecto": "OK/KO.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "PreNominaComponent · editar línea"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCOND",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCOND",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de la vigencia NCOND: DETALLE, FECHAINI, BASE_PRESTACIONES, BASERET, CODPRF, VALOR, VALOR_EMPRESA, TIPOCALCULO, BASE, CONDICION, EVALUAR, GENERA_CXP, IDTERCERO, DEFINICION, RECOBRO, CODPRF_RECO, REDONDEO, SINDEDUC, validaciones (FINGRESO, ANTIGUEDAD, TLABORADOPER), HORAS_TCOMPLETO, TIPOVALORHORA, FRECUENCIA (VALORFRECUENCIA, DMAFRECUENCIA, RELFREQFECHA, FECHABASEFREQ), DIAS, GENERANOVEFU, CODNOVEFU, RUBRO, VALIDATABLA, DMATABLA.",
+          "valida": [
+            "CODCONCEPTO + ITEM no repetidos al insertar"
+          ],
+          "noValida": [
+            "No valida solapamiento de FECHAINI entre vigencias",
+            "No valida que CODPRF exista ni que BASE sea coherente con las pestañas"
+          ],
+          "errores": [
+            "EL CODIGO … Y ITEM … YA SE ENCUENTRAN REGISTRADOS"
+          ],
+          "llama": [],
+          "efecto": "NCOND insertada/actualizada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "RegisConceptoComponent · Guardar/Actualizar"
+        },
+        {
+          "id": "GET_NCOND_DETALLE",
+          "estado": "leido",
+          "hace": "Vigencias del concepto.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "GET_NCOND",
+          "estado": "leido",
+          "hace": "Datos de una vigencia (usado también por Prenómina y Liquidación).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "UPDATE_DATACONDITION",
+          "estado": "leido",
+          "hace": "Actualiza CONDICION y EVALUAR de la cabecera (pestaña Condiciones).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCOND.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "CondicionesComponent · Actualizar"
+        },
+        {
+          "id": "UPDATE_DATATABLE",
+          "estado": "leido",
+          "hace": "Actualiza VALIDATABLA y DMATABLA (pestaña Tabla).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCOND.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "TablaComponent · Actualizar"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NCOND por concepto + ítem.",
+          "valida": [],
+          "noValida": [
+            "No revisa uso"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Vigencia borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "COUNT_CXPESPECIAL",
+          "estado": "listado",
+          "hace": "Cuenta conceptos con tratamiento de CxP especial (usado por Liquidación · CxP Especiales).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Conteo.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONDD",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONDD",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCONDD (condición: TIPODEPENDENCIA, CODDEPENDENCIA, FACTOR, FACTORMAX, OPERACION, DIAS, HORAS, REQUIERELIQ, VALHORASLAB) desde el JSON (PROCESO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDD (condición: TIPODEPENDENCIA, CODDEPENDENCIA, FACTOR, FACTORMAX, OPERACION, DIAS, HORAS, REQUIERELIQ, VALHORASLAB) insertada/actualizada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "CondicionesComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCONDD (condición: TIPODEPENDENCIA, CODDEPENDENCIA, FACTOR, FACTORMAX, OPERACION, DIAS, HORAS, REQUIERELIQ, VALHORASLAB).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCONDD (condición: TIPODEPENDENCIA, CODDEPENDENCIA, FACTOR, FACTORMAX, OPERACION, DIAS, HORAS, REQUIERELIQ, VALHORASLAB) borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "CondicionesComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONDF",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONDF",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCONDF (fórmula: PRIORIDAD, CODCONCEPTO_OPE, OPERACION, FACTOR, DIAS, HORAS, SOLICITA_CNSPAGO, REQUIERELIQ, VALHORASLAB) desde el JSON (PROCESO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDF (fórmula: PRIORIDAD, CODCONCEPTO_OPE, OPERACION, FACTOR, DIAS, HORAS, SOLICITA_CNSPAGO, REQUIERELIQ, VALHORASLAB) insertada/actualizada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "FormulasComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCONDF (fórmula: PRIORIDAD, CODCONCEPTO_OPE, OPERACION, FACTOR, DIAS, HORAS, SOLICITA_CNSPAGO, REQUIERELIQ, VALHORASLAB).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCONDF (fórmula: PRIORIDAD, CODCONCEPTO_OPE, OPERACION, FACTOR, DIAS, HORAS, SOLICITA_CNSPAGO, REQUIERELIQ, VALHORASLAB) borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "FormulasComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONDTC",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONDTC",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCONDTC (tabla: CODCONCEPTO_BASE, OPERACION, FACTOR, DIAS, VALHORASLAB) desde el JSON (PROCESO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDTC (tabla: CODCONCEPTO_BASE, OPERACION, FACTOR, DIAS, VALHORASLAB) insertada/actualizada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "TablaComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCONDTC (tabla: CODCONCEPTO_BASE, OPERACION, FACTOR, DIAS, VALHORASLAB).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCONDTC (tabla: CODCONCEPTO_BASE, OPERACION, FACTOR, DIAS, VALHORASLAB) borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "TablaComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONDC",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONDC",
+      "metodos": [
+        {
+          "id": "GET_NCONDC",
+          "estado": "leido",
+          "hace": "Lista conceptos y marca los que ya son base del concepto.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "ADD / REMOVE",
+          "estado": "leido",
+          "hace": "Agrega o quita un concepto base (NCONDC) desde el checklist.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDC.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "ConceptosXBaseComponent"
+        },
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "Actualiza HORAS, DIAS, REQUIERELIQ, VALHORASLAB de una base.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDC.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONDA",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONDA",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCONDA (asociación: CODCONCEPTOA, FACTOR, DIAS) — conceptos que una provisión paga desde el JSON (PROCESO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDA (asociación: CODCONCEPTOA, FACTOR, DIAS) — conceptos que una provisión paga insertada/actualizada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "AsociacionesComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCONDA (asociación: CODCONCEPTOA, FACTOR, DIAS) — conceptos que una provisión paga.",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCONDA (asociación: CODCONCEPTOA, FACTOR, DIAS) — conceptos que una provisión paga borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "AsociacionesComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_SALARIO_BASICO",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_SALARIO_BASICO",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCONDB (regla de básico: PRIORIDAD, DIAS1, CONDICION, DIAS2) desde el JSON (PROCESO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDB (regla de básico: PRIORIDAD, DIAS1, CONDICION, DIAS2) insertada/actualizada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "SalarioBasicoComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCONDB (regla de básico: PRIORIDAD, DIAS1, CONDICION, DIAS2).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCONDB (regla de básico: PRIORIDAD, DIAS1, CONDICION, DIAS2) borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "SalarioBasicoComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONDBD",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONDBD",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NCONDBD (PRIORIDAD_CONDICION, PRIORIDAD, FACTOR, OPERACION, PARAMETRO, VALOR).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONDBD.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "GET_NCONDB_DETALLE",
+          "estado": "leido",
+          "hace": "Detalle de una regla NCONDB.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NCONDBD.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_TABLA",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_TABLA",
+      "metodos": [
+        {
+          "id": "GET_NCONT / GUARDAR_NCONT / ELIMINAR_NCONT",
+          "estado": "leido",
+          "hace": "Tablas de valores NCONT (CODTABLA, DESCRIPCION).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONT.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion",
+          "ventanaFe": "ConceptosComponent · Tabla de Valores"
+        },
+        {
+          "id": "GET_VIGENCIAS / GUARDAR_VIGENCIA / ELIMINAR_VIGENCIA",
+          "estado": "leido",
+          "hace": "Vigencias NCONTD por FECHAVIGENCIA.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONTD.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        },
+        {
+          "id": "GET_DETVALORES / GUARDAR_DETVAL / ELIMINAR_DETVAL",
+          "estado": "leido",
+          "hace": "Rangos NCONTDV: valor inicial, porcentaje, valor a aplicar, TIPOVALOR Valor/Porcentaje.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONTDV.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-definicion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCONCOL",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCONCOL",
+      "cola": "REQ 0100016378 implementado: la colilla resuelve con FNK_NOM_NOMBRE_COLILLA.",
+      "metodos": [
+        {
+          "id": "GET_CONCEPTOS",
+          "estado": "leido",
+          "hace": "Conceptos Manual/Particular con alias vigente.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "02-conceptos",
+          "gateId": "nombre-colilla"
+        },
+        {
+          "id": "GET_NCONCOL",
+          "estado": "leido",
+          "hace": "Vigencias de alias de un concepto.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "02-conceptos",
+          "gateId": "nombre-colilla"
+        },
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NCONCOL (FECHAAPLICA, NOMBRE).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NCONCOL.",
+          "capaId": "02-conceptos",
+          "gateId": "nombre-colilla",
+          "ventanaFe": "NombresColillaComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE vigencia de alias.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila borrada.",
+          "capaId": "02-conceptos",
+          "gateId": "nombre-colilla"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NOVEDADES",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NOVEDADES",
+      "cola": "Catálogo NEVE + carga masiva de novedades del período (NEDIA).",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR evento NEVE: IDEVENTO, DESCRIPCION, CODCONCEPTO, GEN_EVE_SEC, IDEVENTO_SEC, NDIASEG, AFECTAHORAS (0 / -1), TIPONOV (Dias/Minutos/Horas), RNOVE, SOLDX, DCALEN, FECHAS_NOV.",
+          "valida": [
+            "IDEVENTO único"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL EVENTO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NEVE.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento",
+          "ventanaFe": "NovedadesComponent"
+        },
+        {
+          "id": "GET_NEVED_DETALLE",
+          "estado": "leido",
+          "hace": "Ítems NEVED del evento.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento"
+        },
+        {
+          "id": "CARGAR_EMPLEADOS_NOVEDAD",
+          "estado": "leido",
+          "hace": "Carga masiva de novedades a RPDX desde archivo; valida contrato, documento, evento, diagnóstico (si SOLDX), fechas, empleado en plantilla, concepto.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Error de Estructura Campos",
+            "Codigo de contrato No existe",
+            "Documento del empleado no pertenece al numero de contrato",
+            "El id del evento no existe",
+            "El diagnostico para la novedad …",
+            "El id del diagnostico no existe",
+            "El Empleado … no existe dentro de la plantilla",
+            "Las fechas de registro para la novedad …",
+            "El concepto …",
+            "No se encontraron Datos para Procesar"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "RPDX.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento",
+          "ventanaFe": "NovedadesMasivoComponent"
+        },
+        {
+          "id": "VALIDAR_RPDX_EMPLEADO_NOVEDAD / ELIMINAR_RPDX_EMPLEADO_NOVEDAD",
+          "estado": "leido",
+          "hace": "Revalida o borra una fila del staging.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "RPDX.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento"
+        },
+        {
+          "id": "AGREGAR_NOVEDAD_EMPLEADOS",
+          "estado": "leido",
+          "hace": "Inserta NEDIA desde RPDX válidas (CNSMASIVO=CNS) y devuelve NUMDOC para recalcular. Usado también por el masivo interactivo y por RegistNovedades.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NEDIA; resultset NUMDOC.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento",
+          "ventanaFe": "NovedadesMasivoComponent · Procesar"
+        },
+        {
+          "id": "EXPORTA_EMPLEADOS_NOVEDAD",
+          "estado": "leido",
+          "hace": "Plantilla Excel.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "KEXCEL_FILL.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEVED",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NEVED",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NEVED (ítem del evento: FACTOR, FECHAINI, CODCONCEPTO, INDEMNIZA, PERINDEM) desde el JSON (PROCESO).",
+          "valida": [
+            "Clave no repetida al insertar"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL EVENTO … ITEM … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NEVED (ítem del evento: FACTOR, FECHAINI, CODCONCEPTO, INDEMNIZA, PERINDEM) insertada/actualizada.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento",
+          "ventanaFe": "NovedadesComponent · ítems"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NEVED (ítem del evento: FACTOR, FECHAINI, CODCONCEPTO, INDEMNIZA, PERINDEM).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NEVED (ítem del evento: FACTOR, FECHAINI, CODCONCEPTO, INDEMNIZA, PERINDEM) borrada.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "evento",
+          "ventanaFe": "NovedadesComponent · ítems"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_PARAMETROS",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_PARAMETROS",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NPAR (CODPARAMETRO, DESCRIPCION).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL CODIGO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NPAR.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "parametro",
+          "ventanaFe": "ParametrosComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPARV",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPARV",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR vigencia NPARV (FECHAINI, FECHAFIN, VALOR).",
+          "valida": [],
+          "noValida": [
+            "No valida solapamiento de vigencias"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPARV.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "parametro",
+          "ventanaFe": "ParametrosComponent · vigencias"
+        },
+        {
+          "id": "GET_NPARV_DETALLE",
+          "estado": "leido",
+          "hace": "Vigencias del parámetro.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "parametro"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPLT",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPLT",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NPLT (IDPLANTILLA, DESCRIPCION, ESTADO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL ID PLANTILLA … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NPLT.",
+          "capaId": "01-estructura",
+          "gateId": "plantilla",
+          "ventanaFe": "PlantillasComponent"
+        },
+        {
+          "id": "STATE",
+          "estado": "leido",
+          "hace": "Activa/Inactiva.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPLT.ESTADO.",
+          "capaId": "01-estructura",
+          "gateId": "plantilla"
+        },
+        {
+          "id": "GET_NPLTCA / UPDATE_NPLTCA",
+          "estado": "leido",
+          "hace": "Lista y reemplaza los cargos de la plantilla (DELETE + INSERT NPLTCA).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPLTCA.",
+          "capaId": "01-estructura",
+          "gateId": "plantilla",
+          "ventanaFe": "PlantillasComponent · Cargos"
+        },
+        {
+          "id": "GET_NPLTCO / UPDATE_NPLTCO",
+          "estado": "leido",
+          "hace": "Lista y reemplaza los conceptos de la plantilla (DELETE + INSERT NPLTCO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPLTCO.",
+          "capaId": "01-estructura",
+          "gateId": "plantilla",
+          "ventanaFe": "PlantillasComponent · Conceptos"
+        },
+        {
+          "id": "GET_NPLT / GET_NPLT_CARGO",
+          "estado": "leido",
+          "hace": "Plantillas disponibles / plantillas de un cargo.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "01-estructura",
+          "gateId": "plantilla"
+        },
+        {
+          "id": "GET_NPLTCA_RPDX / GET_NPLTCO_RPDX",
+          "estado": "leido",
+          "hace": "Cargos y conceptos de la plantilla llevados a RPDX para Gestionar prenómina.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "RPDX.",
+          "capaId": "01-estructura",
+          "gateId": "plantilla",
+          "ventanaFe": "GeneraPlantillaComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NOMI",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NOMI",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NOMI (CODNOMINA, DESCRIPCION, IDPLANTILLA, CCOSTO, IDAREA, MAXADEDUCIR, REPORTA).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL CODIGO DE NOMINA … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NOMI.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "NominasComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NOMIE",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NOMIE",
+      "metodos": [
+        {
+          "id": "GET_NOMIE / UPDATE_NOMIE",
+          "estado": "leido",
+          "hace": "Lista empleados con marca de pertenencia y reemplaza la asignación (NOMIE).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NOMIE.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "NominasComponent · Asignar"
+        },
+        {
+          "id": "GET_NOMIE_EMPLOYEES / GET_NOMIE_EMPLOYE_ACCOUNT / GET_NOMIE_EMPLOYEES_ACCOUNT",
+          "estado": "listado",
+          "hace": "Empleados del período para Prenómina y Liquidación (crea NEMPF si falta, limpia NEMPFD_RUN).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset; NEMPF.",
+          "capaId": "01-estructura",
+          "gateId": "periodo"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPER",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPER",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR: si REPITE_NPER_NOMINA='NO' y ya hay período del mismo MES/ANO/CODNOMINA → KO; inserta NPER con CONTABILIZADA=0, ENPPTO=0. EDITAR: KO si el período está CERRADO=1 o el nuevo consecutivo ya existe.",
+          "valida": [
+            "Mes/año único por nómina (según variable)",
+            "No editar cerrado",
+            "Consecutivo único"
+          ],
+          "noValida": [],
+          "errores": [
+            "YA EXISTE UN PERIDO PARA EL MES … Y EL AÑO … EN LA NOMINA …",
+            "EL PERIODO DE PAGO … YA SE ENCUENTRA CERRADO NO ES POSIBLE REALIZAR LA OPERACION",
+            "EL PERIODO DE PAGO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "NPER.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "PeriodosComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NPER si no hay NEDIA ni NIEPE del período.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL PERIODO DE PAGO … CUENTA CON NOVEDADES EN PRENOMINA",
+            "EL PERIODO DE PAGO … YA CUENTA CON UNA GENERACION DE PRENOMINA"
+          ],
+          "llama": [],
+          "efecto": "NPER borrado.",
+          "capaId": "01-estructura",
+          "gateId": "periodo"
+        },
+        {
+          "id": "GET_NPER / GET_NPER_ACTIVO",
+          "estado": "leido",
+          "hace": "Períodos con totales / períodos abiertos (CERRADO=0).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "01-estructura",
+          "gateId": "periodo"
+        },
+        {
+          "id": "GET_NIEPE_REPORT",
+          "estado": "listado",
+          "hace": "Liquidación por empleado con filtros área/ccosto/cargo (reporte de nómina).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "01-estructura",
+          "gateId": "periodo"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPPAG",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPPAG",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NPPAG (periodicidad: CODPERIODO 1-6, HORASDELABOR, DIAS, DESCRIPCION) desde el JSON (PROCESO).",
+          "valida": [
+            "Clave no repetida al insertar"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL CONSECUTIVO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NPPAG (periodicidad: CODPERIODO 1-6, HORASDELABOR, DIAS, DESCRIPCION) insertada/actualizada.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "PeriodosComponent · periodicidad"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NPPAG (periodicidad: CODPERIODO 1-6, HORASDELABOR, DIAS, DESCRIPCION).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NPPAG (periodicidad: CODPERIODO 1-6, HORASDELABOR, DIAS, DESCRIPCION) borrada.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "PeriodosComponent · periodicidad"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCAR",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCAR",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCAR (área/cargo: CODCARGO, DESCRIPCION, ALTORIESGO) desde el JSON (PROCESO).",
+          "valida": [
+            "Clave no repetida al insertar"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL AREA … YA SE ENCUENTRA REGISTRADA"
+          ],
+          "llama": [],
+          "efecto": "NCAR (área/cargo: CODCARGO, DESCRIPCION, ALTORIESGO) insertada/actualizada.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "RegisCargoComponent · Nuevo Cargo"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCAR (área/cargo: CODCARGO, DESCRIPCION, ALTORIESGO).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCAR (área/cargo: CODCARGO, DESCRIPCION, ALTORIESGO) borrada.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "RegisCargoComponent · Nuevo Cargo"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCARNG",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCARNG",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NCARNG (NIVEL, GRADO, NVACACIONES, BASICO, DIAS, HORASDELABOR, FECHA); inserta histórico NCARNGV y vincula plantillas (NPLTCA) según PLANTILLAS.",
+          "valida": [
+            "Cargo + grado + nivel único"
+          ],
+          "noValida": [],
+          "errores": [
+            "YA SE ENCUENTRA REGISTRADO EL CARGO, CON EL GRADO …"
+          ],
+          "llama": [],
+          "efecto": "NCARNG, NCARNGV, NPLTCA.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "RegisCargoComponent · Nuevo Salario"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NCARNG/NCARNGV/NPLTCA si no hay NPLA ni NEMPHIS que lo usen.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "NO ES POSIBLE ELIMINAR, DEBIDO A QUE EXISTEN PLANTAS RELACIONADAS AL CARGO (NPLA)",
+            "NO ES POSIBLE ELIMINAR, DEBIDO A QUE EXISTEN DATOS RELACIONADOS AL CARGO (NEMPHIS)"
+          ],
+          "llama": [],
+          "efecto": "Cargo borrado.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NCARNGV",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NCARNGV",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR vigencia salarial NCARNGV (FECHA, BASICO, DIAS, HORASDELABOR).",
+          "valida": [
+            "Una vigencia por fecha"
+          ],
+          "noValida": [],
+          "errores": [
+            "YA EXISTE UN VALOR SALARIAL PARA LA FECHA SELECCIONADA"
+          ],
+          "llama": [],
+          "efecto": "NCARNGV.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario"
+        },
+        {
+          "id": "GET_NCARNGV",
+          "estado": "leido",
+          "hace": "Histórico salarial del cargo.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NCARNGE",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NCARNGE",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NCARNGE (concepto exceptuado por cargo+nivel+grado) desde el JSON (PROCESO).",
+          "valida": [
+            "Clave no repetida al insertar"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL CONCEPTO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NCARNGE (concepto exceptuado por cargo+nivel+grado) insertada/actualizada.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "ExcluirConceptosComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NCARNGE (concepto exceptuado por cargo+nivel+grado).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NCARNGE (concepto exceptuado por cargo+nivel+grado) borrada.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "ExcluirConceptosComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NAJUST",
+      "tipo": "SPQ",
+      "estado": "parcial",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NAJUST",
+      "cola": "SPK_AJUSTE_SALARIO_NEMP y SPK_QUITA_AJUSTE_SALARIO_NEMP sin ficha.",
+      "metodos": [
+        {
+          "id": "GUARDAR / UPDATE_NAJUSTD / GET_NCAR",
+          "estado": "listado",
+          "hace": "Cabecera NAJUST (fecha, % o valor) y detalle de cargos NAJUSTD.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NAJUST/NAJUSTD.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "AjusteSalariosComponent"
+        },
+        {
+          "id": "APLICA_AJUSTE",
+          "estado": "listado",
+          "hace": "EXEC SPK_AJUSTE_SALARIO_NEMP: crea vigencia NCARNGV y actualiza básico de empleados.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_AJUSTE_SALARIO_NEMP"
+          ],
+          "efecto": "NCARNGV + NEMPHIS.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario"
+        },
+        {
+          "id": "ANULAR_AJUSTE",
+          "estado": "listado",
+          "hace": "EXEC SPK_QUITA_AJUSTE_SALARIO_NEMP; borra NCARNGV del ajuste. KO si hay nóminas liquidadas posteriores.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "YA SE HAN LIQUIDADO NOMINAS POSTERIORES A LA APLICACION DEL AJUSTE, SE DEBE HACER UN AJUSTE COMPLETAMENTE NUEVO"
+          ],
+          "llama": [
+            "SPK_QUITA_AJUSTE_SALARIO_NEMP"
+          ],
+          "efecto": "Ajuste revertido.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "listado",
+          "hace": "DELETE NAJUSTD.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Detalle borrado.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_AGRUPACIONES",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_AGRUPACIONES",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR NPRF (CODPRF, DESCRIPCION, CLASE, TIPO, ESBASE, ESTADO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL CODIGO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NPRF.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion",
+          "ventanaFe": "AgrupacionesComponent"
+        },
+        {
+          "id": "STATE",
+          "estado": "leido",
+          "hace": "Activa/Inactiva.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPRF.ESTADO.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion"
+        },
+        {
+          "id": "GET_NPRFT / UPDATE_NPRFT",
+          "estado": "leido",
+          "hace": "Terceros válidos de la agrupación (DELETE + INSERT NPRFT).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPRFT.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion",
+          "ventanaFe": "AgrupacionesComponent · Asignar Tercero"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NPRF (+NPRFD, NPRFT) si no está en uso.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "LA AGRUPACION … ",
+            "NO ES POSIBLE ELIMINAR LA AGRUPACION …"
+          ],
+          "llama": [],
+          "efecto": "Agrupación borrada.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPRFD",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPRFD",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR vigencia NPRFD (ITEM, FECHAINI, TIPOCALCULO, VALOR_EMPLEADO, VALOR_EMPRESA, IDTERCERO, ESTADO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL ITEM … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NPRFD.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion"
+        },
+        {
+          "id": "GET_NPRFD_DETALLE",
+          "estado": "leido",
+          "hace": "Vigencias de la agrupación.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE si no está en uso.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "NO ES POSIBLE ELIMINAR EL DETALLE DE LA AGRUPACION …"
+          ],
+          "llama": [],
+          "efecto": "Vigencia borrada.",
+          "capaId": "03-novedades-parametros",
+          "gateId": "agrupacion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_RETTER",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_RETTER",
+      "metodos": [
+        {
+          "id": "GUARDAR / ELIMINAR",
+          "estado": "leido",
+          "hace": "CRUD de terceros sujetos a retención (IDTERCERO, ESNOMINA, CODRETI, CLASE, VALOR, ESTADO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "RETTER.",
+          "capaId": "05-retencion",
+          "gateId": "retencion-config",
+          "ventanaFe": "RETEcomponent · Agregar"
+        },
+        {
+          "id": "ULTIMA_NOMINA",
+          "estado": "leido",
+          "hace": "Conceptos de la última nómina liquidada para marcar como base.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Resultset.",
+          "capaId": "05-retencion",
+          "gateId": "retencion-config"
+        },
+        {
+          "id": "COPIAR_CODIGOS",
+          "estado": "leido",
+          "hace": "EXEC SPK_TRAE_NCON_RETEFTE: copia conceptos Base retención a la configuración.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_TRAE_NCON_RETEFTE"
+          ],
+          "efecto": "RETEI poblado.",
+          "capaId": "05-retencion",
+          "gateId": "retencion-config",
+          "ventanaFe": "RETEcomponent · Copiar Códigos"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_RETUVT",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_RETUVT",
+      "metodos": [
+        {
+          "id": "GUARDAR / ELIMINAR",
+          "estado": "leido",
+          "hace": "CRUD tabla UVT (DESCRIPCION, UVTMIN, UVTMAX, TARMARG, UVTADI, ESTADO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "RETUVT.",
+          "capaId": "05-retencion",
+          "gateId": "retencion-config",
+          "ventanaFe": "RETEcomponent · U V T"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_RETEI",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_RETEI",
+      "metodos": [
+        {
+          "id": "GUARDAR / ELIMINAR",
+          "estado": "leido",
+          "hace": "CRUD ítems/conceptos base de retención (DESCRIPCION, CLASE, ESTADO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "RETEI.",
+          "capaId": "05-retencion",
+          "gateId": "retencion-config",
+          "ventanaFe": "RETEcomponent · C O D I G O S"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPHIS",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NEMPHIS",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR ítem NEMPHIS: NUMDOC, FECHAMOV, SEXO, IDAREA, CCOSTO, FECHAINGRESO, ESTADO, FECHARETIRO, CAUSARETIRO, BASICO, CODCARGO, NIVEL, GRADO, HORASDELABOR, DIASXCARGO, CODPLANTA, fondos, USUARIOMOD. Convierte fechas con TRY_CONVERT (ISO, 120, dmy).",
+          "valida": [
+            "Fechas convertibles"
+          ],
+          "noValida": [
+            "No valida FK AFU/CEN ni coherencia área-centro",
+            "No sincroniza NEMP maestro"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "NEMPHIS insertado/actualizado (IDAREA y CCOSTO incluidos → REQ 0100016359 implementado).",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "HistorialComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE ítem NEMPHIS.",
+          "valida": [],
+          "noValida": [
+            "No valida si es el único ítem o si hay nóminas que lo usaron"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Ítem borrado.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_INFO_NEMPHIS_NEMP",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "llamadoDesde": [
+        "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+        "FNK_VALORCONCEPTO_NEMPFD_RUN",
+        "FNK_LIQUIDAR_NOMI_NEMP",
+        "SPQ_NOM_PRESTACIONES",
+        "SPQ_RPT_NOMINA"
+      ],
+      "metodos": [
+        {
+          "id": "(función)",
+          "estado": "leido",
+          "hace": "Devuelve la fila NEMPHIS del empleado con mayor FECHAMOV ≤ @FECHA (desempate ITEM DESC): NUMDOC, ITEM, BASICO, HORASXCARGO, DIASXCARGO, FECHAING, CODCARGO, NIVEL, GRADO, CODPLANTA, IDAREA, CCOSTO, FECHAMOV.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Tabla de una fila; vacía si no hay histórico a la fecha → el motor devuelve BASICO=0.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPE",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NEMPE",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NEMPE (concepto excluido por empleado) desde el JSON (PROCESO).",
+          "valida": [
+            "Clave no repetida al insertar"
+          ],
+          "noValida": [],
+          "errores": [
+            "YA SE ENCUENTRA REGISTRADO EL CONCEPTO …"
+          ],
+          "llama": [],
+          "efecto": "NEMPE (concepto excluido por empleado) insertada/actualizada.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones",
+          "ventanaFe": "EmpleadosComponent · Excluir"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NEMPE (concepto excluido por empleado).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NEMPE (concepto excluido por empleado) borrada.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones",
+          "ventanaFe": "EmpleadosComponent · Excluir"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPDA",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NEMPDA",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR concepto particular NEMPDA (ITEM, CODCONCEPTO, TIPOCALCULO, VALOR, FECHAINI, FECHAFIN, IDTERCERO, CODFINANCIACION, OBSERVACION).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL CONCEPTO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "NEMPDA.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones",
+          "ventanaFe": "ConceptosEmpComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE NEMPDA.",
+          "valida": [],
+          "noValida": [
+            "No revisa si ya se liquidó en el período"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila borrada.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones"
+        },
+        {
+          "id": "OPTENER_ITEMS",
+          "estado": "leido",
+          "hace": "Siguiente ITEM del empleado.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Escalar.",
+          "capaId": "04-empleado",
+          "gateId": "particulares-excepciones"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPRFE",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPRFE",
+      "metodos": [
+        {
+          "id": "GUARDAR / ELIMINAR",
+          "estado": "leido",
+          "hace": "Cabecera de afiliación del empleado por agrupación (NPRFE); ELIMINAR borra NPRFED y NFUNR.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPRFE.",
+          "capaId": "04-empleado",
+          "gateId": "aportes-empleado",
+          "ventanaFe": "AportesComponent"
+        },
+        {
+          "id": "COPIAR_NPRFE",
+          "estado": "leido",
+          "hace": "Copia NPRFE/NPRFED de otro empleado.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Afiliaciones clonadas.",
+          "capaId": "04-empleado",
+          "gateId": "aportes-empleado",
+          "ventanaFe": "AportesComponent · Copiar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NPRFED",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NPRFED",
+      "metodos": [
+        {
+          "id": "GUARDAR / GET_NPRFED_DETALLE / ELIMINAR",
+          "estado": "leido",
+          "hace": "Vigencias de tercero del empleado (FECHAINI, IDTERCERO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPRFED.",
+          "capaId": "04-empleado",
+          "gateId": "aportes-empleado"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPC",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NOM_NEMPC",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR / EDITAR de NEMPC (contrato: número único, fechas, tipo) desde el JSON (PROCESO).",
+          "valida": [
+            "Clave no repetida al insertar"
+          ],
+          "noValida": [],
+          "errores": [
+            "YA SE ENCUENTRA REGISTRADO EL NUMERO DE CONTRATO …"
+          ],
+          "llama": [],
+          "efecto": "NEMPC (contrato: número único, fechas, tipo) insertada/actualizada.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "ContratosComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "DELETE de la fila NEMPC (contrato: número único, fechas, tipo).",
+          "valida": [],
+          "noValida": [
+            "No valida uso en nóminas liquidadas"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila NEMPC (contrato: número único, fechas, tipo) borrada.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "ContratosComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NEMP",
+      "tipo": "SPQ",
+      "estado": "parcial",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-03",
+      "modelo": "NEMP",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "INSERTAR/EDITAR empleado NEMP (y tercero TER/usuario USUSU); al insertar crea NEMPHIS inicial, NOMIE, NPLA, NPRFE/NPRFED. Retiro exige motivo válido.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "EL TERCERO …",
+            "Debe indicar el motivo de retiro del empleado.",
+            "El motivo de retiro seleccionado no es válido o está inactivo."
+          ],
+          "llama": [
+            "SPK_ADD_HISTORICO_NEMP",
+            "SPK_GENCONSECUTIVO",
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "NEMP + satélites.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
+        },
+        {
+          "id": "ADD_JOB / REMOVE_JOB / GET_DISTRIBUCION",
+          "estado": "listado",
+          "hace": "Planta NPLA y distribución por centro de costo.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NPLA/NDIS.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "CargosComponent"
+        },
+        {
+          "id": "GET_NOMIE / UPDATE_NOMIE / STATE_NOMIE",
+          "estado": "listado",
+          "hace": "Nóminas del empleado.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "NOMIE.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "EXPORTA_EMPLEADOS / EXPORTA_CUMPLEANOS",
+          "estado": "listado",
+          "hace": "Exportaciones Excel.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "KEXCEL_FILL.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "ADD_NEW_NEMP_PRENOMINA",
+          "estado": "listado",
+          "hace": "Agrega un empleado al período (NEMPF) y recalcula totales.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_CALCULAR_NEMPF",
+            "SPQ_HOMOLOGAR_PRS_NUMDOC"
+          ],
+          "efecto": "NEMPF.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "PreNominaComponent · Agregar"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TH_NEMPPRUEBA",
+      "tipo": "SPQ",
+      "estado": "listado",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-04T06:40:00",
+      "modelo": "TH_NEMPPRUEBA",
+      "cola": "NOMINA",
+      "llamadoDesde": [
+        "EmpleadosPruebaComponent (Configuración → Empleados → Emp. P. Prueba · permiso EmpleadosPerPruebaTH)"
+      ],
+      "metodos": [
+        {
+          "id": "VALIDAR_NOTIFICACIONES",
+          "estado": "listado",
+          "hace": "Empleados con fin de período de prueba próximo: arma y encola el correo en QRY_ENVIOS (SPQ_GENSEQUENCE).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "Correos encolados.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados",
+          "ventanaFe": "EmpleadosPruebaComponent"
+        },
+        {
+          "id": "VER_NOTINEMPPRUEBA",
+          "estado": "listado",
+          "hace": "Lista notificaciones enviadas / pendientes por empleado.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "",
+          "capaId": "01-configuracion",
+          "gateId": "empleados",
+          "ventanaFe": "EmpleadosPruebaComponent"
+        },
+        {
+          "id": "ACTUALIZA_NOIF",
+          "estado": "listado",
+          "hace": "Marca la notificación como atendida.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "",
+          "capaId": "01-configuracion",
+          "gateId": "empleados",
+          "ventanaFe": "EmpleadosPruebaComponent"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NDISP",
+      "tipo": "SPQ",
+      "estado": "listado",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "actualizado": "2026-10-04T06:40:00",
+      "modelo": "NDISP",
+      "cola": "NOMINA",
+      "llamadoDesde": [
+        "EmpleadosComponent → Ver distribución de planta"
+      ],
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "listado",
+          "hace": "INSERT NDISP (planta del empleado, área / centro de costo, porcentaje). KO si ya hay distribución para el área.",
+          "valida": [
+            "Una distribución por área."
+          ],
+          "noValida": [],
+          "errores": [
+            "LA PLANTA YA CUENTA CON UNA DISTRIBUCION PARA EL AREA "
+          ],
+          "llama": [],
+          "efecto": "Porcentaje registrado; lo usa Contabilizar con NOMINATIPOCONTAB=3.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados",
+          "ventanaFe": "EmpleadosComponent"
+        },
+        {
+          "id": "GET_DISTRIBUCION",
+          "estado": "listado",
+          "hace": "Distribución vigente del empleado.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "",
+          "capaId": "01-configuracion",
+          "gateId": "empleados",
+          "ventanaFe": "EmpleadosComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "listado",
+          "hace": "DELETE NDISP de la fila.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "",
+          "capaId": "01-configuracion",
+          "gateId": "empleados",
+          "ventanaFe": "EmpleadosComponent"
+        }
+      ]
+    }
+  ]
+}

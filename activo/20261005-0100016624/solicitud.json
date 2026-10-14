@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-05T23:11:26.406Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016624",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261005-0100016624",
+    "idReq": "0100016624",
+    "fecha": "2026-10-05",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CONSUMO · MODULO DE CONSUMO",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "JUAN LLAMAS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/ASOCAB211",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CONSUMO · MODULO DE CONSUMO",
+    "requerimiento": "Incluir en el modulo de agendamiento de citas TODO EL CONTENIDO DE LA OPCION SOAT, tal como está en admisiones DETALLE: Se solicita que, cuando la cita es asignada a un SOAT, este muestre todas las opciones que se presentan cuando la admisión es SOAT. \n\nEsto evita que el usuario tenga que abrir otro módulo y sacar toda la información que se puede gestionar desde la misma cita.",
+    "criteriosAceptacion": "Con la cita marcada SOAT (toggle activo y consecutivo HACTRAN válido), desde Editar cita en Agenda nueva existe una pestaña o panel «SOAT» con la misma disposición que admisiones: barra lateral de certificados/formatos y grilla «Accidentes» (HACTRAN + detalle HACTRAND) sin abrir módulo de admisiones.\nDesde ese panel se pueden imprimir o generar: Certificado de asistencia, Certificado de consumos, Formato de reclamación, Aviso autoridad policial, Certificado de atención (formulario clínico), Certificado de declarante y Comprobante de aceptación de servicios (según variable FIRMAR_PRESTA_SERV), usando NOREFERENCIA = consecutivo de la cita y PROCEDENCIA = CI.\nSeleccionar o crear accidente en la grilla actualiza CNSHACTRAN en la cita (misma regla de sesiones que hoy) y persiste al guardar la cita.\nGestionar líneas HACTRAND (alta/edición certificado clínico, valores, SIRAS en detalle) con los mismos botones de la fila que en admisiones, vía MODELO HACTRAND · CRUDHACTRAND con PROCEDENCIA CI.\nSi NO_USA_SOAT = SI o país Perú, no se muestra el panel (comportamiento actual del toggle SOAT en agenda).\nCita ya facturada: certificados en solo lectura coherente con facturadaReadonly; no romper copago/SIRAS ya guardados.\nPrueba de regresión: admisión SOAT (pestaña SOAT, procedencia QX) sigue igual tras el refactor de ProcesosSoat.",
+    "alcance": "Frontend Qrystalos2 — consulta externa / agenda: EditaCitaComponent (abierto desde AgendaNuevaComponent) y, en la misma línea visual, AgendarCitaComponent cuando el usuario activa SOAT al crear la cita.\nReutilizar ProcesosSoat.vue (certificados + HACTRANComponent) parametrizado con noreferencia = CONSECUTIVO CIT, procedencia = CI y objeto «otro» con idafiliado, docidafiliado, nombreafi, cnshactran (sincronizado con el toggle), tipopoliza/nopoliza.\nAjuste menor en ProcesosSoat: sustituir procedencia hardcodeada QX en HACTRANComponent y diálogos CertiAsist / CompServPresta por props.procedencia y props.noreferencia (noadmision del hijo = consecutivo cita cuando procedencia es CI).\nAPI existente AppStore.json: HACTRAN (SPQ_HACTRAN), HACTRAND · CRUDHACTRAND (SPQ_HACTRAND); impresiones vía composables useHACTRANPrint / useHACTRANPdfReport ya reciben procedencia.\nDocumentación de proceso acctran (ventana agenda embebida) como referencia funcional.",
+    "restricciones": "Fuera de alcance: pestaña «Cargos SOAT» / HPRESOATComponent (solo admisión hospitalaria SOAT); facturación SOAT masiva; cambios contables; radicación masiva (botón «Agregar Radicado» sigue deshabilitado como en admisiones).\nNo duplicar lógica de negocio en nuevos SP: si un certificado falla con PROCEDENCIA CI, se corrige el METODO SPQ_HACTRAN afectado en IXONLINE/SQL, no un camino paralelo en FE.\nNo implementar en este REQ permisos nuevos USGRUH salvo reutilizar los ya usados en admisiones SOAT / agenda CE.",
+    "analisis": "REQ (0100016624): paridad funcional — en agendamiento de citas, cuando la atención es SOAT, el usuario necesita el mismo workspace que admisiones (captura Opcion_Soat_Agenda.png: certificados laterales + expediente HACTRAN y detalle HACTRAND con facturas/gastos), sin ir a asis.hadm.\nPaso 0 — ¿ya existe? No es capacitación. En admisiones SOAT (HADMAsistencialComp.vue, tab «SOAT» habilitada si tipoadm = IDTARIFASOAT) se monta ProcesosSoat.vue con procedencia QX. En agenda, los caminos actuales son solo: toggle SOAT + consecutivo HACTRAN + SIRAS + botón «Buscar evento» (modal HACTRANComponent procedencia CI) en EditaCitaComponent / AgendarCitaComponent; no hay certificados ni grilla de detalle HACTRAND. Clasificación: hueco de producto (reutilización de componente existente), no defecto de un botón oculto.\nCausa según KB y código vivo: conocimiento/acctran/proceso.json ya documenta el modal HACTRAN desde agenda, pero no la shell ProcesosSoat; el FE nunca integró ProcesosSoat en CE. ProcesosSoat aún hardcodea procedencia QX al embeder HACTRANComponent (líneas 68–76), lo que impediría paridad CI sin ajuste.\nBackend: fichas SPQ_HACTRAN (LLENAR/INSERT/UPDATE, leído) y SPQ_HACTRAND (CRUD vía CRUDHACTRAND, listado en catálogo; INSERT/UPDATE leídos) en conocimiento/acctran/sps.json. CIT_COL ya persiste CNSHACTRAN/SIRAS al editar cita. Impresos usan NOREFERENCIA + PROCEDENCIA en useHACTRANPrint → SPQ_HACTRAN métodos CERTIFICADO_* / FORMATO_RECLAMACION (no releídos en este análisis; validar en preversión con cita SOAT real).\nImpacto: FE Sí (principal); API Sí (mismos MODELO/METODO ya usados en admisiones); SQL Parcial — solo si prueba muestra que algún CERTIFICADO_* no contempla CI (no se propone cambio sin evidencia). Contabilidad: no afecta.\nTipo «Performance» en cola no corresponde al contenido funcional del REQ.",
+    "opciones": [],
+    "recomendacion": "Desarrollo viable reutilizando ProcesosSoat.vue. Orden sugerido: (1) refactor ProcesosSoat para procedencia dinámica en HACTRANComponent y propsData de certificados; (2) nueva pestaña «SOAT» en EditaCitaComponent visible si checkSoat && NO_USA_SOAT≠SI && IXCOUNTRY≠PERU, montando ProcesosSoat con noreferencia=CONSECUTIVO y otro={ cnshactran, idafiliado, … } enlazado bidireccionalmente al toggle; (3) en AgendarCitaComponent, panel expandible o pestaña equivalente tras activar SOAT (misma instancia, cita aún sin consecutivo: deshabilitar certificados que exijan NOREFERENCIA hasta confirmar agenda, o abrir panel solo post-guardado — preferir panel post-consecutivo para no duplicar reglas); (4) prueba E2E ASOCABILIDOS: cita SOAT → certificado consumos/atención → línea HACTRAND con PROCEDENCIA CI; (5) regresión admisión QX. No bajar .sql al caso salvo fallo en certificado CI; entonces releer SPQ_HACTRAN método concreto en activo/20261005-0100016624/sql/.",
+    "cambioPropuestoSimple": "Hoy, en la agenda, marcar SOAT solo permite ligar el accidente (consecutivo y SIRAS). En admisiones, la pestaña SOAT ofrece además todos los certificados y la gestión del expediente y sus detalles. Se propone abrir esa misma pantalla (Procesos SOAT) dentro de editar/agendar cita, usando el número de la cita como referencia, para que el usuario no tenga que salir al módulo de admisiones.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Consulta y filtros sobre HACTRAN/HADM/AUT/CIT/FTR; no genera comprobantes ni mueve MCP/MCH/MCPE.",
+        "validadoEn": "2026-10-05T23:05:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Opcion_Soat_Agenda.png",
+        "ruta": "activo/20261005-0100016624/imagenes/Opcion_Soat_Agenda.png",
+        "subidaEn": "2026-10-05T18:07:50",
+        "url": "/api/caso/20261005-0100016624/imagen/Opcion_Soat_Agenda.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "Con la cita marcada SOAT (toggle activo y consecutivo HACTRAN válido), desde Editar cita en Agenda nueva existe una pestaña o panel «SOAT» con la misma disposición que admisiones: barra lateral de certificados/formatos y grilla «Accidentes» (HACTRAN + detalle HACTRAND) sin abrir módulo de admisiones.\nDesde ese panel se pueden imprimir o generar: Certificado de asistencia, Certificado de consumos, Formato de reclamación, Aviso autoridad policial, Certificado de atención (formulario clínico), Certificado de declarante y Comprobante de aceptación de servicios (según variable FIRMAR_PRESTA_SERV), usando NOREFERENCIA = consecutivo de la cita y PROCEDENCIA = CI.\nSeleccionar o crear accidente en la grilla actualiza CNSHACTRAN en la cita (misma regla de sesiones que hoy) y persiste al guardar la cita.\nGestionar líneas HACTRAND (alta/edición certificado clínico, valores, SIRAS en detalle) con los mismos botones de la fila que en admisiones, vía MODELO HACTRAND · CRUDHACTRAND con PROCEDENCIA CI.\nSi NO_USA_SOAT = SI o país Perú, no se muestra el panel (comportamiento actual del toggle SOAT en agenda).\nCita ya facturada: certificados en solo lectura coherente con facturadaReadonly; no romper copago/SIRAS ya guardados.\nPrueba de regresión: admisión SOAT (pestaña SOAT, procedencia QX) sigue igual tras el refactor de ProcesosSoat.",
+      "originalesEn": "2026-10-05T23:10:29.203Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "Con la cita marcada SOAT (toggle activo y consecutivo HACTRAN válido), desde Editar cita en Agenda nueva existe una pestaña o panel «SOAT» con la misma disposición que admisiones: barra lateral de certificados/formatos y grilla «Accidentes» (HACTRAN + detalle HACTRAND) sin abrir módulo de admisiones.\nDesde ese panel se pueden imprimir o generar: Certificado de asistencia, Certificado de consumos, Formato de reclamación, Aviso autoridad policial, Certificado de atención (formulario clínico), Certificado de declarante y Comprobante de aceptación de servicios (según variable FIRMAR_PRESTA_SERV), usando NOREFERENCIA = consecutivo de la cita y PROCEDENCIA = CI.\nSeleccionar o crear accidente en la grilla actualiza CNSHACTRAN en la cita (misma regla de sesiones que hoy) y persiste al guardar la cita.\nGestionar líneas HACTRAND (alta/edición certificado clínico, valores, SIRAS en detalle) con los mismos botones de la fila que en admisiones, vía MODELO HACTRAND · CRUDHACTRAND con PROCEDENCIA CI.\nSi NO_USA_SOAT = SI o país Perú, no se muestra el panel (comportamiento actual del toggle SOAT en agenda).\nCita ya facturada: certificados en solo lectura coherente con facturadaReadonly; no romper copago/SIRAS ya guardados.\nPrueba de regresión: admisión SOAT (pestaña SOAT, procedencia QX) sigue igual tras el refactor de ProcesosSoat.",
+      "trasAnalisisEn": "2026-10-05T23:10:35.467Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Hueco FE: integrar ProcesosSoat en agenda CE con procedencia CI. SQL solo bajo regresión de certificados. SPQ_HACTRAND · CRUDHACTRAND fichado listado — suficiente vía FE existente en ProcesosSoat.",
+      "fecha": "2026-10-05T23:15:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_HACTRAN · LLENAR/INSERT/UPDATE (leido); SPQ_HACTRAND · CRUDHACTRAND (listado, invocado por FE); CIT_COL · edición cita (persistencia CNSHACTRAN — no documentado en acctran, sin cambio esperado)"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261005-0100016624/diagramas/flujo.html",
+      "subidaEn": "2026-10-05T18:11:00",
+      "url": "/api/caso/20261005-0100016624/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "acctran",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261005-0100016624-flujo.html"
+    },
+    "mockups": [
+      "activo/20261005-0100016624/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261005-0100016624\\sql\\",
+    "carpetaRelativa": "activo/20261005-0100016624/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016624\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "acctran",
+    "catalogo": "conocimiento/acctran/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_HACTRAN",
+        "metodo": "LLENAR",
+        "estado": "leido",
+        "hace": "Carga el expediente HACTRAN (incluye campos *_AMPARO) para el modal.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_HACTRAN",
+        "metodo": "INSERT",
+        "estado": "leido",
+        "hace": "Crea HACTRAN desde JSON del FE, incluidos TIPODOC_AMPARO, DOC_AMPARO y los cuatro nombres.",
+        "llama": [
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_HACTRAN",
+        "metodo": "UPDATE",
+        "estado": "leido",
+        "hace": "Actualiza HACTRAN desde JSON, incluidos los seis campos de persona de Amparo.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_HACTRAND",
+        "metodo": "CRUDHACTRAND",
+        "estado": "listado",
+        "hace": "CRUD unificado.",
+        "llama": []
+      }
+    ],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261005-0100016624.html",
+    "aprobados": "aprobados/20261005-0100016624/",
+    "imagenes": "aprobados/20261005-0100016624/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-05",
+    "ultimoEnvio": "2026-10-05T18:14:11",
+    "reenvios": 0,
+    "destinatario": "juan.llamas@ixcolombia.com",
+    "via": "smtp"
+  }
+}

@@ -4,40 +4,135 @@
   "modulo": "PTPTO",
   "familia": "presupuesto",
   "prioridad": 30,
-  "enRuta": false,
-  "estado": "parcial",
-  "resumen": "SPQ y SPK de envío nómina/PAC leídos. CRUDPTNOT no desarrollado (no es fallo). Hueco de menú: Seguimiento Gastos (REQ 0100016310 — Analista, no Documentar SP). Capa 5 sin OM.",
-  "actualizado": "2026-09-12T09:43:00",
-  "notaSql": "Núcleo leído. CRUDPTNOT y PRESUPUESTO_FCXC en listado a propósito. ENVIA_NOTADBCR_PPTO, SPK_ENTREGA_CXP_PTTO y FNK_PAC_G_CONSEC solo referenciados (no son pendientes a resolver).",
-  "alcanceHasta": "Flujo de menú y pantallas. No se documentó cierre presupuestal ni asiento MCP (capa 5 vacía de evidencia).",
+  "enRuta": true,
+  "estado": "documentado",
+  "resumen": "Módulo Presupuesto (/ppto): maestros (recursos, rubros, clasificaciones, tipos, divisiones, contratos, nómina), vigencia PTPTO, cadena de gastos CDP→RP→CxP→Pago, cadena de ingresos reconocimiento/recaudo/notas, alimentadores (factura, recaudo, nómina, anticipos) e informes. Cierre de periodo PRI.CERRADO_PPTO. No envía a contabilidad (MCP). Contrastado 2026-10-04.",
+  "actualizado": "2026-10-04T22:00:00",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (DESAIX · PREVERSION = 2.0.7, IDANT 2.0.6). Idénticas salvo SPQ_PPTO_RECO (PRE ≠ liberada: validar en preversión, no pedir a ciegas). SPQ_PTPTO no existe: el maestro es SPQ_PRESUPUESTO · CRUDPTPTO / CRUDPTPTODG. SPQ_PPTO_RECO PREVERSION aún no tiene CRUDPTNOT. SPQ_PPTO_REP MET: TRAER_FACTURA_PPTO, PRESUPUESTO_FPAG, PRESUPUESTO_FNOT, EXPORT_*; sin PRESUPUESTO_FCXC ni TRAER_ANTICIPOCXP. Impresión: PTPTO_IMPRESION · PPTO_PROCESOS. Informes: INFORMES_PPTO (algunos MET Clarion; hub con fallback en construcción). Menú: árbol fijo en PresupuestoLayout.arbolMenu; habilitación MENUQ_COL · PRESUPUESTO. ppto.en_construccion siempre permitido. PCEM no consultado.",
+  "alcanceHasta": "Menú Presupuesto completo: Movimientos, Reportes, Históricos (varios en construcción) y Configuración. El asiento MCP no nace aquí. Facturación, recaudos, CxP y nómina se documentan en sus procesos; este libro cubre solo el tramo que entra o sale de PTPTO.",
+  "flujoResumen": "Configurar catálogos y periodo → abrir vigencia PTPTO y distribuir rubros → operar gastos (CDP→RP→CxP→Pago) o ingresos (reconocimiento→recaudo→nota) → traer factura/recaudo/nómina si aplica → informar → cerrar el mes (sin pendientes NoConfirmado).",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "El módulo Presupuesto de Qrystalos administra la vigencia anual (PTPTO), los catálogos que la alimentan y dos cadenas operativas: gastos (disponibilidad CDP, compromiso RP, obligación CxP y pago) e ingresos (reconocimiento, recaudo y notas débito/crédito). Vive en la ruta /ppto, menú MENUQ_COL · PRESUPUESTO.",
+    "paraQueSirve": "Que cada peso de gasto tenga disponibilidad antes de comprometerse y pagarse, que los ingresos reconocidos y recaudados se imputen a rubro, y que el periodo no se cierre con documentos sin confirmar. También trae facturas, recaudos y nómina ya existentes en otros módulos.",
+    "proposito": "Controlar la ejecución de la vigencia: saldos por rubro, estados NoConfirmado / Confirmado / Anulado y un cierre de mes que exige documentos al día. No genera comprobante contable."
+  },
+  "menu": {
+    "ruta": "Presupuesto → Movimientos (Presupuestos · Periodos · Resoluciones · Ingresos · Gastos · Registro de Movimientos · Otros Módulos) · Reportes (Ingreso · Gasto · Egresos en caja · Cartera) · Históricos · Configuración (Recursos · Rubros · Clasificaciones · Tipos de Movimiento · Divisiones · Contratos · Nómina)",
+    "fuente": "PresupuestoLayout.vue arbolMenu + routes.js /ppto. Menú por grupo: MENUQ_COL · PRESUPUESTO. La ruta ppto.en_construccion se habilita siempre."
+  },
   "ventanas": [
     {
       "uso": "Presupuestos (maestro)",
       "ruta": "ptpto.presupuestos",
       "path": "/ppto",
       "vue": "PTPTOPage → PTPTOComponent",
-      "entrada": "Movimientos → Presupuestos. MODELO PTPTO · CRUDPTPTO / CRUDPTPTODG."
+      "entrada": "Movimientos → Presupuestos. MODELO PRESUPUESTO · CRUDPTPTO / CRUDPTPTODG (no existe SPQ_PTPTO)."
     },
     {
       "uso": "Periodos presupuestales",
       "ruta": "pri.periodos",
       "path": "/ppto",
       "vue": "PRIPage → PRIComponent (presupuesto)",
-      "entrada": "Movimientos → Periodos. MODELO PRESUPUESTO · CAMBIAR_ESTADO_PPTO (CERRAR/reabrir)."
+      "entrada": "Movimientos → Periodos Presupuestales. MODELO PRESUPUESTO · CAMBIAR_ESTADO_PPTO (cerrar / reabrir)."
     },
     {
-      "uso": "CDP y seguimiento de gastos",
-      "ruta": "ptcdp.certificados / seg_ptcdp_cxp.seguimiento / ppto.en_construccion",
+      "uso": "Resoluciones",
+      "ruta": "ptres.resoluciones",
       "path": "/ppto",
-      "vue": "PTCDPPage; SegCDPCxPPage + SeguimientoGastosComponent; EnConstruccionPage",
-      "entrada": "Gastos → CDP (operación). Seguimiento CDP/CxP/Pagos (consulta). Seguimiento Gastos e Históricos→Seguimiento Gasto siguen en construcción (REQ 0100016310)."
+      "vue": "PTRESPage → PTRESComponent",
+      "entrada": "Movimientos → Resoluciones. MODELO PPTO_RECO · CRUDPTRES."
+    },
+    {
+      "uso": "Reconocimientos",
+      "ruta": "ptreco.reconocimientos",
+      "path": "/ppto",
+      "vue": "PTRECOPage → PTRECOComponent",
+      "entrada": "Movimientos → Ingresos → Reconocimientos. MODELO PPTO_RECO · CRUDPTRECO / CRUDPTRECOD."
+    },
+    {
+      "uso": "Seguimiento reconocimientos y recaudos",
+      "ruta": "seg_ptreco_ptreca.seguimientos",
+      "path": "/ppto",
+      "vue": "SegRECOPage",
+      "entrada": "Movimientos → Ingresos → Seguimiento Reconocimientos y Recaudos."
+    },
+    {
+      "uso": "Notas débito / crédito de presupuesto",
+      "ruta": "ptnot.notas_dbcr",
+      "path": "/ppto",
+      "vue": "PTNOTPage → PTNOTComponent",
+      "entrada": "Movimientos → Ingresos → Notas DB CR. FE: PPTO_RECO · CRUDPTNOT y SPK_APLICA_NOTA_PPTO (CONF / ANUL)."
+    },
+    {
+      "uso": "Certificado de disponibilidad (CDP)",
+      "ruta": "ptcdp.certificados",
+      "path": "/ppto",
+      "vue": "PTCDPPage → PTCDPComponent (+ PTRP, PTCXP, PTPAG en modal/árbol)",
+      "entrada": "Movimientos → Gastos → Certificado de Disponibilidad Presupuestal CDP. Un MODELO PPTO_PTCDP."
+    },
+    {
+      "uso": "Seguimiento de gastos",
+      "ruta": "ppto.seguimiento_gastos",
+      "path": "/ppto",
+      "vue": "SeguimientoGastosCatalogoComponent (pestañas CDP / RP / CXP / PAGOS + Confirmar)",
+      "entrada": "Movimientos → Gastos → Seguimiento Gastos. REQ 0100016310 entregado. No confundir con Históricos → Seguimiento Gasto (en construcción)."
+    },
+    {
+      "uso": "Seguimiento CDP, CxP y pagos",
+      "ruta": "seg_ptcdp_cxp.seguimiento",
+      "path": "/ppto",
+      "vue": "SegCDPCxPPage → SeguimientoGastosComponent",
+      "entrada": "Movimientos → Gastos → Seguimiento CDP, CxP y Pagos (consulta)."
+    },
+    {
+      "uso": "Registro de movimientos",
+      "ruta": "ptmov.movimientos",
+      "path": "/ppto",
+      "vue": "PTMOVPage → PTMOVComponent",
+      "entrada": "Movimientos → Registro de Movimientos. MODELO PPTO_RECO · CRUDPTMOV / CRUDPTMOVD."
+    },
+    {
+      "uso": "Traer facturación",
+      "ruta": "ppto.facturacion",
+      "path": "/ppto",
+      "vue": "PresupuestoFacturacionPage / componente de facturación PPTO",
+      "entrada": "Movimientos → Otros Módulos → Facturación. MODELO PPTO_REP · TRAER_FACTURA_PPTO."
+    },
+    {
+      "uso": "Traer recaudos",
+      "ruta": "ppto.traer_recaudos",
+      "path": "/ppto",
+      "vue": "Componente traer recaudos",
+      "entrada": "Movimientos → Otros Módulos → Recaudos. MODELO PPTO_REP · PRESUPUESTO_FPAG."
+    },
+    {
+      "uso": "Anticipos CxP",
+      "ruta": "ppto.anticipos_cxp",
+      "path": "/ppto",
+      "vue": "AnticiposCxpComponent",
+      "entrada": "Movimientos → Otros Módulos → Anticipos CXP. FE llama PPTO_REP · TRAER_ANTICIPOCXP (no está en el SP de hoy)."
+    },
+    {
+      "uso": "Informes (hub)",
+      "ruta": "infoppto.*",
+      "path": "/ppto",
+      "vue": "InfopptoInformeHubPage + Infoppto* (o InfopptoInformeEnConstruccion si el MET Clarion no está mapeado)",
+      "entrada": "Reportes → Ingreso / Gasto / Cartera. MODELO INFORMES_PPTO y PPTO_REP · EXPORT_*."
+    },
+    {
+      "uso": "Históricos en construcción",
+      "ruta": "ppto.en_construccion",
+      "path": "/ppto",
+      "vue": "EnConstruccionPage",
+      "entrada": "Históricos → Cierre · Seguimiento Reconocimientos · Seguimiento Recaudos · Seguimiento Gasto."
     },
     {
       "uso": "Configuración",
       "ruta": "ppto.config.*",
       "path": "/ppto/config",
       "vue": "ConfiguraPPTOPage → ConfPresupuestoComponent",
-      "entrada": "Recursos, rubros, clasificaciones, tipos de movimiento, divisiones, contratos, nómina PPTO."
+      "entrada": "Configuración → Recursos, Rubros, Clasificaciones, Tipos de Movimiento, Divisiones, Contratos, Nómina (periodos / conceptos / plantilla)."
     }
   ],
   "capas": [
@@ -45,28 +140,30 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "parcial",
-      "explicacion": "Maestros antes de operar: recursos, rubros, clasificaciones, tipos de movimiento, divisiones, contratos y catálogo nómina PPTO. Periodo PRI (abrir/cerrar presupuestal). Menú: MENUQ_COL · PRESUPUESTO + USGRUH (ruta ppto.en_construccion ya está en la lista de permisos del layout).",
-      "tablasClave": [
-        "PTPTO",
-        "PRI"
-      ],
+      "estado": "documentado",
+      "explicacion": "Maestros antes de operar: recursos (PTREC), rubros (PTRUB), clasificaciones (PTCLA), tipos de movimiento (PTTMOV), divisiones (PTDIV), contratos/planes (PLN) y catálogo nómina PPTO (NPER, NCOND, NPLTCO). Periodo PRI: abrir o cerrar presupuestal (CERRADO_PPTO) en orden cronológico. Menú: MENUQ_COL · PRESUPUESTO; ppto.en_construccion siempre permitido en el layout.",
+      "tablasClave": ["PTPTO", "PRI", "PTREC", "PTRUB", "PTCLA", "PTTMOV", "PTDIV", "PLN", "NPER", "NCOND", "NPLTCO"],
       "controles": [
         {
           "id": "maestros-ppto",
           "nombre": "Maestros de presupuesto",
-          "explicacion": "ConfPresupuestoComponent llama MODELO PRESUPUESTO. SPQ_PRESUPUESTO.sql: CRUD maestros y CAMBIAR_ESTADO_PPTO.",
-          "invariante": "Cerrar/reabrir PRI en orden cronológico; cierre delega validación a FNK_CIERRE_PERIODO_PPTO.",
+          "explicacion": "ConfPresupuestoComponent llama MODELO PRESUPUESTO. IXONLINE/SQL SPQ_PRESUPUESTO: CRUD de catálogos, COPIAR_RUBROS, HELPER, CRUDNPER / CRUDNCOND / CRUDNPLTCO / CRUDPLN y CAMBIAR_ESTADO_PPTO.",
+          "invariante": "Cerrar o reabrir PRI en orden cronológico. El cierre delega la validación a FNK_CIERRE_PERIODO_PPTO (pendientes NoConfirmado en PTRECO, PTRECA, PTCDP, PTRP, PTCXP, PTPAG).",
           "sps": [
             {
               "nombre": "SPQ_PRESUPUESTO",
-              "metodo": "CRUDPTRUB / CRUDPTREC / CRUDPTCLA / CRUDPTTMOV / CRUDPTDIV / CRUDNPER / CRUDNCOND / COPIAR_RUBROS / HELPER",
-              "rol": "Config. listado FE."
+              "metodo": "CRUDPTRUB / CRUDPTREC / CRUDPTCLA / CRUDPTTMOV / CRUDPTDIV / CRUDNPER / CRUDNCOND / CRUDNPLTCO / CRUDPLN / COPIAR_RUBROS / HELPER",
+              "rol": "Catálogos y vínculo nómina / plan."
             },
             {
               "nombre": "SPQ_PRESUPUESTO",
               "metodo": "CAMBIAR_ESTADO_PPTO",
-              "rol": "Cerrar/reabrir periodo presupuestal (PRI)."
+              "rol": "Cerrar o reabrir periodo presupuestal (PRI.CERRADO_PPTO)."
+            },
+            {
+              "nombre": "FNK_CIERRE_PERIODO_PPTO",
+              "metodo": "(función)",
+              "rol": "Bloquea el cierre si hay documentos NoConfirmado. Typo RECUADOS en el mensaje."
             }
           ]
         }
@@ -76,78 +173,74 @@
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio",
-      "estado": "parcial",
-      "explicacion": "Dos cadenas: ingresos (reconocimientos / recaudos / notas) y gastos (CDP → RP → obligación CxP → pago). Estados ANULAR/CONFIRMAR/DESCONFIRMAR en pptoRegistroEstado.js alineados al comentario de SPQ_PPTO_PTCDP.sql.",
-      "tablasClave": [
-        "PTPTO",
-        "PTCDP",
-        "PTRP",
-        "PTCXP",
-        "PTPAG",
-        "PTRECO",
-        "PTMOV",
-        "PTNOT"
-      ],
+      "estado": "documentado",
+      "explicacion": "Dos cadenas: ingresos (reconocimientos / recaudos / notas) y gastos (CDP → RP → obligación CxP → pago). El maestro de vigencia es SPQ_PRESUPUESTO · CRUDPTPTO (no existe SPQ_PTPTO). Estados ANULAR / CONFIRMAR / DESCONFIRMAR alineados a IXONLINE/SQL SPQ_PPTO_PTCDP. Seguimiento Gastos (ppto.seguimiento_gastos) ya opera: pestañas CDP / RP / CXP / PAGOS y Confirmar.",
+      "tablasClave": ["PTPTO", "PTPTODG", "PTCDP", "PTRP", "PTCXP", "PTPAG", "PTRECO", "PTRECA", "PTMOV", "PTNOT", "PTRES"],
       "controles": [
         {
           "id": "maestro-ptpto",
           "nombre": "Abrir presupuesto",
-          "explicacion": "PTPTOComponent · CRUDPTPTO / CRUDPTPTODG. Cabecera y detalle del presupuesto.",
-          "invariante": "Sin ficha. No afirmar validaciones.",
+          "explicacion": "PTPTOComponent · CRUDPTPTO / CRUDPTPTODG sobre IXONLINE/SQL SPQ_PRESUPUESTO. Cabecera (consecutivo, año, fechas, flags MSALDOXMES / MCCOSTO) y distribución por rubros. El MODELO del JSON del FE es PTPTO o PRESUPUESTO según pantalla; el procedimiento es SPQ_PRESUPUESTO.",
+          "invariante": "No eliminar si hay PTPTODG. CONSECUTIVO único. Sin presupuesto Abierto no se confirman ingresos ni se opera la cadena de gastos de esa vigencia.",
           "sps": [
             {
-              "nombre": "SPQ_PTPTO o SPQ_PRESUPUESTO",
+              "nombre": "SPQ_PRESUPUESTO",
               "metodo": "CRUDPTPTO / CRUDPTPTODG",
-              "rol": "MODELO en FE: PTPTO. Confirmar nombre SPQ al leer sql/."
+              "rol": "Maestro de vigencia. SPQ_PTPTO no existe."
             }
           ]
         },
         {
           "id": "cadena-gastos",
           "nombre": "CDP → RP → CxP → pago",
-          "explicacion": "PTCDPComponent CRUDPTCDP + detalle CRUDPTCDPD. PTRP CRUDPTRP/CRUDPTRPD. PTCXP CRUDPTCXP/CRUDPTCXPD. PTPAG CRUDPTPAG/CRUDPTPAGD. Un solo MODELO PPTO_PTCDP → SPQ_PPTO_PTCDP.",
-          "invariante": "Estados por PROCESO (INSERTAR…DESCONFIRMAR). DESCONFIRMAR CDP puede cascada a RP/CxP/Pago si PPTO_CDP_DESCONFMOV=SI. No anular/desconfirmar con saldos usados en detalle.",
+          "explicacion": "Un solo MODELO PPTO_PTCDP → IXONLINE/SQL SPQ_PPTO_PTCDP: CRUDPTCDP / CRUDPTCDPD, CRUDPTRP / CRUDPTRPD, CRUDPTCXP / CRUDPTCXPD, CRUDPTPAG / CRUDPTPAGD. Consecutivo de CDP vía SPK_GENCONSECUTIVO_PPTO (TABLA CDP; también RP, CXP, PAGOS).",
+          "invariante": "No anular ni desconfirmar con saldos usados en detalle (VALOR_RP / VLR_LIBERADO), salvo DESCONFIRMAR de CDP con PPTO_CDP_DESCONFMOV = SI (cascada a RP / CxP / Pago). No operar sobre CDP anulado.",
           "sps": [
             {
               "nombre": "SPQ_PPTO_PTCDP",
               "metodo": "CRUDPTCDP / CRUDPTCDPD / CRUDPTRP / CRUDPTRPD / CRUDPTCXP / CRUDPTCXPD / CRUDPTPAG / CRUDPTPAGD",
-              "rol": "Operación gastos. listado FE."
+              "rol": "Operación de gastos."
+            },
+            {
+              "nombre": "SPK_GENCONSECUTIVO_PPTO",
+              "metodo": "(procedimiento)",
+              "rol": "Contador CDP / RP / CXP / PAGOS / RECO / RECA en PTPTO."
             }
           ]
         },
         {
           "id": "cadena-ingresos",
-          "nombre": "Reconocimientos y recaudos",
-          "explicacion": "PTRECO CRUDPTRECO + detalle CRUDPTRECOD. Recaudos en PTRECARecaudosComponent (mismo MODELO PPTO_RECO). Notas PTNOT: CRUDPTNOT y SPK_APLICA_NOTA_PPTO. Resoluciones PTRES · CRUDPTRES. Movimientos PTMOV · CRUDPTMOV/CRUDPTMOVD.",
-          "invariante": "CRUDPTNOT no está desarrollado (acuerdo). Aplicar/revertir nota: SPK_APLICA_NOTA_PPTO.",
+          "nombre": "Reconocimientos, recaudos y notas",
+          "explicacion": "IXONLINE/SQL SPQ_PPTO_RECO: CRUDPTRECO / CRUDPTRECOD, CRUDPTRECA / CRUDPTRECAD, CRUDPTRES, CRUDPTMOV / CRUDPTMOVD. El presupuesto debe estar Abierto para confirmar. PTNOTComponent llama PPTO_RECO · CRUDPTNOT (alta/edición) y SPK_APLICA_NOTA_PPTO CONF / ANUL. PREVERSION de SPQ_PPTO_RECO aún no tiene la rama CRUDPTNOT (el FE va adelantado). CRUDPTRECO deja un PRINT 'INGRESO....'.",
+          "invariante": "Confirmar reconocimiento o recaudo exige vigencia Abierta. Aplicar nota CR ajusta ejecución (DISRECO); clase DB no mueve. Validar CRUDPTNOT en preversión: no pedir el METODO a ciegas.",
           "sps": [
             {
               "nombre": "SPQ_PPTO_RECO",
-              "metodo": "CRUDPTRECO / CRUDPTRECOD / CRUDPTMOV / CRUDPTMOVD / CRUDPTRES",
-              "rol": "Ingresos. leído."
+              "metodo": "CRUDPTRECO / CRUDPTRECOD / CRUDPTRECA / CRUDPTRECAD / CRUDPTMOV / CRUDPTMOVD / CRUDPTRES",
+              "rol": "Ingresos. PRE ≠ liberada."
             },
             {
               "nombre": "SPK_APLICA_NOTA_PPTO",
               "metodo": "(procedimiento)",
-              "rol": "Confirmar/revertir nota PTNOT."
+              "rol": "Confirmar (CONF) o revertir (ANUL) nota PTNOT."
             }
           ]
         },
         {
           "id": "seguimiento-gastos",
-          "nombre": "Seguimiento Gastos (menú)",
-          "explicacion": "REQ 0100016310. Menú «Seguimiento Gastos» y Históricos→«Seguimiento Gasto» van a ppto.en_construccion. El componente SeguimientoGastosComponent ya lista PTCDP confirmados (AppStore.read) y detalle PTRP/PTCXP; hoy solo lo monta SegCDPCxPPage.",
-          "invariante": "El usuario de Gastos → Seguimiento Gastos debe ver la consulta, no EnConstruccionPage.",
+          "nombre": "Seguimiento Gastos",
+          "explicacion": "REQ 0100016310 entregado. Gastos → Seguimiento Gastos abre ppto.seguimiento_gastos · SeguimientoGastosCatalogoComponent: pestañas CDP / RP / CXP / PAGOS y botón Confirmar. Gastos → Seguimiento CDP, CxP y Pagos sigue como consulta (seg_ptcdp_cxp.seguimiento). Históricos → Seguimiento Gasto apunta a ppto.en_construccion (duplicado que confunde).",
+          "invariante": "El usuario que pide «ver el seguimiento de gastos» entra por Gastos → Seguimiento Gastos, no por Históricos.",
           "sps": [
             {
               "nombre": "(read)",
-              "metodo": "AppStore.read PTCDP / PTPTO / CEN",
-              "rol": "Grilla seguimiento."
+              "metodo": "AppStore.read PTCDP / PTRP / PTCXP / PTPAG / PTPTO",
+              "rol": "Grilla del catálogo."
             },
             {
               "nombre": "SPQ_PPTO_PTCDP",
-              "metodo": "CRUD* en detalle (consulta)",
-              "rol": "Ver RP, CxP y pagos."
+              "metodo": "CRUD* CONFIRMAR",
+              "rol": "Confirmar desde la pestaña activa."
             }
           ]
         }
@@ -157,25 +250,20 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega",
-      "estado": "parcial",
-      "explicacion": "Factura (TRAER_FACTURA_PPTO), recaudo (PRESUPUESTO_FPAG), nota FNOT (PRESUPUESTO_FNOT) y nómina (ENVIAR → SPK_REVISANOMINA_ANTES + SPK_ENVIARNOMI_PPTO_MASIVO). PRESUPUESTO_FCXC no existe en el script.",
-      "tablasClave": [
-        "PTCDP",
-        "PTRECO",
-        "FCXP",
-        "NPER"
-      ],
+      "estado": "documentado",
+      "explicacion": "Otros módulos empujan a presupuesto: factura (TRAER_FACTURA_PPTO), recaudo (PRESUPUESTO_FPAG), nota de cartera FNOT (PRESUPUESTO_FNOT) y nómina (ENVIAR → SPK_REVISANOMINA_ANTES + SPK_ENVIARNOMI_PPTO_MASIVO). PRESUPUESTO_FCXC no tiene rama. El FE de Anticipos CxP llama TRAER_ANTICIPOCXP sobre PPTO_REP; ese METODO no está en IXONLINE/SQL SPQ_PPTO_REP de hoy.",
+      "tablasClave": ["PTCDP", "PTRECO", "PTRECA", "FTR", "FPAG", "FNOT", "FCXP", "ANT", "NPER"],
       "controles": [
         {
           "id": "traer-otros-modulos",
-          "nombre": "Traer facturación / recaudos / nómina",
-          "explicacion": "Rutas ppto.facturacion, ppto.traer_recaudos, ppto.anticipos_cxp. Nómina PPTO usa ENVIAR.",
-          "invariante": "ENVIAR exige CDP+PPTO en NPER y RPDX vacío. Envío masivo no marca ENPPTO si falta saldo CDP (RETURN silencioso).",
+          "nombre": "Traer facturación, recaudos, nómina y anticipos",
+          "explicacion": "Rutas ppto.facturacion, ppto.traer_recaudos, ppto.anticipos_cxp. Nómina PPTO usa ENVIAR. Informes de apoyo: EXPORT_* en el mismo SPQ_PPTO_REP.",
+          "invariante": "ENVIAR exige CDP y PPTO en NPER y RPDX vacío. El envío masivo no marca ENPPTO si falta saldo CDP (RETURN silencioso). TRAER_FACTURA_PPTO exige PRESUP_CXC_ACTIVADO = SI y PRESUP_TIPORECO = CUENTAC. Anticipos: PRESUP_CXP_ACTIVADO = SI en pantalla; el METODO TRAER_ANTICIPOCXP no está en el SP.",
           "sps": [
             {
               "nombre": "SPQ_PPTO_REP",
               "metodo": "TRAER_FACTURA_PPTO / PRESUPUESTO_FPAG / PRESUPUESTO_FNOT / EXPORT_*",
-              "rol": "Alimentadores e informes. leído."
+              "rol": "Alimentadores e informes. Sin FCXC ni TRAER_ANTICIPOCXP."
             },
             {
               "nombre": "SPQ_PRESUPUESTO",
@@ -185,7 +273,7 @@
             {
               "nombre": "SPK_REVISANOMINA_ANTES",
               "metodo": "(procedimiento)",
-              "rol": "Pre-chequeo rubros → RPDX."
+              "rol": "Pre-chequeo de rubros → RPDX."
             },
             {
               "nombre": "SPK_ENVIARNOMI_PPTO_MASIVO",
@@ -200,21 +288,1149 @@
       "id": "04-unido",
       "numero": 4,
       "nombre": "Subproceso unido",
-      "estado": "parcial",
-      "explicacion": "Nómina: FCXP (PROCEDENCIA=Nomina) → PTRP/PTRPD y SPK_ENTREGA_CXP_PTTO. Factura/recaudo: ENPRESUPUESTO en FTR/FPAG. El cuerpo de SPK_ENTREGA_CXP_PTTO no está en sql/.",
-      "tablasClave": [
-        "PTCXP"
-      ],
-      "controles": []
+      "estado": "documentado",
+      "explicacion": "Nómina: FCXP (PROCEDENCIA = Nomina) → PTRP / PTRPD y SPK_ENTREGA_CXP_PTTO (cuerpo no fichado). Factura y recaudo: marca ENPRESUPUESTO en FTR / FPAG / FNOT. Anticipo ANT.ENPPTO lo pondría TRAER_ANTICIPOCXP si existiera la rama. El PAC de informes (EXPORT_EJECUCION_PAC → SPK_GENERA_PAC_G → FNK_PAC_G_CONSEC) solo llena RPDX.",
+      "tablasClave": ["PTCXP", "PTRP", "FCXP", "FTR", "FPAG", "FNOT", "ANT", "RPDX"],
+      "controles": [
+        {
+          "id": "nomina-a-rp",
+          "nombre": "Nómina unida al RP presupuestal",
+          "explicacion": "Tras ENVIAR, SPK_ENVIARNOMI_PPTO_MASIVO alinea CNSPPTO / CNSCDP, exige saldo CDP ≥ suma de CxP pendientes, arma PTRP / PTRPD por rubro (NCOND o NPLTCO según TOMA_RUBROENVIO_NOMI) y llama SPK_ENTREGA_CXP_PTTO. COMPANIA va fija 01. El contador RP se incrementa a mano (no usa SPK_GENCONSECUTIVO_PPTO).",
+          "invariante": "Si no hay saldo CDP: PRINT y RETURN; NPER.ENPPTO no queda en 1. Línea sin RUBRO: CONTINUE.",
+          "sps": [
+            {
+              "nombre": "SPK_ENVIARNOMI_PPTO_MASIVO",
+              "metodo": "(procedimiento)",
+              "rol": "Une FCXP de nómina a PTRP."
+            },
+            {
+              "nombre": "SPK_ENTREGA_CXP_PTTO",
+              "metodo": "(procedimiento)",
+              "rol": "Referenciado; cuerpo no fichado en este análisis."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "esqueleto",
-      "explicacion": "En el FE de presupuesto no aparece ENV_CONTA / MCP en los METODO listados. Cierre presupuestal (CAMBIAR_ESTADO_PPTO) no se afirma que genere asiento. Históricos → Cierre está en construcción. No inventar OM.",
+      "estado": "documentado",
+      "explicacion": "En el FE de presupuesto no aparece ENV_CONTA ni MCP entre los METODO. CAMBIAR_ESTADO_PPTO cierra PRI y dispara histórico (SPK_GEN_HISTORICO_PPTO); no se afirma asiento. Históricos → Cierre está en construcción aunque los SPK de histórico existen. No inventar Otros Módulos hacia MCP desde este proceso.",
       "tablasClave": [],
-      "controles": []
+      "controles": [
+        {
+          "id": "sin-mcp",
+          "nombre": "No hay envío a MCP",
+          "explicacion": "El módulo controla ejecución presupuestal. La contabilización de factura, recaudo, CxP o nómina ocurre en sus propios procesos, no desde /ppto.",
+          "invariante": "No proponer OM ni SPK_NC_CONTAB_* desde Presupuesto.",
+          "sps": []
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "ppto-config",
+      "nombre": "Configurar catálogos y abrir la vigencia",
+      "icono": "settings",
+      "descripcion": "Lo que hay que tener listo antes del primer CDP o reconocimiento.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Recursos y rubros",
+          "descripcion": "Configuración → Recursos y Rubros. El rubro lleva recurso, clasificación y tipo de movimiento. Se puede copiar rubros de otra vigencia.",
+          "rol": "Administrador",
+          "pantalla": "Presupuesto → Configuración → Recursos / Rubros",
+          "tablas": ["PTREC", "PTRUB"],
+          "sp": "SPQ_PRESUPUESTO · CRUDPTREC / CRUDPTRUB / COPIAR_RUBROS"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Clasificaciones, tipos y divisiones",
+          "descripcion": "Completar PTCLA, PTTMOV y PTDIV. Contratos (PLN): rubros de recaudo, recargo, copago.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Clasificaciones · Tipos de Movimiento · Divisiones · Contratos",
+          "tablas": ["PTCLA", "PTTMOV", "PTDIV", "PLN"],
+          "sp": "SPQ_PRESUPUESTO · CRUDPTCLA / CRUDPTTMOV / CRUDPTDIV / CRUDPLN"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Nómina PPTO",
+          "descripcion": "Periodo de nómina: asociar CNSPPTO y CNSCDP. Conceptos y plantilla: RUBRO_ID. Sin esto ENVIAR aborta.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Nómina → Periodos / Conceptos / Conceptos por Plantilla",
+          "tablas": ["NPER", "NCOND", "NPLTCO"],
+          "sp": "SPQ_PRESUPUESTO · CRUDNPER / CRUDNCOND / CRUDNPLTCO"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Abrir el presupuesto",
+          "descripcion": "Movimientos → Presupuestos: consecutivo, año, fechas, flags. Luego distribución por rubros (PTPTODG).",
+          "rol": "Jefe de presupuesto",
+          "pantalla": "Movimientos → Presupuestos",
+          "tablas": ["PTPTO", "PTPTODG"],
+          "sp": "SPQ_PRESUPUESTO · CRUDPTPTO / CRUDPTPTODG"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Periodo presupuestal abierto",
+          "descripcion": "PRI.CERRADO_PPTO = 0 del mes. Sin esto FNK_CIERRE_PERIODO_PPTO dirá que el periodo no se ha abierto, y confirmar ingresos exige vigencia Abierta.",
+          "rol": "Sistema",
+          "pantalla": "Movimientos → Periodos Presupuestales",
+          "tablas": ["PRI"],
+          "sp": "SPQ_PRESUPUESTO · CAMBIAR_ESTADO_PPTO"
+        }
+      ]
+    },
+    {
+      "id": "ppto-gastos",
+      "nombre": "Cadena de gastos: CDP → RP → CxP → pago",
+      "icono": "payments",
+      "descripcion": "Disponibilidad, compromiso, obligación y pago sobre un solo MODELO.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear el CDP",
+          "descripcion": "Gastos → CDP: presupuesto Abierto, centro de costo, fecha, objetivo, rubros en detalle (valor > 0). Permiso BTN_NUEVO_CDP. Consecutivo por SPK_GENCONSECUTIVO_PPTO.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Gastos → CDP",
+          "tablas": ["PTCDP", "PTCDPD"],
+          "sp": "SPQ_PPTO_PTCDP · CRUDPTCDP / CRUDPTCDPD"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Confirmar el CDP",
+          "descripcion": "El CDP pasa a Confirmado. Desde ahí se abre el RP. No se edita un anulado.",
+          "rol": "Jefe / operador con CONFIRMAR",
+          "pantalla": "CDP → Confirmar",
+          "tablas": ["PTCDP"],
+          "sp": "SPQ_PPTO_PTCDP · CRUDPTCDP (CONFIRMAR)"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Registro presupuestal (RP)",
+          "descripcion": "Un RP por CDP. Detalle por ítem del CDP (valor > 0). Confirmar el RP para poder crear la obligación.",
+          "rol": "Operador",
+          "pantalla": "CDP confirmado → RP",
+          "tablas": ["PTRP", "PTRPD"],
+          "sp": "SPQ_PPTO_PTCDP · CRUDPTRP / CRUDPTRPD"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Obligación y pago",
+          "descripcion": "PTCXP ligada a CDP/RP; luego PTPAG contra esa CxP. Misma regla de estados. No anular si el detalle ya tiene valor usado.",
+          "rol": "Operador",
+          "pantalla": "RP → CxP → Pago",
+          "tablas": ["PTCXP", "PTCXPD", "PTPAG", "PTPAGD"],
+          "sp": "SPQ_PPTO_PTCDP · CRUDPTCXP / CRUDPTPAG"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Desconfirmar el CDP?",
+          "descripcion": "Si PPTO_CDP_DESCONFMOV = SI, desconfirmar el CDP baja Confirmado en RP, CxP y pago del mismo CDP (aviso en pantalla). Si es NO, no se desconfirma con saldos usados.",
+          "rol": "Jefe de presupuesto",
+          "pantalla": "CDP → Desconfirmar",
+          "tablas": ["PTCDP", "PTRP", "PTCXP", "PTPAG", "USVGS"],
+          "sp": "SPQ_PPTO_PTCDP · CRUDPTCDP (DESCONFIRMAR) + FNK_VALORVARIABLE(PPTO_CDP_DESCONFMOV)"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Seguimiento de la cadena",
+          "descripcion": "Gastos → Seguimiento Gastos: pestañas CDP / RP / CXP / PAGOS y Confirmar. Ahí se ve el hilo completo de un tercero o mes.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Gastos → Seguimiento Gastos",
+          "tablas": ["PTCDP", "PTRP", "PTCXP", "PTPAG"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "ppto-ingresos",
+      "nombre": "Cadena de ingresos: reconocimiento → recaudo → nota",
+      "icono": "south_west",
+      "descripcion": "Lo que entra a la vigencia por rubro de ingreso.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Reconocimiento",
+          "descripcion": "Ingresos → Reconocimientos: cabecera PTRECO y detalle por rubro. Confirmar solo si el presupuesto está Abierto.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Ingresos → Reconocimientos",
+          "tablas": ["PTRECO", "PTRECOD"],
+          "sp": "SPQ_PPTO_RECO · CRUDPTRECO / CRUDPTRECOD"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Recaudo presupuestal",
+          "descripcion": "Ligado al reconocimiento. Detalle por rubro. También puede nacer al traer un FPAG (Otros Módulos → Recaudos).",
+          "rol": "Operador",
+          "pantalla": "Reconocimiento → Recaudos / Otros Módulos → Recaudos",
+          "tablas": ["PTRECA", "PTRECAD"],
+          "sp": "SPQ_PPTO_RECO · CRUDPTRECA / CRUDPTRECAD"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Nota débito / crédito",
+          "descripcion": "Ingresos → Notas DB CR: Nueva Nota elige reconocimiento. Confirmar llama SPK_APLICA_NOTA_PPTO ACCION CONF; anular, ANUL. Clase DB no mueve ejecución.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Ingresos → Notas DB CR",
+          "tablas": ["PTNOT"],
+          "sp": "PPTO_RECO · CRUDPTNOT (FE) + SPK_APLICA_NOTA_PPTO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "El FE va adelantado al SP",
+          "descripcion": "PTNOTComponent sí envía CRUDPTNOT. IXONLINE/SQL SPQ_PPTO_RECO PREVERSION aún no tiene esa rama. Validar en preversión antes de reportar fallo o pedir desarrollo.",
+          "rol": "Sistema",
+          "pantalla": "Notas DB CR → Guardar",
+          "tablas": ["PTNOT"],
+          "sp": "SPQ_PPTO_RECO (sin CRUDPTNOT en PREVERSION)"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Ejecución de ingresos",
+          "descripcion": "Reportes → Ingreso (ejecución por rubro / centro, listados RECO / RECA, reconocimientos por tercero).",
+          "rol": "Operador",
+          "pantalla": "Reportes → Ingreso",
+          "tablas": ["PTPTOI", "PTRECO", "PTRECA"],
+          "sp": "INFORMES_PPTO / PPTO_REP · EXPORT_LISTADO_RECO_TER"
+        }
+      ]
+    },
+    {
+      "id": "ppto-alimentadores",
+      "nombre": "Traer factura, recaudo, nómina y anticipo",
+      "icono": "input",
+      "descripcion": "Lo que ya existe en otro módulo y se imputa a la vigencia.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Traer factura",
+          "descripcion": "Otros Módulos → Facturación. Exige PRESUP_CXC_ACTIVADO = SI, PRESUP_TIPORECO = CUENTAC, factura ENPRESUPUESTO = 0, PTPTO vigente a la fecha, PLN con rubro y PRESUP_CCOSTO.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Otros Módulos → Facturación",
+          "tablas": ["FTR", "PTRECO", "PLN"],
+          "sp": "SPQ_PPTO_REP · TRAER_FACTURA_PPTO"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Traer recaudo",
+          "descripcion": "Otros Módulos → Recaudos. FPAG ENPRESUPUESTO = 0; no glosas ni devolución; si la factura ya está en presupuesto, los reconocimientos deben estar Confirmados.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Otros Módulos → Recaudos",
+          "tablas": ["FPAG", "PTRECA"],
+          "sp": "SPQ_PPTO_REP · PRESUPUESTO_FPAG"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Enviar nómina",
+          "descripcion": "Configuración → Nómina → Periodos: ENVIAR. Exige CNSCDP y CNSPPTO, no enviado antes, RPDX vacío (SPK_REVISANOMINA_ANTES). Luego SPK_ENVIARNOMI_PPTO_MASIVO.",
+          "rol": "Jefe de presupuesto / nómina",
+          "pantalla": "Configuración → Nómina → Periodos → Enviar",
+          "tablas": ["NPER", "FCXP", "PTRP"],
+          "sp": "SPQ_PRESUPUESTO · ENVIAR"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Anticipos CxP?",
+          "descripcion": "Otros Módulos → Anticipos CXP: Traer Legalización (PRESUP_CXP_ACTIVADO = SI). El FE llama PPTO_REP · TRAER_ANTICIPOCXP. Ese METODO no está en SPQ_PPTO_REP de hoy: validar en preversión.",
+          "rol": "Operador",
+          "pantalla": "Movimientos → Otros Módulos → Anticipos CXP",
+          "tablas": ["ANT", "FCXP"],
+          "sp": "PPTO_REP · TRAER_ANTICIPOCXP (solo FE)"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Marcas ENPRESUPUESTO / ENPPTO",
+          "descripcion": "FTR, FPAG, FNOT y NPER quedan marcados cuando el envío cuaja. Si falta saldo CDP en nómina, el SPK sale en silencio y ENPPTO no se enciende.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": ["FTR", "FPAG", "FNOT", "NPER"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "ppto-cierre",
+      "nombre": "Cerrar o reabrir el periodo presupuestal",
+      "icono": "lock",
+      "descripcion": "El mes no se cierra con documentos NoConfirmado.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Revisar pendientes",
+          "descripcion": "Confirmar o anular reconocimientos, recaudos, CDP, RP, CxP y pagos del mes. Las notas PTNOT y los movimientos PTMOV no entran en la función de cierre.",
+          "rol": "Jefe de presupuesto",
+          "pantalla": "Seguimiento Gastos / Reconocimientos",
+          "tablas": ["PTRECO", "PTRECA", "PTCDP", "PTRP", "PTCXP", "PTPAG"],
+          "sp": "—"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Cerrar el mes",
+          "descripcion": "Periodos Presupuestales → Cerrar. No puede haber meses anteriores del mismo año abiertos. Llama FNK_CIERRE_PERIODO_PPTO; si no devuelve OK, no cierra.",
+          "rol": "Jefe de presupuesto",
+          "pantalla": "Movimientos → Periodos Presupuestales",
+          "tablas": ["PRI"],
+          "sp": "SPQ_PRESUPUESTO · CAMBIAR_ESTADO_PPTO + FNK_CIERRE_PERIODO_PPTO"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Histórico del mes",
+          "descripcion": "Tras el cierre, SPK_GEN_HISTORICO_PPTO copia operación a tablas *H y snapshot PTPTOI/GH. Al reabrir, SPK_DEL_HISTORICO_PPTO borra ese mes. Históricos → Cierre no tiene pantalla (en construcción).",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": ["PTRECOH", "PTCDPH", "PTPTOIH"],
+          "sp": "SPK_GEN_HISTORICO_PPTO / SPK_DEL_HISTORICO_PPTO"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Reabrir?",
+          "descripcion": "Solo si no hay meses posteriores ya cerrados. PRI.CERRADO_PPTO vuelve a 0 y se borra el histórico del mes.",
+          "rol": "Jefe de presupuesto",
+          "pantalla": "Periodos Presupuestales → Reabrir",
+          "tablas": ["PRI"],
+          "sp": "SPQ_PRESUPUESTO · CAMBIAR_ESTADO_PPTO"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Mes cerrado",
+          "descripcion": "CERRADO_PPTO = 1. No es un asiento MCP. No confundir con el cierre contable de PRI.",
+          "rol": "Sistema",
+          "pantalla": "Periodos Presupuestales",
+          "tablas": ["PRI"],
+          "sp": "—"
+        }
+      ]
+    }
+  ],
+  "estadosPresupuesto": {
+    "titulo": "Estados de la vigencia, los documentos y el periodo",
+    "descripcion": "Qué significa cada valor que se ve en Presupuesto y qué permite o bloquea.",
+    "columnas": ["Valor", "Dónde"],
+    "nota": "Cerrar el mes no contabiliza. Confirmar un ingreso exige PTPTO.ESTADO = Abierto.",
+    "filas": [
+      {
+        "codigo": "Abi",
+        "tono": "verde",
+        "etiquetas": ["PTPTO.ESTADO = Abierto"],
+        "significa": "Vigencia operable: se confirman reconocimientos y se crean CDP de ese consecutivo.",
+        "queHacer": "Trabajar en esta vigencia. Cargar el presupuesto actual del año."
+      },
+      {
+        "codigo": "CerP",
+        "tono": "gris",
+        "etiquetas": ["PTPTO.ESTADO = Cerrado"],
+        "significa": "Vigencia cerrada: no se confirma operación nueva sobre ella.",
+        "queHacer": "Consultar e informar. No usar para confirmar ingresos."
+      },
+      {
+        "codigo": "NoC",
+        "tono": "ambar",
+        "etiquetas": ["NoConfirmado (CDP, RP, CxP, pago, RECO, RECA, nota)"],
+        "significa": "Borrador: se edita y se anula. Impide el cierre del mes.",
+        "queHacer": "Confirmar o anular antes de CAMBIAR_ESTADO_PPTO."
+      },
+      {
+        "codigo": "Conf",
+        "tono": "verde",
+        "etiquetas": ["Confirmado"],
+        "significa": "Documento firme. En CDP habilita el RP; en RECO habilita recaudo y notas.",
+        "queHacer": "Seguir la cadena. Desconfirmar solo con permiso y, en CDP, según PPTO_CDP_DESCONFMOV."
+      },
+      {
+        "codigo": "Anu",
+        "tono": "rojo",
+        "etiquetas": ["Anulado"],
+        "significa": "No se edita, no se confirma, no se desconfirma.",
+        "queHacer": "Crear otro documento. No reutilizar el consecutivo anulado."
+      },
+      {
+        "codigo": "Pri0",
+        "tono": "verde",
+        "etiquetas": ["PRI.CERRADO_PPTO = 0"],
+        "significa": "Periodo presupuestal abierto.",
+        "queHacer": "Operar el mes. Cerrar en orden (sin meses anteriores abiertos)."
+      },
+      {
+        "codigo": "Pri1",
+        "tono": "azul",
+        "etiquetas": ["PRI.CERRADO_PPTO = 1"],
+        "significa": "Periodo presupuestal cerrado; hay snapshot histórico *H.",
+        "queHacer": "Reabrir solo si no hay meses posteriores cerrados. No es el cierre contable."
+      },
+      {
+        "codigo": "EnP",
+        "tono": "azul",
+        "etiquetas": ["FTR/FPAG/FNOT.ENPRESUPUESTO = 1"],
+        "significa": "Ya se trajo a presupuesto; no se vuelve a enviar por el mismo METODO.",
+        "queHacer": "Si falta, revisar variables y PLN. No es la nota interna PTNOT."
+      },
+      {
+        "codigo": "Nom",
+        "tono": "azul",
+        "etiquetas": ["NPER.ENPPTO = 1"],
+        "significa": "La nómina quedó en presupuesto (todas las FCXP imputadas).",
+        "queHacer": "Si sigue en 0: rubros en RPDX o saldo CDP insuficiente (RETURN silencioso)."
+      },
+      {
+        "codigo": "CR",
+        "tono": "verde",
+        "etiquetas": ["PTNOT.CLASE = CR"],
+        "significa": "Nota crédito: al confirmar ajusta DISRECO y saldos del reconocimiento.",
+        "queHacer": "Confirmar con SPK_APLICA_NOTA_PPTO CONF."
+      },
+      {
+        "codigo": "DB",
+        "tono": "ambar",
+        "etiquetas": ["PTNOT.CLASE = DB"],
+        "significa": "Nota débito: SPK_APLICA_NOTA_PPTO retorna sin cambios de ejecución.",
+        "queHacer": "No esperar movimiento de saldo."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear o editar la vigencia (presupuesto)",
+      "donde": "Presupuesto → Movimientos → Presupuestos → Nuevo / Editar",
+      "condicion": "CONSECUTIVO único; no eliminar si hay distribución por rubros.",
+      "noEs": "No es el periodo PRI (eso es Periodos Presupuestales)."
+    },
+    {
+      "necesidad": "Distribuir rubros del presupuesto",
+      "donde": "Presupuestos → fila → distribución (PTPTODG)",
+      "condicion": "Presupuesto existente.",
+      "noEs": "No es copiar rubros de otra vigencia (eso es Configuración → Rubros → Copiar)."
+    },
+    {
+      "necesidad": "Configurar recursos",
+      "donde": "Presupuesto → Configuración → Recursos",
+      "condicion": "RECURSO único por compañía.",
+      "noEs": "No es el recaudo PTRECA."
+    },
+    {
+      "necesidad": "Configurar rubros",
+      "donde": "Presupuesto → Configuración → Rubros",
+      "condicion": "Catálogo PTRUB de la compañía.",
+      "noEs": "La ejecución del rubro se ve en Reportes, no aquí."
+    },
+    {
+      "necesidad": "Copiar rubros de otra vigencia",
+      "donde": "Configuración → Rubros → Copiar rubros",
+      "condicion": "Presupuesto origen y destino.",
+      "noEs": "No copia CDP ni reconocimientos."
+    },
+    {
+      "necesidad": "Clasificaciones, tipos de movimiento y divisiones",
+      "donde": "Configuración → Clasificaciones / Tipos de Movimiento / Divisiones",
+      "condicion": "Código único por compañía.",
+      "noEs": "No son los movimientos PTMOV (eso es Registro de Movimientos)."
+    },
+    {
+      "necesidad": "Asignar rubros al plan o contrato",
+      "donde": "Configuración → Contratos",
+      "condicion": "IDPLAN; rubros de recaudo, recargo, copago.",
+      "noEs": "Sin estos rubros TRAER_FACTURA_PPTO y PRESUPUESTO_FPAG fallan."
+    },
+    {
+      "necesidad": "Ligar un periodo de nómina a presupuesto y CDP",
+      "donde": "Configuración → Nómina → Periodos",
+      "condicion": "CNSPPTO y CNSCDP en NPER.",
+      "noEs": "No envía la nómina: eso es el botón Enviar."
+    },
+    {
+      "necesidad": "Asignar rubro a un concepto de nómina",
+      "donde": "Configuración → Nómina → Conceptos / Conceptos por Plantilla",
+      "condicion": "RUBRO_ID del concepto o de la plantilla.",
+      "noEs": "El chequeo de ENVIAR mira el campo RUBRO (texto), no solo RUBRO_ID."
+    },
+    {
+      "necesidad": "Enviar la nómina a presupuesto",
+      "donde": "Configuración → Nómina → Periodos → Enviar",
+      "condicion": "CDP y PPTO asignados; no enviado; RPDX vacío.",
+      "noEs": "Si falta saldo CDP el proceso sale sin error visible y ENPPTO no queda en 1."
+    },
+    {
+      "necesidad": "Crear un CDP",
+      "donde": "Movimientos → Gastos → CDP → (permiso BTN_NUEVO_CDP)",
+      "condicion": "Presupuesto elegido; centro de costo y fecha; rubros con valor > 0.",
+      "noEs": "No es la CxP de tesorería (FCXP)."
+    },
+    {
+      "necesidad": "Confirmar, anular o desconfirmar un CDP",
+      "donde": "CDP → Confirmar / Anular / Desconfirmar",
+      "condicion": "No anulado. Anular o desconfirmar sin saldos usados, salvo PPTO_CDP_DESCONFMOV = SI.",
+      "noEs": "Desconfirmar con la variable encendida también baja RP, CxP y pagos."
+    },
+    {
+      "necesidad": "Crear el registro presupuestal (RP)",
+      "donde": "CDP Confirmado → RP",
+      "condicion": "Un RP por CDP; fecha RP; detalle por ítem del CDP.",
+      "noEs": "No es el movimiento PTMOV."
+    },
+    {
+      "necesidad": "Crear la obligación y el pago presupuestales",
+      "donde": "RP → CxP → Pago (mismo CDP)",
+      "condicion": "CDP no anulado; valores > 0; sin uso en detalle para anular.",
+      "noEs": "No contabiliza ni paga en caja: es la cadena presupuestal."
+    },
+    {
+      "necesidad": "Ver el hilo CDP / RP / CxP / pagos",
+      "donde": "Movimientos → Gastos → Seguimiento Gastos",
+      "condicion": "Presupuesto (y mes o tercero si filtra).",
+      "noEs": "No es Históricos → Seguimiento Gasto (esa opción está en construcción)."
+    },
+    {
+      "necesidad": "Confirmar varios documentos de gasto desde el seguimiento",
+      "donde": "Seguimiento Gastos → pestaña CDP / RP / CXP / PAGOS → Confirmar",
+      "condicion": "Filas NoConfirmado y permiso CONFIRMAR.",
+      "noEs": "No sustituye crear el CDP (eso sigue en Gastos → CDP)."
+    },
+    {
+      "necesidad": "Registrar un reconocimiento",
+      "donde": "Movimientos → Ingresos → Reconocimientos",
+      "condicion": "Presupuesto Abierto para confirmar.",
+      "noEs": "No es traer la factura (eso es Otros Módulos → Facturación)."
+    },
+    {
+      "necesidad": "Registrar un recaudo presupuestal",
+      "donde": "Reconocimiento → Recaudos, o Otros Módulos → Recaudos",
+      "condicion": "RECO existente; para traer FPAG, reconocimientos Confirmados si la factura ya está en presupuesto.",
+      "noEs": "No es el recaudo de cartera (FPAG) hasta que se trae."
+    },
+    {
+      "necesidad": "Crear una nota débito o crédito de presupuesto",
+      "donde": "Movimientos → Ingresos → Notas DB CR → Nueva Nota",
+      "condicion": "Reconocimiento de la vigencia. Guardar llama CRUDPTNOT (validar en preversión).",
+      "noEs": "No es la nota FNOT de cartera (esa se trae con PRESUPUESTO_FNOT)."
+    },
+    {
+      "necesidad": "Aplicar o anular la nota de presupuesto",
+      "donde": "Notas DB CR → Confirmar / Anular",
+      "condicion": "Confirmar: NoConfirmado. Anular: Confirmado. Clase DB no mueve ejecución.",
+      "noEs": "No usa el METODO de cartera FNOT_CRUD."
+    },
+    {
+      "necesidad": "Traer una factura a presupuesto",
+      "donde": "Movimientos → Otros Módulos → Facturación",
+      "condicion": "PRESUP_CXC_ACTIVADO = SI; PRESUP_TIPORECO = CUENTAC; factura no traída; PLN con rubro.",
+      "noEs": "PRESUPUESTO_FCXC no tiene rama: use TRAER_FACTURA_PPTO."
+    },
+    {
+      "necesidad": "Traer un recaudo de cartera",
+      "donde": "Movimientos → Otros Módulos → Recaudos",
+      "condicion": "FPAG no enviado; no glosa ni devolución.",
+      "noEs": "No crea el recibo: solo lo imputa."
+    },
+    {
+      "necesidad": "Traer la legalización de un anticipo CxP",
+      "donde": "Movimientos → Otros Módulos → Anticipos CXP → Traer Legalización",
+      "condicion": "PRESUP_CXP_ACTIVADO = SI; ANT con CNSFCXP y ENPPTO = 0. El METODO TRAER_ANTICIPOCXP no está en el SP de hoy.",
+      "noEs": "No es el anticipo de tesorería: solo el puente a presupuesto."
+    },
+    {
+      "necesidad": "Imprimir CDP, RP o nota",
+      "donde": "Fila → Imprimir (CDP / RP / PTNOT)",
+      "condicion": "Consecutivos diligenciados. RP: Nro. Contrato (NODOCUMENTO) si se quiere en el PDF.",
+      "noEs": "No es el informe de ejecución (eso es Reportes)."
+    },
+    {
+      "necesidad": "Ver ejecución por rubro o centro de costo",
+      "donde": "Reportes → Ingreso / Gasto → Ejecución por Rubro o por Centro de costo",
+      "condicion": "Presupuesto y filtros del hub. Algunos MET Clarion caen a página en construcción.",
+      "noEs": "No es Históricos → Informes (ahí se repiten rutas; Cierre no existe)."
+    },
+    {
+      "necesidad": "Listar reconocimientos, recaudos, CDP, compromisos u obligaciones",
+      "donde": "Reportes → Ingreso / Gasto → Listado…",
+      "condicion": "Filtros de fechas o presupuesto según el informe.",
+      "noEs": "Listado no confirma ni crea documentos."
+    },
+    {
+      "necesidad": "Cerrar el periodo presupuestal del mes",
+      "donde": "Movimientos → Periodos Presupuestales → Cerrar",
+      "condicion": "Meses anteriores del año ya cerrados; cero documentos NoConfirmado.",
+      "noEs": "No es el cierre contable ni Históricos → Cierre (en construcción)."
+    },
+    {
+      "necesidad": "Reabrir el periodo presupuestal",
+      "donde": "Periodos Presupuestales → Reabrir",
+      "condicion": "No hay meses posteriores cerrados.",
+      "noEs": "Borra el histórico *H del mes; no reabre PTPTO.ESTADO."
+    },
+    {
+      "necesidad": "Registrar un movimiento presupuestal (traslado / ajuste de rubro)",
+      "donde": "Movimientos → Registro de Movimientos",
+      "condicion": "PTMOV / PTMOVD; consecutivo SPK_GENCONSECUTIVO.",
+      "noEs": "No es el CDP ni el reconocimiento."
+    },
+    {
+      "necesidad": "Registrar una resolución",
+      "donde": "Movimientos → Resoluciones",
+      "condicion": "CRUDPTRES.",
+      "noEs": "No sustituye confirmar el reconocimiento."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nuevo (Presupuesto)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta de vigencia PTPTO (consecutivo, año, fechas, flags)."
+    },
+    {
+      "label": "Distribución por rubros",
+      "icono": "account_tree",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Detalle PTPTODG del presupuesto elegido."
+    },
+    {
+      "label": "Cerrar periodo",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "PRI.CERRADO_PPTO = 1 si FNK_CIERRE_PERIODO_PPTO devuelve OK."
+    },
+    {
+      "label": "Reabrir periodo",
+      "icono": "lock_open",
+      "color": "amber",
+      "estilo": "outline",
+      "descripcion": "Quita el cierre y borra el histórico del mes."
+    },
+    {
+      "label": "Nuevo (Recurso / Rubro / Clasif. / Tipo / División)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta de catálogo en Configuración."
+    },
+    {
+      "label": "Copiar rubros",
+      "icono": "content_copy",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Copia PTRUB entre vigencias (BUSCAR / GUARDAR)."
+    },
+    {
+      "label": "Enviar (nómina)",
+      "icono": "send",
+      "color": "secondary",
+      "estilo": "solid",
+      "descripcion": "NPER → revisión de rubros → RP presupuestal de las CxP de nómina."
+    },
+    {
+      "label": "Agregar CDP",
+      "icono": "note_add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Nuevo certificado. Exige presupuesto y permiso BTN_NUEVO_CDP."
+    },
+    {
+      "label": "Confirmar (CDP / RP / CxP / Pago)",
+      "icono": "check",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Pasa el documento a Confirmado. Permiso CONFIRMAR."
+    },
+    {
+      "label": "Anular",
+      "icono": "block",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Anula cabecera sin saldos usados. Permiso ANULAR."
+    },
+    {
+      "label": "Desconfirmar",
+      "icono": "undo",
+      "color": "amber",
+      "estilo": "outline",
+      "descripcion": "Vuelve a NoConfirmado. En CDP puede cascada si PPTO_CDP_DESCONFMOV = SI."
+    },
+    {
+      "label": "Imprimir CDP",
+      "icono": "print",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "PDF PTPTO_IMPRESION · PPTO_PROCESOS · TABLA = PTCDP."
+    },
+    {
+      "label": "Imprimir RP",
+      "icono": "print",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "PDF del compromiso; Nro. Contrato (NODOCUMENTO) sale en el reporte."
+    },
+    {
+      "label": "Nuevo RP",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Registro presupuestal sobre un CDP Confirmado."
+    },
+    {
+      "label": "Nuevo CxP presupuestal",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Obligación PTCXP ligada a CDP / RP."
+    },
+    {
+      "label": "Nuevo pago presupuestal",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "PTPAG contra la CxP presupuestal."
+    },
+    {
+      "label": "Árbol CDP",
+      "icono": "account_tree",
+      "color": "teal",
+      "estilo": "flat",
+      "descripcion": "Vista de RP, CxP y pagos colgados del CDP."
+    },
+    {
+      "label": "Confirmar (Seguimiento Gastos)",
+      "icono": "check",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma la selección de la pestaña CDP / RP / CXP / PAGOS."
+    },
+    {
+      "label": "Nuevo reconocimiento",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta PTRECO. Permiso RECONOCIMIENTO si el menú lo exige."
+    },
+    {
+      "label": "Nuevo recaudo",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta PTRECA ligada al reconocimiento."
+    },
+    {
+      "label": "Nueva Nota",
+      "icono": "note_add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta PTNOT (CRUDPTNOT desde el FE)."
+    },
+    {
+      "label": "Confirmar nota",
+      "icono": "check",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "SPK_APLICA_NOTA_PPTO ACCION CONF."
+    },
+    {
+      "label": "Anular nota",
+      "icono": "block",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "SPK_APLICA_NOTA_PPTO ACCION ANUL."
+    },
+    {
+      "label": "Imprimir nota",
+      "icono": "print",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "PDF TABLA = PTNOT."
+    },
+    {
+      "label": "Traer factura",
+      "icono": "input",
+      "color": "secondary",
+      "estilo": "solid",
+      "descripcion": "Otros Módulos → Facturación · TRAER_FACTURA_PPTO."
+    },
+    {
+      "label": "Traer recaudo",
+      "icono": "input",
+      "color": "secondary",
+      "estilo": "solid",
+      "descripcion": "Otros Módulos → Recaudos · PRESUPUESTO_FPAG."
+    },
+    {
+      "label": "Traer Legalización",
+      "icono": "table_chart",
+      "color": "secondary",
+      "estilo": "solid",
+      "descripcion": "Anticipos CXP: llama TRAER_ANTICIPOCXP (METODO ausente en el SP de hoy)."
+    },
+    {
+      "label": "Exportar",
+      "icono": "file_download",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Excel de la grilla (notas, seguimiento, anticipos, informes EXPORT_*)."
+    },
+    {
+      "label": "Buscar presupuesto",
+      "icono": "search",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Diálogo PTPTO (vigencias Abiertas salvo «mostrar todos»)."
+    },
+    {
+      "label": "Guardar / Cancelar",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma o cierra el formulario de cabecera o detalle."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Presupuesto (MENUQ_COL · PRESUPUESTO)",
+      "accion": "Ver y abrir las opciones del árbol",
+      "rol": "Según grupo del cliente",
+      "descripcion": "El árbol es fijo en el layout. Qué opción se habilita lo decide el menú PRESUPUESTO (USPROH / USGRUH). ppto.en_construccion se permite siempre."
+    },
+    {
+      "codigo": "BTN_NUEVO_CDP",
+      "accion": "Agregar CDP",
+      "rol": "Operador de gastos",
+      "descripcion": "Sin este control el botón de alta de CDP queda deshabilitado aunque haya presupuesto."
+    },
+    {
+      "codigo": "CONFIRMAR",
+      "accion": "Confirmar CDP, RP, CxP, pago o documentos de ingreso",
+      "rol": "Operador / jefe",
+      "descripcion": "Mismo código en cadena de gastos, seguimiento y reconocimientos según la pantalla."
+    },
+    {
+      "codigo": "ANULAR",
+      "accion": "Anular documento presupuestal",
+      "rol": "Jefe de presupuesto",
+      "descripcion": "No anula si hay saldos usados en el detalle."
+    },
+    {
+      "codigo": "DESCONFIRMAR",
+      "accion": "Desconfirmar documento",
+      "rol": "Jefe de presupuesto",
+      "descripcion": "En CDP, la cascada la enciende la variable PPTO_CDP_DESCONFMOV, no este permiso."
+    },
+    {
+      "codigo": "RECONOCIMIENTO",
+      "accion": "Operar reconocimientos",
+      "rol": "Operador de ingresos",
+      "descripcion": "Alta y cambio de estado de PTRECO cuando el grupo lo exige."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "PRESUP_CCOSTO",
+      "tipo": "USVGS",
+      "valorSugerido": "Centro de costo (sin publicar el valor del cliente)",
+      "descripcion": "Centro por defecto al crear CDP y al traer factura o recaudo. Obligatorio en TRAER_FACTURA_PPTO y PRESUPUESTO_FPAG."
+    },
+    {
+      "nombre": "EDIT_VIGENCIA_PPTO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Permite recalcular fechas de vencimiento y reintegro del CDP al editar."
+    },
+    {
+      "nombre": "PPTO_CDP_DESCONFMOV",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: desconfirmar el CDP baja Confirmado en RP, CxP y pagos del mismo CDP."
+    },
+    {
+      "nombre": "PRESUP_CXP_ACTIVADO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Enciende Traer Legalización en Anticipos CXP. La pantalla avisa si no es SI."
+    },
+    {
+      "nombre": "PRESUP_CXC_ACTIVADO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Enciende TRAER_FACTURA_PPTO. Si no es SI el METODO no inserta."
+    },
+    {
+      "nombre": "PRESUP_TIPORECO",
+      "tipo": "USVGS",
+      "valorSugerido": "CUENTAC (único modo documentado)",
+      "descripcion": "TRAER_FACTURA_PPTO solo inserta cuando vale CUENTAC."
+    },
+    {
+      "nombre": "TOMA_RUBROENVIO_NOMI",
+      "tipo": "USVGS",
+      "valorSugerido": "NCOND u otro (plantilla NPLTCO)",
+      "descripcion": "De dónde toma el rubro SPK_REVISANOMINA_ANTES y el envío masivo. Sin valor de cliente."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "ppto-crudptnot-fe-adelantado",
+      "tipo": "fe",
+      "detalle": "PTNOTComponent llama PPTO_RECO · CRUDPTNOT (guardar) y SPK_APLICA_NOTA_PPTO CONF/ANUL. IXONLINE/SQL SPQ_PPTO_RECO PREVERSION aún no tiene la rama CRUDPTNOT. El FE está adelantado al SP.",
+      "solucionPropuesta": "Validar en preversión. No pedir CRUDPTNOT a ciegas: PRE ≠ liberada. Completar la rama o no ofrecer Nueva Nota hasta que exista."
+    },
+    {
+      "id": "ppto-ppto-reco-pre-distinta",
+      "tipo": "sql",
+      "detalle": "SPQ_PPTO_RECO PREVERSION distinta de la última liberada 2.0.7 (IDANT 2.0.6). El resto de objetos de presupuesto contrastados salieron idénticos.",
+      "solucionPropuesta": "Probar ingresos y notas en preversión. No dictaminar sobre la liberada a ciegas ni re-pedir un arreglo ya en canasta."
+    },
+    {
+      "id": "ppto-traer-anticipocxp-sin-rama",
+      "tipo": "hueco",
+      "detalle": "AnticiposCxpComponent llama MODELO PPTO_REP · TRAER_ANTICIPOCXP. SPQ_PPTO_REP de hoy lista TRAER_FACTURA_PPTO, PRESUPUESTO_FPAG, PRESUPUESTO_FNOT y EXPORT_*; no está TRAER_ANTICIPOCXP.",
+      "solucionPropuesta": "Implementar la rama o retirar el botón hasta que exista. Validar en preversión."
+    },
+    {
+      "id": "ppto-presupesto-fcxc-sin-rama",
+      "tipo": "hueco",
+      "detalle": "PRESUPUESTO_FCXC no tiene rama en SPQ_PPTO_REP. El camino vigente de cartera a presupuesto es TRAER_FACTURA_PPTO (CUENTAC).",
+      "solucionPropuesta": "No citar FCXC como METODO operable. Usar TRAER_FACTURA_PPTO."
+    },
+    {
+      "id": "ppto-historicos-en-construccion",
+      "tipo": "hueco",
+      "detalle": "Históricos → Cierre, Seguimiento Reconocimientos y Seguimiento Recaudos apuntan a ppto.en_construccion. SPK_GEN_HISTORICO_PPTO y SPK_DEL_HISTORICO_PPTO existen y se ejecutan al cerrar o reabrir el periodo, sin pantalla de consulta.",
+      "solucionPropuesta": "Pantalla de consulta sobre *H o quitar las opciones del árbol hasta que existan."
+    },
+    {
+      "id": "ppto-seguimiento-gasto-duplicado",
+      "tipo": "decision",
+      "detalle": "Gastos → Seguimiento Gastos (ppto.seguimiento_gastos, REQ 0100016310) ya funciona. Históricos → Procesos Históricos → Seguimiento Gasto sigue en construcción. El usuario entra al duplicado y cree que el módulo no está.",
+      "solucionPropuesta": "Apuntar la opción histórica al catálogo o retirarla. Capacitar: la ruta viva es Gastos → Seguimiento Gastos."
+    },
+    {
+      "id": "ppto-typo-recuados",
+      "tipo": "sql",
+      "detalle": "FNK_CIERRE_PERIODO_PPTO arma el mensaje con RECUADOS (sin d) al listar recaudos NoConfirmado.",
+      "solucionPropuesta": "Corregir el texto en la función. No cambia la regla (sí bloquea si hay PTRECA NoConfirmado)."
+    },
+    {
+      "id": "ppto-print-ingreso-reco",
+      "tipo": "sql",
+      "detalle": "CRUDPTRECO deja PRINT 'INGRESO....' en IXONLINE/SQL SPQ_PPTO_RECO.",
+      "solucionPropuesta": "Quitar el PRINT en preversión. No afecta el OK/KO."
+    },
+    {
+      "id": "ppto-spq-ptpto-no-existe",
+      "tipo": "doc",
+      "detalle": "No existe SPQ_PTPTO. El maestro de vigencia es SPQ_PRESUPUESTO · CRUDPTPTO / CRUDPTPTODG. El MODELO del FE puede decir PTPTO.",
+      "solucionPropuesta": "Documentar y capacitar con el nombre real del procedimiento. No buscar SPQ_PTPTO en el catálogo."
+    },
+    {
+      "id": "ppto-tablas-sin-ficha",
+      "tipo": "doc",
+      "detalle": "En documentación de tablas solo PRI (CERRADO_PPTO) cubre presupuesto. No hay PTPTO.md, PTCDP.md, PTRP.md, PTCXP.md, PTPAG.md, PTRECO.md, PTRECA.md, PTNOT.md ni PTRUB.md.",
+      "solucionPropuesta": "Fichar al menos PTPTO, PTCDP y PTRECO en el catálogo de tablas."
+    },
+    {
+      "id": "ppto-sin-envio-conta",
+      "tipo": "decision",
+      "detalle": "No hay envío a MCP desde este módulo. Cerrar periodo no genera asiento. No inventar Otros Módulos de presupuesto hacia contabilidad.",
+      "solucionPropuesta": "Dejar la capa 5 explícita: la contabilización ocurre en factura, recaudo, CxP o nómina."
+    },
+    {
+      "id": "ppto-enviar-nomina-silencio",
+      "tipo": "sql",
+      "detalle": "SPK_ENVIARNOMI_PPTO_MASIVO, si no hay saldo CDP, hace PRINT y RETURN: NPER.ENPPTO no queda en 1 y el FE puede mostrar un envío «a medias» sin KO.",
+      "solucionPropuesta": "Devolver KO explícito o avisar en pantalla cuando queden FCXP fuera."
+    },
+    {
+      "id": "ppto-informes-clarion-fallback",
+      "tipo": "hueco",
+      "detalle": "INFORMES_PPTO expone MET Clarion (PTOI_*, PTOG_*). El hub monta componente si el nombre está en el registro; si no, InfopptoInformeEnConstruccion. Varios informes de Históricos repiten Reportes.",
+      "solucionPropuesta": "Mapear o ocultar los MET sin vista. No prometer el informe Clarion 1:1."
+    },
+    {
+      "id": "ppto-spk-historico-sin-pantalla",
+      "tipo": "hueco",
+      "detalle": "SPK_GEN_HISTORICO_PPTO y SPK_DEL_HISTORICO_PPTO corren en el cierre/reapertura. Históricos → Cierre no consulta esas tablas.",
+      "solucionPropuesta": "Pantalla de solo lectura sobre el snapshot *H o documentar que el histórico es interno del cierre."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer en presupuesto?",
+      "intro": "Treinta tareas frecuentes: dónde está el botón, qué condición exige y qué no hay que confundir (Históricos en construcción, CxP de tesorería, nota de cartera)."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es el presupuesto y cómo se mueve el dinero",
+      "imagen": "img/ppto_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa del módulo Presupuesto: config, vigencia, gastos, ingresos, alimentadores y cierre",
+      "intro": "El menú **Presupuesto** (`/ppto`) controla la **vigencia** (PTPTO), los **catálogos** y dos cadenas: **gastos** (CDP → RP → CxP → pago) e **ingresos** (reconocimiento → recaudo → nota). Otros módulos **traen** factura, recaudo y nómina. **No** genera comprobante contable.",
+      "md": "## Cuatro bloques y un no\n\n| Bloque | Qué hace | Tablas |\n|---|---|---|\n| Configurar | Recursos, rubros, clasificaciones, tipos, divisiones, contratos, nómina PPTO, periodo PRI | PTREC, PTRUB, PTCLA, PTTMOV, PTDIV, PLN, NPER, PRI |\n| Vigencia | Abrir el presupuesto del año y repartir rubros | PTPTO, PTPTODG |\n| Gastos | Disponibilidad, compromiso, obligación, pago | PTCDP, PTRP, PTCXP, PTPAG |\n| Ingresos | Reconocer, recaudar, notar | PTRECO, PTRECA, PTNOT |\n| Alimentar | Factura, recaudo, nómina, anticipo | FTR, FPAG, FNOT, FCXP, ANT |\n| Cerrar | Mes sin NoConfirmado; histórico interno | PRI.CERRADO_PPTO, *H |\n| No | Envío a MCP / Otros Módulos de contabilidad | — |\n\n## La regla del menú\n\nEl árbol es fijo (PresupuestoLayout). **Qué opción se habilita** lo decide MENUQ_COL · PRESUPUESTO. La ruta de página en construcción **siempre** está permitida: por eso Históricos → Cierre se ve aunque no haya pantalla.",
+      "puntosClave": [
+        "Sin vigencia Abierta no se confirma el ingreso.",
+        "Seguimiento Gastos ya existe en Gastos, no en Históricos.",
+        "Cerrar el mes no contabiliza."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa del menú Presupuesto: qué abre cada opción",
+      "intro": "Las ramas de Movimientos, Reportes, Históricos y Configuración, la pantalla y el procedimiento (IXONLINE/SQL).",
+      "md": "| Opción | Pantalla | Procedimiento · METODO | Nota |\n|---|---|---|---|\n| Presupuestos | Maestro vigencia | SPQ_PRESUPUESTO · CRUDPTPTO / CRUDPTPTODG | No existe SPQ_PTPTO |\n| Periodos Presupuestales | Cerrar / reabrir mes | SPQ_PRESUPUESTO · CAMBIAR_ESTADO_PPTO | FNK_CIERRE_PERIODO_PPTO |\n| Resoluciones | Catálogo PTRES | SPQ_PPTO_RECO · CRUDPTRES | — |\n| Reconocimientos | PTRECO | SPQ_PPTO_RECO · CRUDPTRECO | PRE ≠ liberada |\n| Seguimiento Reco/Reca | Consulta | (read) | — |\n| Notas DB CR | PTNOT | FE: CRUDPTNOT + SPK_APLICA_NOTA_PPTO | SP sin rama CRUDPTNOT |\n| CDP | Cadena gastos | SPQ_PPTO_PTCDP · CRUD* | Un MODELO |\n| Seguimiento Gastos | Pestañas CDP/RP/CXP/PAGOS | (read) + CONFIRMAR | REQ 0100016310 |\n| Seguimiento CDP, CxP y Pagos | Consulta | (read) | — |\n| Registro de Movimientos | PTMOV | SPQ_PPTO_RECO · CRUDPTMOV | — |\n| Facturación / Recaudos | Traer | SPQ_PPTO_REP · TRAER_FACTURA_PPTO / PRESUPUESTO_FPAG | — |\n| Anticipos CXP | Traer Legalización | PPTO_REP · TRAER_ANTICIPOCXP | METODO ausente en el SP |\n| Reportes | Hub Infoppto | INFORMES_PPTO / EXPORT_* | Fallback en construcción |\n| Históricos → Cierre y seguimientos | En construcción | SPK_GEN/DEL_HISTORICO_PPTO | SPK sin pantalla |\n| Configuración | Catálogos | SPQ_PRESUPUESTO · CRUD* / ENVIAR | — |\n\n## Lo que no está aquí pero parece\n\n- **CxP de tesorería y pago en caja:** módulo Cuentas por pagar / Caja.\n- **Nota de cartera FNOT:** Cartera → Notas; aquí solo se trae (PRESUPUESTO_FNOT) o se crea PTNOT.\n- **Asiento MCP:** no sale de este menú.",
+      "puntosClave": [
+        "ppto.en_construccion está siempre habilitada: no significa que el proceso exista.",
+        "Imprimir usa PTPTO_IMPRESION · PPTO_PROCESOS."
+      ]
+    },
+    {
+      "id": "flujo-config",
+      "tipo": "flujo",
+      "kicker": "Flujo 1",
+      "titulo": "Configurar catálogos y abrir la vigencia",
+      "flujoId": "ppto-config",
+      "imagen": "img/ppto_config_sketchnote.jpg",
+      "imagenAlt": "Configuración de presupuesto: recursos, rubros, nómina y vigencia",
+      "intro": "Cinco pasos: catálogos, contratos, nómina PPTO, abrir PTPTO y dejar el mes abierto."
+    },
+    {
+      "id": "config-detalle",
+      "tipo": "texto",
+      "kicker": "Configuración",
+      "titulo": "Catálogos, nómina PPTO y periodo campo por campo",
+      "intro": "Qué pide cada pantalla de Configuración y qué hace el cierre del mes (sin mezclarlo con el cierre contable).",
+      "md": "## Catálogos (SPQ_PRESUPUESTO)\n\n**Recursos (PTREC)** únicos por compañía. **Rubros (PTRUB)** con recurso, clasificación y tipo. **Clasificaciones (PTCLA)**, **tipos de movimiento (PTTMOV)** y **divisiones (PTDIV)**. **Copiar rubros** (BUSCAR / GUARDAR) replica el catálogo entre vigencias, no los documentos.\n\n## Contratos (PLN)\n\nEdita descripción, estado y rubros (RUBRO, RUBROANT, RUBRORECART, RUBROCOPA, NORECOCOPA). TRAER_FACTURA_PPTO y PRESUPUESTO_FPAG los exigen.\n\n## Nómina PPTO\n\n- Periodos (NPER): CNSPPTO y CNSCDP. **Enviar** llama SPK_REVISANOMINA_ANTES (RPDX) y SPK_ENVIARNOMI_PPTO_MASIVO.\n- Conceptos (NCOND) y plantilla (NPLTCO): RUBRO_ID. El chequeo de envío mira el campo RUBRO (texto) según TOMA_RUBROENVIO_NOMI.\n\n## Periodo PRI\n\nCerrar: meses anteriores del año ya cerrados; FNK_CIERRE_PERIODO_PPTO = OK. Reabrir: sin meses posteriores cerrados. El mensaje de recaudos dice RECUADOS (typo). No es el cierre contable.",
+      "puntosClave": [
+        "Sin rubro en el plan no se trae la factura.",
+        "Enviar nómina sin saldo CDP no marca ENPPTO y no lanza KO."
+      ]
+    },
+    {
+      "id": "flujo-gastos",
+      "tipo": "flujo",
+      "kicker": "Flujo 2",
+      "titulo": "Cadena de gastos: CDP → RP → CxP → pago",
+      "flujoId": "ppto-gastos",
+      "imagen": "img/ppto_gastos_sketchnote.jpg",
+      "imagenAlt": "Cadena de gastos presupuestales",
+      "intro": "Un MODELO PPTO_PTCDP. No anular con saldos usados. Seguimiento Gastos ya está en el menú Gastos."
+    },
+    {
+      "id": "gastos-detalle",
+      "tipo": "texto",
+      "kicker": "Gastos",
+      "titulo": "CDP, RP, obligación, pago y seguimiento",
+      "intro": "Reglas de estado, la variable de desconfirmar en cascada y dónde se consulta el hilo.",
+      "md": "## Un MODELO\n\nIXONLINE/SQL **SPQ_PPTO_PTCDP** atiende cabecera y detalle de PTCDP, PTRP, PTCXP y PTPAG. El consecutivo lo da **SPK_GENCONSECUTIVO_PPTO** (TABLA CDP / RP / CXP / PAGOS).\n\n## Estados\n\nINSERTAR deja **NoConfirmado**. CONFIRMAR / ANULAR / DESCONFIRMAR. No se opera un CDP anulado. No se anula ni desconfirma si el detalle tiene VALOR_RP o VLR_LIBERADO, salvo DESCONFIRMAR de CDP con **PPTO_CDP_DESCONFMOV = SI** (cascada a RP, CxP y pago; la pantalla advierte).\n\n## Seguimiento\n\n**Gastos → Seguimiento Gastos** (REQ 0100016310): pestañas CDP / RP / CXP / PAGOS y Confirmar. **Gastos → Seguimiento CDP, CxP y Pagos** es consulta. **Históricos → Seguimiento Gasto** está en construcción: no entre por ahí.\n\n## Impresión\n\nFila → Imprimir: PTPTO_IMPRESION · PPTO_PROCESOS. En el RP, el Nro. Contrato (NODOCUMENTO) sale en el PDF.",
+      "puntosClave": [
+        "BTN_NUEVO_CDP habilita el alta.",
+        "Desconfirmar en cascada es variable, no permiso."
+      ]
+    },
+    {
+      "id": "flujo-ingresos",
+      "tipo": "flujo",
+      "kicker": "Flujo 3",
+      "titulo": "Cadena de ingresos: reconocimiento → recaudo → nota",
+      "flujoId": "ppto-ingresos",
+      "imagen": "img/ppto_ingresos_sketchnote.jpg",
+      "imagenAlt": "Cadena de ingresos presupuestales",
+      "intro": "Confirmar exige vigencia Abierta. Las notas: el FE llama un METODO que PREVERSION aún no tiene."
+    },
+    {
+      "id": "ingresos-notas",
+      "tipo": "texto",
+      "kicker": "Ingresos",
+      "titulo": "Reconocimientos, recaudos y notas débito/crédito",
+      "intro": "Qué hace cada documento y por qué Nueva Nota puede fallar en preversión.",
+      "md": "## Reconocimiento y recaudo (SPQ_PPTO_RECO)\n\nPTRECO + PTRECOD por rubro; PTRECA + PTRECAD ligados al RECO. Confirmar solo con PTPTO **Abierto**. CRUDPTRECO deja un PRINT «INGRESO....». PREVERSION de este SP **no es idéntica** a la liberada: validar ahí, no pedir a ciegas.\n\n## Notas PTNOT\n\nPantalla **Ingresos → Notas DB CR**: lista por AppStore.read, **Nueva Nota** envía **CRUDPTNOT**, Confirmar / Anular envían **SPK_APLICA_NOTA_PPTO** (CONF / ANUL). Clase **CR** ajusta DISRECO; clase **DB** no mueve. PREVERSION **aún no tiene** CRUDPTNOT: el FE va adelantado.\n\n## No confundir\n\nLa nota de cartera **FNOT** se trae con PRESUPUESTO_FNOT (alimentador). No es esta pantalla.",
+      "puntosClave": [
+        "Validar notas en preversión antes de reportar que «no guarda».",
+        "SPK_APLICA_NOTA_PPTO sí existe y aplica/revierte."
+      ]
+    },
+    {
+      "id": "alimentadores",
+      "tipo": "flujo",
+      "kicker": "Flujo 4",
+      "titulo": "Traer factura, recaudo, nómina y anticipo",
+      "flujoId": "ppto-alimentadores",
+      "imagen": "img/ppto_alimentadores_sketchnote.jpg",
+      "imagenAlt": "Alimentadores de presupuesto",
+      "intro": "Otros módulos empujan a la vigencia. PRESUPUESTO_FCXC y TRAER_ANTICIPOCXP no están en el SP de hoy."
+    },
+    {
+      "id": "informes",
+      "tipo": "texto",
+      "kicker": "Reportes",
+      "titulo": "Informes de ejecución, listados e impresión",
+      "intro": "El hub de Reportes, los EXPORT_* y el fallback en construcción.",
+      "md": "## Hub Infoppto\n\nReportes → Ingreso / Gasto / Cartera / Egresos en caja. El nombre Clarion (PTOI_*, PTOG_*, Lista_RECO…) decide el componente. Si no está mapeado, se muestra la página **en construcción**.\n\n## Lo que sí lee SQL de hoy\n\nIXONLINE/SQL **SPQ_PPTO_REP**: EXPORT_FPAG_DETALLADO, EXPORT_FNOT, EXPORT_LISTADO_RECO_TER, EXPORT_EJECUCION_PAC (SPK_GENERA_PAC_G), EXPORT_LISTA_EGRESOS, EXPORT_LISTA_FTR_ANU. **INFORMES_PPTO** atiende las ejecuciones PTOI_/PTOG_ (varios MET heredados de Clarion).\n\n## Impresión de documento\n\nCDP, RP, nota: **PTPTO_IMPRESION · PPTO_PROCESOS** (TABLA = PTCDP / PTRP / PTNOT).\n\n## Históricos → Informes\n\nRepiten rutas de Reportes. **Cierre** y los seguimientos históricos no son informes: están en construcción.",
+      "puntosClave": [
+        "Un MET Clarion sin vista no es un fallo de datos: es fallback.",
+        "El PAC solo llena RPDX; no escribe PTPTO."
+      ]
+    },
+    {
+      "id": "flujo-cierre",
+      "tipo": "flujo",
+      "kicker": "Flujo 5",
+      "titulo": "Cerrar o reabrir el periodo presupuestal",
+      "flujoId": "ppto-cierre",
+      "imagen": "img/ppto_cierre_sketchnote.jpg",
+      "imagenAlt": "Cierre de periodo presupuestal",
+      "intro": "Cero NoConfirmado, orden cronológico, histórico interno. No es MCP."
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosPresupuesto",
+      "kicker": "Semáforo",
+      "titulo": "Estados de la vigencia, los documentos y el periodo",
+      "intro": "Abierto / Cerrado, NoConfirmado / Confirmado / Anulado, CERRADO_PPTO, ENPRESUPUESTO y clase de nota."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo contrastado el 2026-10-04 entre menú, pantallas e IXONLINE/SQL (PREVERSION = 2.0.7, IDANT 2.0.6). Validar en preversión antes de pedir desarrollo.",
+      "md": "## Huecos y adelantos FE/SP\n\n1. **CRUDPTNOT:** el FE guarda notas; PREVERSION de SPQ_PPTO_RECO no tiene la rama. SPQ_PPTO_RECO PRE ≠ liberada.\n2. **TRAER_ANTICIPOCXP:** el FE lo llama; no está en SPQ_PPTO_REP.\n3. **PRESUPUESTO_FCXC** sin rama: el camino es TRAER_FACTURA_PPTO.\n4. **Históricos** Cierre / Seg. Reconocimientos / Seg. Recaudos / Seg. Gasto en construcción. Los SPK de histórico sí corren al cerrar.\n5. **Seguimiento Gasto duplicado:** la ruta viva es Gastos → Seguimiento Gastos.\n6. **Informes Clarion** sin mapa caen a en construcción.\n\n## SQL y documentación\n\n7. Typo **RECUADOS** en FNK_CIERRE_PERIODO_PPTO.\n8. PRINT «INGRESO....» en CRUDPTRECO.\n9. **SPQ_PTPTO no existe** (maestro = SPQ_PRESUPUESTO).\n10. Tablas PTPTO, PTCDP, PTRECO… **sin ficha** (solo PRI.CERRADO_PPTO).\n11. Envío nómina **sin KO** si falta saldo CDP.\n12. **No hay envío a MCP** desde este módulo.\n\nNinguno se pide a ciegas: validar en preversión.",
+      "puntosClave": [
+        "Lo primero que reportan como «no hay seguimiento» suele ser Históricos → Seguimiento Gasto.",
+        "No re-pedir un arreglo ya en la canasta de SPQ_PPTO_RECO."
+      ]
     }
   ]
 }

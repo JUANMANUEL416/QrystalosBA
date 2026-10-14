@@ -1,0 +1,106 @@
+{
+  "id": "radicaciones",
+  "nombre": "Radicaciones · Cuentas médicas",
+  "modulo": "RLOT_LOTE",
+  "familia": "radicaciones",
+  "prioridad": 21,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "SPQ RLOT_LOTE / RLOTD_ASIGNAR / RCAL* / RFIN leídos 2026-09-19 (PREVERSION=2.0.3). Lote → activar → asignar Sin Tramitar. RFIN no es FPAG.",
+  "actualizado": "2026-09-19T16:20:00",
+  "notaSql": "sql/ PREVERSION idéntica a 2.0.3. CRUDRLOT: chequeo IDASIGNACION duplicado está muerto (AND 1=2).",
+  "alcanceHasta": "Menú Gestión de radicaciones: lote → cuentas médicas → calidad → financiero. Fuera: /rad/pila e incapacidades (proceso hermano), PQR, repositorio legal, Empaqueta/FCXC de facturación.",
+  "hermanoDe": "incapacidades-pila",
+  "ventanas": [
+    {
+      "uso": "Lotes de radicación",
+      "ruta": "rad.glote",
+      "path": "/rad/glote",
+      "vue": "RLOTPage → RLOTComponent",
+      "entrada": "Gestión de radicaciones → Lotes. MODELO RLOT_LOTE · MANTENIMIENTO / CRUDRLOT / CRUDPRIORI / ACCIONES / ACTIVACION. Docs: tabla RLOT + RLOTD."
+    },
+    {
+      "uso": "Cuentas médicas",
+      "ruta": "rad.gcuentasmedicas",
+      "path": "/rad/gcuentasmedicas",
+      "vue": "CuentasMedicas → PorProcesar / Procesados / Inconsistencias",
+      "entrada": "RLOTD_ASIGNAR · CRUDASIGNAR / CRUDPROCESADOS."
+    },
+    {
+      "uso": "Calidad",
+      "ruta": "rad.gcalidad",
+      "path": "/rad/gcalidad",
+      "vue": "CalidadPage → GestionQA / RespuestaQA",
+      "entrada": "RCAL_CALIDAD · CRUDINSERTAR / CRUD_CARGA_MASIVA. RCALD_CALIDAD · CRUDASIGNAR."
+    },
+    {
+      "uso": "Financiero (radicaciones)",
+      "ruta": "rad.gfinanciero",
+      "path": "/rad/gfinanciero",
+      "vue": "FinancieroPage → FinancieroComponent",
+      "entrada": "RFIN · DASHBOARD / CARGAR_PAGOS / LISTAR_DETALLE_CARGA / BUSCAR_RADICADO / REPORTE_PAGOS_MENSUAL. No es Recaudos FPAG."
+    },
+    {
+      "uso": "Historial de documentos",
+      "ruta": "rad.ghistorialdocs",
+      "path": "/rad/ghistorialdocs",
+      "vue": "HistorialDocumentosComponent / DocumentViewer",
+      "entrada": "DOCS_VISOR (visor). Compartido con incapacidades."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Prioridades (CRUDPRIORI) y tercero del lote (RLOT.IDTERCERO → TER). Resto de maestros no inventado.",
+      "tablasClave": ["RLOT", "RLOTD", "TER"],
+      "controles": []
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "CRUDRLOT INSERTAR deja RLOTD Sin Tramitar. ACTIVACION pone ESTADO_LOTE=1. CRUDASIGNAR toma TOP 1 Sin Tramitar de lote activo (prioridad DESC); ignora IDRLOTD del JSON al asignar.",
+      "tablasClave": ["RLOT", "RLOTD", "RLOTDL"],
+      "controles": [
+        {
+          "id": "asignar-siguiente",
+          "nombre": "Asignar siguiente Sin Tramitar",
+          "explicacion": "Solo lotes activos. Bitácora RLOTDL.",
+          "invariante": "Sin Tramitar o KO «No hay registros…».",
+          "sps": [{ "nombre": "SPQ_RLOTD_ASIGNAR", "metodo": "CRUDASIGNAR", "rol": "Leído." }]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "CRUDRLOT: Excel con radicado único. Calidad: 100% de filas deben existir. RFIN: radicado+observación; radicado debe existir en facturación.",
+      "tablasClave": [],
+      "controles": []
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "esqueleto",
+      "explicacion": "No confundir con radicar cuenta de cobro (facturacion · FCXC). Financiero RFIN no es FPAG. Incapacidades/PILA es proceso hermano.",
+      "tablasClave": [],
+      "controles": []
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "esqueleto",
+      "explicacion": "Sin evidencia de OM/MCP en estas pantallas.",
+      "tablasClave": [],
+      "controles": []
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-02T20:26:43.160Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016064",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261001-0100016064",
+    "idReq": "0100016064",
+    "fecha": "2026-08-12",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Esperanza SAS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "DANNA CASTRO",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "hotfix/CESPER82",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Actualización de formato de factura para procedimientos por paquete\n\nSe solicita una actualización del formato de factura para procedimientos por paquete, ya que actualmente los procedimientos aparecen al mismo nivel que los detalles del servicio honorarios, materiales  y derechos de sala. Esto genera confusión en la EPS, que puede interpretar que se están cobrando múltiples servicios independientes o duplicando conceptos dentro de una misma atención quirúrgica o de procedimiento.\n\nSe solicita actualización del formato de factura para este tipo de servicio  procedimiento salga diferente al Detalle del servicio.\n\n1. Acceder al formato de factura para procedimientos por paquete.\n2. Observar la disposición actual de los procedimientos y honorarios. DETALLE: Actualización de formato de factura para procedimientos por paquete\n\nSe solicita una actualización del formato de factura para procedimientos por paquete, ya que actualmente los procedimientos aparecen al mismo nivel que los detalles del servicio honorarios, materiales  y derechos de sala. Esto genera confusión en la EPS, que puede interpretar que se están cobrando múltiples servicios independientes o duplicando conceptos dentro de una misma atención quirúrgica o de procedimiento.\n\ncontexto en el pdf anexo esta el que dice modelo la idea es ajustar el formato de factura para que se muestre igual",
+    "criteriosAceptacion": "1) En factura **CEFE83839** (y otras con procedimiento quirúrgico/paquete hospitalario), al imprimir o ver PDF desde **Administrativo → Facturación → Facturas**, **Urg-Hospi-Domi** o **Buscar factura**, el bloque **PROCEDIMIENTOS** muestra el procedimiento como encabezado y, debajo, el **detalle del servicio** (honorarios, materiales, derechos de sala) con título o sangría distinta — alineado a **CEFE83839_MEDELO.pdf**.\n2) Las líneas de detalle no se ven al mismo nivel visual que el procedimiento ni como cobros independientes duplicados.\n3) Montos, subtotales, CUFE y QR DIAN coinciden con FTR/FTRD (sin cambio contable).\n4) Regresión: facturas sin cirugía/RPDX en **03GSCEM** mantienen layout actual; **fmt03GS** / otros clientes sin acuerdo explícito no se modifican.\n5) Tras despliegue: reimprimir CEFE83839; si hay PDF cacheado (FACTE=2), **LIBERAR_PDF** y reimprimir.\n6) Coordinador contrasta **CEFE83839.pdf** vs **CEFE83839_MEDELO.pdf** en bloques procedimiento/detalle.",
+    "alcance": "Proceso **facturacion** · control **Ver / imprimir factura** (`FTRComponent.vue` → `ImprimeFormatoFtr`, `src/boot/FmtFtr/RptFtr.js`). Cliente **Clínica Esperanza SAS** (`hotfix/CESPER82`), formato **03GSCEM** (`FTR.IDFORMATO` o USVGS `IDFORMATOFTR`). Datos: **FTR_IMPRESION · DATOSFTR** (referencia IXONLINE **SPQ_FTR_IMPRESION**; detalle admisión vía **SPK_RPT_ANEXO_PREFAC**, campos `CLASESER`, `NOM_PREFIJO_FTRD` si **ANEXO_FTR=SI**). Cambio principal: **`fmt03GSCEM.js`**. Verificar USVGS **ANEXO_FTR** (y **IMPRIME_DETPAQUETE** solo si la factura es EPQ). Fuera: RIPS, DIAN, CXC, tarifas HPRED.",
+    "restricciones": "No alterar importes ni SPK_RPT_ANEXO_PREFAC salvo evidencia de datos mal clasificados. PDF cacheado (`GET_FTR_BASE64`): exige reimpresión o **LIBERAR_PDF**. No replicar **fmt06E** (paquete TIPOFAC=M) si la referencia usa RPDX cirugía. PDF adjuntos sin extracto pypdf — comparación visual en dictamen 4.6.",
+    "analisis": "**REQ IX 0100016064:** Ajustar PDF de facturas con **procedimiento por paquete** para separar procedimiento del detalle (honorarios, materiales, derechos de sala). Adjuntos **CEFE83839.pdf** (hoy) y **CEFE83839_MEDELO.pdf** (objetivo).\n\n**KB + Qrystalos2:** Impresión → `ImprimeFormatoFtr` → `FTR_IMPRESION · DATOSFTR` → `IDFORMATO` **03GSCEM**. En procedencias clínicas (HADM/SALUD…), detalle desde **SPK_RPT_ANEXO_PREFAC** (RPDX): `CLASESER` PROCEDIMIENTOS/SERVICIOS; `NOM_PREFIJO_FTRD` si **ANEXO_FTR=SI** (`sql_refe/0100016362/SPQ_FTR_IMPRESION.sql`).\n\n**Paso 0:** **Defecto de maquetación PDF** (no capacitación, no módulo nuevo). Caminos del control: imprimir en pestaña Facturas, detalle, Urg-Hospi-Domi (`FTRAComponent`), masiva/evento/programa, Buscar factura, caja — todos usan `ImprimeFormatoFtr`.\n\n**Causa:** En **fmt03GSCEM.js** los encabezados por **NOM_PREFIJO_FTRD** dentro de PROCEDIMIENTOS están deshabilitados (código comentado / `nomPrefijoFtrd` vacío), por lo que honorarios/materiales/sala se listan al mismo nivel que el procedimiento. Opcional: **ANEXO_FTR≠SI** impide que el backend envíe categorías.\n\n**Solución:** Maquetación en **fmt03GSCEM.js** (procedimiento → categorías de detalle, como el modelo) + confirmar **ANEXO_FTR=SI** en Esperanza. **SPQ_FTR_IMPRESION** solo si, con ANEXO_FTR=SI, DATOSFTR no trae `NOM_PREFIJO_FTRD` — entonces releer PREVERSION antes de diff.\n\n**Contabilidad:** No afecta.",
+    "opciones": [
+      {
+        "titulo": "Maquetación fmt03GSCEM",
+        "descripcion": "Reactivar títulos/sangría y subtotales por NOM_PREFIJO_FTRD bajo cada procedimiento; probar CEFE83839."
+      },
+      {
+        "titulo": "USVGS ANEXO_FTR=SI",
+        "descripcion": "Habilita NOM_PREFIJO_FTRD en DATOSFTR; combinar con A si hoy está en NO."
+      },
+      {
+        "titulo": "SQL SPQ_FTR_IMPRESION / SPK_RPT_ANEXO_PREFAC",
+        "descripcion": "Solo si A+B no bastan y el recordset clasifica mal las líneas."
+      }
+    ],
+    "recomendacion": "**A + B.** Desarrollo en **fmt03GSCEM.js** alineado al PDF modelo; validar **ANEXO_FTR** en USVGS. Sin cambio SQL previsto; releer **SPQ_FTR_IMPRESION** a carpeta del caso solo si falla validación de recordset. Post-despliegue: reimprimir y **LIBERAR_PDF** si aplica.",
+    "cambioPropuestoSimple": "En la factura impresa de una cirugía en paquete, hoy el procedimiento y los honorarios, materiales y derechos de sala se ven mezclados, como cobros sueltos. Se propone el mismo aspecto que el PDF modelo: bloque claro del procedimiento y, aparte, el detalle del servicio agrupado, para que la EPS no interprete duplicidad.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Parcial",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Solo maquetación PDF (FmtFtr). No altera FTR/FTRD ni ENVIA_CONTAB/MCP/MCUE/MCPE. Afecta contabilidad: No.",
+        "validadoEn": "2026-10-02T20:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [
+      {
+        "nombre": "CEFE83839_MEDELO.pdf",
+        "ruta": "activo/20261001-0100016064/archivos/CEFE83839_MEDELO.pdf",
+        "extracto": "CEFE83839_MEDELO.extracto.txt",
+        "extractoRuta": "activo/20261001-0100016064/archivos/CEFE83839_MEDELO.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 386415,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-02T15:15:21",
+        "url": "/api/caso/20261001-0100016064/archivo/CEFE83839_MEDELO.pdf",
+        "urlExtracto": "/api/caso/20261001-0100016064/archivo/CEFE83839_MEDELO.extracto.txt"
+      },
+      {
+        "nombre": "CEFE83839.pdf",
+        "ruta": "activo/20261001-0100016064/archivos/CEFE83839.pdf",
+        "extracto": "CEFE83839.extracto.txt",
+        "extractoRuta": "activo/20261001-0100016064/archivos/CEFE83839.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 277974,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-02T15:15:22",
+        "url": "/api/caso/20261001-0100016064/archivo/CEFE83839.pdf",
+        "urlExtracto": "/api/caso/20261001-0100016064/archivo/CEFE83839.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1) En factura **CEFE83839** (y otras con procedimiento quirúrgico/paquete hospitalario), al imprimir o ver PDF desde **Administrativo → Facturación → Facturas**, **Urg-Hospi-Domi** o **Buscar factura**, el bloque **PROCEDIMIENTOS** muestra el procedimiento como encabezado y, debajo, el **detalle del servicio** (honorarios, materiales, derechos de sala) con título o sangría distinta — alineado a **CEFE83839_MEDELO.pdf**.\n2) Las líneas de detalle no se ven al mismo nivel visual que el procedimiento ni como cobros independientes duplicados.\n3) Montos, subtotales, CUFE y QR DIAN coinciden con FTR/FTRD (sin cambio contable).\n4) Regresión: facturas sin cirugía/RPDX en **03GSCEM** mantienen layout actual; **fmt03GS** / otros clientes sin acuerdo explícito no se modifican.\n5) Tras despliegue: reimprimir CEFE83839; si hay PDF cacheado (FACTE=2), **LIBERAR_PDF** y reimprimir.\n6) Coordinador contrasta **CEFE83839.pdf** vs **CEFE83839_MEDELO.pdf** en bloques procedimiento/detalle.",
+      "originalesEn": "2026-10-02T20:25:36.671Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En factura **CEFE83839** (y otras con procedimiento quirúrgico/paquete hospitalario), al imprimir o ver PDF desde **Administrativo → Facturación → Facturas**, **Urg-Hospi-Domi** o **Buscar factura**, el bloque **PROCEDIMIENTOS** muestra el procedimiento como encabezado y, debajo, el **detalle del servicio** (honorarios, materiales, derechos de sala) con título o sangría distinta — alineado a **CEFE83839_MEDELO.pdf**.\n2) Las líneas de detalle no se ven al mismo nivel visual que el procedimiento ni como cobros independientes duplicados.\n3) Montos, subtotales, CUFE y QR DIAN coinciden con FTR/FTRD (sin cambio contable).\n4) Regresión: facturas sin cirugía/RPDX en **03GSCEM** mantienen layout actual; **fmt03GS** / otros clientes sin acuerdo explícito no se modifican.\n5) Tras despliegue: reimprimir CEFE83839; si hay PDF cacheado (FACTE=2), **LIBERAR_PDF** y reimprimir.\n6) Coordinador contrasta **CEFE83839.pdf** vs **CEFE83839_MEDELO.pdf** en bloques procedimiento/detalle.",
+      "trasAnalisisEn": "2026-10-02T20:25:48.318Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (sin dictamen HTML). Defecto layout **03GSCEM** para procedimiento paquete hospitalario. **SPQ_FTR_IMPRESION · DATOSFTR** sin ficha leída; referencia sql_refe/0100016362. Bajar script al caso solo si validación de recordset falla con ANEXO_FTR=SI. PDF sin extracto — dictamen 4.6 comparación visual.",
+      "fecha": "2026-10-02T20:30:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_FTR_IMPRESION · DATOSFTR · referencia · lectura DATOSFTR en prueba",
+        "SPK_RPT_ANEXO_PREFAC · anidado · releer PREVERSION solo si clasificación incorrecta",
+        "SPQ_FTR_COL · LIBERAR_PDF · leido · cache PDF",
+        "SPQ_FTR_COL · ADD_PDF_FTR · leido · persistir PDF FACTE=2"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261001-0100016064/diagramas/flujo.html",
+      "subidaEn": "2026-10-02T15:26:12",
+      "url": "/api/caso/20261001-0100016064/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261001-0100016064-flujo.html"
+    },
+    "mockups": [
+      "activo/20261001-0100016064/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261001-0100016064\\sql\\",
+    "carpetaRelativa": "activo/20261001-0100016064/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016064\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "ADD_PDF_FTR",
+        "estado": "leido",
+        "hace": "Adjunta/registra PDF en factura (binario o ruta según FE).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "LIBERAR_PDF",
+        "estado": "leido",
+        "hace": "Libera flag PDF pendiente / regenera impresión.",
+        "llama": []
+      }
+    ],
+    "notas": "Fix principal FE fmt03GSCEM.js. DATOSFTR: sql_refe/0100016362/SPQ_FTR_IMPRESION.sql. Sin cambio SQL previsto.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261001-0100016064.html",
+    "aprobados": "aprobados/20261001-0100016064/",
+    "imagenes": "aprobados/20261001-0100016064/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-02",
+    "ultimoEnvio": "2026-10-02T15:32:57",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

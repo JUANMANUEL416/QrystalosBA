@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuentas por pagar: hallazgos del ciclo y archivo plano bancario — Dictamen técnico Qrystalos</title>
+  <style>
+    :root {
+      --color-primary: #E67817;
+      --color-secondary: #CB500F;
+      --color-border: #000000;
+      --color-bg: #fff8ee;
+      --color-text: #1a1a1a;
+      --color-muted: #5d4e37;
+      --color-warning: #b7950b;
+      --color-danger: #922b21;
+      --color-success: #1e8449;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; line-height: 1.6; color: var(--color-text); background: var(--color-bg); padding: 2rem; }
+    .container { max-width: 960px; margin: 0 auto; background: #fff; border: 1px solid var(--color-border); border-radius: 4px; padding: 2.5rem; }
+    header { border-bottom: 3px solid var(--color-primary); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    header h1 { font-size: 1.5rem; color: var(--color-primary); margin-bottom: 0.5rem; }
+    .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem 1.5rem; margin-top: 1rem; font-size: 0.9rem; }
+    .meta-item label { display: block; font-weight: 600; color: var(--color-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 3px; font-size: 0.8rem; font-weight: 600; }
+    .badge-propuesto { background: #fef9e7; color: var(--color-warning); border: 1px solid var(--color-warning); }
+    section { margin-bottom: 2rem; }
+    section h2 { font-size: 1.1rem; color: var(--color-primary); border-bottom: 1px solid var(--color-border); padding-bottom: 0.4rem; margin-bottom: 1rem; }
+    section h3 { font-size: 0.95rem; color: var(--color-secondary); margin: 1rem 0 0.5rem; }
+    section h4 { font-size: 0.9rem; color: var(--color-text); margin: 0.9rem 0 0.35rem; }
+    .content-block { background: var(--color-bg); border-left: 4px solid var(--color-secondary); padding: 1rem 1.25rem; margin-bottom: 1rem; white-space: pre-wrap; }
+    .diagrama-flujo-block { background: #f4f6f8; border: 1px dashed var(--color-border); border-radius: 4px; padding: 1rem 1.25rem; }
+    .alert { background: #fdedec; border-left: 4px solid var(--color-danger); padding: 0.75rem 1rem; margin-bottom: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.88rem; }
+    th, td { border: 1px solid var(--color-border); padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: var(--color-primary); color: #fff; font-weight: 600; }
+    tr:nth-child(even) { background: #f4f6f7; }
+    ul, ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    .impacto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+    .impacto-card { border: 1px solid var(--color-border); border-radius: 4px; padding: 0.75rem; text-align: center; }
+    .impacto-card .label { font-size: 0.75rem; color: var(--color-muted); text-transform: uppercase; }
+    .impacto-card .value { font-size: 1.1rem; font-weight: 700; margin-top: 0.25rem; }
+    .impacto-si { color: var(--color-danger); }
+    .impacto-no { color: var(--color-success); }
+    .impacto-parcial { color: var(--color-warning); }
+    .checklist { list-style: none; margin-left: 0; }
+    .checklist li { padding-left: 1.5rem; position: relative; }
+    .checklist li::before { content: "☐"; position: absolute; left: 0; color: var(--color-muted); }
+    pre.sql-spec { background: #1f2933; color: #e5e7eb; padding: 0.9rem 1rem; border-radius: 4px; font-size: 0.8rem; overflow-x: auto; margin: 0.5rem 0 1rem; white-space: pre; font-family: Consolas, "Courier New", monospace; }
+    .flow { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; font-size: 0.85rem; }
+    .flow span { background: #fff; border: 1px solid var(--color-border); border-radius: 4px; padding: 0.25rem 0.55rem; }
+    .flow i { color: var(--color-muted); font-style: normal; }
+    .kpi { font-weight: 700; color: var(--color-secondary); }
+    footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--color-border); font-size: 0.8rem; color: var(--color-muted); text-align: center; }
+    .brand-bar { height:6px; background:#E67817; margin:-2.5rem -2.5rem 1.15rem; }
+    .brand-head { display:flex; align-items:center; gap:12px; margin-bottom:1rem; }
+    .brand-mark { height:56px; width:auto; background:#000; border-radius:8px; }
+    .brand-name { font-size:1.05rem; font-weight:700; color:#2c2c2c; letter-spacing:.06em; }
+    .brand-sub { font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.1em; }
+    @page { size: A4; margin: 10mm 12mm; }
+    html, body, .container, th, .badge, .brand-bar, pre.sql-spec { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print {
+      body { background: #fff8ee !important; padding: 8px !important; }
+      .container { border: 1px solid #000 !important; padding: 1.5rem !important; }
+      section { page-break-inside: auto; }
+      header, .brand-head { page-break-inside: avoid; }
+      th { background: #E67817 !important; color: #fff !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand-bar"></div>
+    <div class="brand-head">
+      <img class="brand-mark" src="../app/assets/logo-ixcolombia.png" alt="IX Colombia SAS">
+      <div>
+        <div class="brand-name">IX COLOMBIA SAS</div>
+        <div class="brand-sub">Business Analyst · Qrystalos</div>
+      </div>
+    </div>
+    <header>
+      <h1>Cuentas por pagar: hallazgos del ciclo y archivo plano bancario</h1>
+      <p style="color: var(--color-muted); font-size: 0.9rem;">Dictamen técnico — Qrystalos BA</p>
+      <div class="meta-grid">
+        <div class="meta-item"><label>ID</label><span>20261004-cxp-hallazgos-archivo-plano</span></div>
+        <div class="meta-item"><label>Cliente</label><span>Todas las instituciones (producto)</span></div>
+        <div class="meta-item"><label>Módulo</label><span>Administrativo → Cuentas por Pagar · Órdenes de pago · Caja</span></div>
+        <div class="meta-item"><label>Fecha</label><span>2026-10-04</span></div>
+        <div class="meta-item"><label>Estado</label><span class="badge badge-propuesto">Propuesto</span></div>
+        <div class="meta-item"><label>Ticket / Rama sugerida</label><span>feature/CXP-archivo-plano-y-hallazgos</span></div>
+      </div>
+    </header>
+
+    <section id="requerimiento">
+      <h2>1. Requerimiento del cliente</h2>
+      <div class="content-block">Al documentar el ciclo completo de Cuentas por pagar (desde el menú Administrativo hasta el pago en caja) se identificaron nueve hallazgos en el producto. Se pide resolverlos y, con especial énfasis, dejar el proceso de generación del archivo plano para el banco (dispersión de pagos a proveedores) completo, confiable y con rastro: que tesorería pueda generar el archivo con los formatos de los bancos que usa la institución, que el archivo salga con los datos correctos del proveedor y de la cuenta propia, y que no dependa de comportamientos a medias.</div>
+    </section>
+
+    <section id="analisis">
+      <h2>2. Análisis del coordinador</h2>
+      <div class="content-block">Se recorrió el ciclo con las pantallas de Cuentas por Pagar, Órdenes de pago y Caja, y con los procedimientos de IXONLINE/SQL: SPQ_FCXP, SPQ_ORDEN_PAGO (AUTORIZAR, AUTORIZAR_INDIVIDUAL, AUTORIZAR_INDIVIDUAL_TER, CERRAR_ORDEN, GET_INF_PLANO, EXPORTAR_NOMINA_PLANO, EXPORTAR_NOMINA_PLANO_DINAMICO, GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA), SPQ_CONF_CAJA (CONFIRMAR_RECIBO_EGRESO), SPK_CONFIRMAR_PAGOSMASIVO, SPK_CIERRERECIBO_CAJA, SPK_NC_CONTAB_CAJA_EGR y SPK_MARCA_OP_PAGADA_POR_EGRESO. Se contrastó la canasta de trabajo (PREVERSION) con la última versión liberada: los procedimientos de orden de pago y caja son idénticos, de modo que ningún hallazgo tiene arreglo pendiente.
+
+Sobre el archivo plano, hoy existen dos caminos en la pantalla de Órdenes de pago:
+
+1) Botón «Archivo Plano» en la fila de la orden (visible solo con la orden cerrada y No Confirmada). Opciones Banco de Bogotá y Colpatria: abren un diálogo de parámetros (cuenta propia BCT con TIPO_PLANO del banco, tipo de transacción, código de oficina, clave en Colpatria), consultan GET_INF_PLANO y arman el archivo en la pantalla. Funcionan, con los defectos que se listan. Opción Bancolombia: no funciona (llama a una función con otra firma).
+
+2) Ventana «Órdenes de Pago - Nómina» con Exportar (plano de nómina, EXPORTAR_NOMINA_PLANO). El botón que la abre está desactivado en la plantilla; en el modo dinámico (BANC_DINA_ARCH_PLANO) invoca una función que no existe. Sus métodos SQL devuelven la cuenta contable del pasivo como cuenta bancaria y no encuentran el banco del empleado.
+
+Ninguno de los dos caminos deja registro del archivo generado: el método de guardado es un esqueleto y además se invoca sobre el modelo equivocado. Se clasifica todo como defecto (el camino existe y falla) salvo el registro del archivo generado y la validación previa, que son huecos. La propuesta prioriza el archivo plano de la orden (Bogotá, Colpatria y, si negocio lo confirma, Bancolombia), lo deja íntegro y con rastro, y resuelve los nueve hallazgos del ciclo.</div>
+    </section>
+
+    <section id="validar-antes">
+      <h2>Validar antes de desarrollar</h2>
+      <div class="alert"><strong>Obligatorio.</strong> Antes de tocar el modo plano dinámico (hallazgo 1) reproducir en preversión: variable BANC_DINA_ARCH_PLANO en SI, orden con dos abonos de proveedores distintos, Autorizar. Contar los recibos de egreso creados para la orden (tabla FCJ, observación «Orden: …»). Si solo aparece uno por proveedor, el hallazgo 1 no aplica y se omite ese cambio. El resto de los hallazgos se verificó en código y se reproduce sin datos especiales, pero igual se deben constatar en preversión antes de desarrollar.</div>
+      <ul>
+        <li>Reproducir el escenario en preversión con una orden de prueba y dos proveedores.</li>
+        <li>Confirmar que el error sigue ocurriendo y no se corrigió en un trabajo previo.</li>
+        <li>Si ya funciona: no aplicar la propuesta de ese punto; informar que está correcto.</li>
+        <li>Si se reproduce: iniciar el desarrollo de este dictamen.</li>
+      </ul>
+    </section>
+
+    <section id="contabilidad">
+      <h2>3. Contabilidad</h2>
+      <div class="impacto-grid">
+        <div class="impacto-card"><div class="label">Afecta contabilidad</div><div class="value impacto-si">Sí</div></div>
+      </div>
+      <h3>Cómo lo afecta</h3>
+      <div class="content-block">Hallazgo 2. En los modos «egreso individual por tercero» y «plano dinámico» el recibo de egreso lleva una sola línea por proveedor sin el abono enlazado (FCJD.IDSERVICIO vacío). Al confirmar en caja, SPK_NC_CONTAB_CAJA_EGR solo debita la cuenta por pagar de cada factura (FCXP.CUECREDITO) cuando encuentra el abono por esa línea; si no lo encuentra, debita la cuenta del concepto de caja (CPCJ.CUENTA). Si el concepto de egreso configurado (variable IDCJTECXP) no apunta a la cuenta por pagar, el comprobante del pago no cancela el pasivo de la factura y la conciliación entre CxP y contabilidad se rompe. En el modo clásico esto no ocurre porque SPK_CONFIRMAR_PAGOSMASIVO crea una línea por abono con el abono enlazado.
+
+El archivo plano en sí no genera asientos. Los demás hallazgos no tocan contabilidad.</div>
+      <h3>Desarrollo contable</h3>
+      <div class="content-block">Hacer que los egresos individuales (AUTORIZAR_INDIVIDUAL_TER y AUTORIZAR_INDIVIDUAL) creen una línea FCJD por abono con IDSERVICIO = número del abono (CNSFCXPP), valor = abono, concepto = concepto de egreso. Con eso el cierre de caja y el comprobante del egreso toman la misma ruta que el modo clásico: débito a la cuenta por pagar de cada factura (o a la cuenta del servicio en nómina), crédito a la cuenta de la forma de pago. El valor total del recibo no cambia. No se requieren cuentas nuevas ni cambios en el plan contable.</div>
+      <h3>Validación del agente</h3>
+      <div class="content-block">Validado contra SPK_NC_CONTAB_CAJA_EGR (débito por abono cuando #TH.IDSERVICIO = FCXPP.CNSFCXPP; si no hay abono, CPCJ.CUENTA), SPK_CIERRERECIBO_CAJA (cierra abonos por FCJD.IDSERVICIO) y SPK_CONFIRMAR_PAGOSMASIVO (sí llena IDSERVICIO). Debe confirmarse con contabilidad de cada institución si hoy el concepto IDCJTECXP apunta a la cuenta por pagar; si no, los pagos individuales ya confirmados requieren revisión contable (reclasificación), fuera del alcance de este desarrollo.</div>
+    </section>
+
+    <section id="dictamen">
+      <h2>4. Dictamen técnico</h2>
+      <div class="impacto-grid">
+        <div class="impacto-card"><div class="label">Frontend</div><div class="value impacto-si">Sí</div></div>
+        <div class="impacto-card"><div class="label">API / Backend</div><div class="value impacto-no">No</div></div>
+        <div class="impacto-card"><div class="label">SQL Server</div><div class="value impacto-si">Sí</div></div>
+      </div>
+
+      <h3>Resumen ejecutivo</h3>
+      <div class="content-block">Se proponen tres bloques de trabajo:
+
+A) Archivo plano bancario (prioridad). Dejar un solo camino operativo en la orden de pago con tres formatos (Banco de Bogotá, Colpatria y Bancolombia PAB), parámetros respetados, homologaciones correctas, validación previa de datos del proveedor y de la cuenta propia, y registro del archivo generado visible en la orden. Retirar o restaurar (según negocio) la ventana de plano de nómina, corrigiendo sus consultas si se conserva.
+
+B) Autorización de órdenes. Quitar el doble egreso del modo plano dinámico; crear la línea por abono en los egresos individuales (contabilidad correcta); que Pagar desde la factura respete el modo de autorización de la institución.
+
+C) Pantalla de Cuentas por Pagar. Evaluar los permisos por pestaña; corregir Eliminar todos los detalles, la pestaña Informes, la condición de Aplicar anticipo y la llamada Radian inexistente; decidir el estado M; incluir la cuenta gravada en Reconstruir.
+
+No hay cambios en qrystalos.server: todo se resuelve en Qrystalos2 y en IXONLINE/SQL. Se crea una tabla nueva (registro de archivos planos por orden) y se modifican SPQ_ORDEN_PAGO y, de forma menor, SPQ_FCXP.</div>
+
+      <h3>Archivos / objetos impactados</h3>
+      <table>
+        <thead><tr><th>Capa</th><th>Objeto</th><th>Cambio</th><th>Hallazgos</th></tr></thead>
+        <tbody>
+          <tr><td>FE</td><td>components/administrativo/CXP/OPComponent.vue</td><td>Archivo Plano: firma Bancolombia, parámetros Colpatria, homologación Bogotá, validación previa, registro del archivo, título del diálogo; ventana de nómina (restaurar o retirar)</td><td>10–16</td></tr>
+          <tr><td>FE</td><td>components/administrativo/CXP/CXPComponent.vue</td><td>Pagar (total/parcial) según variables; Eliminar todos los detalles; condición Aplicar anticipo</td><td>4, 5 (parcial), 9</td></tr>
+          <tr><td>FE</td><td>pages/administrativo/CuentasxpagarPage.vue</td><td>Permisos CXP_AUDITORIA / CXP_ORDEN_PAGO / CXP_ANTICIPOS / CXP_INFORMES; Informes autónomo</td><td>3, 5</td></tr>
+          <tr><td>FE</td><td>components/administrativo/CXP/FacturasRadianComponent.vue</td><td>Retirar llamada VINCULAR_CXP_FRADIAN</td><td>6</td></tr>
+          <tr><td>SQL</td><td>SPQ_ORDEN_PAGO · AUTORIZAR_INDIVIDUAL</td><td>Quitar EXEC SPK_CONFIRMAR_PAGOSMASIVO; línea FCJD por abono</td><td>1, 2</td></tr>
+          <tr><td>SQL</td><td>SPQ_ORDEN_PAGO · AUTORIZAR_INDIVIDUAL_TER</td><td>Línea FCJD por abono con IDSERVICIO</td><td>2</td></tr>
+          <tr><td>SQL</td><td>SPQ_ORDEN_PAGO · GET_INF_PLANO</td><td>Formato BANCOLOMBIA; recordset de inconsistencias; validación de BCT</td><td>10, 16</td></tr>
+          <tr><td>SQL</td><td>SPQ_ORDEN_PAGO · GUARDAR_ARCHIVO_PLANO (nuevo, reemplaza el esqueleto GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA)</td><td>Insertar en FCXPPMPL</td><td>13</td></tr>
+          <tr><td>SQL</td><td>SPQ_ORDEN_PAGO · EXPORTAR_NOMINA_PLANO / _DINAMICO</td><td>Cuenta bancaria y banco del tercero; valor del abono (si se conserva la ventana)</td><td>11, 12</td></tr>
+          <tr><td>SQL</td><td>SPQ_ORDEN_PAGO · LISTAR_CXP_PENDIENTES</td><td>Excepción del estado M (según decisión de negocio)</td><td>8</td></tr>
+          <tr><td>SQL</td><td>SPQ_FCXP · RECONSTRUIR_CUENTAS_FCXPD</td><td>Homologar CUENTAGRAV</td><td>7</td></tr>
+          <tr><td>SQL</td><td>Tabla nueva FCXPPMPL</td><td>Registro de archivos planos generados por orden</td><td>13</td></tr>
+          <tr><td>Config</td><td>Permisos MENUQ_CXP · CXP_AUDITORIA, CXP_ORDEN_PAGO, CXP_ANTICIPOS, CXP_INFORMES</td><td>Registrar en el catálogo de controles</td><td>3</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="diagrama-flujo">
+      <h2>4.5 Diagrama de flujo</h2>
+      <p style="color: var(--color-muted); margin-bottom: 0.75rem;">Recorrido técnico del archivo plano propuesto (pantalla → método → tablas). No se generó diagrama interactivo; el mapa visual del proceso está en el libro de Cuentas por pagar.</p>
+      <div class="diagrama-flujo-block">
+        <div class="flow">
+          <span>Órdenes de pago · orden cerrada y N</span><i>→</i>
+          <span>Archivo Plano → banco</span><i>→</i>
+          <span>Diálogo: cuenta BCT (TIPO_PLANO), tipo transacción, oficina, clave</span><i>→</i>
+          <span>SPQ_ORDEN_PAGO · GET_INF_PLANO</span><i>→</i>
+          <span>rs1 empresa (TER instalado + BCT) · rs2 líneas (FCXPP, FCXP, TER, BCO) · rs3 inconsistencias</span><i>→</i>
+          <span>¿inconsistencias? → lista y no descarga</span><i>→</i>
+          <span>Armar cabecera / detalle / totales por banco</span><i>→</i>
+          <span>Descarga .txt</span><i>→</i>
+          <span>SPQ_ORDEN_PAGO · GUARDAR_ARCHIVO_PLANO → FCXPPMPL</span><i>→</i>
+          <span>Orden muestra «Plano generado el … por …»</span>
+        </div>
+        <p style="margin-top:0.75rem; font-size:0.85rem; color:var(--color-muted);">El pago sigue su ruta normal: Caja → Mov. Egreso → Confirmar (SPQ_CONF_CAJA · CONFIRMAR_RECIBO_EGRESO → SPK_CIERRERECIBO_CAJA → SPK_NC_CONTAB_CAJA_EGR) o Autorizar en el modo plano dinámico.</p>
+      </div>
+    </section>
+
+    <section id="normativa">
+      <h2>4.6 Normativa adjunta</h2>
+      <div class="content-block">No se adjuntó normativa. Las estructuras de los archivos (Banco de Bogotá, Colpatria/Scotiabank, Bancolombia PAB) deben contrastarse con la especificación vigente que entregue cada banco a la institución antes de cerrar el desarrollo; este dictamen conserva los anchos y códigos que hoy usa el producto y señala solo los campos que se arman mal respecto de esa misma implementación.</div>
+    </section>
+
+    <section id="cambios">
+      <h2>5. Cambios propuestos</h2>
+
+      <h3>5.0 En palabras simples (negocio)</h3>
+      <div class="content-block">Hoy, para pagar a proveedores por el banco, tesorería cierra la orden de pago y usa el botón Archivo Plano. Con Banco de Bogotá y Colpatria se descarga un archivo, pero: la opción Bancolombia no hace nada; en Colpatria la pantalla pregunta clave, oficina y tipo de transacción y luego los ignora; algunos tipos de documento salen mal homologados; si un proveedor no tiene cuenta bancaria registrada el archivo sale igual con la línea en blanco y el rechazo lo da el banco; y el sistema no guarda constancia de que el archivo se generó. Además la ventana de plano de nómina quedó sin botón para abrirla y, si se abriera, toma la cuenta contable como si fuera la cuenta bancaria del empleado.
+
+Se propone dejar un solo camino claro: desde la orden cerrada, elegir el banco, revisar una lista de inconsistencias (proveedores sin cuenta, sin banco o banco sin código ACH) antes de descargar, generar el archivo con los datos que el usuario digitó y dejar en la orden la constancia «Plano generado el … por …, archivo …». Bancolombia se implementa con su propio formato si la institución lo necesita; la ventana de nómina se restaura con las consultas corregidas o se retira, según lo decida negocio.
+
+En paralelo se corrigen los demás hallazgos del ciclo: que al autorizar en el modo plano dinámico no se creen dos recibos por el mismo pago; que el recibo de egreso individual lleve cada factura que paga (para que el comprobante contable cancele la cuenta por pagar correcta); que las pestañas de Cuentas por Pagar respeten los permisos; que Eliminar todos los detalles, Informes, Aplicar anticipo, Radian y Reconstruir funcionen como la pantalla promete; y que el botón Pagar desde la factura autorice igual que el botón Autorizar de Órdenes de pago.</div>
+
+      <h3>5.1 Detalle técnico — Frontend (Qrystalos2)</h3>
+      <h4>5.1.1 Archivo plano de la orden (OPComponent.vue)</h4>
+      <ul>
+        <li><strong>Bancolombia (hallazgo 10).</strong> <code>onGenerarArchivoPlano</code> llama <code>generarArchivoBancolombia(fila, 'BANCOLOMBIA')</code>, pero la función tiene firma <code>(empresa, filas, tipoTransaccion)</code>, es síncrona y arma un formato tipo Bogotá. Implementar <code>generarArchivoBancolombiaOrden(fila)</code>: pedir tipo de transacción (reutilizar <code>solicitarTipoTransaccionBancolombia</code>), consultar <code>GET_INF_PLANO</code> con <code>FORMATO_PLANO: 'BANCOLOMBIA'</code>, armar PAB (registro 1 cabecera con NIT, clase de transacción 225, referencia, fecha, secuencia, cantidad y suma; registro 6 por abono con identificación, nombre, banco, cuenta, tipo de cuenta, tipo de transacción, valor, referencia) tomando como base <code>generarArchivoBancolombiaPAB</code>, que hoy no se usa. Si negocio no requiere Bancolombia, retirar la opción de <code>opcionesArchivoPlanoOrden</code>.</li>
+        <li><strong>Colpatria (hallazgo 14).</strong> En <code>generarArchivoBancoColpatria</code> usar <code>paramPlanoBanco.value.clave</code>, <code>.codigoOficina</code> y <code>.tipoMovimiento</code> en lugar de las constantes <code>"PGCORPUCOO"</code>, <code>"2"</code> y <code>"02"</code>; numerar el registro 03 con <code>String(ordenDetalles.length + 1).padStart(5,'0')</code> en lugar de <code>"00002"</code>. En el diálogo: <code>maxlength="10"</code> y regla <code>&lt;= 10</code> para la clave; título dinámico («Plano Banco Bogotá» / «Plano Banco Colpatria»).</li>
+        <li><strong>Bogotá (hallazgo 15).</strong> Corregir <code>tipoIdentificacionXBanco</code>: comparar con <code>"BOGOTA"</code> (hoy <code>"BOGOTA "</code> con espacio) y usarla para cabecera y detalle en lugar de <code>TIPO_ID.substring(0,1)</code>; CE debe salir «E». Corregir la expresión del texto del tipo de movimiento (<code>?.label ?? "".toUpperCase()</code> aplica mayúsculas a la cadena vacía) y mantener el valor sin separador decimal en 18 posiciones.</li>
+        <li><strong>Validación previa (hallazgo 16).</strong> Leer el tercer recordset de <code>GET_INF_PLANO</code> (inconsistencias). Si trae filas, mostrar un diálogo con tercero, factura y motivo («Sin cuenta bancaria», «Sin banco», «Banco sin código ACH», «Tipo de cuenta no reconocido») y no descargar; permitir «Generar de todos modos» solo con confirmación explícita. Si el selector de cuenta BCT llega vacío, mostrar «No hay cuentas bancarias activas con tipo de plano &lt;banco&gt;. Configúrelo en Bancos».</li>
+        <li><strong>Registro del archivo (hallazgo 13).</strong> Tras descargar, llamar <code>AppStore.json({ MODELO: 'ORDEN_PAGO', METODO: 'GUARDAR_ARCHIVO_PLANO', PARAMETROS: { CNSFCXPPM, FORMATO_PLANO, CTA_BCO, TIPO_TRANSACCION, NOMBRE_ARCHIVO, CANTIDAD_REGISTROS, VALOR_TOTAL } })</code> (hoy se usa MODELO <code>'FCXP'</code>, inexistente para ese método). Mostrar en la fila/ficha de la orden la última generación (fecha, usuario, formato, archivo) a partir del listado de órdenes.</li>
+        <li><strong>Tipo de cuenta.</strong> Homologar <code>TIPO_CUE</code> con una tabla de equivalencias (Corriente → 1, Ahorros → 2) y tratar cualquier otro valor como inconsistencia, en lugar de <code>=== 'Corriente' ? '1' : '2'</code>.</li>
+      </ul>
+      <h4>5.1.2 Ventana «Órdenes de Pago - Nómina» (hallazgos 11 y 12)</h4>
+      <ul>
+        <li>Decisión de negocio previa: ¿se usa el plano de nómina desde Órdenes de pago? Si <strong>sí</strong>: restaurar el botón «Buscar Nómina» (hoy comentado) condicionado al permiso <code>MENUQ_ADMINISTRATIVO · NOMINA_ARCHIVO_PLANO</code>, implementar <code>exportarNominaPlanoDinamico</code> sobre <code>EXPORTAR_NOMINA_PLANO_DINAMICO</code> (hoy la función no existe y el botón Exportar falla en el modo dinámico) y unificar el armado PAB con <code>generarArchivoBancolombiaPAB</code>. Si <strong>no</strong>: retirar el diálogo, <code>exportarNominaPlano*</code>, <code>whereNomina</code>, <code>whereFCXPPNomina</code> y los métodos SQL asociados.</li>
+      </ul>
+      <h4>5.1.3 Autorización y Pagar (hallazgo 9)</h4>
+      <ul>
+        <li>En <code>CXPComponent.onGuardaOrdenPago</code> leer <code>AUT_EGRE_INDIVIDUAL</code> y <code>BANC_DINA_ARCH_PLANO</code> (igual que <code>OPComponent.onAutorizarPagos</code>) y elegir el método: <code>AUTORIZAR_INDIVIDUAL_TER</code> / <code>AUTORIZAR_INDIVIDUAL</code> / <code>AUTORIZAR</code>. Aplicar lo mismo al pago total (hoy <code>PAGO_CXPTOTAL</code> siempre autoriza en clásico). Extraer la decisión a un composable <code>useModoAutorizacionOP()</code> para que ambas pantallas usen la misma regla.</li>
+      </ul>
+      <h4>5.1.4 Página Cuentas por Pagar (hallazgos 3, 4, 5, 6)</h4>
+      <ul>
+        <li><strong>Permisos (3).</strong> En <code>CuentasxpagarPage.vue</code> consultar con <code>useUsgruh().getPermisos</code> los controles <code>CXP_AUDITORIA</code>, <code>CXP_ORDEN_PAGO</code>, <code>CXP_ANTICIPOS</code>, <code>CXP_INFORMES</code> (procedimiento <code>MENUQ_CXP</code>) y renderizar cada <code>q-tab</code> con <code>v-if</code>. Registrar los controles en el catálogo para que se puedan asignar por grupo.</li>
+        <li><strong>Eliminar todos los detalles (4).</strong> Enviar a <code>CRUD_FCXPD</code> <code>PROCEDE: 2</code> (y <code>NOITEM: null</code>) o iterar los ítems con <code>PROCEDE: 1</code>; al terminar, <code>RECALCULAR_FCXP</code> y refrescar la fila.</li>
+        <li><strong>Informes (5).</strong> Que la pestaña Informes resuelva sus filtros y llamadas sin depender del componente CxP en keep-alive (store propio o montar el componente al abrir la página).</li>
+        <li><strong>Aplicar anticipo.</strong> Reemplazar <code>props.row.SALUD</code> por <code>props.row.SALDO</code> en la condición del menú antiguo o retirar esa ruta si ya no se usa.</li>
+        <li><strong>Radian (6).</strong> Retirar la llamada <code>VINCULAR_CXP_FRADIAN</code> (no existe en SPQ_FCXP); <code>REGISTRAR_CXP_FRADIAN</code> ya marca la factura. Detalle en el dictamen Radian del módulo.</li>
+      </ul>
+
+      <h3>5.2 Detalle técnico — SQL Server</h3>
+      <p>Fuente: IXONLINE/SQL. Los cambios se proponen como especificación; no se ejecutan desde este documento.</p>
+      <ul>
+        <li><strong>SPQ_ORDEN_PAGO · AUTORIZAR_INDIVIDUAL (hallazgo 1).</strong> Eliminar <code>EXEC SPK_CONFIRMAR_PAGOSMASIVO</code> del bloque final: los egresos ya se crearon (FCJ CERRADA 1, procedencia CXP) y los abonos ya están en P con su CNSFACJ. Conservar F_CONTABLE, el UPDATE de FCXPP y el cierre de la orden (ESTADO P, CERRADA 1). Confirmar en la validación previa que el SPK hoy sí crea el segundo juego de recibos.</li>
+        <li><strong>SPQ_ORDEN_PAGO · AUTORIZAR_INDIVIDUAL y AUTORIZAR_INDIVIDUAL_TER (hallazgo 2).</strong> Reemplazar el <code>INSERT INTO FCJD</code> de una línea por tercero por un <code>INSERT … SELECT</code> con una línea por abono (ITEM consecutivo, VALORUNITARIO = VALORTOTAL = FCXPP.ABONO, IDSERVICIO = FCXPP.CNSFCXPP). El total del recibo (FCJ.VALORTOTAL) y la forma de pago (PCJ) no cambian.</li>
+        <li><strong>SPQ_ORDEN_PAGO · GET_INF_PLANO (hallazgos 10 y 16).</strong> Aceptar <code>FORMATO_PLANO = 'BANCOLOMBIA'</code> (BCT.TIPO_PLANO homónimo); devolver un tercer recordset de inconsistencias por abono; en el detalle homologar TIPO_CUE y entregar el valor con dos decimales fijos. Si no hay BCT para la cuenta y tipo de plano, responder KO «La cuenta bancaria no tiene configurado el tipo de plano &lt;banco&gt;».</li>
+        <li><strong>SPQ_ORDEN_PAGO · GUARDAR_ARCHIVO_PLANO (hallazgo 13).</strong> Nuevo método (reemplaza el esqueleto <code>GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA</code>, que lee parámetros y no inserta nada). Inserta en la tabla nueva <code>FCXPPMPL</code>. El listado de órdenes expone la última generación por orden.</li>
+        <li><strong>SPQ_ORDEN_PAGO · EXPORTAR_NOMINA_PLANO / EXPORTAR_NOMINA_PLANO_DINAMICO (hallazgo 12).</strong> Si se conservan: usar <code>TER.CUE_BANCARIA</code>, <code>TER.TIPO_CUE</code> y <code>LEFT JOIN BCO ON BCO.BANCO = TER.BANCO</code> (hoy <code>FCXP.CUECREDITO</code> como cuenta y <code>BCO.IDTERCERO = FCXP.IDTERCERO</code>), y devolver <code>FCXPP.ABONO</code> como valor en lugar de <code>FCXP.VLR_NETO</code>. Si se retiran, eliminar los tres métodos.</li>
+        <li><strong>SPQ_ORDEN_PAGO · LISTAR_CXP_PENDIENTES (hallazgo 8).</strong> Según decisión de negocio, retirar la excepción que admite FCXP.ESTADO 'M' o documentar el método que lo asigna. Sin cambio hasta esa decisión.</li>
+        <li><strong>SPQ_FCXP · RECONSTRUIR_CUENTAS_FCXPD (hallazgo 7).</strong> Incluir CUENTAGRAV con la misma homologación aplicada a CUENTA_SER (requerimiento de inventario ya abierto; se referencia, no se duplica).</li>
+        <li><strong>Tabla nueva FCXPPMPL.</strong> Registro de archivos planos por orden. No hay cambio en FCXP, FCXPPM ni FCXPP.</li>
+      </ul>
+
+      <h4>5.2.1 Fragmentos SQL (especificación)</h4>
+      <p style="color: var(--color-muted); font-size:0.85rem;">Especificación para el desarrollador; adaptar nombres de variables al cuerpo real del procedimiento. No ejecutar desde este documento.</p>
+      <pre class="sql-spec">-- (1) Tabla nueva: registro de archivos planos generados por orden de pago
+CREATE TABLE dbo.FCXPPMPL (
+    CNSFCXPPMPL        INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    CNSFCXPPM          VARCHAR(20)   NOT NULL,          -- orden de pago
+    FORMATO_PLANO      VARCHAR(20)   NOT NULL,          -- BANCO_BOGOTA | COLPATRIA | BANCOLOMBIA
+    CTA_BCO            VARCHAR(40)   NULL,              -- cuenta propia (BCT.CTA_BCO)
+    TIPO_TRANSACCION   VARCHAR(10)   NULL,
+    NOMBRE_ARCHIVO     VARCHAR(255)  NOT NULL,
+    CANTIDAD_REGISTROS INT           NOT NULL,
+    VALOR_TOTAL        DECIMAL(14,2) NOT NULL,
+    USUARIO            VARCHAR(50)   NOT NULL,
+    FECHA              DATETIME      NOT NULL DEFAULT (GETDATE()),
+    OBSERVACION        VARCHAR(255)  NULL
+);
+CREATE INDEX IX_FCXPPMPL_ORDEN ON dbo.FCXPPMPL (CNSFCXPPM, FECHA DESC);</pre>
+
+      <pre class="sql-spec">-- (2) SPQ_ORDEN_PAGO · GUARDAR_ARCHIVO_PLANO (nuevo; retira el esqueleto GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA)
+IF @METODO = 'GUARDAR_ARCHIVO_PLANO'
+BEGIN
+    INSERT INTO FCXPPMPL (CNSFCXPPM, FORMATO_PLANO, CTA_BCO, TIPO_TRANSACCION, NOMBRE_ARCHIVO,
+                          CANTIDAD_REGISTROS, VALOR_TOTAL, USUARIO, OBSERVACION)
+    SELECT CNSFCXPPM, FORMATO_PLANO, CTA_BCO, TIPO_TRANSACCION, NOMBRE_ARCHIVO,
+           CANTIDAD_REGISTROS, VALOR_TOTAL, @USUARIO, OBSERVACION
+    FROM OPENJSON(@PARAMETROS)
+    WITH (CNSFCXPPM VARCHAR(20), FORMATO_PLANO VARCHAR(20), CTA_BCO VARCHAR(40),
+          TIPO_TRANSACCION VARCHAR(10), NOMBRE_ARCHIVO VARCHAR(255),
+          CANTIDAD_REGISTROS INT, VALOR_TOTAL DECIMAL(14,2), OBSERVACION VARCHAR(255));
+    SELECT 'OK' OK;
+END</pre>
+
+      <pre class="sql-spec">-- (3) SPQ_ORDEN_PAGO · GET_INF_PLANO: tercer recordset de inconsistencias (antes de descargar)
+SELECT T.IDTERCERO, T.RAZONSOCIAL, F.NOREFERENCIA,
+       CASE WHEN COALESCE(T.CUE_BANCARIA,'') = ''              THEN 'Sin cuenta bancaria'
+            WHEN COALESCE(T.BANCO,'') = ''                     THEN 'Sin banco'
+            WHEN BCO.BANCO IS NULL OR COALESCE(BCO.CODACH,'')='' THEN 'Banco sin código ACH'
+            WHEN T.TIPO_CUE NOT IN ('Corriente','Ahorros')     THEN 'Tipo de cuenta no reconocido'
+       END AS MOTIVO
+FROM FCXPPM M
+INNER JOIN FCXPP P ON M.CNSFCXPPM = P.CNSFCXPPM
+INNER JOIN FCXP  F ON F.CNSFCXP   = P.CNSFCXP
+INNER JOIN TER   T ON T.IDTERCERO = F.IDTERCERO
+LEFT  JOIN BCO     ON BCO.BANCO   = T.BANCO
+WHERE M.CNSFCXPPM = @CNSFCXPPM AND P.ESTADO <> 'A'
+  AND (COALESCE(T.CUE_BANCARIA,'') = '' OR COALESCE(T.BANCO,'') = ''
+       OR BCO.BANCO IS NULL OR COALESCE(BCO.CODACH,'') = ''
+       OR T.TIPO_CUE NOT IN ('Corriente','Ahorros'));
+
+-- Aceptar también el formato Bancolombia (misma consulta de cabecera y detalle):
+IF @METODO IN ('BANCO_BOGOTA','COLPATRIA','BANCOLOMBIA') ...
+-- Si la cabecera no devuelve fila:
+--   SELECT 'KO' OK, 'La cuenta bancaria no tiene configurado el tipo de plano ' + @METODO AS ERROR</pre>
+
+      <pre class="sql-spec">-- (4) AUTORIZAR_INDIVIDUAL y AUTORIZAR_INDIVIDUAL_TER: una línea FCJD por abono, con el abono enlazado
+-- Antes (una línea por tercero, sin IDSERVICIO):
+--   INSERT INTO FCJD (CODCAJA, CNSFACJ, ITEM, CONCEPTO, VALORUNITARIO, CANTIDAD, VALORTOTAL, IDTERCERO, IDSEDE, CODUNG)
+--   VALUES (@CODCAJA_ORDEN, @CNSFACJ_ACTUAL, 1, @CONCEPTO_EGRESO, @TOTAL_ABONO_TERCERO, 1, @TOTAL_ABONO_TERCERO, ...)
+-- Después:
+INSERT INTO FCJD (CODCAJA, CNSFACJ, ITEM, CONCEPTO, VALORUNITARIO, CANTIDAD, VALORTOTAL,
+                  IDTERCERO, IDSEDE, CODUNG, IDSERVICIO)
+SELECT @CODCAJA_ORDEN, @CNSFACJ_ACTUAL,
+       ROW_NUMBER() OVER (ORDER BY P.CNSFCXPP),
+       @CONCEPTO_EGRESO, P.ABONO, 1, P.ABONO,
+       @IDTERCERO_ACTUAL, @IDSEDE, @CODUNG_ORDEN,
+       P.CNSFCXPP                                    -- el cierre de caja y el asiento lo buscan aquí
+FROM FCXPP P
+INNER JOIN FCXP F ON F.CNSFCXP = P.CNSFCXP
+WHERE P.CNSFCXPPM = @CNSFCXPPM AND P.ESTADO <> 'A' AND F.IDTERCERO = @IDTERCERO_ACTUAL;</pre>
+
+      <pre class="sql-spec">-- (5) AUTORIZAR_INDIVIDUAL (modo plano dinámico): sin cierre clásico sobre los mismos abonos
+IF @TOTAL_PROCESADOS > 0
+BEGIN
+    IF (SELECT DBO.FNK_VALORVARIABLE('FECHAORDENPAGO')) = 'CONTABLE'
+        UPDATE FCXPPM SET F_CONTABLE = DBO.FNK_GETDATE() WHERE CNSFCXPPM = @CNSFCXPPM;
+
+    -- ELIMINAR: EXEC SPK_CONFIRMAR_PAGOSMASIVO @CNSFCXPPM, @COMPANIA, @IDSEDE, @SYS_COMPUTERNAME, @USUARIO
+    --           (crea un segundo juego de recibos procedencia CAJA y reapunta FCXPP.CNSFACJ)
+
+    UPDATE FCXPPM SET VALOR = (SELECT SUM(ABONO) FROM FCXPP WHERE CNSFCXPPM = @CNSFCXPPM AND ESTADO <> 'A')
+    WHERE CNSFCXPPM = @CNSFCXPPM;
+
+    UPDATE FCXPPM SET ESTADO = 'P', USUARIOCONF = @USUARIO, FECHACONF = DBO.FNK_GETDATE(), CERRADA = 1
+    WHERE CNSFCXPPM = @CNSFCXPPM;
+END</pre>
+
+      <pre class="sql-spec">-- (6) EXPORTAR_NOMINA_PLANO / EXPORTAR_NOMINA_PLANO_DINAMICO (solo si la ventana se conserva)
+-- Antes:  FCXP.CUECREDITO AS CUENTA_BANCO  ·  LEFT JOIN BCO ON FCXP.IDTERCERO = BCO.IDTERCERO  ·  FCXP.VLR_NETO
+-- Después:
+SELECT FCXPP.CNSFCXPP, FCXPP.CNSFCXP, FCXPP.CNSFCXPPM,
+       FCXPP.ABONO                      AS VLR_NETO,      -- valor a dispersar = abono de la orden
+       FCXP.NOREFERENCIA, FCXP.F_FACTURAREF, FCXP.IDTERCERO,
+       TER.EMAIL, TER.NIT, TER.DV, TER.RAZONSOCIAL, TER.TIPO_ID,
+       COALESCE(TER.TIPO_CUE,'')        AS TIPO_CUE,
+       COALESCE(TER.CUE_BANCARIA,'')    AS CUENTA_BANCO,
+       COALESCE(BCO.BANCO,'')           AS BANCO,
+       COALESCE(BCO.CODACH,'')          AS CODACH
+FROM FCXPP
+INNER JOIN FCXP ON FCXPP.CNSFCXP = FCXP.CNSFCXP
+LEFT  JOIN TER  ON FCXP.IDTERCERO = TER.IDTERCERO
+LEFT  JOIN BCO  ON BCO.BANCO      = TER.BANCO
+WHERE FCXPP.ESTADO <> 'A' AND ...</pre>
+
+      <h3>5.3 Detalle técnico — Backend (qrystalos.server)</h3>
+      <p>Sin cambios. Los métodos nuevos y modificados viajan por el canal genérico <code>AppStore.json</code> (MODELO ORDEN_PAGO / FCXP) y el registro de archivos se lee por <code>AppStore.read</code> sobre FCXPPMPL.</p>
+    </section>
+
+    <section id="consideraciones">
+      <h2>6. Qué tener en cuenta</h2>
+      <ul>
+        <li><strong>Decisiones de negocio pendientes</strong> (pedir antes de desarrollar): a) ¿se requiere Bancolombia desde la orden?; b) ¿sigue vigente el plano de nómina desde Órdenes de pago?; c) ¿el estado M de la factura tiene uso o se retira la etiqueta «En Pago Masivo»?</li>
+        <li><strong>Especificación del banco.</strong> Antes de cerrar el desarrollo, contrastar cada formato con la especificación vigente del banco de la institución (longitudes, códigos de transacción, posiciones decimales). El dictamen conserva lo que el producto arma hoy y corrige solo lo inconsistente dentro de esa misma implementación.</li>
+        <li><strong>Pagos individuales ya confirmados.</strong> El cambio del hallazgo 2 aplica hacia adelante. Los comprobantes de egreso ya generados sin abono enlazado deben revisarse con contabilidad de cada institución (reclasificación si el concepto de egreso no apunta a la cuenta por pagar).</li>
+        <li><strong>Regresiones a vigilar.</strong> Modo clásico de Autorizar (no se toca); Desautorizar y Anular recibo en caja con recibos de varias líneas; Confirmar orden de pago desde caja y Realizar Pago desde la orden (ambos leen los recibos creados por los métodos modificados); Cerrar Orden / Abrir Orden y la visibilidad del botón Archivo Plano.</li>
+        <li><strong>Configuración por institución.</strong> El selector de cuentas del plano depende de BCT.TIPO_PLANO; incluir en la guía de implantación el paso de configurar ese dato en las cuentas desde las que se paga. La cabecera usa el tercero de la variable IDTERCEROINSTALADO (NIT, DV, tipo de identificación).</li>
+        <li><strong>Sin datos de cliente.</strong> Los parámetros por defecto hoy quemados en el código (clave, código de oficina) corresponden a convenios de un cliente y deben pasar a configuración (variables o BCT), no quedar en el producto.</li>
+        <li><strong>Permisos nuevos.</strong> Al evaluar CXP_AUDITORIA, CXP_ORDEN_PAGO, CXP_ANTICIPOS y CXP_INFORMES, los grupos que hoy ven las pestañas dejarán de verlas hasta que se les asigne el control. Coordinar la asignación con soporte antes de liberar.</li>
+      </ul>
+    </section>
+
+    <section id="pruebas-dev">
+      <h2>7. Pruebas del desarrollador</h2>
+      <p style="color: var(--color-muted); margin-bottom: 0.75rem;">Qrystalos2 no tiene suite de tests automatizados (<code>npm test</code> vacío). Verificaciones locales obligatorias:</p>
+      <ul class="checklist">
+        <li>Lint sin errores en OPComponent.vue, CXPComponent.vue, CuentasxpagarPage.vue, FacturasRadianComponent.vue.</li>
+        <li>Plano Bogotá: orden con 3 abonos (dos del mismo proveedor) → 1 cabecera + 3 líneas; CE sale «E», CC «C», NIT «N»; valor sin punto en 18 posiciones; nombre Plano_BB_&lt;orden&gt;_&lt;fecha&gt;.txt.</li>
+        <li>Plano Colpatria: la clave, oficina y tipo de transacción digitados aparecen en el archivo; registro 03 numerado con el consecutivo real; total de filas = detalles + 2.</li>
+        <li>Plano Bancolombia (si aplica): registro 1 y registros 6; suma y cantidad de la cabecera coinciden con el detalle.</li>
+        <li>Proveedor sin cuenta bancaria → aparece en la lista de inconsistencias y no se descarga sin confirmación.</li>
+        <li>Ninguna BCT con TIPO_PLANO del banco → mensaje claro; con una configurada → aparece en el selector.</li>
+        <li>Tras generar, existe la fila en FCXPPMPL y la orden muestra «Plano generado el … por …».</li>
+        <li>Botón Archivo Plano solo con orden CERRADA = 1 y ESTADO N; desaparece al autorizar o abrir la orden.</li>
+        <li>Modo plano dinámico: Autorizar crea exactamente un recibo por proveedor (FCJ procedencia CXP, CERRADA 1), sin recibos procedencia CAJA adicionales; abonos en P con CNSFACJ del recibo.</li>
+        <li>Modo individual por tercero: el recibo tiene una línea FCJD por abono con IDSERVICIO = CNSFCXPP; al confirmar en caja, el comprobante debita FCXP.CUECREDITO de cada factura; SPK_MARCA_OP_PAGADA_POR_EGRESO deja la orden en P.</li>
+        <li>Pagar (total y parcial) desde la factura: con las tres combinaciones de variables usa el mismo método que Autorizar en Órdenes de pago.</li>
+        <li>Eliminar todos los detalles borra todas las líneas y recalcula valor neto y saldo; eliminar una línea sigue funcionando.</li>
+        <li>Permisos: grupo sin CXP_INFORMES no ve la pestaña; con el control sí. Informes funciona entrando directo a la pestaña.</li>
+        <li>Radian: registro por lote marca la factura; no hay llamada a método inexistente en la consola.</li>
+        <li>SQL en preversión: ALTER de SPQ_ORDEN_PAGO y SPQ_FCXP compilan; CREATE TABLE FCXPPMPL; probar con una orden de prueba y revertir.</li>
+      </ul>
+    </section>
+
+    <section id="pruebas-coord">
+      <h2>8. Pruebas del coordinador</h2>
+      <p style="color: var(--color-muted); margin-bottom: 0.75rem;">Revisión funcional antes de pasar a soporte/calidad:</p>
+      <ul class="checklist">
+        <li>Happy path: registrar CxP → contabilizar → orden → Nuevo Detalle → Cerrar Orden → Archivo Plano (Bogotá y Colpatria) → archivo abre, líneas = abonos, suma = valor de la orden → confirmar egresos en caja → factura P, orden P.</li>
+        <li>Borde: orden con un proveedor sin cuenta bancaria → la pantalla lo informa antes de descargar.</li>
+        <li>Borde: generar el plano dos veces → dos registros en la orden con fecha y usuario; el archivo es igual si la orden no cambió.</li>
+        <li>Consistencia: la ficha de la orden, la caja y el comprobante de egreso muestran los mismos valores por factura en los tres modos de autorización.</li>
+        <li>Contabilidad: comprobante del egreso individual debita la cuenta por pagar de cada factura (revisar con contabilidad).</li>
+        <li>Pagar desde la factura y Autorizar desde Órdenes de pago producen el mismo tipo de recibo en una institución con AUT_EGRE_INDIVIDUAL = SI y en una sin él.</li>
+        <li>Pestañas de Cuentas por Pagar: un usuario con menú pero sin CXP_ANTICIPOS no ve Anticipos.</li>
+        <li>Criterio «listo para soporte»: documento del banco contrastado, guía de configuración de BCT.TIPO_PLANO escrita, lista de permisos nuevos entregada.</li>
+      </ul>
+    </section>
+
+    <section id="pruebas-soporte">
+      <h2>9. Pruebas de soporte</h2>
+      <p style="color: var(--color-muted); margin-bottom: 0.75rem;">Checklist operativo tipo runbook L2:</p>
+      <ul class="checklist">
+        <li>«No me aparece el botón Archivo Plano»: verificar que la orden esté cerrada (Cerrar Orden) y No Confirmada; si ya está autorizada, no aplica.</li>
+        <li>«El selector de cuenta sale vacío»: revisar en Bancos que la cuenta esté Activa y tenga el tipo de plano del banco (BANCO_BOGOTA / COLPATRIA / BANCOLOMBIA).</li>
+        <li>«El banco rechazó la línea X»: abrir la lista de inconsistencias de la orden o revisar en el tercero banco, tipo de cuenta y número de cuenta; en el catálogo de bancos el código ACH.</li>
+        <li>«¿Se generó el plano?»: consultar en la orden la constancia (fecha, usuario, formato, archivo). Solo lectura: <code>SELECT * FROM FCXPPMPL WHERE CNSFCXPPM = '&lt;orden&gt;'</code>.</li>
+        <li>«Hay dos recibos de egreso por la misma orden» (histórico): identificar los de procedencia CAJA pendientes creados junto con los CXP confirmados; escalar a L3 para anular los duplicados sin tocar los confirmados.</li>
+        <li>«El comprobante del egreso debitó otra cuenta»: revisar si el recibo tiene líneas sin abono enlazado (pago individual anterior al cambio) y escalar a contabilidad para reclasificar.</li>
+        <li>Rollback: los cambios SQL son ALTER de procedimientos y una tabla nueva; se restaura la versión anterior del procedimiento. No se modifican datos existentes.</li>
+        <li>Escalamiento L3: duplicados de recibos, asientos de egresos individuales anteriores, formatos rechazados por el banco pese a datos completos.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Generado por Qrystalos BA — Oficina de coordinación Qrystalos &middot; 2026-10-04
+    </footer>
+  </div>
+</body>
+</html>

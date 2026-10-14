@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Correcciones de CxP de compras — septiembre 2026</title>
+<style>
+  body { font-family: Calibri, "Segoe UI", sans-serif; color: #1a1a1a; max-width: 920px; margin: 32px auto; padding: 0 24px 48px; line-height: 1.45; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin-top: 28px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  p, li { font-size: 14px; }
+  .meta { color: #444; font-size: 13px; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 8px; font-size: 13px; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f3f3; }
+  td.n { text-align: right; white-space: nowrap; }
+  .nota { font-size: 13px; color: #333; }
+  @media print { body { margin: 0; max-width: none; } }
+</style>
+</head>
+<body>
+
+<h1>Correcciones de cuentas por pagar de compras</h1>
+<p class="meta">CEM. Septiembre 2026. Foto del 30 de septiembre de 2026.<br>
+Correcciones de datos ya grabados. No contabilizan. No reemplazan el cambio de programa.</p>
+
+<p>La cuenta por pagar de una compra nace de la entrada. El encabezado es lo recibido en esa entrada. Si la línea no tiene IVA, la cuenta del artículo es la de excluidos y la de IVA va vacía. Si tiene IVA, el artículo pasa a la gravada y el IVA va a <strong>24080501</strong> (descontable). El crédito del encabezado es <strong>22050101</strong> (proveedores).</p>
+
+<table>
+  <tr><th>Qué</th><th>Sin IVA</th><th>Con IVA</th></tr>
+  <tr><td>Medicamento</td><td>14150502 excluidos</td><td>14150501 gravados</td></tr>
+  <tr><td>Insumo / dispositivo</td><td>14200502 excluidos</td><td>14200501 gravados</td></tr>
+  <tr><td>Cuenta de IVA</td><td>Vacía</td><td>24080501</td></tr>
+  <tr><td>Reversión del lote</td><td>14150591 o 14200591</td><td>14150590 o 14200590</td></tr>
+  <tr><td>Crédito</td><td>22050101</td><td>22050101</td></tr>
+</table>
+
+<p>Se tocaron <strong>45</strong> cuentas por pagar. Una de ellas, 03CM002011, quedó anulada después. Varias de las de gravados y de excluidos ya se enviaron a contabilidad. El resto de esta lista sigue en estado N, sin comprobante, con encabezado igual al detalle.</p>
+
+<p class="nota">El programa que confirma la entrada masiva todavía puede volver a poner el total de la orden en el encabezado (SR20260926-001). El que arma la cuenta por pagar todavía puede repetir el IVA del artículo en cada lote (SR20260922-002). Estos scripts no publican ese arreglo.</p>
+
+<h2>1. Modelo de compras, para que nazca en excluidos</h2>
+<p>El débito de medicamentos debe nacer en la cuenta no gravada. Si la línea trae IVA, el procedimiento la pasa a la gravada. Dos filas del modelo 01, proceso CXP_COMPRAS, prefijo 01, área 4110, ya estaban en gravados. Una factura sin IVA quedaba en 14150501. El crédito del centro 40010101 también estaba en gravados.</p>
+<p>Script: <code>sql/CORRECCION_KMCOM_CXP_COMPRAS_NO_GRAVADA.sql</code>. No reescribe facturas ya hechas. Sigue así:</p>
+<table>
+  <tr><th>Centro</th><th>Tipo</th><th>Cuenta</th></tr>
+  <tr><td>40010101</td><td>Débito</td><td>14150502 excluidos</td></tr>
+  <tr><td>40010101</td><td>Crédito</td><td>22050101 proveedores</td></tr>
+  <tr><td>10250202</td><td>Débito</td><td>14150502 excluidos</td></tr>
+  <tr><td>10250202</td><td>Crédito</td><td>22050101 proveedores</td></tr>
+</table>
+
+<h2>2. Encabezado igual a lo recibido</h2>
+<p>En la recepción masiva el detalle queda con lo recibido y el encabezado se vuelve a escribir con el total de la orden. Si la entrada es parcial, la deuda incluye mercancía que no entró. El detalle no se tocó en este paso.</p>
+<p>Script: <code>sql/CORRECCION_FCXP_ENCABEZADO_ENTRADA_SEP2026.sql</code></p>
+<table>
+  <tr><th>CxP</th><th>Documento</th><th>Antes</th><th>Después de este paso</th></tr>
+  <tr><td>26CM000528</td><td>DPE11790</td><td class="n">106.891.881,12</td><td class="n">74.065.751,04</td></tr>
+  <tr><td>03CM001951</td><td>DPE11721</td><td class="n">5.680.472,00</td><td class="n">132.810,00</td></tr>
+  <tr><td>34CM000083</td><td>DPE12636</td><td class="n">5.680.472,00</td><td class="n">4.955.910,00</td></tr>
+</table>
+<p>DPE11721 y DPE12636 son la orden 2600001259. MX1203-2 llegó en dos entradas (570 y 21.270). MX1206-1, 2.800 unidades y 591.752, no ha entrado y sigue en la orden. Las dos siguen sin contabilizar, en esos valores.</p>
+<p>DPE11790 se volvió a ajustar en el punto 5: las nueve líneas traían cada una el valor del artículo. Hoy el neto es <strong>74.067.680,00</strong>.</p>
+
+<h2>3. Sin IVA, de gravados a excluidos</h2>
+<p>Dieciséis líneas sin IVA estaban en medicamentos gravados. Cinco encabezados también acreditaban a gravados. El lote nacido en esa entrada pasó a excluidos y a su reversión.</p>
+<p>Script: <code>sql/CORRECCION_FCXPD_SIN_IVA_EXCLUIDOS_SEP2026.sql</code></p>
+<table>
+  <tr><th>CxP</th><th>Documento</th><th>Qué cambió</th><th>Neto hoy</th><th>Al 30 de septiembre</th></tr>
+  <tr><td>26CM000489</td><td>DPE11219</td><td>Solo el detalle. El crédito ya era proveedores.</td><td class="n">2.100,00</td><td>Contabilizada 0675000000209430</td></tr>
+  <tr><td>34CM000014</td><td>DPE10812</td><td>Detalle y crédito. No creó lote: esos artículos están en los lotes de DPE11248.</td><td class="n">356.590,00</td><td>Contabilizada 0661000000209031</td></tr>
+  <tr><td>03CM002011</td><td>DPE11248</td><td>Detalle y crédito.</td><td class="n">0,00</td><td>Anulada después. Ya no tiene líneas.</td></tr>
+  <tr><td>34CM000015</td><td>DPE11687</td><td>Detalle y crédito.</td><td class="n">19.017,00</td><td>Sin contabilizar</td></tr>
+  <tr><td>34CM000016</td><td>DPE11686</td><td>Detalle y crédito.</td><td class="n">473.100,00</td><td>Contabilizada 0669000000209030</td></tr>
+  <tr><td>34CM000017</td><td>DPE11674</td><td>Detalle y crédito.</td><td class="n">38.817,00</td><td>Contabilizada 0659000000209431</td></tr>
+</table>
+<p>El detalle que sigue vivo está en 14150502. El crédito está en 22050101.</p>
+
+<h2>4. IVA de cada lote, no el del artículo</h2>
+<p>El encabezado ya tenía el IVA de la entrada. El detalle repetía el IVA del artículo en cada lote. El script dejó en cada línea el IVA de su lote y recalculó el neto. No tocó el encabezado ni la cuenta.</p>
+<p>Script: <code>sql/CORRECCION_FCXPD_IVA_SEP2026.sql</code>. El primer intento se devolvió entero porque el bloque también traía 01CM000875, 01CM000880 y 03CM002019. Esas tres se sacaron y el bloque se volvió a correr solo con estas cuatro.</p>
+<table>
+  <tr><th>CxP</th><th>Documento</th><th>IVA al cerrar el script</th><th>Neto al cerrar el script</th><th>Hoy</th></tr>
+  <tr><td>01CM000871</td><td>DPE10917</td><td class="n">603.792,44</td><td class="n">3.781.647,37</td><td class="n">603.792,00 / 3.781.646,00</td></tr>
+  <tr><td>01CM000873</td><td>DPE10920</td><td class="n">451.114,78</td><td class="n">2.825.403,07</td><td class="n">451.115,00 / 2.825.402,00</td></tr>
+  <tr><td>03CM001766</td><td>DPE11105</td><td class="n">20.598.386,40</td><td class="n">129.010.946,40</td><td class="n">20.724.162,80 / 129.798.702,80</td></tr>
+  <tr><td>03CM002016</td><td>DPE11741</td><td class="n">12.954.960,00</td><td class="n">81.138.960,00</td><td class="n">Igual</td></tr>
+</table>
+<p>01CM000873 se volvió a tocar en el punto 5. 03CM002016 sigue en el mismo valor; en el punto 6 solo cambió la cuenta. 03CM001766, al día siguiente, ya no estaba en 20.598.386,40: el IVA del documento era 20.724.163, con el ítem 3 en la cuenta del insumo. El punto 6 le cambió la cuenta y el ajuste de ese ítem dejó 20.724.162,80. Las cuatro siguen sin contabilizar. Encabezado y detalle coinciden.</p>
+<p class="nota">01CM000875 y 01CM000880 no entraron aquí. Alinearlas al lote en ese momento dejaba el detalle por debajo del encabezado. Entraron en el punto 5. 03CM002019 ya estaba contabilizada y no se tocó.</p>
+
+<h2>5. Neto de cada lote, no el del artículo</h2>
+<p>Un artículo entró en varios lotes y cada línea quedó con el valor de todos, no con el de su lote. El script dejó la base y el IVA de la entrada, y bajó el IVA, el neto y el saldo del encabezado a esa suma. No tocó el campo VALOR ni contabilizó.</p>
+<p>Script: <code>sql/CORRECCION_FCXPD_NETO_POR_LOTE_SEP2026.sql</code>. Veintiuna cuentas. Verificado: encabezado, detalle y saldo coinciden, y siguen en estado N.</p>
+<p>Ejemplos. 01CM000843 DPE11027 pasó de 10.234.064 a <strong>5.892.464</strong>. MX347-3 había llegado en dos lotes (4.050 y 1.350 a 804) y cada línea traía el valor de los 5.400. 26CM000528 DPE11790, nueve líneas del mismo artículo, quedó en <strong>74.067.680</strong>. En 03CM001873, MX917-7 se partió en 479.040 (240) y 239.520 (120); el documento quedó en 2.613.650.</p>
+<table>
+  <tr><th>CxP</th><th>Documento</th><th>Líneas</th><th>IVA hoy</th><th>Neto hoy</th></tr>
+  <tr><td>26CM000528</td><td>DPE11790</td><td class="n">9</td><td class="n">0,00</td><td class="n">74.067.680,00</td></tr>
+  <tr><td>01CM000848</td><td>DPE10682</td><td class="n">8</td><td class="n">0,00</td><td class="n">27.677.205,00</td></tr>
+  <tr><td>03CM001853</td><td>DPE11426</td><td class="n">6</td><td class="n">0,00</td><td class="n">38.514.093,00</td></tr>
+  <tr><td>03CM001863</td><td>DPE11485</td><td class="n">10</td><td class="n">0,00</td><td class="n">30.512.236,00</td></tr>
+  <tr><td>01CM000854</td><td>DPE10976</td><td class="n">10</td><td class="n">0,00</td><td class="n">29.852.875,00</td></tr>
+  <tr><td>03CM001715</td><td>DPE11083</td><td class="n">3</td><td class="n">0,00</td><td class="n">25.070.040,00</td></tr>
+  <tr><td>03CM001816</td><td>DPE11315</td><td class="n">13</td><td class="n">0,00</td><td class="n">18.750.223,00</td></tr>
+  <tr><td>01CM000824</td><td>DPE10971</td><td class="n">8</td><td class="n">0,00</td><td class="n">7.788.797,00</td></tr>
+  <tr><td>01CM000839</td><td>DPE10997</td><td class="n">7</td><td class="n">0,00</td><td class="n">7.788.798,00</td></tr>
+  <tr><td>01CM000819</td><td>DPE10839</td><td class="n">7</td><td class="n">0,00</td><td class="n">6.073.711,00</td></tr>
+  <tr><td>03CM001837</td><td>DPE11209</td><td class="n">4</td><td class="n">0,00</td><td class="n">6.028.240,00</td></tr>
+  <tr><td>01CM000843</td><td>DPE11027</td><td class="n">5</td><td class="n">0,00</td><td class="n">5.892.464,00</td></tr>
+  <tr><td>03CM001706</td><td>DPE10943</td><td class="n">2</td><td class="n">856.786,00</td><td class="n">5.366.186,00</td></tr>
+  <tr><td>01CM000791</td><td>DPE10677</td><td class="n">4</td><td class="n">0,00</td><td class="n">5.032.000,00</td></tr>
+  <tr><td>26CM000508</td><td>DPE11567</td><td class="n">6</td><td class="n">0,00</td><td class="n">4.674.593,00</td></tr>
+  <tr><td>01CM000873</td><td>DPE10920</td><td class="n">10</td><td class="n">451.115,00</td><td class="n">2.825.402,00</td></tr>
+  <tr><td>01CM000875</td><td>DPE10919</td><td class="n">9</td><td class="n">451.115,00</td><td class="n">2.825.403,00</td></tr>
+  <tr><td>01CM000880</td><td>DPE10916</td><td class="n">11</td><td class="n">451.115,00</td><td class="n">2.825.404,00</td></tr>
+  <tr><td>03CM001873</td><td>DPE11446</td><td class="n">5</td><td class="n">0,00</td><td class="n">2.613.650,00</td></tr>
+  <tr><td>01CM000803</td><td>DPE10893</td><td class="n">4</td><td class="n">0,00</td><td class="n">1.269.100,00</td></tr>
+  <tr><td>03CM001820</td><td>DPE11312</td><td class="n">5</td><td class="n">0,00</td><td class="n">125.676,00</td></tr>
+</table>
+<p class="nota">No entraron 01CM000861 ni 03CM001888. Están al final.</p>
+
+<h2>6. Con IVA, a la cuenta gravada y a 24080501</h2>
+<p>Si la línea tiene IVA, el artículo no puede seguir en excluidos y el IVA no puede ir a la cuenta del inventario ni a 24080601 (IVA generado).</p>
+
+<h3>6.1 Primer bloque, 11 líneas</h3>
+<p>Script: <code>sql/CORRECCION_FCXPD_CON_IVA_GRAVADA_SEP2026.sql</code>. El servicio pasó a la gravada y la cuenta de IVA a 24080501. Nueve lotes de esa misma entrada pasaron a débito gravado, reversión gravada y 24080501. El crédito siguió en proveedores.</p>
+<table>
+  <tr><th>CxP</th><th>Documento</th><th>Líneas</th><th>Qué cambió</th><th>Al 30 de septiembre</th></tr>
+  <tr><td>03CM001991</td><td>DPE11292</td><td>1 y 2, MX1944-1</td><td>14150502 sin cuenta de IVA → 14150501 y 24080501. IVA 68.836 y 51.627.</td><td>Contabilizada 0673000000209229. Neto 754.481,00</td></tr>
+  <tr><td>03CM001818</td><td>FE602801</td><td>1</td><td>14150502 → 14150501. La cuenta de IVA ya era 24080501.</td><td>Contabilizada 0671000000209426. Neto 670.574,00</td></tr>
+  <tr><td>03CM001611</td><td>FEP109844</td><td>1</td><td>14200502 → 14200501. Esta entrada no tiene lote.</td><td>Contabilizada 0673000000209422. Neto 603.925,00</td></tr>
+  <tr><td>03CM001809</td><td>FEP109948</td><td>1 y 2</td><td>14200502 → 14200501. El ítem 1 salió de 24080601.</td><td>Sin contabilizar. Neto 669.970,00</td></tr>
+  <tr><td>26CM000449</td><td>INST256930</td><td>4</td><td>14200502 → 14200501.</td><td>Contabilizada 0662000000209410. Neto 1.076.950,00</td></tr>
+  <tr><td>26CM000477</td><td>INST257106</td><td>3, 4, 5 y 6</td><td>14200502 → 14200501. El ítem 4 no tiene lote en esta entrada.</td><td>Contabilizada 0662000000209419. Neto 1.096.466,00</td></tr>
+</table>
+<p class="nota">No se tocó 01CM000740 DPE10712: ya estaba contabilizada (2664000000002688) en 14200502. El lote DM0089-1 de 03CM001611 y el lote DM65-1 del ítem 4 de 26CM000477 están en otras entradas y no se modificaron.</p>
+
+<h3>6.2 Segundo bloque, 14 líneas</h3>
+<p>Script: <code>sql/CORRECCION_FCXPD_CUENTA_IVA_SEP2026.sql</code>. No cambió valores. Dejó la gravada y 24080501. El lote de 03CM002153 (entrada 0300027441) pasó de excluidos a gravada y a 24080501. El lote de 03CM002016 ítem 2 ya estaba bien y no se tocó. Las demás líneas de este bloque no tienen lote en su entrada.</p>
+<table>
+  <tr><th>CxP</th><th>Documento</th><th>Qué tenía el IVA</th><th>Neto hoy</th></tr>
+  <tr><td>03CM002153</td><td>DPE11511</td><td>Excluidos 14200502, sin cuenta de IVA. 950.552</td><td class="n">5.953.455,00</td></tr>
+  <tr><td>03CM002155</td><td>DPE11510</td><td>Igual. 950.552</td><td class="n">5.953.455,00</td></tr>
+  <tr><td>03CM002156</td><td>DPE11512</td><td>Igual. 950.552</td><td class="n">5.953.455,00</td></tr>
+  <tr><td>03CM002157</td><td>DPE11513</td><td>Igual. 950.552</td><td class="n">5.953.455,00</td></tr>
+  <tr><td>03CM001766</td><td>DPE11105</td><td>Ítems 1, 2, 4 y 6 en 14200501. Ítem 5 en 14200502 y el IVA en 14200590.</td><td class="n">129.798.702,80</td></tr>
+  <tr><td>03CM002016</td><td>DPE11741</td><td>Ítems 1 y 2 en 24080601</td><td class="n">81.138.960,00</td></tr>
+  <tr><td>03CM002050</td><td>DPE11925</td><td>Ítem 3 en 24080601. 2.183.784</td><td class="n">47.515.629,00</td></tr>
+  <tr><td>03CM002274</td><td>DPE12388</td><td>Ítem 1, MX1944-1, en 24080601. 17.209,06. El ítem 2 no tiene IVA y sigue en 14150502.</td><td class="n">2.089.853,06</td></tr>
+  <tr><td>03CM002279</td><td>DPE12422</td><td>Ítem 1, MX1944-1, en 24080601. 757.198,64</td><td class="n">4.742.454,64</td></tr>
+</table>
+<p>El ítem 3 de 03CM001766 (INS0039-2) no entró en el script: no tenía prefijo y el IVA, 5.117.209,20, estaba en 14200501. Se corrigió aparte. Quedó con prefijo 03, en 14200501 y en 24080501. El IVA de la línea quedó en 5.117.209,00 y el encabezado bajó los mismos 0,20.</p>
+<p>Las nueve siguen sin contabilizar. Encabezado y detalle coinciden. El crédito es 22050101. En las compras de septiembre sin contabilizar no quedó otra línea con IVA fuera de 24080501, ni con IVA en excluidos, ni sin IVA y con cuenta de IVA.</p>
+
+<h2>7. Lo que no se corrigió</h2>
+<ul>
+  <li><strong>01CM000861</strong> DPE11203. Dos lotes de MX931-1, cada uno en 2.846.000. El comprobante 2659000000002782 quedó anulado. La cuenta sigue en 5.692.000, sin contabilizar. La entrada es de 300 y una línea trae 5.200. No entra en el script del neto.</li>
+  <li><strong>03CM001888</strong> FE71142. Dos lotes iguales. El neto ya es cantidad por precio más el IVA de cada lote. No se tocó.</li>
+  <li><strong>01CM000740</strong> DPE10712. Ya estaba contabilizada en 14200502, comprobante 2664000000002688.</li>
+</ul>
+
+</body>
+</html>

@@ -4,10 +4,10 @@
   "modulo": "FCONCI_COL",
   "familia": "cartera",
   "prioridad": 6,
-  "estado": "parcial",
-  "resumen": "Acuerdo EPS vs cartera: FCONCI+FCONCID por factura FCXCDV. VLRACEPTADO→NC (SPK_NOTASCXC); VLRRECUPERAR→saldo tipo C en FCXCDV. Confirmar=SPK_APLICA_CONCILIACION; anular=SPK_RETIRA_FACTURA_CONCI (ND). /admin/Concilia. OM /cont CONCILIACIONES+CONTABILIDAD_3. No es conciliación bancaria.",
-  "actualizado": "2026-09-06T08:10:00",
-  "notaSql": "Ruta paso 6 cerrado 2026-09-06: SPQ_FCONCI_COL 8/8 + SPQ_CONCILIACIONES 3/3 + SPKs núcleo (APLICA, RETIRA, CONTAB_CONCI, NC_CONTAB_ANULA_CONCI) leídos en sql/.",
+  "estado": "completo",
+  "resumen": "Acuerdo con la EPS sobre facturas con saldo: FCONCI (Ingresada/Cerrada/Anulada, tipo Individual o Porcentaje) + FCONCID por vencimiento FCXCDV. Valor aceptado → NC automática (sede+C, PROCEDENCIA CONCILIA); valor a recuperar → vencimiento tipo C. Confirmar = SPK_APLICA_CONCILIACION (+SPK_CONTAB_CONCI); anular = SPK_RETIRA_FACTURA_CONCI (ND). Carga Excel y concepto masivo. Reglas 2.0.7: glosa aplicada y radicada, CONCIGLOSA_TIPOSPERM. /admin/Concilia; OM /cont. No es conciliación bancaria.",
+  "actualizado": "2026-10-03T11:30:00",
+  "notaSql": "Releído 2026-10-03: SPQ_FCONCI_COL 8/8 y SPK_APLICA_CONCILIACION desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7). Novedades frente a la lectura de 2026-09-06: CRUD_FCONCID/CARGA_EXCEL/CONFIRMAR validan glosa existente, CERRADA=1, FECHARESP y radicada (FGLO.RADICADO o FGLOI/FGLOID) y tipos permitidos por USVGS CONCIGLOSA_TIPOSPERM; tipo L se suma a G/C/R como tipo con glosa obligatoria.",
   "alcanceHasta": "Ciclo administrativo: crear conciliación → detalle facturas → confirmar (genera notas y cierra) → imprimir → anular/revertir → contabilizar vía OM Conciliaciones (/cont). No incluye conciliación bancaria ni CONCFGLO de /cont/conciContables.",
   "ventanas": [
     {
@@ -15,7 +15,7 @@
       "ruta": "Admin.Conci",
       "path": "/admin/Concilia",
       "vue": "ConciliaPage.vue → Concilia/FconciComponent.vue",
-      "entrada": "Administrativo → Concilia. Grilla FCONCI (AppStore.read) + detalle FCONCID. Botones: confirmar, anular, Excel, escaneo DOCXTPO tipo FCONCI."
+      "entrada": "Administrativo → Concilia. Grilla FCONCI con filtros (tercero, estado, fechas, Cns.Concilia, N_Factura, sede) y fila expandible con el detalle FCONCID. Botones por fila: Editar, Borrar, Confirmar (Ingresada), Imp.Conci. (siempre), Imp.Comp. (Cerrada contabilizada), Anular (Cerrada). En el detalle: Nuevo Detalle, Agregar Archivo Plano, Limpiar Todos, Escaneo, Aplicar concepto, Marcar todas / Desmarcar; por línea Editar, Borrar, Imp.ND, Imp.NC, Anular Item."
     },
     {
       "uso": "Contabilidad — otros módulos conciliaciones",
@@ -67,14 +67,14 @@
         },
         {
           "id": "catalogo-fcglo",
-          "nombre": "Código glosa en detalle (opcional FE, obligatorio Excel tipo G/C/R)",
-          "explicacion": "FCONCID.CNSFCGLO enlaza FCGLO.DESCRIPCION. En manual el FE no exige CNSFCGLO; Excel exige CNSGLO si TIPO ∈ G,C,R.",
-          "invariante": "Tipos glosa/ratificación/conciliación en FCXCDV requieren CNSGLO en carga masiva.",
+          "nombre": "Glosa en el detalle: consecutivo obligatorio para tipos G/C/R/L y glosa radicada",
+          "explicacion": "FCONCID.CNSGLO enlaza FGLO. Para TIPO G, C, R o L es obligatorio (manual y Excel). El SP verifica que la glosa exista, CERRADA=1, FECHARESP no nula y radicada (FGLO.RADICADO o FGLOI.FECHARAD/RADICADO vía FGLOID). CNSFCGLO (motivo FCGLO) sigue opcional.",
+          "invariante": "Sin glosa aplicada y radicada no entra la línea ni cierra la conciliación («La glosa no esta radicada», «Existen lineas con glosas no aplicadas o no radicadas…»).",
           "sps": [
             {
               "nombre": "SPQ_FCONCI_COL",
-              "metodo": "CARGA_EXCEL_FCONCID",
-              "rol": "Valida CNSGLO y saldo FCXCDV por tipo."
+              "metodo": "CRUD_FCONCID / CARGA_EXCEL_FCONCID / CONFIRMAR_CONCILIACION",
+              "rol": "Valida CNSGLO, estado de la glosa y radicación."
             }
           ]
         }
@@ -107,7 +107,7 @@
         {
           "id": "crud-detalle",
           "nombre": "Detalle por factura",
-          "explicacion": "CRUD_FCONCID: Nueva inserta línea con SALDONETO, VLRACEPTADO, VLRRECUPERAR, CNSGLO, CONDCONCEPTO, CNSFCGLO. FE cap VLRACEPTADO ≤ SALDONETO. Aplicar concepto masivo = varios CRUD_FCONCID Editar.",
+          "explicacion": "CRUD_FCONCID: Nueva inserta línea con SALDONETO, VLRACEPTADO, VLRRECUPERAR, CNSGLO, CONDCONCEPTO, CNSFCGLO. FE cap VLRACEPTADO ≤ SALDONETO. SP (2.0.7) valida tipo permitido (CONCIGLOSA_TIPOSPERM) y glosa aplicada/radicada si CNSGLO. Aplicar concepto masivo = varios CRUD_FCONCID Editar.",
           "invariante": "Solo conciliación Ingresada. No duplicar ITEM_FCXCDV en mismo IDFCONCI.",
           "sps": [
             {
@@ -156,7 +156,7 @@
         {
           "id": "confirmar-conci",
           "nombre": "Confirmar / cerrar conciliación",
-          "explicacion": "CONFIRMAR_CONCILIACION: asigna CNSFNOT a ítems con VLRACEPTADO>0; llama SPK_APLICA_CONCILIACION; exige ESTADO final Cerrada. Valida PRI si FNOT_FECHACONCILIA=CONCILIACION. SPK crea NC (PROCEDENCIA CONCILIA), aplica NOTASCXC, mueve recuperar a FCXCDV, SPK_CONTAB_CONCI si aplica.",
+          "explicacion": "CONFIRMAR_CONCILIACION: valida PRI si FNOT_FECHACONCILIA=CONCILIACION, glosas de todas las líneas (existen, CERRADA=1, FECHARESP, radicada) y tipos permitidos; asigna CNSFNOT (@FNOTC) a ítems con VLRACEPTADO>0; llama SPK_APLICA_CONCILIACION (NC PROCEDENCIA CONCILIA, FCXCDV tipo C, SPK_RELIQUIDA_FTR, SPK_CONTAB_CONCI si hay recuperar y FTR no castigada); exige ESTADO final Cerrada.",
           "invariante": "Si SPK no cierra, KO «La Conciliación No se ha aplicado correctamente…». IDCOPNOTACONCI obligatorio.",
           "sps": [
             {
@@ -220,8 +220,8 @@
         {
           "id": "desde-cxc-factura",
           "nombre": "Selección factura desde cartera",
-          "explicacion": "BuscaFactura lee FCXCDV join FTR filtrado por IDTERCERO de la conciliación. Toma SALDONETO, CNSCXC, CNSGLO, ITEM→ITEM_FCXCDV, TIPO.",
-          "invariante": "Factura debe pertenecer al tercero de FCONCI y tener saldo > 0.",
+          "explicacion": "BuscaFactura lee FCXCDV join FTR filtrado por IDTERCERO de la conciliación, SALDONETO > 0 y, si USVGS CONCIGLOSA_TIPOSPERM tiene valor, TIPO IN (lista). Toma SALDONETO, CNSCXC, CNSGLO, ITEM→ITEM_FCXCDV, TIPO. Si FCONCI.TIPO='P', VLRACEPTADO = SALDONETO × PORCENTAJE / 100.",
+          "invariante": "Factura del tercero, saldo > 0 y tipo permitido. El SP repite la validación de tipo en CRUD_FCONCID, CARGA_EXCEL y CONFIRMAR.",
           "sps": []
         },
         {
@@ -299,5 +299,1185 @@
     }
   ],
   "flujoPasado": true,
-  "pasadaEn": "2026-09-06T04:45:00"
+  "pasadaEn": "2026-09-06T04:45:00",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "Registro del acuerdo al que llega la IPS con una EPS sobre facturas que aún tienen saldo en cartera (glosas defendidas, ratificaciones, saldos de conciliaciones anteriores o facturas). Por cada factura se fija cuánto acepta descontar la IPS (valor aceptado) y cuánto se compromete a pagar la EPS (valor a recuperar). Al confirmar, el sistema genera las notas crédito del descuento y deja el valor a recuperar como un nuevo vencimiento tipo C de la factura.",
+    "paraQueSirve": "Cerrar formalmente la negociación de cartera con la EPS: depurar la cartera (lo aceptado sale con nota crédito automática), dejar trazable lo que la EPS debe pagar y en qué fecha, imprimir el acta y contabilizar el acuerdo. Si el acuerdo fue un error, anular reversa todo con nota débito.",
+    "proposito": "Que la cartera refleje exactamente lo pactado con la EPS: ni más saldo del que ella reconoce ni menos del que se comprometió a pagar, con soporte impreso, notas generadas por el sistema y asiento contable por periodo."
+  },
+  "botones": [
+    {
+      "label": "Nueva Conciliación",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Abre el formulario de cabecera: tercero, F. Concilia, Fecha Pago Acuerdo, Nro. Externo, Funcionario Externo, Tipo (Individual / Porcentaje), Observaciones (≥ 10 caracteres). Guarda en estado Ingresada."
+    },
+    {
+      "label": "Editar",
+      "icono": "edit",
+      "color": "yellow-10",
+      "estilo": "flat",
+      "descripcion": "Fila de la conciliación. Solo en Ingresada. Cambia cualquier dato de la cabecera. En Cerrada/Anulada el ícono desaparece (Item Cerrado)."
+    },
+    {
+      "label": "Borrar",
+      "icono": "delete",
+      "color": "red-7",
+      "estilo": "flat",
+      "descripcion": "Fila de la conciliación. Solo en Ingresada y sin líneas en el detalle («La conciliación tiene detalles y no puede eliminarse»). Use Limpiar Todos antes si hace falta."
+    },
+    {
+      "label": "Confirmar",
+      "icono": "lock",
+      "color": "teal-6",
+      "estilo": "flat",
+      "descripcion": "Fila de la conciliación. Solo en Ingresada. Valida periodo (si FNOT_FECHACONCILIA = CONCILIACION), glosas aplicadas/radicadas y tipos permitidos; genera NC por valor aceptado, vencimiento tipo C por valor a recuperar y asiento de conciliación. Deja Cerrada."
+    },
+    {
+      "label": "Imp.Conci.",
+      "icono": "print",
+      "color": "indigo-7",
+      "estilo": "flat",
+      "descripcion": "Fila de la conciliación. En cualquier estado. PDF con cabecera y detalle (saldo, aceptado, recuperar por factura). Sirve también como borrador antes de confirmar."
+    },
+    {
+      "label": "Imp.Comp.",
+      "icono": "receipt_long",
+      "color": "indigo-7",
+      "estilo": "flat",
+      "descripcion": "Fila de la conciliación. Solo en Cerrada. Imprime el comprobante contable; requiere que contabilidad ya la haya enviado (Contabilizada = 1, Nro. Comprobante)."
+    },
+    {
+      "label": "Anular",
+      "icono": "cancel",
+      "color": "pink-10",
+      "estilo": "flat",
+      "descripcion": "Fila de la conciliación. Solo en Cerrada. Reversa todas las líneas cerradas: nota débito (sede+D) por cada valor aceptado, borra el vencimiento tipo C, reversa el asiento. Deja Anulada."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "download",
+      "color": "green-7",
+      "estilo": "flat",
+      "descripcion": "Grilla principal. Exporta las conciliaciones filtradas. El detalle expandido también tiene su exportación."
+    },
+    {
+      "label": "Nuevo Detalle de Conciliación",
+      "icono": "create_new_folder",
+      "color": "blue-8",
+      "estilo": "outline",
+      "descripcion": "Fila expandida, solo Ingresada. Abre el formulario de línea: Seleccionar Factura (vencimientos del tercero con saldo > 0), Seleccionar Concepto (CPNT), Seleccionar Cod. Glosa (FCGLO), Vlr. Aceptado, Observación (≥ 10)."
+    },
+    {
+      "label": "Agregar Archivo Plano",
+      "icono": "upload_file",
+      "color": "teal-6",
+      "estilo": "outline",
+      "descripcion": "Fila expandida, solo Ingresada. Carga Excel (.xlsx/.xls) con columnas N_FACTURA, TIPO, CNSGLO, VLRACEPTADO, CODCONCEPTO. Botón Descargar plantilla; vista previa y Procesar. Devuelve filas con error y su motivo."
+    },
+    {
+      "label": "Limpiar Todos los Detalles",
+      "icono": "cleaning_services",
+      "color": "red-7",
+      "estilo": "outline",
+      "descripcion": "Fila expandida, solo Ingresada. Borra todas las líneas Ingresada de la conciliación (no toca líneas cerradas)."
+    },
+    {
+      "label": "Escaneo / Documentos adjuntos",
+      "icono": "document_scanner",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Fila expandida, en Ingresada o Cerrada (no Anulada). Adjunta o consulta documentos ligados al Cns. Concilia (tipo de documento FCONCI): acta firmada, correos, soportes."
+    },
+    {
+      "label": "Aplicar concepto",
+      "icono": "sell",
+      "color": "deep-purple-7",
+      "estilo": "outline",
+      "descripcion": "Fila expandida, solo Ingresada. Con líneas marcadas (casilla Sel): elige un concepto de nota y lo aplica a todas; informa cuántas quedaron bien y cuáles fallaron. El contador rojo muestra las marcadas."
+    },
+    {
+      "label": "Marcar todas / Desmarcar",
+      "icono": "check_box",
+      "color": "grey-7",
+      "estilo": "outline",
+      "descripcion": "Fila expandida, solo Ingresada. Marca todas las líneas de la página para Aplicar concepto; Desmarcar quita la selección."
+    },
+    {
+      "label": "Sel",
+      "icono": "check_box_outline_blank",
+      "color": "grey-7",
+      "estilo": "flat",
+      "descripcion": "Línea del detalle, solo Ingresada. Casilla para incluir la factura en Aplicar concepto."
+    },
+    {
+      "label": "Editar (línea)",
+      "icono": "edit",
+      "color": "yellow-10",
+      "estilo": "flat",
+      "descripcion": "Línea del detalle, solo Ingresada. Corrige concepto, código de glosa, valor aceptado u observación."
+    },
+    {
+      "label": "Borrar (línea)",
+      "icono": "delete",
+      "color": "red-7",
+      "estilo": "flat",
+      "descripcion": "Línea del detalle, solo Ingresada. Quita la factura de la conciliación."
+    },
+    {
+      "label": "Imp.ND",
+      "icono": "print",
+      "color": "indigo-7",
+      "estilo": "flat",
+      "descripcion": "Línea del detalle. Solo si la línea tiene Cns. Nota DB (fue anulada): imprime la nota débito del reverso."
+    },
+    {
+      "label": "Imp.NC",
+      "icono": "print",
+      "color": "indigo-7",
+      "estilo": "flat",
+      "descripcion": "Línea del detalle. En Cerrada o Anulada: imprime la nota crédito generada por el valor aceptado."
+    },
+    {
+      "label": "Anular Item",
+      "icono": "cancel",
+      "color": "pink-10",
+      "estilo": "flat",
+      "descripcion": "Línea del detalle. Solo en Cerrada y sin nota débito previa. Reversa únicamente esa factura (ND, borra tipo C, asiento inverso); la conciliación sigue Cerrada."
+    },
+    {
+      "label": "Seleccionar Factura",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Formulario de línea. Lista los vencimientos de cartera (FCXCDV) del tercero con saldo neto > 0, filtrados por CONCIGLOSA_TIPOSPERM si está configurada. Al elegir llena Nro, Tipo, Cns. CxC, Cns. Glosa y Saldo Neto."
+    },
+    {
+      "label": "Seleccionar Concepto",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Formulario de línea. Catálogo de conceptos de nota (CPNT). Viene precargado el de IDCOPNOTACONCI."
+    },
+    {
+      "label": "Seleccionar Cod. Glosa",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Formulario de línea. Catálogo de motivos de glosa (FCGLO). Opcional; documenta el motivo del acuerdo."
+    },
+    {
+      "label": "Enviar a contabilidad (Otros módulos → Conciliaciones)",
+      "icono": "send",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Contabilidad → Otros módulos → Conciliaciones. Filtra año/mes contable, marca las cerradas con Contabilizada = 0 y envía; deja Contabilizada = 1 y Nro. Comprobante."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "admin.conci (acceso a pantalla)",
+      "accion": "Entrar a Administrativo → Concilia",
+      "rol": "Analista de cartera",
+      "descripcion": "La ventana se controla por acceso al menú. No hay controles USGRUH por botón: quien entra puede crear, confirmar, anular e imprimir."
+    },
+    {
+      "codigo": "cont (acceso a pantalla)",
+      "accion": "Entrar a Contabilidad → Otros módulos → Conciliaciones",
+      "rol": "Contabilidad",
+      "descripcion": "El envío contable se hace desde la ventana de Otros módulos; depende del acceso al menú de Contabilidad."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDCOPNOTACONCI",
+      "tipo": "Código de concepto de nota (CPNT)",
+      "valorSugerido": "Concepto «Conciliación de glosas» o equivalente",
+      "descripcion": "Concepto por defecto de las notas crédito/débito de conciliación. Se precarga en cada línea y en la plantilla Excel. Si falta, al confirmar: «NO EXISTE CONFIGURACION PARA GENERAR LA NOTA CREDITO» y no cierra."
+    },
+    {
+      "nombre": "FNOT_FECHACONCILIA",
+      "tipo": "Texto",
+      "valorSugerido": "CONCILIACION (o vacío)",
+      "descripcion": "CONCILIACION: las NC llevan la fecha de conciliación y el periodo contable de esa fecha debe estar abierto («La Fecha de Conciliación y El Período Esta Cerrado»). Otro valor o vacío: las NC llevan la fecha del día."
+    },
+    {
+      "nombre": "CONCIGLOSA_TIPOSPERM",
+      "tipo": "Lista separada por comas",
+      "valorSugerido": "G,R,C,L (o vacío = sin filtro)",
+      "descripcion": "Tipos de vencimiento FCXCDV que se pueden conciliar. Filtra Seleccionar Factura, valida cada línea manual y Excel («El tipo de vencimiento no esta permitido…») y vuelve a validar al confirmar."
+    },
+    {
+      "nombre": "CONCIGLOSA_NREXTERNO",
+      "tipo": "Texto",
+      "valorSugerido": "alfanumerico (si las actas de la EPS llevan letras)",
+      "descripcion": "Si vale «alfanumerico», el campo Nro. Externo acepta letras. Cualquier otro valor: solo números («No se pueden ingresar letras»)."
+    },
+    {
+      "nombre": "Consecutivos @CONCI, @FNOTC, @FNOTD",
+      "tipo": "Consecutivos por sede",
+      "valorSugerido": "Definidos para cada sede",
+      "descripcion": "@CONCI numera la cabecera; @FNOTC las notas crédito (prefijo sede + C + 8 dígitos) y @FNOTD las notas débito (sede + D). Sin ellos falla el guardado o el cierre."
+    },
+    {
+      "nombre": "Tipo de comprobante de conciliación / cuenta de glosas (TTEC)",
+      "tipo": "Parámetros contables",
+      "valorSugerido": "Los define contabilidad",
+      "descripcion": "El asiento de conciliación por valor a recuperar usa el tipo de comprobante de conciliaciones y la cuenta de glosas. Si faltan, al confirmar el asiento falla aunque las notas sí se generen."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Registrar el acuerdo de pago/descuento al que llegamos con la EPS",
+      "donde": "Administrativo → Concilia → Nueva Conciliación → tercero, fechas, tipo, observación → Guardar → fila expandida → Nuevo Detalle por factura → Confirmar",
+      "condicion": "Las facturas deben tener saldo neto > 0 en cartera y estar a nombre del tercero. Las que vienen de glosa deben estar aplicadas y radicadas.",
+      "noEs": "No es registrar el pago: eso es Recaudos cuando la EPS consigne."
+    },
+    {
+      "necesidad": "Aplicar el mismo porcentaje de descuento a todas las facturas",
+      "donde": "Nueva Conciliación → Tipo = Porcentaje → Vlr. Porcentaje → al elegir cada factura el valor aceptado se calcula solo",
+      "condicion": "Porcentaje > 0. El campo Vlr. Aceptado queda bloqueado en las líneas.",
+      "noEs": "Cambiar el porcentaje después no recalcula las líneas ya guardadas: bórrelas y vuelva a agregarlas."
+    },
+    {
+      "necesidad": "Cargar muchas facturas de una vez",
+      "donde": "Fila expandida (Ingresada) → Agregar Archivo Plano → Descargar plantilla → llenar N_FACTURA, TIPO, CNSGLO, VLRACEPTADO, CODCONCEPTO → cargar → Procesar",
+      "condicion": "Conciliación en Ingresada. Cada fila se valida: factura del tercero con saldo, tipo permitido, glosa radicada si aplica, concepto en CPNT, no duplicada.",
+      "noEs": "No reemplaza lo ya cargado; agrega. Para empezar de cero use Limpiar Todos."
+    },
+    {
+      "necesidad": "Cambiar el concepto de nota a varias facturas ya cargadas",
+      "donde": "Fila expandida → marcar líneas (Sel o Marcar todas) → Aplicar concepto → elegir concepto → Aplicar",
+      "condicion": "Conciliación en Ingresada.",
+      "noEs": "No cambia valores aceptados; solo el concepto de la nota."
+    },
+    {
+      "necesidad": "Saber cuánto quedó por recuperar de una factura conciliada",
+      "donde": "Fila expandida → columna Vlr. Recuperar; en cartera, la factura muestra un vencimiento tipo C con el Cns. Concilia",
+      "condicion": "Conciliación Cerrada.",
+      "noEs": "No es el saldo de la glosa: la glosa quedó en cero al confirmar."
+    },
+    {
+      "necesidad": "Imprimir el acta para firmarla con la EPS",
+      "donde": "Fila de la conciliación → Imp.Conci. (PDF)",
+      "condicion": "Cualquier estado, incluso Ingresada.",
+      "noEs": "No es el comprobante contable (Imp.Comp.) ni la nota crédito (Imp.NC por línea)."
+    },
+    {
+      "necesidad": "Adjuntar el acta firmada",
+      "donde": "Fila expandida → Escaneo / Documentos adjuntos",
+      "condicion": "Conciliación no anulada.",
+      "noEs": "No es Imp.Conci.: aquí se guarda un archivo externo."
+    },
+    {
+      "necesidad": "Ver la nota crédito que generó la conciliación",
+      "donde": "Fila expandida → línea → Imp.NC; también en Administrativo → Notas DB/CR (procedencia CONCILIA, Cns. Nota de la línea)",
+      "condicion": "Línea Cerrada o Anulada con valor aceptado > 0.",
+      "noEs": "No se crea ni se edita la NC a mano."
+    },
+    {
+      "necesidad": "Deshacer una conciliación confirmada por error",
+      "donde": "Fila de la conciliación → Anular (todas las facturas) o fila expandida → Anular Item (una factura)",
+      "condicion": "Estado Cerrada. Línea sin nota débito previa. Periodo contable abierto para el reverso.",
+      "noEs": "No vuelve a Ingresada: queda Anulada con su ND. Para corregir, cree una nueva conciliación."
+    },
+    {
+      "necesidad": "Borrar una conciliación que aún no confirmé",
+      "donde": "Fila expandida → Limpiar Todos los Detalles → fila de la conciliación → Borrar",
+      "condicion": "Estado Ingresada y sin líneas.",
+      "noEs": "No es Anular: Anular es solo para Cerrada."
+    },
+    {
+      "necesidad": "Contabilizar las conciliaciones del mes",
+      "donde": "Contabilidad → Otros módulos → Conciliaciones → año/mes → marcar → Enviar",
+      "condicion": "Conciliaciones Cerradas con Contabilizada = 0.",
+      "noEs": "No se hace desde Administrativo → Concilia; allí solo se ve Contabilizada y Nro. Comprobante."
+    },
+    {
+      "necesidad": "Imprimir el comprobante contable de la conciliación",
+      "donde": "Fila de la conciliación → Imp.Comp.",
+      "condicion": "Cerrada y ya enviada por contabilidad (Nro. Comprobante).",
+      "noEs": "Si no aparece el número, falta el envío desde Otros módulos."
+    },
+    {
+      "necesidad": "Conciliar una factura que la EPS no me deja escoger",
+      "donde": "Seleccionar Factura solo lista vencimientos del tercero de la cabecera con saldo > 0 y del tipo permitido (CONCIGLOSA_TIPOSPERM)",
+      "condicion": "Revise tercero, saldo y tipo; si es glosa, que esté aplicada y radicada.",
+      "noEs": "No es un defecto: es el filtro de la ventana."
+    },
+    {
+      "necesidad": "Conciliar la cuenta bancaria / cruzar extractos",
+      "donde": "Contabilidad → Conciliaciones contables (otro proceso)",
+      "condicion": "—",
+      "noEs": "No es Cartera · Conciliaciones."
+    },
+    {
+      "necesidad": "Permitir letras en el número del acta de la EPS",
+      "donde": "Variable CONCIGLOSA_NREXTERNO = alfanumerico (Configuración → Variables)",
+      "condicion": "Lo configura el administrador.",
+      "noEs": "No es un defecto del campo: por defecto solo acepta números."
+    }
+  ],
+  "estadosConci": {
+    "titulo": "Cómo leer el estado de una conciliación y de sus facturas",
+    "descripcion": "La cabecera tiene tres estados y cada línea del detalle los repite por factura. Además, Contabilizada y Nro. Comprobante dicen si contabilidad ya la envió.",
+    "columnas": [
+      "Estado",
+      "Qué significa",
+      "Qué hacer"
+    ],
+    "filas": [
+      {
+        "codigo": "IN",
+        "tono": "ambar",
+        "etiquetas": [
+          "Ingresada",
+          "Cabecera y líneas · fondo amarillo"
+        ],
+        "significa": "El acuerdo se está armando. Se pueden editar la cabecera, agregar, corregir y borrar facturas, cargar Excel y aplicar conceptos. Nada ha tocado la cartera.",
+        "queHacer": "Completar el detalle, imprimir el borrador (Imp.Conci.) y Confirmar. O Limpiar Todos + Borrar si se desiste."
+      },
+      {
+        "codigo": "CE",
+        "tono": "verde",
+        "etiquetas": [
+          "Cerrada",
+          "Cabecera y líneas · fondo verde"
+        ],
+        "significa": "Se confirmó: cada línea tiene su NC (si hubo aceptado) y el valor a recuperar ya es un vencimiento tipo C. No se edita.",
+        "queHacer": "Imp.Conci., Imp.NC por línea, Escaneo del acta firmada. Esperar el envío contable. Anular solo si fue un error."
+      },
+      {
+        "codigo": "CP",
+        "tono": "azul",
+        "etiquetas": [
+          "Cerrada parcialmente",
+          "Cabecera Ingresada con líneas Cerrada"
+        ],
+        "significa": "Al confirmar alguna línea falló (concepto, periodo, nota) y las demás cerraron; la cabecera no pasó a Cerrada. Mensaje «La Conciliación No se ha aplicado correctamente…».",
+        "queHacer": "Revisar las líneas que siguen Ingresada, corregir la causa y volver a Confirmar; solo procesa las pendientes."
+      },
+      {
+        "codigo": "AN",
+        "tono": "rojo",
+        "etiquetas": [
+          "Anulada",
+          "Cabecera y líneas · fondo rojo"
+        ],
+        "significa": "Se reversó: cada línea con aceptado tiene su ND (Cns. Nota DB), el tipo C se borró y la factura recuperó su saldo. Queda como historia.",
+        "queHacer": "Nada que operar. Imp.NC / Imp.ND para los soportes. Si se necesita, crear una nueva conciliación."
+      },
+      {
+        "codigo": "C0",
+        "tono": "gris",
+        "etiquetas": [
+          "Cerrada · Contabilizada = 0",
+          "Sin Nro. Comprobante"
+        ],
+        "significa": "Cerrada en cartera pero contabilidad aún no la envía desde Otros módulos. Imp.Comp. no está disponible.",
+        "queHacer": "Contabilidad → Otros módulos → Conciliaciones → año/mes → marcar → Enviar."
+      },
+      {
+        "codigo": "C1",
+        "tono": "verde",
+        "etiquetas": [
+          "Cerrada · Contabilizada = 1",
+          "Con Nro. Comprobante"
+        ],
+        "significa": "Ya tiene comprobante contable. Imp.Comp. habilitado.",
+        "queHacer": "Si hay que anular, coordinar con contabilidad: el reverso genera su propio asiento."
+      },
+      {
+        "codigo": "C2",
+        "tono": "ambar",
+        "etiquetas": [
+          "Cerrada · Contabilizada = 2",
+          "En proceso"
+        ],
+        "significa": "Marcada en proceso de envío contable; no se puede volver a marcar en la bandeja.",
+        "queHacer": "Esperar o revisar con contabilidad si quedó atascada."
+      },
+      {
+        "codigo": "LA",
+        "tono": "rojo",
+        "etiquetas": [
+          "Línea Anulada dentro de una Cerrada",
+          "Anular Item"
+        ],
+        "significa": "Solo esa factura se reversó (ND); la conciliación sigue Cerrada con las demás líneas vigentes.",
+        "queHacer": "Si la factura debe conciliarse de nuevo, incluirla en otra conciliación."
+      }
+    ],
+    "nota": "El tipo de vencimiento de cada línea (F factura, G glosa, R ratificación, C conciliación, L) no es un estado: dice de qué saldo se partió. El vencimiento tipo C que crea la conciliación lleva el Cns. Concilia en cartera."
+  },
+  "flujos": [
+    {
+      "id": "flujo-ciclo",
+      "titulo": "El ciclo completo de una conciliación",
+      "descripcion": "Seis momentos en Administrativo → Concilia más el envío contable.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la cabecera",
+          "descripcion": "Nueva Conciliación: tercero, F. Concilia, Fecha Pago Acuerdo, Nro. Externo, Funcionario Externo, Tipo Individual/Porcentaje, Observaciones. Queda Ingresada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [
+            "FCONCI",
+            "TER"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCI (Nueva)"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Agregar facturas",
+          "descripcion": "Nuevo Detalle (una por una), Agregar Archivo Plano (Excel) o Aplicar concepto sobre varias. Cada línea: saldo neto, aceptado, recuperar.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila expandida de la conciliación",
+          "tablas": [
+            "FCONCID",
+            "FCXCDV",
+            "CPNT",
+            "FCGLO"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCID / CARGA_EXCEL_FCONCID"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿El acta está completa y revisada?",
+          "descripcion": "Imp.Conci. imprime el borrador. Editar/Borrar/Limpiar Todos corrigen el detalle.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [],
+          "sp": "SPQ_FCONCI_COL · IMPRIMIR",
+          "si": "Confirmar",
+          "no": "Seguir editando (o Limpiar Todos + Borrar)"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Confirmar",
+          "descripcion": "Valida periodo, glosas aplicadas/radicadas y tipos permitidos. Por línea: NC por aceptado (sede+C), vencimiento tipo C por recuperar, reliquida la factura; asiento de conciliación si hay recuperar. Cabecera Cerrada.",
+          "rol": "Sistema",
+          "pantalla": "Botón Confirmar",
+          "tablas": [
+            "FCONCI",
+            "FCONCID",
+            "FNOT",
+            "FNOTD",
+            "FCXCDV",
+            "FTR",
+            "MCPE"
+          ],
+          "sp": "SPQ_FCONCI_COL · CONFIRMAR_CONCILIACION → SPK_APLICA_CONCILIACION → SPK_NOTASCXC / SPK_RELIQUIDA_FTR / SPK_CONTAB_CONCI"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Soportes",
+          "descripcion": "Imp.Conci. del acta definitiva, Imp.NC por línea, Escaneo del acta firmada por la EPS.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila y fila expandida",
+          "tablas": [
+            "DOCXTPO"
+          ],
+          "sp": "SPQ_FCONCI_COL · IMPRIMIR"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Contabilizar",
+          "descripcion": "Otros módulos → Conciliaciones: filtra año/mes, marca las cerradas con Contabilizada = 0 y envía. Deja Contabilizada = 1 y Nro. Comprobante; habilita Imp.Comp.",
+          "rol": "Contabilidad",
+          "pantalla": "Contabilidad → Otros módulos → Conciliaciones",
+          "tablas": [
+            "FCONCI",
+            "MCP",
+            "MCPE"
+          ],
+          "sp": "SPQ_CONCILIACIONES · LISTA · SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Si fue un error: Anular",
+          "descripcion": "Anular (toda) o Anular Item (una factura): ND que reversa la NC, borra el tipo C, asiento inverso. Estado Anulada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [
+            "FNOT",
+            "FCXCDV",
+            "MCPE"
+          ],
+          "sp": "SPQ_FCONCI_COL · ANULAR_CONCILIACION / ANULAR_ITEM → SPK_RETIRA_FACTURA_CONCI"
+        }
+      ]
+    },
+    {
+      "id": "flujo-cabecera",
+      "titulo": "Crear la cabecera: Individual o Porcentaje",
+      "descripcion": "Nueva Conciliación y lo que valida el formulario.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nueva Conciliación",
+          "descripcion": "Botón en la grilla principal. Abre el formulario de cabecera.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Tercero y fechas",
+          "descripcion": "Id. Tercero (buscador). F. Concilia (fecha del acuerdo). Fecha Pago Acuerdo: debe ser posterior a F. Concilia.",
+          "rol": "Analista de cartera",
+          "pantalla": "Formulario de cabecera",
+          "tablas": [
+            "TER"
+          ],
+          "sp": ""
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Referencias de la EPS",
+          "descripcion": "Nro. Externo (solo números salvo CONCIGLOSA_NREXTERNO = alfanumerico), Funcionario Externo, Observaciones ≥ 10 caracteres.",
+          "rol": "Analista de cartera",
+          "pantalla": "Formulario de cabecera",
+          "tablas": [
+            "USVGS"
+          ],
+          "sp": ""
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Tipo Individual o Porcentaje?",
+          "descripcion": "Individual: el valor aceptado se digita factura por factura. Porcentaje: Vlr. Porcentaje > 0 y el aceptado se calcula saldo × % ÷ 100 en cada línea (campo bloqueado).",
+          "rol": "Analista de cartera",
+          "pantalla": "Formulario de cabecera",
+          "tablas": [],
+          "sp": "",
+          "si": "Porcentaje: digitar Vlr. Porcentaje",
+          "no": "Individual: el valor se digita por factura"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Guardar",
+          "descripcion": "Genera Cns. Concilia (@CONCI), procedencia CXC, Contabilizada = 0, estado Ingresada, funcionario = usuario.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCI"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCI (Nueva) → SPK_GENCONSECUTIVO"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Editar / Borrar mientras está Ingresada",
+          "descripcion": "Editar cambia cualquier dato. Borrar solo si no tiene líneas («La conciliación tiene detalles y no puede eliminarse»).",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila de la conciliación",
+          "tablas": [
+            "FCONCI"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCI (Editar / Borrar)"
+        }
+      ]
+    },
+    {
+      "id": "flujo-detalle",
+      "titulo": "Agregar una factura al detalle",
+      "descripcion": "Nuevo Detalle de Conciliación, línea por línea.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo Detalle",
+          "descripcion": "Ícono de carpeta en la fila expandida (solo Ingresada). Abre el formulario de línea.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila expandida",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Seleccionar Factura",
+          "descripcion": "Lista vencimientos FCXCDV del tercero con saldo neto > 0 (y del tipo permitido). Al elegir llena Nro, Tipo, Cns. CxC, Cns. Glosa, Saldo Neto; recuperar = saldo.",
+          "rol": "Analista de cartera",
+          "pantalla": "Diálogo Seleccionar Factura",
+          "tablas": [
+            "FCXCDV",
+            "FTR"
+          ],
+          "sp": "AppStore.read FCXCDV ⋈ FTR"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Concepto y código de glosa",
+          "descripcion": "Seleccionar Concepto (CPNT; precargado IDCOPNOTACONCI) y, opcional, Seleccionar Cod. Glosa (FCGLO). Observación ≥ 10 caracteres.",
+          "rol": "Analista de cartera",
+          "pantalla": "Formulario de línea",
+          "tablas": [
+            "CPNT",
+            "FCGLO"
+          ],
+          "sp": ""
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Cuánto se acepta?",
+          "descripcion": "Individual: digitar Vlr. Aceptado (0 ≤ aceptado ≤ saldo; si excede, el sistema lo baja al saldo). Porcentaje: calculado y bloqueado. Vlr. Recuperar = saldo − aceptado.",
+          "rol": "Analista de cartera",
+          "pantalla": "Formulario de línea",
+          "tablas": [],
+          "sp": "",
+          "si": "Aceptado = saldo → NC total, sin tipo C",
+          "no": "Aceptado = 0 → sin NC, todo a tipo C"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Guardar la línea",
+          "descripcion": "Valida cabecera Ingresada, no duplicar el vencimiento, tipo permitido, y si trae glosa: existe, CERRADA = 1, fecha de respuesta, radicada. Inserta FCONCID Ingresada clase C.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCID",
+            "FGLO",
+            "FGLOI",
+            "FGLOID"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCID (Nueva)"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Línea en el detalle",
+          "descripcion": "Se ve con saldo, aceptado, recuperar, concepto y motivo. Editar / Borrar por línea; Limpiar Todos borra todas las Ingresada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila expandida",
+          "tablas": [
+            "FCONCID"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCID (Editar / Borrar) · LIMPIAR_FCONCID"
+        }
+      ]
+    },
+    {
+      "id": "flujo-masiva",
+      "titulo": "Carga masiva: Archivo Plano y Aplicar concepto",
+      "descripcion": "Dos atajos para acuerdos con muchas facturas.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Descargar plantilla",
+          "descripcion": "Agregar Archivo Plano → Descargar plantilla. Columnas N_FACTURA, TIPO, CNSGLO, VLRACEPTADO, CODCONCEPTO (precargado IDCOPNOTACONCI). Hoja de instrucciones incluida.",
+          "rol": "Analista de cartera",
+          "pantalla": "Diálogo Archivo Plano",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Llenar y cargar",
+          "descripcion": "Una fila por vencimiento. CNSGLO obligatorio si TIPO es G, C, R o L. Seleccionar el .xlsx: el sistema muestra la vista previa.",
+          "rol": "Analista de cartera",
+          "pantalla": "Diálogo Archivo Plano",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Procesar",
+          "descripcion": "Valida fila a fila: factura en FCXCDV y del tercero, saldo > 0, tipo permitido, glosa existente/aplicada/radicada, concepto en CPNT, aceptado ≤ saldo, no duplicada en otra Ingresada. Inserta las buenas.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCID",
+            "FCXCDV",
+            "FTR",
+            "FGLO",
+            "CPNT"
+          ],
+          "sp": "SPQ_FCONCI_COL · CARGA_EXCEL_FCONCID"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Hubo filas con error?",
+          "descripcion": "El resultado lista cada fila rechazada con su mensaje («La factura no pertenece al tercero…», «La glosa no esta radicada»…).",
+          "rol": "Analista de cartera",
+          "pantalla": "Resultado de la carga",
+          "tablas": [],
+          "sp": "",
+          "si": "Corregir en el Excel y recargar solo esas filas",
+          "no": "Revisar el detalle y seguir"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Aplicar concepto a varias",
+          "descripcion": "Marcar líneas (Sel / Marcar todas) → Aplicar concepto → elegir concepto CPNT → Aplicar. Edita cada línea marcada; informa aciertos y fallos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila expandida",
+          "tablas": [
+            "FCONCID",
+            "CPNT"
+          ],
+          "sp": "SPQ_FCONCI_COL · CRUD_FCONCID (Editar) por línea"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Detalle listo",
+          "descripcion": "Todas las líneas con su concepto. Si se cargó el archivo equivocado: Limpiar Todos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila expandida",
+          "tablas": [
+            "FCONCID"
+          ],
+          "sp": "SPQ_FCONCI_COL · LIMPIAR_FCONCID"
+        }
+      ]
+    },
+    {
+      "id": "flujo-confirmar",
+      "titulo": "Confirmar: lo que valida y lo que genera",
+      "descripcion": "Botón Confirmar (candado) sobre una conciliación Ingresada.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Confirmar",
+          "descripcion": "El sistema pide confirmación. Después no se edita.",
+          "rol": "Analista de cartera",
+          "pantalla": "Fila de la conciliación",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Pasa las validaciones?",
+          "descripcion": "Periodo abierto si FNOT_FECHACONCILIA = CONCILIACION; toda línea con glosa: aplicada (CERRADA = 1), con fecha de respuesta y radicada; ningún tipo fuera de CONCIGLOSA_TIPOSPERM.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "PRI",
+            "FGLO",
+            "FGLOI",
+            "FGLOID",
+            "USVGS"
+          ],
+          "sp": "SPQ_FCONCI_COL · CONFIRMAR_CONCILIACION",
+          "si": "Reservar consecutivos y aplicar",
+          "no": "KO con el mensaje; corregir el detalle"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Reservar notas crédito",
+          "descripcion": "Por cada línea con aceptado > 0 sin Cns. Nota: consecutivo @FNOTC → sede + C + 8 dígitos.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCID"
+          ],
+          "sp": "SPK_GENCONSECUTIVO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Aplicar cada línea",
+          "descripcion": "Aceptado > 0: FNOT clase C procedencia CONCILIA, concepto de la línea, fecha según variable; ítems y aplicación a cartera. Recuperar > 0: vencimiento origen en cero; vencimiento tipo C con el valor y el Cns. Concilia. Reliquida la factura. Línea Cerrada.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FNOT",
+            "FNOTD",
+            "FCXCDV",
+            "FCXCD",
+            "FTR",
+            "FCONCID"
+          ],
+          "sp": "SPK_APLICA_CONCILIACION → SPK_GENITEMS_NOTACR · SPK_NOTASCXC · SPK_RELIQUIDA_FTR"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Asiento de conciliación",
+          "descripcion": "Si hay líneas con recuperar > 0 y la factura no está castigada: MCPE procedencia CONCI (cuenta de glosas TTEC vs cartera por tipo).",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "MCPE",
+            "MCHE",
+            "MCP"
+          ],
+          "sp": "SPK_CONTAB_CONCI → SPK_NC_REVISAMCPE · SPK_PASA_MCP_MCPNIIF"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Cerrada",
+          "descripcion": "Si todas las líneas cerraron, la cabecera pasa a Cerrada. Si alguna falló: «La Conciliación No se ha aplicado correctamente…»; corregir y volver a Confirmar (solo procesa las pendientes).",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [
+            "FCONCI"
+          ],
+          "sp": "SPQ_FCONCI_COL · CONFIRMAR_CONCILIACION"
+        }
+      ]
+    },
+    {
+      "id": "flujo-anular",
+      "titulo": "Anular la conciliación o una factura",
+      "descripcion": "Solo sobre lo Cerrado. Cada reverso crea una nota débito.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿Toda la conciliación o una factura?",
+          "descripcion": "Anular (fila de la cabecera) reversa todas las líneas Cerrada. Anular Item (línea) reversa solo esa factura.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [],
+          "sp": "",
+          "si": "Anular → todas las líneas",
+          "no": "Anular Item → una línea"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Validar",
+          "descripcion": "Línea en Cerrada. Si tiene aceptado > 0 y ya tiene Cns. Nota DB: «Esta Factura cuenta con consecutivo de nota debito…» (no se anula dos veces). Periodo contable abierto.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCID",
+            "PRI"
+          ],
+          "sp": "SPQ_FCONCI_COL · ANULAR_CONCILIACION / ANULAR_ITEM"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Reservar nota débito",
+          "descripcion": "Por cada línea con aceptado > 0: consecutivo @FNOTD → sede + D.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCID"
+          ],
+          "sp": "SPK_GENCONSECUTIVO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Reversar cartera",
+          "descripcion": "FNOT clase D procedencia CONCILIA por el aceptado (deshace la NC). Borra el vencimiento tipo C creado por la conciliación y reliquida: el saldo vuelve a su vencimiento original.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FNOT",
+            "FNOTD",
+            "FCXCDV",
+            "FTR"
+          ],
+          "sp": "SPK_RETIRA_FACTURA_CONCI → SPK_NOTASCXC · SPK_RELIQUIDA_FTR"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Reversar contabilidad",
+          "descripcion": "Si la línea tenía recuperar > 0: asiento inverso MCPE CONCI por esa línea.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "MCPE",
+            "MCP"
+          ],
+          "sp": "SPK_NC_CONTAB_ANULA_CONCI"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Anulada",
+          "descripcion": "Línea(s) Anulada con Cns. Nota DB; Imp.ND disponible. Si fue Anular, la cabecera queda Anulada. Las facturas vuelven a tener saldo y pueden conciliarse de nuevo.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [
+            "FCONCI",
+            "FCONCID"
+          ],
+          "sp": ""
+        }
+      ]
+    },
+    {
+      "id": "flujo-contabilizar",
+      "titulo": "Contabilizar desde Otros módulos",
+      "descripcion": "Contabilidad envía las conciliaciones cerradas del periodo.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir la bandeja",
+          "descripcion": "Contabilidad → Otros módulos → Conciliaciones. Año y mes contable (fecha de conciliación); filtro no enviadas / enviadas.",
+          "rol": "Contabilidad",
+          "pantalla": "Contabilidad → Otros módulos",
+          "tablas": [
+            "FCONCI"
+          ],
+          "sp": "SPQ_CONCILIACIONES · LISTA"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Marcar",
+          "descripcion": "Solo Contabilizada = 0 se puede marcar (1 = ya enviada, 2 = en proceso). Detalle consultable por conciliación.",
+          "rol": "Contabilidad",
+          "pantalla": "Bandeja OM",
+          "tablas": [
+            "FCONCID"
+          ],
+          "sp": "SPQ_CONCILIACIONES · DETALLE"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Enviar",
+          "descripcion": "Genera el comprobante y marca Contabilizada = 1 con Nro. Comprobante.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCONCI",
+            "MCP",
+            "MCPE"
+          ],
+          "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Comprobante visible en cartera",
+          "descripcion": "En Administrativo → Concilia aparecen Contabilizada y Nro. Comprobante; se habilita Imp.Comp.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Concilia",
+          "tablas": [
+            "FCONCI"
+          ],
+          "sp": ""
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Antes de pedir un desarrollo",
+      "titulo": "¿Ya existe? Guía rápida de necesidades",
+      "intro": "Lo que el usuario suele pedir en Conciliaciones y dónde está hoy en el sistema. Revísela antes de abrir un requerimiento."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "md": "Una **conciliación de cartera** es el acta del acuerdo al que llega la IPS con una EPS sobre facturas que todavía tienen saldo: glosas que la IPS defendió, ratificaciones, saldos de conciliaciones anteriores o facturas completas. Por cada factura se decide cuánto **acepta descontar** la IPS (la EPS tenía razón) y cuánto se **compromete a pagar** la EPS (valor a recuperar). Todo ocurre en una sola ventana: **Administrativo → Concilia**.\n\nLa conciliación tiene **cabecera** (tercero, fecha del acuerdo, fecha de pago acordada, número y funcionario externos, tipo y observación) y **detalle** (una línea por vencimiento de factura con saldo neto, valor aceptado y valor a recuperar). El tipo **Individual** permite digitar el valor aceptado en cada línea; el tipo **Porcentaje** aplica el mismo % a todas y bloquea el campo.\n\nAl **confirmar**, el sistema hace tres cosas: genera una **nota crédito automática** (prefijo de sede + C, procedencia CONCILIA) por cada valor aceptado y la aplica a la factura; convierte el valor a recuperar en un nuevo **vencimiento tipo C** de la misma factura, marcado con el consecutivo de la conciliación; y, si hay valor a recuperar, arma el **asiento de conciliación**. La conciliación queda **Cerrada** y ya no se edita. Si fue un error, **Anular** (toda) o **Anular Item** (una factura) crean la **nota débito** que reversa la NC, borran el tipo C y reversan el asiento.\n\nLo que **no** se hace aquí: la conciliación **bancaria** (cruce de extractos) está en Contabilidad → Conciliaciones contables; **responder** una glosa es Cartera · Glosas (aquí solo se concilia lo que quedó defendido, aplicado y radicado); el **pago** de la EPS se registra en Recaudos (la conciliación no mueve caja); y la nota crédito **no se digita** en Notas DB/CR: la crea el sistema al confirmar.",
+      "kicker": "Capítulo 2",
+      "titulo": "Qué es una conciliación de cartera y qué no es",
+      "intro": "Un acuerdo con la EPS sobre facturas con saldo: cuánto se acepta descontar y cuánto queda por recuperar.",
+      "imagen": "img/conci_que_es_sketchnote.jpg",
+      "imagenAlt": "Mapa: la conciliación, lo que entra, lo que sale y lo que no es",
+      "puntosClave": [
+        "Una cabecera (acuerdo con la EPS) y una lista de facturas con saldo neto, aceptado y a recuperar.",
+        "Aceptado → nota crédito automática; a recuperar → vencimiento tipo C de la factura.",
+        "Tres estados: Ingresada (se edita), Cerrada (se confirmó), Anulada (se reversó con nota débito).",
+        "No es conciliación bancaria, ni responder glosas, ni registrar el pago."
+      ]
+    },
+    {
+      "id": "ciclo",
+      "tipo": "flujo",
+      "flujoId": "flujo-ciclo",
+      "kicker": "Capítulo 3",
+      "titulo": "El ciclo completo",
+      "intro": "Crear, agregar facturas, revisar, confirmar, soportes, contabilizar; y anular si fue un error.",
+      "imagen": "img/conci_ciclo_sketchnote.jpg",
+      "imagenAlt": "Seis pasos del ciclo de una conciliación",
+      "puntosClave": [
+        "Todo ocurre en Administrativo → Concilia salvo el envío contable (Contabilidad → Otros módulos).",
+        "Ingresada → Cerrada → Anulada: no hay regreso a Ingresada.",
+        "Las notas crédito y débito las crea el sistema con procedencia CONCILIA."
+      ]
+    },
+    {
+      "id": "cabecera",
+      "tipo": "flujo",
+      "flujoId": "flujo-cabecera",
+      "kicker": "Capítulo 4",
+      "titulo": "Crear la conciliación: la cabecera",
+      "intro": "Nueva Conciliación: tercero, fechas, referencias de la EPS y el tipo Individual o Porcentaje.",
+      "imagen": "img/conci_cabecera_sketchnote.jpg",
+      "imagenAlt": "Campos de la cabecera y diferencia entre Individual y Porcentaje",
+      "puntosClave": [
+        "Fecha Pago Acuerdo posterior a F. Concilia; Observaciones de al menos 10 caracteres.",
+        "Nro. Externo solo acepta letras si CONCIGLOSA_NREXTERNO = alfanumerico.",
+        "Porcentaje: el valor aceptado se calcula saldo × % ÷ 100 al elegir cada factura; cambiar el % después no recalcula lo guardado.",
+        "Borrar la cabecera exige que no tenga líneas."
+      ]
+    },
+    {
+      "id": "tipos",
+      "tipo": "texto",
+      "md": "Cada factura en cartera puede tener varios **vencimientos** (saldos parciales) y cada uno lleva un **tipo**. La conciliación trabaja sobre esos vencimientos, no sobre la factura entera:\n\n- **F — Factura:** el saldo original de la factura, sin glosa de por medio.\n- **G — Glosa:** el valor que la EPS objetó y la IPS **defendió** (quedó por recuperar al aplicar la respuesta).\n- **R — Ratificación:** la EPS insistió en la glosa después de la respuesta; el valor sigue en disputa.\n- **C — Conciliación:** saldo que quedó **por recuperar en una conciliación anterior**. Puede volver a conciliarse.\n- **L:** tipo adicional que el sistema trata como los de glosa (exige consecutivo de glosa). Confirme con su administrador su uso en la instalación.\n\n**Reglas que aplican por tipo**\n\n- Si el vencimiento es **G, C, R o L** debe llevar el **consecutivo de glosa** (Cns. Glosa). El sistema verifica que la glosa exista, tenga la **respuesta aplicada** (cerrada), **fecha de respuesta** y esté **radicada** ante la EPS. Si no, rechaza la línea («La glosa no tiene respuesta aplicada…», «La glosa no esta radicada»).\n- La variable **CONCIGLOSA_TIPOSPERM** (ej. `G,R,C,L`) limita qué tipos se pueden conciliar: filtra la lista de Seleccionar Factura, valida cada línea manual o de Excel y vuelve a revisar al confirmar («Existen lineas con tipos de vencimiento no permitidos…»). Vacía = sin filtro.\n- Al confirmar, el vencimiento conciliado queda en **cero** y el valor a recuperar pasa a un vencimiento **tipo C** con el Cns. Concilia. Si la factura ya tenía un tipo C, se **suma**; si lo que se concilió ya era tipo C, se **reemplaza**.\n- Al anular, el tipo C creado se **borra** y la factura se reliquida: el saldo vuelve a su vencimiento original.\n\n**Por qué importa:** una factura «que no aparece» en Seleccionar Factura casi siempre es por tercero distinto, saldo en cero, tipo no permitido o glosa sin radicar; no es un defecto de la ventana.",
+      "kicker": "Capítulo 5",
+      "titulo": "Los vencimientos: tipos F, G, R, C y las glosas",
+      "intro": "La conciliación trabaja sobre vencimientos (saldos parciales) de la factura, cada uno con un tipo. Las reglas de glosa y la variable de tipos permitidos deciden qué se puede conciliar.",
+      "puntosClave": [
+        "G, C, R y L exigen consecutivo de glosa: glosa aplicada, con fecha de respuesta y radicada.",
+        "CONCIGLOSA_TIPOSPERM filtra la lista de facturas, valida cada línea y vuelve a validar al confirmar.",
+        "El tipo C que crea la conciliación lleva el Cns. Concilia; al anular se borra."
+      ]
+    },
+    {
+      "id": "detalle",
+      "tipo": "flujo",
+      "flujoId": "flujo-detalle",
+      "kicker": "Capítulo 6",
+      "titulo": "Agregar facturas: saldo, aceptado y a recuperar",
+      "intro": "Nuevo Detalle de Conciliación, línea por línea: elegir el vencimiento, el concepto, el código de glosa y partir el saldo.",
+      "imagen": "img/conci_detalle_sketchnote.jpg",
+      "imagenAlt": "Formulario de línea: factura, concepto, aceptado y recuperar",
+      "puntosClave": [
+        "Seleccionar Factura solo lista vencimientos del tercero con saldo > 0 y del tipo permitido.",
+        "Vlr. Recuperar = Saldo Neto − Vlr. Aceptado; aceptado nunca mayor que el saldo ni negativo.",
+        "El concepto de nota viene precargado (IDCOPNOTACONCI) y decide con qué concepto nace la NC.",
+        "Un mismo vencimiento no se agrega dos veces a la misma conciliación."
+      ]
+    },
+    {
+      "id": "masiva",
+      "tipo": "flujo",
+      "flujoId": "flujo-masiva",
+      "kicker": "Capítulo 7",
+      "titulo": "Carga masiva: Archivo Plano y Aplicar concepto",
+      "intro": "Para acuerdos largos: plantilla Excel con validación fila a fila, y cambio de concepto a varias líneas marcadas.",
+      "imagen": "img/conci_masiva_sketchnote.jpg",
+      "imagenAlt": "Plantilla Excel, Procesar y Aplicar concepto",
+      "puntosClave": [
+        "Columnas: N_FACTURA, TIPO, CNSGLO, VLRACEPTADO, CODCONCEPTO. CNSGLO obligatorio si TIPO es G, C, R o L.",
+        "Cada fila se acepta o se rechaza con su mensaje; lo aceptado ya está en el detalle.",
+        "Aplicar concepto edita las líneas marcadas; no cambia valores.",
+        "Si cargó el archivo equivocado: Limpiar Todos."
+      ]
+    },
+    {
+      "id": "confirmar",
+      "tipo": "flujo",
+      "flujoId": "flujo-confirmar",
+      "kicker": "Capítulo 8",
+      "titulo": "Confirmar: qué revisa y qué genera",
+      "intro": "El cierre valida periodo, glosas y tipos; luego, por cada línea, nota crédito por lo aceptado y vencimiento tipo C por lo que falta recuperar.",
+      "imagen": "img/conci_confirmar_sketchnote.jpg",
+      "imagenAlt": "Validaciones, nota crédito, vencimiento tipo C y asiento",
+      "puntosClave": [
+        "NC: sede + C + 8 dígitos, clase C, procedencia CONCILIA, fecha según FNOT_FECHACONCILIA.",
+        "Recuperar > 0 → vencimiento tipo C con el Cns. Concilia; el vencimiento origen queda en cero.",
+        "Asiento de conciliación solo si hay valor a recuperar y la factura no está castigada.",
+        "Si una línea falla, la cabecera no cierra: corregir y volver a Confirmar."
+      ]
+    },
+    {
+      "id": "anular",
+      "tipo": "flujo",
+      "flujoId": "flujo-anular",
+      "kicker": "Capítulo 9",
+      "titulo": "Anular: toda la conciliación o una factura",
+      "intro": "Solo sobre lo Cerrado. Cada reverso crea una nota débito, borra el vencimiento tipo C y reversa el asiento.",
+      "imagen": "img/conci_anular_sketchnote.jpg",
+      "imagenAlt": "Anular cabecera vs Anular Item y lo que se reversa",
+      "puntosClave": [
+        "Anular (cabecera) reversa todas las líneas; Anular Item solo una.",
+        "Una línea con nota débito previa no se anula de nuevo.",
+        "Anular no borra: queda Anulada con NC y ND como historia; las facturas recuperan su saldo.",
+        "Ingresada no se anula: se corrige o se borra."
+      ]
+    },
+    {
+      "id": "imprimir",
+      "tipo": "texto",
+      "kicker": "Capítulo 10",
+      "titulo": "Imprimir y adjuntar soportes",
+      "md": "Cinco impresiones y un adjunto, según el estado:\n\n- **Imp.Conci.** (fila de la conciliación) — el **acta** en PDF con cabecera y cada factura (saldo, aceptado, recuperar). Disponible en **cualquier estado**, incluso Ingresada: sirve como borrador para la reunión con la EPS.\n- **Imp.Comp.** (fila) — el **comprobante contable**. Solo en Cerrada y cuando contabilidad ya la envió (Contabilizada = 1, Nro. Comprobante). Si no aparece el número, falta el envío desde Otros módulos.\n- **Imp.NC** (línea) — la **nota crédito** generada por el valor aceptado. En líneas Cerrada o Anulada.\n- **Imp.ND** (línea) — la **nota débito** del reverso. Solo si la línea tiene Cns. Nota DB (fue anulada).\n- **Exportar a Excel** — la grilla de conciliaciones y la del detalle exportan con los filtros aplicados.\n- **Escaneo / Documentos adjuntos** (fila expandida) — adjunta o consulta archivos ligados al Cns. Concilia (acta firmada por la EPS, correos, soportes). Disponible en Ingresada y Cerrada.\n\nLas notas también se consultan e imprimen desde **Administrativo → Notas DB/CR** (procedencia CONCILIA). En **Informes de cartera → detalle de la factura** se listan las conciliaciones en las que estuvo cada factura.",
+      "imagen": "img/conci_imprimir_sketchnote.jpg",
+      "imagenAlt": "Imp.Conci., Imp.Comp., Imp.NC / Imp.ND y Escaneo",
+      "puntosClave": [
+        "Imp.Conci. siempre; Imp.Comp. solo con comprobante; Imp.NC / Imp.ND por línea.",
+        "Escaneo guarda el acta firmada junto a la conciliación."
+      ]
+    },
+    {
+      "id": "contabilidad",
+      "tipo": "flujo",
+      "flujoId": "flujo-contabilizar",
+      "kicker": "Capítulo 11",
+      "titulo": "Contabilizar desde Otros módulos",
+      "intro": "La operación cierra en cartera; contabilidad envía el comprobante por periodo desde Contabilidad → Otros módulos → Conciliaciones.",
+      "imagen": "img/conci_contabilidad_sketchnote.jpg",
+      "imagenAlt": "Bandeja por periodo, marcar y enviar",
+      "puntosClave": [
+        "La NC se contabiliza por la vía de Notas DB/CR; el valor a recuperar por el asiento de conciliación.",
+        "Semáforo Contabilizada: 0 pendiente, 1 enviada, 2 en proceso.",
+        "Periodo cerrado bloquea tanto confirmar como anular.",
+        "No confundir con Conciliaciones contables (bancos)."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosConci",
+      "kicker": "Capítulo 12",
+      "titulo": "Estados: cómo leer la grilla",
+      "intro": "Ingresada, Cerrada y Anulada en cabecera y líneas, más Contabilizada y Nro. Comprobante.",
+      "puntosClave": [
+        "Amarillo = se edita; verde = confirmada; rojo = reversada.",
+        "Cabecera Ingresada con líneas Cerrada = cierre parcial: corregir y volver a Confirmar.",
+        "Contabilizada 0/1/2 dice si contabilidad ya la envió."
+      ]
+    },
+    {
+      "id": "config",
+      "tipo": "texto",
+      "md": "Antes de la primera conciliación, el administrador debe revisar:\n\n**Variables del sistema**\n\n- **IDCOPNOTACONCI** — código del concepto de nota (catálogo CPNT) con el que se generan las NC/ND de conciliación. Se precarga en cada línea y en la plantilla Excel. Sin ella, al confirmar: «NO EXISTE CONFIGURACION PARA GENERAR LA NOTA CREDITO» y la conciliación **no cierra**.\n- **FNOT_FECHACONCILIA** — si vale `CONCILIACION`, las notas crédito llevan la **fecha de conciliación** y el periodo contable de esa fecha debe estar abierto («La Fecha de Conciliación y El Período Esta Cerrado»). Con otro valor o vacía, llevan la fecha del día.\n- **CONCIGLOSA_TIPOSPERM** — lista separada por comas de tipos de vencimiento que se pueden conciliar (ej. `G,R,C,L`). Vacía = cualquier vencimiento con saldo.\n- **CONCIGLOSA_NREXTERNO** — si vale `alfanumerico`, el Nro. Externo acepta letras; si no, solo números.\n\n**Catálogos**\n\n- **CPNT** (conceptos de nota): debe existir el concepto de conciliación y los que cartera vaya a usar en Seleccionar Concepto o CODCONCEPTO del Excel.\n- **FCGLO** (motivos de glosa): opcional en la línea; documenta la razón del acuerdo.\n\n**Consecutivos por sede**\n\n- `@CONCI` numera la cabecera; `@FNOTC` las notas crédito (sede + C + 8 dígitos); `@FNOTD` las notas débito (sede + D). Sin ellos falla el guardado o el cierre.\n\n**Contabilidad**\n\n- Tipo de comprobante de conciliaciones y cuenta de glosas (TTEC) para el asiento por valor a recuperar. Facturas **castigadas** no generan asiento. Periodo contable abierto tanto para confirmar como para anular.\n\n**Acceso**\n\n- La ventana se controla por el permiso de menú **Administrativo → Concilia**; no hay botones con permiso individual. El envío contable depende del acceso a **Contabilidad → Otros módulos**.",
+      "kicker": "Capítulo 13",
+      "titulo": "Configuración necesaria",
+      "intro": "Variables, catálogos, consecutivos y parámetros contables que deben existir antes de la primera conciliación.",
+      "imagen": "img/conci_config_sketchnote.jpg",
+      "imagenAlt": "Cuatro variables y los catálogos CPNT y FCGLO",
+      "puntosClave": [
+        "IDCOPNOTACONCI es indispensable: sin concepto no hay nota crédito y la conciliación no cierra.",
+        "FNOT_FECHACONCILIA decide la fecha (y el periodo) de las notas.",
+        "CONCIGLOSA_TIPOSPERM y CONCIGLOSA_NREXTERNO ajustan la ventana a la operación."
+      ]
+    }
+  ]
 }

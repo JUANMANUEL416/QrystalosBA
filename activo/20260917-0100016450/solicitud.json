@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-19T18:04:48.063Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016450",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260917-0100016450",
+    "idReq": "0100016450",
+    "fecha": "2026-09-17",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Esperanza SAS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": "Nómina → Gestión de libranzas (ruta nom.cuotas · CuotasComponent.vue)"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "DANNA CASTRO",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CESPER89",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · Libranzas — regenerar y corregir cuotas",
+    "requerimiento": "se necesita mejorar el proceso de cuotas cuando se genera la primera vez no genera la cuotas pero no da la opcion de corregir, si se borran las cuotas no da la opción de corregir",
+    "criteriosAceptacion": "1) Préstamo sin detalle PRSD o tras «Borrar cuotas», sin cuotas ligadas a nómina (sin CNSPAGO/ITEM_NIEPED ni estado Pagada en cuotas): el control «Generar cuotas» queda habilitado también en estado PorPagar; se puede corregir encabezado (valor, número de cuotas, fechas) y regenerar el plan.\n2) Indicador persistente CUOTASGENERADAS en PRS: 1 al crear/generar detalle; 0 al borrar todo el plan cuando está permitido; visible en grilla/formulario (solo lectura).\n3) Cuota o plan con vínculo a nómina o Pagada: no se borra; mensaje explícito (no solo fallo técnico).\n4) Editar cuota (fecha/valor): guarda sin error nvarchar→datetime; FECHAPAGO en ISO YYYY-MM-DD hacia NOM_PRSD.GUARDAR.\n5) GUARDAR encabezado con diferencia respecto al detalle: si CUOTASGENERADAS=0 o el usuario confirma regeneración, no bloquear con «EXISTE UNA DIFERENCIA…»; la validación de diferencia solo aplica si hay cuotas vigentes y no se regenera.\n6) Refinanciar (nuevo control): cuotas pendientes pasan a estado acordado (p. ej. Refinanciada); encabezado origen cerrado sin borrar historial; préstamo nuevo con saldo/condiciones y trazabilidad (p. ej. NUMDOCORIGEN).\n7) Regresión: Pagada/Anulada no regeneran ni refinancian; Homologar libranzas y Enviar a CxP sin cambio de comportamiento.",
+    "alcance": "Ventana Nómina → Gestión de libranzas (CuotasComponent.vue): detalle de cuotas (Generar/Borrar/Nueva/Editar), diálogo crear/editar préstamo, nuevo flujo Refinanciar. Backend MODELO NOM_PRS (GUARDAR, GENERAR_CUOTAS, ELIMINAR_CUOTAS, REFINANCIAR nuevo) y NOM_PRSD (GUARDAR, ELIMINAR con reglas de nómina). Tablas PRS/PRSD: columna CUOTASGENERADAS, estados y referencia de refinanciación según diseño acordado. Documento funcional adjunto y especificación en Qrystalos2/sql/SOLICITUD_CAMBIO_LIBRANZAS_CUOTAS_REFINANCIAR.html alinean el detalle de CA.",
+    "restricciones": "No modificar nóminas ya liquidadas ni deshacer descuentos aplicados. No corregir por script el préstamo 0100000047 sin autorización de datos. Homologar libranzas, Enviar a CxP y Marcar libranza pagada quedan fuera salvo reutilizar la misma regla «cuota en nómina». Cambios de BD (columnas/estados) deben ser compatibles con clientes que ya tienen PRS/PRSD en producción. Rama bugfix/CESPER89.",
+    "analisis": "Paso 0 — ¿Ya existe? Clasificación: defecto (con hueco funcional de refinanciación). No es capacitación: los botones Generar cuotas y Borrar cuotas existen, pero el flujo de corrección está roto.\n\nREQ vs capturas: el texto pide poder corregir tras el alta o tras borrar cuotas. Captura 1234er: préstamo 0100000047, detalle vacío («Sin datos»), cursor en Generar cuotas deshabilitado (estado PorPagar). Captura wsasdddd: al editar encabezado, SP devuelve «EXISTE UNA DIFERENCIA DE 8469463.56 CON RESPECTO A LAS CUOTAS, NO ES POSIBLE MODIFICAR» con saldo/cuota en cero en pantalla — coherente con encabezado que aún refleja totales de un plan borrado.\n\nInventario de controles en CuotasComponent.vue (no solo SQL del formulario): grilla PRS — Nuevo préstamo, Homologar, Enviar a CxP, Editar, Marcar pagada, Borrar préstamo; al expandir fila — Nueva cuota, Generar cuotas (:disable incluye ESTADO=='PorPagar' — causa directa del botón apagado), Borrar cuotas; por cuota — editar/eliminar (FE solo bloquea Pagada/Anulada, no CNSPAGO). Alta de préstamo: ESTADO inicial PorPagar.\n\nCausa según código vivo: (1) FE deshabilita Generar cuotas si ESTADO==PorPagar (CuotasComponent ~250); (2) NOM_PRS.GUARDAR valida suma cuotas vs VLRPRESTAMO en PorPagar aunque PRSD esté vacío tras borrar; (3) NOM_PRSD.GUARDAR UPDATE directo de FECHAPAGO; (4) ELIMINAR_CUOTAS y SPK_GENERA_CUOTAS borran PRSD sin validar CNSPAGO/ITEM_NIEPED. Cadena regeneración: GENERAR_CUOTAS → SPK_GENERA_CUOTAS (DELETE cuotas no Pagada posteriores a última pagada + INSERT plan). Fichas en conocimiento/nomina/sps.json (PREVERSION 2.0.3).\n\nNormativa adjunta: PDF sin extracto automático; contenido equivalente revisado vía especificación IX en repo Qrystalos2 (mismo título). No es circular legal sino documento de requerimiento funcional.\n\nContabilidad: afecta=false — ajuste de programación de descuentos en nómina; no crea MCP/MCH/MCPE.",
+    "opciones": [],
+    "recomendacion": "Desarrollo FE+SP acotado a libranzas: sustituir regla del botón Generar cuotas por CUOTASGENERADAS y flag de cuotas en nómina; alinear ELIMINAR_CUOTAS/GUARDAR con indicador; en GUARDAR encabezado ofrecer regeneración o omitir validación de diferencia si no hay detalle; normalizar fechas en onSavePRSD; implementar REFINANCIAR y UI. Antes de codificar, bajar SPQ_NOM_PRS y SPQ_NOM_PRSD desde DESAIX (PREVERSION) a sql/ y documentar METODOs en conocimiento/nomina/sps.json. Validar en test el caso 0100000047. Siguiente paso Fase 1: dictamen HTML cuando el coordinador cierre este análisis.",
+    "cambioPropuestoSimple": "Hoy, si se borran las cuotas o el préstamo queda mal desde el inicio, no puede volver a generar el plan ni corregir el valor del préstamo. Se propone permitir regenerar y corregir mientras ninguna cuota se haya descontado en nómina, mostrar claramente si ya hay cuotas generadas, arreglar el guardado de fechas en cada cuota y agregar «Refinanciar» cuando ya hubo pagos pero se necesitan nuevas condiciones.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contenido.contabilidad.afecta=false. Libranzas (PRS/PRSD) y descuentos en nómina; no crea ni modifica MCP/MCH/MCPE ni comprobantes contables.",
+        "validadoEn": "2026-09-19T17:55:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En test, reproducir préstamo 0100000047 (o equivalente): detalle vacío tras borrar cuotas, Generar cuotas deshabilitado en PorPagar, y bloqueo al editar encabezado. Si tras despliegue en preversión el flujo ya permite regenerar, cerrar como corregido sin desarrollo duplicado."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "wsasdddd_1_.png",
+        "ruta": "activo/20260917-0100016450/imagenes/wsasdddd_1_.png",
+        "subidaEn": "2026-09-19T12:44:12",
+        "url": "/api/caso/20260917-0100016450/imagen/wsasdddd_1_.png"
+      },
+      {
+        "nombre": "1234er_1_.png",
+        "ruta": "activo/20260917-0100016450/imagenes/1234er_1_.png",
+        "subidaEn": "2026-09-19T12:44:12",
+        "url": "/api/caso/20260917-0100016450/imagen/1234er_1_.png"
+      }
+    ],
+    "archivosAnalisis": [
+      {
+        "nombre": "Libranzas__regenerar_cuotas__corrección_y_refinanciación___Solicitud_de_requerimiento___IX_Colombia.pdf",
+        "ruta": "activo/20260917-0100016450/archivos/Libranzas__regenerar_cuotas__corrección_y_refinanciación___Solicitud_de_requerimiento___IX_Colombia.pdf",
+        "extracto": "Libranzas__regenerar_cuotas__corrección_y_refinanciación___Solicitud_de_requerimiento___IX_Colombia.extracto.txt",
+        "extractoRuta": "activo/20260917-0100016450/archivos/Libranzas__regenerar_cuotas__corrección_y_refinanciación___Solicitud_de_requerimiento___IX_Colombia.extracto.txt",
+        "tipo": "circular",
+        "mime": "application/pdf",
+        "bytes": 277238,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-09-19T12:43:51",
+        "url": "/api/caso/20260917-0100016450/archivo/Libranzas__regenerar_cuotas__corrección_y_refinanciación___Solicitud_de_requerimiento___IX_Colombia.pdf",
+        "urlExtracto": "/api/caso/20260917-0100016450/archivo/Libranzas__regenerar_cuotas__corrección_y_refinanciación___Solicitud_de_requerimiento___IX_Colombia.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1) Préstamo sin detalle PRSD o tras «Borrar cuotas», sin cuotas ligadas a nómina (sin CNSPAGO/ITEM_NIEPED ni estado Pagada en cuotas): el control «Generar cuotas» queda habilitado también en estado PorPagar; se puede corregir encabezado (valor, número de cuotas, fechas) y regenerar el plan.\n2) Indicador persistente CUOTASGENERADAS en PRS: 1 al crear/generar detalle; 0 al borrar todo el plan cuando está permitido; visible en grilla/formulario (solo lectura).\n3) Cuota o plan con vínculo a nómina o Pagada: no se borra; mensaje explícito (no solo fallo técnico).\n4) Editar cuota (fecha/valor): guarda sin error nvarchar→datetime; FECHAPAGO en ISO YYYY-MM-DD hacia NOM_PRSD.GUARDAR.\n5) GUARDAR encabezado con diferencia respecto al detalle: si CUOTASGENERADAS=0 o el usuario confirma regeneración, no bloquear con «EXISTE UNA DIFERENCIA…»; la validación de diferencia solo aplica si hay cuotas vigentes y no se regenera.\n6) Refinanciar (nuevo control): cuotas pendientes pasan a estado acordado (p. ej. Refinanciada); encabezado origen cerrado sin borrar historial; préstamo nuevo con saldo/condiciones y trazabilidad (p. ej. NUMDOCORIGEN).\n7) Regresión: Pagada/Anulada no regeneran ni refinancian; Homologar libranzas y Enviar a CxP sin cambio de comportamiento.",
+      "originalesEn": "2026-09-19T18:04:09.743Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Préstamo sin detalle PRSD o tras «Borrar cuotas», sin cuotas ligadas a nómina (sin CNSPAGO/ITEM_NIEPED ni estado Pagada en cuotas): el control «Generar cuotas» queda habilitado también en estado PorPagar; se puede corregir encabezado (valor, número de cuotas, fechas) y regenerar el plan.\n2) Indicador persistente CUOTASGENERADAS en PRS: 1 al crear/generar detalle; 0 al borrar todo el plan cuando está permitido; visible en grilla/formulario (solo lectura).\n3) Cuota o plan con vínculo a nómina o Pagada: no se borra; mensaje explícito (no solo fallo técnico).\n4) Editar cuota (fecha/valor): guarda sin error nvarchar→datetime; FECHAPAGO en ISO YYYY-MM-DD hacia NOM_PRSD.GUARDAR.\n5) GUARDAR encabezado con diferencia respecto al detalle: si CUOTASGENERADAS=0 o el usuario confirma regeneración, no bloquear con «EXISTE UNA DIFERENCIA…»; la validación de diferencia solo aplica si hay cuotas vigentes y no se regenera.\n6) Refinanciar (nuevo control): cuotas pendientes pasan a estado acordado (p. ej. Refinanciada); encabezado origen cerrado sin borrar historial; préstamo nuevo con saldo/condiciones y trazabilidad (p. ej. NUMDOCORIGEN).\n7) Regresión: Pagada/Anulada no regeneran ni refinancian; Homologar libranzas y Enviar a CxP sin cambio de comportamiento.",
+      "trasAnalisisEn": "2026-09-19T18:04:11.367Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo. SQL en sql/: SPQ_NOM_PRS, SPQ_NOM_PRSD, SPK_GENERA_CUOTAS (PREVERSION 2.0.3). Fichas en conocimiento/nomina/sps.json + control gestion-libranzas. REFINANCIAR sigue sin existir en catálogo.",
+      "fecha": "2026-09-19T17:58:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_NOM_PRS · SPQ_NOM_PRSD — leídos (GUARDAR, GENERAR_CUOTAS, ELIMINAR_CUOTAS, GUARDAR/ELIMINAR PRSD)"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260917-0100016450/diagramas/flujo.html",
+      "subidaEn": "2026-09-19T13:04:22",
+      "url": "/api/caso/20260917-0100016450/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "nomina",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260917-0100016450-flujo.html"
+    },
+    "mockups": [
+      "activo/20260917-0100016450/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016450\\",
+    "archivosEsperados": [
+      "SPK_GENERA_CUOTAS.sql",
+      "SPQ_NOM_PRS.sql",
+      "SPQ_NOM_PRSD.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_NOM_PRS",
+        "metodo": "GUARDAR",
+        "estado": "leido",
+        "hace": "INSERTAR: SPK_GENCONSECUTIVO PRS, INSERT PRS, EXEC SPK_GENERA_CUOTAS con VLRPRESTAMO y FECHAINI. EDITAR: valida estado; si ESTADO=PorPagar compara VLRPRESTAMO vs suma cuotas PRSD no anuladas; actualiza PRS y sincroniza estados PRSD (Pagada/Anulada/Aplazada/PorPagar).",
+        "llama": [
+          "SPK_GENCONSECUTIVO",
+          "SPK_GENERA_CUOTAS"
+        ]
+      },
+      {
+        "sp": "SPQ_NOM_PRS",
+        "metodo": "GENERAR_CUOTAS",
+        "estado": "leido",
+        "hace": "EXEC SPK_GENERA_CUOTAS @IDTRANSACCION, @NUMDOCUMENTO, @NUMCUOTAS, 0, @VLRSALDO, @FECHAINI.",
+        "llama": [
+          "SPK_GENERA_CUOTAS"
+        ]
+      },
+      {
+        "sp": "SPQ_NOM_PRS",
+        "metodo": "ELIMINAR_CUOTAS",
+        "estado": "leido",
+        "hace": "DELETE PRSD WHERE ESTADO <> 'Pagada' AND IDTRANSACCION + NUMDOCUMENTO.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_NOM_PRS",
+        "metodo": "REFINANCIAR",
+        "estado": "listado",
+        "hace": "No existe en SPQ_NOM_PRS PREVERSION 2.0.3 — desarrollo nuevo REQ 6450.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_NOM_PRSD",
+        "metodo": "GUARDAR",
+        "estado": "leido",
+        "hace": "INSERTAR fila PRSD (CNSPAGO/ITEM_NIEPED NULL). EDITAR UPDATE completo incluyendo FECHAPAGO.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_NOM_PRSD",
+        "metodo": "ELIMINAR",
+        "estado": "leido",
+        "hace": "DELETE PRSD por NUMDOCUMENTO + NUMCUOTA sin filtro de nómina.",
+        "llama": []
+      }
+    ],
+    "notas": "Fichas leídas 2026-09-19: SPQ_NOM_PRS/PRSD + SPK_GENERA_CUOTAS (DESAIX PREVERSION=2.0.3). REFINANCIAR hueco. Dictamen puede citar SPK: DELETE PRSD sin validar nómina, ajuste última cuota, ramas MANINTERESES.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260917-0100016450.html",
+    "aprobados": "aprobados/20260917-0100016450/",
+    "imagenes": "aprobados/20260917-0100016450/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-19",
+    "ultimoEnvio": "2026-09-19T13:08:03",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

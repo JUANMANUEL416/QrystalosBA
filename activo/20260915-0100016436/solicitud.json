@@ -1,0 +1,193 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-16T13:31:51.621Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016436",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260915-0100016436",
+    "idReq": "0100016436",
+    "fecha": "2026-09-15",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinivida IPS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": "/admin/facturacion"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Isan Martinez Uriana",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CLIVID33",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Validación de tipo de afiliado al enviar facturas a la DIAN\n\nSe solicita que el sistema no valide el tipo de afiliado cuando la factura sea para un particular al momento de enviar la información a la DIAN.\n\n1. Generar una factura para un particular.\n2. Intentar enviar la factura a la DIAN. DETALLE: Solicitud pasada a autorización de requerimiento. El detalle operativo se completará al pasar a requerimiento.",
+    "criteriosAceptacion": "1. Con factura clasificada como particular (misma regla que FTRFE_COL · VALIDAFTR: plan en USVGS IDPLANPART%, PROCEDENCIA=CAJA o tercero con ENVIODICAJA=1), al encolar y procesar el envío DIAN (FACTE 0/3 → 1 → 2) no debe bloquearse por validación cruzada de tipo de afiliado / tipo usuario del paciente.\n2. Factura EPS o plan no particular: se mantiene la validación actual (sin relajar reglas para aseguradoras).\n3. NOTI_DIAN / FE_ENCOLAR siguen aplicando sus reglas actuales (fecha del día, capita/PGP con FTRDC, resolución, etc.).\n4. Prueba mínima en preversión: factura particular con paciente sin TIPOUSUARIO/TIPOAFILIADO coherente con plan EPS → encola y notifica DIAN (o al menos genera XML sin RAISERROR por tipo afiliado).\n5. Regresión: una factura a EPS con inconsistencia de tipo afiliado debe seguir fallando como hoy (si así está definido en SPK_VALID_CRUZADA_FEV).",
+    "alcance": "Colombia · circuito factura electrónica DIAN (FACTE). Entrada usuario: Administrativo → Facturación → pestaña Facturas (Encolar DIAN / NotificaDian) y pestaña Proceso DIAN (encolar masivo). Backend encolado: SPQ_FTR_COL (NOTI_DIAN, ENCOLAR_*). Runtime post-cola (servicio facturador): generación XML — referencia sql_refe/0100014982/SPK_GENERAR_XML_DIAN.sql, bloque Res. 084 que invoca SPK_VALID_CRUZADA_FEV. Ajuste del criterio «particular» para omitir esa validación cruzada de tipo afiliado. Fuera de alcance: FEV-RIPS/SISPRO, RIPS JSON, SUNAT, radicación CXC, maestro AFI masivo, cambio de impresión.",
+    "restricciones": "No modificar MCUE/CON/MCP ni ENVIA_CONTAB. No eliminar extensiones sector salud del XML cuando la norma las exija; el REQ apunta a no bloquear el envío por validación de tipo afiliado en particulares, no a dejar de facturar EPS sin controles. Criterio «particular» alineado con VALIDAFTR (no inventar otro). Rama bugfix/CLIVID33. Validar en copia/preversión con N_FACTURA real de Clinivida antes de liberar.",
+    "analisis": "REQ (cola IX OnLine.htm + texto formulario): al enviar a la DIAN una factura de particular, el proceso no debe exigir/validar tipo de afiliado del paciente.\n\nPaso 0 — ¿Ya existe? Clasificación: defecto de regla de negocio (no capacitación). No hay botón alterno ni flujo distinto en FE: Encolar DIAN llama directo FTR_COL · NOTI_DIAN; las fichas leídas no mencionan tipo afiliado. El bloqueo operativo encaja con la fase posterior al encolado (FACTE=1), cuando el facturador electrónico arma XML vía SPK_GENERAR_XML_DIAN.\n\nControles del circuito DIAN inventariados:\n• Pestaña Facturas — NotificaDian / Encolar DIAN → AppStore FTR_COL · NOTI_DIAN (valida existencia, FACTE, fecha, capita FTRDC).\n• Confirmación FE alternativa → FTRFE_COL · FE_ENCOLAR (misma fecha).\n• Pestaña Proceso DIAN — ENCOLAR_ITEM / ENCOLAR_MASIVO (FTREComponent).\n• VALIDAFTR (FTRFE_COL) solo clasifica particular para anulación; no valida DIAN.\n• Runtime: servicio externo + SPK_GENERAR_XML_DIAN (Res. 084): antes del XML ejecuta SPK_VALID_CRUZADA_FEV solo si hay afiliado, FV, procedencia distinta de CAJA/INVENTARIO e IDPLAN no está en USVGS IDPLANPART%. Ese criterio es más estrecho que VALIDAFTR (no contempla ENVIODICAJA ni todos los caminos de particular). Ahí es donde debe acotarse la validación de tipo afiliado/tipo usuario.\n\nCausa probable (KB + sql_refe): desalineación entre «particular» en VALIDAFTR y el guard clause de SPK_VALID_CRUZADA_FEV en SPK_GENERAR_XML_DIAN; la validación cruzada sigue corriendo en facturas que el negocio trata como particular (p. ej. plan particular no listado en IDPLANPART% o tercero ENVIODICAJA con plan distinto).\n\nNormativa: REQUERIMIENTO.pdf sin extracto útil; no se cita circular en este análisis. Para dictamen 4.6 conviene re-extraer el PDF o pegar el numeral que Clinivida invoca.\n\nContabilidad: no afecta (validación FE/DIAN previa a cartera contable).",
+    "opciones": [
+      {
+        "titulo": "Ampliar exclusión en SPK_GENERAR_XML_DIAN",
+        "descripcion": "No ejecutar SPK_VALID_CRUZADA_FEV cuando la FTR cumpla el mismo predicado de particular que VALIDAFTR (IDPLANPART%, PROCEDENCIA CAJA, TER.ENVIODICAJA). Opción recomendada: un solo criterio de negocio."
+      },
+      {
+        "titulo": "Parametrizar en SPK_VALID_CRUZADA_FEV",
+        "descripcion": "Agregar flag @OMITIR_TIPO_AFILIADO o rama interna si @ES_PARTICULAR=1. Más invasivo; solo si el SP se reutiliza fuera de DIAN."
+      }
+    ],
+    "recomendacion": "Opción A: en SPK_GENERAR_XML_DIAN (y revisar SPK_VALID_CRUZADA_FEV en PREVERSION vía DESAIX) unificar detección de particular con VALIDAFTR antes de EXEC SPK_VALID_CRUZADA_FEV. Sin cambio en FTRComponent salvo que se quiera mensaje preventivo (no requerido por el REQ). Impacto: SQL/servicio facturador Sí; FE y API backend Qrystalos No. validarAntes: reproducir en test factura particular que hoy deja FACTE=3 o error de servicio por tipo afiliado; si ya pasa, cerrar como corregido en canasta.",
+    "cambioPropuestoSimple": "Hoy, algunas facturas de paciente particular fallan al enviarse a la DIAN porque el sistema sigue comprobando el tipo de afiliado como si fuera plan EPS. Se propone tratar las facturas particulares igual que ya las reconoce el sistema al anular (plan particular, caja o tercero de caja) y saltar esa comprobación solo en ese caso, sin quitar controles a facturas de aseguradoras.",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "No modifica contabilización (ENVIA_CONTAB, MCP/MCPE), ni radicación CXC. Cambio en validación previa al XML DIAN / FACTE.",
+        "validadoEn": "2026-09-16T11:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En preversión/test: crear o tomar FTR particular (plan IDPLANPART o caja), encolar DIAN y dejar que el facturador procese. Si FACTE=2 sin error de tipo afiliado, verificar si el ajuste ya está en PREVERSION (no desarrollar duplicado). Si falla, capturar mensaje exacto del servicio/FTRE y N_FACTURA para acotar el SP."
+    },
+    "imagenesNecesarias": "Opcional: captura del error al encolar o del estado FACTE=3 con mensaje de tipo afiliado/tipo usuario; acelera confirmar el SP exacto.",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [
+      {
+        "nombre": "REQUERIMIENTO.pdf",
+        "ruta": "activo/20260915-0100016436/archivos/REQUERIMIENTO.pdf",
+        "extracto": "REQUERIMIENTO.extracto.txt",
+        "extractoRuta": "activo/20260915-0100016436/archivos/REQUERIMIENTO.extracto.txt",
+        "tipo": "circular",
+        "mime": "application/pdf",
+        "bytes": 233904,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-09-15T17:58:54",
+        "url": "/api/caso/20260915-0100016436/archivo/REQUERIMIENTO.pdf",
+        "urlExtracto": "/api/caso/20260915-0100016436/archivo/REQUERIMIENTO.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1. Con factura clasificada como particular (misma regla que FTRFE_COL · VALIDAFTR: plan en USVGS IDPLANPART%, PROCEDENCIA=CAJA o tercero con ENVIODICAJA=1), al encolar y procesar el envío DIAN (FACTE 0/3 → 1 → 2) no debe bloquearse por validación cruzada de tipo de afiliado / tipo usuario del paciente.\n2. Factura EPS o plan no particular: se mantiene la validación actual (sin relajar reglas para aseguradoras).\n3. NOTI_DIAN / FE_ENCOLAR siguen aplicando sus reglas actuales (fecha del día, capita/PGP con FTRDC, resolución, etc.).\n4. Prueba mínima en preversión: factura particular con paciente sin TIPOUSUARIO/TIPOAFILIADO coherente con plan EPS → encola y notifica DIAN (o al menos genera XML sin RAISERROR por tipo afiliado).\n5. Regresión: una factura a EPS con inconsistencia de tipo afiliado debe seguir fallando como hoy (si así está definido en SPK_VALID_CRUZADA_FEV).",
+      "originalesEn": "2026-09-16T13:16:41.875Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. Con factura clasificada como particular (misma regla que FTRFE_COL · VALIDAFTR: plan en USVGS IDPLANPART%, PROCEDENCIA=CAJA o tercero con ENVIODICAJA=1), al encolar y procesar el envío DIAN (FACTE 0/3 → 1 → 2) no debe bloquearse por validación cruzada de tipo de afiliado / tipo usuario del paciente.\n2. Factura EPS o plan no particular: se mantiene la validación actual (sin relajar reglas para aseguradoras).\n3. NOTI_DIAN / FE_ENCOLAR siguen aplicando sus reglas actuales (fecha del día, capita/PGP con FTRDC, resolución, etc.).\n4. Prueba mínima en preversión: factura particular con paciente sin TIPOUSUARIO/TIPOAFILIADO coherente con plan EPS → encola y notifica DIAN (o al menos genera XML sin RAISERROR por tipo afiliado).\n5. Regresión: una factura a EPS con inconsistencia de tipo afiliado debe seguir fallando como hoy (si así está definido en SPK_VALID_CRUZADA_FEV).",
+      "trasAnalisisEn": "2026-09-16T13:16:49.122Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo. Encolado DIAN documentado en facturacion/dian-xml sps (NOTI_DIAN leído). Fix probable en runtime SPK_GENERAR_XML_DIAN + SPK_VALID_CRUZADA_FEV (no fichado en conocimiento/). Falta releer SPK_VALID_CRUZADA_FEV y SPK_GENERAR_XML_DIAN de PREVERSION para confirmar línea exacta y si CLIVID33 ya está en canasta.",
+      "fecha": "2026-09-16T11:30:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPK_VALID_CRUZADA_FEV — no en sps.json — bajar PREVERSION",
+        "SPK_GENERAR_XML_DIAN — ref. sql_refe/0100014982 — comparar PREVERSION"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260915-0100016436/diagramas/flujo.html",
+      "subidaEn": "2026-09-16T08:31:51",
+      "url": "/api/caso/20260915-0100016436/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016436\\",
+    "archivosEsperados": [
+      "SPK_GENERAR_XML_DIAN.sql",
+      "SPK_VALID_CRUZADA_FEV.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "NOTI_DIAN",
+        "estado": "leido",
+        "hace": "Encola notificación DIAN: FTR.FACTE=1.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "ENCOLAR_ITEM",
+        "estado": "leido",
+        "hace": "Encola item DIAN: FACTURA→FTR.FACTE=1; NOTADB/NOTACR→FNOT.FACTE=1.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "ENCOLAR_MASIVO",
+        "estado": "leido",
+        "hace": "ACCION=1 encola FACTE=1; ACCION=2 desencola FACTE=0 en FTR/FNOT vía VWK_ESTADODIAN_FTRE y filtros fecha/tercero/plan/sede/procedencia/tipodoc.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTRFE_COL",
+        "metodo": "VALIDAFTR",
+        "estado": "leido",
+        "hace": "Antes de confirmar: devuelve OK y flag PARTICULAR (1 si TER.ENVIODICAJA, PROCEDENCIA=CAJA o plan USVGS IDPLANPART%).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTRFE_COL",
+        "metodo": "FE_ENCOLAR",
+        "estado": "leido",
+        "hace": "Encola FE: FTR.FACTE=1 si ESTADO=P, FACTE<>2 y F_FACTURA es hoy (DATEDIFF<1).",
+        "llama": []
+      }
+    ],
+    "notas": "Proceso hermano dian-xml documenta el mismo NOTI_DIAN. Objetos SPK no están en sps.json; usar DESAIX PREVERSION antes del dictamen.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260915-0100016436.html",
+    "aprobados": "aprobados/20260915-0100016436/",
+    "imagenes": "aprobados/20260915-0100016436/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-16",
+    "ultimoEnvio": "2026-09-16T09:03:13",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

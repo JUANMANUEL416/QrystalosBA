@@ -1,0 +1,75 @@
+{
+  "tipo": "solicitud-req",
+  "id": "SR20260923-002",
+  "creadoEn": "2026-09-23T09:34:28",
+  "actualizadoEn": "2026-09-23T10:14:07",
+  "estado": "cerrado",
+  "cerradoEn": "2026-09-23T10:14:07",
+  "analista": "JOSE MANUEL JIMENEZ",
+  "proyecto": "Transversal (producto Qrystalos)",
+  "modulo": "Inventario",
+  "procesoId": "inventario",
+  "prioridad": "Alta",
+  "titulo": "Artículo comercial: el servicio queda en otro fabricante",
+  "necesidad": "El artículo de un fabricante debe nacer y permanecer con el servicio del artículo principal. Si hoy queda con el código de otro fabricante, el catálogo debe impedirlo y debe poder corregirse en la misma pantalla.",
+  "hoy": "En CEM, MX1266-1 (Legrand, pramipexol 4,5 mg) tiene IDSERVICIO = MX1266-2 (Boehringer). El principal MX1266 y el hermano MX1266-2 tienen IDSERVICIO = MX1266. La misma regla deja 112 comerciales en CEM y 1 en PCEM apuntando al código de otro artículo. Al transferir un fabricante, el sistema escribe ese código destino en IART.IDSERVICIO. Al crear el comercial, el alta no comprueba que el servicio sea el del principal, y al preparar un fabricante desde tránsito puede reescribir el servicio con el código alterno.",
+  "propuesta": "En el alta y en la transferencia, el servicio del comercial queda el del principal y se rechaza si el valor es el código de otro artículo. En el catálogo, un aviso y un botón Corregir aplican esa misma regla a uno, a la familia o al listado. Mientras el desarrollo no está en preversión, el script de datos corrige los que ya están cruzados.",
+  "justificacion": "El servicio cruzado hace que el comercial facture o se liste con el servicio de otro fabricante. En CEM son 112 artículos. PCEM tiene 1 (MX73-1 apunta a MX1283). El arreglo no está en la canasta abierta.",
+  "analisis": "Paso 0. No es capacitación. El alta de fabricante y Transferir artículo existen. El defecto es el valor que queda en IART.IDSERVICIO.\n\nDESAIX: PREVERSION idéntica a la Cerrada 2.0.3 (anterior 2.0.2). El arreglo no está en canasta.\n\nQué hace hoy.\n- SPQ_IART · TRANSFERIR_ARTICULO escribe el IDARTICULO destino en IART.IDSERVICIO del origen y copia ese código a SER.IDREFERENCIA. Eso explica a varios comerciales de la misma familia apuntando al mismo hermano (DM0061-1 y DM0061-2 apuntan a DM0061-3; MX1266-1 apunta a MX1266-2).\n- SPQ_IART · INSERTAR_HERMANO copia el IDSERVICIO del principal. Si el principal ya está bien, el hijo nace bien. No rechaza un servicio que sea código de otro artículo.\n- SPQ_IMOV_3 · GUARDA_FABRICANTE graba el IDSERVICIO que viene en pantalla.\n- SPQ_IMOV_3 · NUEVO_FABRICANTE, si el código alterno existe en SER, hace UPDATE IART SET IDSERVICIO = ese código. El consecutivo lo busca con SER.IDARTICULO = código alterno, no con el servicio del principal.\n\nDato. Consulta de solo lectura del 2026-09-23. CEM: 112. PCEM: 1. Los 113 tienen IDSERVICIO igual al IDARTICULO de otro artículo y distinto del servicio del principal. Ninguno apunta a su propio código. El servicio del principal existe en SER y no es DEINVNODESER (en CEM y PCEM, DEINVNODESER = NA).\n\nClasificación. Defecto de SQL y de la pantalla de artículos por fabricante. Sin cambio de contabilidad.",
+  "alcance": "Incluye SPQ_IART (TRANSFERIR_ARTICULO, INSERTAR_HERMANO y dos métodos nuevos para listar y corregir) y SPQ_IMOV_3 (GUARDA_FABRICANTE y NUEVO_FABRICANTE). Incluye el aviso y el botón Corregir en artículos por fabricante. El script de datos corrige los cruzados ya guardados y no forma parte del desarrollo.",
+  "restricciones": "Publicar en preversión. No ejecutar el script de datos desde BA ni en CEM hasta revisar la vista previa. No modifica SER, kardex ni el artículo principal. No corrige un comercial cuyo principal no tenga servicio en SER o tenga el servicio DEINVNODESER.",
+  "criterios": "1) Al crear un comercial de MX1266, IART.IDSERVICIO queda MX1266, igual al principal, aunque en pantalla llegue MX1266-2.\n2) Al transferir MX1266-1 hacia MX1266-2, el servicio de MX1266-1 sigue o vuelve a MX1266. El sistema no guarda MX1266-2 en IDSERVICIO.\n3) Si el destino es de otra familia, la transferencia se rechaza con mensaje claro.\n4) En el catálogo, MX1266-1 muestra el aviso y Corregir lo deja en MX1266 sin tocar a MX1266 ni a MX1266-2.\n5) El listado de cruzados, en una copia de CEM, devuelve los 112 y, al corregir, queda en cero con la misma regla del script.\n6) Un comercial que ya tiene el servicio del principal no cambia.",
+  "recomendacion": "Llevar al comité el control en el alta y en la transferencia, y el botón Corregir en el catálogo. Los fragmentos están en la sugerencia SQL. Quien valida los prueba en preversión con la familia MX1266. El script de datos (vista previa con @APLICAR = 0) queda para corregir CEM y PCEM mientras el desarrollo no está publicado. No se ejecutó.",
+  "cambioPropuestoSql": "-- Especificación. No ejecutar desde BA.\n-- DESAIX: PREVERSION idéntica a la Cerrada 2.0.3 (anterior 2.0.2). El arreglo no está en canasta.\n-- Cuerpos leídos: solicitudes/SR20260923-002/sql/SPQ_IART.sql y SPQ_IMOV_3.sql\n-- Corrección de datos, aparte del desarrollo: solicitudes/SR20260923-002/sql/CORRECCION_IART_IDSERVICIO_HERMANO.sql\n\n-- 1) SPQ_IART · TRANSFERIR_ARTICULO\n-- Hoy guarda el código del artículo destino en el servicio del origen.\n-- ANTES:\nUPDATE IART SET IDSERVICIO = @IDARTICULO_DES WHERE IDARTICULO = @IDARTICULO_ORI\nUPDATE SER SET IDREFERENCIA = @IDARTICULO_DES WHERE IDSERVICIO = @IDARTICULO_ORI\n-- QUEDA: el servicio del origen es el servicio del principal de la familia.\n-- Rechaza si el destino es de otra familia o si el principal no tiene servicio real\n-- (vacío o igual a DEINVNODESER). No escribe el IDARTICULO destino en IDSERVICIO.\nDECLARE @BASE_ORI VARCHAR(20), @BASE_DES VARCHAR(20), @IDSERVICIO_PRIN VARCHAR(20)\nSET @BASE_ORI = CASE WHEN CHARINDEX('-', @IDARTICULO_ORI) > 0\n  THEN LEFT(@IDARTICULO_ORI, LEN(@IDARTICULO_ORI) - CHARINDEX('-', REVERSE(@IDARTICULO_ORI)))\n  ELSE @IDARTICULO_ORI END\nSET @BASE_DES = CASE WHEN CHARINDEX('-', @IDARTICULO_DES) > 0\n  THEN LEFT(@IDARTICULO_DES, LEN(@IDARTICULO_DES) - CHARINDEX('-', REVERSE(@IDARTICULO_DES)))\n  ELSE @IDARTICULO_DES END\nIF @BASE_ORI <> @BASE_DES\nBEGIN\n  SELECT 'KO' OK\n  SELECT 'El artículo destino no es de la misma familia.' ERROR\n  RETURN\nEND\nSELECT @IDSERVICIO_PRIN = LTRIM(RTRIM(IDSERVICIO))\nFROM IART\nWHERE IDARTICULO = @BASE_ORI AND COALESCE(PRINCIPAL, 0) = 1\nIF NULLIF(@IDSERVICIO_PRIN, '') IS NULL\n   OR @IDSERVICIO_PRIN = LTRIM(RTRIM(DBO.FNK_VALORVARIABLE('DEINVNODESER')))\n   OR NOT EXISTS (SELECT 1 FROM SER WHERE IDSERVICIO = @IDSERVICIO_PRIN)\nBEGIN\n  SELECT 'KO' OK\n  SELECT 'El principal no tiene un servicio válido para el comercial.' ERROR\n  RETURN\nEND\nUPDATE IART SET IDSERVICIO = @IDSERVICIO_PRIN WHERE IDARTICULO = @IDARTICULO_ORI\n\n-- 2) SPQ_IART · INSERTAR_HERMANO y SPQ_IMOV_3 · GUARDA_FABRICANTE\n-- El INSERT del hijo debe tomar IART.IDSERVICIO del principal (PRINCIPAL=1),\n-- no el valor que venga en el JSON ni el de un hermano ya cruzado.\n-- Si ese servicio es el código de otro artículo, rechazar:\n--   'El servicio del comercial no puede ser el código de otro artículo.'\n\n-- 3) SPQ_IMOV_3 · NUEVO_FABRICANTE\n-- Quitar este UPDATE (reescribe el servicio con el código alterno):\nUPDATE IART SET IDSERVICIO = @IDALTERNA\nWHERE IART.IDARTICULO = @IDALTERNA AND IART.IDSERVICIO <> @IDALTERNA\n-- El consecutivo nuevo se arma con el servicio del principal recibido en IDARTICULO,\n-- no con SER.IDARTICULO = IDALTERNA.\n\n-- 4) Corregir desde el catálogo. SPQ_IART, métodos nuevos:\n-- LISTAR_IDSERVICIO_CRUZADO: la misma regla del script de datos (familia o todos).\n-- CORREGIR_IDSERVICIO_HERMANO: el mismo UPDATE, por un IDARTICULO, por el principal o el listado.\n-- La pantalla de artículos por fabricante muestra el aviso y el botón Corregir.\n",
+  "normativa": "No hay norma adjunta. El servicio del comercial es el del artículo principal de su familia.",
+  "analisisLanzado": true,
+  "archivos": [],
+  "mockups": [
+    "solicitudes/SR20260923-002/mockups/mockup-ux-pantalla.html"
+  ],
+  "siguiente": "Comité: aprobar o devolver. Si aprueba, publicar en preversión y probar MX1266 antes de correr el script de datos en CEM.",
+  "aval": {
+    "aplica": false,
+    "idReq": "",
+    "idCaso": "",
+    "titulo": "",
+    "notas": ""
+  },
+  "documento": {
+    "nombre": "documento.html",
+    "ruta": "solicitudes/SR20260923-002/documento.html",
+    "url": "/api/solicitar/SR20260923-002/documento",
+    "dictamenCopia": "dictamenes/SR20260923-002.html",
+    "mockups": [
+      "solicitudes/SR20260923-002/mockups/mockup-ux-pantalla.html"
+    ],
+    "diagramaFlujo": "solicitudes/SR20260923-002/diagramas/flujo.html",
+    "generadoEn": "2026-09-23T10:12:20"
+  },
+  "diagramaFlujo": "solicitudes/SR20260923-002/diagramas/flujo.html",
+  "plataforma": {
+    "carpeta": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\solicitudes\\SR20260923-002\\plataforma",
+    "carpetaRel": "solicitudes/SR20260923-002/plataforma",
+    "exportadoEn": "2026-09-23T10:13:36",
+    "archivos": [
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260923-002-documento-comite.pdf",
+        "ruta": "solicitudes/SR20260923-002/plataforma/SR20260923-002-documento-comite.pdf",
+        "url": "/api/solicitar/SR20260923-002/plataforma/SR20260923-002-documento-comite.pdf"
+      },
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260923-002-mockups.pdf",
+        "ruta": "solicitudes/SR20260923-002/plataforma/SR20260923-002-mockups.pdf",
+        "url": "/api/solicitar/SR20260923-002/plataforma/SR20260923-002-mockups.pdf"
+      },
+      {
+        "tipo": "png",
+        "nombre": "SR20260923-002-diagrama-flujo.png",
+        "ruta": "solicitudes/SR20260923-002/plataforma/SR20260923-002-diagrama-flujo.png",
+        "url": "/api/solicitar/SR20260923-002/plataforma/SR20260923-002-diagrama-flujo.png"
+      }
+    ]
+  }
+}

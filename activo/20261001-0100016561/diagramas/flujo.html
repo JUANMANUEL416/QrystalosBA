@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagrama de flujo — CXP · Anular egreso debe liberar orden de pago · REQ 0100016561</title>
+  <style>
+    :root {
+      --naranja: #E67817;
+      --naranja-2: #CB500F;
+      --fondo: #fff8ee;
+      --texto: #1a1a1a;
+      --muted: #5d4e37;
+      --borde: #e4d5c0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "Segoe UI", Tahoma, sans-serif;
+      background: var(--fondo); color: var(--texto); padding: 1.25rem;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; background: #fff; border: 1px solid #000; border-radius: 4px; padding: 1.5rem 1.75rem 2rem; }
+    header { border-bottom: 3px solid var(--naranja); padding-bottom: 1rem; margin-bottom: 1.25rem; }
+    header h1 { margin: 0 0 .35rem; font-size: 1.35rem; color: var(--naranja); }
+    header p { margin: 0; color: var(--muted); font-size: .92rem; }
+    h2 { font-size: 1.05rem; color: var(--naranja-2); margin: 1.4rem 0 .6rem; }
+    .flow {
+      display: flex; flex-wrap: wrap; align-items: stretch; gap: .45rem .35rem;
+      padding: .85rem; background: #faf6f0; border: 1px dashed var(--borde); border-radius: 6px;
+    }
+    .node {
+      flex: 1 1 140px; min-width: 130px; max-width: 220px;
+      border-radius: 6px; padding: .65rem .7rem; border: 1px solid var(--borde); background: #fff;
+    }
+    .node .k { font-weight: 700; font-size: .82rem; margin-bottom: .25rem; }
+    .node .d { font-size: .78rem; color: var(--muted); line-height: 1.35; }
+    .node-user { border-color: var(--naranja); background: #fff4e8; }
+    .node-vue { border-color: #3d7ea6; }
+    .node-api { border-color: #6b4c9a; background: #f7f2fc; }
+    .node-sql { border-color: #1e8449; background: #f2faf5; }
+    .node-out { border-color: var(--naranja-2); background: #fff0e4; }
+    .arrow { align-self: center; color: var(--naranja); font-weight: 700; padding: 0 .15rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    @media (max-width: 720px) { .split { grid-template-columns: 1fr; } .arrow { display: none; } }
+    .box { border: 1px solid var(--borde); border-radius: 6px; padding: .85rem 1rem; }
+    .box h3 { margin: 0 0 .4rem; font-size: .9rem; }
+    .box-hoy { background: #fdf2f2; border-color: #e6b0aa; }
+    .box-ok { background: #eafaf1; border-color: #a9dfbf; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th, td { border: 1px solid var(--borde); padding: .4rem .5rem; vertical-align: top; text-align: left; }
+    th { background: #fff4e8; }
+    .gates { display: grid; gap: .65rem; }
+    .gate { border: 1px solid var(--borde); border-radius: 6px; padding: .75rem 1rem; }
+    .gate-on { border-color: var(--naranja); box-shadow: 0 0 0 2px #f5d0b0; }
+    .gate h3 { margin: 0 0 .2rem; font-size: .95rem; }
+    .meta, .inv, .empty, .foot { color: var(--muted); font-size: .82rem; }
+    .inv { margin-bottom: .35rem; }
+    .foot { margin-top: 1.5rem; border-top: 1px solid var(--borde); padding-top: .75rem; }
+    code { font-size: .85em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>CXP · Anular egreso debe liberar orden de pago</h1>
+      <p>
+        REQ 0100016561
+         · caso 20261001-0100016561
+        · proceso <code>cxp-fcxp</code>
+        · Cuentas por pagar (FCXP)
+         · Hospital de Codazzi
+      </p>
+    </header>
+
+    <section>
+      <h2>Recorrido técnico</h2>
+      <div class="flow"><div class="node node-user"><div class="k">Usuario</div><div class="d">Administrativo → Cuentas por pagar. Tabs: CXP, Facturas Radian, Auditoría CXP, Orden de p…</div></div><div class="arrow" aria-hidden="true">→</div><div class="node node-vue"><div class="k">Pantalla</div><div class="d">CuentasxpagarPage.vue</div></div><div class="arrow" aria-hidden="true">→</div><div class="node node-api"><div class="k">AppStore.json</div><div class="d">ORDEN_PAGO · MARCAR_PAGADA_POR_EGRESO / CONF_CAJA · (reporte) / ORDEN_PAGO · (reporte) / SPK_ANULA_ODERNPAGOENCAJA · (reporte)</div></div><div class="arrow" aria-hidden="true">→</div><div class="node node-sql"><div class="k">SPQ_ORDEN_PAGO, SPQ_CONF_CAJA, SPK_ANULA_ODERNPAGOENCAJA</div><div class="d">SPK_MARCA_OP_PAGADA_POR_EGRESO</div></div><div class="arrow" aria-hidden="true">→</div><div class="node node-out"><div class="k">Resultado</div><div class="d">Hoy: se anula el egreso de caja que pagó una CxP, pero la orden de pago sigue marcada como pagada y…</div></div></div>
+    </section>
+
+    <section>
+      <h2>Hoy frente a lo propuesto</h2>
+      <div class="split">
+        <div class="box box-hoy">
+          <h3>Hoy</h3>
+          <p>PASO 0 — ¿Ya existe? Texto REQ vs capturas: • 11:15:04 — Orden de pago: OP 0100005933 Estado P, ítem P, Nro.Egreso E00006213, abono $18.260.877,17 (INFODIGITAL / IMP 435). Banner: «Solo puede Anular Items en Estado N» — intento de corregir a mano; el candado FE es correcto para ítems N, no es el arreglo del egreso anulado. • 11:15:33 — Caja Mov. Egreso: E00…</p>
+        </div>
+        <div class="box box-ok">
+          <h3>Propuesto (análisis del REQ)</h3>
+          <p>Hoy: se anula el egreso de caja que pagó una CxP, pero la orden de pago sigue marcada como pagada y no se puede reprogramar (el sistema solo deja anular ítems en estado Nuevo). Propuesta: al anular ese egreso, la orden queda liberada (como nueva, sin egreso) para autorizar y pagar de nuevo.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>SP · METODO (conocimiento + análisis)</h2>
+      <table>
+        <thead><tr><th>SP</th><th>METODO</th><th>Estado</th><th>Hace / rol</th><th>Llama</th></tr></thead>
+        <tbody><tr><td>SPQ_ORDEN_PAGO</td><td>MARCAR_PAGADA_POR_EGRESO</td><td>leido</td><td>Tras confirmar egreso caja: EXEC SPK_MARCA_OP_PAGADA_POR_EGRESO @CODCAJA, @CNSFACJ.</td><td>SPK_MARCA_OP_PAGADA_POR_EGRESO</td></tr><tr><td>SPQ_CONF_CAJA</td><td>(reporte)</td><td>—</td><td>SPQ_CONF_CAJA</td><td>—</td></tr><tr><td>SPQ_ORDEN_PAGO</td><td>(reporte)</td><td>—</td><td>SPQ_ORDEN_PAGO</td><td>—</td></tr><tr><td>SPK_ANULA_ODERNPAGOENCAJA</td><td>(reporte)</td><td>—</td><td>SPK_ANULA_ODERNPAGOENCAJA</td><td>—</td></tr></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Controles en la base de procesos</h2>
+      <div class="gates"><article class="gate"><h3>Documento equivalente DIAN</h3><p class="meta">Operación FCXP · <code>dian-doc-equivalente</code></p><p>DOCEQUIVALENTE=1: NOTIFICAR_DIAN, CONSULTAR_RESPUESTA_DIAN, GEN_NUM_DIAN, masivo reencolar.</p><p class="inv"><strong>Invariante:</strong> —</p><p class="meta">SP: SPQ_FCXP · NOTIFICAR_DIAN / CONSULTAR_RESPUESTA_DIAN</p></article><article class="gate"><h3>Conciliar Radian ↔ CxP</h3><p class="meta">Facturas Radian · <code>radian-conciliar</code></p><p>Botón conciliación masiva: CONCILIAR_CXP_FRADIAN con FECHA_INICIO/FIN; marca FRADIAN.REGISTRADA_CXP cuando existe FCXP mismo NIT+NODOCUMENTO.</p><p class="inv"><strong>Invariante:</strong> —</p><p class="meta">SP: SPQ_FCXP · CONCILIAR_CXP_FRADIAN</p></article><article class="gate"><h3>Auditoría CxP (Servicios)</h3><p class="meta">Auditoría y notas · <code>auditoria-glosas</code></p><p>1) AUDCXPComponent (read FCXP Servicios contabilizadas). 2) Expand fila → detalle notas/glosas. 3) AUDCXPG: CRUD_FCXPS ítems paciente/documento. 4) CERRAR_GLOSA → UPDATE FCXPS + CONTABILIZAR_NOTACREDITO nota DB. 5) CERRAR_CONCI / IMPRIMIR_GLOSA|CONCI.</p><p class="inv"><strong>Invariante:</strong> Solo PROCEDENCIA Servicios; CONTABILIZADA≠0; glosas ligadas ITEMNDB/ITEMNCR en FCXPDBCR.</p><p class="meta">SP: SPQ_FCXP_AUDIT · CRUD_FCXPS / CERRAR_GLOSA / CERRAR_CONCI, SPQ_FCXP · CONSULTAR_AUDITORIA / RELIQUIDAR (vía FCXP)</p></article></div>
+    </section>
+
+    <section><h2>Alcance</h2><p>Control anular egreso CXP → liberar orden de pago. Pantallas: Administrativo → Caja (CAJMovinComponent · ANULAR_RECIBO_CAJA) y Cuentas por pagar → Orden de pago (OPComponent). SQL: SPQ_CONF_CAJA.ANULAR_RECIBO_CAJA (hoy no llama SPK_ANULA_ODERNPAGOENCAJA) y/o SPQ_ORDEN_PAGO.DESAUTORIZAR_POR_RECIBO + OBTENER_ORDENES_POR_RECIBO (FE Qrystalos2 actual). Remediación datos Codazzi (E00006213 / OP 0100005933) si el egreso ya está anulado y la OP sigue en P. Rama bugfix/HCODAZ22.</p></section>
+    
+
+    <p class="foot">
+      Generado 2026-10-02T13:25:54 desde el <strong>alcance de este REQ</strong>
+      cruzado con <code>conocimiento/cxp-fcxp/</code>.
+      No se listan SPs de otros controles del módulo.
+    </p>
+  </div>
+</body>
+</html>

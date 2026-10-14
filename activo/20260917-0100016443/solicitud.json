@@ -1,0 +1,156 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-19T19:39:02.535Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016443",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260917-0100016443",
+    "idReq": "0100016443",
+    "fecha": "2026-09-17",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ESE HOSPITAL ARMANDO PABON LOPEZ",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": "/nom/Prestaciones · PrestacionesNominaComponent.vue"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Yineth Carrillo",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/HMANAU28",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "Para el modulo de prestaciones sociales cuando se agrega un item de liquidacion el formulario esta solicitando conceptos y son eventos, ya que con base a este evento se calculara la prestacion a pagar. ademas se debe crear una validacion que avise al cliente cuando no se seleccione correctamente el evento a calcular\n \nesto afecta la creacion de liquidacion de las prestaciones correctamente, tocaria crear el concepto y la novedad con el mismo codigo y esto no es optimo para el funcionamiento del modulo",
+    "criteriosAceptacion": "1) En el control «Crear / Editar detalle de programación» (NVACD) y en el alta de programación (NVAC, campo IDEVENTO_PAGO), la etiqueta y el buscador permiten elegir un evento de nómina (NEVE.IDEVENTO), no un concepto (NCON.CODCONCEPTO).\n2) Al guardar detalle (NOM_NVACD · GUARDAR) con un código que no exista en NEVE, el usuario recibe un mensaje claro en español (sin error técnico de FK) indicando que debe seleccionar el evento correcto.\n3) Tras elegir un evento válido y consecutivo de pago, el INSERT en NVACD persiste sin violar FK_NVACD_NVACDEVENTOPAGO.\n4) La liquidación / generación de prestaciones (GENPRESTACIONES_NOMINA, GEN_DETALLESPRESTACIONES_NOM) sigue el mismo flujo actual; no se exige duplicar concepto y novedad con el mismo código como workaround.\n5) Regresión: pantalla Prenómina · novedades y configuración de eventos (NEVE) no se altera salvo reutilizar el mismo patrón de selector.",
+    "alcance": "Frontend: PrestacionesNominaComponent.vue (modales NVAC y NVACD, selector y onSelectNCON/onSelectNEVE, mensajes de validación en guardado).\nBackend/SQL: SPQ asociados a MODELO NOM_NVACD (GUARDAR/ELIMINAR) y, si aplica el mismo campo en cabecera, NOM_PRESTACIONES · GUARDAR — validación explícita de IDEVENTO_PAGO contra NEVE antes del INSERT/UPDATE.\nFuera de alcance: rediseño del motor GENPRESTACIONES_NOMINA, contabilización (NIEPER/NC_CONTAB_NOMINA), pantalla Prestación social de pago (/nom/PrestacionSocial), y el subcontrol PREVENT «Eventos del empleado» (usa CODCONCEPTO en otra tabla; no mezclar con NVACD.IDEVENTO_PAGO).",
+    "restricciones": "No implementar workaround de igualar CODCONCEPTO e IDEVENTO en parametrización.\nReutilizar el patrón ya usado en Prenómina (RegistNovedadesComponent: SelectGenerico tabla NEVE, llave IDEVENTO).\nNVACD.IDEVENTO_PAGO es varchar(6) y referencia NEVE.IDEVENTO (documentación columnas_por_tabla.rpt); no inventar otras columnas.\nRama bugfix/HMANAU28; cambios mínimos acotados al control de programación de prestaciones.\nSPQ sin ficha en conocimiento/nomina/sps.json: al desarrollar, bajar PREVERSION desde DESAIX y ajustar solo la validación acordada.",
+    "analisis": "Paso 0 — ¿Ya existe? Clasificación: defecto (no capacitación). El REQ pide eventos; la captura muestra el modal «Crear Detalle De Programación» con «Código Concepto» obligatorio y botón «Consultar Conceptos» (NCON). La grilla de detalle ya etiqueta la columna como «Novedad» (NVACD.IDEVENTO_PAGO), coherente con el modelo de datos, pero el buscador asigna NCON.CODCONCEPTO — incompatible con FK_NVACD_NVACDEVENTOPAGO → NEVE.IDEVENTO (evidencia captura FK contra dbo.NEVE.IDEVENTO).\n\nControl inventariado (Talento humano → Prestaciones, /nom/Prestaciones): programación NVAC (crear/editar, tipo liquidación P/C/S); detalle NVACD por programación (+ consecutivo de pago NPER); acciones Generar detalles, Generar prestaciones (NOM_PRESTACIONES), verificación de empleados; por empleado en detalle liquidado — botón «Cargar evento» → PREVENT (concepto + tercero, distinto rol). No hay camino correcto hoy para NVACD sin conocer IDEVENTO a mano.\n\nCausa raíz (FE): onSelectNCON asigna row.CODCONCEPTO a NVAC.IDEVENTO_PAGO y NVACD.IDEVENTO_PAGO; diálogo dgSearchNCON lista NCON.\n\nProceso conocimiento: nomina — tablas NVAC/NVACD/NEVE en capa alimentadores; GENPRESTACIONES no documentado en sps.json (nota proceso.json). Distinto de /nom/PrestacionSocial (NIEPER pago).",
+    "opciones": [],
+    "recomendacion": "Corregir el defecto de interfaz alineando selector y etiquetas con NEVE (como novedades de prenómina) y endurecer validación en SPQ_NOM_NVACD · GUARDAR (y cabecera si corresponde) para mensaje de negocio antes del INSERT. Impacto principal FE + validación SQL/API; no nuevo módulo.",
+    "cambioPropuestoSimple": "Hoy, al agregar un ítem de liquidación en prestaciones, el sistema pide un «concepto» pero guarda en un campo que en realidad es el evento de nómina; si el usuario elige mal, falla la base de datos. Se propone que el formulario muestre y permita buscar eventos (como en novedades de prenómina) y que, si el código no es un evento válido, aparezca un aviso claro sin obligar a duplicar conceptos y novedades.",
+    "cambioPropuestoSql": "-- Especificación (no ejecutar desde BA). Objetos: SPQ_NOM_NVACD · METODO GUARDAR\n-- (confirmar nombre exacto del bloque al bajar PREVERSION desde DESAIX; no está en sql/ ni sps.json).\n\n-- BEFORE: INSERT/UPDATE NVACD con @IDEVENTO_PAGO tomado del JSON sin validar origen (FE puede enviar CODCONCEPTO).\n\n-- AFTER (al inicio del GUARDAR, tras leer @IDEVENTO_PAGO del JSON):\nIF NULLIF(LTRIM(RTRIM(@IDEVENTO_PAGO)), '') IS NULL\nBEGIN\n  SELECT 'KO' AS OK, 'Debe seleccionar el evento de nómina (NEVE) con el que se calculará la prestación.' AS ERROR;\n  RETURN;\nEND\nIF NOT EXISTS (SELECT 1 FROM dbo.NEVE WITH (NOLOCK) WHERE IDEVENTO = @IDEVENTO_PAGO)\nBEGIN\n  SELECT 'KO' AS OK,\n    'El código ''' + @IDEVENTO_PAGO + ''' no es un evento válido (NEVE.IDEVENTO). Use «Consultar eventos», no conceptos de nómina (NCON).' AS ERROR;\n  RETURN;\nEND\n-- … continuar INSERT/UPDATE existente sobre NVACD …\n\n-- Validación post-despliegue (solo lectura en copia/preversión):\n-- SELECT IDEVENTO, DESCRIPCION, CODCONCEPTO FROM NEVE WHERE IDEVENTO = '<evento_elegido>';\n-- SELECT TOP 5 CNSVAC, ITEM, CNSPAGO, IDEVENTO_PAGO FROM NVACD ORDER BY CNSVAC DESC;\n\n-- Si NOM_PRESTACIONES · GUARDAR persiste NVAC.IDEVENTO_PAGO con el mismo picker erróneo, repetir la misma validación en SPQ_NOM_PRESTACIONES · GUARDAR.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "No aplica: corrección de selector/validación en programación de prestaciones (NVAC/NVACD, NEVE). No modifica NIEPED contabilizado, NC_CONTAB_NOMINA, MCP ni MCPE.",
+        "validadoEn": "2026-09-19T19:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En el cliente, reproducir: Prestaciones → programación → «+» detalle → «Consultar Conceptos» → elegir cualquier NCON activo → Guardar. Debe reproducirse FK_NVACD_NVACDEVENTOPAGO o campo «Requerido» sin evento. Tras el fix, repetir con evento NEVE válido para la prestación."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Screenshot_2026-09-16_180628.png",
+        "ruta": "activo/20260917-0100016443/imagenes/Screenshot_2026-09-16_180628.png",
+        "subidaEn": "2026-09-19T14:35:51",
+        "url": "/api/caso/20260917-0100016443/imagen/Screenshot_2026-09-16_180628.png"
+      },
+      {
+        "nombre": "Screenshot_2026-09-16_180645.png",
+        "ruta": "activo/20260917-0100016443/imagenes/Screenshot_2026-09-16_180645.png",
+        "subidaEn": "2026-09-19T14:35:51",
+        "url": "/api/caso/20260917-0100016443/imagen/Screenshot_2026-09-16_180645.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En el control «Crear / Editar detalle de programación» (NVACD) y en el alta de programación (NVAC, campo IDEVENTO_PAGO), la etiqueta y el buscador permiten elegir un evento de nómina (NEVE.IDEVENTO), no un concepto (NCON.CODCONCEPTO).\n2) Al guardar detalle (NOM_NVACD · GUARDAR) con un código que no exista en NEVE, el usuario recibe un mensaje claro en español (sin error técnico de FK) indicando que debe seleccionar el evento correcto.\n3) Tras elegir un evento válido y consecutivo de pago, el INSERT en NVACD persiste sin violar FK_NVACD_NVACDEVENTOPAGO.\n4) La liquidación / generación de prestaciones (GENPRESTACIONES_NOMINA, GEN_DETALLESPRESTACIONES_NOM) sigue el mismo flujo actual; no se exige duplicar concepto y novedad con el mismo código como workaround.\n5) Regresión: pantalla Prenómina · novedades y configuración de eventos (NEVE) no se altera salvo reutilizar el mismo patrón de selector.",
+      "originalesEn": "2026-09-19T19:37:48.711Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En el control «Crear / Editar detalle de programación» (NVACD) y en el alta de programación (NVAC, campo IDEVENTO_PAGO), la etiqueta y el buscador permiten elegir un evento de nómina (NEVE.IDEVENTO), no un concepto (NCON.CODCONCEPTO).\n2) Al guardar detalle (NOM_NVACD · GUARDAR) con un código que no exista en NEVE, el usuario recibe un mensaje claro en español (sin error técnico de FK) indicando que debe seleccionar el evento correcto.\n3) Tras elegir un evento válido y consecutivo de pago, el INSERT en NVACD persiste sin violar FK_NVACD_NVACDEVENTOPAGO.\n4) La liquidación / generación de prestaciones (GENPRESTACIONES_NOMINA, GEN_DETALLESPRESTACIONES_NOM) sigue el mismo flujo actual; no se exige duplicar concepto y novedad con el mismo código como workaround.\n5) Regresión: pantalla Prenómina · novedades y configuración de eventos (NEVE) no se altera salvo reutilizar el mismo patrón de selector.",
+      "trasAnalisisEn": "2026-09-19T19:37:59.087Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: defecto FE (picker NCON en campo IDEVENTO_PAGO) + validación SQL recomendada. SPQ del fix no fichados en conocimiento; bajar PREVERSION al implementar.",
+      "fecha": "2026-09-19T19:45:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_NOM_NVACD · GUARDAR — no documentado; rol validar NEVE + persistir NVACD",
+        "SPQ_NOM_PRESTACIONES · GUARDAR — no documentado; revisar si NVAC.IDEVENTO_PAGO usa el mismo picker",
+        "NOM_PRESTACIONES · GENPRESTACIONES_NOMINA / GEN_DETALLESPRESTACIONES_NOM — solo regresión; no cambio funcional salvo prueba E2E"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260917-0100016443/diagramas/flujo.html",
+      "subidaEn": "2026-09-19T14:38:32",
+      "url": "/api/caso/20260917-0100016443/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "nomina",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260917-0100016443-flujo.html"
+    },
+    "mockups": [
+      "activo/20260917-0100016443/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016443\\",
+    "archivosEsperados": [
+      "SPQ_NOM_NVACD.sql",
+      "SPQ_NOM_PRESTACIONES.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [],
+    "notas": "Al desarrollar: bajar SPQ_NOM_NVACD y SPQ_NOM_PRESTACIONES desde DESAIX PREVERSION; aplicar validación NEVE en GUARDAR. No marcar usarDocumentacion hasta fichar METODOs.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260917-0100016443.html",
+    "aprobados": "aprobados/20260917-0100016443/",
+    "imagenes": "aprobados/20260917-0100016443/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-19",
+    "ultimoEnvio": "2026-09-19T14:45:46",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

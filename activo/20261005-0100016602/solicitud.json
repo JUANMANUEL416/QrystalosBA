@@ -1,0 +1,243 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-06T00:34:02.115Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016602",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261005-0100016602",
+    "idReq": "0100016602",
+    "fecha": "2026-10-05",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "SermultiSalud",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CJA · MODULO DE CAJA",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "EDGARDO MARTINEZ",
+    "desarrollador": "GUILLERMO GARCIA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/SERMUS105",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CJA · MODULO DE CAJA",
+    "requerimiento": "Factura duplicada de copago desde caja\nUn recibo de caja de 5.000, con una sola línea, generó dos facturas electrónicas del mismo copago. Las dos salieron a la DIAN. La contabilidad quedó descuadrada porque el mismo recaudo se abonó a las dos facturas y el efectivo se contabilizó varias veces.\nHay que impedir que un recibo produzca más de una factura, que el abono supere el valor del recibo y que el comprobante mezcle el pago de otra factura.",
+    "criteriosAceptacion": "Con FACTURAPOS_ACTIVA=SI, al confirmar un recibo de ingreso (FCJ) con copago/cuota moderadora, queda exactamente una FTR/FTRD asociada vía FCJ.N_FACTURAPOS (segunda confirmación o reentrada al motor no crea otra factura ni otro envío DIAN).\nLa suma de abonos en FPAG/FCJPCXC ligados al mismo CODCAJA+CNSFACJ no supera FCJ.VALORTOTAL; no se cruza el efectivo del recibo contra N_FACTURA distinta de N_FACTURAPOS salvo flujo documentado (particular/VENTA).\nTras confirmar copago POS: cartera FCXC del copago en saldo $0; un solo comprobante contable coherente (asiento de la FTR vía SPK_NC_CONTAB_FTR; comprobante CAJA sin duplicar efectivo cuando el recaudo ya quedó en la factura — rama DESDEFTR).\nCONFIRMAR_RECIBO rechaza recibo ya confirmado/contabilizado (sin doble clic ni reintento exitoso).\nRegresión: recibo sin copago electrónico, egresos, traer comprobante TFCJ, procaja contabilización masiva y anulación con N_FACTURAPOS siguen operando igual.",
+    "alcance": "Control de confirmación de ingreso en Caja operativa: menú Administrativo → Caja (/admin/caja), CAJMovinComponent — botón Confirmar → SPQ_CONF_CAJA · CONFIRMAR_RECIBO → SPK_CIERRERECIBO_CAJA → SPK_CREA_FACTURA_POS_CAJA (FACTURAPOS) → SPK_NC_CONTAB_CAJA_ING / SPK_NC_CONTAB_FTR / SPK_ADMIN_PAGOS (FCJPCXC).\nEndurecimiento de idempotencia e integridad de montos en IXONLINE/SQL (PREVERSION): SPK_CREA_FACTURA_POS_CAJA (principal), ajustes acotados en SPK_CIERRERECIBO_CAJA (evitar doble EXEC en rama FACTU_COPA_MAYOR_SER) y SPK_NC_CONTAB_CAJA_ING (cruces FCJPCXC filtrados por N_FACTURAPOS).\nFrontend: candado anti doble envío en confirmación (CAJMovinComponent) mientras corre CONFIRMAR_RECIBO.\nCorrección de datos ya duplicados en SermultiSalud (anular FTR sobrante, reversar MCP/FPAG) queda fuera — solo guía de soporte si la piden.",
+    "restricciones": "No rediseñar facturación DIAN ni resoluciones FDIAN.\nNo cambiar reglas de negocio de FACTU_COPA_MAYOR_SER ni planes particulares salvo evitar segunda ejecución del mismo SPK en el mismo cierre.\nProcesos de Caja (/admin/procaja) y reportes SPK_ABONOFACTURA_* / SPK_PAGOSCAJA_AUT no son el camino del incidente (5.000 copago al confirmar en ventanilla); no expandir alcance salvo prueba de reproducción por procaja.\nSin ejecutar scripts desde Qrystalos BA; desarrollo en canasta PREVERSION.",
+    "analisis": "REQ (cola IX OnLine 0100016602 + solicitud): un recibo de 5.000 con una línea generó dos facturas electrónicas del mismo copago, ambas a DIAN; el recaudo se abonó a las dos y el efectivo se contabilizó más de una vez.\n\nPaso 0 — ¿Ya existe? Clasificación: DEFECTO (no capacitación ni hueco funcional). El flujo 7 «Facturación electrónica de copagos» ya está documentado en conocimiento/caja: al confirmar ingreso con FACTURAPOS_ACTIVA=SI, SPK_CIERRERECIBO_CAJA invoca SPK_CREA_FACTURA_POS_CAJA, que debe ser idempotente (FCJ.N_FACTURAPOS). No hay botón alterno «generar otra factura» para el mismo recibo; anular exige primero la FTR (control documentado).\n\nVentana real del control: /admin/caja · CAJMovinComponent (ingreso COBRO) — Confirmar → diálogo → onConfirmarRecibo → AppStore.json MODELO CONF_CAJA, METODO CONFIRMAR_RECIBO. El diagrama adjunto (SR20261004-001) cita ProCajaPage/ProCajaComponent; eso corresponde a procaja (masivo/reportes), no al confirmar recibo en ventanilla — la trazabilidad del fix es CONF_CAJA + SPKs del cierre.\n\nCausa raíz (código vivo Qrystalos2/sql, contrastado con fichas leídas en conocimiento/caja/sps.json):\n1) SPK_CREA_FACTURA_POS_CAJA: existe candado IF N_FACTURAPOS<>'' pero el RETURN está comentado (líneas ~47-50), por lo que una reentrada o segunda invocación sigue creando FTR, FPAG, FCJPCXC y contabiliza otra vez.\n2) SPK_CIERRERECIBO_CAJA puede llamar SPK_CREA_FACTURA_POS_CAJA hasta tres veces en un mismo cierre (rama FACTURAPOS_ACTIVA y dos IF independientes en FACTU_COPA_MAYOR_SER para CIT y AUT) sin comprobar N_FACTURAPOS entre llamadas.\n3) SPK_NC_CONTAB_CAJA_ING ya incluye lógica DESDEFTR para no omitir MCP de CAJA cuando el comprobante es propio del recibo; el cursor de pagos sobre FCJPCXC (líneas ~618-619) no filtra por N_FACTURA = N_FACTURAPOS, riesgo de mezclar cruces si hubiera más de un registro.\n4) FE: onConfirmarRecibo no usa flag confirmandoRecibo (a diferencia de otras acciones); doble clic puede disparar dos CONFIRMAR_RECIBO si el primero aún no marcó CERRADA=1 (CONFIRMAR_RECIBO valida «ya confirmado», pero ventana de carrera posible).\n\nContabilidad: el formulario marca afecta=false (nota heredada de otro contexto AUT/AUTD); el síntoma del REQ sí es descuadre MCP/MCH/efectivo por duplicidad. Para dictamen, respetar el flag del coordinador; técnicamente el fix evita doble SPK_NC_CONTAB_FTR y doble comprobante CAJA.\n\nValidar antes de codificar: en PREVERSION/SQLIX confirmar si RETURN sigue comentado; si ya está activo y el caso cliente es histórico, reproducir en copia con doble confirmación.",
+    "opciones": [],
+    "recomendacion": "Desarrollo acotado bugfix/SERMUS105: restaurar idempotencia real en SPK_CREA_FACTURA_POS_CAJA (RETURN + lectura FCJ WITH (UPDLOCK, HOLDLOCK) al inicio; opcional RAISERROR claro si N_FACTURAPOS ya existe); marcar N_FACTURAPOS en FCJ inmediatamente después de reservar @N_FACTURA y antes de SPK_ADMIN_PAGOS; validar SUM(FCJPCXC.VALOR)<=FCJ.VALORTOTAL antes de insertar otro cruce.\nEn SPK_CIERRERECIBO_CAJA: tras la primera EXEC exitosa, no volver a llamar SPK_CREA_FACTURA_POS_CAJA si FCJ.N_FACTURAPOS ya está poblado; unificar rama FACTU_COPA_MAYOR_SER (IF/ELSE IF CIT vs AUT).\nEn SPK_NC_CONTAB_CAJA_ING: cursor FCJPCXC WHERE … AND A.N_FACTURA = COALESCE(#F.N_FACTURAPOS, #F.N_FACTURA, A.N_FACTURA).\nFE: deshabilitar botón Confirmar y diálogo mientras pending CONFIRMAR_RECIBO (ref confirmandoOrdenCaja).\nPruebas: recibo copago 5.000 una línea — una FTR, un FPAG, FCJPCXC una fila, un CUFE; intento doble confirmación KO; regresión egreso y recibo sin NDIAN.",
+    "cambioPropuestoSimple": "Hoy, al confirmar en caja un copago que debe facturarse electrónicamente, el motor puede ejecutarse más de una vez para el mismo recibo y generar dos facturas y dos contabilizaciones con el mismo dinero. Se propone que el sistema trate «una factura por recibo» como regla firme: si el recibo ya tiene factura de copago, no crear otra; no abonar más del valor del recibo; y al contabilizar, no repetir el efectivo en caja cuando el pago ya quedó en la factura. En pantalla, evitar confirmar dos veces seguidas el mismo recibo.",
+    "cambioPropuestoSql": "Objeto: SPK_CREA_FACTURA_POS_CAJA (IXONLINE/SQL · PREVERSION)\n\n-- BEFORE (Qrystalos2/sql, ~L47-51): candado sin salida\nIF EXISTS(SELECT * FROM FCJ WHERE CODCAJA=@CODCAJA AND CNSFACJ=@CNSFACJ AND COALESCE(N_FACTURAPOS,'')<>'')\nBEGIN\n   PRINT 'YA SE GENERO LA FACTURA...'\n  -- RETURN\nEND\n\n-- AFTER (especificación):\nIF EXISTS(\n   SELECT 1 FROM FCJ WITH (UPDLOCK, HOLDLOCK)\n   WHERE CODCAJA=@CODCAJA AND CNSFACJ=@CNSFACJ AND COALESCE(N_FACTURAPOS,'')<>''\n)\nBEGIN\n   RETURN  -- o RAISERROR('Ya existe factura POS para este recibo',16,1)\nEND\n\n-- AFTER: antes de INSERT FCJPCXC (~L525), validar tope\nIF (SELECT COALESCE(SUM(VALOR),0) FROM FCJPCXC WHERE CODCAJA=@CODCAJA AND CNSFACJ=@CNSFACJ)\n    + @VLRFCJ > (SELECT VALORTOTAL FROM FCJ WHERE CODCAJA=@CODCAJA AND CNSFACJ=@CNSFACJ)\nBEGIN\n   RAISERROR('El abono supera el valor del recibo de caja',16,1); RETURN\nEND\n\nObjeto: SPK_CIERRERECIBO_CAJA (~L1049-1068)\n-- AFTER: envolver segundas EXEC:\nIF COALESCE((SELECT N_FACTURAPOS FROM FCJ WHERE CODCAJA=@CODCAJA AND CNSFACJ=@CNSFACJ),'')=''\n   EXEC SPK_CREA_FACTURA_POS_CAJA ...\n-- Rama FACTU_COPA_MAYOR_SER: usar ELSE IF entre CIT y AUT para una sola llamada.\n\nObjeto: SPK_NC_CONTAB_CAJA_ING (~L618-619)\n-- BEFORE: SELECT CNSFPAG FROM FCJPCXC WHERE CNSFACJ=@CNSFACJ AND CODCAJA=@CODCAJA\n-- AFTER: ... AND N_FACTURA = (SELECT COALESCE(NULLIF(N_FACTURAPOS,''), N_FACTURA) FROM FCJ WHERE ...)\n\nValidación SQL (solo lectura en copia cliente):\nSELECT CODCAJA,CNSFACJ,N_FACTURAPOS,COUNT(DISTINCT N_FACTURA) cnt_ftr\nFROM FCJPCXC WHERE CODCAJA=@CODCAJA AND CNSFACJ=@CNSFACJ GROUP BY ... HAVING cnt_ftr>1;",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Marcado no cobrable en AUT/AUTD previo a factura; no genera FTR ni MCP/MCH/MCPE.",
+        "validadoEn": "2026-10-06T00:10:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En PREVERSION (SQLIX), abrir SPK_CREA_FACTURA_POS_CAJA y verificar si el RETURN del candado N_FACTURAPOS sigue comentado. En copia de prueba, confirmar un recibo copago 5.000 una vez; intentar reconfirmar o simular doble llamada: debe quedar una sola FTR con PROCEDENCIA CAJA ligada a FCJ.N_FACTURAPOS. Si ya no reproduce, documentar versión liberada y cerrar como dato histórico corregido."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "SR20261004-001-diagrama-flujo.png",
+        "ruta": "activo/20261005-0100016602/imagenes/SR20261004-001-diagrama-flujo.png",
+        "subidaEn": "2026-10-05T19:10:38",
+        "url": "/api/caso/20261005-0100016602/imagen/SR20261004-001-diagrama-flujo.png"
+      }
+    ],
+    "archivosAnalisis": [
+      {
+        "nombre": "SR20261004-001-documento-comite.pdf",
+        "ruta": "activo/20261005-0100016602/archivos/SR20261004-001-documento-comite.pdf",
+        "extracto": "SR20261004-001-documento-comite.extracto.txt",
+        "extractoRuta": "activo/20261005-0100016602/archivos/SR20261004-001-documento-comite.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 449922,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-05T19:10:48",
+        "url": "/api/caso/20261005-0100016602/archivo/SR20261004-001-documento-comite.pdf",
+        "urlExtracto": "/api/caso/20261005-0100016602/archivo/SR20261004-001-documento-comite.extracto.txt"
+      },
+      {
+        "nombre": "SR20261004-001-mockups.pdf",
+        "ruta": "activo/20261005-0100016602/archivos/SR20261004-001-mockups.pdf",
+        "extracto": "SR20261004-001-mockups.extracto.txt",
+        "extractoRuta": "activo/20261005-0100016602/archivos/SR20261004-001-mockups.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 62744,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-05T19:10:49",
+        "url": "/api/caso/20261005-0100016602/archivo/SR20261004-001-mockups.pdf",
+        "urlExtracto": "/api/caso/20261005-0100016602/archivo/SR20261004-001-mockups.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "Con FACTURAPOS_ACTIVA=SI, al confirmar un recibo de ingreso (FCJ) con copago/cuota moderadora, queda exactamente una FTR/FTRD asociada vía FCJ.N_FACTURAPOS (segunda confirmación o reentrada al motor no crea otra factura ni otro envío DIAN).\nLa suma de abonos en FPAG/FCJPCXC ligados al mismo CODCAJA+CNSFACJ no supera FCJ.VALORTOTAL; no se cruza el efectivo del recibo contra N_FACTURA distinta de N_FACTURAPOS salvo flujo documentado (particular/VENTA).\nTras confirmar copago POS: cartera FCXC del copago en saldo $0; un solo comprobante contable coherente (asiento de la FTR vía SPK_NC_CONTAB_FTR; comprobante CAJA sin duplicar efectivo cuando el recaudo ya quedó en la factura — rama DESDEFTR).\nCONFIRMAR_RECIBO rechaza recibo ya confirmado/contabilizado (sin doble clic ni reintento exitoso).\nRegresión: recibo sin copago electrónico, egresos, traer comprobante TFCJ, procaja contabilización masiva y anulación con N_FACTURAPOS siguen operando igual.",
+      "originalesEn": "2026-10-06T00:32:43.324Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "Con FACTURAPOS_ACTIVA=SI, al confirmar un recibo de ingreso (FCJ) con copago/cuota moderadora, queda exactamente una FTR/FTRD asociada vía FCJ.N_FACTURAPOS (segunda confirmación o reentrada al motor no crea otra factura ni otro envío DIAN).\nLa suma de abonos en FPAG/FCJPCXC ligados al mismo CODCAJA+CNSFACJ no supera FCJ.VALORTOTAL; no se cruza el efectivo del recibo contra N_FACTURA distinta de N_FACTURAPOS salvo flujo documentado (particular/VENTA).\nTras confirmar copago POS: cartera FCXC del copago en saldo $0; un solo comprobante contable coherente (asiento de la FTR vía SPK_NC_CONTAB_FTR; comprobante CAJA sin duplicar efectivo cuando el recaudo ya quedó en la factura — rama DESDEFTR).\nCONFIRMAR_RECIBO rechaza recibo ya confirmado/contabilizado (sin doble clic ni reintento exitoso).\nRegresión: recibo sin copago electrónico, egresos, traer comprobante TFCJ, procaja contabilización masiva y anulación con N_FACTURAPOS siguen operando igual.",
+      "trasAnalisisEn": "2026-10-06T00:32:48.013Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: defecto idempotencia SPK_CREA_FACTURA_POS_CAJA (RETURN comentado) + posible doble EXEC en SPK_CIERRERECIBO_CAJA y refuerzo FE anti doble clic. Fichas conocimiento/caja/sps.json leídas; líneas exactas contrastadas con Qrystalos2/sql (equivalente a revisar PREVERSION antes de desarrollar). Diagrama SR20261004 corrige trazabilidad a admin.caja, no procaja. PDFs comité sin extracto (pypdf); no bloquean solución.",
+      "fecha": "2026-10-06T00:20:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_CONF_CAJA·CONFIRMAR_RECIBO leido; SPK_CIERRERECIBO_CAJA leido; SPK_CREA_FACTURA_POS_CAJA leido; SPK_NC_CONTAB_CAJA_ING leido; SPK_ADMIN_PAGOS rama-CXC leido; SPK_NC_CONTAB_FTR anidado (contabilidad). No se bajó cuerpo a activo/20261005-0100016602/sql/ — fichas + Qrystalos2/sql bastan para especificación; bajar PREVERSION al implementar."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261005-0100016602/diagramas/flujo.html",
+      "subidaEn": "2026-10-05T19:33:45",
+      "url": "/api/caso/20261005-0100016602/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "caja",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261005-0100016602-flujo.html"
+    },
+    "mockups": [
+      "activo/20261005-0100016602/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": "",
+    "mockupsFuente": "conocimiento+analisis"
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261005-0100016602\\sql\\",
+    "carpetaRelativa": "activo/20261005-0100016602/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016602\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "caja",
+    "catalogo": "conocimiento/caja/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_CONF_CAJA",
+        "metodo": "CONFIRMAR_RECIBO",
+        "estado": "leido",
+        "hace": "Confirma el recibo de ingreso: cierra el documento, actualiza banco y dispara el asiento de ingreso.",
+        "llama": [
+          "SPK_CIERRERECIBO_CAJA",
+          "SPK_ACTUALIZA_SALDO_BANCO",
+          "SPK_NC_CONTAB_CAJA_ING"
+        ]
+      },
+      {
+        "sp": "SPK_CIERRERECIBO_CAJA",
+        "metodo": "(cuerpo único)",
+        "estado": "leido",
+        "hace": "Motor al confirmar FCJ.CERRADA=1; ramas COBRO (CITAS/CE/CEM/SALUD/VENTA/CREDITO/INTERNO, TFCJ, CxC, FPAG, factura POS, BMOV) y PAGO (CxP, traslado caja, consignación, cheques, devoluciones, caja menor).",
+        "llama": [
+          "SPK_PEDIDOINV_CAJA",
+          "SPK_CREA_FACTURA_DESDE_CAJA",
+          "SPK_CREA_FACTURA_POS_CAJA",
+          "SPK_ADMIN_CXC_CONTAB",
+          "SPK_ADMIN_PAGOS",
+          "SPK_GENCONSECUTIVO",
+          "SPK_OK_BMOV",
+          "SPK_TOT_BMOV",
+          "SPK_ENVIA_PTTO_RECUADO_COPAGO",
+          "SPK_ENVIA_PPTO_EGRESOCAJA",
+          "SPK_CALCULOVALORESCXP"
+        ]
+      },
+      {
+        "sp": "SPK_NC_CONTAB_CAJA_ING",
+        "metodo": "(cuerpo único)",
+        "estado": "leido",
+        "hace": "Contabiliza el FCJ de ingreso: arma MCPE/MCHE procedencia CAJA para cobros externos, crédito, recaudos, conceptos, servicios, depósitos y costos; en flujo normal revisa el comprobante y lo pasa a MCP. FACTURAPOS puede llevar el asiento embebido desde la factura.",
+        "llama": [
+          "SPK_GENCONSECUTIVO",
+          "SPK_INSERT_TERDEAFI",
+          "SPK_ADMIN_CXP_CONTAB",
+          "FNK_NC_CUENTA_KMCOM",
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ]
+      },
+      {
+        "sp": "SPK_ADMIN_PAGOS",
+        "metodo": "rama-CXC",
+        "estado": "leido",
+        "hace": "PROCEDENCIA=CXC: crea FPAG+FPAGD (INGRESO=CAJA, forma IDCJCRUCECUENTAS); si @ESTADO=P aplica SPK_PAGOSCXC. DELETE revierte con SPK_DESPAGOSCXC y anula MCP.",
+        "llama": [
+          "SPK_PAGOSCXC",
+          "SPK_DESPAGOSCXC"
+        ]
+      },
+      {
+        "sp": "SPK_CREA_FACTURA_POS_CAJA",
+        "metodo": "(cuerpo único)",
+        "estado": "leido",
+        "hace": "Genera automáticamente la Factura Electrónica de Venta (FTR/FTRD) para copagos y cuotas moderadoras recaudados en ventanilla (FCJ). Valida resolución DIAN en FDIAN, clasifica procedencia (FPOS o FTR según tope UVT), inserta cabecera FTR con PROCEDENCIA='CAJA' y contado a nombre del afiliado, actualiza trazabilidad asistencial (CIT.NFACTURA, AUTD.NFACTURA o HADMF 'COPAGOS'), causa cuenta por cobrar en FCXC mediante SPK_ADMIN_CXC_CONTAB y recaudo inmediato en FPAG mediante SPK_ADMIN_PAGOS (saldo en cartera $0), cruza en FCJPCXC, asigna FCJ.N_FACTURAPOS=@N_FACTURA y ejecuta SPK_NC_CONTAB_FTR para asentar la factura en contabilidad MCP/MCH.",
+        "llama": [
+          "SPK_INSERT_TERDEAFI",
+          "SPK_GENCONSECUTIVO",
+          "SPK_GENNUMEROFACTURA",
+          "SPK_ADMIN_CXC_CONTAB",
+          "SPK_ADMIN_PAGOS",
+          "SPK_NC_CONTAB_FTR"
+        ]
+      }
+    ],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261005-0100016602.html",
+    "aprobados": "aprobados/20261005-0100016602/",
+    "imagenes": "aprobados/20261005-0100016602/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-05",
+    "ultimoEnvio": "2026-10-05T19:40:10",
+    "reenvios": 0,
+    "destinatario": "guillermo.garcia@ixcolombia.com",
+    "via": "smtp"
+  }
+}

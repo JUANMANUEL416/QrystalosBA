@@ -1,0 +1,67 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "nombre": "Núcleo crítico IEXI ↔ CxP",
+  "severidadGlobal": "critica",
+  "controles": [
+    {
+      "id": "PC-N1",
+      "orden": 1,
+      "titulo": "Ingreso completo a IEXI",
+      "dimension": ["existencias"],
+      "invariante": "IMOV ESTADO=1 ⇒ cada IMOVH activo tiene IEXI (IDBODEGA+IDARTICULO+NOLOTE) con EXISLOTE incrementado.",
+      "sps": ["SPK_CONFIRMARENTRADAS", "SPQ_IZSOL CONF_ENTRADA"],
+      "validacionSql": "iexi_vs_imov_confirmado",
+      "accionSiFalla": "No enviar a CxP; revisar CONF_ENTRADA, lotes duplicados, NOLOTE."
+    },
+    {
+      "id": "PC-N2",
+      "orden": 2,
+      "titulo": "Generación correcta FCXPD",
+      "dimension": ["contabilidad", "costo"],
+      "invariante": "PROCESAR_IMOVH crea FCXPD con N_PRESUP=CNSMOV; IMOVH.ENCXP=1; CUENTAGRAV si gravado.",
+      "sps": ["SPK_INSERT_CXP_INV", "SPQ_FCXP PROCESAR_IMOVH"],
+      "validacionSql": "fcxpd_generacion",
+      "accionSiFalla": "Re-ejecutar PROCESAR_IMOVH con FCXP no contabilizada."
+    },
+    {
+      "id": "PC-N3",
+      "orden": 3,
+      "titulo": "KMCOM CXP_COMPRAS",
+      "dimension": ["contabilidad"],
+      "invariante": "CONF_ENTRADA (VALID_CCOSTO_CXP) y FCXPD.CUENTA_SER vía FNK_CUENTA_KMCOM por ITAR+CCOSTO+AREA.",
+      "sps": ["SPQ_IZSOL CONF_ENTRADA", "SPK_INSERT_CXP_INV", "SPQ_FCXP RECONSTRUIR_CUENTAS_FCXPD"],
+      "validacionSql": "kmcom_cxp_compras",
+      "accionSiFalla": "Completar KMCOM; RECONSTRUIR solo cuentas no corrige montos."
+    },
+    {
+      "id": "PC-N4",
+      "orden": 4,
+      "titulo": "Reconstrucción CxP",
+      "dimension": ["contabilidad"],
+      "invariante": "Cambio de importes ⇒ PROCESAR_IMOVH; RECONSTRUIR_CUENTAS_FCXPD solo PREFIJO/CUENTA_SER; CONTABILIZADA=0.",
+      "sps": ["SPQ_FCXP RECONSTRUIR_CUENTAS_FCXPD", "SPQ_FCXP PROCESAR_IMOVH"],
+      "validacionSql": "reconstruccion_tipo",
+      "accionSiFalla": "Descontabilizar si aplica; reprocesar IMOVH antes de contabilizar."
+    },
+    {
+      "id": "PC-N5",
+      "orden": 5,
+      "titulo": "Cuadre valores entrada = CxP",
+      "dimension": ["costo", "contabilidad"],
+      "invariante": "Σ IMOVH (base+IVA) ≈ Σ FCXPD del CNSMOV ≈ aporta a FCXP.VLR_NETO/VLR_IVA (SPK_CALCULOVALORESCXP).",
+      "sps": ["SPK_INSERT_CXP_INV", "SPK_CALCULOVALORESCXP"],
+      "validacionSql": "cuadre_imov_fcxpd_fcxp",
+      "toleranciaPesos": 1.0,
+      "accionSiFalla": "PROCESAR_IMOVH; verificar REDONDEO_COMPRAS_CXP y DECONSUMO."
+    }
+  ],
+  "runbookSoporte": "RUNBOOK-SOPORTE-IEXI-CXP.md",
+  "variablesUsvgs": [
+    "VALID_CCOSTO_CXP",
+    "REDONDEO_COMPRAS_CXP",
+    "CONTAB_INV_IVA_ITAR",
+    "CUENTA_IVA_CXP",
+    "IDMODELOCONTABLE"
+  ]
+}

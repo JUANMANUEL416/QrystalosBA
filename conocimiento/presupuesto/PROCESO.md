@@ -1,67 +1,34 @@
-# Proceso: Presupuesto
+# Presupuesto (notas internas)
 
-**Estado:** parcial (SPQ + envío nómina/PAC leídos; CRUDPTNOT no desarrollado; REQ 6310 es Analista)  
-**Módulo:** PTPTO · `/ppto`
+Proceso del libro: `presupuesto` (familia `presupuesto`). Documentado 2026-10-04.
 
-> Solo flujo y explicación. Los SP se bajan a `sql/` el día que se documenten.
+## Fuentes
 
-## Resumen
+- Qrystalos2: `layouts/PresupuestoLayout.vue` (arbolMenu), `router/routes.js` `/ppto`, `components/presupuesto/*` (PTPTO, PRI, PTCDP, PTRP, PTCXP, PTPAG, PTRECO, PTRECA, PTNOT, PTMOV, PTRES, AnticiposCxp, SeguimientoGastosCatalogo, ConfPresupuesto, Infoppto*), `composables/ppto/*`.
+- qrystalos.documentacion: solo PRI (CERRADO_PPTO). Sin ficha: PTPTO, PTPTODG, PTCDP, PTRP, PTCXP, PTPAG, PTRECO, PTRECA, PTNOT, PTRUB, PTREC, PTCLA, PTTMOV, PTDIV.
+- IXONLINE/SQL (PREVERSION = 2.0.7, IDANT 2.0.6): idénticas salvo **SPQ_PPTO_RECO** (PRE ≠ liberada). SPQ_PTPTO no existe. SPQ_PPTO_RECO PRE sin CRUDPTNOT. SPQ_PPTO_REP sin PRESUPUESTO_FCXC ni TRAER_ANTICIPOCXP. PCEM no consultado.
 
-Presupuesto web (Qrystalos2, `PresupuestoLayout`). Dos cadenas operativas:
+## Menú
 
-1. **Ingresos:** reconocimientos → recaudos / notas.
-2. **Gastos:** CDP → registro presupuestal (RP) → obligación (CxP) → pago.
+Árbol fijo. Habilitación MENUQ_COL · PRESUPUESTO. `ppto.en_construccion` siempre en la lista de permisos del layout. Seguimiento Gastos (REQ 0100016310) vive en Gastos; Históricos → Seguimiento Gasto sigue en construcción.
 
-Configuración: rubros, recursos, clasificaciones, tipos de movimiento, divisiones, contratos, nómina PPTO y periodos (PRI).
+## Hallazgos (ids `ppto-*` en proceso.json)
 
-**Hueco de menú (REQ 0100016310):** «Seguimiento Gastos» y Históricos → «Seguimiento Gasto» abren `EnConstruccionPage`. El componente de seguimiento ya existe y se usa en «Seguimiento CDP, CxP y Pagos».
+- `ppto-crudptnot-fe-adelantado`
+- `ppto-ppto-reco-pre-distinta`
+- `ppto-traer-anticipocxp-sin-rama`
+- `ppto-presupesto-fcxc-sin-rama`
+- `ppto-historicos-en-construccion`
+- `ppto-seguimiento-gasto-duplicado`
+- `ppto-typo-recuados`
+- `ppto-print-ingreso-reco`
+- `ppto-spq-ptpto-no-existe`
+- `ppto-tablas-sin-ficha`
+- `ppto-sin-envio-conta`
+- `ppto-enviar-nomina-silencio`
+- `ppto-informes-clarion-fallback`
+- `ppto-spk-historico-sin-pantalla`
 
-También en construcción: Históricos → Cierre, Seguimiento Reconocimientos, Seguimiento Recaudos.
+## Capa 5
 
-## Procedimientos (`sps.json`)
-
-Catálogo en `sps.json` (**leído** salvo `CRUDPTNOT` y `PRESUPUESTO_FCXC`). Scripts en `sql/`.
-
-| SPQ | MODELO FE | METODOs |
-|---|---|---|
-| SPQ_PRESUPUESTO | PRESUPUESTO | Maestros, PTPTO/DG, CAMBIAR_ESTADO_PPTO, CRUDNPER/NCOND/NPLTCO, CRUDPLN, ENVIAR, HELPER, COPIAR_RUBROS |
-| SPQ_PPTO_PTCDP | PPTO_PTCDP | CRUDPTCDP/D … CRUDPTPAG/D |
-| SPQ_PPTO_RECO | PPTO_RECO | RECO, RECA, PTMOV, PTRES. **CRUDPTNOT no desarrollado** |
-| SPQ_PPTO_REP | PPTO_REP | TRAER_FACTURA_PPTO, PRESUPUESTO_FPAG, PRESUPUESTO_FNOT, EXPORT_* |
-
-Confirmar el nombre real del SPQ al bajar el script (el MODELO del JSON es el lógico).
-
-## Capas
-
-### 1. Configuración
-
-Parametrizar rubros/recursos/tipos y periodo presupuestal abierto.
-
-**Invariante:** no afirmada (falta .sql).
-
-### 2. Proceso propio
-
-Usuario abre PTPTO, opera ingresos o arma CDP y confirma/anula/desconfirma eslabones.
-
-**Controles:** maestro-ptpto · cadena-gastos · cadena-ingresos · seguimiento-gastos.
-
-### 3. Lo que llega
-
-Facturación, recaudos y anticipos CxP se «traen» a presupuesto.
-
-### 4. Subproceso unido
-
-PTCXP vs CxP operativa — pendiente de SP.
-
-### 5. Envío a contabilidad
-
-Sin evidencia FE de asiento. No inventar.
-
-## Pendiente
-
-- [ ] `SPQ_PPTO_PTCDP.sql` en `sql/` → fichar CRUD* (prioridad: Documentar + REQ 6310).
-- [ ] `SPQ_PRESUPUESTO.sql` → maestros + CAMBIAR_ESTADO_PPTO.
-- [ ] `SPQ_PPTO_RECO.sql` + SPK_APLICA_NOTA_PPTO.
-- [ ] `SPQ_PPTO_REP.sql` / INFORMES_PPTO.
-- [ ] Confirmar SPQ de CRUDPTPTO.
-- [ ] Cierre histórico (menú en construcción).
+No hay ENV_CONTA / MCP. No inventar OM.

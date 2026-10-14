@@ -1,0 +1,2344 @@
+{
+  "procesoId": "cxp-fcxp",
+  "actualizado": "2026-10-04T23:45:00",
+  "nota": "Fichas de orden de pago → caja leídas 2026-10-04 desde DESAIX PREVERSION (idéntica a 2.0.7 salvo SPQ_FCXP: MASIVA_CXP y UNSPSC). Catálogo SP → METODO; no se archivan cuerpos. | 2026-10-04 tarde: fichas de notas (SPQ_FCXPDBCR completo, SPQ_NC_CONTAB_CXPFNT, SPK_CIERRA_FCXPDBCR, SPK_ANULAR_FCXPDBCR, SPQ_FNT_COL), anticipos (SPK_GEN_PROCESO_ANTICIPO, SPK_ANTICIPO_LEG_CXP, SPK_NC_CONTAB_ANTICIPO, SPQ_TANT_COL), Radian (SPQ_FRADIAN completo), auditoría y cierre (CERRAR_CUENTA/ABRIR_CUENTA, SPK_CIERRA_CARTERA). FCXPCXC: ningún SP la escribe.",
+  "sps": [
+    {
+      "nombre": "SPQ_FCXP",
+      "tipo": "SPQ",
+      "modelo": "FCXP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FCXP.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "CONTABILIZAR_FCXP",
+          "hace": "Toggle: CONTABILIZADA 0→1 genera comprobante; 1→0 lo reversa.",
+          "parametros": [],
+          "valida": [
+            "PROCEDENCIA ∉ (Nomina, CAJAMENOR)",
+            "Contabilizar: VLR_NETO ≥ 0; CUENTA_IVA_CXP=SI → cuenta IVA en FCXPD; cuentas cabecera/detalle en CUE; tasa cambiaria si moneda",
+            "Deshacer: comprobante existe; sin movimientos financieros; sin DIAN (CONTABILIZADA 2); sin órdenes de pago; sin abonos / con saldo"
+          ],
+          "noValida": [
+            "Periodo cerrado al descontabilizar (validación comentada)"
+          ],
+          "errores": [
+            "La Procedencia de la CXP no permite Envio o Deshacer contabilización",
+            "El Valor de la Cuenta Por Pagar Es Menor que Cero(0).",
+            "La cuenta Contable de IVA no esta Matriculada en los Detalles de la CXP.",
+            "La Cuenta Contable de la CXP No Existe En El Plan Contable",
+            "No se Ha Digitado el Valor de la Tasa Cambiaria...",
+            "Cuenta por pagar con Movimientos Financieros, no se puede Descontabilizar",
+            "No se puede descontabilizar una CXP que haya sido procesado ante la Dian",
+            "La cuenta por Pagar YA Tiene Orndenes de Pago... No Se Puede Anular el Comprobante",
+            "La Cuenta por Pagar ya Tiene Abonos O La Cuenta Por Pagar No Tiene Saldo"
+          ],
+          "llama": [
+            "SPK_CALCULOVALORESCXP",
+            "SPK_NC_CONTAB_CXP",
+            "SPK_REVERSAR_MCP_BANCO",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "UPDATE FCXP CONTABILIZADA/NROCOMPROBANTE/USUARIO_CONTABILIZA|DESCONTABILIZA; MCP/MCPE",
+          "capaId": "06-contabilidad",
+          "controlId": "contabilizar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "RECONSTRUIR_CUENTAS_FCXPD",
+          "hace": "Recalcula PREFIJO y CUENTA_SER en FCXPD vía FNK_NC_CUENTA_KMCOM (CXP_COMPRAS/Servicios/Salud) y SPK_CALCULOVALORESCXP. Solo si CONTABILIZADA=0.",
+          "valida": [
+            "CNSFCXP requerido y existe FCXP",
+            "CONTABILIZADA=0",
+            "CUENTA_SER final existe en CUE Detalle"
+          ],
+          "noValida": [
+            "No aplica UPDATE CUENTA_SER→CUENTAGRAV (hueco vs SPK_INSERT_CXP_INV)",
+            "No repuebla VLR_IVA desde IMOVH"
+          ],
+          "errores": [
+            "CNSFCXP requerido.",
+            "No existe la cuenta por pagar.",
+            "La CxP está contabilizada.",
+            "ERROR_MESSAGE() de transacción"
+          ],
+          "llama": [
+            "FNK_NC_CUENTA_KMCOM",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "UPDATE FCXPD.PREFIJO y CUENTA_SER; totales FCXP recalculados",
+          "capaId": "05-contabilidad",
+          "gateId": "reconstruir-fcxpd",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_IMOVH",
+          "hace": "Reconstruye detalle CxP desde movimiento inventario: EXEC SPK_INSERT_CXP_INV @CNSFCXP, @CNSMOV, 'CXP'.",
+          "valida": [
+            "Errores del SPK en @TBLERRORES"
+          ],
+          "noValida": [],
+          "errores": [
+            "ERROR_MESSAGE() del SPK"
+          ],
+          "llama": [
+            "SPK_INSERT_CXP_INV"
+          ],
+          "efecto": "FCXPD rearmado desde IMOV incluyendo homologación gravada",
+          "capaId": "05-contabilidad",
+          "gateId": "reconstruir-fcxpd",
+          "estado": "leido"
+        },
+        {
+          "id": "CONTABILIZAR_NOTACREDITO",
+          "hace": "Proxy: valida FCXPDBCR no contabilizada y delega EXEC SPQ_FCXPDBCR con mismo JSON.",
+          "valida": [
+            "CNSFCXP, ITEM",
+            "Nota no contabilizada duplicada"
+          ],
+          "noValida": [],
+          "errores": [
+            "La nota ya está contabilizada o ya tiene comprobante contable."
+          ],
+          "llama": [
+            "SPQ_FCXPDBCR"
+          ],
+          "efecto": "Pasa a motor nota SPQ_FCXPDBCR.CONTABILIZAR_NOTACREDITO",
+          "capaId": "04-auditoria-notas",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAER_VALORES_ANTI",
+          "hace": "Calcula saldo disponible de anticipo FCOM: VLR_ANTICIPO (FCXP PROCEDENCIA=Anticipos) − VLR_LEGALIZADO (ANT no anulados). PROCESO Nuevo/Editar excluye CNSANT actual.",
+          "valida": [
+            "CNSFCOM",
+            "Sin FCXPP en caja sin confirmar (FCJ.CERRADA=0)"
+          ],
+          "noValida": [],
+          "errores": [
+            "Existen anticipos con ordenes de pago sin confirmar en caja. Verique e intente de nuevo"
+          ],
+          "llama": [],
+          "efecto": "Dataset VLR_LEGALIZADO, VLR_ANTICIPO, SALDO",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        },
+        {
+          "id": "APLICAR_ANTICIPO",
+          "hace": "Legaliza anticipo contra CxP compra: INSERT ANT (ESTADO=I) y EXEC SPK_ANTICIPO_LEG_CXP; recalcula SPK_CALCULOVALORESCXP.",
+          "valida": [
+            "FCXP ESTADO≠A",
+            "SALDO≥VALOR_LEG",
+            "CNSFCOM/CNSFCXP"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se Encontro la cuenta por pagar o no tiene saldo suficiente",
+            "ERROR_MESSAGE() SPK"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_ANTICIPO_LEG_CXP",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "ANT legalizado; SALDO FCXP recalculado; retorna CONTABILIZADO/NROCOMPROBANTE ANT",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-aplicar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULAR_ANTICIPO",
+          "hace": "Anula ANT ESTADO=L: si no contabilizado borra MCPE/MCHE; si contabilizado y periodo abierto anula MCP.",
+          "valida": [
+            "CNSANT",
+            "ESTADO=L"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable cerrado / comprobante confirmado"
+          ],
+          "llama": [],
+          "efecto": "ANT.ESTADO=A; limpia comprobante si aplica",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-aplicar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_FCXPD",
+          "hace": "Elimina línea(s) FCXPD: PROCEDE=1 borra ITEM; PROCEDE=2 borra todas. Si línea ligada a IMOV (N_PRESUP=CNSMOV) ejecuta SPK_ANULAR_ITEM_CXP antes. Recalcula SPK_CALCULOVALORESCXP.",
+          "valida": [
+            "CONTABILIZADA=0",
+            "ENPRESUPUESTO=0",
+            "ESTADO≠A"
+          ],
+          "noValida": [
+            "FE onBorrarDetTodos no envía PROCEDE=2 (defecto eliminar todos)"
+          ],
+          "errores": [
+            "El regitro ya esta Contabilizada",
+            "La Cuenta Por Pagar Ya Fue Enviada a Presupuesto",
+            "El regitro esta Anulada"
+          ],
+          "llama": [
+            "SPK_ANULAR_ITEM_CXP",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "DELETE FCXPD; totales FCXP recalculados",
+          "capaId": "02-operacion-fcxp",
+          "controlId": "crud-fcxp",
+          "estado": "leido"
+        },
+        {
+          "id": "REGISTRAR_CXP_FRADIAN",
+          "hace": "Generar CxP desde Radian: INSERT FCXP+FCXPD desde dataFCXP/detalleFCXPD (XML) ligados a CNSRADIAN; marca la factura Radian registrada. Invocado por FacturasRadianComponent → CxpFradianGenerarDialog (gestionaCxp y evento acuse).",
+          "valida": [
+            "Periodo contable y CERRADO_CXP=0 para la fecha",
+            "Tercero existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "Factura Radian no encontrada / ya registrada",
+            "El No. de Referencia … ya existe"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT FCXP+FCXPD; UPDATE FRADIAN.REGISTRADA_CXP",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "CONCILIAR_CXP_FRADIAN",
+          "hace": "Concilia líneas FRADIAND con FCXPD existente o propone ajustes.",
+          "valida": [
+            "Tablas FRADIAN/FRADIAND"
+          ],
+          "noValida": [],
+          "errores": [
+            "ERROR_MESSAGE()"
+          ],
+          "llama": [],
+          "efecto": "UPDATE vínculos Radian↔CxP",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_FCXP",
+          "hace": "Cabecera FCXP: NUEVO/EDITAR. Consecutivo por sede (SPK_GENCONSECUTIVO '01'), periodo año/mes, ciudad de la sede, MASIVA_CXP (PREVERSION).",
+          "parametros": [
+            "dataFCXP JSON: PROCESO, CNSFCXP, IDTERCERO, FECHA, F_FACTURAREF, F_VENCE, NOREFERENCIA, PROCEDENCIA, CUECREDITO, OBSERVACION, CNSRP/CNSPPTO/CNSCDP, DOCEQUIVALENTE, MASIVA_CXP"
+          ],
+          "valida": [
+            "No contabilizada",
+            "NOREFERENCIA única por IDTERCERO",
+            "PRI abierto para FECHA documento y FECHA CxP; periodo CxP (FCARTH) no cerrado",
+            "PRESUP_CXP_ACTIVADO=SI → registro presupuesto obligatorio",
+            "RESTRIN_CREA_CXP TODO/TERCERO/USUARIO/USUTER → no otra FCXP ESTADO N sin detalle"
+          ],
+          "noValida": [
+            "Tercero activo",
+            "Procedencia válida contra catálogo"
+          ],
+          "errores": [
+            "El registro ya se encuentra contabilizado",
+            "El No. de Referencia ya existe registrado en CxP de este proveedor.",
+            "El periodo contable de la fecha del documento no existe, está cerrado… o el periodo de Cuentas por Pagar está cerrado",
+            "Debe de seleccionar un registro de Presupuesto",
+            "Existen Cuentas por Pagar para Este Tercero Sin Detalles y sin Definir.. Se Deben Terminar o Anular."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT/UPDATE FCXP (ESTADO N, CONTABILIZADA 0)",
+          "capaId": "02-operacion-fcxp",
+          "controlId": "crud-fcxp",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDAR_FCXP",
+          "hace": "Puerta previa a contabilizar.",
+          "parametros": [],
+          "valida": [
+            "Tiene FCXPD",
+            "CUECREDITO es cuenta tipo detalle"
+          ],
+          "noValida": [],
+          "errores": [
+            "Cuenta por Pagar sin detalles",
+            "La cuenta contable de la cxp no es de tipo detalle, no se puede continuar"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "06-contabilidad",
+          "controlId": "contabilizar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULAR_FCXP",
+          "hace": "Anula la CxP (SPK_ANULAR_CXP).",
+          "parametros": [],
+          "valida": [
+            "No anulada",
+            "Sin consecutivo de Anexo Soporte",
+            "PRESUP_CXP_ACTIVADO=SI → no ENPRESUPUESTO",
+            "CONTABILIZADA=0"
+          ],
+          "noValida": [],
+          "errores": [
+            "El registro ya se encuentra anulado.",
+            "No puede anular la CXP esta ya tiene asociado un consecutivo de Anexo Soporte, por favor realiza una Nota",
+            "La Cuenta Por Pagar Esta en Presupuesto y se Encuentra Confirmada",
+            "No puede anular la CXP Se encuentra Contabilizada, Descontabilice Primero"
+          ],
+          "llama": [
+            "SPK_ANULAR_CXP"
+          ],
+          "efecto": "FCXP ESTADO A",
+          "capaId": "02-operacion-fcxp",
+          "controlId": "crud-fcxp",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_TERCERO",
+          "hace": "Busca el tercero por NIT (Radian) y devuelve IDTERCERO, cuenta y datos para la CxP.",
+          "valida": [
+            "NIT"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_HOMOLOGA_RADIAN / BUSCAR_HOMOLOGA_RADIAN / VINCULAR_CXP_FRADIAN / RELIQUIDAR_CXP",
+          "hace": "NO EXISTEN en SQLIX (PREVERSION ni 2.0.7) aunque el FE los invoca (hallazgo cxp-fe-metodos-sin-sp).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "—",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "no_existe"
+        }
+      ],
+      "metodosListado": [
+        "CRUD_FCXP",
+        "CRUD_FCXPD",
+        "CRUD_FCXPI",
+        "CRUD_FCXPDBCR (delega SPQ_FCXPDBCR)",
+        "VALIDAR_FCXP",
+        "ANULAR_FCXP",
+        "NOTIFICAR_DIAN",
+        "CONTABILIZADO_FCXP_MASIVO",
+        "PRESUPUESTO_FCXP",
+        "TRAER_VALORES_ANTI",
+        "ANULAR_ANTICIPO",
+        "VINCULAR_CXP_FRADIAN",
+        "CONSULTAR_AUDITORIA",
+        "VINCULAR_CXP_FRADIAN",
+        "RECALCULAR_FCXP"
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPQ_FCXPDBCR",
+      "tipo": "SPQ",
+      "modelo": "FCXP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FCXPDBCR.sql",
+      "cola": "Notas DB/CR CxP. Invocado directo o vía SPQ_FCXP.CONTABILIZAR_NOTACREDITO.",
+      "metodos": [
+        {
+          "id": "CRUD_FCXPDBCR",
+          "hace": "INSERT/EDITAR/DELETE FCXPDBCR; valida CxP no anulada y saldo>0; afecta VLR_NOTAS y saldo FCXP.",
+          "valida": [
+            "FCXP ESTADO≠A",
+            "SALDO>0",
+            "PROCESO NUEVO/EDITAR/ELIMINAR"
+          ],
+          "noValida": [],
+          "errores": [
+            "LA CXP ESTA ANULADA",
+            "LA CXP NO TIENE SALDO PARA HACER NOTAS"
+          ],
+          "llama": [
+            "SPK_CIERRA_FCXPDBCR"
+          ],
+          "efecto": "FCXPDBCR + FCXPDNOT; recalcula saldo CxP",
+          "capaId": "04-auditoria-notas",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "CONTABILIZAR_NOTACREDITO",
+          "hace": "Si GENCXP=1: SPK_CIERRA_FCXPDBCR (CxP nueva al otro tercero) y, solo con CONT_FCXPDBCR_Y_FCXP=SI, también SPK_NC_CONTAB_CXPFNT. Si GENCXP=0: SPQ_NC_CONTAB_CXPFNT. Luego suma VALOR a VLR_NOTASDEBITO/CREDITO según TIPO.",
+          "valida": [
+            "FCXP contabilizada",
+            "Nota sin contabilizar",
+            "DB: SALDO - VLR_NETO >= -1"
+          ],
+          "noValida": [],
+          "errores": [
+            "La CXP no se ha enviado a Contabilidad.",
+            "La Nota ya ha sido enviada a contabilidad.",
+            "La operacion de esta nota no es permitida por dejar el saldo ... inferior a cero (0)."
+          ],
+          "llama": [
+            "SPK_CIERRA_FCXPDBCR",
+            "SPK_NC_CONTAB_CXPFNT",
+            "SPQ_NC_CONTAB_CXPFNT"
+          ],
+          "efecto": "FCXPDBCR.CONTABILIZADA=1/2; NROCOMPROBANTE nota; MCP nota CxP",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIARDIAN_NOTACREDITO",
+          "hace": "Encola la nota para la DIAN: ESTADODIAN 0/3 → 1.",
+          "valida": [
+            "FCXP contabilizada",
+            "Nota contabilizada",
+            "FCXP ESTADODIAN=2 y DOCEQUIVALENTE=1",
+            "Nota ESTADODIAN en (0,1,3)",
+            "TIPO = DB"
+          ],
+          "noValida": [],
+          "errores": [
+            "La CXP no se ha enviado a Contabilidad.",
+            "La Nota no ha sido enviada a contabilidad, debe contabilizarla primero.",
+            "La CXP no ha sido enviado a la DIAN aun.",
+            "La Nota ya fue procesado por la dian.",
+            "La Nota solo puede ser de tipo Débito"
+          ],
+          "llama": [],
+          "efecto": "Registro FDIANR nota",
+          "capaId": "04-auditoria-notas",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_FCXPDBCR_2 / CRUD_FCXPDBCR_2_MANUAL",
+          "hace": "Nueva/Editar nota con reparto por ítem: toma TIPO y CUENTA del catálogo FNT, CUENTA_CR = FCXP.CUECREDITO; inserta FCXPDNOT (detalle por ítem; MANUAL usa valores digitados) y FCXPDBCRIMP (retenciones proporcionales si GIMPUESTOS).",
+          "valida": [
+            "FCXP no anulada",
+            "Editar: nota no contabilizada"
+          ],
+          "noValida": [
+            "Saldo > 0 (solo lo valida CRUD_FCXPDBCR clásico)"
+          ],
+          "errores": [
+            "LA CXP ESTA ANULADA O NO EXISTE",
+            "La nota está contabilizada y no se puede modificar."
+          ],
+          "llama": [],
+          "efecto": "FCXPDBCR ESTADO N + FCXPDNOT + FCXPDBCRIMP",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "AFECTA_RETENCION",
+          "hace": "Calcula las retenciones a devolver en proporción al valor de la nota (FCXPI no asumidas, excluye IDIMP_RETEIVA) y devuelve detalle por impuesto.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_DECIMALES_IMP_CXP"
+          ],
+          "efecto": "Solo lectura",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_IDNOTA",
+          "hace": "Devuelve el primer ítem del detalle con su descripción según procedencia (para notas que afectan costo).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_NOTA_EDITA",
+          "hace": "Carga para edición: FCXPDNOT de la nota y FCXPDBCRIMP con sus impuestos.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR_RESPUESTA_DIAN_NOTA",
+          "hace": "Respuesta DIAN de la nota (FDIANR).",
+          "valida": [
+            "IDNOTA"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se recibió IDNOTA para consultar.",
+            "No existe información de envío/respuesta DIAN para la nota."
+          ],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINR_NOTACREDITO",
+          "hace": "Borra FCXPDBCR y FCXPDNOT de una nota nunca contabilizada.",
+          "valida": [
+            "CONTABILIZADA = 0"
+          ],
+          "noValida": [
+            "El segundo chequeo (INV) es redundante: exige contabilizada<>0 AND INV, ya cubierto por el primero"
+          ],
+          "errores": [
+            "La nota credito ya ha sido contabilizada",
+            "Es Devolución de Inventario no se puede Eliminar."
+          ],
+          "llama": [],
+          "efecto": "DELETE FCXPDBCR/FCXPDNOT",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        },
+        {
+          "id": "DESAPLICAR_NOTACREDITO",
+          "hace": "Si la nota está contabilizada: SPK_ANULAR_FCXPDBCR (anula o reversa el comprobante) y la deja ESTADO N, CONTABILIZADA 0, sin comprobante. Si no: la borra.",
+          "valida": [],
+          "noValida": [
+            "No valida ESTADODIAN (una nota ya enviada a la DIAN se puede desaplicar)"
+          ],
+          "errores": [
+            "ERROR_MESSAGE()"
+          ],
+          "llama": [
+            "SPK_ANULAR_FCXPDBCR"
+          ],
+          "efecto": "Nota pendiente de nuevo o borrada; FCXP recalculada",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        }
+      ],
+      "metodosListado": [
+        "CRUD_FCXPDBCR_2",
+        "CRUD_FCXPDBCR_2_MANUAL",
+        "DESAPLICAR_NOTACREDITO",
+        "ELIMINR_NOTACREDITO",
+        "AFECTA_RETENCION",
+        "CRUD_NOTA_EDITA"
+      ]
+    },
+    {
+      "nombre": "SPQ_ORDEN_PAGO",
+      "tipo": "SPQ",
+      "modelo": "ORDEN_PAGO",
+      "estado": "leido",
+      "fuente": "sql/SPQ_ORDEN_PAGO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "CRUD_FCXPPM",
+          "hace": "Cabecera orden: fecha, caja, observación, tercero a favor, cuenta/rubro, forma de pago (FORMA_PAGO, IDTERCERO_PAGO, BANCO_PAGO, CTA_BCO_PAGO, SUCURSAL, NUMERODOCUMENTO, NUMEROAUTORIZA, VALOR_PAGO). Sede UBEQ→USUSU; CODUNG/CODPRG de SED si MMCORPORATIVO/CUF_CPF_DE_SEDE.",
+          "parametros": [],
+          "valida": [
+            "Sede resuelta",
+            "PRI existe y abierto para FECHA"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se encontró la Sede del usuario. Verifique la configuración del equipo (UBEQ) o del usuario (USUSU).",
+            "Periodo Contable NO Existe Para La Fecha Indicada.",
+            "Periodo Contable Para La Fecha Indicada, Se Encuentra Cerrado."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO '@FCXPPM'"
+          ],
+          "efecto": "INSERT/UPDATE FCXPPM ESTADO N",
+          "capaId": "05-pagos",
+          "controlId": "crud-fcxppm",
+          "estado": "leido"
+        },
+        {
+          "id": "PAGO_CXPTOTAL",
+          "hace": "Igual a PAGO_TOTAL y confirma de inmediato (SPK_CONFIRMAR_PAGOSMASIVO). Usado por Pagar → Pago total desde la factura.",
+          "parametros": [],
+          "valida": [
+            "Las de PAGO_TOTAL"
+          ],
+          "noValida": [
+            "Variables AUT_EGRE_INDIVIDUAL/BANC_DINA_ARCH_PLANO (siempre clásico)"
+          ],
+          "errores": [
+            "Las de PAGO_TOTAL"
+          ],
+          "llama": [
+            "SPK_CONFIRMAR_PAGOSMASIVO"
+          ],
+          "efecto": "FCXPP N→C, FCJ/FCJD pendientes (PROCEDENCIA CAJA), FCXP saldo−, FCXPPM C",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        },
+        {
+          "id": "AUTORIZAR",
+          "hace": "Modo clásico. Si FECHAORDENPAGO=CONTABLE fija F_CONTABLE; delega en SPK_CONFIRMAR_PAGOSMASIVO.",
+          "parametros": [],
+          "valida": [
+            "FCXPPM ESTADO N (en el SPK)"
+          ],
+          "noValida": [
+            "Forma de pago en la orden",
+            "Caja abierta"
+          ],
+          "errores": [
+            "(los del SPK: imprime si la orden no está en N)"
+          ],
+          "llama": [
+            "SPK_CONFIRMAR_PAGOSMASIVO"
+          ],
+          "efecto": "FCJ/FCJD pendientes PROCEDENCIA CAJA; FCXPP C; FCXP saldo−; FCXPPM C",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        },
+        {
+          "id": "PAGO_PARCIAL",
+          "hace": "Abono parcial (NUEVO/EDITAR) y recálculo de la factura.",
+          "parametros": [],
+          "valida": [
+            "ABONO>0",
+            "Orden y CxP existen",
+            "Nómina sin comprobante bloquea",
+            "Abono ≤ saldo disponible",
+            "Editar solo FCXPP ESTADO N"
+          ],
+          "noValida": [],
+          "errores": [
+            "El valor del abono debe ser mayor a cero.",
+            "El abono no puede ser mayor al saldo de la cuenta por pagar. Saldo disponible: …",
+            "Solo se pueden editar registros en estado N."
+          ],
+          "llama": [
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "INSERT/UPDATE FCXPP; FCXP recalculada",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_CXP_PENDIENTES",
+          "hace": "Facturas candidatas para Nuevo Detalle.",
+          "parametros": [
+            "IDTERCERO, CNSFCXPPM, INCLUIR_NO_CONTABILIZADA, VENCIDOS, FECHAINI/FECHAFIN, PROCEDENCIA, CODCONCEPTO, FILTRO_CXP, DIASVENCIDOS"
+          ],
+          "valida": [
+            "FCXP.SALDO>0",
+            "ESTADO IN (N,C) o (M y misma orden)",
+            "CONTABILIZADA=1 salvo INCLUIR_NO_CONTABILIZADA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        },
+        {
+          "id": "CONFIRMAR_EGRESOS_MASIVO_OP",
+          "hace": "Confirma en lote los egresos de una orden (desde caja DESDE_CAJA=1 o desde la orden).",
+          "parametros": [
+            "EGRESOS[{CODCAJA,CNSFACJ}], CNSFCXPPM, IDTERCERO, DESDE_CAJA"
+          ],
+          "valida": [
+            "Variables si DESDE_CAJA",
+            "Egresos pertenecen a una sola orden",
+            "OP_TER_IND",
+            "Cada egreso: existe, PROCEDENCIA CXP, no A/D, no CERRADA, valor>0, PCJ suma = VALORTOTAL, PRI abierto, caja abierta una vez"
+          ],
+          "noValida": [],
+          "errores": [
+            "No hay egresos pendientes de confirmacion para procesar.",
+            "Hay egresos seleccionados que no pertenecen a una orden de pago.",
+            "Los egresos seleccionados pertenecen a distintas ordenes de pago…",
+            "… no es de procedencia CXP",
+            "… ya se encuentra confirmado",
+            "… no tiene forma de pago",
+            "… tiene forma de pago distinta al valor del recibo",
+            "El periodo contable del egreso … no existe o esta cerrado.",
+            "La caja … no se encuentra abierta.",
+            "… se encuentra abierta mas de una vez."
+          ],
+          "llama": [
+            "SPK_CIERRERECIBO_CAJA"
+          ],
+          "efecto": "FCJ CERRADA 1; FCXPP P; FCXPPM P (de N/C) OP_TER_IND 1; devuelve CONFIRMADOS/TOTAL",
+          "capaId": "08-caja",
+          "controlId": "confirmar-orden-desde-caja",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_PAGADA_POR_EGRESO",
+          "hace": "Tras CONFIRMAR_RECIBO_EGRESO (Realizar Pago): delega en SPK_MARCA_OP_PAGADA_POR_EGRESO.",
+          "parametros": [],
+          "valida": [
+            "CODCAJA y CNSFACJ"
+          ],
+          "noValida": [],
+          "errores": [
+            "CODCAJA y CNSFACJ son requeridos."
+          ],
+          "llama": [
+            "SPK_MARCA_OP_PAGADA_POR_EGRESO"
+          ],
+          "efecto": "FCXPP P; FCXPPM P si no quedan pendientes",
+          "capaId": "08-caja",
+          "controlId": "confirmar-orden-desde-caja",
+          "estado": "leido"
+        },
+        {
+          "id": "PAGO_TOTAL",
+          "hace": "Abona todo el saldo de la CxP a la orden (sin autorizar).",
+          "parametros": [],
+          "valida": [
+            "Presupuesto (PRESUP_CXP_ACTIVADO)",
+            "Fecha orden ≥ fecha documento",
+            "CONTABILIZADA=1 (BD_HISTORICAS → MCP válido)",
+            "Saldo pendiente tras abonos y anticipos L",
+            "Abono ≤ saldo"
+          ],
+          "noValida": [],
+          "errores": [
+            "La Cuenta por Pagar No se Encuentra Confirmada en Presupuesto…",
+            "La Fecha de orden de pago no puede ser Menor a la fecha del documento, Revise",
+            "No puede seleccionar CxP que no esten enviadas a Contabilidad",
+            "La CxP NO se encuentra enviada a Contabilidad",
+            "Ya están hechas las Autorizaciones Necesarias para completar el Pago.",
+            "El abono no puede ser mayor al saldo…"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO '@FCXPP'"
+          ],
+          "efecto": "INSERT FCXPP ESTADO N; FCXP ESTADO C; FCXPPM.VALOR=SUM",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULA_INIDIVIDUAL",
+          "hace": "Anula un abono de la orden.",
+          "parametros": [],
+          "valida": [
+            "Abono existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "No existen registros para anular."
+          ],
+          "llama": [
+            "SPK_ADMIN_PAGOMASIVO 'ANULAR'",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "FCXPP A; FCXP ESTADO C/N; FCXPPM.VALOR recalculado",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        },
+        {
+          "id": "ANULA_MASIVO",
+          "hace": "Anula varios abonos.",
+          "parametros": [],
+          "valida": [
+            "Abonos existen"
+          ],
+          "noValida": [],
+          "errores": [
+            "No existen registros para anular."
+          ],
+          "llama": [
+            "SPK_ADMIN_PAGOMASIVO 'ANULAR'",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "Como ANULA_INIDIVIDUAL en lote",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        },
+        {
+          "id": "AUTORIZAR_INDIVIDUAL",
+          "hace": "Modo BANC_DINA_ARCH_PLANO=SI: egreso por tercero PROCEDENCIA CXP, TIPO EGRESO, CERRADA 1, con PCJ de la orden; luego EXEC SPK_CONFIRMAR_PAGOSMASIVO; FCXPP P; FCXPPM P CERRADA 1.",
+          "parametros": [],
+          "valida": [
+            "FCXPPM N con FCXPP",
+            "FORMA_PAGO en la orden",
+            "IDCJTECXP",
+            "Concepto CPCJ tipo E activo",
+            "FPA existe"
+          ],
+          "noValida": [
+            "Caja abierta",
+            "Que SPK_CONFIRMAR_PAGOSMASIVO no duplique egresos (hallazgo)"
+          ],
+          "errores": [
+            "La orden de pago no existe o no esto en estado No Confirmado",
+            "La orden de pago no tiene cuentas por pagar para autorizar",
+            "La orden de pago no tiene forma de pago. Indíquela al crear o editar la orden.",
+            "No está configurada la variable IDCJTECXP (tipo egreso pago a proveedores).",
+            "No se encontró un concepto de egreso activo. Configure un concepto de egreso en CPCJ.",
+            "La forma de pago … no existe en FPA."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO '@FCJE'/'@PCJ'",
+            "SPK_CONFIRMAR_PAGOSMASIVO"
+          ],
+          "efecto": "FCJ cerrados PROCEDENCIA CXP + (segundo juego CAJA por el SPK); FCXPP P; FCXPPM P",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        },
+        {
+          "id": "AUTORIZAR_INDIVIDUAL_TER",
+          "hace": "Modo AUT_EGRE_INDIVIDUAL=SI: un egreso por tercero PROCEDENCIA CXP, ESTADO P, CERRADA 0 (pendiente en caja), FCJD sin IDSERVICIO, PCJ desde la orden, FCXPP C con CNSFACJ. PERMITE_EGR_SIN_C=SI → FCXPPM OP_TER_IND=1, CERRADA=1 (sigue N); si no → FCXPPM C, OP_TER_IND 1. Rellena PCJ de egresos previos sin forma de pago.",
+          "parametros": [],
+          "valida": [
+            "AUT_EGRE_INDIVIDUAL=SI",
+            "FCXPPM N con FCXPP",
+            "FORMA_PAGO",
+            "IDCJTECXP",
+            "CPCJ activo",
+            "CODCAJA en la orden",
+            "Caja abierta"
+          ],
+          "noValida": [
+            "No descuenta FCXP.SALDO aquí (lo hace el recálculo)",
+            "IDSERVICIO en FCJD (hallazgo)"
+          ],
+          "errores": [
+            "La variable AUT_EGRE_INDIVIDUAL no esta activa.",
+            "La orden de pago no tiene forma de pago. Indíquela al crear o editar la orden.",
+            "No está configurada la variable IDCJTECXP (tipo egreso pago a proveedores).",
+            "No se encontró un concepto de egreso activo. Configure un concepto de egreso en CPCJ.",
+            "La orden de pago no tiene caja. Indiquela al crear o editar la orden.",
+            "La caja … no se encuentra abierta."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "FCJ/FCJD/PCJ pendientes PROCEDENCIA CXP; FCXPP C; FCXPPM C u OP_TER_IND",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_ORDEN / ABRIR_ORDEN",
+          "hace": "Cierra (CERRADA 1; con egreso individual y PERMITE_EGR_SIN_C el FE llama AUTORIZAR_INDIVIDUAL_TER) o abre la orden (retira egresos enviados).",
+          "parametros": [],
+          "valida": [
+            "FCXPPM N"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FCXPPM.CERRADA",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        },
+        {
+          "id": "DESAUTORIZAR",
+          "hace": "Reversa la autorización.",
+          "parametros": [],
+          "valida": [
+            "Ningún FCJ de la orden con CERRADA=1"
+          ],
+          "noValida": [],
+          "errores": [
+            "…items de la orden de pago ya se encuentran confirmados en Caja"
+          ],
+          "llama": [
+            "SPK_DESCONFIRMAR_PAGOSMASIVO"
+          ],
+          "efecto": "FCJ A; FCXPP N; FCXPPM N",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        },
+        {
+          "id": "DESAUTORIZAR_POR_RECIBO",
+          "hace": "Desde caja al anular un recibo: desautoriza la orden ligada.",
+          "parametros": [],
+          "valida": [
+            "Recibo pertenece a una orden"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_DESCONFIRMAR_PAGOSMASIVO"
+          ],
+          "efecto": "Como DESAUTORIZAR",
+          "capaId": "08-caja",
+          "controlId": "confirmar-orden-desde-caja",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR_ORDEN_CAJA",
+          "hace": "Caja → Confirmar orden de pago: cabecera + egresos (PROCEDENCIA CXP, CLASE_FAC PAGO) con ESTADO_CAJA Pendiente/Confirmado/Anulado.",
+          "parametros": [],
+          "valida": [
+            "PERMITE_EGR_SIN_C=SI y AUT_EGRE_INDIVIDUAL=SI",
+            "CNSFCXPPM existe",
+            "OP_TER_IND=1"
+          ],
+          "noValida": [],
+          "errores": [
+            "La orden no tiene egresos individuales por tercero para confirmar en caja."
+          ],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "08-caja",
+          "controlId": "confirmar-orden-desde-caja",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_OP",
+          "hace": "Impresión de la orden.",
+          "parametros": [],
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "05-pagos",
+          "controlId": "archivo-plano-banco",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_INF_PLANO",
+          "hace": "Datos para el archivo plano de una orden: recordset 1 = tercero instalado (TIPO_ID, NIT, DV, RAZONSOCIAL, FECHA) cruzado con la BCT elegida (CTA_BCO, TIPO_PLANO = formato); recordset 2 = una fila por abono (FCXPP ESTADO<>'A') con TER.TIPO_ID, NIT, DV, RAZONSOCIAL, TIPO_CUE, CUE_BANCARIA, ABONO (DECIMAL 14,2 como texto), NOREFERENCIA, BCO.CODACH por TER.BANCO.",
+          "parametros": "CNSFCXPPM, FORMATO_PLANO (BANCO_BOGOTA | COLPATRIA), CTA_BCO",
+          "valida": "FORMATO_PLANO en (BANCO_BOGOTA, COLPATRIA).",
+          "noValida": "Que el proveedor tenga cuenta bancaria, banco o ACH; que la BCT exista con ese TIPO_PLANO (devuelve recordset vacío); formato BANCOLOMBIA no se acepta.",
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura. El archivo se arma en OPComponent (generarArchivoBancoBogota / generarArchivoBancoColpatria).",
+          "capaId": "05-pagos",
+          "controlId": "archivo-plano",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_NOMINA_PLANO",
+          "hace": "Datos del plano de nómina (ventana Órdenes de Pago - Nómina, hoy inalcanzable): recordset empresa (TER instalado) y recordset por abono con FCXP.VLR_NETO, NOREFERENCIA, F_FACTURAREF, TER.EMAIL/NIT/RAZONSOCIAL/TIPO_ID y FCXP.CUECREDITO como CUENTA/CUENTA_BANCO, BCO por FCXP.IDTERCERO = BCO.IDTERCERO.",
+          "parametros": "CNSFCXP o WHERE_CONDITION (SQL dinámico sobre FCXP/FCXPP/TER/BCO); sin ambos: PROCEDENCIA 'Nomina' y FCXPP.ESTADO 'C'.",
+          "valida": "—",
+          "noValida": "La cuenta devuelta es la cuenta contable, no la bancaria; el join a BCO no encuentra el banco del empleado; el valor es el neto de la factura, no el abono.",
+          "errores": [
+            "KO + ERROR_MESSAGE()"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "05-pagos",
+          "controlId": "archivo-plano",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_NOMINA_PLANO_DINAMICO",
+          "hace": "Variante de EXPORTAR_NOMINA_PLANO con LISTA_CNSFCXP (STRING_SPLIT) y columnas TIPO_CUE y CODACH; mismos joins y misma cuenta (CUECREDITO).",
+          "parametros": "CNSFCXP, WHERE_CONDITION, LISTA_CNSFCXP",
+          "valida": "—",
+          "noValida": "Igual que EXPORTAR_NOMINA_PLANO. El FE no tiene función que lo invoque (exportarNominaPlanoDinamico no existe).",
+          "errores": [
+            "KO + ERROR_MESSAGE()"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "05-pagos",
+          "controlId": "archivo-plano",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA",
+          "hace": "Esqueleto: lee CNSFCXP, CNSFCXPPM, NOMBRE_ARCHIVO, CANTIDAD_REGISTROS, VALOR_TOTAL, TIPO_TRANSACCION, OBSERVACION, CNSFCXPPM_JSON y termina (comentario «resto del código»). No inserta ni responde OK.",
+          "parametros": "ver hace",
+          "valida": "—",
+          "noValida": "Todo.",
+          "errores": [],
+          "llama": [],
+          "efecto": "Ninguno. El FE lo invoca con MODELO 'FCXP' (SPQ_FCXP no lo tiene) dentro de un try vacío.",
+          "capaId": "05-pagos",
+          "controlId": "archivo-plano",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_CUENTA",
+          "hace": "Cierre del mes de CxP: valida que no haya MCPE errados (procedencias de cartera/facturación) y ejecuta SPK_CIERRA_CARTERA @ANIO,@MES,@USUARIO,'CXP'.",
+          "valida": [
+            "Sin MCPE errados en CXC, RAD CXC, NOTDBCR, FACTURA, RGLO, CONCI (no NIIF)"
+          ],
+          "noValida": [
+            "No revisa procedencias de CxP (CXP, NOTDBCRCXP, EGRESO_CXP_*)"
+          ],
+          "errores": [
+            "Existen Comprobantes errados de procedencia Cartera y/o Facturación No se Puede Continuar."
+          ],
+          "llama": [
+            "SPK_CIERRA_CARTERA"
+          ],
+          "efecto": "FCARTH PROCEDENCIA CXP + PRI.CERRADO_CXP=1",
+          "capaId": "01-configuracion",
+          "controlId": "periodo-contable-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ABRIR_CUENTA",
+          "hace": "Reabre el mes: PRI.CERRADO_CXP=0 y DELETE FCARTH del mes con PROCEDENCIA='CARTERA'.",
+          "valida": [
+            "Menos de 25 días desde el último día del mes"
+          ],
+          "noValida": [
+            "Borra el histórico de CARTERA en vez del de CXP (hallazgo)"
+          ],
+          "errores": [
+            "Ya pasaron N Dias ya no es posible la Apertura de la Cartera; ya paso un perido Contable"
+          ],
+          "llama": [],
+          "efecto": "CERRADO_CXP=0; FCARTH CARTERA borrado",
+          "capaId": "01-configuracion",
+          "controlId": "periodo-contable-cxp",
+          "estado": "leido"
+        }
+      ],
+      "metodosListado": [
+        "PAGO_PARCIAL",
+        "PAGO_TOTAL",
+        "DESAUTORIZAR",
+        "ANULA_MASIVO",
+        "CERRAR_CUENTA",
+        "ABRIR_CUENTA",
+        "GET_INF_PLANO",
+        "EXPORTAR_NOMINA_PLANO",
+        "GENERAR_COMPROBANTES_EGRESO_POR_CUENTA",
+        "LISTAR_CXP_PENDIENTES"
+      ],
+      "actualizado": "2026-10-04T20:20:00"
+    },
+    {
+      "nombre": "SPQ_FCXP_AUDIT",
+      "tipo": "SPQ",
+      "modelo": "FCXP_AUDIT",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FCXP_AUDIT.sql",
+      "cola": "Tab Auditoría CXP · glosas FCXPS.",
+      "metodos": [
+        {
+          "id": "CRUD_FCXPS",
+          "hace": "CRUD ítems glosa/conciliación auditoría (FCXPS).",
+          "valida": [
+            "CNSFCXP Servicios contabilizado"
+          ],
+          "noValida": [
+            "Iguala el valor de la nota a SUM(VLRITEM) de todas las FCXPS de la factura, no solo las de ese ITEMNDB (hallazgo)"
+          ],
+          "errores": [
+            "ERROR_MESSAGE()"
+          ],
+          "llama": [],
+          "efecto": "FCXPS Nuevo/Editar; FCXPDBCR.VALOR = suma de ítems (DB) o levantado (CR); USULEVANTA al pasar a Conci",
+          "capaId": "04-auditoria-notas",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_GLOSA",
+          "hace": "Marca FCXPS ESTADO=Glosa; actualiza VALOR nota FCXPDBCR (ITEMNDB); ejecuta CONTABILIZAR_NOTACREDITO vía SPQ_JSON dinámico.",
+          "valida": [
+            "CNSFCXP",
+            "ITEM nota DB"
+          ],
+          "noValida": [],
+          "errores": [
+            "ERROR_MESSAGE() del contabilizar nota"
+          ],
+          "llama": [
+            "SPQ_FCXP.CONTABILIZAR_NOTACREDITO (dynamic SQL)"
+          ],
+          "efecto": "Glosa cerrada + nota DB contabilizada",
+          "capaId": "04-auditoria-notas",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_CONCI",
+          "hace": "Pasa ítems FCXPS de Glosa → Conci (conciliación).",
+          "valida": [
+            "CNSFCXP"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FCXPS.ESTADO=Conci",
+          "capaId": "04-auditoria-notas",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_SIN_GLOSA",
+          "hace": "Cierra auditoría sin glosas: FCXP.AUDITADO=1 si no hay FCXPS pendientes.",
+          "valida": [
+            "Sin FCXPS en proceso"
+          ],
+          "noValida": [
+            "Ejecuta el UPDATE AUDITADO=1 antes de comprobar el error «en proceso de auditoría» (hallazgo)"
+          ],
+          "errores": [
+            "Cuenta por pagar en proceso de Auditoria, No se puede Continuar"
+          ],
+          "llama": [],
+          "efecto": "FCXP.AUDITADO=1, USUAUDITA",
+          "capaId": "04-auditoria-notas",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_GLOSA",
+          "hace": "Dataset impresión glosa: cabecera FCXP+FCXPDBCR + detalle FCXPS filtrado por ITEMNDB.",
+          "valida": [
+            "CNSFCXP",
+            "ITEM",
+            "CLASE=GLOSA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordsets reporte",
+          "capaId": "04-auditoria-notas",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_FCXPS",
+          "hace": "Borra un ítem de glosa.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE FCXPS",
+          "capaId": "03-radian",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_CONCI",
+          "hace": "Dataset del acta de conciliación (FCXPS por ITEMNDB/ITEMNCR).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "03-radian",
+          "controlId": "auditoria-glosas",
+          "estado": "leido"
+        }
+      ],
+      "metodosListado": [
+        "CERRAR_CONCI",
+        "ELIMINAR_FCXPS",
+        "IMPRIMIR_GLOSA",
+        "IMPRIMIR_CONCI"
+      ]
+    },
+    {
+      "nombre": "SPQ_FRADIAN",
+      "tipo": "SPQ",
+      "modelo": "FRADIAN",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FRADIAN.sql",
+      "cola": "Eventos/cola Radian; generación CxP en SPQ_FCXP.",
+      "metodos": [
+        {
+          "id": "ARCHIVOS",
+          "hace": "Devuelve XML/PDF adjuntos de FRADIAN.",
+          "valida": [
+            "CNSRADIAN"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Dataset archivos",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR_DATOS",
+          "hace": "Completa FECHAEMISION, MONTO, DOCUMENTOXML y UUID desde el JSON del servicio; si existe SPK_SINCRONIZAR_CUFE_RADIAN cruza el CUFE con IMOV (no bloquea si falla).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_SINCRONIZAR_CUFE_RADIAN (opcional)"
+          ],
+          "efecto": "UPDATE FRADIAN",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "ADDEVENTO",
+          "hace": "Registra un evento DIAN para la factura recibida (FRADIAND PROCESADO/ERROR según llegue) y actualiza NODOCUMENTO/NIT/UUID de FRADIAN.",
+          "valida": [
+            "Usuario con NOMBRES, APELLIDOS, TIPOIDENT (TGEN), DEPARTAMENTO, CARGO, DOCID"
+          ],
+          "noValida": [],
+          "errores": [
+            "Los nombres del usuario ... son obligatorios",
+            "Los apellidos ...",
+            "El tipo de documento ...",
+            "El tipo departamento ...",
+            "El cargo ...",
+            "El documento de identidad ..."
+          ],
+          "llama": [],
+          "efecto": "FRADIAND nuevo (Pendiente)",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "DELEVENTO",
+          "hace": "Borra un evento no procesado.",
+          "valida": [
+            "ITEM",
+            "PROCESADO=0"
+          ],
+          "noValida": [],
+          "errores": [
+            "El item es obligatorio para identificar el evento a eliminar",
+            "Evento no puede eliminarse porque ya esten estado PROCESADO"
+          ],
+          "llama": [],
+          "efecto": "DELETE FRADIAND",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "REENCOLAR_EVENTO",
+          "hace": "PROCESADO=0, ERROR=0 para que el servicio lo reintente.",
+          "valida": [
+            "No reencolar un evento procesado sin error"
+          ],
+          "noValida": [],
+          "errores": [
+            "Evento no puede cambiar de estado porque ya esta PROCESADO"
+          ],
+          "llama": [],
+          "efecto": "FRADIAND pendiente",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "MATRIZ_EVENTOS",
+          "hace": "Catálogo TGEN FRADIAN/EVENTOS.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "GETEVENTOS",
+          "hace": "Línea de tiempo: emisión, radicación, recepción y eventos propios con estado PENDIENTE/PROCESADO/ERROR.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "GETENVIO",
+          "hace": "Solicitud y respuesta XML enviadas a la DIAN por evento (FDIANR TIPO EV).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "LOG / GETULTIMOSEVENTOS",
+          "hace": "Bitácora FRADIANL y último evento por factura.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FRADIANL",
+          "capaId": "03-radian",
+          "controlId": "radian-generar-cxp",
+          "estado": "leido"
+        }
+      ],
+      "metodosListado": [
+        "ADDEVENTO",
+        "DELEVENTO",
+        "REENCOLAR_EVENTO",
+        "GETEVENTOS",
+        "GETENVIO",
+        "LOG"
+      ]
+    },
+    {
+      "nombre": "SPQ_ANTICIPOS_COL",
+      "tipo": "SPQ",
+      "modelo": "ANTICIPOS_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_ANTICIPOS_COL.sql",
+      "cola": "Tab Anticipos · órdenes FCOM anticipo.",
+      "metodos": [
+        {
+          "id": "CARGA_IBOD",
+          "hace": "Lista bodegas activas IBOD y bodega por defecto UBEQ del equipo (SYS_ComputerName).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "2 recordsets: catálogo bodegas + bodega usuario",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_FCOM",
+          "hace": "CRUD cabecera orden anticipo FCOM: PROCESO Nueva/Edita/Borrar. Nueva → SPQ_GENSEQUENCE @FCOM, INSERT FCOM ESTADO=C, TIPOANTICIPO, MANTICIPO=1, PROCEDENCIA anticipos.",
+          "valida": [
+            "TANT.TIPOANTICIPO",
+            "TER.IDTERCERO",
+            "CEN.CCOSTO"
+          ],
+          "noValida": [],
+          "errores": [
+            "Tipo de Anticipo no es Valido",
+            "Proveedor no encontrado",
+            "Centro de costo no encontrado"
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "FCOM anticipo abierta (ESTADO=C)",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_FCOMD",
+          "hace": "Detalle servicios FCOMD desde catálogo FCTSERD: Nuevo/Editar/Borrar líneas; recalcula totales FCOM.",
+          "valida": [
+            "FCOM.ESTADO=C",
+            "FCTSERD.IDSERVICIO=IDARTICULO"
+          ],
+          "noValida": [],
+          "errores": [
+            "Servicio no encontrado",
+            "La orden de servicios ya fue Cerrada"
+          ],
+          "llama": [],
+          "efecto": "FCOMD + UPDATE FCOM.VR_TOTAL",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_FCOM",
+          "hace": "Pasa FCOM ESTADO C → P (pendiente de caja), ORDENCOMPRA=1; exige detalle.",
+          "valida": [
+            "FCOM.ESTADO=C",
+            "Existe FCOMD"
+          ],
+          "noValida": [],
+          "errores": [
+            "Estado de la orden no valido"
+          ],
+          "llama": [],
+          "efecto": "FCOM.ESTADO=P",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        },
+        {
+          "id": "ENVIAR_CAJA",
+          "hace": "Desde FCOM ESTADO ∉ (C, A) ejecuta SPK_GEN_PROCESO_ANTICIPO con el valor del anticipo → CxP Anticipos + orden + egreso pendiente en caja.",
+          "valida": [
+            "VLR_ANTICIPO≥0",
+            "FCOM no C ni A"
+          ],
+          "noValida": [],
+          "errores": [
+            "La orden de servicios no esta Disponible para hacer anticipos",
+            "Inconsistencia en el valor del anticipo"
+          ],
+          "llama": [
+            "SPK_GEN_PROCESO_ANTICIPO"
+          ],
+          "efecto": "FCJ + FCXP anticipo proveedor",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        }
+      ],
+      "metodosListado": []
+    },
+    {
+      "nombre": "SPQ_CONF_CXP",
+      "tipo": "SPQ",
+      "modelo": "CONF_CXP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONF_CXP.sql",
+      "cola": "Informes tab · export Excel/PDF vía CXPComponent.",
+      "metodos": [
+        {
+          "id": "VENCIMIENTO_TERCERO",
+          "hace": "Aging CxP por tercero vía FNK_VENCIMIENTOSCXP; PROCESO=EXPORTAR devuelve buckets DM0_30…DM361_MAS.",
+          "valida": [
+            "IDTERCERO, F_INICIAL, F_FINAL, FECHA_REFERENCIA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_VENCIMIENTOSCXP"
+          ],
+          "efecto": "Dataset aging saldo pendiente",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "HIST_TOTALES",
+          "hace": "Histórico totales por tercero/procedencia a fecha F_FINAL con buckets D_0_30…D_360_MAS vía FNK_VENCIMIENTO_HISTORICO.",
+          "valida": [
+            "IDTERCERO",
+            "F_FINAL"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_VENCIMIENTO_HISTORICO"
+          ],
+          "efecto": "Resumen histórico CxP",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_CXP_PENDIENTES",
+          "hace": "Export dinámico VWK_CXPDIASVTO: cabecera por tercero + detalle CNSFCXP según WHERE_DATA/WHERE_DETA del FE.",
+          "valida": [
+            "WHERE_DATA",
+            "WHERE_DETA"
+          ],
+          "noValida": [],
+          "errores": [
+            "ERROR_MESSAGE() sp_executesql"
+          ],
+          "llama": [],
+          "efecto": "2 recordsets Excel",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_CXP",
+          "hace": "Listado FCXP por proveedor y rango FECHA; filtro CONTABILIZADA (CONTA 0/1/todos). Usado por onVencimiento/onExpoertaCxP (Consultar CxP).",
+          "valida": [
+            "F_INICIAL",
+            "F_FINAL"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Recordset FCXP+TER para Excel",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "RPT_CXP_PENDIENTES",
+          "hace": "Igual EXPORTAR_CXP + segundo recordset totales SUM(VALOR/SALDO/ABONOS/NOTAS).",
+          "valida": [
+            "F_INICIAL",
+            "F_FINAL",
+            "CONTA",
+            "DIAS"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Detalle + totales CxP pendientes",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "DETALLADO_HIST_TOTALES",
+          "hace": "Histórico detallado por tercero/procedencia a F_FINAL vía FNK_VENCIMIENTO_HISTORICO; PROCESO=EXPORTAR → Excel.",
+          "valida": [
+            "IDTERCERO",
+            "F_FINAL",
+            "PROCEDENCIA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_VENCIMIENTO_HISTORICO"
+          ],
+          "efecto": "Buckets D_0_30…D_360_MAS detallado",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "VENCIMIENTO_TERCERO_DETALLE",
+          "hace": "Detalle facturas de un tercero desde FNK_VENCIMIENTOSCXP(@IDTERCERO) con buckets aging.",
+          "valida": [
+            "IDTERCERO",
+            "F_INICIAL",
+            "F_FINAL",
+            "FECHA_REFERENCIA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_VENCIMIENTOSCXP"
+          ],
+          "efecto": "Líneas NOREFERENCIA por tercero",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "BUSCANDO_CXP",
+          "hace": "Consulta CxP por periodo ANIO/MES y rango cuentas: SPK_VENCIMIENTOS_CXP → RPDX CNS=0000000001.",
+          "valida": [
+            "ANIO",
+            "MES",
+            "CUENTA_INICIAL",
+            "CUENTA_FINAL"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_VENCIMIENTOS_CXP"
+          ],
+          "efecto": "Grilla RPDX consulta CxP (onVencimiento duplicado en tab Informes)",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_CXP_RANGO_VENCIMIENTOS",
+          "hace": "Export dinámico VWK_CXPDIASVTO: totales por tercero + detalle facturas (WHERE_DATA/WHERE_DETA del FE). Tab rango vencimiento.",
+          "valida": [
+            "WHERE_DATA",
+            "WHERE_DETA"
+          ],
+          "noValida": [],
+          "errores": [
+            "ERROR_MESSAGE() sp_executesql"
+          ],
+          "llama": [],
+          "efecto": "2 recordsets Excel/PDF masivo",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_CXP_DETALLADO",
+          "hace": "Export detalle una factura CxP desde VWK_CXPDIASVTO (WHERE_DETA). Tab detallado onCXPRango.",
+          "valida": [
+            "WHERE_DETA"
+          ],
+          "noValida": [],
+          "errores": [
+            "ERROR_MESSAGE() sp_executesql"
+          ],
+          "llama": [],
+          "efecto": "1 recordset aging factura",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_CXP_ESTADO",
+          "hace": "Estado CxP periodo: SPK_VENCIMIENTOS_CXP → RPDX (misma base BUSCANDO_CXP). onEstadoCXP.",
+          "valida": [
+            "ANIO",
+            "MES",
+            "IDTERCERO",
+            "CUENTA_INICIAL/FINAL"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_VENCIMIENTOS_CXP"
+          ],
+          "efecto": "Grilla estado saldos RPDX",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORTAR_CXP_ESPERADAS",
+          "hace": "Cuentas esperadas salud: export FXP+FXPD (presupuesto) con WHERE_DATA dinámico. onCuentasEspe.",
+          "valida": [
+            "WHERE_DATA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "2 recordsets cabecera FXP + detalle FXPD/SER",
+          "capaId": "07-informes",
+          "controlId": "informes-conf-cxp",
+          "estado": "leido"
+        }
+      ],
+      "metodosListado": []
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CXP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_CXP.sql",
+      "cola": "Motor MCP CxP. Usa #TH.CUENTA_SER tal cual en líneas DB (Compras/Servicios/Salud). No homologa CUENTAGRAV al contabilizar.",
+      "hace": "Genera MCP/MCHE para FCXP: cursor #T/#TH desde FCXP/FCXPD; ramas por PROCEDENCIA (Compras, Servicios, Salud, Anticipos, glosas, flete, impuestos); IVA en líneas separadas según CUENTA_IVA_CXP; antiduplicado MCP REFERENCIA1=CNSFCXP.",
+      "valida": [
+        "PRI existe para ANO/MES (radicación o F_FACTURAREF según IDCON_FCONTABLE_CXP)",
+        "No duplicar MCP/MCPE PROCEDENCIA CXP mismo CNSFCXP"
+      ],
+      "noValida": [
+        "MCUEGRAV/CUENTAGRAV en CUENTA_SER (confía en FCXPD ya armado)",
+        "VLR_IVA=0 con IVA real en IMOV"
+      ],
+      "errores": [
+        "Periodo Contable NO Existe",
+        "Duplicidad de comprobantes, ya existe esta CXP registrada, no se puede volver a insertar."
+      ],
+      "llama": [
+        "SPK_SUMA_DBCR",
+        "SPK_NC_CONFIRMAR_CONTAB"
+      ],
+      "efecto": "INSERT MCHE/MCP; FCXP.CONTABILIZADA y NROCOMPROBANTE",
+      "capaId": "05-contabilidad",
+      "gateId": "contabilizar-cxp"
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CXPFNT",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_CXPFNT.sql",
+      "cola": "Motor MCP notas FCXPDBCR. PREVERSION vs 2.0.1 idéntica (35375 bytes).",
+      "hace": "Desde FCXPDBCR+FCXP+FNT: genera MCPE PROCEDENCIA NOTDBCRCXP (REF1=CNSFCXP, REF2=ITEM); líneas MCHE NOTDBCRCXP_DB/CR según TIPO DB/CR; retenciones si GIMPUESTOS=1 desde FCXPI/FIMPD; ramas PROCEDENCIA INV/AUDT; cuadre DB/CR; SPK_NC_REVISAMCPE + SPK_PASA_MCP_MCPNIIF; FCXP_ENVIO_DIAN_AUTO marca ESTADODIAN.",
+      "valida": [
+        "PRI existe ANO/MES de fecha nota",
+        "FNT.IDNOTA → comprobante @COM"
+      ],
+      "noValida": [],
+      "errores": [
+        "Periodo Contable NO Existe"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO",
+        "SPK_NC_SUMA_DBCR",
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "efecto": "MCPE/MCHE/MCP nota; FCXPDBCR.NROCOMPROBANTE y CONTABILIZADA vía revisión MCP",
+      "capaId": "06-contabilidad",
+      "controlId": "contabilizar-nota-cxp"
+    },
+    {
+      "nombre": "SPK_INSERT_CXP_INV",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_INSERT_CXP_INV.sql",
+      "cola": "Ficha duplicada en inventario/sps.json. PREVERSION = bugfix COESME600.",
+      "hace": "IMOV compras → FCXPD; base/IVA desde IMOVH; CUENTA_SER KMCOM CXP_COMPRAS; UPDATE CUENTA_SER=CUENTAGRAV si VLR_IVA>0 y MCUEGRAV=1; alinea CUENTA_IVA ITAR.",
+      "valida": [
+        "Reconstrucción: DELETE FCXPD N_PRESUP=CNSMOV",
+        "IMOVH ESTADO=9 en cursor"
+      ],
+      "noValida": [
+        "Plan KMCOM vacío (devuelve cuenta modelo)"
+      ],
+      "errores": [],
+      "llama": [
+        "SPK_CALCULOVALORESCXP",
+        "SPK_ANTICIPO_LEG_CXP",
+        "SPK_GENCONSECUTIVO",
+        "FNK_CUENTA_KMCOM",
+        "FNK_PIVA_IART"
+      ],
+      "efecto": "FCXPD + totales FCXP + IEXI cuentas + IMOVH ENCXP=1",
+      "capaId": "03-alimentadores",
+      "gateId": "compras-a-cxp"
+    },
+    {
+      "nombre": "SPQ_CONF_CAJA",
+      "tipo": "SPQ",
+      "modelo": "CONF_CAJA",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONF_CAJA.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "CONFIRMAR_RECIBO_EGRESO",
+          "hace": "Confirma el recibo de egreso: SPK_CIERRERECIBO_CAJA, SPK_NC_CONTAB_CAJA_EGR, CERRADA 1; si PROCEDENCIA CXP → SPK_MARCA_OP_PAGADA_POR_EGRESO.",
+          "parametros": [
+            "CNSFACJ, CODCAJA, CNSACJ"
+          ],
+          "valida": [
+            "Detalle de pago existe y = valor",
+            "Fecha ≤ hoy",
+            "PRI abierto",
+            "No CERRADA",
+            "No D ni A",
+            "Valor > 0",
+            "No contabilizado antes (MCP PROCEDENCIA CAJA)",
+            "Caja abierta exactamente una vez",
+            "Traslado: caja destino abierta y como tercero"
+          ],
+          "noValida": [],
+          "errores": [
+            "El recibo no tiene detalles de pago.",
+            "El valor del detalle de pago, es diferente al valor del Recibo",
+            "La fecha del recibo es mayor a la fecha actual",
+            "El periodo contable no existe o se encuentra esta cerrado",
+            "El recibo ya se encuentra confirmado",
+            "No se puede Confirmar un Recibo Desecho.",
+            "No se puede Confirmar un Recibo Anulado.",
+            "No se puede Confirmar un Recibo Con Valor Cero (0).",
+            "Este recibo ya se encuentra Contabilizado, posible duplicidad…",
+            "La caja se encuentra abierta mas de una vez.",
+            "La caja no se encuentra abierta."
+          ],
+          "llama": [
+            "SPK_CIERRERECIBO_CAJA",
+            "SPK_NC_CONTAB_CAJA_EGR",
+            "SPK_MARCA_OP_PAGADA_POR_EGRESO"
+          ],
+          "efecto": "FCJ CERRADA 1; FCXPP P; FCXP recalculada; FCXPPM P; MCP/MCHE",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "NUEVO_RECIBO_EGRESO",
+          "hace": "Egreso manual desde caja (no el de la orden).",
+          "parametros": [],
+          "valida": [
+            "Sin traslado pendiente sin cerrar del mismo tipo"
+          ],
+          "noValida": [],
+          "errores": [
+            "Tiene Pendiente un traslado sin Cerrar, CAJA - EGRESOS."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO '@FCJE'"
+          ],
+          "efecto": "INSERT FCJ/FCJD",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "INSERT_FCJD_EGRESO",
+          "hace": "Líneas del egreso. En egreso CxP (TIPOEGRESO=IDCJTECXP) no admite conceptos adicionales salvo IDCJTECXP_AJUSTE=SI ni editar la línea salvo IDCJTECXP_EDITAR=SI.",
+          "parametros": [],
+          "valida": [
+            "FCJ no CERRADA",
+            "Cantidad ≠ 0",
+            "Reglas IDCJTECXP_AJUSTE / IDCJTECXP_EDITAR"
+          ],
+          "noValida": [],
+          "errores": [
+            "El registro yas e encuentra cerrado",
+            "la cantidad esta en 0…",
+            "Egreso CXP: no se permiten conceptos adicionales. Active la variable IDCJTECXP_AJUSTE."
+          ],
+          "llama": [],
+          "efecto": "INSERT/UPDATE FCJD (+ impuestos)",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_INSERT_FPA_EGRESO / CRUDFPA_EGRESO",
+          "hace": "Forma de pago del egreso (PCJ).",
+          "parametros": [],
+          "valida": [
+            "FCJ no CERRADA",
+            "Tipo de pago válido; cheque exige chequera"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "INSERT/UPDATE PCJ",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "DESHACER_EGRESO / UTILIZAR_EGRESO",
+          "hace": "Desechar (ESTADO D) o reutilizar un recibo no confirmado.",
+          "parametros": [],
+          "valida": [
+            "No CERRADA",
+            "No A",
+            "Sin PCJ ni movimiento"
+          ],
+          "noValida": [],
+          "errores": [
+            "El recibo ya se encuentra confirmado",
+            "El recibo cuenta con un registro en Forma de Pago",
+            "El recibo cuenta con un registro en Movimiento"
+          ],
+          "llama": [],
+          "efecto": "FCJ ESTADO D / P",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAER_COMPROBANTE",
+          "hace": "Abre el recibo en caja validando cajero, turno, equipo y caja abierta.",
+          "parametros": [],
+          "valida": [
+            "Es cajero",
+            "Tiene turno para el horario",
+            "Equipo es caja",
+            "Caja abierta",
+            "Cajero igual al que abrió"
+          ],
+          "noValida": [],
+          "errores": [
+            "No es Cajero.",
+            "No tiene turno asignado.",
+            "El equipo no es caja.",
+            "No tiene turno para este horario.",
+            "La caja no existe.",
+            "Cajero diferente al que abrio la caja.",
+            "La caja se encuentra cerrada, revisar"
+          ],
+          "llama": [
+            "SPK_TRAERECIB_CAJA"
+          ],
+          "efecto": "Solo lectura",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_CONFIRMAR_PAGOSMASIVO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_CONFIRMAR_PAGOSMASIVO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK)",
+          "hace": "Autorización clásica: FCXPPM.VALOR=SUM(FCXPP.ABONO); POR PAGAR = VALOR − FCXPCXC; caja del equipo (UBEQ); TIPOEGRESO = CAJ.TIPOEGRESO o IDCJTECXP; cursor por tercero (o IDTERCERO_AFAVOR): FCJ egreso ('@FCJE', CLASE_FAC PAGO, TIPO INTERNO, PROCEDENCIA CAJA, ESTADO P, CERRADA 0), FCJD por abono con IDSERVICIO=CNSFCXPP; FCXPP C con CNSFACJ/CODCAJA; FCXP.SALDO −= abono, VLR_ABONOS += abono; FCXPPM C.",
+          "parametros": [],
+          "valida": [
+            "FCXPPM.ESTADO = N (si no, imprime y retorna)"
+          ],
+          "noValida": [
+            "Caja abierta",
+            "Forma de pago"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "FCJ/FCJD pendientes; FCXPP C; FCXP saldo; FCXPPM C",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_DESCONFIRMAR_PAGOSMASIVO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_DESCONFIRMAR_PAGOSMASIVO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK)",
+          "hace": "Reversa de la autorización clásica: anula egresos no confirmados y devuelve abonos y saldo.",
+          "parametros": [],
+          "valida": [
+            "Egresos sin CERRADA"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FCJ A; FCXPP N; FCXP saldo+; FCXPPM N",
+          "capaId": "05-pagos",
+          "controlId": "autorizar-orden",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_ADMIN_PAGOMASIVO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_ADMIN_PAGOMASIVO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK)",
+          "hace": "Acción ANULAR sobre abonos de la orden.",
+          "parametros": [],
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FCXPP A",
+          "capaId": "05-pagos",
+          "controlId": "abonos-fcxpp",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_CALCULOVALORESCXP",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_CALCULOVALORESCXP.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK)",
+          "hace": "Recalcula la factura: VALOR y VLR_NETO desde FCXPD (ESTADO≠A), impuestos FCXPI, notas DB/CR, anticipos ANT L, abonos FCXPP ESTADO≠A; SALDO = neto − impuestos + flete − anticipos − abonos − notas DB + notas CR − copago (redondeo opcional). ESTADO: saldo 0 y abonos>0 → P; saldo>0, abonos>0, contabilizada → C; saldo>0, sin abonos, contabilizada → N; si no, conserva.",
+          "parametros": [],
+          "valida": [
+            "Tiene detalle con valor"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE FCXP VALOR/VLR_NETO/VLR_ABONOS/SALDO/ESTADO",
+          "capaId": "06-contabilidad",
+          "controlId": "contabilizar-cxp",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_ANULAR_CXP",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_ANULAR_CXP.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK)",
+          "hace": "Marca FCXP y detalle como anulados.",
+          "parametros": [],
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FCXP ESTADO A",
+          "capaId": "02-operacion-fcxp",
+          "controlId": "crud-fcxp",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_CIERRERECIBO_CAJA",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_CIERRERECIBO_CAJA.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK · bloque CxP)",
+          "hace": "Cuando FCJ.TIPOEGRESO = IDCJTECXP: FCXPP → P donde FCXPP.CNSFCXPP = FCJD.IDSERVICIO; si FCXP.PROCEDENCIA=CAJAMENOR e ING_REEMBOL_CJAMENOR=SI → reembolso automático (CMREE); EXEC SPK_CALCULOVALORESCXP por factura; FCXPPM → P; tarjeta crédito TARCRED→BCTTAR. Otros tipos de egreso (traslados, devoluciones, nómina, consignación) tienen su bloque.",
+          "parametros": [],
+          "valida": [
+            "Línea del egreso con IDSERVICIO = abono"
+          ],
+          "noValida": [
+            "Egresos individuales (sin IDSERVICIO): no cierra abonos por aquí"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "FCXPP P; FCXP recalculada; FCXPPM P",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CAJA_EGR",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_CAJA_EGR.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK · egreso CxP)",
+          "hace": "Comprobante del egreso cuando TIPOEGRESO = IDCJTECXP o IDCJTEARS: DB a FCXP.CUECREDITO (Nómina: cuenta del detalle / KMCOM) por tercero, prorrateado por FCXPD, PROCESO EGRESO_CXP_<procedencia>, referencia al abono; CR a la cuenta de la forma de pago (PCJ/FPA); cruces con CxC (FCXPCXC). Si la línea del egreso no trae IDSERVICIO, debita CPCJ.CUENTA del concepto.",
+          "parametros": [],
+          "valida": [
+            "Comprobante cuadra (ajuste de diferencia al último DB)"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "MCP/MCHE del egreso",
+          "capaId": "08-caja",
+          "controlId": "confirmar-egreso",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPK_MARCA_OP_PAGADA_POR_EGRESO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "sql/SPK_MARCA_OP_PAGADA_POR_EGRESO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6)",
+      "metodos": [
+        {
+          "id": "(SPK)",
+          "hace": "Solo FCJ PROCEDENCIA CXP y CLASE_FAC PAGO: ubica la orden por FCXPP.CNSFACJ o por la observación «Orden: …»; FCXPP del egreso → P; si no quedan egresos pendientes → todos los FCXPP P, FCXPPM P (de C), OP_TER_IND 1.",
+          "parametros": [],
+          "valida": [
+            "Egreso de procedencia CXP"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FCXPP P; FCXPPM P",
+          "capaId": "08-caja",
+          "controlId": "confirmar-orden-desde-caja",
+          "estado": "leido"
+        }
+      ],
+      "actualizado": "2026-10-04T18:40:00"
+    },
+    {
+      "nombre": "SPQ_NC_CONTAB_CXPFNT",
+      "tipo": "SP",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NC_CONTAB_CXPFNT.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SP) @CNSFCXP,@ITEM,@USUARIO,@HOST,@COMPANIA,@IDSEDE",
+          "hace": "Comprobante de la nota (MCPE/MCHE procedencia NOTDBCRCXP; REF1=CNSFCXP, REF2=ITEM): DB/CR a CUENTA_DB (de FNT) y CUENTA_CR (CUECREDITO de la factura); para INV completa cuentas desde FCXPDNOT/KMCOM; retenciones devueltas por FCXPI (proceso NOTDBCRCXP_DB_IMP); marca FCXPDBCR CONTABILIZADA=1 con NROCOMPROBANTE.",
+          "valida": [
+            "Periodo contable existe",
+            "INV: cuentas DB/CR no vacías"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo Contable NO Existe",
+            "Nota de inventario sin cuentas contables. Verifique KMCOM o las cuentas CUEDEBITO/CUECREDITO de la CxP contabilizada."
+          ],
+          "llama": [],
+          "efecto": "MCPE/MCHE + FCXPDBCR contabilizada",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        }
+      ],
+      "nota": "Variante SPQ_ usada cuando GENCXP=0; SPK_NC_CONTAB_CXPFNT se usa con GENCXP=1 y CONT_FCXPDBCR_Y_FCXP=SI."
+    },
+    {
+      "nombre": "SPK_CIERRA_FCXPDBCR",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPK_CIERRA_FCXPDBCR.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SPK) @CNSFCXP,@ITEM,@IDSEDE,@USUARIO",
+          "hace": "Genera CxP? : crea FCXP nueva (consecutivo {SEDE}SR######, tercero IDTERCEROGENCXP, CNSFCOM = CxP origen, fecha de la nota) con una FCXPD por el valor y el servicio nuevo (CUENTA_SER = CUENTA_DB de la nota); recalcula y contabiliza con SPK_NC_CONTAB_CXP. Si CONT_FCXPDBCR_Y_FCXP<>SI: suma VLR_NOTASDEBITO a la original, recalcula y marca la nota contabilizada con el comprobante de la CxP nueva (solo si lo obtuvo).",
+          "valida": [
+            "Nota no contabilizada",
+            "CNSCXP vacío (no repetir)"
+          ],
+          "noValida": [
+            "No valida que la CxP nueva haya quedado contabilizada antes de responder OK"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_CALCULOVALORESCXP",
+            "SPK_NC_CONTAB_CXP"
+          ],
+          "efecto": "FCXP+FCXPD nuevas contabilizadas; FCXPDBCR.CNSCXP",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ANULAR_FCXPDBCR",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPK_ANULAR_FCXPDBCR.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SPK) @CNSFCXP,@ITEM",
+          "hace": "Reversa de la nota: si CONTABILIZADA=1 borra MCPE/MCHE errados o anula el MCP (ANULADO=1 + SPK_NC_SUMA_DBCR) si el periodo está abierto, o lo reversa (SPK_REVERSAR_MCP NOTDBCRCXP) si está cerrado; nota → ESTADO A (o P con FCXPS a Nuevo si procedencia AUDT); resta VLR_NETO+VLR_IMPUESTOS de VLR_NOTAS* y recalcula. Si CONTABILIZADA=2 borra MCPE/MCHE y deja CONTABILIZADA=0.",
+          "valida": [],
+          "noValida": [
+            "Literal AUDT vs AUD inconsistente entre ramas",
+            "FCXPS filtrada por ITEM en vez de ITEMNDB/ITEMNCR"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_NC_SUMA_DBCR",
+            "SPK_REVERSAR_MCP",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "Comprobante anulado/reversado; nota A o pendiente; FCXP recalculada",
+          "capaId": "06-contabilidad",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FNT_COL",
+      "tipo": "SPQ",
+      "modelo": "FNT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FNT_COL.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "CRUDFNT",
+          "hace": "Catálogo de tipos de nota: IDNOTA, DESCRIPCION, TIPO (DB/CR), COMPROBANTE, CUENTA, DECRUCES, AFCOSTO. Nuevo/Editar/Borrar.",
+          "valida": [
+            "Formato JSON"
+          ],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "FNT",
+          "capaId": "01-configuracion",
+          "controlId": "notas-db-cr",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TANT_COL",
+      "tipo": "SPQ",
+      "modelo": "TANT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_TANT_COL.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "CRUDTANT",
+          "hace": "Catálogo de tipos de anticipo: TIPOANTICIPO, DESCRIPCION, COMPROBANTE, CUEDEBITO (anticipo), CUECREDITO (contrapartida).",
+          "valida": [
+            "Formato JSON"
+          ],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "TANT",
+          "capaId": "01-configuracion",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GEN_PROCESO_ANTICIPO",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPK_GEN_PROCESO_ANTICIPO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SPK) @CNSFCOM,@VALOR,@IDSEDE,@USUARIO,@TIPOANTICIPO",
+          "hace": "Enviar a Caja: crea FCXP {SEDE}AN###### PROCEDENCIA Anticipos (CONTABILIZADA=1 sin comprobante, CUECREDITO=TANT.CUECREDITO, TIPOCXP=IDTIPOCXP_DEFAULT), FCXPD con IDSERVICIO=tipo de anticipo y CUENTA_SER=TANT.CUEDEBITO; FCOM ENCXP=1 ESTADO I; orden de pago FCXPPM (caja CODCAJANTICIPOS) + abono total FCXPP; SPK_CONFIRMAR_PAGOSMASIVO deja el egreso pendiente en caja.",
+          "valida": [
+            "VALOR <= FCOM.VR_TOTAL",
+            "VALOR + anticipos previos (VLR_ABONOS) <= VR_TOTAL",
+            "Sin egresos de la orden pendientes en caja (FCJ.CERRADA=0)"
+          ],
+          "noValida": [],
+          "errores": [
+            "El valor del anticipo no puede superar el monto de la Orden de Servicios",
+            "El valor de los anticipos no pueden superar el monto de la Orden de Servicios",
+            "Existen Ordenes de pago en caja Pendientes de Confirmar, no se puede Continuar"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_CONFIRMAR_PAGOSMASIVO"
+          ],
+          "efecto": "FCXP Anticipos + FCXPPM/FCXPP + FCJ pendiente",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ANTICIPO_LEG_CXP",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPK_ANTICIPO_LEG_CXP.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SPK) @CNSFCOM,@CNSANT,@COMPANIA,@USUARIO,@SEDE",
+          "hace": "Legalización: si VALOR_LEG > suma de anticipos crea una CxP Servicios {SEDE}SR###### desde el detalle de la orden (rama heredada; el FE limita VALOR_LEG al saldo del anticipo). FCOM ENCXP=1 ESTADO I; ANT ESTADO L con CNSFCXP de la factura; con GENANTIDESDEORDENSER=SI genera el comprobante (SPK_NC_CONTAB_ANTICIPO); recalcula la CxP.",
+          "valida": [],
+          "noValida": [
+            "No valida periodo (lo hace el comprobante)"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "FNK_VALOR_IMPUESTO",
+            "FNK_CUENTA_KMCOM",
+            "SPK_NC_CONTAB_ANTICIPO",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "ANT L; FCXP recalculada (SALDO baja por anticipos L)",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_ANTICIPO",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPK_NC_CONTAB_ANTICIPO.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SPK) @CNSANT,@CNSFCOM,@SEDE,@USUARIO,@NROCOMPROBANTE OUT",
+          "hace": "Comprobante de legalización: DB a la cuenta por pagar de la factura (CUECREDITO; si no, TANT.CUEDEBITO) y CR a TANT.CUECREDITO por el valor legalizado; marca ANT CONTABILIZADO/NROCOMPROBANTE.",
+          "valida": [
+            "Periodo contable existe y abierto"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo Contable NO Existe",
+            "Periodo Contable Cerrado"
+          ],
+          "llama": [],
+          "efecto": "MCPE/MCHE; ANT contabilizado",
+          "capaId": "05-pagos",
+          "controlId": "anticipos-fcom",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIERRA_CARTERA",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "sql/SPK_CIERRA_CARTERA.sql",
+      "cola": "DESAIX SQLIX PREVERSION 2026-10-04 (liberada 2.0.7, IDANT 2.0.6; idénticas)",
+      "metodos": [
+        {
+          "id": "(SPK) @ANO,@MES,@USUARIO,@PROCEDENCIA (CARTERA|FACTURA|CXP)",
+          "hace": "Con CXP: borra y recrea FCARTH del mes con el aging de VWK_CXPDIASVTO (FECHA < primer día del mes siguiente) y marca PRI.CERRADO_CXP=1. Si ya existe snapshot del mes solo marca el periodo. Exige INFO_CARTERACONGLOSA configurada en todos los casos.",
+          "valida": [
+            "INFO_CARTERACONGLOSA en (CONGLO, SINGLO)"
+          ],
+          "noValida": [],
+          "errores": [
+            "La variable del sistema INFO_CARTERACONGLOSA no esta Configurada.. No se Puede Continuar"
+          ],
+          "llama": [
+            "FNK_DIA_DEL_MES"
+          ],
+          "efecto": "FCARTH + PRI.CERRADO_CXP",
+          "capaId": "01-configuracion",
+          "controlId": "periodo-contable-cxp",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

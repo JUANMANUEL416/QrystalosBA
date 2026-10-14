@@ -17,13 +17,14 @@
 ## Árbol de notificación
 
 ```
-FE Facturación (NotificaDian / confirmar FE / Proceso DIAN)
-  ├─ VALIDADIAN2 (al numerar; BLOQUEADIAN)
+FE Facturación (Encolar DIAN / Proceso DIAN) · Notas Debito - Credito
+  ├─ VALIDADIAN2 (al numerar; solo si BLOQUEADIAN=SI)
   └─ Encolar
-       ├─ FTR_COL · NOTI_DIAN              → FTR.FACTE=1
-       ├─ FTR_COL · ENCOLAR_ITEM           → FTR o FNOT.FACTE=1
-       ├─ FTR_COL · ENCOLAR_MASIVO         → VWK_ESTADODIAN_FTRE
-       └─ FTRFE_COL · FE_ENCOLAR           → FTR.FACTE=1 (fecha=hoy)
+       ├─ FTR_COL · NOTI_DIAN              → FTR.FACTE=1 (FACTE 0/3, fecha ≤1 día, FTRDC)
+       ├─ FTR_COL · ENCOLAR_ITEM           → FTR o FNOT.FACTE=1 (sin control de fecha ni FTRDC)
+       ├─ FTR_COL · ENCOLAR_MASIVO         → 0→1 / 1→0 sobre lo filtrado (VWK_ESTADODIAN_FTRE)
+       ├─ FNOT_COL · FNOT_ENCOLAR          → FNOT.FACTE=1 (o 5 si la FV está prevalidada)
+       └─ FTRFE_COL · FE_ENCOLAR           → existe en SQL; Qrystalos2 no lo usa
             └─ Servicio facturador (fuera de SPQ)
                  → FACTE=2 + FTRE (CUFE, XML)
                       ├─ LISTAR_FTRE / TREA_XML
@@ -36,6 +37,8 @@ FE Facturación (NotificaDian / confirmar FE / Proceso DIAN)
 ## Estados FACTE
 
 0 Sin notificar · 1 En cola · 2 Notificada (DIAN OK) · 3 Con errores · 4 Procesando · 5 Por prevalidar · 6 Prevalidada · 7 Rechazada en pruebas.
+
+Cada pantalla rotula distinto el mismo número (FACTE=4 = «Procesando», «4-Notificada», «4-Por Consultar»). Capacitar por número; ver pendientes.
 
 ## Hueco consciente
 

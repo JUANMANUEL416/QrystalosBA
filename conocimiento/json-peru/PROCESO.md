@@ -18,9 +18,12 @@
 
 ```
 FE Facturación Perú (/admin/facturacionPe)
-  └─ FTR_COL · ENVIA_CONTAB
-       ├─ SPK_GENERA_JSON_PERU_FTR_INTEGRA   (cuerpo gemelo)
-       └─ SPK_GENERA_JSON_PERU_FACTURA
+  └─ FTR_COL · ENVIA_CONTAB   (en Perú ejecuta UNO de los dos y luego contabiliza)
+       ├─ TIPOFIN=C y FACTEP≠102 → SPK_GENERA_JSON_PERU_FTR_INTEGRA   (variante, no gemela)
+       ├─ resto → SPK_GENERA_JSON_PERU_FACTURA
+       └─ SPK_NC_CONTAB_FTR   (en Perú se re-ejecuta en cada pulsación)
+
+  Detalle de SPK_GENERA_JSON_PERU_FACTURA:
             ├─ ya hay FTRE de esa N_FACTURA → RETURN
             ├─ FDIAN PREFIJO (BOLE si TIPOFIN=N, si no FTR)
             ├─ tipo doc: N → 03 boleta; resto → 01 factura

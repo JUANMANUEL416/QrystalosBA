@@ -4,11 +4,11 @@
   "modulo": "IACT",
   "familia": "activos",
   "prioridad": 7,
-  "estado": "parcial",
-  "resumen": "IACT: config (TIPOAF/EVENTOAF/GRUPAC) → alta GUARDAR → accesorios/responsables → eventos IACTH (APLICAR vs CONTAB) → depreciación GEN_DEPRECIACION → contabilizar periodo CONTABILIDAD_3. SPQ núcleo 26/26 leído 2026-09-06 ruta paso 7. SPKs SPK_GEN_DEPRECIACION y SPK_APL_AJDEPRECIACION opcionales.",
-  "actualizado": "2026-09-06T08:15:00",
-  "notaSql": "Ruta paso 7 profundizado: 11 SPQ leídos en sql/ (26 METODOs en sps.json). Tablas IACT* sin .md en INDICE_TABLAS. AFI en docs = afiliados.",
-  "alcanceHasta": "Ciclo operativo del activo: parametrización → registro → eventos/novedades → depreciación operativa → envío contable masivo. No incluye inventario farmacia ni afiliados (AFI).",
+  "estado": "documentado",
+  "resumen": "Ciclo del activo fijo: catálogos (tipo de activo, eventos, grupos, artículos), alta de la ficha con código por consecutivo y foto, accesorios, responsables con capacitación y acta, novedades (traslado, salida, entrada) que se aplican a la ficha o se contabilizan por comprobante, depreciación lineal por cuotas mensuales y contabilización del mes desde Contabilidad → Depreciación activos.",
+  "actualizado": "2026-10-04",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (DESAIX, PREVERSION idéntica a la última liberada 2.0.7 en todos): SPQ_IACT, SPQ_IACTH, SPQ_APLICAR_IACTH, SPQ_CONTAB_IACT, SPQ_GEN_DEPRECIACION, SPK_GEN_DEPRECIACION, SPQ_TIPOAF, SPQ_EVENTOAF, SPQ_GRUPAC, SPQ_IACTR, SPQ_VERIF_IACT_PARTIC, SPQ_IACTEQU, SPQ_EQXSEAF, SPQ_NOTIFPARADAAF, SPQ_ITAR, SPQ_CONTABILIDAD_3 (DEPRECIACION_ACTIVOS_LISTA, DEPR_ACFIJP_ENV_CONTA, DEPR_IACTD_UNICO, RESET_CONTABILIZADO), SPK_APL_AJDEPRECIACION. No leídos: SPK_APL_AJDEPRECIACION_UNA_IACTD (lo llama DEPR_IACTD_UNICO, sin botón en Qrystalos2), SPQ_NC_REVISAMCPE, SPK_PASA_MCP_MCPNIIF, FNK_CUENTA_KMCOM. qrystalos.documentacion no tiene fichas IACT*.md (solo IART.md referencia la FK a IACT).",
+  "alcanceHasta": "Desde los catálogos hasta la contabilización mensual de la depreciación; no cubre mantenimiento (pestañas en desarrollo) ni NIIF.",
   "ventanas": [
     {
       "uso": "Menú activos fijos",
@@ -44,8 +44,8 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "parcial",
-      "explicacion": "Catálogos previos: tipo activo IACTT (TIPOAF: campos obligatorios PIDEMODELO, PIDESERIAL…), eventos EVENTOAF, grupos GRUPAC, tipo/artículo ITAR+IART (FK IART→IACT), equipos por sector EQXSEAF, notificaciones NOTIFPARADAAF.",
+      "estado": "documentado",
+      "explicacion": "Catálogos previos: tipo de activo (IACTT: clase Local/Niif, campos que exige el alta, vida útil, tipo y valor de salvamento, administrador por tipo), eventos (IACTE: tipo Entrada/Salida/Traslado, qué pide, si contabiliza y con qué comprobante, estado asociado y marca de baja), grupos y subgrupos (TGEN ACTIVOSFIJOS/GRUPOS), artículos de inventario con tipo de activo y fabricante (IART/ITAR), equipos por sector y notificaciones de parada (TGEN). Variables: IDPROCESOCONTABLE, TERCATFABRICANTE, IACTEVENTOCOMPRA, IACT_ESTADOBAJA, TIPO_ACTIVO_USUARIO, IDMODELOCONTABLE, IDCON_TCOM_DEFAULT, IDCON_TCOM_DEPR, COMPROBMULTISEDE, IDTERCEROINSTALADO.",
       "tablasClave": [
         "IACTT",
         "IART",
@@ -55,49 +55,74 @@
         {
           "id": "tipo-activo",
           "nombre": "Tipo de activo (IACTT)",
-          "explicacion": "TipoActivoComponent: TIPOAF GUARDAR/ELIMINAR, GENERAR_DEP, GUARDAR_TIPOACTIVO_USUARIO. Al elegir tipo en gestión, TRE_TIPOACT devuelve flags de campos obligatorios.",
-          "invariante": "Sin tipo activo no se define qué campos exige el formulario de alta.",
+          "explicacion": "Tipos de activo → N U E V O: código, clase Local o Niif, descripción, casillas Pedir modelo / escritura / marca / linderos / serial / partes / referencia / matrícula, tipo de salvamento (Valor o Porcentaje) y valor, tipo de vida útil y vida útil en meses, estado. Al elegir el tipo en el alta, TRE_TIPOACT devuelve qué campos son obligatorios. Generar Depreciación (del tipo) marca depreciables los activos cuyo costo alcanza el valor de salvamento, fija el salvamento y recalcula cuotas. Asignar Administrador (TIPO_ACTIVO_USUARIO = SI) liga empleados al tipo (TGEN TIPOACTXUSUARIO).",
+          "invariante": "Código de tipo único. Sin tipo no se sabe qué exige el formulario ni cómo se deprecia.",
           "sps": [
+            {
+              "nombre": "SPQ_TIPOAF",
+              "metodo": "GUARDAR / ELIMINAR / GENERAR_DEP / GUARDAR_TIPOACTIVO_USUARIO",
+              "rol": "Maestro de tipos y administrador por tipo. Ficha leída."
+            },
             {
               "nombre": "SPQ_IACT",
               "metodo": "TRE_TIPOACT",
-              "rol": "Lee IACTT flags por IDTIPOACTIVO. Ficha leída."
+              "rol": "Flags del tipo para el formulario de alta. Ficha leída."
             },
             {
-              "nombre": "SPQ_TIPOAF",
-              "metodo": "GUARDAR / ELIMINAR / GENERAR_DEP",
-              "rol": "Maestro tipos. Ficha leída."
-            },
-            {
-              "nombre": "SPQ_GRUPAC",
-              "metodo": "GUARDAR / GUARDAR_SUBGRUP / ELIMINAR*",
-              "rol": "Grupos/subgrupos TGEN. Ficha leída."
-            }
-          ]
-        },
-        {
-          "id": "articulo-inventario",
-          "nombre": "Artículo de inventario ligado al activo",
-          "explicacion": "ArticulosComponent bajo /iact: IART GUARDAR con IDTIPOACTIVO. IART.md: FK_IACT_IACTIDARTICULO. Campo IACT.IDARTICULO en alta.",
-          "invariante": "Opcional según sitio; enlaza inventario con activo fijo.",
-          "sps": [
-            {
-              "nombre": "SPQ_IART",
-              "metodo": "GUARDAR",
-              "rol": "Proceso Inventario compartido; fichas en otro módulo."
+              "nombre": "SPK_GEN_DEPRECIACION",
+              "metodo": "—",
+              "rol": "Lo ejecuta GENERAR_DEP por cada activo depreciable del tipo."
             }
           ]
         },
         {
           "id": "eventos-maestro",
-          "nombre": "Catálogo de eventos/novedades",
-          "explicacion": "EventosComponent: EVENTOAF GUARDAR/ELIMINAR. Define IDEVENTO usado en IACTH (compra, baja, traslado, etc.).",
-          "invariante": "Evento con MUEVECONTABILIDAD=SI dispara CONTAB_IACT al aplicar.",
+          "nombre": "Catálogo de eventos (IACTE)",
+          "explicacion": "Eventos → N U E V O: código, tipo de movimiento (Entrada por defecto, Salida, Traslado), descripción, casillas Pide estado / Pide valor / Pide centro de costo y área (al menos una), estado asociado (tabla general ESTADOACTIVO), Se contabiliza? y comprobante (obligatorio si contabiliza). La casilla Baja de activo se marca sola cuando el estado asociado es el de la variable IACT_ESTADOBAJA. Los eventos de tipo Mantto no salen en novedades.",
+          "invariante": "Evento con Se contabiliza? = Sí → al aplicar la novedad se genera comprobante (CONTAB_IACT); si no, solo se actualiza la ficha (APLICAR_IACTH).",
           "sps": [
             {
               "nombre": "SPQ_EVENTOAF",
               "metodo": "GUARDAR / ELIMINAR",
-              "rol": "Catálogo eventos IACTE. Ficha leída."
+              "rol": "Catálogo IACTE. Ficha leída."
+            }
+          ]
+        },
+        {
+          "id": "grupos-articulos",
+          "nombre": "Grupos, artículos, sectores y notificaciones",
+          "explicacion": "Grupos → N U E V O y Nuevo subgrupo (TGEN ACTIVOSFIJOS/GRUPOS). Artículos → Nuevo: artículo de inventario con tipo de artículo, tipo de activo fijo, fabricante (categoría FAB) y documentos adjuntos (DOCXTPO); Artículos Pendientes revisa los creados desde otros módulos. Equipos por sector: cantidad de artículos por servicio (HHAB). Notificaciones de parada: contacto y correo por servicio. Fabricantes (botón en Gestión) crea terceros de la categoría TERCATFABRICANTE.",
+          "invariante": "El grupo, el artículo y el fabricante son referencias de la ficha; el fabricante es obligatorio para imprimir la hoja de vida.",
+          "sps": [
+            {
+              "nombre": "SPQ_GRUPAC",
+              "metodo": "GUARDAR / GUARDAR_SUBGRUP / ELIMINAR / ELIMINAR_SUBGRUP",
+              "rol": "Grupos y subgrupos en TGEN. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_ITAR",
+              "metodo": "GUARDAR / ACTUALIZAR / ELIMINAR",
+              "rol": "Tipos de artículo (compartido con Inventario). Ficha leída."
+            },
+            {
+              "nombre": "SPQ_EQXSEAF",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Equipos por sector en TGEN. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_NOTIFPARADAAF",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Notificaciones de parada por sector en TGEN. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_IART",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Artículos de inventario (proceso Inventario)."
+            },
+            {
+              "nombre": "SPQ_TER_COL",
+              "metodo": "GUARDAR",
+              "rol": "Fabricantes (terceros)."
             }
           ]
         }
@@ -107,8 +132,8 @@
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio",
-      "estado": "parcial",
-      "explicacion": "Gestión: filtros avanzados + grilla IACT → INSERTAR/EDITAR (IACT GUARDAR) → pestañas Accesorios (IACTEQU), Responsables (IACTR+VERIF_IACT_PARTIC), Depreciación (GEN_DEPRECIACION). Expandido: EventosIACTComponent (IACTH). Hoja de vida PDF (hojaVidaPrint INFO_HV_IACT).",
+      "estado": "documentado",
+      "explicacion": "Gestión: filtros avanzados y grilla IACT → Nuevo activo / Editar (IACT GUARDAR) con pestañas Información, Accesorios (IACTEQU), Responsables (IACTR + VERIF tipo ASIGACTI) y Depreciación (GEN_DEPRECIACION). Fila expandida: Eventos (IACTH) con Aplicar Novedad; Mantenimiento y Documentos en desarrollo. Impresión: hoja de vida por activo (INFO_HV_IACT), acta del responsable (INFO_VERIF) y formatos en blanco Paz y Salvo, Entrada y Salida, Acta de Entrega.",
       "tablasClave": [
         "IACT",
         "IACTEQU",
@@ -119,86 +144,101 @@
       "controles": [
         {
           "id": "alta-activo",
-          "nombre": "Alta y edición de activo",
-          "explicacion": "GUARDAR INSERTAR: SPQ_GENSEQUENCE @IACT_ACT → IDACTIVO prefijo ACT. Valida SERIAL, ICODALTERNO, CODIGOINTERNO únicos. EDITAR actualiza IACT completo.",
-          "invariante": "Duplicados SERIAL/CODIGOINTERNO/CODALTERNO → KO.",
+          "nombre": "Alta y edición del activo (IACT)",
+          "explicacion": "Nuevo activo → Información. El código lo asigna el consecutivo al guardar. El tipo (clase Local; y tipo Niif si IDPROCESOCONTABLE = MIXTO) decide los campos obligatorios. Datos: descripción, estado, costo histórico, valor comercial (y Niif), fecha de compra, códigos interno/alterno/barra, artículo, categoría, centro de costo, área funcional, servicio, grupo, fabricante (*), cuenta (*), proveedor, especificaciones técnicas, calibración, parada, propiedad, fotografía (se sube aparte). Se deprecia? es de solo lectura.",
+          "invariante": "Serial, código interno y código alterno únicos entre activos. Al insertar se compara contra todos; al editar solo contra activos de otro tipo.",
           "sps": [
             {
               "nombre": "SPQ_IACT",
-              "metodo": "GUARDAR",
-              "rol": "INSERTAR/EDITAR IACT. Llama SPQ_GENSEQUENCE."
+              "metodo": "GUARDAR (INSERTAR / EDITAR)",
+              "rol": "Alta y edición; consecutivo del código; validación de duplicados. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_IACT",
+              "metodo": "OBTENER_FOTO / INFO_HV_IACT",
+              "rol": "Foto y hoja de vida. Ficha leída."
             }
           ]
         },
         {
           "id": "accesorios-responsables",
           "nombre": "Accesorios y responsables",
-          "explicacion": "AccesoriosIACTComponent: IACTEQU GUARDAR/ELIMINAR. ResponsablesIACTComponent: IACTR GUARDAR/ELIMINAR/RETIRAR; verificación VERIF_IACT_PARTIC.",
-          "invariante": "Solo en modo EDITAR del activo.",
+          "explicacion": "Accesorios → Nuevo: ítem, descripción, serial, marca, modelo, código interno, estado (Activo). Responsables → Asignar: empleado activo (categoría EMP), cargo, fecha de asignación, estado Asignado, validado No, observación y casillas de capacitación (uso básico, almacenamiento, accesorios, manuales); pestaña Capacitación registra entregas (VERIF tipo ASIGACTI). Retirar fija fecha de retiro y estado Retirado; la fila retirada no se edita ni imprime. Eliminar responsable está oculto.",
+          "invariante": "Un empleado una sola vez por activo; el ítem de accesorio no se repite dentro del activo.",
           "sps": [
             {
               "nombre": "SPQ_IACTEQU",
               "metodo": "GUARDAR / ELIMINAR",
-              "rol": "Tabla IACTEQU. Ficha leída."
+              "rol": "Accesorios. Ficha leída."
             },
             {
               "nombre": "SPQ_IACTR",
               "metodo": "GUARDAR / ELIMINAR / RETIRAR",
-              "rol": "Tabla IACTR. Ficha leída."
+              "rol": "Responsables. Ficha leída."
             },
             {
               "nombre": "SPQ_VERIF_IACT_PARTIC",
               "metodo": "GUARDAR / ELIMINAR / INFO_VERIF",
-              "rol": "Checklist responsable. Ficha leída."
+              "rol": "Capacitación / entrega y acta del responsable. Ficha leída."
             }
           ]
         },
         {
           "id": "eventos-novedades",
-          "nombre": "Eventos del activo (IACTH)",
-          "explicacion": "EventosIACTComponent: IACTH GUARDAR/ELIMINAR. Aplicar novedad: APLICAR_IACTH o CONTAB_IACT · GENERAR según MUEVECONTABILIDAD. No aplica si CONTABILIZADA=1 o evento compra.",
-          "invariante": "IACTH tiene CONTABILIZADA/NROCOMPROBANTE (columnas visibles en FE).",
+          "nombre": "Novedades del activo (IACTH)",
+          "explicacion": "Fila expandida → Eventos → Nuevo: evento (no Mantto), fecha, valor (por defecto el costo), estado nuevo, centro de costo y área según lo pida el evento, observación. Nace pendiente (sin aplicar ni contabilizar). Aplicar Novedad decide por el evento: Se contabiliza? → CONTAB_IACT (comprobante); si no → APLICAR_IACTH (ficha). Editar, Eliminar y Aplicar se deshabilitan si ya está aplicada o contabilizada, y para el evento de compra (IACTEVENTOCOMPRA).",
+          "invariante": "Una novedad aplicada o contabilizada no se modifica desde la pantalla (la validación es solo de pantalla).",
           "sps": [
             {
               "nombre": "SPQ_IACTH",
               "metodo": "GUARDAR / ELIMINAR",
-              "rol": "Historial eventos. Ficha leída."
+              "rol": "Registro de la novedad. Ficha leída."
             },
             {
               "nombre": "SPQ_APLICAR_IACTH",
               "metodo": "GENERAR",
-              "rol": "Aplica novedad sin contabilidad. Ficha leída."
+              "rol": "Aplica a la ficha (traslado, salida, entrada) y regenera cuotas. Ficha leída."
             },
             {
               "nombre": "SPQ_CONTAB_IACT",
               "metodo": "GENERAR",
-              "rol": "Aplica novedad con asiento MCP. Ficha leída."
+              "rol": "Comprobante contable de la novedad. Ficha leída."
             }
           ]
         },
         {
           "id": "depreciacion-operativa",
-          "nombre": "Depreciación por activo",
-          "explicacion": "DepreciacionIACTComponent: grilla IACTD (read). Botón Generar → GEN_DEPRECIACION · GENERAR_DEPRECIACION (solo si DEPRECIABLE). OBTENER_IACT refresca acumulados.",
-          "invariante": "IACTD registra CLASE, VALORDEPRECIADO, DEPACUM* por ITEM.",
+          "nombre": "Cuotas de depreciación por activo (IACTD)",
+          "explicacion": "Editar → Depreciación: acumulada histórica, acumulada diferida, fecha de última depreciación, meses a depreciar, valor de salvamento, meses depreciados, y la lista de cuotas (IACTD). Generar Depreciación (habilitado si Se deprecia) recalcula las cuotas pendientes con el método lineal. También desde el tipo (Generar Depreciación) para todos sus activos.",
+          "invariante": "Solo se borran y recalculan cuotas no contabilizadas; si el activo ya se depreció por completo el sistema lo avisa.",
           "sps": [
             {
               "nombre": "SPQ_GEN_DEPRECIACION",
               "metodo": "GENERAR_DEPRECIACION / OBTENER_IACT",
-              "rol": "Genera línea IACTD vía SPK_GEN_DEPRECIACION. Ficha leída."
+              "rol": "Dispara el cálculo y lee los acumulados de la ficha. Ficha leída."
+            },
+            {
+              "nombre": "SPK_GEN_DEPRECIACION",
+              "metodo": "—",
+              "rol": "Cálculo lineal mensual, clase Local. Ficha leída."
             }
           ]
         },
         {
           "id": "foto-hoja-vida",
-          "nombre": "Foto e impresión hoja de vida",
-          "explicacion": "OBTENER_FOTO: IACT.IDFOTO → ARCHIVOS. INFO_HV_IACT: cabecera IACT+TER fabricante + detalle IACTEQU. hojaVidaPrint.js usa MODELO IACT.",
-          "invariante": "IDACTIVO requerido.",
+          "nombre": "Foto, hoja de vida y formatos",
+          "explicacion": "Fotografía del activo: se sube con el alta y se consulta con OBTENER_FOTO. Hoja de vida (impresora en la fila): INFO_HV_IACT trae ficha, tipo, fabricante, responsables y accesorios; exige fabricante. Imprimir (menú): Paz y Salvo, Entrada y Salida y Acta de Entrega son formatos en blanco para diligenciar a mano. Acta del responsable: impresora de la fila del responsable (INFO_VERIF).",
+          "invariante": "Sin fabricante la hoja de vida no se genera.",
           "sps": [
             {
               "nombre": "SPQ_IACT",
-              "metodo": "OBTENER_FOTO / INFO_HV_IACT",
-              "rol": "Consultas impresión. Ficha leída."
+              "metodo": "INFO_HV_IACT / OBTENER_FOTO",
+              "rol": "Hoja de vida y foto. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_VERIF_IACT_PARTIC",
+              "metodo": "INFO_VERIF",
+              "rol": "Acta del responsable. Ficha leída."
             }
           ]
         }
@@ -208,8 +248,8 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega y completa",
-      "estado": "parcial",
-      "explicacion": "Origen datos maestros: TER (fabricante IDTERCERO), CEN/CCOSTO, AFU/IDAREA, CUE/CUENTA contable, HHAB/SECTOR, IART artículo inventario. Grilla join IACTT, CEN, AFU, CUE, IART, HHAB.",
+      "estado": "documentado",
+      "explicacion": "El alta no nace sola de otro módulo: el activo se crea a mano en Gestión. Lo que alimenta la ficha son referencias: el artículo de inventario (IART con tipo de activo fijo y fabricante), el proveedor y el fabricante (TER), el centro de costo y el área, el servicio (HHAB) y el plan de cuentas. El botón Importar de Gestión está oculto en esta versión.",
       "tablasClave": [
         "TER",
         "CEN",
@@ -221,23 +261,28 @@
       "controles": [
         {
           "id": "desde-inventario",
-          "nombre": "Artículo IART",
-          "explicacion": "IACT.IDARTICULO opcional; IART puede tener IDTIPOACTIVO. Alta desde catálogo /iact/iactarticulo.",
-          "invariante": "No confundir IART (inventario) con IACT (activo fijo).",
-          "sps": []
-        },
-        {
-          "id": "fabricante-tercero",
-          "nombre": "Fabricante / proveedor",
-          "explicacion": "FabricantesIACTComponent usa TER_COL GUARDAR. IACT.IDTERCERO en formulario.",
-          "invariante": "TER compartido con cartera/CxP.",
+          "nombre": "Artículo de inventario y fabricante",
+          "explicacion": "Artículos (bajo Activos Fijos) crea o edita el IART con tipo de activo fijo y fabricante; la ficha del activo referencia el artículo por código. Fabricantes (en Gestión) crea el tercero de la categoría TERCATFABRICANTE con sus datos de contacto.",
+          "invariante": "La relación artículo → activo es de referencia; no genera el activo automáticamente.",
           "sps": [
+            {
+              "nombre": "SPQ_IART",
+              "metodo": "GUARDAR",
+              "rol": "Proceso Inventario."
+            },
             {
               "nombre": "SPQ_TER_COL",
               "metodo": "GUARDAR",
-              "rol": "Terceros; proceso transversal."
+              "rol": "Terceros."
             }
           ]
+        },
+        {
+          "id": "fabricante-tercero",
+          "nombre": "Proveedor, cuenta y ubicación",
+          "explicacion": "Proveedor (tercero), cuenta contable del activo, centro de costo, área funcional y servicio se eligen en la ficha; de ahí salen las cuentas del modelo contable (KMCOM) al contabilizar novedades y depreciación.",
+          "invariante": "Centro de costo y área de la ficha son los que llevan los asientos; un traslado los cambia.",
+          "sps": []
         }
       ]
     },
@@ -245,8 +290,8 @@
       "id": "04-unido",
       "numero": 4,
       "nombre": "Subproceso unido",
-      "estado": "parcial",
-      "explicacion": "Eventos IACTH con impacto contable (CONTAB_IACT). Equipos por sector (EQXSEAF) y notificaciones mantenimiento (NOTIFPARADAAF) enlazan con sectores HHAB. DOCXTPO en artículos IART (no en IACT directo en este valle).",
+      "estado": "documentado",
+      "explicacion": "La novedad contable (CONTAB_IACT) y la depreciación del mes (SPK_APL_AJDEPRECIACION) producen comprobantes MCPE/MCHE con el modelo contable KMCOM; ambos revisan totales (SPQ_NC_REVISAMCPE / SPK_NC_REVISAMCPE) y la novedad pasa copia NIIF cuando el proceso contable es mixto.",
       "tablasClave": [
         "IACTH",
         "HHAB"
@@ -254,14 +299,24 @@
       "controles": [
         {
           "id": "evento-contable",
-          "nombre": "Novedad que mueve contabilidad",
-          "explicacion": "Al aplicar IACTH, FE elige CONTAB_IACT vs APLICAR_IACTH según flag del evento maestro.",
-          "invariante": "Ya contabilizado o evento compra → FE bloquea aplicar.",
+          "nombre": "Comprobante de la novedad",
+          "explicacion": "CONTAB_IACT: valida que exista periodo contable para la fecha; toma el comprobante del evento o el de la sede (COMPROBMULTISEDE) o IDCON_TCOM_DEFAULT; consecutivo @MCP. Entrada: débito al activo (MOV_ACTIVOS DB) contra la contrapartida del modelo. Salida: crédito al activo por su costo, débito a depreciación acumulada (y ajustes por inflación / diferida si existen) y el saldo a la cuenta de resultado del evento. Traslado: reclasifica activo y depreciación acumulada del centro de costo / área anterior al nuevo. Marca la novedad CONTABILIZADA = 1 y APLICADA = 1.",
+          "invariante": "Periodo contable existente; una novedad contable no se vuelve a contabilizar.",
           "sps": [
             {
               "nombre": "SPQ_CONTAB_IACT",
               "metodo": "GENERAR",
-              "rol": "Asiento por novedad. Ficha leída."
+              "rol": "Comprobante de la novedad. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_NC_REVISAMCPE",
+              "metodo": "—",
+              "rol": "Revisa totales del comprobante (no leído)."
+            },
+            {
+              "nombre": "SPK_PASA_MCP_MCPNIIF",
+              "metodo": "—",
+              "rol": "Copia NIIF (no leído)."
             }
           ]
         }
@@ -271,8 +326,8 @@
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "parcial",
-      "explicacion": "Operativo: GEN_DEPRECIACION escribe IACTD y actualiza DEPACUM* en IACT (CUENTA, CUENTA_AJDEPRECIACION en maestro). Masivo: DepreciacionActivosComponent lista por periodo (DEPRECIACION_ACTIVOS_LISTA) y envía DEPR_ACFIJP_ENV_CONTA (CONTABILIDAD_3). IACTH también tiene CONTABILIZADA/NROCOMPROBANTE por evento.",
+      "estado": "documentado",
+      "explicacion": "Contabilidad → Depreciación activos: lista las cuotas del periodo (IACTD) y Contabilizar período envía las pendientes a un comprobante del mes (SPK_APL_AJDEPRECIACION), marca las cuotas y actualiza los acumulados de la ficha.",
       "tablasClave": [
         "IACTD",
         "IACT",
@@ -282,19 +337,24 @@
       "controles": [
         {
           "id": "depreciacion-contabilizar",
-          "nombre": "Contabilizar depreciación del periodo",
-          "explicacion": "/cont/depreciacion_activos: selecciona PRI → lista depreciaciones pendientes → Contabilizar período.",
-          "invariante": "Botón deshabilitado si depreciacionesPendientes=0.",
+          "nombre": "Contabilizar el periodo de depreciación",
+          "explicacion": "Elija el periodo (año-mes). La lista muestra cada cuota con Contabilizado, acumulados del movimiento y del activo, meses pendientes y cuenta; Excel exporta las columnas visibles. Contabilizar período (DEPR_ACFIJP_ENV_CONTA): exige IDCON_TCOM_DEPR; rechaza si hay activos comprados en los últimos 90 días sin cuotas, si en compras del último año hay menos cuotas que meses a depreciar, o si el mes no tiene cuotas pendientes. El comprobante lleva fecha del último día del mes, débito al gasto y crédito a depreciación acumulada por activo (KMCOM DEPRECIACION), distribuye por centro de costo si el activo tiene distribución (IACTDIS), excluye activos de baja, cuotas en cero y clase NIIF. Marca las cuotas con el número de comprobante y actualiza fecha de última depreciación, acumulados y meses depreciados.",
+          "invariante": "Un comprobante por periodo y sede; solo cuotas pendientes; sin cuotas generadas no hay envío.",
           "sps": [
             {
               "nombre": "SPQ_CONTABILIDAD_3",
               "metodo": "DEPRECIACION_ACTIVOS_LISTA / DEPR_ACFIJP_ENV_CONTA",
-              "rol": "OM depreciación AF. METODOs depreciación leídos."
+              "rol": "Lista y envío del periodo. Ficha leída."
             },
             {
-              "nombre": "SPQ_GEN_DEPRECIACION",
-              "metodo": "GENERAR_DEPRECIACION",
-              "rol": "Genera IACTD antes del envío contable masivo."
+              "nombre": "SPK_APL_AJDEPRECIACION",
+              "metodo": "—",
+              "rol": "Comprobante del mes y marcas. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "DEPR_IACTD_UNICO / RESET_CONTABILIZADO",
+              "rol": "Envío de una cuota y desmarcado (sin botón en Qrystalos2 para activos). Ficha leída."
             }
           ]
         }
@@ -302,5 +362,1276 @@
     }
   ],
   "flujoPasado": true,
-  "pasadaEn": "2026-09-06T04:50:00"
+  "pasadaEn": "2026-09-06T04:50:00",
+  "enRuta": true,
+  "flujoResumen": "Catálogos → Nuevo activo (ficha + foto) → Accesorios / Responsables → Generar Depreciación → Novedades (aplicar o contabilizar) → Contabilidad → Depreciación activos → Contabilizar período.",
+  "menu": {
+    "ruta": "Activos Fijos → Gestión · Activos Fijos → Tipos de activo / Eventos / Grupos / Artículos / Tipos de artículo / Equipos por sector / Notificaciones · Contabilidad → Depreciación activos",
+    "fuente": "routes.js /iact (IndexPage con submenús USGRUH), /iact/gestion, /iact/iacttipoact, /iact/iactevent, /iact/iactgrupos, /iact/iactarticulo, /iact/iacttiparticulo, /iact/iacteqxsec, /iact/conf_notixsec (duplicados bajo /conf), /cont/depreciacion_activos. Menú del layout vía MENUQ_COL · IACT."
+  },
+  "flujos": [
+    {
+      "id": "activos-alta",
+      "nombre": "Alta del activo",
+      "icono": "inventory_2",
+      "descripcion": "De la compra a la ficha con código, foto y marca de depreciable.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Entrar a Gestión",
+          "rol": "Activos fijos / Almacén",
+          "pantalla": "Activos Fijos → Gestión",
+          "tablas": [
+            "IACT"
+          ],
+          "sp": "AppStore.read IACT",
+          "descripcion": "Filtros avanzados (campo, operador, valor → Agregar), fechas de compra Desde / Hasta (Hoy), sector / servicio y Buscar activo. Actualizar recarga la grilla. Cada fila tiene Editar, Hoja de vida y se expande para ver Eventos."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo activo → Información",
+          "rol": "Activos fijos",
+          "pantalla": "Crear activo fijo",
+          "tablas": [
+            "IACT",
+            "IACTT"
+          ],
+          "sp": "SPQ_IACT · TRE_TIPOACT",
+          "descripcion": "Tipo de activo (clase Local) y, si el proceso contable es mixto, tipo Niif y valor comercial Niif. Al elegir el tipo el formulario exige los campos que ese tipo marcó: modelo, marca, serial, referencia, número de escritura, linderos, número de partes o matrícula."
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Datos generales y técnicos",
+          "rol": "Activos fijos",
+          "pantalla": "Crear activo fijo",
+          "tablas": [
+            "IACT",
+            "TER",
+            "HHAB",
+            "TGEN"
+          ],
+          "sp": "—",
+          "descripcion": "Descripción, estado, costo histórico, valor comercial, fecha de compra, códigos interno, alterno y de barra, artículo, categoría, centro de costo, área funcional, servicio, grupo, fabricante (*), cuenta (*), proveedor; especificaciones técnicas (Invima, año, voltajes, calibración, parada, propiedad, tipo de mantenimiento) y fotografía."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Guardar",
+          "rol": "Sistema",
+          "pantalla": "Crear activo fijo",
+          "tablas": [
+            "IACT"
+          ],
+          "sp": "SPQ_IACT · GUARDAR (INSERTAR)",
+          "descripcion": "Asigna el código del activo por consecutivo. Rechaza si el serial, el código interno o el código alterno ya existen en otro activo. La foto se sube aparte y queda ligada a la ficha. Se deprecia? queda en No hasta generar depreciación."
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Se deprecia?",
+          "rol": "Activos fijos / Contabilidad",
+          "pantalla": "Editar activo → Depreciación · Tipos de activo",
+          "tablas": [
+            "IACT",
+            "IACTT",
+            "IACTD"
+          ],
+          "sp": "SPQ_GEN_DEPRECIACION · GENERAR_DEPRECIACION / SPQ_TIPOAF · GENERAR_DEP",
+          "descripcion": "Generar Depreciación en la pestaña del activo (toma vida útil y salvamento del tipo si el activo no trae saldo inicial) o Generar Depreciación en el tipo (marca depreciables los activos cuyo costo alcanza el salvamento y recalcula todos). El sistema fija Se deprecia, meses a depreciar y salvamento."
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Editar: accesorios, responsables, depreciación",
+          "rol": "Activos fijos",
+          "pantalla": "Editar activo fijo",
+          "tablas": [
+            "IACTEQU",
+            "IACTR",
+            "IACTD"
+          ],
+          "sp": "SPQ_IACTEQU · SPQ_IACTR · SPQ_GEN_DEPRECIACION",
+          "descripcion": "Las pestañas Accesorios, Responsables y Depreciación solo aparecen al editar un activo ya guardado."
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Activo con ficha",
+          "rol": "—",
+          "pantalla": "Gestión",
+          "tablas": [
+            "IACT"
+          ],
+          "sp": "SPQ_IACT · INFO_HV_IACT",
+          "descripcion": "Activo con código, foto y datos completos; hoja de vida imprimible desde la fila (requiere fabricante). Listo para responsables, novedades y depreciación."
+        }
+      ]
+    },
+    {
+      "id": "activos-responsables",
+      "nombre": "Accesorios, responsables y formatos",
+      "icono": "badge",
+      "descripcion": "Quién tiene el activo, qué lo acompaña y qué documentos se imprimen.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Accesorios → Nuevo",
+          "rol": "Activos fijos",
+          "pantalla": "Editar activo → Accesorios",
+          "tablas": [
+            "IACTEQU"
+          ],
+          "sp": "SPQ_IACTEQU · GUARDAR",
+          "descripcion": "Ítem, descripción, serial, marca, modelo, código interno y estado (Activo por defecto). El ítem no se repite dentro del activo. Eliminar está oculto; se edita."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Responsables → Asignar",
+          "rol": "Activos fijos",
+          "pantalla": "Editar activo → Responsables",
+          "tablas": [
+            "IACTR",
+            "TER"
+          ],
+          "sp": "SPQ_IACTR · GUARDAR",
+          "descripcion": "Pestaña General: empleado activo (buscador de terceros categoría EMP), cargo, fecha de asignación, estado Asignado, validado No, observación. Pestaña Capacitación: casillas uso básico, almacenamiento, verificación de accesorios y entrega de manuales. La fecha de retiro solo se habilita al editar."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Reglas al guardar",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "IACTR"
+          ],
+          "sp": "SPQ_IACTR · GUARDAR",
+          "descripcion": "Rechaza si el mismo empleado ya está en ese activo (al insertar compara activo + empleado + ítem; al editar, activo + empleado en otro ítem). Guarda usuario, equipo y fecha del movimiento."
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Entrega y verificación",
+          "rol": "Activos fijos / Ingeniería biomédica",
+          "pantalla": "Responsable → Nuevo (verificación)",
+          "tablas": [
+            "VERIF"
+          ],
+          "sp": "SPQ_VERIF_IACT_PARTIC · GUARDAR",
+          "descripcion": "Registro de entrega con consecutivo interno, fecha, activo, empleado y cargo (tipo ASIGACTI). Se edita o elimina desde su tabla."
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Retirar",
+          "rol": "Activos fijos",
+          "pantalla": "Fila del responsable",
+          "tablas": [
+            "IACTR"
+          ],
+          "sp": "SPQ_IACTR · RETIRAR",
+          "descripcion": "Confirmación. Fija fecha de retiro hoy, estado Retirado y quién lo hizo. La fila retirada no se edita, retira ni imprime. Para reasignar se crea una asignación nueva."
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Imprimir",
+          "rol": "Activos fijos",
+          "pantalla": "Fila del responsable · Gestión → Imprimir",
+          "tablas": [
+            "IACT",
+            "IACTR",
+            "VERIF"
+          ],
+          "sp": "SPQ_VERIF_IACT_PARTIC · INFO_VERIF · SPQ_IACT · INFO_HV_IACT",
+          "descripcion": "Acta del responsable (PDF desde la fila). Hoja de vida del activo (impresora de la grilla). Formatos en blanco desde Imprimir: Paz y Salvo, Entrada y Salida, Acta de Entrega."
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Trazabilidad del activo",
+          "rol": "—",
+          "pantalla": "—",
+          "tablas": [
+            "IACTR",
+            "IACTEQU",
+            "VERIF"
+          ],
+          "sp": "—",
+          "descripcion": "Historia de responsables con fechas de asignación y retiro, accesorios vigentes y actas impresas."
+        }
+      ]
+    },
+    {
+      "id": "activos-eventos",
+      "nombre": "Novedades: traslado, salida y entrada",
+      "icono": "swap_horiz",
+      "descripcion": "Registrar la novedad, aplicarla a la ficha o contabilizarla.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Expandir la fila → Eventos → Nuevo",
+          "rol": "Activos fijos",
+          "pantalla": "Gestión → Eventos",
+          "tablas": [
+            "IACTH",
+            "IACTE"
+          ],
+          "sp": "SPQ_IACTH · GUARDAR",
+          "descripcion": "Evento del catálogo (no de mantenimiento), fecha, valor (por defecto el costo del activo), estado nuevo si el evento pide estado, centro de costo y área si los pide, observación. Nace pendiente: sin aplicar ni contabilizar."
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Mientras está pendiente",
+          "rol": "Sistema",
+          "pantalla": "Eventos",
+          "tablas": [
+            "IACTH"
+          ],
+          "sp": "SPQ_IACTH · GUARDAR (EDITAR) / ELIMINAR",
+          "descripcion": "Se puede editar o eliminar. Los tres botones (Editar, Eliminar, Aplicar Novedad) se deshabilitan cuando la novedad está aplicada o contabilizada, y para el evento de compra (IACTEVENTOCOMPRA)."
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Aplicar Novedad: ¿el evento contabiliza?",
+          "rol": "Activos fijos / Contabilidad",
+          "pantalla": "Eventos",
+          "tablas": [
+            "IACTE"
+          ],
+          "sp": "—",
+          "descripcion": "El evento decide la ruta: Se contabiliza? = Sí → comprobante (CONTAB_IACT). No → solo ficha (APLICAR_IACTH)."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Aplicar a la ficha (no contable)",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "IACT",
+            "IACTH",
+            "IACTD"
+          ],
+          "sp": "SPQ_APLICAR_IACTH · GENERAR → SPK_GEN_DEPRECIACION",
+          "descripcion": "Traslado: cambia centro de costo y área. Salida: cambia el estado; si el evento es de baja el activo deja de depreciarse. Entrada: actualiza estado y valor. Marca la novedad aplicada y regenera las cuotas pendientes."
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Contabilizar la novedad",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "MCPE",
+            "MCHE",
+            "IACTH",
+            "PRI"
+          ],
+          "sp": "SPQ_CONTAB_IACT · GENERAR → SPQ_NC_REVISAMCPE · SPK_PASA_MCP_MCPNIIF",
+          "descripcion": "Exige periodo contable para la fecha. Comprobante del evento (o de la sede / por defecto) con consecutivo. Entrada: débito al activo. Salida: crédito al activo, débito a depreciación acumulada y saldo a resultado. Traslado: reclasifica activo y depreciación al nuevo centro de costo / área. Revisa totales, copia NIIF si aplica y marca contabilizada y aplicada."
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Novedad cerrada",
+          "rol": "—",
+          "pantalla": "Eventos",
+          "tablas": [
+            "IACTH"
+          ],
+          "sp": "—",
+          "descripcion": "La novedad queda bloqueada. Si fue contable, revise la ficha (estado, centro de costo, valor) y vuelva a Generar Depreciación: la ruta contable no actualiza la ficha por sí sola."
+        }
+      ]
+    },
+    {
+      "id": "activos-depreciacion",
+      "nombre": "Depreciación y cierre del mes",
+      "icono": "trending_down",
+      "descripcion": "Cuotas por activo y comprobante mensual desde Contabilidad.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Generar las cuotas",
+          "rol": "Activos fijos / Contabilidad",
+          "pantalla": "Editar activo → Depreciación · Tipos de activo → Generar Depreciación",
+          "tablas": [
+            "IACT",
+            "IACTT",
+            "IACTD"
+          ],
+          "sp": "SPQ_GEN_DEPRECIACION · GENERAR_DEPRECIACION / SPQ_TIPOAF · GENERAR_DEP",
+          "descripcion": "Por activo (botón habilitado si Se deprecia) o por tipo (todos sus activos). La pestaña muestra acumulada histórica, acumulada diferida, fecha de última depreciación, meses a depreciar, salvamento y meses depreciados."
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Cálculo lineal",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "IACT",
+            "IACTD"
+          ],
+          "sp": "SPK_GEN_DEPRECIACION",
+          "descripcion": "Si el activo no trae saldo inicial toma vida útil y salvamento del tipo y marca Se deprecia si la vida útil es mayor que cero. Borra las cuotas no contabilizadas y crea una línea por mes (clase Local) desde la compra o desde la última contabilizada: cuota = (costo − salvamento) / meses. Si ya se depreció todo responde «Activo depreciado completamente»."
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Contabilidad → Depreciación activos",
+          "rol": "Contabilidad",
+          "pantalla": "Contabilidad → Depreciación activos",
+          "tablas": [
+            "IACTD",
+            "IACT",
+            "PRI"
+          ],
+          "sp": "SPQ_CONTABILIDAD_3 · DEPRECIACION_ACTIVOS_LISTA",
+          "descripcion": "Elija el periodo contable (año-mes). Lista de cuotas del mes con Contabilizado, valor, acumulados del movimiento y del activo, meses pendientes, cuenta y comprobante. Exportar Excel y Columnas (Restaurar / Aplicar)."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Validaciones de Contabilizar período",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "IACT",
+            "IACTD",
+            "USVGS"
+          ],
+          "sp": "SPQ_CONTABILIDAD_3 · DEPR_ACFIJP_ENV_CONTA",
+          "descripcion": "Exige el comprobante de depreciación (IDCON_TCOM_DEPR). Rechaza si hay activos comprados en los últimos 90 días sin cuotas generadas, si en compras del último año hay menos cuotas que meses a depreciar, o si el mes no tiene cuotas pendientes (clase distinta de NIIF)."
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Comprobante del mes",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "MCPE",
+            "MCHE",
+            "IACTD",
+            "IACT",
+            "IACTDIS"
+          ],
+          "sp": "SPK_APL_AJDEPRECIACION → SPK_GENCONSECUTIVO · FNK_CUENTA_KMCOM · SPK_NC_REVISAMCPE",
+          "descripcion": "Un comprobante con fecha del último día del mes (comprobante de la sede si COMPROBMULTISEDE; si no, IDCON_TCOM_DEPR). Por activo: débito al gasto y crédito a depreciación acumulada (KMCOM DEPRECIACION); si el activo tiene distribución por centro de costo reparte por porcentaje. Excluye activos de baja, cuotas en cero y clase NIIF. Marca las cuotas con el comprobante y actualiza fecha de última depreciación, acumulados y meses depreciados; revisa totales."
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Mes contabilizado",
+          "rol": "—",
+          "pantalla": "Depreciación activos",
+          "tablas": [
+            "IACTD",
+            "MCP"
+          ],
+          "sp": "—",
+          "descripcion": "Las cuotas del periodo aparecen Contabilizado = Sí con su comprobante. Si vuelve a pulsar, solo procesa las pendientes que hayan quedado."
+        }
+      ]
+    }
+  ],
+  "estadosActivo": {
+    "titulo": "Estados del activo, la novedad, la cuota y el responsable",
+    "descripcion": "IACT.ESTADO y DEPRECIABLE, IACTH.APLICADA / CONTABILIZADA, IACTD.CONTABILIZADA y CLASE, IACTR.ESTADO / VALIDADO, IACTT.ESTADO / CLASE. Lo que condiciona qué botón aparece.",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "Act",
+        "tono": "verde",
+        "etiquetas": [
+          "IACT.ESTADO",
+          "Tabla general ESTADOACTIVO"
+        ],
+        "significa": "Estado operativo del activo según la tabla general (en servicio, en mantenimiento, de baja…). Lo fija el alta y lo cambian las novedades que piden estado.",
+        "queHacer": "Mantenerlo con novedades; no editarlo a mano si el evento existe."
+      },
+      {
+        "codigo": "Baja",
+        "tono": "rojo",
+        "etiquetas": [
+          "IACT.ESTADO = IACT_ESTADOBAJA",
+          "Evento con Baja de activo"
+        ],
+        "significa": "El activo salió del inventario. Deja de depreciarse (la contabilización del mes lo excluye) y, si la salida fue contable, su costo y depreciación acumulada se cancelaron por comprobante.",
+        "queHacer": "Registrar la salida como novedad contable; conservar la ficha para historia."
+      },
+      {
+        "codigo": "S/E",
+        "tono": "ambar",
+        "etiquetas": [
+          "IACT.ESTADO vacío"
+        ],
+        "significa": "Activo creado sin estado: el campo Estado del alta es de solo lectura y no trae valor inicial.",
+        "queHacer": "Aplicar una novedad que fije estado o pedir el ajuste (hallazgo)."
+      },
+      {
+        "codigo": "Dep",
+        "tono": "azul",
+        "etiquetas": [
+          "IACT.DEPRECIABLE = 1",
+          "Se deprecia?"
+        ],
+        "significa": "El activo tiene cuotas: vida útil mayor que cero (o costo que alcanza el salvamento según el tipo). Habilita Generar Depreciación en la pestaña.",
+        "queHacer": "Generar cuotas antes de cerrar el mes."
+      },
+      {
+        "codigo": "NoD",
+        "tono": "gris",
+        "etiquetas": [
+          "IACT.DEPRECIABLE = 0"
+        ],
+        "significa": "Sin cuotas: nuevo sin generar, vida útil cero o costo por debajo del salvamento del tipo. La contabilización del mes lo ignora.",
+        "queHacer": "Si debe depreciarse, revisar vida útil del tipo y pulsar Generar Depreciación."
+      },
+      {
+        "codigo": "100%",
+        "tono": "gris",
+        "etiquetas": [
+          "MESESDEPRECIADOS = MESESADEPRECIAR"
+        ],
+        "significa": "Depreciado por completo. Generar Depreciación responde «Activo depreciado completamente».",
+        "queHacer": "Nada; solo salida o baja."
+      },
+      {
+        "codigo": "Pend",
+        "tono": "ambar",
+        "etiquetas": [
+          "IACTH.APLICADA 0",
+          "CONTABILIZADA 0"
+        ],
+        "significa": "Novedad registrada sin efecto sobre la ficha ni contabilidad. Editar, Eliminar y Aplicar Novedad habilitados.",
+        "queHacer": "Revisar y Aplicar Novedad."
+      },
+      {
+        "codigo": "Apl",
+        "tono": "azul",
+        "etiquetas": [
+          "IACTH.APLICADA 1",
+          "CONTABILIZADA 0"
+        ],
+        "significa": "Novedad no contable aplicada: la ficha cambió (centro de costo, área, estado o valor) y se regeneraron cuotas. Botones deshabilitados.",
+        "queHacer": "Verificar la ficha."
+      },
+      {
+        "codigo": "Cont",
+        "tono": "verde",
+        "etiquetas": [
+          "IACTH.CONTABILIZADA 1",
+          "NROCOMPROBANTE"
+        ],
+        "significa": "Novedad contable con comprobante. Botones deshabilitados. La ficha no se actualiza por esta ruta.",
+        "queHacer": "Revisar la ficha y regenerar depreciación si cambió valor o estado."
+      },
+      {
+        "codigo": "Cuota",
+        "tono": "ambar",
+        "etiquetas": [
+          "IACTD.CONTABILIZADA 0",
+          "CLASE Local"
+        ],
+        "significa": "Cuota mensual generada y pendiente de enviar a contabilidad. Se borra y recalcula al volver a generar.",
+        "queHacer": "Contabilizar período en Contabilidad → Depreciación activos."
+      },
+      {
+        "codigo": "C-OK",
+        "tono": "verde",
+        "etiquetas": [
+          "IACTD.CONTABILIZADA 1",
+          "NROCOMPROBANTE"
+        ],
+        "significa": "Cuota con comprobante del mes. No se recalcula.",
+        "queHacer": "Nada; reversar es tarea contable."
+      },
+      {
+        "codigo": "NIIF",
+        "tono": "gris",
+        "etiquetas": [
+          "IACTD.CLASE Niif"
+        ],
+        "significa": "Cuota de la clase NIIF: la pantalla y el comprobante local la excluyen.",
+        "queHacer": "Se gestiona en el proceso contable NIIF."
+      },
+      {
+        "codigo": "Asig",
+        "tono": "verde",
+        "etiquetas": [
+          "IACTR.ESTADO Asignado"
+        ],
+        "significa": "Responsable vigente. Editar, Retirar e Imprimir acta habilitados.",
+        "queHacer": "Registrar capacitación / entrega."
+      },
+      {
+        "codigo": "Ret",
+        "tono": "gris",
+        "etiquetas": [
+          "IACTR.ESTADO Retirado",
+          "FECHARET"
+        ],
+        "significa": "Responsable retirado con fecha. La fila no se edita, retira ni imprime.",
+        "queHacer": "Asignar un responsable nuevo si hace falta."
+      },
+      {
+        "codigo": "Val",
+        "tono": "azul",
+        "etiquetas": [
+          "IACTR.VALIDADO Sí / No"
+        ],
+        "significa": "Marca manual de que la asignación fue verificada (texto libre Sí/No).",
+        "queHacer": "Marcar Sí al confirmar la entrega."
+      },
+      {
+        "codigo": "Tipo",
+        "tono": "azul",
+        "etiquetas": [
+          "IACTT.ESTADO Activo",
+          "CLASE Local / Niif"
+        ],
+        "significa": "Solo los tipos activos salen en el alta; la clase separa el tipo local del tipo NIIF (este solo si el proceso contable es mixto).",
+        "queHacer": "Inactivar en vez de eliminar si ya tiene activos."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear un activo fijo nuevo",
+      "donde": "Activos Fijos → Gestión → Nuevo activo → Información → Guardar",
+      "condicion": "Tipo de activo creado; serial, código interno y código alterno no repetidos; fabricante y cuenta diligenciados.",
+      "noEs": "No se importa desde la compra de inventario: la ficha se digita (Importar está oculto)."
+    },
+    {
+      "necesidad": "Saber qué campos son obligatorios para un tipo de equipo",
+      "donde": "Activos Fijos → Tipos de activo → editar → casillas Pedir…",
+      "condicion": "El tipo decide: modelo, marca, serial, referencia, escritura, linderos, partes, matrícula.",
+      "noEs": "No se configura por activo."
+    },
+    {
+      "necesidad": "Poner la foto del activo",
+      "donde": "Gestión → Nuevo / Editar → Información → Fotografía del activo",
+      "condicion": "Se sube con el formulario; aparece en la hoja de vida.",
+      "noEs": "No es el adjunto de documentos (pestaña Documentos en desarrollo)."
+    },
+    {
+      "necesidad": "Registrar los accesorios de un equipo",
+      "donde": "Gestión → Editar → Accesorios → Nuevo",
+      "condicion": "Activo ya guardado; ítem no repetido.",
+      "noEs": "No son artículos de inventario."
+    },
+    {
+      "necesidad": "Asignar un responsable y registrar la capacitación",
+      "donde": "Gestión → Editar → Responsables → Asignar (pestañas General y Capacitación)",
+      "condicion": "Empleado activo; no repetido en el mismo activo.",
+      "noEs": "No cambia el centro de costo del activo (eso es un traslado)."
+    },
+    {
+      "necesidad": "Retirar al responsable actual",
+      "donde": "Responsables → fila → Retirar",
+      "condicion": "Responsable en estado Asignado.",
+      "noEs": "No elimina la historia; la fila queda Retirado."
+    },
+    {
+      "necesidad": "Imprimir la hoja de vida del equipo",
+      "donde": "Gestión → fila → icono impresora",
+      "condicion": "El activo debe tener fabricante.",
+      "noEs": "No es el acta del responsable."
+    },
+    {
+      "necesidad": "Imprimir el acta de entrega al responsable",
+      "donde": "Responsables → fila → Imprimir",
+      "condicion": "Responsable Asignado.",
+      "noEs": "El formato Acta de Entrega del menú Imprimir es un formato en blanco."
+    },
+    {
+      "necesidad": "Imprimir paz y salvo, entrada y salida o acta de entrega",
+      "donde": "Gestión → Imprimir (menú)",
+      "condicion": "Ninguna: son formatos en blanco para diligenciar a mano.",
+      "noEs": "No toman datos del activo seleccionado."
+    },
+    {
+      "necesidad": "Trasladar un activo a otro centro de costo o área",
+      "donde": "Gestión → expandir fila → Eventos → Nuevo (evento tipo Traslado) → Aplicar Novedad",
+      "condicion": "Evento de traslado creado en el catálogo; novedad pendiente.",
+      "noEs": "No se edita el centro de costo en la ficha a mano si el evento existe."
+    },
+    {
+      "necesidad": "Dar de baja un activo",
+      "donde": "Eventos → Nuevo (evento tipo Salida con estado de baja) → Aplicar Novedad",
+      "condicion": "Evento de salida con estado asociado = estado de baja; si contabiliza, periodo contable abierto.",
+      "noEs": "No se borra la ficha."
+    },
+    {
+      "necesidad": "Contabilizar una novedad (salida, traslado, entrada)",
+      "donde": "Eventos → Aplicar Novedad (evento con Se contabiliza? = Sí)",
+      "condicion": "Evento con comprobante; periodo contable existente para la fecha.",
+      "noEs": "La ruta contable no actualiza la ficha ni regenera cuotas: hágalo después."
+    },
+    {
+      "necesidad": "Corregir o borrar una novedad",
+      "donde": "Eventos → fila → Editar / Eliminar",
+      "condicion": "Solo mientras no esté aplicada ni contabilizada.",
+      "noEs": "No hay reversa de una novedad aplicada desde la pantalla."
+    },
+    {
+      "necesidad": "Marcar un activo como depreciable y calcular sus cuotas",
+      "donde": "Gestión → Editar → Depreciación → Generar Depreciación",
+      "condicion": "Tipo con vida útil mayor que cero; el botón se habilita cuando Se deprecia está en Sí (si está en No, use Generar Depreciación del tipo).",
+      "noEs": "No contabiliza: solo crea las cuotas."
+    },
+    {
+      "necesidad": "Recalcular la depreciación de todos los activos de un tipo",
+      "donde": "Activos Fijos → Tipos de activo → seleccionar tipo → Generar Depreciación",
+      "condicion": "Tipo con vida útil y salvamento definidos.",
+      "noEs": "No toca cuotas ya contabilizadas."
+    },
+    {
+      "necesidad": "Ver las cuotas de depreciación de un mes",
+      "donde": "Contabilidad → Depreciación activos → periodo",
+      "condicion": "Cuotas generadas con fecha en ese mes.",
+      "noEs": "No muestra NIIF."
+    },
+    {
+      "necesidad": "Enviar la depreciación del mes a contabilidad",
+      "donde": "Contabilidad → Depreciación activos → Contabilizar período",
+      "condicion": "Comprobante de depreciación configurado; sin activos recientes sin cuotas; cuotas pendientes en el mes.",
+      "noEs": "No reversa un mes ya contabilizado."
+    },
+    {
+      "necesidad": "Exportar la depreciación del mes a Excel",
+      "donde": "Contabilidad → Depreciación activos → Exportar Excel",
+      "condicion": "Periodo con cuotas listadas; exporta las columnas visibles.",
+      "noEs": "—"
+    },
+    {
+      "necesidad": "Crear el catálogo de eventos o novedades",
+      "donde": "Activos Fijos → Eventos → N U E V O",
+      "condicion": "Al menos una casilla Pide…; comprobante si contabiliza.",
+      "noEs": "Los eventos de mantenimiento no salen en novedades."
+    },
+    {
+      "necesidad": "Asignar un administrador (empleado) a un tipo de activo",
+      "donde": "Tipos de activo → seleccionar → Asignar Administrador → Agregar",
+      "condicion": "Variable TIPO_ACTIVO_USUARIO = SI.",
+      "noEs": "No es el responsable del activo."
+    },
+    {
+      "necesidad": "Crear un fabricante",
+      "donde": "Gestión → Fabricantes",
+      "condicion": "Categoría de fabricante configurada (TERCATFABRICANTE).",
+      "noEs": "No es el proveedor de la compra."
+    },
+    {
+      "necesidad": "Ligar un artículo de inventario a un tipo de activo",
+      "donde": "Activos Fijos → Artículos → Nuevo / editar → Tipo de activo fijo",
+      "condicion": "Tipo de artículo creado.",
+      "noEs": "No crea el activo."
+    },
+    {
+      "necesidad": "Registrar mantenimientos o adjuntar documentos del activo",
+      "donde": "Gestión → expandir fila → Mantenimiento / Documentos",
+      "condicion": "Pestañas en desarrollo en esta versión.",
+      "noEs": "Hoy no hay dónde registrarlos."
+    },
+    {
+      "necesidad": "Repartir la depreciación de un activo entre varios centros de costo",
+      "donde": "Sin pantalla (la pestaña Distribución Contable está deshabilitada)",
+      "condicion": "El comprobante del mes sí respeta la distribución si existe en la base.",
+      "noEs": "No se puede capturar desde Qrystalos2."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Agregar",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Añade una condición de filtro (campo, operador, valor) a la búsqueda de activos."
+    },
+    {
+      "label": "Hoy",
+      "icono": "today",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Pone la fecha de hoy en el rango de fechas de compra."
+    },
+    {
+      "label": "Actualizar",
+      "icono": "refresh",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Recarga la grilla de activos con los filtros actuales."
+    },
+    {
+      "label": "Nuevo activo",
+      "icono": "add_circle",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Abre el formulario Crear activo fijo (pestaña Información)."
+    },
+    {
+      "label": "Fabricantes",
+      "icono": "factory",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Lista y edita los terceros de la categoría de fabricantes."
+    },
+    {
+      "label": "Importar",
+      "icono": "upload_file",
+      "color": "primary",
+      "estilo": "outline deshabilitado",
+      "descripcion": "Oculto en esta versión: no hay importación masiva de activos."
+    },
+    {
+      "label": "Imprimir",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "outline menú desplegable",
+      "descripcion": "Formatos en blanco: Paz y Salvo, Entrada y Salida, Acta de Entrega."
+    },
+    {
+      "label": "Editar",
+      "icono": "edit",
+      "color": "blue-5",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "Abre la ficha del activo con las pestañas Información, Accesorios, Responsables y Depreciación."
+    },
+    {
+      "label": "Hoja de vida",
+      "icono": "print",
+      "color": "green-8",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "PDF de la hoja de vida del activo (requiere fabricante)."
+    },
+    {
+      "label": "Eventos",
+      "icono": "event",
+      "color": "primary",
+      "estilo": "pestaña",
+      "descripcion": "Novedades del activo en la fila expandida."
+    },
+    {
+      "label": "Mantenimiento",
+      "icono": "handyman",
+      "color": "grey",
+      "estilo": "pestaña deshabilitado",
+      "descripcion": "En desarrollo."
+    },
+    {
+      "label": "Documentos",
+      "icono": "description",
+      "color": "grey",
+      "estilo": "pestaña deshabilitado",
+      "descripcion": "En desarrollo."
+    },
+    {
+      "label": "Guardar / Actualizar",
+      "icono": "save",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Graba la ficha (alta o edición) con las validaciones de duplicados."
+    },
+    {
+      "label": "Nuevo (accesorio)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nuevo accesorio del activo."
+    },
+    {
+      "label": "Asignar",
+      "icono": "person_add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nuevo responsable del activo (pestañas General y Capacitación)."
+    },
+    {
+      "label": "Retirar",
+      "icono": "block",
+      "color": "red",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "Retira al responsable: fecha de retiro hoy y estado Retirado."
+    },
+    {
+      "label": "Imprimir acta",
+      "icono": "print",
+      "color": "green",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "Acta del responsable en PDF."
+    },
+    {
+      "label": "Nuevo (verificación)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Registro de entrega / verificación del responsable."
+    },
+    {
+      "label": "Generar Depreciación",
+      "icono": "calculate",
+      "color": "deep-purple",
+      "estilo": "push",
+      "descripcion": "Recalcula las cuotas pendientes del activo (habilitado si Se deprecia)."
+    },
+    {
+      "label": "Nuevo (evento)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nueva novedad del activo."
+    },
+    {
+      "label": "Aplicar Novedad",
+      "icono": "play_arrow",
+      "color": "positive",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "Aplica la novedad a la ficha o la contabiliza según el evento."
+    },
+    {
+      "label": "Editar novedad",
+      "icono": "edit",
+      "color": "blue-5",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "Solo mientras la novedad esté pendiente."
+    },
+    {
+      "label": "Eliminar novedad",
+      "icono": "delete",
+      "color": "red",
+      "estilo": "flat icono menú de la fila",
+      "descripcion": "Solo mientras la novedad esté pendiente."
+    },
+    {
+      "label": "N U E V O (tipo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nuevo tipo de activo."
+    },
+    {
+      "label": "Generar Depreciación (tipo)",
+      "icono": "calculate",
+      "color": "deep-purple",
+      "estilo": "push",
+      "descripcion": "Marca depreciables y recalcula todos los activos del tipo seleccionado."
+    },
+    {
+      "label": "Asignar Administrador",
+      "icono": "manage_accounts",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Empleados administradores del tipo (visible si TIPO_ACTIVO_USUARIO = SI)."
+    },
+    {
+      "label": "N U E V O (evento)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nuevo evento del catálogo."
+    },
+    {
+      "label": "N U E V O (grupo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nuevo grupo; Nuevo en la fila expandida crea el subgrupo."
+    },
+    {
+      "label": "Nuevo (artículo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nuevo artículo de inventario con tipo de activo fijo y fabricante."
+    },
+    {
+      "label": "Artículos Pendientes",
+      "icono": "pending_actions",
+      "color": "orange",
+      "estilo": "outline",
+      "descripcion": "Artículos creados desde otros módulos pendientes de completar."
+    },
+    {
+      "label": "Contabilizar período",
+      "icono": "account_balance",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Envía las cuotas pendientes del periodo a un comprobante contable."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "Exporta las columnas visibles de la depreciación del periodo."
+    },
+    {
+      "label": "Columnas",
+      "icono": "view_column",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Elige columnas visibles (Restaurar / Aplicar)."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Activos Fijos (MENUQ_COL · IACT)",
+      "accion": "Entrar al módulo y ver sus opciones",
+      "rol": "Activos fijos / Almacén",
+      "descripcion": "El layout carga el menú por procedimiento; la página de inicio del módulo muestra solo los submenús autorizados por grupo (USGRUH)."
+    },
+    {
+      "codigo": "Gestión de activos",
+      "accion": "Crear, editar, novedades, responsables, depreciación por activo",
+      "rol": "Activos fijos",
+      "descripcion": "La pantalla no evalúa permisos por botón: quien entra a Gestión puede crear, editar y aplicar novedades."
+    },
+    {
+      "codigo": "Configuración (tipos, eventos, grupos, artículos)",
+      "accion": "Mantener catálogos",
+      "rol": "Administrador del módulo",
+      "descripcion": "Rutas propias bajo Activos Fijos y duplicadas bajo Configuración; la autorización es por menú."
+    },
+    {
+      "codigo": "Administrador por tipo (TIPOACTXUSUARIO)",
+      "accion": "Asignar empleados al tipo de activo",
+      "rol": "Administrador del módulo",
+      "descripcion": "Registro informativo en tabla general; no restringe acciones en Qrystalos2."
+    },
+    {
+      "codigo": "Menú Contabilidad → Depreciación activos",
+      "accion": "Listar y contabilizar el periodo",
+      "rol": "Contabilidad",
+      "descripcion": "Permiso de menú contable; la pantalla toma la compañía y la sede del usuario."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDPROCESOCONTABLE",
+      "tipo": "USVGS",
+      "valorSugerido": "LOCAL o MIXTO",
+      "descripcion": "Con MIXTO el alta pide tipo Niif y valor comercial Niif y la novedad contable pasa copia NIIF."
+    },
+    {
+      "nombre": "TERCATFABRICANTE",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de la categoría de terceros para fabricantes",
+      "descripcion": "Filtra la lista de Fabricantes en Gestión y el campo Fabricante (*) de la ficha."
+    },
+    {
+      "nombre": "IACTEVENTOCOMPRA",
+      "tipo": "USVGS",
+      "valorSugerido": "Código del evento de compra",
+      "descripcion": "Novedades con ese evento no se editan, eliminan ni aplican desde la pantalla."
+    },
+    {
+      "nombre": "IACT_ESTADOBAJA",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de ESTADOACTIVO que significa baja",
+      "descripcion": "En el catálogo de eventos marca Baja de activo cuando el estado asociado coincide."
+    },
+    {
+      "nombre": "TIPO_ACTIVO_USUARIO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Muestra Asignar Administrador en Tipos de activo."
+    },
+    {
+      "nombre": "IDMODELOCONTABLE",
+      "tipo": "USVGS",
+      "valorSugerido": "Modelo contable vigente",
+      "descripcion": "Modelo KMCOM con el que se resuelven las cuentas de MOV_ACTIVOS, DEPRECIACION, DEPRECIACION_AJI e INFLACION."
+    },
+    {
+      "nombre": "IDCON_TCOM_DEFAULT",
+      "tipo": "USVGS",
+      "valorSugerido": "Comprobante contable por defecto",
+      "descripcion": "Comprobante de la novedad contable cuando el evento no trae uno."
+    },
+    {
+      "nombre": "IDCON_TCOM_DEPR",
+      "tipo": "USVGS",
+      "valorSugerido": "Comprobante de depreciación",
+      "descripcion": "Obligatoria para Contabilizar período; comprobante del asiento mensual (salvo comprobante por sede)."
+    },
+    {
+      "nombre": "COMPROBMULTISEDE",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Con SI el comprobante sale de la tabla de comprobantes por sede (clase DEPRECIACION para el mes; clase del evento para la novedad)."
+    },
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "tipo": "USVGS",
+      "valorSugerido": "Tercero de la institución",
+      "descripcion": "Tercero de la cabecera y de las líneas del comprobante de depreciación."
+    },
+    {
+      "nombre": "CON_ACTFIJO_CONTAXCC",
+      "tipo": "USVGS",
+      "valorSugerido": "—",
+      "descripcion": "La lee el comprobante de depreciación pero no la usa en esta versión."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "iact-alta-sin-estado",
+      "tipo": "fe",
+      "detalle": "GestionIACTComponent: Nuevo activo no inicializa datoIACT.ESTADO y el campo Estado es readonly; SPQ_IACT GUARDAR INSERTAR graba ESTADO NULL. El activo nace sin estado hasta que una novedad lo fije.",
+      "solucionPropuesta": "Inicializar ESTADO con el estado operativo por defecto (tabla general ESTADOACTIVO o variable) al pulsar Nuevo activo, o permitir elegirlo en el alta."
+    },
+    {
+      "id": "iact-duplicados-editar",
+      "tipo": "sql",
+      "detalle": "SPQ_IACT GUARDAR: al INSERTAR valida SERIAL / CODIGOINTERNO / ICODALTERNO contra todos los activos; al EDITAR solo contra activos de otro IDTIPOACTIVO. Editando se puede repetir un serial dentro del mismo tipo.",
+      "solucionPropuesta": "En EDITAR comparar contra todos los activos distintos del propio IDACTIVO."
+    },
+    {
+      "id": "iacth-editar-sin-validar",
+      "tipo": "sql",
+      "detalle": "SPQ_IACTH GUARDAR (EDITAR) actualiza CONTABILIZADA, NROCOMPROBANTE y APLICADA con lo que mande la pantalla, y ELIMINAR borra sin comprobar si la novedad está aplicada o contabilizada. El bloqueo existe solo en los botones.",
+      "solucionPropuesta": "Rechazar EDITAR / ELIMINAR cuando APLICADA = 1 o CONTABILIZADA = 1; no actualizar esas tres columnas desde GUARDAR."
+    },
+    {
+      "id": "contab-iact-no-actualiza-ficha",
+      "tipo": "sql",
+      "detalle": "Aplicar Novedad llama un solo método: CONTAB_IACT si el evento contabiliza, APLICAR_IACTH si no. CONTAB_IACT genera el comprobante y marca la novedad, pero no cambia estado, centro de costo, área ni valor del activo ni regenera cuotas; una salida con baja contable deja el activo con su estado anterior y sigue entrando en la depreciación del mes.",
+      "solucionPropuesta": "Que CONTAB_IACT ejecute la lógica de APLICAR_IACTH (actualizar IACT por TIPO y regenerar depreciación) tras contabilizar, o que la pantalla encadene ambos."
+    },
+    {
+      "id": "contab-iact-salida-valor-cero",
+      "tipo": "sql",
+      "detalle": "CONTAB_IACT, tipo Salida: la línea crédito del activo exige IACTH.VALOR <> 0 mientras los débitos de depreciación acumulada no; con valor cero el comprobante queda descuadrado y la revisión de totales lo rechaza o lo deja incompleto.",
+      "solucionPropuesta": "Usar el costo del activo (PRECIOCOMPRA) para la salida en vez de IACTH.VALOR o validar valor > 0 antes de contabilizar."
+    },
+    {
+      "id": "aplicar-iacth-ko-depreciado",
+      "tipo": "sql",
+      "detalle": "SPQ_APLICAR_IACTH actualiza la ficha y la novedad y luego ejecuta SPK_GEN_DEPRECIACION; si el activo ya está depreciado por completo el SPK lanza error y el método responde KO aunque la novedad ya quedó aplicada.",
+      "solucionPropuesta": "Capturar el error del SPK y responder OK con aviso, o no regenerar cuando MESESDEPRECIADOS >= MESESADEPRECIAR."
+    },
+    {
+      "id": "hoja-vida-sin-fabricante",
+      "tipo": "sql",
+      "detalle": "INFO_HV_IACT une IACT con TER por fabricante con INNER JOIN: un activo sin fabricante no imprime hoja de vida y la pantalla no explica por qué.",
+      "solucionPropuesta": "LEFT JOIN al fabricante o mensaje claro en la pantalla."
+    },
+    {
+      "id": "pestanas-en-desarrollo",
+      "tipo": "hueco",
+      "detalle": "Mantenimiento y Documentos (fila expandida) muestran «En desarrollo»; Importar está oculto; la pestaña Distribución Contable está comentada, así que IACTDIS (reparto de la depreciación por centro de costo) no se puede capturar aunque el comprobante del mes la respeta.",
+      "solucionPropuesta": "Priorizar con el cliente: distribución contable (ya soportada en SQL), documentos del activo e importación."
+    },
+    {
+      "id": "tipoaf-generar-dep-cursor",
+      "tipo": "sql",
+      "detalle": "SPQ_TIPOAF GENERAR_DEP recorre los activos con un cursor y ejecuta SPK_GEN_DEPRECIACION; si un activo falla (p. ej. depreciado por completo) el CATCH no cierra ni libera el cursor y el resto del tipo no se procesa.",
+      "solucionPropuesta": "TRY/CATCH por activo dentro del bucle y CLOSE/DEALLOCATE en el CATCH externo."
+    },
+    {
+      "id": "salvamento-porcentaje",
+      "tipo": "sql",
+      "detalle": "El tipo guarda el salvamento como valor o porcentaje (TIPOSALV); GENERAR_DEP lo convierte bien, pero SPK_GEN_DEPRECIACION, cuando el activo no trae saldo inicial, toma IACTT.BASEDEPRECIABLE como valor absoluto si IACT.VALORSALVAMENTO es NULL. Con tipo Porcentaje el salvamento queda en pesos (p. ej. 10).",
+      "solucionPropuesta": "En el SPK aplicar la misma conversión por TIPOSALV o exigir pasar por GENERAR_DEP antes."
+    },
+    {
+      "id": "cierre-90-dias-no-depreciables",
+      "tipo": "sql",
+      "detalle": "DEPR_ACFIJP_ENV_CONTA rechaza el envío del mes si existe cualquier activo comprado en los últimos 90 días sin cuotas, sin distinguir DEPRECIABLE = 0 (vida útil cero o costo bajo el salvamento). Un activo no depreciable reciente bloquea la contabilización de todos.",
+      "solucionPropuesta": "Filtrar la validación por DEPRECIABLE = 1 (y la de inconsistencias del último año igual)."
+    },
+    {
+      "id": "apl-ajdep-marcas-y-acumulados",
+      "tipo": "sql",
+      "detalle": "SPK_APL_AJDEPRECIACION marca CONTABILIZADA = 1 todas las cuotas del mes de activos depreciables, incluidas las que excluyó del asiento (activos en estado 02, cuota en cero), y actualiza DEPACUMHISTORICA / DEPACUMDIFERIDA de la ficha con la SUMA de las cuotas del comprobante: si un activo tiene más de una cuota en el mismo comprobante (meses atrasados) el acumulado queda inflado. Además el estado de baja está fijo en '02' mientras la pantalla usa la variable IACT_ESTADOBAJA.",
+      "solucionPropuesta": "Marcar solo las cuotas que entraron al asiento; tomar los acumulados de la cuota de mayor ITEM; usar IACT_ESTADOBAJA en vez de '02'."
+    },
+    {
+      "id": "iactr-estaequi-vacio",
+      "tipo": "sql",
+      "detalle": "SPQ_IACTR GUARDAR INSERTAR graba ESTAEQUI = '' aunque la pantalla envíe el valor; solo EDITAR lo guarda.",
+      "solucionPropuesta": "Usar @ESTAEQUI en el INSERT."
+    },
+    {
+      "id": "iactr-retirar-sin-reglas",
+      "tipo": "decision",
+      "detalle": "RETIRAR solo cambia estado y fecha; no exige que haya capacitación registrada ni valida que no exista otro responsable asignado. La ficha del activo no guarda un responsable vigente único.",
+      "solucionPropuesta": "Decisión de negocio: ¿un responsable vigente por activo? ¿exigir acta de entrega antes de retirar?"
+    },
+    {
+      "id": "tipoaf-eliminar-sin-validar",
+      "tipo": "sql",
+      "detalle": "SPQ_TIPOAF ELIMINAR borra el tipo sin comprobar activos asociados; depende de la FK para fallar y el mensaje llega crudo.",
+      "solucionPropuesta": "Validar EXISTS IACT con ese tipo y responder un mensaje claro."
+    },
+    {
+      "id": "iact-foto-editar",
+      "tipo": "fe",
+      "detalle": "El UPDATE de EDITAR no toca IDFOTO; la foto depende del upload de la pantalla. Si el upload falla la ficha queda sin foto y no hay aviso.",
+      "solucionPropuesta": "Confirmar el resultado del upload y mostrar error."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer?",
+      "intro": "Veinticuatro tareas frecuentes de activos fijos, desde crear la ficha hasta contabilizar la depreciación del mes, con su ruta exacta, la condición que debe cumplirse y lo que no hay que confundir."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es un activo fijo en Qrystalos y cómo vive",
+      "intro": "Un **activo fijo** es un bien de la institución con ficha propia: código, tipo, costo, ubicación (centro de costo, área, servicio), responsable y foto. El módulo lo **crea**, le asigna **accesorios y responsables**, registra sus **novedades** (traslado, salida, entrada), calcula su **depreciación** mes a mes y la **contabiliza** desde Contabilidad. Nada se deprecia sin cuotas generadas y nada se contabiliza sin comprobante configurado.",
+      "md": "## Las piezas\n\n| Pieza | Tabla | Qué guarda |\n|---|---|---|\n| Ficha del activo | IACT | Código, tipo (local y Niif), descripción, estado, costo histórico, valor comercial, fecha de compra, códigos interno / alterno / barra, centro de costo, área, servicio, grupo, fabricante, proveedor, cuenta, datos técnicos, foto, marca de depreciable y acumulados de depreciación. |\n| Tipo de activo | IACTT | Clase Local / Niif, qué campos exige el alta, vida útil, tipo y valor de salvamento, estado. |\n| Catálogo de eventos | IACTE | Tipo Entrada / Salida / Traslado, qué pide, estado asociado, baja, si contabiliza y con qué comprobante. |\n| Novedad del activo | IACTH | Evento, fecha, valor, estado nuevo, centro de costo y área nuevos, marcas aplicada y contabilizada, comprobante. |\n| Cuota de depreciación | IACTD | Una línea por mes y activo: valor, acumulados, cuenta, clase Local / Niif, marca contabilizada y comprobante. |\n| Accesorios | IACTEQU | Partes del equipo con serial, marca, modelo y estado. |\n| Responsables | IACTR | Empleado, cargo, fechas de asignación y retiro, estado, validado, casillas de capacitación. |\n| Entrega / verificación | VERIF | Registros de entrega al responsable (tipo ASIGACTI) que soportan el acta. |\n| Distribución contable | IACTDIS | Reparto de la depreciación por centro de costo (sin pantalla en esta versión). |\n\n## El ciclo en una frase\n\nCatálogos → **Nuevo activo** (ficha y foto) → **Accesorios y responsables** → **Generar Depreciación** → **Novedades** (aplicar o contabilizar) → **Contabilidad → Depreciación activos → Contabilizar período**.\n\n## Dos rutas para una novedad\n\n1. **Evento que no contabiliza:** Aplicar Novedad cambia la ficha (centro de costo, área, estado, valor) y recalcula las cuotas.\n2. **Evento que contabiliza:** Aplicar Novedad genera el comprobante con el modelo contable y marca la novedad; la ficha no cambia por esa ruta (revísela y regenere depreciación).\n\n## Dónde está cada cosa\n\n| Tarea | Menú |\n|---|---|\n| Crear, editar, novedades, responsables, depreciación por activo | Activos Fijos → Gestión |\n| Tipos, eventos, grupos, artículos, equipos por sector, notificaciones | Activos Fijos → (cada catálogo) |\n| Contabilizar la depreciación del mes | Contabilidad → Depreciación activos |",
+      "puntosClave": [
+        "El tipo de activo decide qué campos exige el alta y cómo se deprecia.",
+        "Serial, código interno y código alterno son únicos entre activos.",
+        "Se deprecia? no se marca a mano: lo fija Generar Depreciación.",
+        "La novedad contable no actualiza la ficha: hay que revisarla después."
+      ]
+    },
+    {
+      "id": "configuracion",
+      "tipo": "texto",
+      "kicker": "Antes de empezar",
+      "titulo": "Configuración: tipos, eventos, grupos, artículos y variables",
+      "imagen": "img/activos_config_sketchnote.jpg",
+      "imagenAlt": "Tipos de activo → Eventos → Grupos y artículos → Variables y contabilidad",
+      "intro": "Lo que debe existir antes del primer activo. Todo está bajo el menú **Activos Fijos** (y duplicado bajo Configuración para el administrador).",
+      "md": "## Tipos de activo\n\n**N U E V O**: código, clase (Local o Niif), descripción y las casillas **Pedir** modelo, número de escritura, marca, linderos, serial, número de partes, referencia y matrícula: cada casilla vuelve obligatorio ese campo en el alta. Depreciación: **tipo de salvamento** (Valor o Porcentaje) y **valor de salvamento**, **tipo de vida útil** (Tiempo o Kilómetros) y **vida útil en meses**. Estado Activo / Inactivo. El código no se repite; al cambiarlo se renombra en los activos.\n\n**Generar Depreciación** (con un tipo seleccionado): marca depreciables los activos del tipo cuyo costo alcanza el valor de salvamento, fija el salvamento (valor o porcentaje del costo), borra las cuotas no contabilizadas de los que dejaron de ser depreciables y recalcula las cuotas de los demás.\n\n**Asignar Administrador** (si la variable TIPO_ACTIVO_USUARIO = SI): lista de empleados administradores del tipo con estado; **Agregar** crea la fila. Es informativo.\n\n## Eventos\n\n**N U E V O**: código, **tipo de movimiento** (Entrada, Salida, Traslado), descripción, casillas **Pide estado**, **Pide valor**, **Pide centro de costo y área** (al menos una), **estado asociado** (tabla general ESTADOACTIVO), **Se contabiliza?** y **comprobante** (obligatorio si contabiliza). **Baja de activo** se marca sola cuando el estado asociado es el de la variable IACT_ESTADOBAJA. Los eventos de tipo mantenimiento no aparecen en novedades.\n\n| Tipo | Qué hace al aplicar (no contable) | Qué contabiliza |\n|---|---|---|\n| Entrada | Actualiza estado y valor del activo; recalcula cuotas | Débito al activo contra la contrapartida del modelo |\n| Salida | Cambia el estado; si es de baja, el activo deja de depreciarse | Crédito al activo por su costo, débito a depreciación acumulada, saldo a resultado |\n| Traslado | Cambia centro de costo y área | Reclasifica activo y depreciación acumulada entre centros de costo / áreas |\n\n## Grupos, artículos, sectores y notificaciones\n\n- **Grupos**: grupo y, en la fila expandida, subgrupos. Se eligen en la ficha.\n- **Artículos**: el artículo de inventario con tipo de artículo, tipo de activo fijo, fabricante (categoría FAB), stocks, casillas y documentos adjuntos. **Artículos Pendientes** muestra los creados desde otros módulos por completar.\n- **Tipos de artículo**: catálogo compartido con Inventario.\n- **Equipos por sector**: cantidad de artículos por servicio.\n- **Notificaciones de parada**: contacto y correo por servicio.\n- **Fabricantes** (botón en Gestión): terceros de la categoría TERCATFABRICANTE con datos de contacto y representante.\n\n## Variables y contabilidad\n\n| Variable | Para qué |\n|---|---|\n| IDPROCESOCONTABLE | MIXTO: el alta pide tipo Niif y valor comercial Niif; la novedad contable pasa copia NIIF |\n| TERCATFABRICANTE | Categoría de terceros que son fabricantes |\n| IACTEVENTOCOMPRA | Evento de compra: no se aplica desde novedades |\n| IACT_ESTADOBAJA | Estado que significa baja |\n| TIPO_ACTIVO_USUARIO | Muestra Asignar Administrador |\n| IDMODELOCONTABLE | Modelo KMCOM: MOV_ACTIVOS, DEPRECIACION, DEPRECIACION_AJI, INFLACION |\n| IDCON_TCOM_DEFAULT · IDCON_TCOM_DEPR | Comprobante por defecto de la novedad · comprobante de la depreciación mensual |\n| COMPROBMULTISEDE | Comprobante por sede (tabla de comprobantes por sede) |\n| IDTERCEROINSTALADO | Tercero de los comprobantes de depreciación |",
+      "puntosClave": [
+        "Sin tipo de activo no hay alta.",
+        "Al menos una casilla Pide… en cada evento; comprobante si contabiliza.",
+        "Sin IDCON_TCOM_DEPR no se contabiliza el mes."
+      ]
+    },
+    {
+      "id": "flujo-alta",
+      "tipo": "flujo",
+      "flujoId": "activos-alta",
+      "kicker": "Proceso 1",
+      "titulo": "Alta del activo",
+      "imagen": "img/activos_alta_sketchnote.jpg",
+      "imagenAlt": "Gestión → Nuevo activo → Información → Guardar → Se deprecia",
+      "intro": "Desde **Activos Fijos → Gestión**. El tipo decide los campos obligatorios; el sistema asigna el código al guardar; la foto se sube con el formulario. **Se deprecia?** queda en No hasta generar depreciación (desde la pestaña del activo o desde el tipo).",
+      "puntosClave": [
+        "Serial, código interno y código alterno no se repiten.",
+        "Fabricante y cuenta son obligatorios; sin fabricante no hay hoja de vida.",
+        "Accesorios, Responsables y Depreciación aparecen al editar.",
+        "Mantenimiento, Documentos e Importar no están disponibles en esta versión."
+      ]
+    },
+    {
+      "id": "flujo-responsables",
+      "tipo": "flujo",
+      "flujoId": "activos-responsables",
+      "kicker": "Proceso 2",
+      "titulo": "Accesorios, responsables, capacitación y formatos",
+      "imagen": "img/activos_responsables_sketchnote.jpg",
+      "imagenAlt": "Accesorios → Asignar responsable → Entrega y verificación → Retirar e imprimir",
+      "intro": "Quién tiene el activo y qué lo acompaña. Un empleado no se asigna dos veces al mismo activo; **Retirar** cierra la asignación con fecha; **Eliminar** está oculto para conservar la historia. La **hoja de vida** se imprime desde la grilla; el **acta del responsable** desde su fila; **Paz y Salvo**, **Entrada y Salida** y **Acta de Entrega** son formatos en blanco.",
+      "puntosClave": [
+        "Estado Asignado habilita Editar, Retirar e Imprimir; Retirado los apaga.",
+        "La fecha de retiro solo se edita después de guardar.",
+        "Las casillas de capacitación quedan en la asignación; la entrega se registra aparte."
+      ]
+    },
+    {
+      "id": "flujo-eventos",
+      "tipo": "flujo",
+      "flujoId": "activos-eventos",
+      "kicker": "Proceso 3",
+      "titulo": "Novedades: traslado, salida y entrada",
+      "imagen": "img/activos_eventos_sketchnote.jpg",
+      "imagenAlt": "Nueva novedad → Aplicar (no contable) → Aplicar (contable) → Después",
+      "intro": "La novedad nace **pendiente** y se puede corregir. **Aplicar Novedad** sigue la ruta que dicta el evento: si contabiliza, comprobante; si no, cambio en la ficha y recálculo de cuotas. Aplicada o contabilizada, la novedad queda bloqueada.",
+      "puntosClave": [
+        "El evento de compra no se aplica desde aquí.",
+        "Novedad contable: periodo contable existente para la fecha.",
+        "Tras una novedad contable revise la ficha y regenere la depreciación."
+      ]
+    },
+    {
+      "id": "eventos-detalle",
+      "tipo": "texto",
+      "kicker": "Proceso 3 · detalle",
+      "titulo": "Qué hace exactamente cada novedad",
+      "intro": "Lo que cambia en la ficha y lo que llega a contabilidad según el tipo del evento.",
+      "md": "## Ruta no contable (Aplicar a la ficha)\n\n| Tipo | Cambia en la ficha | Después |\n|---|---|---|\n| Traslado | Centro de costo y área nuevos | Marca aplicada; recalcula cuotas pendientes |\n| Salida | Estado nuevo; si el evento es de baja, Se deprecia pasa a No | Marca aplicada; borra cuotas pendientes al recalcular |\n| Entrada | Estado y valor nuevos | Marca aplicada; recalcula cuotas pendientes |\n\nSi el activo ya estaba depreciado por completo, el recálculo responde con un aviso aunque la novedad quedó aplicada.\n\n## Ruta contable (comprobante)\n\n1. Exige periodo contable para la fecha de la novedad.\n2. Comprobante: el del evento; si la instalación usa comprobante por sede, el de la sede; si no, el por defecto. Consecutivo propio.\n3. Líneas según el tipo, con las cuentas del modelo contable (MOV_ACTIVOS, DEPRECIACION, DEPRECIACION_AJI, INFLACION) por tipo de activo, área y centro de costo:\n   - **Entrada:** débito al activo por el valor de la novedad; crédito a la contrapartida del modelo.\n   - **Salida:** crédito al activo por su costo, débito a depreciación acumulada (y a los ajustes si existen), diferencia a la cuenta de resultado del evento.\n   - **Traslado:** crédito al activo y débito a depreciación en el centro de costo / área anterior; débito al activo y crédito a depreciación en el nuevo.\n4. Revisa totales del comprobante; copia NIIF si el proceso contable es mixto.\n5. Marca la novedad **contabilizada** y **aplicada** con el número de comprobante.\n\nLa ruta contable **no** cambia estado, centro de costo, área ni valor de la ficha ni recalcula cuotas. Tras una salida contable con baja, revise el estado del activo y genere depreciación para que el mes no lo incluya (ver Hallazgos).\n\n## Bloqueos de pantalla\n\n- Editar, Eliminar y Aplicar Novedad se deshabilitan si la novedad está aplicada o contabilizada.\n- También para el evento de compra (variable IACTEVENTOCOMPRA).\n- Los eventos de mantenimiento no aparecen en la lista.",
+      "puntosClave": [
+        "Entrada suma; Salida cancela costo y depreciación; Traslado reclasifica.",
+        "Un comprobante por novedad.",
+        "El bloqueo de edición es de pantalla: el procedimiento no lo valida (hallazgo)."
+      ]
+    },
+    {
+      "id": "flujo-depreciacion",
+      "tipo": "flujo",
+      "flujoId": "activos-depreciacion",
+      "kicker": "Proceso 4",
+      "titulo": "Depreciación y cierre del mes",
+      "imagen": "img/activos_depreciacion_sketchnote.jpg",
+      "imagenAlt": "Cuotas → Periodo → Validaciones → Comprobante",
+      "intro": "Dos momentos: **generar las cuotas** (por activo o por tipo) y **contabilizar el periodo** desde Contabilidad → Depreciación activos. El método es lineal mensual; el comprobante del mes lleva fecha del último día y un asiento por activo.",
+      "puntosClave": [
+        "Solo se recalculan cuotas no contabilizadas.",
+        "El envío del mes se rechaza si hay activos recientes sin cuotas.",
+        "Activos de baja, cuotas en cero y clase NIIF no entran al comprobante."
+      ]
+    },
+    {
+      "id": "depreciacion-detalle",
+      "tipo": "texto",
+      "kicker": "Proceso 4 · detalle",
+      "titulo": "Cómo se calcula y qué revisa el cierre",
+      "intro": "La fórmula, de dónde salen los datos y las reglas que detienen la contabilización del mes.",
+      "md": "## Datos de la ficha\n\n| Campo | De dónde sale |\n|---|---|\n| Meses a depreciar | Vida útil del tipo (si el activo no trae saldo inicial) |\n| Valor de salvamento | El del activo; si no tiene, el del tipo |\n| Se deprecia | Vida útil mayor que cero (o costo que alcanza el salvamento, desde Generar Depreciación del tipo) |\n| Meses depreciados · acumulados · fecha última depreciación | Los actualiza la contabilización del mes |\n\n## Fórmula\n\nCuota mensual = (costo histórico − valor de salvamento) / meses a depreciar. Se crea una línea por mes (clase Local) desde la fecha de compra, o desde la última cuota contabilizada, hasta completar los meses. Cada línea guarda la cuota, el acumulado histórico y el saldo por depreciar. Si el activo ya se depreció por completo el sistema responde «Activo depreciado completamente».\n\nVolver a **Generar Depreciación** borra solo las cuotas **no contabilizadas** y las recalcula; por eso un cambio de valor o de vida útil se refleja hacia adelante.\n\n## Pantalla Contabilidad → Depreciación activos\n\nElija el periodo (año-mes). Columnas: Contabilizado, activo, tipo, descripción, ítem, fecha de compra, valor de la cuota, precio comercial, acumulados del movimiento y del activo, meses a depreciar, depreciados y pendientes, ajuste acumulado, cuenta. **Exportar Excel** toma las columnas visibles; **Columnas** permite ocultarlas y restaurarlas.\n\n## Contabilizar período: qué revisa\n\n1. Comprobante de depreciación configurado (IDCON_TCOM_DEPR).\n2. Ningún activo comprado en los últimos 90 días sin cuotas generadas.\n3. En compras del último año, cuotas generadas no menores a los meses a depreciar menos uno.\n4. Al menos una cuota pendiente en el mes (clase distinta de NIIF).\n\n## Qué hace el comprobante\n\n- Un comprobante con fecha del último día del mes; comprobante de la sede si COMPROBMULTISEDE = SI, si no el de la variable; tercero de la institución.\n- Por activo: **débito** a la cuenta de gasto y **crédito** a depreciación acumulada (modelo DEPRECIACION por tipo, área y centro de costo). Si el activo tiene distribución por centro de costo, reparte por porcentaje.\n- Excluye activos de baja, cuotas en cero y clase NIIF.\n- Marca las cuotas del mes como contabilizadas con el número de comprobante y actualiza en la ficha fecha de última depreciación, acumulados y meses depreciados.\n- Revisa totales del comprobante.\n\nSi se vuelve a pulsar, solo procesa las cuotas pendientes que hayan quedado. Reversar un mes es tarea de contabilidad.",
+      "puntosClave": [
+        "Lineal mensual, desde la compra.",
+        "Primero cuotas, después el periodo.",
+        "La validación de 90 días no distingue activos no depreciables (hallazgo)."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosActivo",
+      "kicker": "Semáforo",
+      "titulo": "Estados del activo, la novedad, la cuota y el responsable",
+      "intro": "Qué significa cada valor, qué botón habilita y qué hacer con él."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo que se encontró al contrastar las pantallas de Gestión, los catálogos, la pantalla contable de depreciación y los procedimientos. Ninguno tiene dictamen todavía: quedan registrados para validar en preversión antes de pedir desarrollo.",
+      "md": "## Defectos para validar y pedir a desarrollo\n\n1. **El activo nace sin estado.** Nuevo activo no trae estado inicial y el campo es de solo lectura; la ficha queda sin estado hasta la primera novedad.\n2. **Duplicados al editar.** Al crear se valida serial, código interno y código alterno contra todos los activos; al editar solo contra activos de otro tipo: editando se puede repetir un serial dentro del mismo tipo.\n3. **La novedad bloqueada solo lo está en pantalla.** Editar y eliminar una novedad aplicada o contabilizada no se rechaza en el procedimiento, y la edición puede cambiar las marcas de contabilizada y comprobante.\n4. **La novedad contable no actualiza la ficha.** Aplicar Novedad llama una sola ruta: la contable genera el comprobante pero no cambia estado, centro de costo, área ni valor, ni recalcula cuotas. Una salida con baja contable deja el activo activo y dentro de la depreciación del mes.\n5. **Salida con valor cero descuadra.** En la ruta contable el crédito al activo exige valor distinto de cero mientras los débitos de depreciación no.\n6. **Aviso confuso al aplicar.** Si el activo ya está depreciado por completo, aplicar una novedad no contable responde error aunque la novedad quedó aplicada.\n7. **Hoja de vida sin fabricante.** La impresión exige fabricante y no explica por qué no sale.\n8. **Generar Depreciación del tipo se detiene en el primer error.** Si un activo del tipo falla, el recorrido no continúa con los demás.\n9. **Salvamento por porcentaje mal leído.** Si el activo no trae salvamento, el cálculo toma el número del tipo como pesos aunque el tipo diga Porcentaje.\n10. **El cierre del mes se bloquea por activos no depreciables.** La regla de «compras de los últimos 90 días sin cuotas» no distingue activos con vida útil cero.\n11. **Marcas y acumulados del comprobante mensual.** Se marcan como contabilizadas cuotas que no entraron al asiento (activos de baja, cuotas en cero); los acumulados de la ficha se suman por comprobante (si hay varias cuotas del mismo activo quedan inflados); el estado de baja está fijo en un código mientras la pantalla usa la variable.\n12. **Responsable: una casilla se pierde al crear.** El estado del equipo del responsable se guarda vacío al insertar y solo se conserva al editar.\n13. **Eliminar tipo sin validar.** Borrar un tipo con activos falla por la base y el mensaje llega crudo.\n14. **Foto sin confirmación.** Si la subida de la foto falla, la ficha queda sin foto y sin aviso.\n\n## Huecos (no hay pantalla)\n\n- **Mantenimiento** y **Documentos** del activo (pestañas «En desarrollo»).\n- **Importar** activos (botón oculto).\n- **Distribución contable** de la depreciación por centro de costo: el comprobante del mes la respeta si existe en la base, pero no se puede capturar.\n- Envío de **una sola cuota** y **desmarcar** una cuota contabilizada existen en el procedimiento contable pero sin botón para activos.\n\n## Decisiones de negocio\n\n- ¿Un solo responsable vigente por activo? Hoy Retirar no lo exige ni la ficha guarda el responsable actual.\n- ¿Exigir acta de entrega o capacitación antes de retirar o reasignar?\n- ¿Debe el alta permitir elegir el estado inicial o fijarlo por variable?\n\n## Verificado\n\n- Serial, código interno y código alterno únicos al crear.\n- El código del activo lo asigna el consecutivo; no se digita.\n- La novedad no contable actualiza la ficha y recalcula cuotas; la contable genera un comprobante por novedad con el modelo contable y copia NIIF si aplica.\n- La depreciación es lineal mensual, solo recalcula cuotas no contabilizadas y el mes se envía en un comprobante con fecha del último día.\n- Los procedimientos en preversión son idénticos a la última liberada.",
+      "puntosClave": [
+        "Catorce defectos para validar en preversión.",
+        "Cuatro huecos sin pantalla.",
+        "Tres decisiones de negocio antes de dictaminar."
+      ]
+    }
+  ],
+  "incluirProcesoMdEnLibro": false
 }

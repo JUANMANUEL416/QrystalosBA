@@ -1,0 +1,351 @@
+{
+  "procesoId": "auditoria-factura",
+  "actualizado": "2026-09-19T16:20:00",
+  "nota": "PREVERSION=2.0.3. ENT_COL es compartido (glosas/FCXCR/CXC). Aquí se fichan todos los METODO del SP; el proceso usa sobre todo RECIBIR_AUDIFACTU / ASIGNAR_AUDIFACT / CERRAR_ENT.",
+  "sps": [
+    {
+      "nombre": "SPQ_ENT_COL",
+      "tipo": "SPQ",
+      "modelo": "ENT_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_ENT_COL.sql",
+      "metodos": [
+        {
+          "id": "RECIBIR_AUDIFACTU",
+          "hace": "Marca ENT/ENTD recibidos (ESTADO=1). Si PROCESO=FACTURAS: FTR.IDDEP=IDFDEPAUDITORIA, limpia INDCARTERA/INDASIGENT.",
+          "valida": [
+            "ENTD existe para el CNSENTREGA"
+          ],
+          "noValida": [
+            "No valida CERRADO antes de recibir"
+          ],
+          "errores": [
+            "No existen Facturas En el Envio, Verifique e Intente de nuevo"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE IDFDEPAUDITORIA"
+          ],
+          "efecto": "ENT y ENTD ESTADO=1. Facturas pasan a dep. auditoría.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNAR_AUDIFACT",
+          "hace": "Asigna facturas de ENT abierto (CERRADO=0, ESTADO=0) a auditor.",
+          "valida": [
+            "ENT abierto y no cerrado"
+          ],
+          "noValida": [],
+          "errores": [
+            "El CnsEntrega esta cerrado o Presenta inconsistencias…"
+          ],
+          "llama": [],
+          "efecto": "Marca asignación auditoría en ENTD.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_AUDITODAS",
+          "hace": "Marca todas las facturas del envío para auditoría.",
+          "valida": [
+            "ENT abierto"
+          ],
+          "noValida": [],
+          "errores": [
+            "El CnsEntrega esta cerrado…"
+          ],
+          "llama": [],
+          "efecto": "ENTD marcados.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_AUDIFACT",
+          "hace": "Limpia marcas de auditoría del envío.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Marcas auditoría quitadas.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_ENT",
+          "hace": "CRUD de entrega ENT (abrir/gestionar). Puede SPK_GENCONSECUTIVO @ENT.",
+          "valida": [
+            "No hay otra entrega abierta del usuario a la misma dependencia"
+          ],
+          "noValida": [],
+          "errores": [
+            "Existe una Entrega Abierta Para Dependencia de Destino Creada por el Usuario:…"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO @ENT"
+          ],
+          "efecto": "ENT creada o actualizada.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_ITEM",
+          "hace": "Marca un documento del ENT.",
+          "valida": [
+            "Documento existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "Documento No Encontrado"
+          ],
+          "llama": [],
+          "efecto": "ENTD marcado.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_ENT",
+          "hace": "Cierra la entrega si tiene detalle y no está recibida.",
+          "valida": [
+            "Hay detalle",
+            "No recibida"
+          ],
+          "noValida": [],
+          "errores": [
+            "Envio Sin Detalles, Verifique e intente de Nuevo.",
+            "Envio  Recibido..., No Se Permiten Cambios."
+          ],
+          "llama": [],
+          "efecto": "ENT cerrada.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "MOTIVO_ENTD",
+          "hace": "Graba motivo en detalle ENTD.",
+          "valida": [
+            "ENT no cerrado inconsistente"
+          ],
+          "noValida": [],
+          "errores": [
+            "El CnsEntrega esta cerrado…"
+          ],
+          "llama": [],
+          "efecto": "ENTD.motivo persistido.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "QUITAFACT_ENTD",
+          "hace": "Quita una factura del detalle.",
+          "valida": [
+            "ENT no cerrado"
+          ],
+          "noValida": [],
+          "errores": [
+            "El CnsEntrega esta cerrado…"
+          ],
+          "llama": [],
+          "efecto": "Línea ENTD eliminada.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "QUITARTODO_ENTD",
+          "hace": "Quita todas las facturas del envío.",
+          "valida": [
+            "ENT no cerrado"
+          ],
+          "noValida": [],
+          "errores": [
+            "1.El CnsEntrega esta cerrado…"
+          ],
+          "llama": [],
+          "efecto": "ENTD vacío.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPORT_ENT",
+          "hace": "Exporta facturas del envío.",
+          "valida": [
+            "Envío con facturas"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se Encontro el Envio o no Tiene facturas Asociadas"
+          ],
+          "llama": [],
+          "efecto": "SELECT exportación.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_ENT",
+          "hace": "Imprime ENT.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            " Erro al Cargar los Datos"
+          ],
+          "llama": [],
+          "efecto": "SELECT impresión.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDO_USUARIO",
+          "hace": "Valida usuario para operar ENT.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK/KO según usuario.",
+          "capaId": "01-configuracion",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNAR_FACT",
+          "hace": "Asigna facturas al envío (circuito general, no solo auditoría).",
+          "valida": [
+            "ENT abierto"
+          ],
+          "noValida": [],
+          "errores": [
+            "El CnsEntrega esta cerrado…"
+          ],
+          "llama": [],
+          "efecto": "ENTD con facturas.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIAR_FACT",
+          "hace": "Limpia facturas del envío general.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "ENTD limpio.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "MARCAR_TODAS",
+          "hace": "Marca todas (circuito general).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "ENTD marcados.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "CREARCXC_ENT",
+          "hace": "Crea FCXC desde ENT (un tercero, variables jefe cartera/factura).",
+          "valida": [
+            "Un solo tercero",
+            "Proceso válido",
+            "USUARIOJEFECARTERA y USUARIOJEFEFACTURA",
+            "No recibida en cartera",
+            "Sin CXC previa"
+          ],
+          "noValida": [],
+          "errores": [
+            "Existes Mas de un Tercero en las Facturas del Envio…",
+            "Debe llenar la variable USUARIOJEFECARTERA…",
+            "Entrega ya Fue recicibida en Cartera…",
+            "La entrega ya tiene Cuenta de Cobro asociada…"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO @CXC",
+            "SPK_RELIQUIDACXCQX"
+          ],
+          "efecto": "Nace CXC y se reliquida. Es puente a facturacion/cartera, no a AudiFactura.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_ENVIO",
+          "hace": "Procesa envío general.",
+          "valida": [
+            "Hay facturas"
+          ],
+          "noValida": [],
+          "errores": [
+            "No existen Facturas En el Envio…"
+          ],
+          "llama": [],
+          "efecto": "Envío procesado.",
+          "capaId": "04-unido",
+          "estado": "leido"
+        },
+        {
+          "id": "PROCESAR_AUDENVIO",
+          "hace": "Procesa envío de auditoría.",
+          "valida": [
+            "Hay facturas"
+          ],
+          "noValida": [],
+          "errores": [
+            "No existen Facturas En el Envio…"
+          ],
+          "llama": [],
+          "efecto": "Envío auditoría procesado.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_RPT_PENDIENTES_FACT",
+      "tipo": "SPQ",
+      "modelo": "RPT_PENDIENTES_FACT",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RPT_PENDIENTES_FACT.sql",
+      "metodos": [
+        {
+          "id": "TRAER_DATOS",
+          "hace": "Lista procedencias distintas de VWK_CARGOS_HADMAUTCIT con FACTURADA=0.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OK + DISTINCT PROCEDENCIA.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR",
+          "hace": "Arma RPDX con cargos no facturados (HADM/CIT) por fechas/procedencia/tercero.",
+          "valida": [
+            "Fechas"
+          ],
+          "noValida": [
+            "No es ENT ni glosa"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO @RPDX"
+          ],
+          "efecto": "RPDX + 3 agregados (tercero, plan, procedencia). Devuelve CNSRPDX.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "LIMPIA_RPDX",
+          "hace": "Borra temporal RPDX del CNS.",
+          "valida": [
+            "CNSRPDX"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "DELETE RPDX.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import base64
 import imaplib
 import json
 import os
+import re
 import shutil
 import smtplib
 import subprocess
@@ -25,6 +26,7 @@ CORREOS_ROOT = os.path.join(ROOT, "correos")
 REGISTRO_CORREOS = os.path.join(CORREOS_ROOT, "registro.json")
 PLANTILLA_HTML = os.path.join(ROOT, "config", "correo-plantilla.html")
 LOGO_PNG = os.path.join(ROOT, "app", "assets", "logo-ixcolombia.png")
+LOGO_SVG = os.path.join(ROOT, "app", "assets", "logo-ixcolombia.svg")
 COPIA_DEV_SOPORTE = "jose.jimenez@ixcolombia.com"
 LOGO_CID = "logo-ixcolombia"
 LOGO_URL = "https://www.ixcolombia.com/dist/IX%20COLOMBIA.png"
@@ -104,6 +106,129 @@ def _dictamen_abs(id_caso):
     return ""
 
 
+def _abs_repo(rel):
+    rel = str(rel or "").strip().replace("\\", "/")
+    if not rel:
+        return ""
+    if os.path.isabs(rel):
+        return rel if os.path.isfile(rel) else ""
+    return os.path.join(ROOT, rel.replace("/", os.sep))
+
+
+def rutas_mockups_solicitud(sol):
+    """Rutas relativas (/) declaradas en solicitud.json para adjuntar al correo."""
+    if not isinstance(sol, dict):
+        return []
+
+    rels = []
+
+    def add_rel(val):
+        if not val:
+            return
+        if isinstance(val, (list, tuple)):
+            for item in val:
+                add_rel(item)
+            return
+        if isinstance(val, str):
+            rel = val.strip().replace("\\", "/").lstrip("/")
+            if rel and rel not in rels:
+                rels.append(rel)
+
+    add_rel((sol.get("contenido") or {}).get("mockups"))
+    add_rel((sol.get("documento") or {}).get("mockups"))
+    add_rel((sol.get("correo") or {}).get("adjuntosExtra"))
+    return rels
+
+
+def _colectar_mockups(sol):
+    """Rutas absolutas de mockups declarados en solicitud.json (ZIP offline, no HTML suelto)."""
+    paths = []
+    seen = set()
+    if not isinstance(sol, dict):
+        return paths
+
+    id_caso = ((sol.get("identificacion") or {}).get("idCaso") or "").strip()
+
+    def add(val):
+        if not val:
+            return
+        if isinstance(val, (list, tuple)):
+            for item in val:
+                add(item)
+            return
+        if isinstance(val, str):
+            rel = val.strip().replace("\\", "/")
+            abs_path = _abs_repo(rel)
+            if not abs_path:
+                return
+            attach = abs_path
+            if rel.lower().endswith(".html"):
+                try:
+                    import mockup_empaquetar as mockzip
+
+                    attach = mockzip.empaquetar_mockup_html(abs_path, id_caso=id_caso)
+                except Exception:
+                    attach = abs_path
+            elif rel.lower().endswith(".zip"):
+                attach = abs_path
+            if attach and attach not in seen and os.path.isfile(attach):
+                seen.add(attach)
+                paths.append(attach)
+
+    for rel in rutas_mockups_solicitud(sol):
+        add(rel)
+    return paths
+
+
+def _parrafo_mockups(mockups):
+    if not mockups:
+        return "", ""
+    nombres = ", ".join(os.path.basename(p) for p in mockups)
+    html = (
+        '<p style="margin:0 0 10px;font-size:15px;line-height:1.65;">'
+        "Asimismo se adjunta el <strong>mockup UX</strong> del requerimiento "
+        f"(<em>{nombres}</em>): paquete <strong>ZIP offline</strong> con el HTML de la "
+        "pantalla propuesta, las capturas del REQ y un archivo <code>LEEME.txt</code>."
+        "</p>"
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="margin:0 0 14px;background:#fff8f0;border:1px solid #ffb74d;border-radius:4px;">'
+        "<tr><td style=\"padding:14px 16px;font-size:14px;line-height:1.6;color:#494F4C;\">"
+        '<p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#CB500F;">'
+        "Cómo ver el mockup (desarrollador)"
+        "</p>"
+        "<ol style=\"margin:0 0 0 18px;padding:0;\">"
+        "<li style=\"margin:0 0 6px;\">Guarde el adjunto <strong>*-offline.zip</strong> "
+        "(no intente previsualizar el HTML suelto en Outlook: las imágenes no cargan).</li>"
+        "<li style=\"margin:0 0 6px;\">Descomprima el ZIP en una carpeta local "
+        "(ej. Escritorio).</li>"
+        "<li style=\"margin:0 0 6px;\">Dentro verá <code>mockup-*.html</code>, la carpeta "
+        "<code>imagenes/</code> y <code>LEEME.txt</code>.</li>"
+        "<li style=\"margin:0 0 6px;\">Abra el <strong>.html</strong> con Chrome o Edge "
+        "(doble clic o arrastre al navegador).</li>"
+        "<li style=\"margin:0;\">Lo resaltado en <strong>naranja</strong> indica controles o "
+        "campos nuevos respecto al comportamiento actual; la columna «Hoy» muestra la captura "
+        "del REQ cuando aplica.</li>"
+        "</ol>"
+        "</td></tr></table>"
+        '<p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b6560;">'
+        "El mockup es referencia visual y de flujo; la especificación formal sigue siendo "
+        "el dictamen PDF/HTML adjunto."
+        "</p>"
+    )
+    texto = (
+        f"\n\n--- Mockup UX (adjunto: {nombres}) ---\n"
+        "Paquete ZIP offline (HTML + carpeta imagenes/ + LEEME.txt).\n\n"
+        "Como verlo:\n"
+        "1) Guarde el archivo *-offline.zip (no abra solo un .html suelto desde el correo).\n"
+        "2) Descomprima el ZIP en su PC.\n"
+        "3) Abra el .html incluido con Chrome o Edge.\n"
+        "4) Revise lo marcado en naranja (cambio propuesto) y la captura «Hoy» si aparece.\n"
+        "5) Lea LEEME.txt dentro del ZIP si tiene dudas.\n\n"
+        "La especificacion de implementacion sigue siendo el dictamen adjunto.\n"
+    )
+    return html, texto
+
+
 def _find_navegadores():
     seen = []
     for path in BROWSER_CANDIDATES:
@@ -122,10 +247,13 @@ def _find_navegador():
 
 
 def _logo_data_uri():
-    if not os.path.isfile(LOGO_PNG):
-        return ""
-    raw = Path(LOGO_PNG).read_bytes()
-    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+    if os.path.isfile(LOGO_PNG):
+        raw = Path(LOGO_PNG).read_bytes()
+        return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+    if os.path.isfile(LOGO_SVG):
+        raw = Path(LOGO_SVG).read_bytes()
+        return "data:image/svg+xml;base64," + base64.b64encode(raw).decode("ascii")
+    return ""
 
 
 def _preparar_html_impresion(html_path):
@@ -135,33 +263,198 @@ def _preparar_html_impresion(html_path):
     if logo:
         texto = texto.replace("../app/assets/logo-ixcolombia.png", logo)
         texto = texto.replace("app/assets/logo-ixcolombia.png", logo)
+        texto = texto.replace("/app/assets/logo-ixcolombia.svg", logo)
+        texto = texto.replace("app/assets/logo-ixcolombia.svg", logo)
+    texto = re.sub(
+        r'(<iframe\b[^>]*\ssrc=)(["\'])(/[^"\']*)(\2)',
+        r"\1\2about:blank\4",
+        texto,
+        flags=re.I,
+    )
     if "print-color-adjust" not in texto:
         if "</style>" in texto:
             texto = texto.replace("</style>", CSS_IMPRESION + "\n</style>", 1)
         else:
             texto = texto.replace("</head>", f"<style>{CSS_IMPRESION}</style></head>", 1)
-    dest = os.path.join(tempfile.mkdtemp(prefix="qrystalos-ba-pdf-"), "dictamen-print.html")
+    base = _dir_trabajo_chrome() if _sesion_no_interactiva() else tempfile.mkdtemp(prefix="qrystalos-ba-pdf-")
+    dest = os.path.join(base, "dictamen-print.html")
     Path(dest).write_text(texto, encoding="utf-8")
     return dest
+
+
+_ULTIMO_ERROR_NAVEGADOR = ""
+PERFIL_USUARIO_PDF = r"C:\Users\JOSE MANUEL"
 
 
 def _pdf_utilizable(path):
     return bool(path) and os.path.isfile(path) and os.path.getsize(path) > 1000
 
 
-def _html_a_pdf(html_path):
-    """Imprime el HTML a PDF. Prueba varios navegadores/modos (el servicio Windows no tiene escritorio)."""
-    if not html_path:
+def _sesion_no_interactiva() -> bool:
+    """El servicio QrystalosBA corre como SYSTEM, en otra sesión. Chrome no imprime ahí."""
+    user = (os.environ.get("USERNAME") or "").strip().upper()
+    profile = (os.environ.get("USERPROFILE") or "").replace("/", "\\").lower()
+    if user in {"SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE"} or profile.endswith("\\systemprofile"):
+        return True
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        propia = ctypes.c_uint()
+        if kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(propia)):
+            activa = kernel32.WTSGetActiveConsoleSessionId()
+            if activa != 0xFFFFFFFF and propia.value != activa:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _perfil_usuario_pdf() -> str:
+    for candidato in (
+        (os.environ.get("QRISTALOS_BOT_USERPROFILE") or "").strip(),
+        PERFIL_USUARIO_PDF,
+        (os.environ.get("USERPROFILE") or "").strip(),
+    ):
+        if candidato and os.path.isdir(candidato):
+            return candidato
+    return ""
+
+
+def _permitir_usuario(path: str) -> None:
+    """La carpeta la crea el servicio (SYSTEM). Chrome, en la sesión del usuario, tiene que poder usarla."""
+    if not path or not _sesion_no_interactiva():
+        return
+    usuario = os.path.basename(_perfil_usuario_pdf())
+    if not usuario:
+        return
+    subprocess.run(
+        ["icacls", path, "/grant", f"{usuario}:(OI)(CI)M", "/T", "/C"],
+        capture_output=True,
+        timeout=20,
+    )
+
+
+def _dir_trabajo_chrome() -> str:
+    if _sesion_no_interactiva():
+        perfil = _perfil_usuario_pdf()
+        raiz = os.path.join(perfil, "AppData", "Local", "Temp") if perfil else tempfile.gettempdir()
+        os.makedirs(raiz, exist_ok=True)
+        path = os.path.join(raiz, f"qrystalos-ba-chrome-{os.getpid()}-{time.time_ns()}")
+        os.makedirs(path, exist_ok=True)
+        _permitir_usuario(path)
+        return path
+    return tempfile.mkdtemp(prefix="qrystalos-ba-chrome-")
+
+
+def _esperar_archivo(path: str, minimo: int, segundos: float = 5) -> bool:
+    fin = time.time() + segundos
+    while time.time() < fin:
+        if path and os.path.isfile(path) and os.path.getsize(path) > minimo:
+            return True
+        time.sleep(0.25)
+    return bool(path) and os.path.isfile(path) and os.path.getsize(path) > minimo
+
+
+def _ejecutar_comando_navegador(cmd: list, timeout: int = 90) -> tuple[int, str]:
+    if not _sesion_no_interactiva():
+        try:
+            proc = subprocess.run(cmd, check=False, timeout=timeout, capture_output=True)
+        except subprocess.TimeoutExpired:
+            return 1, f"Tiempo agotado ({timeout}s) esperando a Chrome."
+        except OSError as exc:
+            return 1, str(exc)
+        out = ((proc.stdout or b"") + b"\n" + (proc.stderr or b"")).decode("utf-8", errors="replace")
+        return proc.returncode, out.strip()[-800:]
+    return _ejecutar_en_sesion_usuario(cmd, timeout)
+
+
+def _ejecutar_en_sesion_usuario(cmd: list, timeout: int) -> tuple[int, str]:
+    """El servicio no puede imprimir. La tarea corre Chrome en el escritorio del usuario."""
+    usuario = os.path.basename(_perfil_usuario_pdf())
+    if not usuario:
+        return 1, "No hay perfil de usuario para lanzar Chrome."
+    work = _dir_trabajo_chrome()
+    vbs = os.path.join(work, "lanzar.vbs")
+    done = os.path.join(work, "listo.txt")
+    linea = subprocess.list2cmdline(cmd).replace('"', '""')
+    Path(vbs).write_text(
+        'Set sh = CreateObject("WScript.Shell")\r\n'
+        f'sh.CurrentDirectory = "{work}"\r\n'
+        f'codigo = sh.Run("{linea}", 0, True)\r\n'
+        'Set fso = CreateObject("Scripting.FileSystemObject")\r\n'
+        f'Set tf = fso.CreateTextFile("{done}", True)\r\n'
+        "tf.WriteLine CStr(codigo)\r\n"
+        "tf.Close\r\n",
+        encoding="ascii",
+        errors="replace",
+    )
+    tarea = f"QrystalosBA-PDF-{os.getpid()}-{time.time_ns()}"
+    tr = subprocess.list2cmdline(["wscript.exe", "//nologo", "//B", vbs])
+    create = subprocess.run(
+        [
+            "schtasks", "/Create", "/TN", tarea, "/TR", tr,
+            "/SC", "ONCE", "/ST", "23:59", "/SD", "01/01/2099",
+            "/RU", usuario, "/IT", "/F",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if create.returncode != 0:
+        detalle = (create.stderr or create.stdout or "schtasks /Create").strip()
+        return 1, detalle[:400]
+    try:
+        run = subprocess.run(
+            ["schtasks", "/Run", "/TN", tarea],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if run.returncode != 0:
+            detalle = (run.stderr or run.stdout or "schtasks /Run").strip()
+            return 1, detalle[:400]
+        fin = time.time() + timeout
+        while time.time() < fin and not os.path.isfile(done):
+            time.sleep(0.4)
+        if not os.path.isfile(done):
+            return 1, "Chrome no terminó en la sesión del usuario."
+        try:
+            codigo = int((Path(done).read_text(encoding="utf-8", errors="replace") or "0").strip() or "0")
+        except ValueError:
+            codigo = 0
+        return codigo, ""
+    finally:
+        subprocess.run(
+            ["schtasks", "/Delete", "/TN", tarea, "/F"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+
+
+def _html_a_pdf(html_path=None, http_url=None, dest_pdf=None):
+    """Imprime HTML a PDF. La ruta de salida va absoluta: con --user-data-dir Chrome no resuelve rutas relativas."""
+    global _ULTIMO_ERROR_NAVEGADOR
+    http_url = (http_url or "").strip()
+    if http_url.startswith("http"):
+        url = http_url
+        dest = dest_pdf or os.path.join(tempfile.gettempdir(), "qrystalos-ba-export.pdf")
+    elif html_path:
+        dest = dest_pdf or (os.path.splitext(html_path)[0] + ".pdf")
+        try:
+            impresion = _preparar_html_impresion(html_path)
+        except OSError:
+            impresion = html_path
+        url = Path(impresion).resolve().as_uri()
+    else:
         return ""
-    dest = os.path.splitext(html_path)[0] + ".pdf"
+    dest = os.path.abspath(dest)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
     navs = _find_navegadores()
     if not navs:
+        _ULTIMO_ERROR_NAVEGADOR = "No se encontró Chrome ni Edge."
         return dest if _pdf_utilizable(dest) else ""
-    try:
-        impresion = _preparar_html_impresion(html_path)
-    except OSError:
-        impresion = html_path
-    url = Path(impresion).resolve().as_uri()
     flags_comunes = [
         "--disable-gpu",
         "--disable-extensions",
@@ -170,43 +463,46 @@ def _html_a_pdf(html_path):
         "--no-default-browser-check",
         "--hide-scrollbars",
         "--no-pdf-header-footer",
-        "--virtual-time-budget=15000",
         "--run-all-compositor-stages-before-draw",
         "--allow-file-access-from-files",
         "--no-sandbox",
     ]
-    modos = ("--headless=old", "--headless", "--headless=new")
+    modos = ("--headless=new", "--headless", "--headless=old")
     last_err = ""
     for nav in navs:
         for modo in modos:
-            work = tempfile.mkdtemp(prefix="qrystalos-ba-chrome-pdf-")
-            tmp_pdf = os.path.join(work, "dictamen.pdf")
+            work = _dir_trabajo_chrome()
+            perfil = os.path.join(work, "perfil")
+            salida = os.path.join(work, "salida")
+            os.makedirs(perfil, exist_ok=True)
+            os.makedirs(salida, exist_ok=True)
+            tmp_pdf = os.path.join(salida, "dictamen.pdf")
             cmd = [
                 nav,
                 modo,
                 *flags_comunes,
-                f"--user-data-dir={work}",
+                f"--user-data-dir={perfil}",
                 f"--print-to-pdf={tmp_pdf}",
                 url,
             ]
-            try:
-                proc = subprocess.run(cmd, check=False, timeout=45, capture_output=True)
-                err = (proc.stderr or b"").decode("utf-8", errors="replace")
-                last_err = err[-400:]
-            except (subprocess.TimeoutExpired, OSError) as exc:
-                last_err = str(exc)
-                continue
-            fuente = tmp_pdf if _pdf_utilizable(tmp_pdf) else dest
-            if _pdf_utilizable(fuente):
+            codigo, texto = _ejecutar_comando_navegador(cmd, 90)
+            last_err = texto or f"Chrome terminó con código {codigo} y no escribió el PDF."
+            if not _pdf_utilizable(tmp_pdf):
+                _esperar_archivo(tmp_pdf, 1000, 5)
+            fuente = tmp_pdf if _pdf_utilizable(tmp_pdf) else ""
+            if fuente:
                 if os.path.abspath(fuente) != os.path.abspath(dest):
                     try:
                         shutil.copy2(fuente, dest)
-                    except OSError:
+                    except OSError as exc:
+                        _ULTIMO_ERROR_NAVEGADOR = str(exc)
                         return fuente
                 if _pdf_utilizable(dest):
+                    _ULTIMO_ERROR_NAVEGADOR = ""
                     return dest
     if _pdf_utilizable(dest):
         return dest
+    _ULTIMO_ERROR_NAVEGADOR = (last_err or "Chrome no escribió el PDF.").strip()
     if last_err:
         try:
             Path(os.path.join(tempfile.gettempdir(), "qrystalos-ba-pdf-error.txt")).write_text(
@@ -215,6 +511,63 @@ def _html_a_pdf(html_path):
         except OSError:
             pass
     return ""
+
+
+def html_a_png(html_path=None, dest_png=None, window_width=1400, window_height=900, http_url=None):
+    """Captura PNG de HTML local o URL http con Chrome/Edge headless."""
+    global _ULTIMO_ERROR_NAVEGADOR
+    http_url = (http_url or "").strip()
+    if http_url.startswith("http"):
+        url = http_url
+        dest = dest_png or os.path.join(tempfile.gettempdir(), "qrystalos-ba-capture.png")
+    elif html_path and os.path.isfile(html_path):
+        dest = dest_png or (os.path.splitext(html_path)[0] + ".png")
+        try:
+            impresion = _preparar_html_impresion(html_path)
+        except OSError:
+            impresion = html_path
+        url = Path(impresion).resolve().as_uri()
+    else:
+        return ""
+    dest = os.path.abspath(dest)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    navs = _find_navegadores()
+    if not navs:
+        _ULTIMO_ERROR_NAVEGADOR = "No se encontró Chrome ni Edge."
+        return ""
+    flags = [
+        "--disable-gpu",
+        "--disable-extensions",
+        "--no-first-run",
+        "--hide-scrollbars",
+        "--run-all-compositor-stages-before-draw",
+        "--allow-file-access-from-files",
+        "--no-sandbox",
+        f"--window-size={int(window_width)},{int(window_height)}",
+    ]
+    last_err = ""
+    for nav in navs:
+        for modo in ("--headless=new", "--headless", "--headless=old"):
+            work = _dir_trabajo_chrome()
+            perfil = os.path.join(work, "perfil")
+            os.makedirs(perfil, exist_ok=True)
+            cmd = [
+                nav,
+                modo,
+                *flags,
+                f"--user-data-dir={perfil}",
+                f"--screenshot={dest}",
+                url,
+            ]
+            _codigo, texto = _ejecutar_comando_navegador(cmd, 90)
+            last_err = texto
+            if not (os.path.isfile(dest) and os.path.getsize(dest) > 500):
+                _esperar_archivo(dest, 500, 5)
+            if os.path.isfile(dest) and os.path.getsize(dest) > 500:
+                _ULTIMO_ERROR_NAVEGADOR = ""
+                return dest
+    _ULTIMO_ERROR_NAVEGADOR = (last_err or "Chrome no escribió el PNG.").strip()
+    return dest if os.path.isfile(dest) and os.path.getsize(dest) > 500 else ""
 
 
 def dictamen_a_pdf(id_caso, html_path=None):
@@ -258,6 +611,7 @@ def contexto(id_caso):
     enviado = bool(correo_sol.get("enviado") if "enviado" in correo_sol else caso.get("correoEnviado"))
     fecha = correo_sol.get("fechaEnvio") or caso.get("fechaEnvio") or ""
     dictamen = _dictamen_abs(id_caso)
+    mockups = _colectar_mockups(sol)
     return {
         "idCaso": id_caso,
         "idReq": ident.get("idReq") or caso.get("idReq") or "",
@@ -273,6 +627,8 @@ def contexto(id_caso):
         "via": correo_sol.get("via") or caso.get("via") or "",
         "dictamen": dictamen.replace("\\", "/") if dictamen else "",
         "tieneDictamen": bool(dictamen),
+        "mockups": [p.replace("\\", "/") for p in mockups],
+        "tieneMockups": bool(mockups),
         "cuerpoFormal": data.get("cuerpoFormal") or devs.CUERPO_FORMAL,
         "copias": _listar_copias(id_caso),
     }
@@ -377,6 +733,7 @@ def marcar(id_caso, enviado=None, fecha_envio=None, destinatario=None, via="manu
 
 def _componer(ctx):
     formal = ctx.get("cuerpoFormal") or devs.CUERPO_FORMAL
+    parrafo_html, parrafo_texto = _parrafo_mockups(ctx.get("mockups") or [])
     valores = {
         "nombre": ctx.get("desarrollador") or "",
         "idReq": ctx.get("idReq") or "",
@@ -384,9 +741,10 @@ def _componer(ctx):
         "modulo": ctx.get("modulo") or "",
         "rama": ctx.get("rama") or "—",
         "logo_src": f"cid:{LOGO_CID}",
+        "parrafoMockups": parrafo_html,
     }
     asunto = _llenar(formal.get("asunto"), valores)
-    texto = _llenar(formal.get("texto"), valores)
+    texto = _llenar(formal.get("texto"), valores) + parrafo_texto
     plantilla = ""
     if os.path.isfile(PLANTILLA_HTML):
         with open(PLANTILLA_HTML, encoding="utf-8") as fh:
@@ -396,10 +754,15 @@ def _componer(ctx):
 
 
 def _adjuntos(ctx):
+    out = []
     html = _dictamen_abs(ctx["idCaso"])
-    if not html:
-        return []
-    return [html]
+    if html:
+        out.append(html)
+    for path in ctx.get("mockups") or []:
+        abs_path = _abs_repo(path) if not os.path.isabs(str(path or "")) else path
+        if abs_path and os.path.isfile(abs_path) and abs_path not in out:
+            out.append(abs_path)
+    return out
 
 
 def _enviar_outlook(para, asunto, cuerpo, adjuntos, display=False, cc="", html=""):
@@ -705,6 +1068,7 @@ def enviar(id_caso, correo=None, reenviar=False, display=False, desarrollador=No
         "ok": True,
         "borrador": False,
         "adjunto": os.path.basename(adjuntos[0]) if adjuntos else "",
+        "adjuntos": [os.path.basename(a) for a in adjuntos if a],
         "copia": copia_meta.get("carpeta") or copia_dir,
         "imap": copia_meta.get("imap"),
         "mensaje": ("Correo reenviado." if tipo == "reenviar" else "Correo enviado.")

@@ -1,0 +1,75 @@
+{
+  "tipo": "solicitud-req",
+  "id": "SR20260923-006",
+  "creadoEn": "2026-09-23T21:20:00",
+  "actualizadoEn": "2026-10-01T08:55:43",
+  "estado": "cerrado",
+  "cerradoEn": "2026-10-01T08:55:43",
+  "analista": "JOSE MANUEL JIMENEZ",
+  "proyecto": "COMITE DE ESTUDIOS MEDICOS",
+  "modulo": "CXP",
+  "procesoId": "cxp-fcxp",
+  "prioridad": "Alta",
+  "titulo": "CxP: el impuesto al consumo no depende del IVA",
+  "necesidad": "Cuando una cuenta por pagar trae impuesto al consumo y no trae IVA, el comprobante debe debitar la cuenta del impuesto. Hoy ese valor queda dentro del gasto.",
+  "hoy": "La CxP 06SR019385, documento FVEA94, comprobante 0673000000207539, del 22 de septiembre, tiene tres líneas de servicio. Cada una trae 6.301.680 de impuesto al consumo en la cuenta 51051526. El IVA está en cero y la cuenta de IVA va vacía. El comprobante debitó 255.218.040 en 61703570 y acreditó el mismo valor en 23359501. No hay línea a 51051526.",
+  "propuesta": "Regla. El impuesto al consumo se causa solo. No depende de que la CxP tenga IVA. Si la línea trae valor y cuenta, el comprobante debita esa cuenta. El gasto queda por la base. El crédito al proveedor sigue siendo el neto.",
+  "justificacion": "El impuesto al consumo está en el detalle y la cuenta está activa. El asiento no lo separa porque el procedimiento solo lo inserta cuando hay cuenta de IVA.",
+  "analisis": "Paso 0. No es capacitación. La CxP ya guarda el impuesto al consumo. El defecto es que la causación exige IVA.\n\nFuente. IX Online. La canasta abierta y la última cerrada 2.0.3 son idénticas (anterior 2.0.2). El arreglo no está en la canasta.\n\nSPK_NC_CONTAB_CXP inserta el débito IMP CONSUMO solo dentro de la condición de cuenta de IVA llena. 06SR019385 es tipo IPS, procedencia Servicios, sin cuenta de IVA. Entra por la otra rama y debita todo el neto en la cuenta del servicio.\n\nClasificación. Defecto. El comprobante ya cerrado no cambia solo con publicar el procedimiento: hay que recontabilizarlo después.",
+  "alcance": "Incluye las ramas de SPK_NC_CONTAB_CXP que contabilizan sin cuenta de IVA: restan el impuesto al consumo del gasto e insertan el débito a CTAIMPCONSUMO. No cambia la rama que ya lo hace cuando hay IVA. No cambia el crédito al proveedor.",
+  "restricciones": "Publicar en preversión. No ejecutar el script provisional desde BA. Revisarlo y correr el archivo completo. Reemplaza el procedimiento. No recontabiliza solo la 06SR019385.",
+  "criterios": "1) Recontabilizar 06SR019385 deja débito 236.313.000 en 61703570, débito 18.905.040 en 51051526 y crédito 255.218.040 en 23359501.\n2) Una CxP con IVA y con impuesto al consumo sigue debitando los dos impuestos.\n3) Una CxP sin ninguno de los dos no gana una línea de impuesto al consumo.",
+  "recomendacion": "Llevar al comité el cambio en SPK_NC_CONTAB_CXP. El script provisional queda para correrlo mientras el desarrollo no está publicado. No se ejecutó.",
+  "cambioPropuestoSql": "**Regla.** El impuesto al consumo se causa solo. No depende de que la CxP tenga IVA.\n\n1. Si la línea trae impuesto al consumo mayor que cero y la cuenta existe, debitar esa cuenta por ese valor.\n2. El débito del gasto es el neto menos ese impuesto. Si además hay IVA, restar también el IVA.\n3. El crédito al proveedor sigue siendo el neto.\n4. Si el impuesto al consumo es cero, no agregar esa línea.\n\nEjemplo 06SR019385. Hoy el impuesto va mezclado en el gasto: débito 61703570 por 255.218.040 y crédito 23359501 por 255.218.040.\n\nCon la regla: débito 61703570 por 236.313.000, débito 51051526 por 18.905.040 y el mismo crédito 255.218.040.\n\nAplicar en `SPK_NC_CONTAB_CXP`, en la rama que corre cuando no hay cuenta de IVA. La rama que ya causa el impuesto cuando sí hay IVA no se toca.\n\nArchivo: `solicitudes/SR20260923-006/sql/ARREGLO_PROVISIONAL_SPK_NC_CONTAB_CXP.sql`\n---SQL---\n-- Procedimiento: SPK_NC_CONTAB_CXP\n-- Hay dos sitios. El crédito al proveedor no se modifica.\n-- El INSERT de IMP CONSUMO que ya existe dentro de IF COALESCE(@CUENTA_IVA,'') <> '' no se toca.\n\n-- ========== Sitio 1 ==========\n-- Buscar: PRINT 'DB 1 @IVADESCONTABLE='\n-- Es el ELSE de IF COALESCE(@CUENTA_IVA,'') <> ''\n-- Por aquí pasó la CxP 06SR019385.\n\n-- ANTES. El gasto lleva el neto completo y no hay línea de impuesto.\nSUM((#TH.VLR_NETO-CASE WHEN CUEIVA.CUENTA IS NULL THEN 0 ELSE #TH.VLR_IVA END))\n\n-- DESPUES. El mismo SUM resta el impuesto al consumo.\nSUM((#TH.VLR_NETO-CASE WHEN CUEIVA.CUENTA IS NULL THEN 0 ELSE #TH.VLR_IVA END-COALESCE(#TH.VLRIMPCONSUMO,0)))\n\n-- DESPUES. Pegar este INSERT justo después del GROUP BY de ese débito,\n-- antes del comentario PRINT 'Corrigiendo  MCH... IVA:'\nPRINT 'IMPUESTO AL CONSUMO SIN IVA......'\nINSERT INTO MCHE(NROCOMPROBANTE,COMPANIA,TIPO,CUENTA,IDTERCERO,CCOSTO,DETALLE,VALOR,REFERENCIA1,\n                 REFERENCIA2,ITEMREF,USUARIO,FECHA,PREFIJO,IDAREA,CLASECONT,ESTADO,PROCESO,GENERA,\n                 N_FACTURA,F_FACTURAREF, F_VENCE, CLASE_GENERA, PROCEDENCIA, REFERENCIA_PRO, CODUNG, CODPRG,IDSEDE)\nSELECT @NROCOMPROBANTE, @COMPANIA, 'DB', #TH.CTAIMPCONSUMO, #T.IDTERCERO, #TH.CCOSTO,\n       'IMP_CONSUMO: '+CUE.NOMCUENTA+', DOCUMENTO No.'+#T.NOREFERENCIA,\n       SUM(#TH.VLRIMPCONSUMO), #T.NOREFERENCIA, #T.CNSFCXP, NULL, @USUARIO, DBO.FNK_FECHA_SIN_MLS(GETDATE()),\n       #TH.PREFIJO, #TH.IDAREA, 'P', 1 ,'IMP CONSUMO', 'Movimiento',\n       #T.NOREFERENCIA, DBO.FNK_FECHA_SIN_HORA(#T.F_FACTURAREF),\n       DBO.FNK_FECHA_SIN_HORA(#T.F_VENCE), #T.PROCEDENCIA, 'CXP', @CNSFCXP,\n       COALESCE(#TH.CODUNG,#T.CODUNG), #T.CODPRG, COALESCE(#TH.IDSEDE,#T.IDSEDE)\nFROM #T\nINNER JOIN #TH ON #T.CNSFCXP = #TH.CNSFCXP\nINNER JOIN CUE ON #TH.CTAIMPCONSUMO = CUE.CUENTA AND CUE.COMPANIA = @COMPANIA\nWHERE #TH.PROCEDENCIA IN ('Compras', 'Servicios')\nGROUP BY CUE.CUENTA, #T.IDTERCERO, #TH.CCOSTO, CUE.NOMCUENTA, #T.NOREFERENCIA,\n         #T.CNSFCXP, #TH.PREFIJO, #TH.IDAREA, DBO.FNK_FECHA_SIN_HORA(#T.F_FACTURAREF),\n         DBO.FNK_FECHA_SIN_HORA(#T.F_VENCE), #T.PROCEDENCIA,\n         COALESCE(#TH.CODUNG,#T.CODUNG), #T.CODPRG, COALESCE(#TH.IDSEDE,#T.IDSEDE), #TH.CTAIMPCONSUMO\nHAVING SUM(#TH.VLRIMPCONSUMO) > 0\n\n-- ========== Sitio 2 ==========\n-- Buscar: PRINT '-Ingreso en MCH de los Debitos- OJO SIN CUENTA IVA'\n-- Está dentro de IF @PROCEDENCIA = 'Servicios' AND IF COALESCE(@CUENTA_IVA,'') = ''\n\n-- ANTES.\nSUM(#TH.VLR_NETO)+COALESCE(#T.VLR_FLETE, 0)\n\n-- DESPUES. El mismo SUM resta el impuesto. El flete se deja.\nSUM(#TH.VLR_NETO-COALESCE(#TH.VLRIMPCONSUMO,0))+COALESCE(#T.VLR_FLETE, 0)\n\n-- DESPUES. Pegar el mismo INSERT de IMP CONSUMO del sitio 1\n-- justo después del GROUP BY de este débito\n-- y antes de PRINT 'Créditos. Servicios  - Contabilizando CxP. DESPUES DE JOSE'\n",
+  "normativa": "No hay norma adjunta. El impuesto al consumo del detalle debe quedar en su cuenta, con IVA o sin IVA.",
+  "analisisLanzado": true,
+  "archivos": [],
+  "mockups": [
+    "solicitudes/SR20260923-006/mockups/mockup-ux-pantalla.html"
+  ],
+  "siguiente": "Comité: aprobar o devolver. Si aprueba, publicar en preversión. El script provisional se corre después de revisarlo. Luego recontabilizar la 06SR019385.",
+  "aval": {
+    "aplica": false,
+    "idReq": "",
+    "idCaso": "",
+    "titulo": "",
+    "notas": ""
+  },
+  "documento": {
+    "nombre": "documento.html",
+    "ruta": "solicitudes/SR20260923-006/documento.html",
+    "url": "/api/solicitar/SR20260923-006/documento",
+    "dictamenCopia": "dictamenes/SR20260923-006.html",
+    "mockups": [
+      "solicitudes/SR20260923-006/mockups/mockup-ux-pantalla.html"
+    ],
+    "diagramaFlujo": "solicitudes/SR20260923-006/diagramas/flujo.html",
+    "generadoEn": "2026-10-01T08:52:22"
+  },
+  "diagramaFlujo": "solicitudes/SR20260923-006/diagramas/flujo.html",
+  "plataforma": {
+    "carpeta": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\solicitudes\\SR20260923-006\\plataforma",
+    "carpetaRel": "solicitudes/SR20260923-006/plataforma",
+    "exportadoEn": "2026-10-01T08:54:43",
+    "archivos": [
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260923-006-documento-comite.pdf",
+        "ruta": "solicitudes/SR20260923-006/plataforma/SR20260923-006-documento-comite.pdf",
+        "url": "/api/solicitar/SR20260923-006/plataforma/SR20260923-006-documento-comite.pdf"
+      },
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260923-006-mockups.pdf",
+        "ruta": "solicitudes/SR20260923-006/plataforma/SR20260923-006-mockups.pdf",
+        "url": "/api/solicitar/SR20260923-006/plataforma/SR20260923-006-mockups.pdf"
+      },
+      {
+        "tipo": "png",
+        "nombre": "SR20260923-006-diagrama-flujo.png",
+        "ruta": "solicitudes/SR20260923-006/plataforma/SR20260923-006-diagrama-flujo.png",
+        "url": "/api/solicitar/SR20260923-006/plataforma/SR20260923-006-diagrama-flujo.png"
+      }
+    ]
+  }
+}

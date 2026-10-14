@@ -1,0 +1,929 @@
+{
+  "id": "configuracion-financiero",
+  "nombre": "Configuración · Financiero",
+  "modulo": "CONF · Financiero",
+  "familia": "configuracion",
+  "prioridad": 11,
+  "enRuta": true,
+  "estado": "documentado",
+  "resumen": "Submenú Financiero del menú central Configuración: caja (ficha, turnos, cajeros, conceptos, asignación, tipos de egreso y de anticipo), bancos y sucursales, formas de pago, operaciones financieras, conceptos y tipos de notas, funcionarios, resolución DIAN y certificado de firma. Parámetros Financieros está en construcción: las reglas viven en Variables del Sistema. Este libro no opera caja, bancos, notas ni el envío DIAN: eso está en sus procesos.",
+  "actualizado": "2026-10-04T21:30:00",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (PREVERSION = 2.0.7, IDANT 2.0.6, idénticas): SPQ_CAJ_COL · CRUDCAJ, SPQ_TUR_COL, SPQ_CJR_COL, SPQ_CPCJ_COL, SPQ_CXT_COL, SPQ_FPA_COL (CREA_FPA / ACTUALIZA_FPA; ELIMINAR_FPA existe en el SP, la pantalla no lo llama), SPQ_BCO, SPQ_OFIN_COL · CRUDOFIN / SOLICITA_RECA_NOMINA, SPQ_CPNT_COL, SPQ_FNT_COL, SPQ_FDIAN_COL · CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN, SPQ_FDIANCER_COL. Menú: ConfLayout.arbolMenu. PCEM no consultado.",
+  "alcanceHasta": "Solo el submenú Financiero de Configuración. Abrir/cerrar turno, movimientos bancarios, aplicar notas y encolar XML se documentan en caja, bancos, notas-dbcr y dian-xml. Hay una ruta legacy conf.caj distinta de la pantalla de pestañas.",
+  "flujoResumen": "Caja (ficha → conceptos → turnos → cajeros → asignación) → formas de pago y bancos → operaciones financieras → conceptos/tipos de notas y funcionarios → resolución DIAN y certificado. Después se opera en cada módulo.",
+  "incluirProcesoMdEnLibro": false,
+  "menu": {
+    "ruta": "Configuración → Financiero → Caja · Bancos · Formas de Pago · Operaciones Financieras · Conceptos de Notas · Tipos de Notas Débito/Crédito · Funcionarios · Resolución DIAN · Gestión de Firma Digital · Parámetros Financieros",
+    "fuente": "ConfLayout.vue arbolMenu (Financiero) + routes.js /conf (conf.caja, conf.bancos, conf.fpa, conf.ofin, conf.cpnt, conf.fnt, conf.fusu, conf.fdian, conf.firmadigital, conf.en_construccion). Legacy: conf.caj. Menú por grupo: MENUQ_COL · CONFIGURACION."
+  },
+  "ventanas": [
+    {
+      "uso": "Caja (siete pestañas)",
+      "ruta": "conf.caja",
+      "path": "/conf/caja",
+      "vue": "CAJComponent + TUR/CJR/CPCJ/CXT/CJTE/TANT",
+      "entrada": "Configuración → Financiero → Caja"
+    },
+    {
+      "uso": "Caja legacy (una sola grilla)",
+      "ruta": "conf.caj",
+      "path": "/conf/caj",
+      "vue": "CnfCajPage",
+      "entrada": "Ruta antigua; no está en el árbol Financiero"
+    },
+    {
+      "uso": "Bancos",
+      "ruta": "conf.bancos",
+      "path": "/conf/bancos",
+      "vue": "BCOComponent (BCO + BSU, TERCATBANCO)",
+      "entrada": "Configuración → Financiero → Bancos"
+    },
+    {
+      "uso": "Formas de pago",
+      "ruta": "conf.fpa",
+      "path": "/conf/fpa",
+      "vue": "CnfFpaPage / FPA_COL",
+      "entrada": "Configuración → Financiero → Formas de Pago"
+    },
+    {
+      "uso": "Operaciones financieras",
+      "ruta": "conf.ofin",
+      "path": "/conf/ofin",
+      "vue": "OFINComponent (OFIN_COL)",
+      "entrada": "Configuración → Financiero → Operaciones Financieras"
+    },
+    {
+      "uso": "Conceptos de notas",
+      "ruta": "conf.cpnt",
+      "path": "/conf/cpnt",
+      "vue": "CPNTComponent (CPNT_COL)",
+      "entrada": "Configuración → Financiero → Conceptos de Notas"
+    },
+    {
+      "uso": "Tipos de notas débito/crédito",
+      "ruta": "conf.fnt",
+      "path": "/conf/fnt",
+      "vue": "FNTComponent (FNT_COL)",
+      "entrada": "Configuración → Financiero → Tipos de Notas Débito/Crédito"
+    },
+    {
+      "uso": "Funcionarios",
+      "ruta": "conf.fusu",
+      "path": "/conf/fusu",
+      "vue": "FUSUComponent",
+      "entrada": "Configuración → Financiero → Funcionarios"
+    },
+    {
+      "uso": "Resolución DIAN",
+      "ruta": "conf.fdian",
+      "path": "/conf/fdian",
+      "vue": "FDIANComponent (FDIAN_COL)",
+      "entrada": "Configuración → Financiero → Resolución DIAN"
+    },
+    {
+      "uso": "Firma digital",
+      "ruta": "conf.firmadigital",
+      "path": "/conf/firmadigital",
+      "vue": "FDIANCERComponent (FDIANCER_COL)",
+      "entrada": "Configuración → Financiero → Gestión de Firma Digital"
+    },
+    {
+      "uso": "Parámetros financieros (hueco)",
+      "ruta": "conf.en_construccion",
+      "path": "/conf/en_construccion",
+      "vue": "EnConstruccionPage",
+      "entrada": "Configuración → Financiero → Parámetros Financieros"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-caja",
+      "numero": 1,
+      "nombre": "Caja",
+      "estado": "documentado",
+      "explicacion": "Ficha CAJ (bodega, cuentas, comprobante, tercero, clase Principal/Auxiliar/Menor). Pestañas: Turnos (TUR), Cajeros (CJR), Conceptos (CPCJ), Asignación (CXT), Tipos de egreso (CJTE), Tipos de anticipo (TANT). Al expandir la caja se eligen tipos de egreso y formas de pago permitidos (TGEN).",
+      "controles": [
+        {
+          "id": "caja-ficha",
+          "nombre": "Ficha de caja",
+          "sp": "SPQ_CAJ_COL · CRUDCAJ",
+          "regla": "Código ≤ 4. Insertar / Editar; no hay borrado en el procedimiento."
+        },
+        {
+          "id": "turnos-cajeros",
+          "nombre": "Turnos, cajeros y asignación",
+          "sp": "SPQ_TUR_COL · CRUDTUR · SPQ_CJR_COL · CRUDCJR · SPQ_CXT_COL · CRUDCXT",
+          "regla": "No se borra un turno o cajero con asignación. El par caja+turno no se repite."
+        },
+        {
+          "id": "conceptos-caja",
+          "nombre": "Conceptos, tipos de egreso y anticipos",
+          "sp": "SPQ_CPCJ_COL · CREA_CPCJ / ACTUALIZA_CPCJ / ELIMINAR_CPCJ",
+          "regla": "La regla KMCOM CAJA_MENOR usa estos conceptos. Las variables IDCJ* apuntan a un código CPCJ."
+        }
+      ]
+    },
+    {
+      "id": "02-bancos-formas",
+      "numero": 2,
+      "nombre": "Bancos, formas de pago y operaciones",
+      "estado": "documentado",
+      "explicacion": "BCO + BSU (tercero categoría banco). FPA global (caja y recaudos). OFIN: tipo de movimiento bancario con cuenta y marcas de recaudo/nómina/traslado.",
+      "controles": [
+        {
+          "id": "bancos",
+          "nombre": "Banco y sucursales",
+          "sp": "SPQ_BCO · GUARDAR / EDITAR / ELIMINAR / GUARDARBSU / EDITARBSU / ELIMINARBSU",
+          "regla": "Tercero único por banco. No se borra un banco con sucursales. La cuenta BCT se crea en Tesorería, no aquí."
+        },
+        {
+          "id": "formas-pago",
+          "nombre": "Formas de pago",
+          "sp": "SPQ_FPA_COL · CREA_FPA / ACTUALIZA_FPA",
+          "regla": "ELIMINAR_FPA existe en el procedimiento; la pantalla tiene botón sin handler."
+        },
+        {
+          "id": "ofin",
+          "nombre": "Operación financiera",
+          "sp": "SPQ_OFIN_COL · CRUDOFIN / SOLICITA_RECA_NOMINA",
+          "regla": "Define si el movimiento alimenta recaudos, nómina o traslado."
+        }
+      ]
+    },
+    {
+      "id": "03-notas-func",
+      "numero": 3,
+      "nombre": "Notas y funcionarios",
+      "estado": "documentado",
+      "explicacion": "CPNT conceptos (cuenta, homologación DIAN). FNT tipos ND/NC (comprobante). FUSU liga el tercero de oficina al usuario que autoriza.",
+      "controles": [
+        {
+          "id": "conceptos-notas",
+          "nombre": "Concepto de nota",
+          "sp": "SPQ_CPNT_COL · CRUDCPNT",
+          "regla": "Sin concepto no hay asiento coherente al aplicar la nota."
+        },
+        {
+          "id": "tipos-nota",
+          "nombre": "Tipo de nota débito/crédito",
+          "sp": "SPQ_FNT_COL · CRUDFNT",
+          "regla": "Complementa el concepto con clase y comprobante."
+        },
+        {
+          "id": "funcionarios",
+          "nombre": "Funcionario",
+          "sp": "SPQ_FUSU_COL · CRUDFUSU",
+          "regla": "Tercero de oficina ligado al usuario."
+        }
+      ]
+    },
+    {
+      "id": "04-dian",
+      "numero": 4,
+      "nombre": "Resolución DIAN y firma",
+      "estado": "documentado",
+      "explicacion": "FDIAN: rangos por sede, vigencia, tipo (factura, nota, POS). POS bloqueada si FACTURAPOS_ACTIVA no está encendida. IXCOUNTRY cambia procedencias. FDIANCER: certificado, vencimiento y aviso DIASNOTIFICACERT. Variable DIANCERTIFICADO.",
+      "controles": [
+        {
+          "id": "resolucion-dian",
+          "nombre": "Resolución DIAN",
+          "sp": "SPQ_FDIAN_COL · CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN",
+          "regla": "CNSRESOL único. No se borra si ya facturó. Factura final > inicial."
+        },
+        {
+          "id": "firma-digital",
+          "nombre": "Certificado de firma",
+          "sp": "SPQ_FDIANCER_COL · CRUDFDIANCER / GETVENCIMIENTO",
+          "regla": "El color avisa según DIASNOTIFICACERT. La factura toma el certificado vigente."
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "conffin-caja",
+      "nombre": "Configurar una caja: de la ficha a los turnos",
+      "icono": "point_of_sale",
+      "descripcion": "Orden para que un cajero pueda abrir turno en el módulo Caja.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la caja",
+          "descripcion": "Caja → Nueva: código (≤4), descripción, tipo Cobro/Pago/Ambas, clase Principal/Auxiliar/Menor, fondo fijo, tipo de factura, bodega, cuenta Detalle, concepto de recaudo. Si es Menor: máximo pago, comprobante, responsable y cuenta CxP.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Caja",
+          "tablas": ["CAJ"],
+          "sp": "SPQ_CAJ_COL · CRUDCAJ"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Conceptos de caja",
+          "descripcion": "Pestaña Conceptos: ingreso / egreso / caja menor, cuenta y comprobante. Las variables IDCJ* apuntan a estos códigos.",
+          "rol": "Administrador",
+          "pantalla": "Caja → Conceptos",
+          "tablas": ["CPCJ"],
+          "sp": "SPQ_CPCJ_COL · CREA_CPCJ"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Turnos y cajeros",
+          "descripcion": "Turnos: horario y días. Cajeros: usuario que puede abrir. Asignación: qué cajero en qué caja y turno.",
+          "rol": "Administrador",
+          "pantalla": "Caja → Turnos / Cajeros / Asignación",
+          "tablas": ["TUR", "CJR", "CXT"],
+          "sp": "SPQ_TUR_COL · CRUDTUR · SPQ_CJR_COL · CRUDCJR · SPQ_CXT_COL · CRUDCXT"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Tipos de egreso, anticipos y formas por caja",
+          "descripcion": "Pestañas Tipos de egreso y Tipos de anticipo. Al expandir la fila de la caja se eligen los tipos de egreso y las formas de pago permitidos.",
+          "rol": "Administrador",
+          "pantalla": "Caja → fila expandida / pestañas",
+          "tablas": ["CJTE", "TANT", "TGEN", "FPA"],
+          "sp": "TGEN + FPA"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Abrir el turno en el módulo Caja",
+          "descripcion": "Administrativo → Caja. Esta pantalla no abre ni cierra turno. El equipo (UBEQ) debe estar marcado como caja.",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja",
+          "tablas": ["ACJ"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "conffin-bancos",
+      "nombre": "Bancos, formas de pago y operaciones financieras",
+      "icono": "account_balance",
+      "descripcion": "El dinero que entra y sale por tesorería.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear el banco",
+          "descripcion": "Bancos → Nuevo: código, descripción, ACH y tercero (categoría banco). Luego sucursales.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Bancos",
+          "tablas": ["BCO", "BSU"],
+          "sp": "SPQ_BCO · GUARDAR / GUARDARBSU"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Formas de pago",
+          "descripcion": "Formas de Pago → Nuevo: código, cuenta, comprobante, marcas (físico, datafono, pide banco/documento). Las usa caja y recaudos.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Formas de Pago",
+          "tablas": ["FPA"],
+          "sp": "SPQ_FPA_COL · CREA_FPA"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Operaciones financieras",
+          "descripcion": "Operaciones Financieras → Nuevo: tipo DB/CR, marcas Recaudo / Nómina / Traslado / Genera CxP, cuenta y cuenta destino si es traslado.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Operaciones Financieras",
+          "tablas": ["OFIN"],
+          "sp": "SPQ_OFIN_COL · CRUDOFIN"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Crear la cuenta bancaria en Tesorería",
+          "descripcion": "La cuenta BCT (banco + sucursal + número) no se crea aquí: Administrativo → Tesorería → Cuentas.",
+          "rol": "Tesorero",
+          "pantalla": "Administrativo → Tesorería → Cuentas",
+          "tablas": ["BCT"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "conffin-notas",
+      "nombre": "Conceptos de notas, tipos y funcionarios",
+      "icono": "note_alt",
+      "descripcion": "Lo que Notas débito/crédito exige antes de crear la primera nota.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Conceptos de notas",
+          "descripcion": "Conceptos de Notas → Nuevo: código, cuenta, homologación DIAN débito/crédito, tipo de respuesta.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Conceptos de Notas",
+          "tablas": ["CPNT"],
+          "sp": "SPQ_CPNT_COL · CRUDCPNT"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Tipos de notas",
+          "descripcion": "Tipos de Notas Débito/Crédito → Nuevo: clase, comprobante, homologación DIAN.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Tipos de Notas Débito/Crédito",
+          "tablas": ["FNT"],
+          "sp": "SPQ_FNT_COL · CRUDFNT"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Funcionarios",
+          "descripcion": "Funcionarios → ligar el tercero de oficina al usuario que autoriza notas, recaudos o CxP.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Funcionarios",
+          "tablas": ["FUSU"],
+          "sp": "SPQ_FUSU_COL · CRUDFUSU"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Crear la nota en el módulo",
+          "descripcion": "Administrativo → Notas DB/CR. Este submenú no aplica ni envía a la DIAN.",
+          "rol": "Cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": ["FNOT"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "conffin-dian",
+      "nombre": "Resolución DIAN y certificado de firma",
+      "icono": "verified",
+      "descripcion": "Sin resolución vigente y sin certificado no hay envío electrónico.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la resolución",
+          "descripcion": "Resolución DIAN → Nueva: sede, prefijo, rango inicial-final (final > inicial), vigencia, tipo (factura, nota, POS), ambiente. Datos del facturador (contacto y software) en TGEN.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Resolución DIAN",
+          "tablas": ["FDIAN", "TGEN"],
+          "sp": "SPQ_FDIAN_COL · CRUDFDIAN / CRUDFTRDIAN"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Candados POS y país",
+          "descripcion": "Si FACTURAPOS_ACTIVA no está encendida no se crea resolución POS. IXCOUNTRY cambia el juego de procedencias (Colombia / Perú).",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": ["USVGS"],
+          "sp": "—"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cargar el certificado",
+          "descripcion": "Gestión de Firma Digital → Nuevo: archivo, clave, fechas, proveedor. El color avisa según DIASNOTIFICACERT. Variable DIANCERTIFICADO.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Financiero → Gestión de Firma Digital",
+          "tablas": ["FDIANCER"],
+          "sp": "SPQ_FDIANCER_COL · CRUDFDIANCER"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Encolar en Facturación",
+          "descripcion": "El envío XML se documenta en Facturación · XML DIAN. No se borra una resolución ya usada («ESTA RESOLUCION YA FUE USADA EN FACTURACION»).",
+          "rol": "Facturación",
+          "pantalla": "Facturación → cola DIAN",
+          "tablas": ["FTR"],
+          "sp": "—"
+        }
+      ]
+    }
+  ],
+  "estadosConfigFinanciero": {
+    "titulo": "Estados y marcas de los catálogos financieros",
+    "descripcion": "Qué significa cada valor en Configuración → Financiero.",
+    "columnas": ["Valor", "Dónde"],
+    "filas": [
+      {
+        "codigo": "CajA",
+        "tono": "verde",
+        "etiquetas": ["CAJ.ESTADO = Activo"],
+        "significa": "Caja vigente: se puede asignar turno y abrir en el módulo.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "CajI",
+        "tono": "gris",
+        "etiquetas": ["CAJ.ESTADO = Inactivo"],
+        "significa": "Caja retirada. No se borra: CRUDCAJ no tiene DELETE.",
+        "queHacer": "Inactivar."
+      },
+      {
+        "codigo": "Men",
+        "tono": "ambar",
+        "etiquetas": ["CAJ.CLASE = Menor"],
+        "significa": "Caja menor: pide máximo pago, comprobante, responsable y cuenta CxP. El cierre va a reembolso.",
+        "queHacer": "Completar el recuadro Caja Menor."
+      },
+      {
+        "codigo": "NoC",
+        "tono": "gris",
+        "etiquetas": ["CAJ.NOCONTAB"],
+        "significa": "La caja no genera comprobante al confirmar el recibo.",
+        "queHacer": "Usar solo si el recaudo se contabiliza por otro camino."
+      },
+      {
+        "codigo": "TurA",
+        "tono": "verde",
+        "etiquetas": ["TUR / CJR.ESTADO"],
+        "significa": "Turno o cajero vigente.",
+        "queHacer": "No borrar si tiene asignación CXT."
+      },
+      {
+        "codigo": "Fis",
+        "tono": "azul",
+        "etiquetas": ["FPA.FISICO = 1"],
+        "significa": "Forma de pago en efectivo: entra al cuadre de fondo fijo.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "ResV",
+        "tono": "verde",
+        "etiquetas": ["FDIAN.VENCIDA = 0"],
+        "significa": "Resolución vigente: el numerador la usa.",
+        "queHacer": "Vigilar FECHAVEN y el rango."
+      },
+      {
+        "codigo": "ResX",
+        "tono": "rojo",
+        "etiquetas": ["FDIAN.VENCIDA = 1"],
+        "significa": "Resolución vencida o agotada: no numera.",
+        "queHacer": "Crear resolución nueva; no se borra si ya facturó."
+      },
+      {
+        "codigo": "POS",
+        "tono": "ambar",
+        "etiquetas": ["FDIAN.TIPO POS + FACTURAPOS_ACTIVA"],
+        "significa": "Resolución POS. Si la variable no está encendida, la pantalla no deja crearla.",
+        "queHacer": "Revisar FACTURAPOS_ACTIVA."
+      },
+      {
+        "codigo": "Cer",
+        "tono": "ambar",
+        "etiquetas": ["FDIANCER + DIASNOTIFICACERT"],
+        "significa": "El color del certificado avisa vigencia / próximo a vencer / vencido.",
+        "queHacer": "Renovar antes de que el envío se detenga."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear una caja",
+      "donde": "Configuración → Financiero → Caja → Nueva → Guardar",
+      "condicion": "Código ≤ 4; cuenta Detalle; concepto de recaudo.",
+      "noEs": "No abre el turno: eso es Administrativo → Caja."
+    },
+    {
+      "necesidad": "Configurar una caja menor",
+      "donde": "Caja → clase Menor → recuadro Caja Menor (máximo, comprobante, responsable, cuenta CxP)",
+      "condicion": "Clase = Menor.",
+      "noEs": "El reembolso se dispara al cerrar el turno, no aquí."
+    },
+    {
+      "necesidad": "Crear conceptos de ingreso y egreso",
+      "donde": "Caja → pestaña Conceptos → Nuevo",
+      "condicion": "Código obligatorio.",
+      "noEs": "La regla KMCOM CAJA_MENOR usa estos códigos como prefijo."
+    },
+    {
+      "necesidad": "Definir turnos y cajeros",
+      "donde": "Caja → Turnos / Cajeros / Asignación",
+      "condicion": "No se borra un turno o cajero con asignación.",
+      "noEs": "No es la sesión ACJ."
+    },
+    {
+      "necesidad": "Decir qué formas de pago acepta una caja",
+      "donde": "Caja → expandir la fila → formas de pago (TGEN)",
+      "condicion": "Formas creadas en Formas de Pago.",
+      "noEs": "El catálogo global está en Formas de Pago."
+    },
+    {
+      "necesidad": "Crear una forma de pago",
+      "donde": "Configuración → Financiero → Formas de Pago → Nuevo",
+      "condicion": "Código obligatorio.",
+      "noEs": "El botón Eliminar se ve pero no llama al procedimiento (ver hallazgos)."
+    },
+    {
+      "necesidad": "Registrar un banco y sus sucursales",
+      "donde": "Configuración → Financiero → Bancos → Nuevo → sucursales",
+      "condicion": "Tercero categoría banco; tercero único por banco.",
+      "noEs": "La cuenta BCT se crea en Tesorería → Cuentas."
+    },
+    {
+      "necesidad": "Definir una operación financiera (consignación, traslado, recaudo)",
+      "donde": "Configuración → Financiero → Operaciones Financieras → Nuevo",
+      "condicion": "Tipo DB/CR y marcas.",
+      "noEs": "No crea el movimiento BMOV."
+    },
+    {
+      "necesidad": "Crear un concepto de nota débito/crédito",
+      "donde": "Configuración → Financiero → Conceptos de Notas → Nuevo",
+      "condicion": "Cuenta y homologación DIAN.",
+      "noEs": "No crea la nota: Administrativo → Notas DB/CR."
+    },
+    {
+      "necesidad": "Crear un tipo de nota",
+      "donde": "Configuración → Financiero → Tipos de Notas Débito/Crédito → Nuevo",
+      "condicion": "Clase y comprobante.",
+      "noEs": "No es el concepto (CPNT)."
+    },
+    {
+      "necesidad": "Ligar un funcionario al usuario que autoriza",
+      "donde": "Configuración → Financiero → Funcionarios",
+      "condicion": "Tercero de oficina.",
+      "noEs": "No es el usuario del sistema (Sistemas → Usuarios)."
+    },
+    {
+      "necesidad": "Cargar una resolución DIAN",
+      "donde": "Configuración → Financiero → Resolución DIAN → Nueva",
+      "condicion": "Rango final > inicial; CNSRESOL único.",
+      "noEs": "No encola facturas."
+    },
+    {
+      "necesidad": "Crear una resolución POS",
+      "donde": "Resolución DIAN → tipo POS",
+      "condicion": "Variable FACTURAPOS_ACTIVA encendida.",
+      "noEs": "Si la variable está apagada la pantalla no deja crearla."
+    },
+    {
+      "necesidad": "Datos del facturador electrónico",
+      "donde": "Resolución DIAN → Datos facturador (contacto / software)",
+      "condicion": "Ninguna.",
+      "noEs": "No es el certificado (Gestión de Firma Digital)."
+    },
+    {
+      "necesidad": "Cargar el certificado de firma",
+      "donde": "Configuración → Financiero → Gestión de Firma Digital → Nuevo",
+      "condicion": "Archivo, clave y fechas.",
+      "noEs": "El aviso de vencimiento usa DIASNOTIFICACERT."
+    },
+    {
+      "necesidad": "Cambiar parámetros financieros (tope UVT, cuentas de tesorería…)",
+      "donde": "Configuración → Sistemas → Variables del Sistema",
+      "condicion": "Variable existente.",
+      "noEs": "Parámetros Financieros de este menú está en construcción."
+    },
+    {
+      "necesidad": "Abrir o cerrar un turno de caja",
+      "donde": "Administrativo → Caja",
+      "condicion": "Caja, cajero, turno y equipo (UBEQ) configurados.",
+      "noEs": "No se hace desde Configuración → Caja."
+    },
+    {
+      "necesidad": "Crear un movimiento bancario",
+      "donde": "Administrativo → Tesorería → Cuentas",
+      "condicion": "Banco, sucursal, cuenta BCT y operación OFIN.",
+      "noEs": "Este submenú solo crea el banco y la operación."
+    },
+    {
+      "necesidad": "Enviar una factura a la DIAN",
+      "donde": "Facturación → cola DIAN",
+      "condicion": "Resolución vigente y certificado.",
+      "noEs": "No se encola desde Resolución DIAN."
+    },
+    {
+      "necesidad": "Usar la caja antigua de una sola grilla",
+      "donde": "Ruta legacy conf.caj (no está en el árbol Financiero)",
+      "condicion": "Ninguna recomendada.",
+      "noEs": "La pantalla oficial es Financiero → Caja (siete pestañas)."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nueva (Caja)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Ficha de caja: General, Inventarios y, si es Menor, Caja Menor."
+    },
+    {
+      "label": "Editar",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Edita la fila (caja, banco, forma, resolución…)."
+    },
+    {
+      "label": "Eliminar (Caja)",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Oculto (inactiveFeature). CRUDCAJ no tiene rama DELETE."
+    },
+    {
+      "label": "Caja / Turnos / Cajeros / Conceptos / Asignación / Tipos de egreso / Tipos de anticipo",
+      "icono": "tab",
+      "color": "primary",
+      "estilo": "tab",
+      "descripcion": "Siete pestañas de la pantalla Caja."
+    },
+    {
+      "label": "Nuevo (Turno / Cajero / Concepto)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta en la pestaña correspondiente."
+    },
+    {
+      "label": "Nuevo (Banco)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Banco con tercero categoría banco; luego sucursales."
+    },
+    {
+      "label": "Nueva sucursal",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Sucursal del banco elegido."
+    },
+    {
+      "label": "Nuevo (Forma de pago)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Forma de pago global."
+    },
+    {
+      "label": "Eliminar (Forma de pago)",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Se ve en pantalla; no llama ELIMINAR_FPA (ver hallazgos)."
+    },
+    {
+      "label": "Nuevo (Operación)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Operación financiera (DB/CR, recaudo, nómina, traslado)."
+    },
+    {
+      "label": "Nuevo (Concepto de nota)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Concepto CPNT con homologación DIAN."
+    },
+    {
+      "label": "Nuevo (Tipo de nota)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Tipo FNT con comprobante."
+    },
+    {
+      "label": "Nueva resolución",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Resolución DIAN por sede y tipo."
+    },
+    {
+      "label": "Datos facturador",
+      "icono": "badge",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Contacto y software (TGEN)."
+    },
+    {
+      "label": "Nuevo (Certificado)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Certificado de firma digital."
+    },
+    {
+      "label": "Guardar / Cancelar",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma o cierra el formulario."
+    },
+    {
+      "label": "Manual de Usuario",
+      "icono": "help",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Ayuda HelpManual* en las pestañas de Caja."
+    },
+    {
+      "label": "Limpiar filtros",
+      "icono": "filter_alt_off",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Reinicia los filtros de la grilla."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Configuración (MENUQ_COL · CONFIGURACION)",
+      "accion": "Ver y abrir las opciones del submenú Financiero",
+      "rol": "Administrador / Tesorería",
+      "descripcion": "El árbol es fijo; la habilitación es por grupo."
+    },
+    {
+      "codigo": "Sin getPermiso por botón",
+      "accion": "Crear / editar catálogos",
+      "rol": "Quien entra a la pantalla",
+      "descripcion": "El acceso a la opción es el único control."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "FACTURAPOS_ACTIVA",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si no está encendida, no se crea resolución POS."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de país de la instalación",
+      "descripcion": "Cambia procedencias de resolución (Colombia / Perú). No publicar el valor de un cliente."
+    },
+    {
+      "nombre": "DIANCERTIFICADO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Enciende el uso del certificado y el aviso de vencimiento."
+    },
+    {
+      "nombre": "DIASNOTIFICACERT",
+      "tipo": "USVGS",
+      "valorSugerido": "Días de anticipación (número)",
+      "descripcion": "Umbral para pintar el certificado como próximo a vencer."
+    },
+    {
+      "nombre": "IDCJAPERTURACAJA / IDCJ* (familia)",
+      "tipo": "USVGS",
+      "valorSugerido": "Código CPCJ",
+      "descripcion": "Conceptos que usa el módulo Caja (apertura, traslado, devolución). Se editan en Variables del Sistema."
+    },
+    {
+      "nombre": "TERCATBANCO",
+      "tipo": "USVGS",
+      "valorSugerido": "Categoría de tercero banco",
+      "descripcion": "Categoría que exige el maestro de bancos."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "conffin-parametros-en-construccion",
+      "tipo": "hueco",
+      "detalle": "Parámetros Financieros apunta a la página en construcción. Tope UVT, cuentas de tesorería y demás reglas viven en Variables del Sistema.",
+      "solucionPropuesta": "Quitar la opción o apuntarla a Variables del Sistema con un filtro."
+    },
+    {
+      "id": "conffin-fpa-eliminar-sin-handler",
+      "tipo": "fe",
+      "detalle": "Formas de Pago muestra Eliminar y SPQ_FPA_COL · ELIMINAR_FPA existe, pero la pantalla no llama el método: el botón no borra.",
+      "solucionPropuesta": "Cablear el handler o ocultar el botón."
+    },
+    {
+      "id": "conffin-caj-legacy",
+      "tipo": "decision",
+      "detalle": "Existe conf.caj (una grilla CAJ) distinta de conf.caja (siete pestañas). El árbol Financiero abre la de pestañas. Quien tenga un favorito a la ruta vieja ve otra pantalla.",
+      "solucionPropuesta": "Redirigir conf.caj a conf.caja o retirar la ruta."
+    },
+    {
+      "id": "conffin-fdian-pos-variable",
+      "tipo": "fe",
+      "detalle": "La resolución POS está bloqueada por FACTURAPOS_ACTIVA. El usuario ve que no puede crear el tipo y cree que falta el botón.",
+      "solucionPropuesta": "Mostrar el motivo (variable apagada) en la pantalla."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita configurar de tesorería y DIAN?",
+      "intro": "Veinte tareas frecuentes del submenú Financiero: dónde está el botón, qué condición exige y qué se opera en otro módulo."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué configura el submenú Financiero (y qué no opera)",
+      "imagen": "img/conffin_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa del submenú Financiero",
+      "intro": "**Configuración → Financiero** arma los catálogos que caja, tesorería, notas y factura electrónica consultan. **No abre turnos, no mueve bancos, no aplica notas ni envía XML.** Eso vive en Administrativo y en Facturación. **Parámetros Financieros** está en construcción: las reglas están en Variables del Sistema.",
+      "md": "## Cuatro bloques\n\n| Bloque | Opciones | Tablas | Quién lo consume |\n|---|---|---|---|\n| Caja | Caja (siete pestañas) | CAJ, TUR, CJR, CPCJ, CXT, CJTE, TANT | Módulo Caja (abrir turno, recibos) |\n| Bancos y formas | Bancos, Formas de Pago, Operaciones Financieras | BCO, BSU, FPA, OFIN | Tesorería (BCT/BMOV), caja y recaudos |\n| Notas | Conceptos, Tipos ND/NC, Funcionarios | CPNT, FNT, FUSU | Notas débito/crédito |\n| DIAN | Resolución, Firma Digital | FDIAN, FDIANCER, TGEN | Facturación electrónica |\n\nHay una ruta legacy de caja (`conf.caj`) distinta de esta pantalla. El árbol abre la de pestañas.",
+      "puntosClave": [
+        "Caja de Configuración no abre ni cierra turno.",
+        "Parámetros Financieros no tiene pantalla: use Variables del Sistema."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa del submenú Financiero: qué abre cada opción",
+      "intro": "Las diez opciones del árbol y el procedimiento (IXONLINE/SQL).",
+      "md": "| Opción | Pantalla | Procedimiento · METODO | Qué administra |\n|---|---|---|---|\n| Caja | Siete pestañas + expand TGEN | SPQ_CAJ_COL · CRUDCAJ · TUR/CJR/CPCJ/CXT | CAJ y satélites |\n| Bancos | Banco + sucursales | SPQ_BCO · GUARDAR / EDITAR / ELIMINAR / *BSU | BCO, BSU |\n| Formas de Pago | Catálogo FPA | SPQ_FPA_COL · CREA_FPA / ACTUALIZA_FPA | FPA |\n| Operaciones Financieras | OFIN | SPQ_OFIN_COL · CRUDOFIN / SOLICITA_RECA_NOMINA | OFIN |\n| Conceptos de Notas | CPNT | SPQ_CPNT_COL · CRUDCPNT | CPNT |\n| Tipos de Notas Débito/Crédito | FNT | SPQ_FNT_COL · CRUDFNT | FNT |\n| Funcionarios | FUSU | SPQ_FUSU_COL | FUSU |\n| Resolución DIAN | FDIAN + datos facturador | SPQ_FDIAN_COL · CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN | FDIAN, TGEN |\n| Gestión de Firma Digital | Certificados | SPQ_FDIANCER_COL · CRUDFDIANCER | FDIANCER |\n| Parámetros Financieros | En construcción | — | Use Variables del Sistema |\n\n## Lo que no está aquí\n\n- Abrir/cerrar caja, recibos, reembolso: proceso Caja.\n- Movimientos y conciliación: Tesorería · Bancos.\n- Aplicar notas: Cartera · Notas débito/crédito.\n- Encolar XML: Facturación · XML DIAN.",
+      "puntosClave": [
+        "ELIMINAR_FPA existe en el procedimiento; la pantalla no lo llama.",
+        "POS exige FACTURAPOS_ACTIVA."
+      ]
+    },
+    {
+      "id": "flujo-caja",
+      "tipo": "flujo",
+      "kicker": "Flujo 1",
+      "titulo": "Configurar una caja: de la ficha a los turnos",
+      "flujoId": "conffin-caja",
+      "imagen": "img/conffin_caja_sketchnote.jpg",
+      "imagenAlt": "Configurar una caja",
+      "intro": "Caja → conceptos → turnos → cajeros → asignación. Después se abre el turno en el módulo Caja."
+    },
+    {
+      "id": "detalle-caja",
+      "tipo": "texto",
+      "kicker": "Caja",
+      "titulo": "La ficha de caja y sus pestañas",
+      "intro": "Campos de la ficha y qué hace cada pestaña.",
+      "md": "## Ficha (CAJ)\n\nCódigo (≤4), Descripción, Tipo Factura, Tipo Caja (Cobro/Pago/Ambas), Clase (Principal/Auxiliar/Menor), Fondo fijo, Estado, Tipo de egreso, No contabilizar. Inventarios: tipo de movimiento, bodega, tipo documento, **cuenta Detalle**, concepto de recaudo. Si es **Menor**: máximo pago, comprobante, responsable, cuenta CxP.\n\nCRUDCAJ solo Insertar / Editar. El botón Eliminar está oculto y el procedimiento no borra.\n\n## Pestañas\n\nTurnos (horario y días) · Cajeros · Conceptos (ingreso/egreso/caja menor) · Asignación (caja+cajero+turno) · Tipos de egreso · Tipos de anticipo.\n\nAl **expandir la fila** se eligen tipos de egreso y formas de pago de esa caja (TGEN).\n\nNo se borra un turno o cajero con asignación («EL TURNO TIENE CAJERO ASIGNADO» · «EL CAJERO TIENE TURNOS ASIGNADO»).",
+      "puntosClave": [
+        "Esta pantalla no abre el turno.",
+        "Las variables IDCJ* se editan en Sistemas → Variables, no aquí."
+      ]
+    },
+    {
+      "id": "bancos-formas",
+      "tipo": "texto",
+      "kicker": "Bancos",
+      "titulo": "Bancos, formas de pago y operaciones financieras",
+      "flujoId": "conffin-bancos",
+      "intro": "El maestro que Tesorería y caja consultan.",
+      "md": "## Bancos (BCO / BSU)\n\nCódigo, descripción, ACH y **tercero** (categoría banco, variable TERCATBANCO). El tercero no se repite. No se borra un banco con sucursales. La **cuenta** (BCT) se crea en Tesorería → Cuentas.\n\n## Formas de pago (FPA)\n\nCódigo, cuenta, comprobante, físico, datafono, pide banco/documento/autorización. Las usa caja (por caja, al expandir) y recaudos. **Eliminar** se ve y no borra (ver hallazgos).\n\n## Operaciones (OFIN)\n\nTipo DB/CR y marcas Recaudo, Nómina, Traslado, Genera CxP. SOLICITA_RECA_NOMINA lo consulta el movimiento bancario.",
+      "puntosClave": [
+        "Sin banco+sucursal no hay cuenta BCT.",
+        "Sin operación OFIN el movimiento no sabe si es recaudo o traslado."
+      ]
+    },
+    {
+      "id": "notas-funcionarios",
+      "tipo": "texto",
+      "kicker": "Notas",
+      "titulo": "Conceptos de notas, tipos y funcionarios",
+      "flujoId": "conffin-notas",
+      "intro": "Lo que la nota exige antes de crearse.",
+      "md": "## Conceptos (CPNT)\n\nCuenta y homologación DIAN débito/crédito. Cada nota lleva un concepto.\n\n## Tipos (FNT)\n\nClase de nota y comprobante. Complementa el concepto.\n\n## Funcionarios (FUSU)\n\nTercero de oficina ligado al usuario que autoriza. No es el usuario de Sistemas.",
+      "puntosClave": [
+        "Sin concepto la nota no arma asiento coherente.",
+        "Aplicar y enviar a la DIAN no se hace aquí."
+      ]
+    },
+    {
+      "id": "dian-firma",
+      "tipo": "texto",
+      "kicker": "DIAN",
+      "titulo": "Resolución DIAN y certificado de firma",
+      "flujoId": "conffin-dian",
+      "imagen": "img/conffin_dian_sketchnote.jpg",
+      "imagenAlt": "Resolución DIAN y firma",
+      "intro": "Rangos, vigencia, POS y el certificado que firma el XML.",
+      "md": "## Resolución (FDIAN)\n\nSede, prefijo, rango (final > inicial), vigencia, tipo (factura, nota, POS), ambiente. CNSRESOL único. No se borra si ya facturó.\n\n**POS:** FACTURAPOS_ACTIVA debe estar encendida. **País:** IXCOUNTRY cambia procedencias.\n\n**Datos facturador:** contacto y software en TGEN (GET_DATOS_FDIAN / CRUDFTRDIAN).\n\n## Certificado (FDIANCER)\n\nArchivo, clave, fechas, proveedor. El color avisa según **DIASNOTIFICACERT**. La factura toma el vigente si **DIANCERTIFICADO** está encendida.\n\nEl envío se documenta en Facturación · XML DIAN.",
+      "puntosClave": [
+        "Sin resolución vigente no hay numeración electrónica.",
+        "Renovar el certificado antes de que el aviso se ponga en rojo."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosConfigFinanciero",
+      "kicker": "Semáforo",
+      "titulo": "Estados y marcas de los catálogos financieros",
+      "intro": "Qué significa cada valor y qué permite o bloquea."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Validar en preversión (PREVERSION = 2.0.7, IDANT 2.0.6) antes de pedir desarrollo.",
+      "md": "1. **Parámetros Financieros en construcción.** Las reglas están en Variables del Sistema.\n2. **Eliminar forma de pago no hace nada.** ELIMINAR_FPA existe; la pantalla no lo llama.\n3. **Ruta legacy conf.caj** distinta de la pantalla de siete pestañas.\n4. **Resolución POS bloqueada por variable** sin mensaje claro.\n\nNo pedir de nuevo un arreglo que ya esté en la canasta abierta.",
+      "puntosClave": [
+        "Lo que el usuario reporta como «no puedo borrar la forma de pago» es el botón sin handler.",
+        "Validar en preversión."
+      ]
+    }
+  ]
+}

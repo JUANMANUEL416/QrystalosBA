@@ -4,11 +4,21 @@
   "modulo": "MCP_COL",
   "familia": "contabilidad",
   "prioridad": 8,
-  "estado": "parcial",
-  "resumen": "MCP/MCHE → CONFIRMAR → ESTADO=2. MCPE+MCHE → RECONSTRUIR. OM ENV_CONTA + SPK_CONTAB_MASIVA. CONTABILIDAD_3 18/18 + conciliaciones CONC*. PRI+CUE.",
-  "actualizado": "2026-09-06T16:30:00",
-  "notaSql": "CONTABILIDAD_3 18/18 + cola cerrada. RUTA-CONFIG paso 5: CONF_CONTABLE 11/11 + PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído 16:30. Huecos: CREA_PAR/ELIMINA_PAR FE≠export; contGenerales sin sql/.",
-  "alcanceHasta": "Ciclo MCP: periodo abierto → armar comprobante → detalle MCH → recalcular/confirmar → contabilizado (ESTADO=2). MCPE: corregir y RECONSTRUIR. OM recibe pendientes de caja/cartera/factura/etc. Reportes y cierre fiscal son pantallas hermanas bajo /cont.",
+  "estado": "documentado",
+  "resumen": "Contabilidad en Qrystalos: el comprobante (MCP/MCH) nace en borrador, se revisa y se confirma; lo que llega de otros módulos entra primero a Comprobantes Errados (MCPE/MCHE) y solo pasa a libros si cuadra. La ficha de corrección dice, por texto de línea, código de diagnóstico y procedencia, qué procedimiento lo arma, qué variables revisar y cómo corregirlo. El periodo contable (PRI) gobierna todo: abierto se mueve, cerrado se consulta. El precierre de inventario se lee por la fecha de confirmación; una nota de CxP está duplicada solo si coinciden la referencia 1 y la referencia 2 en un comprobante vigente. Cada procedencia tiene ficha de variantes: el procedimiento, las variables y cómo cambia el asiento.",
+  "actualizado": "2026-10-13T12:00:00",
+  "grafoContabilizacion": {
+    "fase1Cerrada": true,
+    "documentoMaestro": "FASE-1-GRAFO-CONTABILIZACION.md",
+    "indice": "grafo-contabilizacion-indice.json",
+    "carpetaGrafos": "grafo-contabilizacion",
+    "plan": "PLAN-GRAFO-CONTABILIZACION.md",
+    "validacionSqlIndice": "grafo-contabilizacion/VALIDACION-SQL-INDICE.json",
+    "procedencias": 19,
+    "nota": "Capa 03 enlaza controles proc-* con un grafo N4→N0 por PROCEDENCIA MCP."
+  },
+  "notaSql": "CONTABILIDAD_3 18/18 + cola cerrada. RUTA-CONFIG paso 5: CONF_CONTABLE 11/11 + PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído 16:30. Huecos: CREA_PAR/ELIMINA_PAR FE≠export; contGenerales sin sql/. | 2026-10-04 libro: bajados de DESAIX (PREVERSION = 2.0.7, IDANT 2.0.6) SPQ_CONTA_LIQIMP, SPK_GEN_CXP_LIQIMP, VWK_LIQ_IMP(_1), SPQ_FOLIAR_LB, SPK_REVISAR_COMPROBANTE, SPK_NC_CONFIRMAR_CONTAB, SPK_SUMA_DBCR, SPK_PASA_A_MCPE, SPK_NC_REVISAMCPE, SPK_NC_BALANCEO_CENTAVOS, SPQ_MOV_ACTIVOS, SPQ_TER_EQUIV_EFECTIVO, SPQ_EXOFMT, SPQ_CONTABILIDAD(_2), SPQ_MCP_COL, SPQ_MCPE_COL, SPK_NC_CONTAB_FNOT/FTR/CXC/CAJA_ING/BMOV (solo resumen), SPK_CIERRA/ABRE_PERIODOCONTABLE, SPK_CIERRE_FISCAL, SPK_GEN_COMP_CIERRE_FISCAL, SPK_NC_CONTAB_CASTIGO_CARTERA, SPK_HOMOLOGA_CUENTA/TERCERO, SPK_REVERSAR_MCP, SPK_DIAG_MCPE_ERRORES. Menú real en USPROH (dato de instalación, no está en SQLIX). | 2026-10-09 ficha de corrección de errados (errores-comprobantes.json → capítulo ficha-correccion). 2026-10-09 guía de lectura del precierre en el capítulo de cierre: inventario por FECHACONF, nota CxP duplicada solo con la misma REFERENCIA2, errados solo si ya hubo envío. SR20261009-001 pide el arreglo de la función.",
+  "alcanceHasta": "Menú Contable completo: Movimiento Diario (MCP/MCH), Comprobantes Errados (MCPE/MCHE), Otros Módulos y Conciliaciones contables, Liquidación de impuestos, Reclasificar terceros/cuentas, Castigo de cartera, Aval recaudos, Libros e informes, Abrir/Cerrar periodo, Cierre fiscal, Exógena, Circular única, Parametrización y Niif (lo que tiene pantalla).",
   "ventanas": [
     {
       "uso": "Menú contabilidad",
@@ -100,6 +110,24 @@
               "nombre": "SPQ_CONTABILIDAD_2",
               "metodo": "(procesos periodo)",
               "rol": "CerrarPeriodosComponent. Fuera valle paso 8."
+            }
+          ]
+        },
+        {
+          "id": "revision-antes-cierre",
+          "nombre": "Lo pendiente antes de cerrar el periodo",
+          "explicacion": "CerrarPeriodosComponent llama CONTABILIDAD_2. VALIDAR_PERIODO_BASICO se detiene en el primer fallo: inventario sin confirmar solo si USVGS VALIDAINVCIERRECONT=SI, y ese conteo usa FECHAMOV, no FECHACONF; un solo periodo de saldos iniciales; el periodo no esté cerrado; comprobantes MCP sin confirmar (ESTADO distinto de 2); comprobantes en MCPE que no sean NIIF. VALIDAR_INTEGRIDAD_PERIODO lista lo que devuelve FNK_REVISION_ANTES_CIERRE_PERIODO (PREVERSION idéntica a la Cerrada 2.0.7). Inventario: IMOV ESTADO=1, SECONTABILIZA=1, CONTABILIZADA=0 y FECHACONF del mes. Las grillas y Otros Módulos filtran FECHAMOV: un movimiento con confirmación en el mes y fecha de movimiento en otro no se ve donde el usuario lo busca. La fecha de confirmación no tiene campo; en una salida confirmada Editar Salida está bloqueado. CxP pendiente: si IDCON_FCONTABLE_CXP=Radicacion usa FECHA, si no usa F_FACTURAREF. Un NROCOMPROBANTE que no está en MCH ni en MCHE no está causado. Notas de CxP: la función avisa duplicada si hay más de una fila FCXPDBCR del mes por cuenta, y más de un comprobante si agrupa MCP solo por REFERENCIA1. Duplicada de verdad es la misma REFERENCIA1 y la misma REFERENCIA2, procedencia NOTDBCRCXP, ANULADO distinto de 1 y más de un comprobante. El ítem de la nota es REFERENCIA2. El aviso de notas pendientes está escrito dos veces. La nota de factura compara dos veces el año (YEAR(F_NOTA)=@MES): el botón no muestra las notas del mes. Antes de cerrar contabilidad tienen que estar cerrados cartera y CxP del mismo PRI.",
+          "invariante": "Esta revisión no cierra nada. El cierre de verdad es EJECUTAR_CIERRE_PERIODO y no se emula.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONTABILIDAD_2",
+              "metodo": "VALIDAR_PERIODO_BASICO / VALIDAR_INTEGRIDAD_PERIODO",
+              "rol": "Lo que pinta el botón antes de cerrar."
+            },
+            {
+              "nombre": "FNK_REVISION_ANTES_CIERRE_PERIODO",
+              "metodo": "(lista)",
+              "rol": "Cuerpo releído 2026-10-09. PREVERSION idéntica a la Cerrada 2.0.7. Inventario por FECHACONF. Notas de CxP: el aviso de duplicado no exige la misma REFERENCIA2."
             }
           ]
         },
@@ -230,9 +258,27 @@
           ]
         },
         {
+          "id": "mcpe-flujo-invertido",
+          "nombre": "Del error al documento de origen",
+          "explicacion": "Recorrido inverso en /cont/mcpe. 1) Cabecera MCPE: PROCEDENCIA, NOREFERENCIA, REFERENCIA1/2/3, IDSEDE, COMPROBANTE, ANO, MES. 2) Línea MCHE con ESTADO=0: el texto de ERROR lo escribe SPK_REVISAR_COMPROBANTE (La Cuenta NO Existe; La Cuenta NO es de Detalle; valor cero; valor menor que cero; El Tercero NO Existe). Si ERROR va vacío, el detalle dice Errores de Parametrización. El mismo detalle sella PROCEDENCIA, PROCESO, CCOSTO, IDAREA, PREFIJO y REFERENCIA1/2/3. 3) Con PROCEDENCIA se abre el documento que RECONSTRUIR volverá a contabilizar (INV→IMOV REFERENCIA1; CXP→FCXP; FACTURA→NOREFERENCIA; CAJA→FCJ REFERENCIA1+CODCAJA; etc.). 4) Se corrige ese documento (centro, modelo KMCOM, tercero, cuenta de detalle). 5) Revisar y después Reconstruir. OBTENER_ERRORES_DETALLE solo lista cuentas que no están en CUE. DIAGNOSTICAR_ERRORES exige SPK_DIAG_MCPE_ERRORES. Casos CEM ya dictaminados: dispensación 06 sin centro (SR20260923-003), duplicado de referencia entre sedes al reconstruir (SR20260923-004), tercero/NIT que tumba la categoría (SR20260923-005). El impuesto al consumo de CxP (SR20260923-006) puede quedar contabilizado y no aparecer en MCPE.",
+          "invariante": "Reconstruir ejecuta de nuevo el SPK de la procedencia. Corregir solo la línea no evita que el errado vuelva si el documento origen sigue mal. La misma referencia en otra sede no es duplicado: la llave de RECONSTRUIR hoy no usa IDSEDE.",
+          "sps": [
+            {
+              "nombre": "SPK_REVISAR_COMPROBANTE",
+              "metodo": "(sello ERROR en la línea)",
+              "rol": "Escribe el texto que identifica la falla de la línea."
+            },
+            {
+              "nombre": "SPQ_MCPE_COL",
+              "metodo": "REVISAR_MCPE / RECONSTRUIR",
+              "rol": "Revisar recalcula; Reconstruir rearma desde el documento de la procedencia."
+            }
+          ]
+        },
+        {
           "id": "mcpe-reconstruir",
           "nombre": "Corregir comprobante errado",
-          "explicacion": "MCPEComponent: editar MCHE, REVISAR_MCPE, RECONSTRUIR → devuelve a MCP si válido. OBTENER_ERRORES_DETALLE / DIAGNOSTICAR_ERRORES.",
+          "explicacion": "MCPEComponent: editar MCHE, REVISAR_MCPE, RECONSTRUIR → devuelve a MCP si válido. OBTENER_ERRORES_DETALLE / DIAGNOSTICAR_ERRORES. El origen del error se lee con el control mcpe-flujo-invertido.",
           "invariante": "MCPE es staging; destino final sigue siendo MCP confirmado.",
           "sps": [
             {
@@ -266,8 +312,8 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega y completa",
-      "estado": "parcial",
-      "explicacion": "Módulos administrativos escriben MCP vía SPKs al operar (Caja CONFIRMAR, Recaudos APLICAR, Notas FNOT_APLICAR, Facturación, Glosas SPK_RESPUESTAGLOSA, Conciliaciones, Activos…). Campo MCP.PROCEDENCIA identifica origen. OM /cont/otrosModulos centraliza pendientes CONTABILIZADA=0.",
+      "estado": "documentado",
+      "explicacion": "Catálogo de quién arma el comprobante. La procedencia de la cabecera MCPE/MCP es la entrada. **Fase 1 grafo (2026-10-13):** las 19 procedencias tienen cadena inversa N4→N0 en grafo-contabilizacion/ (índice grafo-contabilizacion-indice.json, libro FASE-1-GRAFO-CONTABILIZACION.md). Cada control proc-* abajo sigue siendo el resumen operativo; el grafo detalla requires[], gates y puntos críticos. RECONSTRUIR rearma vía el generador del grafo. Hallazgos CEM y texto de errados se siguen anotando en el control. El METODO de pantalla queda en el proceso hermano.",
       "tablasClave": [
         "MCP",
         "KMCOM"
@@ -287,11 +333,280 @@
           ]
         },
         {
-          "id": "procedencia-spk",
-          "nombre": "Asientos automáticos al confirmar operación",
-          "explicacion": "Cada proceso hermano documenta su capa 5. Ejemplos: SPK_NC_CONTAB_CAJA_ING (Caja), SPK_PAGOSCXC (Recaudos), SPK_NOTASCXC (Notas). Llegan a MCP con PROCEDENCIA y NOREFERENCIA del documento.",
-          "invariante": "Este proceso no re-ejecuta el SPK origen; recibe o confirma el MCP generado.",
-          "sps": []
+          "id": "proc-inv",
+          "nombre": "INV — inventario",
+          "explicacion": "Ficha leída en inventario. Reconstruir llama SPK_NC_CONTAB_INV con REFERENCIA1 = movimiento IMOV. Al confirmar la salida, el asiento usa el modelo KMCOM (tipo de movimiento + centro + área). CEM: dispensación tipo 06 sin centro deja la cuenta NO DEF.KMCOM y el error «La Cuenta NO Existe» (SR20260923-003). Entrada con documento que no es tercero tumba la revisión en la categoría (SR20260923-005).",
+          "invariante": "Sin centro o sin modelo KMCOM la línea queda en errados. Corregir el movimiento y después Revisar y Reconstruir.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_INV",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en inventario."
+            }
+          ]
+        },
+        {
+          "id": "proc-cxp",
+          "nombre": "CXP — cuenta por pagar",
+          "explicacion": "Ficha leída en cxp-fcxp. Reconstruir llama SPK_NC_CONTAB_CXP con REFERENCIA1 = CNSFCXP. CEM: si hay impuesto al consumo y no hay IVA, ese valor queda dentro del gasto (SR20260923-006). Ese caso puede quedar contabilizado y no aparecer en errados.",
+          "invariante": "El impuesto al consumo se causa en su cuenta, con IVA o sin IVA, cuando el arreglo esté publicado.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CXP",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en cxp-fcxp."
+            }
+          ]
+        },
+        {
+          "id": "proc-notdbcrcxp",
+          "nombre": "NOTDBCRCXP — nota de CxP",
+          "explicacion": "Ficha leída en cxp-fcxp. Reconstruir llama SPK_NC_CONTAB_CXPFNT. REFERENCIA1 = CNSFCXP, REFERENCIA2 = ítem de la nota. Genera MCPE y, si la revisión pasa, lo confirma.",
+          "invariante": "La CxP de la nota ya está contabilizada antes de causar la nota.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CXPFNT",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en cxp-fcxp."
+            }
+          ]
+        },
+        {
+          "id": "proc-factura",
+          "nombre": "FACTURA — factura",
+          "explicacion": "Ficha leída en facturación. Reconstruir llama SPK_NC_CONTAB_FTR con NOREFERENCIA de la factura. También la dispara la facturación de inventario (venta). Aún no hay una familia de error CEM anotada en este control.",
+          "invariante": "El comprobante de la factura usa la procedencia FACTURA, distinta de la procedencia operativa de la factura (FINANCIERO, AUTPG, CI).",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_FTR",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en facturación."
+            }
+          ]
+        },
+        {
+          "id": "proc-caja",
+          "nombre": "CAJA — recibo",
+          "explicacion": "Ficha en caja: ingreso parcial, egreso leído. Reconstruir lee FCJ por REFERENCIA1 (recibo) y REFERENCIA2 (caja). Cobro llama SPK_NC_CONTAB_CAJA_ING; pago llama SPK_NC_CONTAB_CAJA_EGR. Reversos REVCAJAING, REVCAJAEGR y REVNOTDBCR llaman SPK_REVERSAR_MCP (ficha leída en caja) con REFERENCIA3.",
+          "invariante": "La clase del recibo (cobro o pago) elige el procedimiento. Un concepto que no está en el plan de caja arma mal el asiento.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_ING",
+              "metodo": "(anidado)",
+              "rol": "Ficha parcial en caja."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_EGR",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en caja."
+            },
+            {
+              "nombre": "SPK_REVERSAR_MCP",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en caja. También reversa notas."
+            }
+          ]
+        },
+        {
+          "id": "proc-cxc",
+          "nombre": "CXC — cartera",
+          "explicacion": "Ficha leída en recaudos. Reconstruir llama SPK_NC_CONTAB_CXC con REFERENCIA1. Aún no hay familia de error CEM anotada aquí.",
+          "invariante": "El recaudo llega con procedencia CXC.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CXC",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en recaudos."
+            }
+          ]
+        },
+        {
+          "id": "proc-notdbcr",
+          "nombre": "NOTDBCR — nota de factura",
+          "explicacion": "Ficha leída en notas-dbcr. Reconstruir llama SPK_NC_CONTAB_FNOT con REFERENCIA1 y REFERENCIA2. La cuenta sale del concepto de la nota.",
+          "invariante": "Aplicar la nota es lo que causa el comprobante.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_FNOT",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en notas-dbcr."
+            }
+          ]
+        },
+        {
+          "id": "proc-rad-cxc",
+          "nombre": "RAD CXC — radicación",
+          "explicacion": "Ficha leída en facturación para SPK_CONTAB_RADICACXC. Reconstruir usa REFERENCIA1 como cuenta de cobro. Si esa cuenta ya tiene pagos, notas o glosas, llama SPK_CONTAB_RADICACXC_1. Cuerpos en sql/ (PREVERSION); grafo rad-cxc.json documenta ambas ramas.",
+          "invariante": "La radicación con abonos no usa el mismo procedimiento que la radicación en cero.",
+          "grafoArchivo": "grafo-contabilizacion/rad-cxc.json",
+          "sps": [
+            {
+              "nombre": "SPK_CONTAB_RADICACXC",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en facturación."
+            },
+            {
+              "nombre": "SPK_CONTAB_RADICACXC_1",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/; rama con abonos/glosa. Grafo N3 rad-cxc."
+            }
+          ]
+        },
+        {
+          "id": "proc-bmov",
+          "nombre": "BMOV — bancos",
+          "explicacion": "Ficha leída en bancos. Reconstruir llama SPK_NC_CONTAB_BMOV. REFERENCIA1 trae banco, sucursal y documento pegados; el ítem sale de la línea o de REFERENCIA2. En tesorería la fila es procedencia BANCOS; el comprobante es procedencia BMOV.",
+          "invariante": "No confundir la procedencia del movimiento de banco con la del comprobante.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_BMOV",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en bancos."
+            }
+          ]
+        },
+        {
+          "id": "proc-rglo",
+          "nombre": "RGLO — glosa",
+          "explicacion": "Reconstruir llama SPK_CONTAB_FGLO con REFERENCIA1. La glosa aceptada y la recuperación no usan la misma cuenta: el detalle está en la ficha de variantes de esta procedencia.",
+          "invariante": "La glosa aceptada puede generar nota; este procedimiento es el asiento de la glosa.",
+          "sps": [
+            {
+              "nombre": "SPK_CONTAB_FGLO",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo leído. Variantes de aceptada y recuperación."
+            }
+          ]
+        },
+        {
+          "id": "proc-conci",
+          "nombre": "CONCI — conciliación",
+          "explicacion": "Ficha leída en conciliaciones. Reconstruir llama SPK_CONTAB_CONCI con REFERENCIA1. La anulación tiene otro procedimiento (SPK_NC_CONTAB_ANULA_CONCI), también leído allí.",
+          "invariante": "Distinto de la conciliación contable de saldos (pantalla /cont/conciContables).",
+          "sps": [
+            {
+              "nombre": "SPK_CONTAB_CONCI",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en conciliaciones."
+            }
+          ]
+        },
+        {
+          "id": "proc-ajdep",
+          "nombre": "AJDEP — depreciación",
+          "explicacion": "Reconstruir toma año y mes de la cabecera y llama SPK_APL_AJDEPRECIACION. Si COMPROBMULTISEDE es SI, el tipo sale de COMMS clase DEPRECIACION de la sede; si no hay, de IDCON_TCOM_DEPR. IACT (alta o evento del activo) es otra procedencia: SPK_CONTAB_IACT con REFERENCIA1 — grafo iact.json aparte.",
+          "invariante": "AJDEP es el ajuste del periodo. IACT es el activo. No son el mismo comprobante.",
+          "grafoArchivo": "grafo-contabilizacion/ajdep.json",
+          "sps": [
+            {
+              "nombre": "SPK_APL_AJDEPRECIACION",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/. Tipo por sede o IDCON_TCOM_DEPR. Grafo ajdep."
+            },
+            {
+              "nombre": "SPK_CONTAB_IACT",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/. Procedencia IACT. Grafo iact."
+            }
+          ]
+        },
+        {
+          "id": "proc-iact",
+          "nombre": "IACT — movimiento activo fijo",
+          "explicacion": "Reconstruir llama SPK_CONTAB_IACT con REFERENCIA1 del evento. Distinto de AJDEP (depreciación de periodo). Grafo iact.json + sql/ PREVERSION.",
+          "invariante": "No confundir contabilización de evento IACT con SPK_APL_AJDEPRECIACION.",
+          "grafoArchivo": "grafo-contabilizacion/iact.json",
+          "sps": [
+            {
+              "nombre": "SPK_CONTAB_IACT",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/. Grafo Fase 1."
+            }
+          ]
+        },
+        {
+          "id": "proc-nomina",
+          "nombre": "NOMINA — nómina",
+          "explicacion": "Reconstruir llama SPK_NC_CONTAB_NOMINA con referencias de lote/sede/tipo en cabecera MCP. Variables NOMINATIPOCONTAB e IDCON_TCOM. Cuerpo en sql/; grafo nomina.json.",
+          "invariante": "Nómina debe estar cerrada antes del envío a contabilidad.",
+          "grafoArchivo": "grafo-contabilizacion/nomina.json",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_NOMINA",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/. Grafo Fase 1."
+            }
+          ]
+        },
+        {
+          "id": "proc-anticipos",
+          "nombre": "ANTICIPOS — anticipo CxP",
+          "explicacion": "SPK_NC_CONTAB_ANTICIPO: débito CxP ligada o TANT.CUEDEBITO; crédito TANT.CUECREDITO. CRUCETER elige tercero. Grafo anticipos.json.",
+          "invariante": "Anticipo distinto de legalización FLEG (caja menor).",
+          "grafoArchivo": "grafo-contabilizacion/anticipos.json",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_ANTICIPO",
+              "metodo": "(anidado)",
+              "rol": "Variantes en procedencias/anticipos.json. Grafo Fase 1."
+            }
+          ]
+        },
+        {
+          "id": "proc-cesiones",
+          "nombre": "CESIONES — cesión de cartera/CxP",
+          "explicacion": "Reconstruir llama SPK_CONTAB_FCES sobre documento FCES. Cuerpo en sql/; grafo cesiones.json.",
+          "invariante": "Saldo cesionable en FTR/FCXCD antes de causar.",
+          "grafoArchivo": "grafo-contabilizacion/cesiones.json",
+          "sps": [
+            {
+              "nombre": "SPK_CONTAB_FCES",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/. Grafo Fase 1."
+            }
+          ]
+        },
+        {
+          "id": "proc-legalizacion",
+          "nombre": "LEGALIZACION — legalización caja menor",
+          "explicacion": "SPK_CONTAB_FLEG sobre FLEG. No es SPK_NC_CONTAB_ANTICIPO. Cuerpo en sql/; grafo legalizacion.json.",
+          "invariante": "Procedencia LEGALIZACION en MCP; documento FLEG.",
+          "grafoArchivo": "grafo-contabilizacion/legalizacion.json",
+          "sps": [
+            {
+              "nombre": "SPK_CONTAB_FLEG",
+              "metodo": "(anidado)",
+              "rol": "Cuerpo en sql/. Grafo Fase 1."
+            }
+          ]
+        },
+        {
+          "id": "proc-reversos",
+          "nombre": "REVERSOS — anular comprobante origen",
+          "explicacion": "SPK_REVERSAR_MCP y ramas REVCAJA* / REVNOTDBCR según procedencia origen. Grafo reversos.json.",
+          "invariante": "Periodo del MCP origen debe permitir reversa (caja abierta en reglas REVCAJA).",
+          "grafoArchivo": "grafo-contabilizacion/reversos.json",
+          "sps": [
+            {
+              "nombre": "SPK_REVERSAR_MCP",
+              "metodo": "(anidado)",
+              "rol": "Ficha leída en caja y contabilidad. Grafo Fase 1."
+            }
+          ]
+        },
+        {
+          "id": "proc-manual",
+          "nombre": "MANUAL — comprobante digitado",
+          "explicacion": "SPQ_MCP_COL CRUDMCP: usuario arma MCH; confirmación exige CUE Detalle y PRI abierto. Grafo manual.json.",
+          "invariante": "Sin documento operativo REF; validación SPK_REVISAR_COMPROBANTE igual que automáticos.",
+          "grafoArchivo": "grafo-contabilizacion/manual.json",
+          "sps": [
+            {
+              "nombre": "SPQ_MCP_COL",
+              "metodo": "CRUDMCP / CONFIRMAR_MASIVO",
+              "rol": "Procedencia MANUAL. Grafo Fase 1."
+            }
+          ]
         }
       ]
     },
@@ -369,6 +684,1891 @@
       ]
     }
   ],
-  "flujoPasado": true,
-  "pasadaEn": "2026-09-06T04:55:00"
+  "enRuta": true,
+  "incluirProcesoMdEnLibro": false,
+  "menu": {
+    "ruta": "Contable (ContableLayout) → Procesos · Consultas · Otros Módulos · Parametrización · Normas Niif",
+    "fuente": "ContableLayout.vue arbolMenu (etiquetas y rutas fijas) + MENUQ_COL · CONTABLE (USPROH/USGRUH por grupo: habilita o deshabilita cada ruta). 32 rutas hijas en routes.js bajo /cont."
+  },
+  "flujoResumen": "Periodo abierto → comprobante (manual o de módulo vía MCPE) → revisar → confirmar (estado 2) → libros → cierre del periodo.",
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer?",
+      "intro": "Las tareas frecuentes del contador en Qrystalos, con su ruta exacta en el menú Contable, la condición que debe cumplirse y lo que no hay que confundir."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es la contabilidad en Qrystalos y cómo vive un comprobante",
+      "intro": "La contabilidad de Qrystalos gira alrededor de **tres pares de tablas** y **un calendario**. El **comprobante** es la cabecera **MCP** con su detalle **MCH** (una línea por cuenta, débito o crédito). Lo que llega de otros módulos no entra directo: nace en **MCPE/MCHE** (comprobantes errados o en espera) y solo pasa a MCP/MCH cuando una revisión automática lo aprueba. El **periodo contable** (**PRI**, año y mes) decide si algo se puede mover: abierto sí, cerrado no.",
+      "md": "## Las piezas\n\n| Pieza | Tabla | Qué guarda |\n|---|---|---|\n| Comprobante | MCP | Número, tipo de comprobante (COM), periodo, fecha contable, procedencia, referencias al documento origen, totales DB/CR, estado, anulado |\n| Detalle | MCH | Una línea por asiento: cuenta, tipo DB/CR, valor, tercero, centro de costo, área, referencias, base de impuesto, error de revisión |\n| Errados | MCPE / MCHE | Mismas columnas; es la **sala de espera**: lo que un módulo generó y no cuadró |\n| Periodo | PRI | Año, mes, cerrado, saldos iniciales (SI), cerrado para impuestos, cartera y CxP |\n| Plan de cuentas | CUE | Cuenta, nombre, tipo (Detalle o de suma), naturaleza, marca de impuesto |\n| Configuración contable | KMCOM | Qué cuenta usa cada módulo en cada movimiento (facturas, caja, inventario, CxP…) |\n| Saldos | SALDOMES / SALDOMESTER | Los calcula el cierre del mes por cuenta y por tercero |\n\n## Los tres estados del comprobante\n\n1. **0 – Con errores / borrador.** Recién creado o con alguna línea inválida. No afecta saldos.\n2. **1 – Preparado.** Todas las líneas pasaron la revisión y DB = CR. Listo para confirmar.\n3. **2 – Contabilizado.** Confirmado. Suma en libros. Solo se desconfirma (vuelve a 1) o se envía a cambios si vino de un módulo.\n\n## Dos caminos para que exista un comprobante\n\n- **Manual:** contabilidad lo digita en Movimiento Diario (procedencia MANUAL).\n- **De módulo:** facturación, caja, bancos, recaudos, glosas, CxP, inventario, notas o activos lo generan al enviar a contabilidad. Entra por MCPE; si cuadra pasa a MCP ya confirmado; si no, se queda en Comprobantes Errados.\n\n## El calendario manda\n\nCada pantalla que mueve saldos consulta PRI antes de actuar: *«El período está CERRADO. No se pueden realizar modificaciones»*. Cerrar un periodo calcula los saldos del mes; abrirlo los borra. El cierre fiscal es el del mes definido en Parámetros Contables.",
+      "puntosClave": [
+        "MCP + MCH = comprobante; MCPE + MCHE = lo que aún no cuadra.",
+        "Estados 0, 1, 2: solo el 2 suma en libros.",
+        "Todo lo de otros módulos pasa por la revisión automática antes de ser contabilidad.",
+        "PRI abierto o cerrado decide qué botones funcionan."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa del menú Contable: qué hace cada opción",
+      "imagen": "img/conta_menu_sketchnote.jpg",
+      "imagenAlt": "Procesos → Consultas → Otros Módulos → Parametrización y Niif",
+      "intro": "El menú Contable tiene cuatro familias y un acceso directo. Las etiquetas y rutas son fijas en la aplicación; **cuál se habilita** lo decide el grupo del usuario (procedimiento MENUQ_CONTABLE): una opción sin permiso se ve gris. Cada fila indica el procedimiento que la atiende (IXONLINE/SQL).",
+      "md": "## Procesos\n\n| Opción | Qué hace | Procedimiento · método |\n|---|---|---|\n| Movimiento Diario | Crear, editar, confirmar, desconfirmar, duplicar, imprimir y exportar comprobantes; detalle MCH; subir detalle desde Excel | SPQ_MCP_COL · CRUDMCP, CONFIRMAR_MASIVO, DESCONFIRMAR_MASIVO, ENVIAR_A_CAMBIOS, RECALCULAR_TOTALES, GENERAR_COMPROBANTE_CONTABLE(_MASIVO_V2), SUBIR_DETALLE_COMPROBANTE · SPQ_MCH_COL · CRUDMCH |\n| Comprobantes Errados | Ver lo que no cuadró, leer el error, diagnosticar, corregir líneas, reconstruir o revisar | SPQ_MCPE_COL · OBTENER_ERRORES_DETALLE, DIAGNOSTICAR_ERRORES, RECONSTRUIR, REVISAR_MCPE · SPQ_MCHE_COL · CRUDMCHE, MARCAR_DESMARCAR_MCHE, PROCESAR_MARCADOS |\n| Aval recaudos cartera | Avalar recaudos pendientes antes de contabilizarlos | SPQ_FPAG_COL · LISTAR_RECAUDOS_AVAL_PENDIENTE, AVALAR_RECAUDO |\n| Abrir/Cerrar Periodos | Validar y cerrar o abrir un mes; sub-cierres de Cartera y CxP | SPQ_CONTABILIDAD_2 · VALIDAR_PERIODO_BASICO, VALIDAR_INTEGRIDAD_PERIODO, EJECUTAR_CIERRE_PERIODO(_ASYNC), EJECUTAR_ABRIR_PERIODO |\n| Cierre Fiscal | Consultar saldos de resultado, procesar y generar el comprobante de cierre anual | SPQ_CONTABILIDAD · CIERRE_FISCAL (CONSULTAR, DETALLE, PROCESAR, GENERAR_COMPROBANTE), VALIDAR_CIERRE_FISCAL, CONSULTAR_COMPROBANTES_CIERRE |\n| Depreciación de Activos | Contabilizar la depreciación del periodo (ver libro de Activos fijos) | SPQ_CONTABILIDAD_3 · DEPRECIACION_ACTIVOS_LISTA, DEPR_ACFIJP_ENV_CONTA |\n| Liquidación Impuestos | Consultar retenciones del periodo, certificados, generar e imprimir la CxP a la DIAN | VWK_LIQ_IMP · SPQ_CONTA_LIQIMP · GEN_CXP_LIQIMP |\n| Provisiones de Cartera | (sin pantalla: la ruta no existe) | — |\n| Reclasificar Terceros | Trasladar saldos de un tercero a otro en periodo cerrado | SPQ_CONTABILIDAD · RECLASIFICAR_TERCEROS_LISTA / _PROCESAR |\n| Reclasificar Cuentas | Trasladar saldos de una cuenta a otra | SPQ_CONTABILIDAD · RECLASIFICAR_CUENTAS_LISTA / _PROCESAR |\n| Generar Exogena | Generar y exportar la información exógena por formato y año | SPQ_CONTABILIDAD_2 · CRUD_GEN_EXOGENA, GENERAR_EXOGENA, EXPORTAR_DATOS_EXOGENA |\n| Castigo de Cartera | Marcar facturas y castigar o pasar a difícil cobro | SPQ_CONTABILIDAD · CASTIGO_CARTERA_LISTA, _MARCAR, _MARCAR_TODOS, _PROCESAR |\n| Circular Unica | Registrar y generar el XML de la circular única por año | SPQ_CONTABILIDAD_2 · CRUD_CIRUNI, GENERAR_CIRCULAR, OBTENER_CIRCULAR_XML |\n| Conciliaciones | Documento del módulo frente a su comprobante: enviar, reconstruir, desmarcar | SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS, RESET_CONTABILIZADO, UPDATE_FCJ, CORREGIR_Y_CONTABILIZAR_FCJ · SPQ_MCPE_COL · RECONSTRUIR |\n\n## Consultas\n\n| Opción | Qué hace | Procedimiento · método |\n|---|---|---|\n| Balance de Prueba y Libro Auxiliar | Balance por cuentas/centros/terceros, auxiliar de una cuenta, comparativo, fotos de mes y año | SPQ_BALANCE_COL · GENERAR_BALANCE, OBTENER_BALANCE, OBTENER_AUXILIAR, TOMAR_FOTO_MES/ANO, REPORTE_ACUMULADO_BP |\n| Libros auxiliares | Trabajo asíncrono con seis salidas (saldo acumulado y agrupado) y Excel | SPQ_CONTABILIDAD_2 · INICIAR_BUSQUEDA_LIBROS_AUXILIARES, EJECUTAR_BUSQUEDA_ASYNC, CONSULTAR_ESTADO_JOB, REPORTES_PDF_ACUMULADOS_LIBROS_AUX |\n| Auxiliar de bancos | Movimientos por cuenta bancaria, marcar conciliación y salvarla en MCH | SPQ_BANCOS_AUXILIAR · OBTENER_MOVIMIENTOS, MARCAR_DESMARCAR_IND/TODO, SALVAR_CONCILIACION, LIMPIAR |\n| Balance general | Activo, pasivo y patrimonio a un periodo; PDF | SPQ_CONTABILIDAD · BALANCE_GENERAL, _ULTIMO_PERIODO, _PERIODOS_DISPONIBLES |\n| Estado de resultados | Ingresos, costos y gastos; comparativo; fotos | SPQ_CONTABILIDAD_2 · TRAER_DATOS_ER, BUSCAR_ESTADO_RESULTADOS, TOMAR_FOTO_MES_ER / ANO_ER |\n| Libros oficiales | (sin pantalla: la ruta no existe) | — |\n| Trazabilidad de documentos | Seguir un documento por todos sus comprobantes y cuentas | SPQ_SEGUI_DOCUMENTO · GET_DETALLE_CUENTAS, CONSULTAR_TRAZA_DOC_RPT |\n| Analisis de vencimientos | Cartera por edades a un periodo cerrado; por tercero o cuenta; Excel | SPQ_CONTABILIDAD_2 · ANALISIS_VENCIMIENTO |\n| Seguimiento de Cartera | Saldo contable vs saldo de cartera por tercero | SPQ_CONTABILIDAD · SEGUIMIENTO_CARTERA |\n| Historico de balances | Fotos guardadas del balance y del estado de resultados: imprimir, Excel, eliminar | SPQ_CONTABILIDAD_2 · OBTENER_PERIODOS_DISPONIBLES, OBTENER_DATOS_PERIODO, IMPRIMIR_BPRUEBA, IMPRIMIR_ESTRES, ELIMINAR_FOTO_BALANCE |\n\n## Otros Módulos (acceso directo)\n\nPestañas Facturas, Caja, Bancos, Recaudos (CXC), Glosas, CxP, Inventario, Notas D/C y Mov. Activo. Buscar el periodo, marcar documentos y **Enviar a Contabilidad** (SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS).\n\n## Parametrización\n\n| Opción | Qué hace | Procedimiento · método |\n|---|---|---|\n| Periodos Contables | Crear y ver los periodos (PRI) | Componente PRI (configuración) |\n| Naturaleza | Naturaleza DB/CR por dígito inicial de cuenta (NTZ) | SPQ_CONTABILIDAD_2 · CRUD_NATURALEZA |\n| Parámetros Contables | Mes de cierre fiscal y demás parámetros de la compañía (PAR) | SPQ_CONF_CONTABLE · ELIMINA_PAR (y SPQ_CONTABILIDAD · CREA_PAR / EDITA_PAR) |\n| Agrupación de Cuentas | Grupos para presentar informes (KPRES, KPRESD, KPRESDR) | SPQ_CONTABILIDAD_2 · CRUD_KPRES, CRUD_KPRESD, CRUD_KPRESDR (la ruta del menú no existe todavía) |\n| Cnf. Exógena → Formatos y conceptos | Formatos, conceptos, reglas y cuentas asociadas (EXOFMT, EXOFMTD, EXOFMTDD, TGEN) | SPQ_EXOFMT · CRUDEXOFMT · SPQ_TGEN · CRUDTGEN |\n| Foliar Libros | Consecutivo de cada libro oficial (USCXS) | SPQ_FOLIAR_LB · CRUD_USCXS |\n\n## Normas Niif\n\n| Opción | Qué hace | Procedimiento · método |\n|---|---|---|\n| Configuración → Parámetros NIIF | Parámetros y vigencias (PARN, PARNI) | SPQ_PARN · CRUD_PARN, CRUD_PARNI |\n| Configuración → Conf. Terceros Equiv Efectivo | Marcar terceros como equivalentes de efectivo | SPQ_TER_EQUIV_EFECTIVO · LISTAR_TERCEROS, ACTUALIZAR_TERCERO |\n| Procesos · Balance Apertura · Libros Oficiales | (sin pantalla) | — |",
+      "puntosClave": [
+        "Cuatro familias: Procesos mueve, Consultas muestra, Parametrización configura, Otros Módulos alimenta.",
+        "Permiso por grupo y por ruta: lo que no se puede, se ve gris.",
+        "Varias opciones del menú aún no tienen pantalla (ver Hallazgos)."
+      ]
+    },
+    {
+      "id": "configuracion",
+      "tipo": "texto",
+      "kicker": "Antes de empezar",
+      "titulo": "Configuración: periodos, cuentas, naturalezas, parámetros y variables",
+      "intro": "Lo que debe existir antes del primer comprobante. Parte está en el menú Contable → Parametrización; parte en Configuración (plan de cuentas, tipos de comprobante, configuración contable de los módulos).",
+      "md": "## En Parametrización\n\n| Qué | Dónde | Para qué |\n|---|---|---|\n| Periodos contables (PRI) | Periodos Contables | Un registro por año-mes. Uno solo marcado como **saldos iniciales (SI)**. Cerrado, cerrado para impuestos, cartera y CxP |\n| Naturaleza (NTZ) | Naturaleza | Dígito inicial de la cuenta → naturaleza DB o CR. La usan liquidación de impuestos y los informes para dar signo al saldo |\n| Parámetros (PAR) | Parámetros Contables | Compañía, **mes de cierre fiscal** (MESDECIERRE) y demás parámetros; un registro por compañía |\n| Agrupación (KPRES) | Agrupación de Cuentas | Grupos y rangos de cuentas para presentar estado de resultados y balance |\n| Exógena (EXOFMT…) | Cnf. Exógena → Formatos y conceptos | Formato → concepto → regla por campo → cuentas asociadas (TGEN) |\n| Libros (USCXS) | Foliar Libros | Consecutivo de Balance General, Balance de Prueba, Libro Diario, Estado de Resultados, Inventario y Balance, Libro Mayor |\n\n## En Configuración (fuera del menú Contable)\n\n- **Plan de cuentas (CUE):** solo las cuentas de **tipo Detalle** reciben movimiento; la marca **Impuesto** las incluye en la liquidación.\n- **Tipos de comprobante (COM):** el código que lleva cada comprobante; varias variables apuntan a uno por defecto.\n- **Configuración contable de módulos (KMCOM):** qué cuenta usa cada módulo en cada movimiento. Si falta, el comprobante del módulo cae en Errados.\n- **Tipos de tercero (TTEC):** cuentas de cartera, glosas y difícil cobro por tipo.\n- **Impuestos (FIMPDV):** vigencias y cuentas de IVA y retenciones.\n\n## Variables que gobiernan el módulo\n\nComprobantes por defecto (IDCON_TCOM_DEFAULT, IDCON_TCOM_FTR, IDCON_TCOM_ECAJ, IDCON_TCOM_NOTDBCR, IDCON_TCOM_CXC, IDCON_TCOM_CASTICART, IDCON_TCOM_CXC_DIFIC, IDCON_TCOM_HOTERCUE), modelo contable (IDMODELOCONTABLE, COMPROBMULTISEDE), tercero de la DIAN (IDTERCERO_DIAN), impuestos asumidos (LIQIMPASUMIDO), fecha contable de la CxP (IDCON_FCONTABLE_CXP), categoría de terceros creados desde afiliados (TERCATAFILIADO) y validación de inventario al cierre (VALIDAINVCIERRECONT). Se configuran por instalación; la lista completa está en el capítulo de variables.",
+      "puntosClave": [
+        "Un periodo por mes y uno solo de saldos iniciales.",
+        "Solo cuentas de Detalle reciben movimiento.",
+        "KMCOM incompleto = comprobantes errados, no comprobantes.",
+        "El mes de cierre fiscal vive en Parámetros Contables."
+      ]
+    },
+    {
+      "id": "flujo-comprobante",
+      "tipo": "flujo",
+      "flujoId": "conta-comprobante",
+      "kicker": "Proceso 1",
+      "titulo": "Movimiento Diario: crear, revisar y confirmar un comprobante",
+      "imagen": "img/conta_comprobante_sketchnote.jpg",
+      "imagenAlt": "Cabecera → Detalle → Confirmar → Después",
+      "intro": "Desde **Contable → Procesos → Movimiento Diario**. El comprobante manual nace en borrador, recibe su detalle, se recalcula y se confirma. Los de módulo llegan ya confirmados o esperan en Errados."
+    },
+    {
+      "id": "comprobante-detalle",
+      "tipo": "texto",
+      "kicker": "Proceso 1 · detalle",
+      "titulo": "Botones, filtros y reglas de Movimiento Diario",
+      "intro": "Qué hace cada botón de la fila y de la barra, qué revisa el sistema al confirmar y qué pasa con lo anulado.",
+      "md": "## Filtros\n\nPeriodo (año-mes), tipo de comprobante, tercero (NIT), usuario, procedencia, ver comprobantes (todos / contabilizados / preparados / con errores), CI contable, consecutivo, referencias 1-3. Al abrir, el filtro trae el tipo de comprobante por defecto (variable IDCON_TCOM_DEFAULT) para no cargar todo el periodo.\n\n## Botones de la fila\n\n| Botón | Cuándo aparece | Qué hace |\n|---|---|---|\n| Editar | Estado 0 ó 1, no anulado, periodo abierto | Abre la cabecera; solo MANUAL permite editar todo |\n| Confirmar | Estado 1 | Revisa líneas (SPK_REVISAR_COMPROBANTE), suma (SPK_SUMA_DBCR) y pasa a 2 (SPK_NC_CONFIRMAR_CONTAB · CONTABILIZAR) |\n| Recalcular totales | Estado 0 ó 1 | Vuelve a sumar DB y CR y fija el estado según las líneas |\n| Desconfirmar | Estado 2, periodo abierto | Regresa a 1 (DESCONTABILIZAR); las líneas también |\n| Duplicar | Estado 2 | Copia cabecera y detalle a un MANUAL nuevo en estado 0 |\n| Enviar a cambios | Estado 0 ó 1 y procedencia distinta de MANUAL | Lleva MCP/MCH a MCPE/MCHE (SPK_PASA_A_MCPE) para corregir y reconstruir; borra la copia NIIF |\n| Imprimir | Siempre | Reporte del comprobante (GENERAR_COMPROBANTE_CONTABLE) |\n\n## Barra masiva\n\nConfirmar (solo seleccionados en 1), Desconfirmar (solo en 2), Enviar a cambios (solo no MANUAL), Recalcular, Imprimir masivo (GENERAR_COMPROBANTES_MASIVO_V2), Exportar a Excel (encabezados o encabezados + detalle).\n\n## Detalle (MCH)\n\nNuevo, Editar, Eliminar, Borrar todo, filtro avanzado por condiciones, copiar asiento/cuenta/tercero. **Subir detalle**: descargar formato Excel, procesar; valida cuentas, terceros y centros de costo; no se permite en comprobante confirmado ni en periodo cerrado. Cruce CxP/CxC desde la línea requiere permiso MCH_CRUCE_CXPCXC.\n\n## Qué revisa Confirmar\n\n1. Periodo abierto (PRI.CERRADO = 0) y comprobante no anulado.\n2. Cada línea: *La Cuenta NO Existe* · *La Cuenta NO es de Detalle* · *El valor del Registro es cero (0)* · *El valor del Registro es menor que cero* · *El Tercero NO Existe*. Las líneas malas quedan en estado 0 con el texto en ERROR/DETALLE.\n3. Terceros que son afiliados y no existen en TER se crean automáticamente (categoría TERCATAFILIADO).\n4. DB = CR y todas las líneas en 1; si no: *«no está preparado para su Contabilización»*.\n\n## Anulado\n\nUn comprobante anulado queda en estado 0 y sus valores no afectan saldos; confirmar un anulado devuelve *«El Comprobante … se encuentra Anulado»*.",
+      "puntosClave": [
+        "Confirmar = revisar + sumar + estado 2.",
+        "Enviar a cambios solo para comprobantes de módulo.",
+        "Subir detalle valida antes de grabar.",
+        "Anulado nunca suma."
+      ]
+    },
+    {
+      "id": "ficha-correccion",
+      "tipo": "texto",
+      "kicker": "Consulta rápida",
+      "titulo": "Ficha de corrección: del error al procedimiento",
+      "intro": "Cuando un comprobante queda en Errados, no se vuelve a investigar el módulo desde cero. Se lee la procedencia y el texto o el código, y esta ficha dice qué procedimiento lo arma, qué variable revisar y cómo corregirlo.",
+      "md": "## Orden de trabajo\n\n1. Lea la cabecera: PROCEDENCIA, REFERENCIA1, REFERENCIA2, NOREFERENCIA, año y mes.\n2. Lea el texto de la línea (MCHE.ERROR) o pulse Diagnosticar errores y tome el código.\n3. Busque ese texto o ese código en esta ficha. Ahí está el procedimiento, la variable y la corrección.\n4. Corrija la causa (configuración o documento). Si cambió la línea a mano, Revisar. Si cambió el documento o KMCOM, Reconstruir.\n5. No reconstruya con el periodo cerrado, ni un MANUAL, ni un anulado.\n\n## Qué dato mirar primero\n\n| Dato | Qué dice | Para qué sirve |\n|---|---|---|\n| PROCEDENCIA | De qué módulo salió | Elige la fila de la ficha de procedencia y el procedimiento que Reconstruir vuelve a ejecutar. |\n| REFERENCIA1 / REFERENCIA2 / NOREFERENCIA | Qué documento abrir | La clave del documento origen. Cada procedencia usa una distinta. |\n| MCHE.ERROR | El texto de la línea | Lo escribe SPK_REVISAR_COMPROBANTE. Cinco frases fijas, o vacío (entonces el detalle dice Errores de Parametrización). |\n| MCHE.DETALLE | ERROR, PROCEDENCIA, PROCESO, centro, área, prefijo y referencias | El puntero a la configuración (KMCOM, impuesto, caja) aunque la cuenta provisional no exista en el plan. |\n| MCHE.CUENTA | Cuenta o provisional NO DEF… | NO DEF.KMCOM y NO DEF.FIMPDV dicen qué parametrización falta, antes de mirar el plan de cuentas. |\n| Código del diagnóstico | COD_ERROR, severidad y sugerencia | SPK_DIAG_MCPE_ERRORES. Úselo cuando el texto de la línea no alcanza (descuadre, periodo, impuesto, inventario de la nota). |\n\n## Texto de la línea\n\nLo escribe **SPK_REVISAR_COMPROBANTE**. Si el texto va vacío, el detalle dice *Errores de Parametrización*.\n\n| Texto | Qué falló | Corrección | Procedimiento |\n|---|---|---|---|\n| La Cuenta NO Existe. | La cuenta no está en CUE, o el generador dejó una provisional. | Si es NO DEF.KMCOM, cree la fila en KMCOM (modelo, prefijo, área, centro) y reconstruya. Si es una cuenta real, créela de tipo Detalle o corrija la que apunta el documento. | SPK_REVISAR_COMPROBANTE sella; el generador de la procedencia rearma. |\n| La Cuenta NO es de Detalle. | La cuenta existe pero es de suma, no de Detalle. | Cambie la cuenta en KMCOM, en el concepto o en la línea por una de tipo Detalle. Active solo cuentas de movimiento. | SPK_REVISAR_COMPROBANTE |\n| El valor del Registro es cero (0). | La línea llegó con valor 0. | Revise el valor en el documento origen (ítem, impuesto, forma de pago). Quite la línea si no debe existir y reconstruya. | SPK_REVISAR_COMPROBANTE |\n| El valor del Registro es menor que cero. | La línea llegó negativa. El motor no acepta crédito o débito en negativo. | El signo va en el tipo DB/CR, no en el valor. Corrija el documento o el concepto que armó el negativo y reconstruya. | SPK_REVISAR_COMPROBANTE |\n| El Tercero NO Existe. | IDTERCERO de la línea no está en TER. | Cree o active el tercero. Si es afiliado, la revisión puede crearlo con la categoría TERCATAFILIADO. Si el NIT ya existe como otro tercero, la revisión lo reemplaza. Si no hay forma de resolverlo, el comprobante no pasa. | SPK_NC_REVISAMCPE y SPK_REVISAR_COMPROBANTE |\n| (vacío) Errores de Parametrización | La línea no trae una de las cinco frases. Falta cuenta, modelo o vigencia. | Mire PROCESO y la cuenta provisional en el detalle. Configure eso y reconstruya. Editar la línea a mano no evita que el siguiente documento salga igual. | SPK_REVISAR_COMPROBANTE escribe el detalle; SPK_DIAG_MCPE_ERRORES nombra el código. |\n\n## Código del diagnóstico\n\nBotón **Diagnosticar errores**. Lo arma **SPK_DIAG_MCPE_ERRORES**. Busque el código y aplique la corrección de esa fila.\n\n| Código | Cuándo aparece | Corrección | Procedimiento |\n|---|---|---|---|\n| YA_EN_MCP | El mismo número está en MCPE y en MCP. | No debe quedar en errados. Compare procedencia y referencias. Si el de libros es el bueno, el de errados sobra. Si son datos distintos, la revisión responde que ya existe un comprobante con ese número y descarta el intento. | SPK_DIAG_MCPE_ERRORES · SPK_NC_REVISAMCPE |\n| ANULADO | MCPE.ANULADO = 1. | No pasa a libros. Limpie o regenere desde el documento origen. | SPK_DIAG_MCPE_ERRORES |\n| SIN_LINEAS_MCHE | Hay cabecera y no hay líneas. | Reconstruya desde el origen o elimine la cabecera huérfana. | SPQ_MCPE_COL · RECONSTRUIR |\n| DESCUADRE_DB_CR | El total débito de la cabecera no iguala al crédito (más de 0,01). | Falta una línea (IVA, retención, inventario) o un valor está mal. Si la diferencia es menor a 2, la revisión la ajusta en la primera línea (SPK_NC_BALANCEO_CENTAVOS). Si es mayor, corrija el documento y reconstruya. | SPK_NC_REVISAMCPE · SPK_SUMA_DBCR |\n| DESCUADRE_MCHE | La cabecera cuadra y la suma de las líneas no. | Revise cuentas vacías y líneas con ERROR. Reconstruya. | SPK_DIAG_MCPE_ERRORES |\n| DESCUADRE_MCPE_MCHE | Los totales de la cabecera no coinciden con la suma de las líneas. | Reconstruya para volver a calcular los totales. | SPK_DIAG_MCPE_ERRORES |\n| SIN_CREDITOS | Hay débitos y ningún crédito. | Reconstruya. En nota de CxP con inventario: verifique el movimiento ligado y, si hay IVA, la vigencia en FIMPDV. | Generador de la procedencia |\n| SIN_DEBITOS | Hay créditos y ningún débito. | Reconstruya desde el documento origen. | Generador de la procedencia |\n| PERIODO_NO_EXISTE | No hay PRI para esa compañía, año y mes. | Cree el periodo. No reconstruya antes. | SPK_NC_REVISAMCPE |\n| PERIODO_CERRADO | PRI.CERRADO = 1. | Abra el periodo o cambie la fecha contable del documento. Reconstruir en periodo cerrado no pasa. | SPK_NC_REVISAMCPE |\n| CUENTA_NO_EXISTE | La línea trae cuenta y no está en CUE. | Corrija la cuenta en la línea o en la parametrización de origen (KMCOM, forma de pago, concepto de caja, nota de CxP). | SPK_REVISAR_COMPROBANTE |\n| CUENTA_VACIA | La línea no trae cuenta. | Si PROCESO es CXC_IMPUESTOS, revise el impuesto por recaudar y reconstruya con SPK_NC_CONTAB_CXC. En otro proceso, asigne la cuenta o reconstruya. | SPK_NC_CONTAB_CXC cuando el proceso es CXC_IMPUESTOS |\n| CXC_IMPUESTOS_SIN_REF | Procedencia CXC, proceso CXC_IMPUESTOS, sin cuenta y sin referencia. | El generador no resolvió la cuenta del impuesto. Verifique el impuesto del detalle del recaudo y la parametrización de impuestos por recaudar. | SPK_NC_CONTAB_CXC |\n| KMCOM_NO_DEFINIDO | La cuenta es NO DEF.KMCOM. | Abra KMCOM del modelo (IDMODELOCONTABLE), cree la cuenta para ese prefijo, área y centro, y reconstruya. El botón KMCOM de la pantalla abre esa configuración. | Generador de la procedencia, con IDMODELOCONTABLE |\n| FIMPDV_NO_DEFINIDO | La cuenta es NO DEF.FIMPDV. | Cree la vigencia del impuesto con cuenta, corrija el detalle del recaudo y reconstruya con SPK_NC_CONTAB_CXC. | SPK_NC_CONTAB_CXC |\n| CUENTA_NO_DEFINIDA | Otra cuenta provisional NO DEF que no es KMCOM ni FIMPDV. | Según el PROCESO de la línea: KCDE, KMCOM, PAR, forma de pago o concepto de caja. | Generador de la procedencia |\n| CUENTA_INACTIVA | La cuenta existe y no está Activa. | Actívela o cámbiela por una vigente. | SPK_DIAG_MCPE_ERRORES |\n| MCHE_ERROR | La línea ya trae texto en ERROR. | Corrija cuenta, tercero o centro y pulse Revisar. | SPK_REVISAR_COMPROBANTE |\n| TERCERO_REQUERIDO | La cuenta exige tercero y la línea no lo trae. | Asigne el tercero en la línea o en el documento. | SPK_REVISAR_COMPROBANTE |\n| TERCERO_NO_EXISTE | El tercero de la línea no está en TER. | Cree o active el tercero, o corrija el identificador. Categoría de alta desde afiliado: TERCATAFILIADO. | SPK_NC_REVISAMCPE |\n| TERCERO_INACTIVO | El tercero existe y no está Activo. | Actívelo o use otro. | SPK_DIAG_MCPE_ERRORES |\n| CCOSTO_REQUERIDO | La cuenta exige centro y la línea no lo trae. | Asigne el centro. En muchas líneas: Marcar y Procesar. Luego Revisar. Si el documento nació sin centro, corríjalo allí y reconstruya: si no, el siguiente sale igual. | SPK_DIAG_MCPE_ERRORES · SPQ_MCHE_COL · PROCESAR_MARCADOS |\n| INV_SIN_IMOV | Nota de CxP de procedencia INV sin movimiento de inventario ligado (CNSDBCR / ITEMDBCR). | Amarre la devolución al ítem de la nota. No contabilice por la ruta de inventario si otra nota ya usó ese movimiento: se duplica. | SPK_NC_CONTAB_CXPFNT |\n| INV_IMOV_COMPARTE_FCXPD | El movimiento ligado trae artículos de varios ítems de la CxP. | Deje en el movimiento solo los artículos de este ítem de nota. El generador contabiliza todos los ítems del movimiento, no solo esta nota. | SPK_NC_CONTAB_CXPFNT |\n| INV_IMOV_ARTICULO_OTRA_NOTA | Un artículo del movimiento ya está en otra nota contabilizada de la misma CxP. | Separe un movimiento por ítem de nota. Contabilizar este ítem duplica el artículo. | SPK_NC_CONTAB_CXPFNT |\n| INV_IMOV_SUMA_VS_NOTA | La suma del movimiento no coincide con el neto de la nota (diferencia mayor a 1). | El movimiento no es el de esta nota, o está compartido entre ítems. Separe movimientos y reconstruya. | SPK_NC_CONTAB_CXPFNT |\n| IVA_SIN_VIGENCIA_FIMPDV | Nota de CxP con IVA y no hay vigencia de IVA para la fecha contable. | Extienda la vigencia del IVA (variable IDIMP_IVA) o cambie la fecha contable. Sin vigencia no sale el asiento de IVA y el comprobante no cuadra. | SPK_NC_CONTAB_CXPFNT |\n| CAJA_PENDIENTE_PASE_MCP | El recibo ya está marcado contabilizado y el comprobante sigue en errados, sin fila en libros. | Revise de nuevo. Si no pasa, reconstruya el ingreso de caja. | SPK_NC_REVISAMCPE · SPK_NC_CONTAB_CAJA_ING |\n| CXC_RECAUDO_SIN_MCP | Recaudo cerrado, comprobante en estado 0, sin fila en libros. | Reconstruya el recaudo y revise las líneas de impuesto sin cuenta. | SPK_NC_CONTAB_CXC |\n| CXC_FPAGDI_SIN_FIMPDV | El detalle del recaudo trae impuesto y no hay vigencia con cuenta. | Cree la vigencia o corrija el impuesto del recaudo antes de volver a contabilizar. | SPK_NC_CONTAB_CXC |\n| ESTADO_ERRADO_SIN_DETALLE | Sigue en estado 0 y el diagnóstico no halló otra causa. | Pulse Revisar y lea el texto de cada línea. | SPQ_MCPE_COL · REVISAR_MCPE |\n\n## Ficha por procedencia\n\nReconstruir (**SPQ_MCPE_COL · RECONSTRUIR**) vuelve a ejecutar el generador de la fila. La revisión que decide si pasa a libros es siempre **SPK_NC_REVISAMCPE**. Si la variable dice «pendiente de documentar», la fila ya indica el procedimiento y la referencia del documento.\n\n| Procedencia | Documento | Procedimiento | Variables | Error propio |\n|---|---|---|---|---|\n| FACTURA | Factura. Clave: NOREFERENCIA. | SPK_NC_CONTAB_FTR | IDCON_TCOM_FTR, IDMODELOCONTABLE, CONTAB_IMP_FTR, CONTAB_FTR_POSTDIAN, PYG_* | Periodo inexistente o cerrado, duplicidad, cuenta NO DEF.KMCOM si el servicio no tiene modelo para prefijo, área y centro. |\n| CAJA | Recibo de caja. REFERENCIA1 = recibo, REFERENCIA2 = caja. | Cobro: SPK_NC_CONTAB_CAJA_ING. Pago: SPK_NC_CONTAB_CAJA_EGR. | IDCON_TCOM_ICAJ (ingreso), IDCON_TCOM_ECAJ (egreso), IDMODELOCONTABLE, GENANTIDESDEORDENSER | CAJA_PENDIENTE_PASE_MCP. Concepto de caja sin cuenta. La clase del recibo (cobro o pago) elige el procedimiento. |\n| CXC | Recaudo. REFERENCIA1 = consecutivo del recaudo. | SPK_NC_CONTAB_CXC | IDCON_TCOM_CXC, CONTABCXC, CTADTOFINANCIERO, CUE_IMP_RECAUDOS, IDMODELOCONTABLE | CXC_RECAUDO_SIN_MCP, CXC_FPAGDI_SIN_FIMPDV, CUENTA_VACIA con proceso CXC_IMPUESTOS, FIMPDV_NO_DEFINIDO. |\n| CXP | Cuenta por pagar. REFERENCIA1 = consecutivo. | SPK_NC_CONTAB_CXP | IDCON_FCONTABLE_CXP (qué fecha define el periodo), IDMODELOCONTABLE | Cuenta o tercero del proveedor. Un impuesto mal causado puede quedar contabilizado y no aparecer en errados: ese caso no se diagnostica aquí. |\n| NOTDBCRCXP | Nota de la cuenta por pagar. REFERENCIA1 = consecutivo, REFERENCIA2 = ítem. | SPK_NC_CONTAB_CXPFNT | IDIMP_IVA (vigencia de IVA en FIMPDV), IDMODELOCONTABLE | INV_SIN_IMOV, INV_IMOV_COMPARTE_FCXPD, INV_IMOV_ARTICULO_OTRA_NOTA, INV_IMOV_SUMA_VS_NOTA, IVA_SIN_VIGENCIA_FIMPDV, SIN_CREDITOS. |\n| NOTDBCR | Nota débito o crédito de factura. REFERENCIA1 y REFERENCIA2. | SPK_NC_CONTAB_FNOT | IDCON_TCOM_NOTDBCR, IDCUENTANOTAS, GLOSASNOTS, IDMODELOCONTABLE | Periodo inexistente o cerrado, duplicidad, cuenta del concepto de la nota. |\n| INV | Movimiento de inventario. REFERENCIA1 = consecutivo del movimiento. | SPK_NC_CONTAB_INV | IDMODELOCONTABLE. La cuenta sale de KMCOM por tipo de movimiento, centro y área. | KMCOM_NO_DEFINIDO y «La Cuenta NO Existe» cuando el movimiento no trae centro. Entrada cuyo documento no es un tercero: la revisión no puede crear el tercero. |\n| BMOV | Movimiento bancario. REFERENCIA1 trae banco, sucursal y cuenta pegados. | SPK_NC_CONTAB_BMOV | IDCON_TCOM_DEFAULT, COMPROBMULTISEDE, LONGITUDCODBANCO | Periodo inexistente o cerrado, duplicidad. La procedencia del comprobante es BMOV; en tesorería la fila puede verse como bancos. |\n| RGLO | Glosa. REFERENCIA1. | SPK_CONTAB_FGLO | IDCON_TCOM_RGLO, CUENTAGLOSAACEPTADA y CONTABCXC. Aceptada y recuperación no usan la misma cuenta. | Aún sin familia propia en el diagnóstico. Si queda en errados, use los códigos generales (cuenta, tercero, descuadre, periodo). |\n| CONCI | Conciliación de cartera. REFERENCIA1. | SPK_CONTAB_CONCI | IDMODELOCONTABLE | Códigos generales. No confundir con la pantalla Conciliaciones contables. |\n| RAD CXC | Cuenta de cobro. REFERENCIA1. | SPK_CONTAB_RADICACXC. Si ya tiene pagos, notas o glosas: SPK_CONTAB_RADICACXC_1. | IDCON_TCOM_RADICA e IDMODELOCONTABLE en la radicación con abonos. | Códigos generales. La radicación con abonos no usa el mismo procedimiento que la radicación en cero. |\n| NOMINA | REFERENCIA2, REFERENCIA1 y REFERENCIA3. | SPK_NC_CONTAB_NOMINA | Pendiente de documentar. Mientras tanto: cuenta, tercero, descuadre y periodo. | Códigos generales: cuenta, tercero, descuadre y periodo. |\n| ANTICIPOS | REFERENCIA1 y REFERENCIA2. | SPK_NC_CONTAB_ANTICIPO | Débito: cuenta crédito de la CxP ligada o TANT.CUEDEBITO. Crédito: TANT.CUECREDITO. CRUCETER = 1 cambia el tercero. El tipo sale del tipo de anticipo. | Códigos generales: cuenta, tercero, descuadre y periodo. |\n| AJDEP | Año y mes de la cabecera. No usa una referencia de documento. | SPK_APL_AJDEPRECIACION | IDCON_TCOM_DEPR. Con multis sede, el tipo sale de COMMS clase DEPRECIACION; si no hay, de esta variable. | Códigos generales. No confundir con IACT (el activo). |\n| IACT | REFERENCIA1. | SPK_CONTAB_IACT | Pendiente de documentar. Mientras tanto: cuenta, tercero, descuadre y periodo. | Códigos generales. Es el activo, no la depreciación del mes. |\n| CESIONES | REFERENCIA1. | SPK_CONTAB_FCES | Pendiente de documentar. Mientras tanto: cuenta, tercero, descuadre y periodo. | Códigos generales. |\n| LEGALIZACION | REFERENCIA1. | SPK_CONTAB_FLEG | Pendiente de documentar. Mientras tanto: cuenta, tercero, descuadre y periodo. | Códigos generales. |\n| REVCAJAING / REVCAJAEGR / REVNOTDBCR | REFERENCIA3 del comprobante que se reversa. | SPK_REVERSAR_MCP | IDCON_TCOM_REVCAJAIN, IDCON_TCOM_REVCAJAEG, IDCON_TCOMREVNOTDBCR | Códigos generales del comprobante contrario. |\n| MANUAL | Lo digitó contabilidad. No tiene documento origen. | No se reconstruye. Se corrige en Movimiento Diario. | IDCON_TCOM_DEFAULT | Los cinco textos de la línea. Enviar a cambios no aplica a MANUAL. |\n\n## Qué botón usar después de corregir\n\n| Situación | Botón |\n|---|---|\n| Cambió la línea a mano (cuenta, tercero, centro) | Revisar |\n| Cambió el documento origen o KMCOM / vigencia de impuesto | Reconstruir |\n| Muchas líneas con el mismo centro o área | Marcar y Procesar; al terminar reconstruye |\n| Periodo cerrado, anulado o procedencia MANUAL | No reconstruir. MANUAL se corrige en Movimiento Diario |\n| El diagnóstico no nombró causa | Revisar y leer el texto de cada línea |\n\n## Variantes ya escritas\n\nLa fila de procedencia dice el procedimiento. Aquí está cómo cambia el asiento cuando la variante ya se leyó en el cuerpo. Si la variable solo está nombrada, el primer errado que la use deja escrito el efecto y el siguiente se resuelve con esta ficha.\n\n| Procedencia | Qué cambia |\n|---|---|\n| FACTURA | CONTAB_FTR_POSTDIAN = SI no arma si la factura no está aceptada por la DIAN, y compara servicios, copago y total contra el XML. CONTAB_IMP_FTR = SI con ANTIPO_IMP_RESTA_FTR = NO exige CUENTA_CR_ANTIMPUEST de tipo Detalle. |\n| CXP | IDCON_FCONTABLE_CXP = Radicacion toma el periodo de la fecha de radicación; si no, de la factura del proveedor. Sin multis sede, el tipo sale de la clase (Compras, Salud, Servicios, Otros, Nomina, LevGlo, ConcGlo). CUENTA_IVA_CXP = SI debita la cuenta de IVA; si no, puede debitar la cuenta del servicio. Si la CxP quedó sin contabilizar y conserva un número que ya no está en libros ni en errados, el detalle no puede grabarse porque falta la cabecera: hay que dejar el número en blanco y volver a contabilizar. Al deshacer un errado, el procedimiento debe limpiar ese número. |\n| NOTDBCRCXP | Sin vigencia de IVA (IDIMP_IVA) el asiento de IVA no sale. El movimiento de inventario tiene que ser de este ítem y sumar igual a la nota. |\n| INV | Sin centro o sin fila KMCOM la cuenta queda NO DEF.KMCOM. |\n| RGLO | Aceptada con débito de cartera en la factura: débito a CUENTAGLOSAACEPTADA (o USVGS_CG.ACEPT). Si no hay ese débito: crédito a la cuenta de radicación y débito a CTAGLOSADB. Recuperación: CONTABCXC elige CUENTARAD o CUENTALG. Sin cuenta de orden: NO CUEORDENGLOSA. |\n| ANTICIPOS | Débito: cuenta crédito de la CxP ligada, o TANT.CUEDEBITO si no hay CxP. Crédito: TANT.CUECREDITO. CRUCETER = 1 cambia el tercero. El tipo sale del tipo de anticipo, no de IDCON_TCOM_ANTI. |\n| AJDEP | COMPROBMULTISEDE = SI toma el tipo de COMMS clase DEPRECIACION de la sede; si no hay, IDCON_TCOM_DEPR. El tercero de la cabecera es IDTERCEROINSTALADO. |\n| CAJA | Cobro usa el procedimiento de ingreso; pago, el de egreso. |\n| RAD CXC | Con pagos, notas o glosas usa SPK_CONTAB_RADICACXC_1 y el tipo IDCON_TCOM_RADICA. |\n| MANUAL | No se reconstruye. Se corrige en Movimiento Diario y se revisa. |\n| REVNOTDBCR | Si el comprobante que se reversa no tiene líneas, la cabecera del reverso queda en cero y sin detalle. Reconstruir repite esa cabecera. Se corrige el origen. |\n",
+      "puntosClave": [
+        "Primero el texto de la línea o el código del diagnóstico; después la procedencia.",
+        "La causa se corrige en el documento o en KMCOM. La línea se parcha solo si el caso es de esa línea.",
+        "Revisar repite la revisión. Reconstruir vuelve a ejecutar el generador de la procedencia.",
+        "Donde el generador aún no está leído, la ficha dice el nombre y la referencia, y deja las variables pendientes.",
+        "Cada procedencia tiene ficha de variantes: procedimiento, variable y cómo cambia el asiento."
+      ]
+    },
+    {
+      "id": "flujo-errados",
+      "tipo": "flujo",
+      "flujoId": "conta-errados",
+      "kicker": "Proceso 2",
+      "titulo": "Comprobantes Errados: el flujo invertido",
+      "imagen": "img/conta_errados_sketchnote.jpg",
+      "imagenAlt": "Por qué llegan → Leer el error → Corregir → Reconstruir / Revisar",
+      "intro": "Desde **Contable → Procesos → Comprobantes Errados**. Todo comprobante generado por un módulo nace aquí; la revisión automática decide si pasa a libros. Lo que no pasa se corrige y se reconstruye."
+    },
+    {
+      "id": "errados-detalle",
+      "tipo": "texto",
+      "kicker": "Proceso 2 · detalle",
+      "titulo": "Qué revisa el motor, qué dice cada error y cómo se corrige",
+      "intro": "La revisión automática (SPK_NC_REVISAMCPE) es el corazón: compara, cuadra, marca el documento origen y, si todo está bien, traslada a MCP y confirma.",
+      "md": "## La revisión paso a paso\n\n1. Si ya existe un MCP con el mismo número y los mismos datos (comprobante, procedencia, referencias, periodo) lo reemplaza; si existe con datos distintos: *«Ya existe un Comprobante en Contabilidad con este Mismo Número»* y descarta el intento.\n2. Periodo cerrado → *«Periodo Contable Cerrado»*.\n3. Suma DB/CR; si la diferencia es menor a 2,00 la ajusta en la primera línea DB o CR (SPK_NC_BALANCEO_CENTAVOS).\n4. Terceros de las líneas que no existen en TER: si son afiliados los crea; si un NIT ya existe como tercero lo reemplaza; si no hay cómo resolverlo: *«No se contabiliza el comprobante … Tercero no existe en AFI ni en TER»*.\n5. Revisa cada línea (cuenta existe y es de detalle, valor > 0, tercero existe) y vuelve a sumar.\n6. **Si quedó en estado 0:** el documento origen queda **CONTABILIZADA = 2** (con errores) y el comprobante permanece en MCPE.\n7. **Si quedó bien:** copia a MCP/MCH, verifica que la copia coincida, marca el documento origen **CONTABILIZADA = 1** con su NROCOMPROBANTE, borra MCPE/MCHE y confirma (estado 2). Facturas actualizan saldos de cartera (SPK_INGRESA_SALDOS_FTR).\n\n## Documento origen por procedencia\n\n| Procedencia | Tabla marcada | Clave |\n|---|---|---|\n| FACTURA | FTR | N_FACTURA |\n| NOTDBCR | FNOT | CNSFNOT + CLASE |\n| CXC | FPAG (recaudos) | CNSFPAG |\n| INV | IMOV | CNSMOV |\n| CAJA | FCJ (+ BMOV del recibo) | CNSFACJ + CODCAJA |\n| NOMINA | NIEPE / NIEPED | NUMDOC + CNSPAGO |\n| CXP | FCXP | CNSFCXP |\n| NOTDBCRCXP | FCXPDBCR | CNSFCXP + ITEM |\n| BMOV | BMOV | banco + sucursal + cuenta + ítem |\n| CONCI | FCONCI | IDFCONCI |\n| RGLO | FGLO | CNSGLO |\n| RAD CXC | FCXC | CNSCXC |\n| ANTICIPOS | ANT | CNSANT + CNSFCOM |\n\n## Los textos de error de la línea\n\nEl campo DETALLE de la línea errada se reescribe con: ERROR, PROCEDENCIA, PROCESO, CCOSTO, IDAREA, PREFIJO, REFERENCIA1-3 y el detalle original. Así se sabe de qué documento y configuración salió la cuenta.\n\n## Diagnóstico con códigos\n\n**Diagnosticar errores** (por comprobante o por periodo) devuelve código, severidad y sugerencia: SIN_LINEAS_MCHE, DESCUADRE_DB_CR, DESCUADRE_MCPE_MCHE, SIN_CREDITOS, SIN_DEBITOS, PERIODO_NO_EXISTE, PERIODO_CERRADO, CUENTA_NO_EXISTE, CUENTA_VACIA, CUENTA_NO_DEFINIDA, KMCOM_NO_DEFINIDO, FIMPDV_NO_DEFINIDO, CUENTA_INACTIVA, TERCERO_REQUERIDO, TERCERO_NO_EXISTE, TERCERO_INACTIVO, CCOSTO_REQUERIDO, INV_SIN_IMOV, INV_IMOV_SUMA_VS_NOTA, IVA_SIN_VIGENCIA_FIMPDV, CAJA_PENDIENTE_PASE_MCP, CXC_RECAUDO_SIN_MCP, CXC_FPAGDI_SIN_FIMPDV, ESTADO_ERRADO_SIN_DETALLE. El botón **KMCOM** abre la configuración contable del módulo cuando el error es de parametrización. **Exportar** baja el diagnóstico a Excel.\n\n## Corregir\n\n- **Editar línea (MCHE):** cuenta, valor, tipo, tercero, centro de costo, referencias. Requiere el permiso EditarItemMCHE.\n- **Marcar todo / Desmarcar todo / Procesar:** cambio masivo de centro de costo y área en las líneas marcadas; al terminar reconstruye.\n- **Corregir y Reconstruir:** guarda las líneas editadas, reconstruye desde la procedencia y vuelve a aplicar las correcciones manuales.\n- **Eliminar detalle** (uno o varios) cuando la línea sobra.\n\n## Reconstruir vs Revisar\n\n- **Reconstruir** borra el intento y vuelve a correr el generador del módulo (SPK_NC_CONTAB_FTR, CAJA_ING/EGR, CXP, CXC, INV, FNOT, BMOV, FGLO, CONCI, ANTICIPO, NOMINA, radicación CXC, depreciación…). No aplica a MANUAL ni a anulados. Para NIIF el botón se llama Revisar (NIIF).\n- **Revisar** solo repite la revisión sobre lo que hay en MCPE/MCHE; sirve después de corregir a mano.\n- **Incluir todos los registros** en el diálogo masivo reconstruye el periodo completo.",
+      "puntosClave": [
+        "El error de la línea dice cuenta, procedencia y referencias: ahí está la pista.",
+        "Corregir la causa en KMCOM/tercero y reconstruir vale más que parchar la línea.",
+        "Pasar a MCP marca el documento CONTABILIZADA = 1; quedarse en MCPE lo marca 2.",
+        "Cerrar el periodo exige MCPE vacío."
+      ]
+    },
+    {
+      "id": "flujo-alimentadores",
+      "tipo": "flujo",
+      "flujoId": "conta-otros-modulos",
+      "kicker": "Proceso 3",
+      "titulo": "Otros Módulos: cómo se alimenta la contabilidad",
+      "imagen": "img/conta_alimentadores_sketchnote.jpg",
+      "imagenAlt": "Marcar y enviar → El motor → Estados del documento → Conciliaciones",
+      "intro": "Desde **Contable → Otros Módulos** (y desde cada módulo con su propio botón de contabilizar). Un solo gesto: buscar el periodo, marcar documentos y Enviar a Contabilidad. El motor arma el comprobante por procedencia y lo pasa por la revisión."
+    },
+    {
+      "id": "alimentadores-detalle",
+      "tipo": "texto",
+      "kicker": "Proceso 3 · detalle",
+      "titulo": "Pestaña por pestaña: qué se envía, con qué cuentas y qué pasa después",
+      "intro": "Cada pestaña lee una tabla de origen, filtra por año y mes contable y envía con una procedencia. El generador de esa procedencia decide las cuentas a partir de KMCOM, tipos de tercero e impuestos.",
+      "md": "## Pestañas de Otros Módulos\n\n| Pestaña | Tabla origen | Filtro extra | Procedencia | Generador (IXONLINE/SQL) |\n|---|---|---|---|---|\n| Facturas | FTR | Contabilizada (pendiente/enviado/errores), tipo de factura | FACTURA | SPK_NC_CONTAB_FTR |\n| Caja | FCJ (recibos cerrados) | Caja (OBTENER_CAJAS), detalle y formas de pago | CAJA | SPK_NC_CONTAB_CAJA_ING / CAJA_EGR |\n| Bancos | BMOV | Banco, sucursal y cuenta | BMOV | SPK_NC_CONTAB_BMOV |\n| Recaudos (CXC) | FPAG | Detalle del recaudo (DETALLE_OM_CXC) | CXC | SPK_NC_CONTAB_CXC |\n| Glosas | FGLO | Detalle e ítems de la glosa | RGLO | SPK_CONTAB_FGLO |\n| CxP | FCXP | Marcar / Desmarcar servidor | CXP | SPK_NC_CONTAB_CXP |\n| Inventario | IMOV | Bodega (BODEGAS), detalle del movimiento | INV | SPK_NC_CONTAB_INV |\n| Notas D/C | FNOT | Tipo de nota, detalle | NOTDBCR | SPK_NC_CONTAB_FNOT |\n| Mov. Activo | IACTH | Lista de movimientos | ACTIVOS_MOV | (sin rama en el motor: ver Hallazgos) |\n\n## Lo que valida el envío (ENV_CONTA_OTROS_MODULS)\n\n- Año y mes obligatorios, mes entre 1 y 12, usuario con compañía.\n- *El periodo seleccionado se encuentra cerrado*.\n- *No hay … pendientes por contabilizar* si ninguno de los marcados está en 0.\n- *Hay … marcados que ya se enviaron a contabilidad* si alguno está en 1 ó 2: nunca se contabiliza dos veces.\n- Caja exige caja seleccionada; Inventario exige bodega; Bancos exige banco, sucursal y cuenta; Notas exige tipo de nota.\n- Recaudos con fecha inválida detienen el envío.\n\nLuego marca **MARCACONT = 1** en los documentos elegidos, llama a **SPK_CONTAB_MASIVA** con la procedencia y, al volver, limpia la marca en CxP y recaudos. Inventario además verifica que los movimientos hayan quedado contabilizados y avisa si el motor los marcó pero no los procesó.\n\n## Estados del documento en el módulo\n\n| MARCACONT | CONTABILIZADA | Se ve como | Qué hacer |\n|---|---|---|---|\n| 0 | 0 | Pendiente | Marcar y enviar |\n| 1 | 0 | En proceso | Esperar o reenviar si el motor no respondió |\n| 0 | 1 | Enviado (con NROCOMPROBANTE) | Nada; ver el comprobante en Movimiento Diario |\n| 0 | 2 | Errores | Ir a Comprobantes Errados, corregir y reconstruir |\n\n## Conciliaciones contables (Contable → Procesos → Conciliaciones)\n\nPestañas Factura, Caja, CXC, CXP, Inventario, Glosas, Depreciación Activos Fijos y Bancos. Cada una muestra el documento con su MCP (y su MCH) o su MCPE/MCHE, para ver la diferencia entre lo que el módulo dice y lo que contabilidad tiene. Acciones por fila: **Enviar a contabilidad**, **Reconstruir**, y donde aplica **desmarcar contabilizado** para reenviar (RESET_CONTABILIZADO en CxP), **UPDATE_FCJ / CORREGIR_Y_CONTABILIZAR_FCJ** en caja, y depreciación por activo (DEPR_IACTD_UNICO). Excel exporta el filtro actual.\n\n## Lo que se contabiliza desde su propio módulo (solo el enlace)\n\nNómina (NIEPE), anticipos (ANT), cesiones y legalización, glosas FGLO desde cartera, depreciación (SPK_APL_AJDEPRECIACION), eventos de activos (SPK_CONTAB_IACT) y radicación de cuentas por cobrar (SPK_CONTAB_RADICACXC_1). Todos entran por MCPE y siguen la misma revisión.",
+      "puntosClave": [
+        "Una pestaña = una tabla origen + una procedencia + un generador.",
+        "Nunca dos veces: 'ya se enviaron' detiene el envío.",
+        "Pendiente / Enviado / Errores es MARCACONT + CONTABILIZADA.",
+        "Conciliaciones muestra la diferencia documento ↔ comprobante."
+      ]
+    },
+    {
+      "id": "flujo-liqimp",
+      "tipo": "flujo",
+      "flujoId": "conta-liqimp",
+      "kicker": "Proceso 4",
+      "titulo": "Liquidación de impuestos",
+      "imagen": "img/conta_liqimp_sketchnote.jpg",
+      "imagenAlt": "Consultar → Generar CxP → Documentos → Después",
+      "intro": "Desde **Contable → Procesos → Liquidación Impuestos**. Reúne las retenciones e impuestos del periodo que ya están en comprobantes confirmados, emite certificados y convierte el total en una cuenta por pagar a la DIAN para pagarla por tesorería."
+    },
+    {
+      "id": "correcciones",
+      "tipo": "texto",
+      "kicker": "Proceso 5",
+      "titulo": "Correcciones: reclasificar terceros y cuentas, castigo de cartera, aval y marcas",
+      "imagen": "img/conta_correcciones_sketchnote.jpg",
+      "imagenAlt": "Reclasificar tercero → Reclasificar cuenta → Castigo de cartera → Aval y marcas",
+      "intro": "Nada se edita en un periodo cerrado: toda corrección es un comprobante nuevo en el periodo abierto que reversa lo errado y registra lo correcto, más la actualización de los documentos ligados.",
+      "md": "## Reclasificar Terceros (SPQ_CONTABILIDAD · RECLASIFICAR_TERCEROS_LISTA / _PROCESAR)\n\n1. Elegir el **periodo cerrado** de partida (OBTENER_PERIODO_CERRADO), el tercero actual y el nuevo (deben ser distintos y existir).\n2. **Buscar** muestra saldos por cuenta del tercero actual y los documentos ligados (facturas, CxP, recaudos, caja, radicaciones).\n3. **Procesar** (SPK_HOMOLOGA_TERCERO): crea un comprobante MANUAL con el tipo IDCON_TCOM_HOTERCUE en el **mes siguiente** al periodo cerrado, con una línea que reversa cada saldo del tercero actual y otra que lo lleva al nuevo (detalle *Reclasificacion de Tercero*, proceso RECLA_TER), lo revisa y lo suma. Después cambia el tercero en FTR, FCXP, FPAG, FCJ, FCXC y presupuesto (PTRECO, PTRP) y en las líneas MCH/MCHE.\n\n## Reclasificar Cuentas (RECLASIFICAR_CUENTAS_LISTA / _PROCESAR)\n\nMismo patrón con cuenta actual y cuenta nueva (ambas de detalle, distintas), opcionalmente limitado a un tercero. SPK_HOMOLOGA_CUENTA genera el comprobante de homologación y actualiza MCH/MCHE.\n\n## Castigo de Cartera (CASTIGO_CARTERA_*)\n\n1. **Buscar** facturas con saldo (FCXCDV) por tercero, fechas y tipo; **marcar** una a una o **Marcar todos**. La marca es por equipo (EQUIMARCA), no por usuario.\n2. **Castigar** (TIPO_PROCESO = CASTIGO): exige el comprobante IDCON_TCOM_CASTICART y la cuenta KCDE · CXC_CASTIGO_CARTERA de tipo detalle; **Difícil Cobro** (DIFICIL): exige CUEDIFCOB en el tipo de tercero (TTEC) de cada factura marcada.\n3. Debe existir el periodo de la fecha de castigo. SPK_NC_CONTAB_CASTIGO_CARTERA arma el comprobante vía MCPE, lo revisa y actualiza FCXCDV. **Limpiar** quita las marcas.\n\n## Aval recaudos cartera (SPQ_FPAG_COL)\n\nLista los recaudos pendientes de aval (LISTAR_RECAUDOS_AVAL_PENDIENTE) y **Avalar seleccionados** (AVALAR_RECAUDO). Requiere el permiso BAvalRecaudoConta. Un recaudo sin aval no se envía a contabilidad desde cartera.\n\n## Marcas y reenvíos\n\n- **Desmarcar contabilizado** (RESET_CONTABILIZADO) en Conciliaciones → CxP: pone CONTABILIZADA = 0 para reenviar una CxP cuyo comprobante se perdió o se anuló.\n- **Enviar a cambios** en Movimiento Diario devuelve un comprobante de módulo a Errados.\n- **Reversar** un comprobante de caja o nota (SPK_REVERSAR_MCP) crea el comprobante contrario con los tipos IDCON_TCOM_REV*; se invoca desde el módulo origen, no desde Contable.",
+      "puntosClave": [
+        "Corregir = comprobante nuevo en periodo abierto, nunca editar el cerrado.",
+        "Reclasificar tercero también cambia el tercero en los documentos de otros módulos.",
+        "Castigar y difícil cobro exigen comprobante y cuentas configuradas; el mensaje dice cuál falta.",
+        "La marca de castigo es por equipo: dos usuarios en el mismo equipo comparten marcas."
+      ]
+    },
+    {
+      "id": "libros-informes",
+      "tipo": "texto",
+      "kicker": "Consultas",
+      "titulo": "Libros oficiales e informes: balance, auxiliares, resultados, histórico, cartera y bancos",
+      "imagen": "img/conta_libros_sketchnote.jpg",
+      "imagenAlt": "Balance de prueba y auxiliar → Libros auxiliares → ER y balance general → Cartera, bancos y trazabilidad",
+      "intro": "Todos los informes leen comprobantes **confirmados (estado 2) y no anulados**. Lo pendiente o errado no suma. Las fotos guardan un balance tal como estaba para compararlo después.",
+      "md": "## Balance de Prueba y Libro Auxiliar (SPQ_BALANCE_COL)\n\n- Pestaña **Balance Prueba**: rango de cuentas, centros de costo y terceros; **Generar** calcula saldo inicial, débitos, créditos y saldo final; **Resumen** por cuenta, centro o tercero; **Exportar**, **Imprimir**, **Foto del Mes / Foto del Año** (TBALANCEH), **Generar Comparativo**. **Limpiar** descarta el cálculo.\n- Pestaña **Libro Auxiliar**: movimientos de una cuenta con comprobante, fecha, tercero y detalle; totales; exportar.\n- Pestaña **Comparativo**: dos periodos o una foto contra el actual.\n\n## Libros auxiliares (SPQ_CONTABILIDAD_2, asíncrono)\n\n**Buscar** lanza un trabajo (INICIAR_BUSQUEDA_LIBROS_AUXILIARES → EJECUTAR_BUSQUEDA_ASYNC) y la pantalla consulta su estado (CONSULTAR_ESTADO_JOB). Salidas: **S.Acum** por Cuenta, Documento, Cta/CC/Doc, Cta/Ter/Doc; **S.Agrup** por Cta/CCosto y Cta/Tercero; PDF acumulados y **Exportar a Excel**.\n\n## Estado de resultados (TRAER_DATOS_ER, BUSCAR_ESTADO_RESULTADOS)\n\nIngresos, costos y gastos del rango de periodos, agrupados según KPRES; **Imprimir**, **Exportar Excel**, **Foto Mes / Foto Año** (TOMAR_FOTO_*_ER). Pestaña **Comparativo** con formato detallado (por periodos) o simple.\n\n## Balance general (SPQ_CONTABILIDAD · BALANCE_GENERAL)\n\nAl último periodo cerrado o al elegido entre los disponibles; **Consultar**, **Generar PDF**. Requiere que exista el periodo de saldos iniciales cerrado.\n\n## Histórico de balances (OBTENER_PERIODOS_DISPONIBLES, OBTENER_DATOS_PERIODO)\n\nLas fotos de balance de prueba y estado de resultados guardadas: **Seleccionar Período**, **Imprimir** (IMPRIMIR_BPRUEBA / IMPRIMIR_ESTRES), **Excel**, **Eliminar** (ELIMINAR_FOTO_BALANCE, pide confirmación; no se recupera).\n\n## Cartera y bancos\n\n- **Análisis de vencimientos** (ANALISIS_VENCIMIENTO): cartera por edades a un periodo cerrado; **Por Tercero**, **Tercero y Cuenta**, **Cuenta y Tercero**, **Excel Detalle**, **Excel Cta/Tercero**, **Ver Resumen**.\n- **Seguimiento de Cartera** (SEGUIMIENTO_CARTERA): saldo contable contra saldo de cartera por tercero; marca *Existe diferencia entre saldos*.\n- **Auxiliar de bancos** (SPQ_BANCOS_AUXILIAR): movimientos de la cuenta bancaria del periodo (con histórico no conciliado opcional), **Marcar todo / Desmarcar todo** conciliación, **Salvar** escribe la conciliación en MCH, **Imprimir**, **Exportar**.\n- **Trazabilidad de documentos** (SPQ_SEGUI_DOCUMENTO): un documento (factura, recibo, CxP…) y todos los comprobantes y cuentas por donde pasó.\n\n## Foliar Libros (SPQ_FOLIAR_LB · CRUD_USCXS)\n\nConsecutivo de cada libro oficial: Balance General, Balance de Prueba, Libro Diario, Estado de Resultados, Libro de Inventario y Balance, Libro Mayor. **Cambiar Consecutivo** edita compañía, sede, bodega, prefijo y número. Imprimir Folios aún no está implementado.",
+      "puntosClave": [
+        "Solo estado 2 y no anulado suma en informes.",
+        "Fotos = balance congelado para comparar; eliminar es definitivo.",
+        "Libros auxiliares corre como trabajo: esperar el estado.",
+        "Seguimiento de cartera es el control cruzado contabilidad ↔ cartera."
+      ]
+    },
+    {
+      "id": "flujo-cierre",
+      "tipo": "flujo",
+      "flujoId": "conta-cierre",
+      "kicker": "Proceso 6",
+      "titulo": "Abrir y cerrar el periodo; cierre fiscal",
+      "imagen": "img/conta_cierre_sketchnote.jpg",
+      "imagenAlt": "Antes de cerrar → Cerrar → Abrir → Cierre fiscal",
+      "intro": "Desde **Contable → Procesos → Abrir/Cerrar Periodos** y **Cierre Fiscal**. Cerrar valida en tres pasos, calcula saldos y bloquea el mes; abrir lo revierte. El cierre fiscal cancela las cuentas de resultado del año."
+    },
+    {
+      "id": "cierre-detalle",
+      "tipo": "texto",
+      "kicker": "Proceso 6 · detalle",
+      "titulo": "La lista de integridad, los sub-cierres y el cierre fiscal",
+      "intro": "Qué revisa el sistema antes de cerrar, cómo leer cada aviso del precierre, qué pasa al abrir y cómo funciona el cierre del año.",
+      "md": "## Validación básica (VALIDAR_PERIODO_BASICO)\n\nEl periodo existe y está abierto; el anterior está cerrado (salvo que el periodo sea el de saldos iniciales); no hay más de un periodo de saldos iniciales; con VALIDAINVCIERRECONT revisa movimientos de inventario pendientes por confirmar; con CONTABGENTRASLACOSTO exige el traslado de costos del mes.\n\n## Lista de integridad (FNK_REVISION_ANTES_CIERRE_PERIODO)\n\n| Módulo | Qué reporta |\n|---|---|\n| CONTABILIDAD | Movimientos confirmados con cuentas que no son de detalle |\n| INVENTARIO | Movimientos confirmados sin contabilizar |\n| NOTASDB-CR | Notas sin contabilizar o pendientes por confirmar |\n| CAJA | Recibos cerrados sin contabilizar; recibos pendientes por cerrar |\n| NOMINA | Nóminas pendientes por cerrar |\n| CXP | Cuentas por pagar pendientes por contabilizar (por fecha de radicación o de factura según IDCON_FCONTABLE_CXP) |\n| CXP DBCR | Notas de CxP pendientes |\n| RECAUDOS | Recaudos cerrados pendientes por contabilizar o aplicar |\n| BANCOS | Movimientos bancarios pendientes por contabilizar |\n\nAdemás: *Existen Comprobantes con errores o sin confirmar en el período* si hay MCP en 0 ó 1 o algo en MCPE. La lista se puede exportar a Excel para repartirla a cada módulo. Comprobantes Errados solo muestra lo que ya se intentó causar. Un documento que nunca se envió no aparece ahí.\n\n## Cómo leer la lista en el precierre\n\nLa función es de solo lectura. No cierra y no corrige. Cada fila se contrasta con el documento antes de pedir un desarrollo o de mover una fecha.\n\n**Inventario — movimientos confirmados sin contabilizar.** La fila es un IMOV con ESTADO = 1, SECONTABILIZA = 1, CONTABILIZADA = 0 y FECHACONF en el mes. La grilla de movimientos y Otros Módulos filtran por FECHAMOV. Si las dos fechas no caen en el mismo mes, el precierre lo muestra y la pantalla del mes no.\n\nLa fecha de confirmación no se edita en ninguna pantalla. En una salida confirmada, Editar Salida está bloqueado, y al guardar una entrada confirmada el procedimiento rechaza el cambio. La confirmación escribe FECHACONF con la fecha del servidor en ese momento. Un movimiento sin confirmar (ESTADO = 0) sí deja cambiar la fecha de movimiento; el precierre no lo lista. La validación básica sí puede listar sin confirmar, y lo hace por FECHAMOV, solo si VALIDAINVCIERRECONT está en SI.\n\nAl causarlo, SPK_NC_CONTAB_INV toma el año y el mes de FECHACONF y la fecha del comprobante de FECHAMOV. Las dos tienen que ser el mes al que se quiere llevar el asiento. Sin centro de costo o sin área, KMCOM de MOV_INVENTARIO no resuelve la cuenta y el envío no arma el comprobante. En una dispensación de transcripción (clase TRANS_CE) el centro está en la fórmula: AUTE.CNSIZSOL = IMOV.NODOCUMENTO, unido a CEFM. La bodega también trae centro y área. La solicitud puede quedar sin consecutivo de movimiento: se busca por el documento, no por el consecutivo del precierre. En errados se busca MCPE con procedencia INV y REFERENCIA1 igual al consecutivo, y solo existe si ya hubo un envío.\n\n```sql\nSELECT I.CNSMOV, I.IDBODEGA, I.IDTIPOMOV, I.NODOCUMENTO, I.PROCEDENCIA,\n       I.CCOSTO, I.IDAREA, I.FECHAMOV, I.FECHACONF, I.NROCOMPROBANTE\nFROM IMOV I\nWHERE COALESCE(I.ESTADO,0)=1 AND COALESCE(I.SECONTABILIZA,0)=1\n  AND COALESCE(I.CONTABILIZADA,0)=0\n  AND YEAR(I.FECHACONF)=@ANO AND MONTH(I.FECHACONF)=@MES;\n```\n\n**Notas de CxP — el aviso de duplicada.** Varias notas de la misma cuenta, con ítem distinto, no son un duplicado. En MCP la procedencia es NOTDBCRCXP, REFERENCIA1 es la cuenta y REFERENCIA2 es el ítem. Está duplicada solo cuando la misma REFERENCIA1 y la misma REFERENCIA2 tienen más de un comprobante con ANULADO distinto de 1.\n\nLa función, en la 2.0.7, hace otra cosa: cuenta filas de FCXPDBCR del mes por cuenta, y agrupa los comprobantes de notas solo por REFERENCIA1. Por eso una cuenta con tres ítems vigentes sale como duplicada y como «más de un comprobante». El aviso de notas pendientes está escrito dos veces, así que el mismo consecutivo se repite. El arreglo de producto está pedido; mientras tanto la consulta de abajo es la que decide.\n\n```sql\nSELECT M.REFERENCIA1, M.REFERENCIA2, COUNT(DISTINCT M.NROCOMPROBANTE) AS COMPROBANTES\nFROM MCP M\nWHERE RTRIM(M.PROCEDENCIA)='NOTDBCRCXP'\n  AND YEAR(M.FECHACONTABLE)=@ANO AND MONTH(M.FECHACONTABLE)=@MES\n  AND COALESCE(M.ANULADO,0)<>1\nGROUP BY M.REFERENCIA1, M.REFERENCIA2\nHAVING COUNT(DISTINCT M.NROCOMPROBANTE)>1;\n```\n\n**Cuenta por pagar — más de un comprobante.** La misma regla: procedencia CXP, misma REFERENCIA1 y misma REFERENCIA2, ANULADO distinto de 1, más de un número de comprobante. La referencia 2 de la cuenta es el número de la factura. La función agrupa solo por la cuenta, así que dos referencias distintas también saldrían. Un número de comprobante en la cuenta que no existe en MCH ni en MCHE no está causado: CONTABILIZADA sigue en 0.\n\n```sql\nSELECT M.REFERENCIA1, M.REFERENCIA2, COUNT(DISTINCT M.NROCOMPROBANTE) AS COMPROBANTES\nFROM MCP M\nINNER JOIN FCXP F ON F.CNSFCXP = M.REFERENCIA1\nWHERE RTRIM(M.PROCEDENCIA)='CXP'\n  AND COALESCE(M.ANULADO,0)<>1\n  AND YEAR(F.F_FACTURAREF)=@ANO AND MONTH(F.F_FACTURAREF)=@MES\nGROUP BY M.REFERENCIA1, M.REFERENCIA2\nHAVING COUNT(DISTINCT M.NROCOMPROBANTE)>1;\n```\n\n**Cuentas por pagar del mes, antes de causar.** El precierre usa F_FACTURAREF, salvo que IDCON_FCONTABLE_CXP sea Radicacion: entonces usa FECHA. Conviene cruzar la cabecera contra el detalle (cantidad por valor, más IVA, menos descuento), el IVA sin cuenta de IVA y el artículo excluido que trae IVA. Una cuenta ya causada no se reabre para igualarla con la factura. Un ingreso confirmado no se edita: si la factura difiere, el ajuste es de la cuenta y solo mientras no esté causada.\n\n**Orden.** Cartera (CERRADO_CARTERA) y CxP (CERRADO_CXP) se cierran antes que contabilidad. Si siguen abiertos, la lista trae el módulo CIERRE. El periodo de inventario (CERRADO_INV) es otro interruptor y no reemplaza esa lista.\n\n## Cerrar (EJECUTAR_CIERRE_PERIODO / _ASYNC → SPK_CIERRA_PERIODOCONTABLE)\n\nSi el periodo es de saldos iniciales corre el cierre de saldos iniciales; si no, el cierre de mes: calcula SALDOMES y SALDOMESTER y marca PRI.CERRADO = 1. El cierre largo corre como trabajo y la pantalla muestra *Paso 3/3: Cerrando período*.\n\n## Abrir (EJECUTAR_ABRIR_PERIODO → SPK_ABRE_PERIODOCONTABLE)\n\nNo puede ser el periodo de saldos iniciales ni haber periodos posteriores cerrados; debe estar cerrado. Borra SALDOMES y SALDOMESTER del mes y pone CERRADO = 0. Opción de anular el traslado de costos al abrir.\n\n## Sub-cierres\n\n**Abrir / Cerrar Cartera** y **Abrir / Cerrar CXP** marcan en PRI el cierre parcial del módulo: cartera y CxP dejan de aceptar documentos de ese mes aunque contabilidad siga abierta. La liquidación de impuestos marca su propio cierre (CERRADO_IMP).\n\n## Cierre fiscal (SPQ_CONTABILIDAD · CIERRE_FISCAL)\n\n1. Solo el mes definido en Parámetros Contables (*ESTE PERIODO NO ES DE CIERRE FISCAL*), con el periodo abierto, el anterior cerrado, sin comprobantes por confirmar ni errados.\n2. **Ver** (CONSULTAR / DETALLE): saldos de las cuentas de resultado por clase y nivel.\n3. **Procesar** (SPK_CIERRE_FISCAL): calcula SDCUEFIS a partir del genealógico de cuentas.\n4. **Generar** (SPK_GEN_COMP_CIERRE_FISCAL) con el comprobante de cierre elegido: cancela ingresos y gastos contra el resultado del ejercicio. Una sola vez: *Proceso de Generación de Comprobante ya realizado*.\n5. Exportar Excel y PDF de lo consultado.",
+      "puntosClave": [
+        "Tres pasos: básico → integridad → cerrar.",
+        "Inventario del precierre: fecha de confirmación. La grilla usa la fecha del movimiento.",
+        "Nota de CxP duplicada: misma referencia 1 y misma referencia 2, vigente, más de un comprobante.",
+        "Errados solo muestra lo que ya se intentó causar.",
+        "Abrir borra saldos y se bloquea si hay posteriores cerrados.",
+        "Cartera, CxP e impuestos tienen cierres propios dentro del mes.",
+        "Cierre fiscal: un mes, una vez al año, con comprobante de cierre."
+      ]
+    },
+    {
+      "id": "exogena-circular",
+      "tipo": "texto",
+      "kicker": "Reportes legales",
+      "titulo": "Información exógena y circular única",
+      "intro": "Dos salidas legales que se arman desde los saldos contables y una configuración previa de formatos y conceptos.",
+      "md": "## Configurar (Parametrización → Cnf. Exógena → Formatos y conceptos)\n\nJerarquía **Formato (EXOFMT) → Concepto (EXOFMTD) → Regla por campo (EXOFMTDD) → Cuentas asociadas (TGEN)**. Cada nivel tiene Nuevo, Editar, Eliminar. No se elimina un formato con conceptos ni un concepto con reglas; códigos repetidos se rechazan (*Ya existe un concepto con ese CODCONCEPTO para ese formato*).\n\n## Generar Exógena (Procesos → Generar Exogena)\n\n1. **Nuevo** registro de generación (EXOFGE) por año y formato (CRUD_GEN_EXOGENA); solo se edita o elimina mientras no esté cerrado ni tenga datos generados.\n2. **Generar detalle** (GENERAR_EXOGENA → SPK_NC_GENERA_EXOGENA) toma los saldos por tercero según las reglas del formato; solo registros en estado Nuevo.\n3. **Exportar** (EXPORTAR_DATOS_EXOGENA) y **Cerrar** el registro (PROCESO CERRAR_EXOGENA) cuando se reportó.\n\n## Circular Única (Procesos → Circular Unica)\n\n**Nueva Circular Única** por año (CRUD_CIRUNI), seleccionando el balance (foto) de partida; **Generar** (GENERAR_CIRCULAR → SPK_CIRCULARUNICA) y **XML** (OBTENER_CIRCULAR_XML) para la entidad de control. Un registro por año; cerrado no se edita ni elimina.",
+      "puntosClave": [
+        "Primero formatos y conceptos, después generar.",
+        "Lo generado y cerrado no se edita: se crea otro registro.",
+        "La circular única parte de una foto del balance."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosContabilidad",
+      "kicker": "Semáforo",
+      "titulo": "Estados del comprobante, la línea, el documento origen y el periodo",
+      "intro": "Qué significa cada valor, en qué pantalla se ve y qué hacer con él."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo que se encontró al contrastar el menú, las pantallas y los procedimientos. Ninguno tiene dictamen todavía: quedan registrados para validar en preversión antes de pedir desarrollo.",
+      "md": "## Defectos para validar y pedir a desarrollo\n\n1. **Otros Módulos → CxP: Marcar / Desmarcar en servidor falla.** La pantalla llama CONTABILIDAD_3 · ACTUALIZAR_MARCACONT y ese método no existe en el procedimiento: responde *Método no implementado* y la marca no se guarda.\n2. **Conciliaciones → CXC trabaja sobre la tabla equivocada.** Envía la radicación (FCXC, CNSCXC) con procedencia CXC, pero el envío de CXC contabiliza recaudos (FPAG, CNSFPAG): nunca encuentra pendientes. Además *Desmarcar contabilizado* llama CXC_FCXC_RESET_CONTABILIZADO, que no existe.\n3. **Cierre Fiscal: lista de periodos vacía.** Llama CONTABILIDAD · CONSULTAR_PERIODOS_CIERRE, inexistente; la pantalla muestra *Error al consultar períodos*.\n4. **Mov. Activo y Prestaciones se marcan pero no se contabilizan.** ENV_CONTA_OTROS_MODULS acepta ACTIVOS_MOV y HPRE, marca MARCACONT = 1 y llama al motor, que no tiene esas ramas (HPRE está comentada). Responde *enviada a contabilidad correctamente* sin generar comprobante; los movimientos quedan marcados.\n5. **La lista de integridad nunca muestra notas DB/CR pendientes.** La función de revisión antes del cierre compara el año de la nota con el mes (`YEAR(F_NOTA) = @MES`) en lugar del mes.\n6. **Ajuste de cartera por nota crédito no se ejecuta en la revisión.** La rama que rebaja FTRCXC espera procedencia NOTAS, pero las notas llegan como NOTDBCR: es código muerto. Verificar que el generador de notas lo haga por otro camino.\n7. **Liquidación de impuestos cierra el periodo entero aunque se liquide por rango de cuentas.** Marca PRI.CERRADO_IMP = 1 con cualquier filtro; una segunda liquidación de otras cuentas del mismo mes queda bloqueada. La CxP nace con cuenta crédito vacía y vence el día 1 del mes (ya vencida).\n8. **Opciones del menú sin pantalla.** Provisiones de Cartera, Libros oficiales (Consultas), Agrupación de Cuentas (el componente existe pero la ruta no), Auxiliar de bancos duplicado y, en Normas Niif, Procesos, Balance Apertura y Libros Oficiales. Siempre se ven deshabilitadas.\n9. **Liquidación de impuestos tiene dos rutas.** `/cont/liqImp` y `/cont/liquidacionImpuestos` abren la misma pantalla; el menú usa la segunda. Quien entre por la primera recibe *No tiene permiso para acceder a esta sección* si el grupo no la tiene registrada.\n10. **Foliar Libros → Imprimir Folios** muestra *Función de impresión de folios en desarrollo*; el método INICIALIZAR_LIBROS existe en el procedimiento y la pantalla no lo usa.\n11. **Parámetros Contables** elimina con CONF_CONTABLE · ELIMINA_PAR mientras crear y editar están en CONTABILIDAD · CREA_PAR / EDITA_PAR: dos procedimientos para la misma tabla.\n\n## Decisiones de negocio para revisar\n\n12. **Balanceo de centavos silencioso.** Diferencias menores a 2,00 se ajustan en la primera línea DB o CR sin dejar rastro en el detalle. ¿Debe quedar anotado?\n13. **Comprobante duplicado con datos distintos se descarta.** La revisión borra el intento de MCPE/MCHE y el documento queda sin marca de error: desaparece de Errados sin comprobante nuevo.\n14. **Terceros creados automáticamente al confirmar.** Si una línea trae un afiliado que no es tercero, confirmar lo crea con la categoría TERCATAFILIADO. Efecto lateral a conocer.\n15. **La vista de liquidación ya no filtra valores positivos** (HAVING retirado): pueden aparecer filas en cero o negativas en la consulta.\n\n## Huecos y limpieza\n\n16. Pestaña Conciliaciones (HPRE) de Otros Módulos comentada; Normas Niif sin pantallas de proceso.\n17. Componentes de respaldo sin uso (MCHComponentBACKUP, MCPComponentBACKUP, MCPEComponentBackup, OtrosModuls) y mensajes de depuración de la ruta Trazabilidad en la consola del navegador.\n\n## Pendientes de documentación\n\nTablas sin ficha en la documentación viva: CUE, NTZ, PAR, PARN, KPRES, SALDOMES, SALDOMESTER, COM, USCXS, TBALANCEH, EXOFMT, CIRUNI, FIMPDV, KCDE, SDCUEFIS, MCPNIIF. Procedimientos solo listados: SPK_CIERRE_MES_CONTABLE, SPK_CIERRE_SALDOS_INICIALES, NC_SPK_GEN_LIBROAUXILIAR, SPK_BALANCE, SPK_CIRCULARUNICA, SPK_NC_GENERA_EXOGENA, SPK_NC_ANAVTO, SPK_PASA_MCP_MCPNIIF, SPK_CONTAB_RADICACXC_1.",
+      "puntosClave": [
+        "Tres llamadas de pantalla a métodos que no existen (1, 2, 3).",
+        "Dos envíos que responden OK sin contabilizar (4).",
+        "Un error de fecha en la lista de integridad (5).",
+        "Menú con opciones sin pantalla (8)."
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "conta-comprobante",
+      "nombre": "Movimiento Diario: comprobante manual",
+      "icono": "receipt_long",
+      "descripcion": "Contable → Procesos → Movimiento Diario. Crear la cabecera, cargar el detalle, recalcular y confirmar.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir periodo y filtros",
+          "rol": "Contador",
+          "pantalla": "Movimiento Diario",
+          "tablas": [
+            "PRI",
+            "MCP"
+          ],
+          "sp": "MCP_COL · GET_PERIODOS / VALIDAR_PERIODO",
+          "descripcion": "Periodo año-mes (solo los existentes en PRI), tipo de comprobante (por defecto IDCON_TCOM_DEFAULT), tercero, usuario, procedencia, estado a ver. Aplicar carga la grilla. Si el periodo está cerrado la pantalla lo avisa y bloquea las acciones."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo comprobante (cabecera)",
+          "rol": "Contador",
+          "pantalla": "Movimiento Diario → Nuevo",
+          "tablas": [
+            "MCP",
+            "COM"
+          ],
+          "sp": "MCP_COL · CRUDMCP (INSERTAR)",
+          "descripcion": "Tipo de comprobante, fecha contable (debe caer en el periodo elegido y en periodo abierto), tercero, referencias 1-2, detalle, cheque y fecha de radicación si aplica. Nace con procedencia MANUAL y estado 0; el número lo asigna el consecutivo."
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cargar el detalle (MCH)",
+          "rol": "Contador",
+          "pantalla": "Movimiento Diario → fila expandida → Detalle",
+          "tablas": [
+            "MCH",
+            "CUE",
+            "TER",
+            "CCOSTO"
+          ],
+          "sp": "MCH_COL · CRUDMCH · MCP_COL · SUBIR_DETALLE_COMPROBANTE",
+          "descripcion": "Línea por línea (cuenta de detalle, DB/CR, valor, tercero, centro de costo, referencias, base de impuesto) o Subir detalle desde el formato Excel. Cada guardado sincroniza el estado de la cabecera."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Recalcular totales",
+          "rol": "Sistema",
+          "pantalla": "Botón Recalcular totales",
+          "tablas": [
+            "MCP",
+            "MCH"
+          ],
+          "sp": "MCP_COL · RECALCULAR_TOTALES → SPK_SUMA_DBCR",
+          "descripcion": "Suma débitos y créditos. Estado 2 si DB = CR y todas las líneas están en 2; estado 1 si DB = CR y todas en 1; si no, 0."
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Preparado (estado 1)?",
+          "rol": "Contador",
+          "pantalla": "Icono de estado de la fila",
+          "tablas": [
+            "MCP"
+          ],
+          "sp": "",
+          "descripcion": "Con errores (0): corregir las líneas señaladas (cuenta inexistente o no de detalle, valor cero o negativo, tercero inexistente) o el descuadre. Preparado (1): seguir a Confirmar."
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Confirmar",
+          "rol": "Contador",
+          "pantalla": "Botón Confirmar (fila) o Confirmar masivo",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "PRI",
+            "TER"
+          ],
+          "sp": "MCP_COL · CONFIRMAR_MASIVO → SPK_NC_CONFIRMAR_CONTAB (CONTABILIZAR) → SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR",
+          "descripcion": "Periodo abierto y comprobante no anulado; revisa y suma de nuevo; exige estado 1 y terceros existentes. Deja MCP y MCH en estado 2 y limpia la marca de bloqueo."
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Contabilizado",
+          "rol": "Sistema",
+          "pantalla": "Movimiento Diario",
+          "tablas": [
+            "MCP",
+            "MCH"
+          ],
+          "sp": "",
+          "descripcion": "El comprobante suma en libros e informes. Desde aquí: Desconfirmar (vuelve a 1 si el periodo sigue abierto), Duplicar (copia a un MANUAL nuevo), Imprimir, Exportar."
+        },
+        {
+          "num": 8,
+          "tipo": "accion",
+          "titulo": "Enviar a cambios (solo de módulo)",
+          "rol": "Contador",
+          "pantalla": "Botón Enviar a cambios",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "MCPE",
+            "MCHE",
+            "MCPNIIF"
+          ],
+          "sp": "MCP_COL · ENVIAR_A_CAMBIOS → SPK_PASA_A_MCPE",
+          "descripcion": "Para comprobantes con procedencia distinta de MANUAL en estado 0 ó 1: los traslada a Comprobantes Errados (y borra la copia NIIF) para corregir la causa y reconstruir."
+        }
+      ]
+    },
+    {
+      "id": "conta-errados",
+      "nombre": "Comprobantes Errados: corregir y reconstruir",
+      "icono": "build",
+      "descripcion": "Contable → Procesos → Comprobantes Errados. Lo que un módulo generó y la revisión automática no aprobó.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "sistema",
+          "titulo": "El módulo genera y la revisión decide",
+          "rol": "Sistema",
+          "pantalla": "Otros Módulos / botón contabilizar del módulo",
+          "tablas": [
+            "MCPE",
+            "MCHE"
+          ],
+          "sp": "SPK_CONTAB_MASIVA → SPK_NC_CONTAB_* → SPK_NC_REVISAMCPE",
+          "descripcion": "El generador arma MCPE/MCHE; la revisión cuadra centavos, resuelve terceros, revisa líneas y suma. Si todo está bien, pasa a MCP/MCH confirmado y el documento queda CONTABILIZADA = 1. Si no, se queda aquí con estado 0 y el documento CONTABILIZADA = 2."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Buscar en Errados",
+          "rol": "Contador",
+          "pantalla": "Comprobantes Errados",
+          "tablas": [
+            "MCPE",
+            "PRI"
+          ],
+          "sp": "AppStore.read MCPE",
+          "descripcion": "Periodo, tipo de comprobante, tercero, usuario, procedencia, consecutivo, número, referencias. Aplicar carga la grilla; el icono muestra Con errores – Enviado a cambios."
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Leer el error y diagnosticar",
+          "rol": "Contador",
+          "pantalla": "Fila → ver detalle / Diagnosticar errores",
+          "tablas": [
+            "MCHE"
+          ],
+          "sp": "MCPE_COL · OBTENER_ERRORES_DETALLE · DIAGNOSTICAR_ERRORES → SPK_DIAG_MCPE_ERRORES",
+          "descripcion": "El detalle de la línea trae ERROR, PROCEDENCIA, PROCESO, CCOSTO, IDAREA y referencias. El diagnóstico entrega código, severidad y sugerencia (por comprobante o por todo el periodo) y se exporta a Excel."
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Error de configuración o de la línea?",
+          "rol": "Contador",
+          "pantalla": "Botón KMCOM / Editar movimiento",
+          "tablas": [
+            "KMCOM",
+            "CUE",
+            "TER",
+            "FIMPDV"
+          ],
+          "sp": "",
+          "descripcion": "Cuenta faltante en KMCOM, vigencia de impuesto, tercero inexistente → corregir la configuración o el documento origen y reconstruir. Línea puntual → editar la línea en MCHE o cambiar centro de costo/área en masa (Marcar → Procesar)."
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Corregir líneas (MCHE)",
+          "rol": "Contador con permiso EditarItemMCHE",
+          "pantalla": "Detalle MCHE → Editar / Procesar marcados / Eliminar",
+          "tablas": [
+            "MCHE"
+          ],
+          "sp": "MCHE_COL · CRUDMCHE · MARCAR_DESMARCAR_MCHE · PROCESAR_MARCADOS",
+          "descripcion": "Cuenta, valor, tipo, tercero, centro de costo, referencias. Procesar cambia centro y área a todas las marcadas y reconstruye. Corregir y Reconstruir guarda, regenera y vuelve a aplicar los cambios manuales."
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Reconstruir o Revisar",
+          "rol": "Contador",
+          "pantalla": "Botones Reconstruir / Revisar",
+          "tablas": [
+            "MCPE",
+            "MCHE",
+            "MCP",
+            "MCH"
+          ],
+          "sp": "MCPE_COL · RECONSTRUIR → SPK_NC_CONTAB_<procedencia> · REVISAR_MCPE → SPK_NC_REVISAMCPE",
+          "descripcion": "Reconstruir borra el intento y vuelve a correr el generador de la procedencia (no aplica a MANUAL ni anulados; NIIF usa Revisar). Revisar repite solo la revisión sobre lo corregido. Ambos exigen periodo abierto."
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Pasa a Movimiento Diario",
+          "rol": "Sistema",
+          "pantalla": "Movimiento Diario",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "FTR",
+            "FCJ",
+            "FCXP",
+            "FPAG",
+            "IMOV",
+            "FNOT",
+            "BMOV"
+          ],
+          "sp": "SPK_NC_REVISAMCPE → SPK_NC_CONFIRMAR_CONTAB",
+          "descripcion": "El comprobante queda en MCP confirmado (estado 2), el documento origen con CONTABILIZADA = 1 y NROCOMPROBANTE, y desaparece de Errados. Si vuelve a fallar, permanece aquí con el nuevo error."
+        }
+      ]
+    },
+    {
+      "id": "conta-otros-modulos",
+      "nombre": "Otros Módulos: enviar a contabilidad",
+      "icono": "input",
+      "descripcion": "Contable → Otros Módulos. Marcar documentos del periodo y enviarlos; el motor arma el comprobante por procedencia.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir pestaña y periodo",
+          "rol": "Contador / Módulo",
+          "pantalla": "Otros Módulos → pestaña",
+          "tablas": [
+            "FTR",
+            "FCJ",
+            "BMOV",
+            "FPAG",
+            "FGLO",
+            "FCXP",
+            "IMOV",
+            "FNOT",
+            "IACTH"
+          ],
+          "sp": "AppStore.read tabla origen · CONTABILIDAD_3 · OBTENER_CAJAS / BODEGAS / FORMAS_PAGO",
+          "descripcion": "Facturas, Caja, Bancos, Recaudos (CXC), Glosas, CxP, Inventario, Notas D/C, Mov. Activo. Año y mes contable; caja, bodega o banco según pestaña; estado Pendiente / Enviado / Errores. Buscar carga los documentos."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Marcar documentos",
+          "rol": "Contador / Módulo",
+          "pantalla": "Marcar / Desmarcar / selección",
+          "tablas": [
+            "(tabla origen).MARCACONT"
+          ],
+          "sp": "",
+          "descripcion": "Selección en pantalla; en CxP además intenta marcar en servidor. El detalle de cada documento (recibo, movimiento, nota, glosa, recaudo) se consulta en línea con DETALLE_RECIBO, DETALLE_OM_INVENTARIO, DETALLE_OM_CXC, DETALLE_OM_NOTADBCR, DETALLE_OM_GLOSAS."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Validar el envío",
+          "rol": "Sistema",
+          "pantalla": "Enviar a Contabilidad",
+          "tablas": [
+            "PRI",
+            "(tabla origen)"
+          ],
+          "sp": "CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS",
+          "descripcion": "Periodo abierto; hay pendientes (CONTABILIZADA = 0); ninguno ya enviado (1 ó 2); caja, bodega, banco o tipo de nota según pestaña; fechas válidas. Marca MARCACONT = 1 en los elegidos."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "El motor arma el comprobante",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "MCPE",
+            "MCHE",
+            "KMCOM",
+            "TTEC",
+            "FIMPDV"
+          ],
+          "sp": "SPK_CONTAB_MASIVA → SPK_NC_CONTAB_FTR / CAJA_ING / CAJA_EGR / CXP / CXC / INV / FNOT / BMOV / SPK_CONTAB_FGLO",
+          "descripcion": "Un generador por procedencia: toma el documento, aplica la configuración contable del módulo, genera el consecutivo del comprobante e inserta MCPE/MCHE. Periodo inexistente o cerrado y documento ya contabilizado detienen el generador."
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Pasa la revisión?",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "MCPE",
+            "MCHE"
+          ],
+          "sp": "SPK_NC_REVISAMCPE",
+          "descripcion": "Cuadre (con ajuste de centavos), terceros, cuentas de detalle, valores. Sí → MCP/MCH confirmado y documento CONTABILIZADA = 1 con NROCOMPROBANTE. No → se queda en Errados y el documento CONTABILIZADA = 2."
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Estado en el módulo",
+          "rol": "Contador / Módulo",
+          "pantalla": "Pestaña → columna Contabilizada",
+          "tablas": [
+            "(tabla origen)"
+          ],
+          "sp": "",
+          "descripcion": "Enviado: ya tiene comprobante y no se vuelve a enviar. Errores: ir a Comprobantes Errados. Pendiente: no se envió. Al volver del motor, CxP y recaudos limpian MARCACONT."
+        },
+        {
+          "num": 7,
+          "tipo": "accion",
+          "titulo": "Conciliar documento ↔ comprobante",
+          "rol": "Contador",
+          "pantalla": "Procesos → Conciliaciones → pestaña del módulo",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "MCPE",
+            "MCHE",
+            "(tabla origen)"
+          ],
+          "sp": "CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS · RESET_CONTABILIZADO · UPDATE_FCJ · CORREGIR_Y_CONTABILIZAR_FCJ · MCPE_COL · RECONSTRUIR",
+          "descripcion": "Ver cada documento con su MCP o su MCPE y la diferencia; enviar, reconstruir o desmarcar contabilizado para reenviar. Excel exporta el filtro."
+        }
+      ]
+    },
+    {
+      "id": "conta-liqimp",
+      "nombre": "Liquidación de impuestos",
+      "icono": "account_balance",
+      "descripcion": "Contable → Procesos → Liquidación Impuestos. De los movimientos retenidos a la cuenta por pagar a la DIAN.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Consultar el periodo",
+          "rol": "Contador",
+          "pantalla": "Liquidación Impuestos → Buscar",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "CUE",
+            "NTZ",
+            "FCXPI"
+          ],
+          "sp": "AppStore.read VWK_LIQ_IMP",
+          "descripcion": "Fecha inicial y final (obligatorias), cuenta inicial y final, tercero opcional, fecha de certificado. La vista suma movimientos de comprobantes confirmados y no anulados en cuentas marcadas Impuesto con base de impuesto, por año, mes, tercero y cuenta; el signo sale de la naturaleza. Excluye impuestos asumidos según LIQIMPASUMIDO."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Certificados",
+          "rol": "Contador",
+          "pantalla": "Botones Certificado · Por tercero · Por cuenta · Detalles CXP",
+          "tablas": [
+            "VWK_LIQ_IMP"
+          ],
+          "sp": "Reporte Certificado (conta.getContaRpt)",
+          "descripcion": "Certificado de retención por tercero (uno) o de todos los terceros del periodo empaquetados en ZIP; listados por tercero y por cuenta; detalle de la CxP del tercero."
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Se puede generar la CxP?",
+          "rol": "Sistema",
+          "pantalla": "Botón Generar CxP",
+          "tablas": [
+            "PRI",
+            "USGRUH"
+          ],
+          "sp": "",
+          "descripcion": "Un solo mes contable en el rango; sin filtro de tercero (la CxP es consolidada); el periodo no tiene CxP previa; permiso ACT_CXP_LIQUIIMP. Si ya existe: Use Imprimir CxP."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Generar CxP",
+          "rol": "Sistema",
+          "pantalla": "Generar CxP",
+          "tablas": [
+            "FCXP",
+            "FCXPD",
+            "MCH",
+            "PRI",
+            "TER"
+          ],
+          "sp": "CONTA_LIQIMP · GEN_CXP_LIQIMP → SPK_GEN_CXP_LIQIMP → SPK_GENCONSECUTIVO · SPK_CALCULOVALORESCXP",
+          "descripcion": "Exige tercero DIAN (IDTERCERO_DIAN), periodo existente y no cerrado para impuestos, movimientos pendientes (LIQUI_IMP = 0) y total positivo. Crea la CxP (consecutivo SR, procedencia Servicios, tipo IDTIPOCXP_DEFAULT) con un ítem por cuenta/impuesto/clase, ya contabilizada con el comprobante de referencia; marca MCH.LIQUI_IMP = 1 y CNSFCXP; cierra PRI.CERRADO_IMP."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Imprimir y pagar",
+          "rol": "Contador / Tesorería",
+          "pantalla": "Imprimir CxP · Cuentas por pagar → Orden de pago",
+          "tablas": [
+            "FCXP"
+          ],
+          "sp": "",
+          "descripcion": "La CxP queda lista para orden de pago y egreso como cualquier otra. El consecutivo se muestra en la pantalla; el periodo ya no admite otra liquidación."
+        }
+      ]
+    },
+    {
+      "id": "conta-cierre",
+      "nombre": "Cerrar y abrir el periodo contable",
+      "icono": "lock",
+      "descripcion": "Contable → Procesos → Abrir/Cerrar Periodos. Tres validaciones, cierre con cálculo de saldos, apertura que lo revierte.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir el periodo a cerrar",
+          "rol": "Contador",
+          "pantalla": "Abrir/Cerrar Periodos → Cerrar Periodo",
+          "tablas": [
+            "PRI"
+          ],
+          "sp": "CONTABILIDAD_2 · OBTENER_PERIODO_A_CERRAR",
+          "descripcion": "El sistema propone el siguiente periodo abierto después del último cerrado. Diálogo con los requisitos: periodo anterior cerrado (si no es saldo inicial) y todos los comprobantes contabilizados."
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Paso 1/3: validación básica",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "PRI",
+            "IMOV"
+          ],
+          "sp": "CONTABILIDAD_2 · VALIDAR_PERIODO_BASICO",
+          "descripcion": "Existe y está abierto; anterior cerrado; un solo periodo de saldos iniciales; inventario confirmado (VALIDAINVCIERRECONT); traslado de costos hecho (CONTABGENTRASLACOSTO)."
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Paso 2/3: integridad por módulo",
+          "rol": "Sistema",
+          "pantalla": "Diálogo Errores de Validación / Excel",
+          "tablas": [
+            "MCP",
+            "MCPE",
+            "IMOV",
+            "FNOT",
+            "FCJ",
+            "NPER",
+            "FCXP",
+            "FCXPDBCR",
+            "FPAG",
+            "BMOV"
+          ],
+          "sp": "CONTABILIDAD_2 · VALIDAR_INTEGRIDAD_PERIODO → FNK_REVISION_ANTES_CIERRE_PERIODO",
+          "descripcion": "Lista lo pendiente por módulo (cuentas no de detalle, inventario, notas, caja, nómina, CxP, recaudos, bancos) y comprobantes en 0/1 o en Errados. Con pendientes no se cierra: exportar la lista y resolverla en cada módulo."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Paso 3/3: cerrar",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "PRI",
+            "SALDOMES",
+            "SALDOMESTER"
+          ],
+          "sp": "CONTABILIDAD_2 · EJECUTAR_CIERRE_PERIODO / INICIAR_CIERRE_PERIODO + EJECUTAR_CIERRE_PERIODO_ASYNC → SPK_CIERRA_PERIODOCONTABLE",
+          "descripcion": "Saldos iniciales o mes normal según PRI.SI. Calcula saldos por cuenta y por tercero y marca CERRADO = 1. El modo asíncrono muestra el avance en segundos."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Periodo cerrado",
+          "rol": "Sistema",
+          "pantalla": "Grilla de periodos",
+          "tablas": [
+            "PRI"
+          ],
+          "sp": "",
+          "descripcion": "Ninguna acción que mueva saldos se permite en ese mes (confirmar, reconstruir, enviar, generar). Los informes lo toman como periodo cerrado disponible."
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Abrir un periodo",
+          "rol": "Contador",
+          "pantalla": "Abrir Periodo",
+          "tablas": [
+            "PRI",
+            "SALDOMES",
+            "SALDOMESTER"
+          ],
+          "sp": "CONTABILIDAD_2 · OBTENER_PERIODO_A_ABRIR · VALIDAR_INTEGRIDAD_PERIODO · EJECUTAR_ABRIR_PERIODO → SPK_ABRE_PERIODOCONTABLE",
+          "descripcion": "Propone el último cerrado. No puede ser el de saldos iniciales ni tener posteriores cerrados. Borra los saldos del mes y pone CERRADO = 0; opción de anular el traslado de costos."
+        },
+        {
+          "num": 7,
+          "tipo": "accion",
+          "titulo": "Sub-cierres de cartera y CxP",
+          "rol": "Contador",
+          "pantalla": "Abrir / Cerrar Cartera · Abrir / Cerrar CXP",
+          "tablas": [
+            "PRI"
+          ],
+          "sp": "SPK_CIERRA_CARTERA y equivalente CxP",
+          "descripcion": "Cierran el mes solo para cartera o para cuentas por pagar: esos módulos dejan de aceptar documentos del periodo aunque contabilidad siga abierta."
+        }
+      ]
+    }
+  ],
+  "estadosContabilidad": {
+    "titulo": "Estados del comprobante, la línea, el documento origen y el periodo",
+    "descripcion": "Los valores que se ven en Movimiento Diario, Comprobantes Errados, Otros Módulos y Periodos. Sin volúmenes: lo que significa cada uno y qué hacer.",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "0",
+        "tono": "rojo",
+        "etiquetas": [
+          "MCP.ESTADO",
+          "Movimiento Diario"
+        ],
+        "significa": "Con errores o borrador: alguna línea inválida, descuadre, sin detalle o recién creado. No afecta saldos.",
+        "queHacer": "Corregir las líneas señaladas o el descuadre; Recalcular totales. Si vino de un módulo, Enviar a cambios y reconstruir."
+      },
+      {
+        "codigo": "1",
+        "tono": "ambar",
+        "etiquetas": [
+          "MCP.ESTADO",
+          "Movimiento Diario"
+        ],
+        "significa": "Preparado: todas las líneas pasaron la revisión y DB = CR. Aún no suma en libros.",
+        "queHacer": "Confirmar (fila o masivo) con el periodo abierto."
+      },
+      {
+        "codigo": "2",
+        "tono": "verde",
+        "etiquetas": [
+          "MCP.ESTADO",
+          "Movimiento Diario · informes"
+        ],
+        "significa": "Contabilizado: suma en balance, auxiliares e informes.",
+        "queHacer": "Nada. Para cambiarlo: Desconfirmar (periodo abierto) o Enviar a cambios si es de módulo."
+      },
+      {
+        "codigo": "Anul",
+        "tono": "gris",
+        "etiquetas": [
+          "MCP.ANULADO = 1"
+        ],
+        "significa": "Anulado: estado 0 forzado; sus valores no afectan saldos y no se puede confirmar.",
+        "queHacer": "Dejarlo como rastro. Si hacía falta, duplicar otro o reconstruir desde el módulo."
+      },
+      {
+        "codigo": "L0",
+        "tono": "rojo",
+        "etiquetas": [
+          "MCH.ESTADO / MCHE.ESTADO = 0"
+        ],
+        "significa": "Línea con error: cuenta inexistente o no de detalle, valor cero o negativo, tercero inexistente. El texto está en ERROR/DETALLE.",
+        "queHacer": "Editar la línea o corregir la configuración (KMCOM, tercero) y recalcular / reconstruir."
+      },
+      {
+        "codigo": "L1",
+        "tono": "ambar",
+        "etiquetas": [
+          "MCH.ESTADO = 1"
+        ],
+        "significa": "Línea válida en comprobante aún no confirmado.",
+        "queHacer": "Confirmar el comprobante."
+      },
+      {
+        "codigo": "L2",
+        "tono": "verde",
+        "etiquetas": [
+          "MCH.ESTADO = 2"
+        ],
+        "significa": "Línea contabilizada.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "Err",
+        "tono": "rojo",
+        "etiquetas": [
+          "MCPE.ESTADO = 0",
+          "Comprobantes Errados"
+        ],
+        "significa": "Comprobante de módulo en espera: no pasó la revisión automática.",
+        "queHacer": "Leer el error, Diagnosticar, corregir la causa y Reconstruir o Revisar."
+      },
+      {
+        "codigo": "Camb",
+        "tono": "ambar",
+        "etiquetas": [
+          "MCPE.CLASECAMBIO = 2",
+          "Enviado a cambios"
+        ],
+        "significa": "Llegó a Errados porque contabilidad lo devolvió desde Movimiento Diario.",
+        "queHacer": "Corregir y Reconstruir."
+      },
+      {
+        "codigo": "NIIF",
+        "tono": "azul",
+        "etiquetas": [
+          "MCPE.CLASECONTB = NIIF"
+        ],
+        "significa": "Copia NIIF del comprobante local pendiente de pase (MCPNIIF/MCHNIIF).",
+        "queHacer": "Revisar (NIIF): pasa la copia con SPK_PASA_MCP_MCPNIIF."
+      },
+      {
+        "codigo": "C0",
+        "tono": "gris",
+        "etiquetas": [
+          "CONTABILIZADA = 0",
+          "Otros Módulos: Pendiente"
+        ],
+        "significa": "El documento (factura, recibo, CxP, recaudo, movimiento, nota, banco) no se ha enviado a contabilidad.",
+        "queHacer": "Marcar y Enviar a Contabilidad en el periodo correcto."
+      },
+      {
+        "codigo": "Mrc",
+        "tono": "ambar",
+        "etiquetas": [
+          "MARCACONT = 1"
+        ],
+        "significa": "Marcado para contabilizar; el motor está (o quedó) en proceso.",
+        "queHacer": "Esperar; si no cambia, reenviar o revisar en Conciliaciones."
+      },
+      {
+        "codigo": "C1",
+        "tono": "verde",
+        "etiquetas": [
+          "CONTABILIZADA = 1",
+          "Otros Módulos: Enviado"
+        ],
+        "significa": "Tiene comprobante (NROCOMPROBANTE) en Movimiento Diario.",
+        "queHacer": "Nada; no se vuelve a enviar. Para rehacerlo: Enviar a cambios desde el comprobante."
+      },
+      {
+        "codigo": "C2",
+        "tono": "rojo",
+        "etiquetas": [
+          "CONTABILIZADA = 2",
+          "Otros Módulos: Errores"
+        ],
+        "significa": "Su comprobante está en Comprobantes Errados.",
+        "queHacer": "Ir a Errados, corregir y reconstruir; al pasar queda en 1."
+      },
+      {
+        "codigo": "Abie",
+        "tono": "verde",
+        "etiquetas": [
+          "PRI.CERRADO = 0",
+          "Periodos"
+        ],
+        "significa": "Periodo abierto: se crean, confirman, reconstruyen y envían comprobantes.",
+        "queHacer": "Trabajar el mes; cerrar cuando la lista de integridad esté vacía."
+      },
+      {
+        "codigo": "Cerr",
+        "tono": "gris",
+        "etiquetas": [
+          "PRI.CERRADO = 1"
+        ],
+        "significa": "Periodo cerrado: saldos calculados; ninguna acción mueve el mes. Base para informes y reclasificaciones.",
+        "queHacer": "Consultar. Para corregir: Abrir (si no hay posteriores cerrados) o comprobante de corrección en el periodo abierto."
+      },
+      {
+        "codigo": "SI",
+        "tono": "azul",
+        "etiquetas": [
+          "PRI.SI = 1"
+        ],
+        "significa": "Periodo de saldos iniciales: único; su cierre es especial y no se puede abrir.",
+        "queHacer": "No tocarlo después de cerrado."
+      },
+      {
+        "codigo": "CImp",
+        "tono": "ambar",
+        "etiquetas": [
+          "PRI.CERRADO_IMP = 1"
+        ],
+        "significa": "Ya se generó la CxP de liquidación de impuestos del mes.",
+        "queHacer": "Imprimir CxP; no se puede volver a liquidar."
+      },
+      {
+        "codigo": "CCar",
+        "tono": "ambar",
+        "etiquetas": [
+          "Cierre de cartera (PRI)"
+        ],
+        "significa": "Cartera cerrada para el mes: no acepta documentos del periodo.",
+        "queHacer": "Abrir / Cerrar Cartera si hace falta registrar algo."
+      },
+      {
+        "codigo": "CCxP",
+        "tono": "ambar",
+        "etiquetas": [
+          "Cierre de CxP (PRI)"
+        ],
+        "significa": "Cuentas por pagar cerradas para el mes.",
+        "queHacer": "Abrir / Cerrar CXP si hace falta registrar algo."
+      },
+      {
+        "codigo": "Liq",
+        "tono": "azul",
+        "etiquetas": [
+          "MCH.LIQUI_IMP = 1"
+        ],
+        "significa": "Movimiento de impuesto ya incluido en una CxP de liquidación (CNSFCXP).",
+        "queHacer": "Nada; se ve en Detalles CXP."
+      },
+      {
+        "codigo": "Job",
+        "tono": "azul",
+        "etiquetas": [
+          "RPDX_JOBS / PROCESO_JOB"
+        ],
+        "significa": "Trabajo asíncrono en curso (libros auxiliares, cierre largo).",
+        "queHacer": "Esperar el estado en pantalla; no relanzar."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Registrar un comprobante manual (nota contable, ajuste)",
+      "donde": "Contable → Procesos → Movimiento Diario → Nuevo → detalle MCH → Recalcular → Confirmar",
+      "condicion": "Periodo abierto; fecha contable dentro del periodo; cuentas de detalle; DB = CR.",
+      "noEs": "No es Comprobantes Errados: eso es para lo que generan los módulos."
+    },
+    {
+      "necesidad": "Subir muchas líneas de un comprobante desde Excel",
+      "donde": "Movimiento Diario → fila → Detalle → Subir detalle → Descargar formato → Procesar Detalle",
+      "condicion": "Comprobante en estado 0 ó 1 y periodo abierto.",
+      "noEs": "No carga comprobantes nuevos, solo el detalle de uno existente."
+    },
+    {
+      "necesidad": "Confirmar varios comprobantes a la vez",
+      "donde": "Movimiento Diario → seleccionar filas en estado 1 → Confirmar (barra)",
+      "condicion": "Solo los seleccionados en estado 1 y no anulados; periodo abierto.",
+      "noEs": "No confirma los que están en 0: primero corregirlos."
+    },
+    {
+      "necesidad": "Deshacer un comprobante confirmado",
+      "donde": "Movimiento Diario → fila en estado 2 → Desconfirmar",
+      "condicion": "Periodo abierto.",
+      "noEs": "No lo borra: vuelve a estado 1. Si es de módulo y hay que rehacerlo, Enviar a cambios."
+    },
+    {
+      "necesidad": "Repetir un comprobante del mes anterior",
+      "donde": "Movimiento Diario → fila en estado 2 → Duplicar",
+      "condicion": "Comprobante confirmado.",
+      "noEs": "La copia nace MANUAL en estado 0 en el periodo del filtro: revisar fecha y periodo."
+    },
+    {
+      "necesidad": "Imprimir o exportar comprobantes",
+      "donde": "Movimiento Diario → Imprimir (fila) / Imprimir masivo / Exportar a Excel (encabezados o con detalle)",
+      "condicion": "Ninguna.",
+      "noEs": "El PDF individual no es el libro diario: eso es Consultas → Libros auxiliares."
+    },
+    {
+      "necesidad": "Saber por qué un comprobante de facturación / caja / CxP no llegó a contabilidad",
+      "donde": "Libro de Contabilidad → Ficha de corrección. En pantalla: Contable → Procesos → Comprobantes Errados → filtrar periodo y procedencia → detalle o Diagnosticar errores.",
+      "condicion": "El documento aparece como Errores en su módulo (CONTABILIZADA = 2).",
+      "noEs": "Si aparece Pendiente, nunca se envió: usar Otros Módulos. No reinvestigar el módulo: el texto o el código ya apuntan al procedimiento."
+    },
+    {
+      "necesidad": "Corregir una cuenta mal configurada y volver a generar el comprobante",
+      "donde": "Comprobantes Errados → botón KMCOM (corregir la configuración) → Reconstruir",
+      "condicion": "Periodo abierto; comprobante no MANUAL ni anulado.",
+      "noEs": "No editar la línea si el error es de KMCOM: volverá a salir mal en el siguiente documento."
+    },
+    {
+      "necesidad": "Cambiar centro de costo o área a muchas líneas erradas",
+      "donde": "Comprobantes Errados → detalle → Marcar todo → Procesar (centro de costo con área) → reconstruye",
+      "condicion": "Permiso EditarItemMCHE.",
+      "noEs": "No cambia cuentas: eso es editar la línea o KMCOM."
+    },
+    {
+      "necesidad": "Devolver un comprobante de módulo a Errados para corregirlo",
+      "donde": "Movimiento Diario → fila no MANUAL en estado 0 ó 1 → Enviar a cambios",
+      "condicion": "Periodo abierto.",
+      "noEs": "No aplica a MANUAL ni a comprobantes en estado 2 (primero Desconfirmar)."
+    },
+    {
+      "necesidad": "Enviar las facturas (o recibos, bancos, recaudos, glosas, CxP, inventario, notas) del mes a contabilidad",
+      "donde": "Contable → Otros Módulos → pestaña → año/mes → Buscar → marcar → Enviar a Contabilidad",
+      "condicion": "Periodo abierto; documentos en estado Pendiente; caja/bodega/banco elegidos según pestaña.",
+      "noEs": "No reenvía lo ya Enviado; lo que está en Errores se arregla en Comprobantes Errados."
+    },
+    {
+      "necesidad": "Ver qué documentos de un módulo tienen comprobante y cuáles no",
+      "donde": "Contable → Procesos → Conciliaciones → pestaña del módulo → periodo → Estado Contabilizado",
+      "condicion": "Ninguna.",
+      "noEs": "No es la conciliación bancaria: eso es Consultas → Auxiliar de bancos."
+    },
+    {
+      "necesidad": "Reenviar una CxP cuyo comprobante se perdió",
+      "donde": "Conciliaciones → CXP → fila → Desmarcar contabilizado → Enviar a contabilidad",
+      "condicion": "La CxP figura contabilizada sin comprobante en MCP.",
+      "noEs": "Si el comprobante existe, usar Enviar a cambios desde Movimiento Diario."
+    },
+    {
+      "necesidad": "Contabilizar la depreciación del mes",
+      "donde": "Contable → Procesos → Depreciación de Activos → Contabilizar período",
+      "condicion": "Cuotas generadas; comprobante IDCON_TCOM_DEPR configurado.",
+      "noEs": "No genera las cuotas: eso es el módulo de Activos fijos (ver su libro)."
+    },
+    {
+      "necesidad": "Emitir certificados de retención del periodo",
+      "donde": "Contable → Procesos → Liquidación Impuestos → fechas → Buscar → Certificado (uno o todos en ZIP)",
+      "condicion": "Comprobantes confirmados con base de impuesto en cuentas marcadas Impuesto.",
+      "noEs": "No requiere haber generado la CxP."
+    },
+    {
+      "necesidad": "Generar la cuenta por pagar de impuestos a la DIAN",
+      "donde": "Liquidación Impuestos → un solo mes, sin tercero → Generar CxP → Imprimir CxP",
+      "condicion": "Permiso ACT_CXP_LIQUIIMP; variable IDTERCERO_DIAN; sin CxP previa del periodo.",
+      "noEs": "No genera asiento nuevo: la CxP nace contabilizada con el comprobante de referencia. Marca el mes como liquidado."
+    },
+    {
+      "necesidad": "Pasar el saldo de un tercero equivocado a otro en un periodo cerrado",
+      "donde": "Contable → Procesos → Reclasificar Terceros → periodo cerrado, tercero actual y nuevo → Buscar → Procesar",
+      "condicion": "Terceros distintos y existentes; periodo de partida cerrado.",
+      "noEs": "No edita el periodo cerrado: crea el comprobante de homologación en el mes siguiente y actualiza documentos."
+    },
+    {
+      "necesidad": "Trasladar el saldo de una cuenta a otra",
+      "donde": "Contable → Procesos → Reclasificar Cuentas → cuenta actual y nueva (opcional tercero) → Procesar",
+      "condicion": "Cuentas de detalle distintas; periodo cerrado de partida.",
+      "noEs": "No cambia el plan de cuentas: eso es Configuración."
+    },
+    {
+      "necesidad": "Castigar cartera o pasarla a difícil cobro",
+      "donde": "Contable → Procesos → Castigo de Cartera → Buscar → marcar → Castigar / Difícil Cobro",
+      "condicion": "Variable IDCON_TCOM_CASTICART y cuenta KCDE CXC_CASTIGO_CARTERA (castigo); CUEDIFCOB en tipos de tercero (difícil cobro); periodo de la fecha existente.",
+      "noEs": "No anula facturas: genera el comprobante y actualiza FCXCDV."
+    },
+    {
+      "necesidad": "Avalar recaudos antes de contabilizarlos",
+      "donde": "Contable → Procesos → Aval recaudos cartera → seleccionar → Avalar seleccionados",
+      "condicion": "Permiso BAvalRecaudoConta.",
+      "noEs": "No contabiliza: habilita el envío desde cartera."
+    },
+    {
+      "necesidad": "Sacar el balance de prueba del mes",
+      "donde": "Contable → Consultas → Balance de Prueba y Libro Auxiliar → rango de cuentas/centros/terceros → Generar → Imprimir / Exportar",
+      "condicion": "Comprobantes confirmados.",
+      "noEs": "Lo pendiente o errado no suma; cerrar el periodo no es requisito."
+    },
+    {
+      "necesidad": "Ver los movimientos de una cuenta",
+      "donde": "Balance de Prueba y Libro Auxiliar → pestaña Libro Auxiliar → cuenta → Generar",
+      "condicion": "Ninguna.",
+      "noEs": "No es Libros auxiliares (ese es el trabajo asíncrono con saldos acumulados por documento)."
+    },
+    {
+      "necesidad": "Guardar el balance de un mes para compararlo después",
+      "donde": "Balance de Prueba → Generar → Foto del Mes / Foto del Año; luego Consultas → Historico de balances",
+      "condicion": "Una foto por mes y por año; eliminar es definitivo.",
+      "noEs": "La foto no cierra el periodo."
+    },
+    {
+      "necesidad": "Libros oficiales con saldos acumulados por documento o tercero",
+      "donde": "Contable → Consultas → Libros auxiliares → filtros → Buscar → S.Acum / S.Agrup → Exportar a Excel",
+      "condicion": "Esperar a que el trabajo termine.",
+      "noEs": "La opción Libros oficiales del menú aún no tiene pantalla."
+    },
+    {
+      "necesidad": "Estado de resultados y balance general",
+      "donde": "Consultas → Estado de resultados (Imprimir, Excel, Comparativo) · Consultas → Balance general (Consultar, Generar PDF)",
+      "condicion": "Periodo de saldos iniciales cerrado; agrupación KPRES configurada para los grupos.",
+      "noEs": "No son el cierre fiscal."
+    },
+    {
+      "necesidad": "Cartera por edades",
+      "donde": "Consultas → Analisis de vencimientos → periodo cerrado → Buscar → Por Tercero / Tercero y Cuenta / Cuenta y Tercero / Excel",
+      "condicion": "Periodo cerrado.",
+      "noEs": "Para comparar saldo contable vs cartera usar Seguimiento de Cartera."
+    },
+    {
+      "necesidad": "Conciliar la cuenta bancaria",
+      "donde": "Consultas → Auxiliar de bancos → cuenta y periodo → Consultar → Marcar → Salvar",
+      "condicion": "Movimientos contabilizados en la cuenta del banco.",
+      "noEs": "No concilia contra extracto importado: la marca se guarda en MCH."
+    },
+    {
+      "necesidad": "Seguir un documento por todos sus comprobantes",
+      "donde": "Consultas → Trazabilidad de documentos → factura o tercero → Buscar",
+      "condicion": "Ninguna.",
+      "noEs": "No muestra documentos sin comprobante: para eso Conciliaciones."
+    },
+    {
+      "necesidad": "Cerrar el mes contable",
+      "donde": "Contable → Procesos → Abrir/Cerrar Periodos → Cerrar Periodo → validaciones → CERRAR PERIODO CONTABLE",
+      "condicion": "Periodo anterior cerrado; sin comprobantes en 0/1 ni en Errados; lista de integridad vacía.",
+      "noEs": "No es el cierre fiscal; cerrar cartera o CxP es un sub-cierre aparte."
+    },
+    {
+      "necesidad": "Reabrir un mes cerrado",
+      "donde": "Abrir/Cerrar Periodos → Abrir Periodo → validar → Abrir",
+      "condicion": "Sin periodos posteriores cerrados; no es el de saldos iniciales.",
+      "noEs": "Borra los saldos calculados del mes: hay que cerrar de nuevo."
+    },
+    {
+      "necesidad": "Cierre fiscal del año",
+      "donde": "Contable → Procesos → Cierre Fiscal → año y mes de cierre → Ver → Procesar → Generar (comprobante de cierre)",
+      "condicion": "Mes de cierre definido en Parámetros Contables; anterior cerrado; sin comprobantes por confirmar ni errados.",
+      "noEs": "Se genera una sola vez; no cierra el periodo contable."
+    },
+    {
+      "necesidad": "Información exógena",
+      "donde": "Parametrización → Cnf. Exógena → Formatos y conceptos (configurar) · Procesos → Generar Exogena → Nuevo → Generar detalle → Exportar → Cerrar",
+      "condicion": "Formatos, conceptos, reglas y cuentas asociadas configurados.",
+      "noEs": "Un registro generado y cerrado no se edita."
+    },
+    {
+      "necesidad": "Circular única",
+      "donde": "Procesos → Circular Unica → Nueva → seleccionar balance (foto) → Generar → XML",
+      "condicion": "Foto del balance del año.",
+      "noEs": "Un registro por año."
+    },
+    {
+      "necesidad": "Cambiar el consecutivo de un libro oficial",
+      "donde": "Parametrización → Foliar Libros → seleccionar libro → Cambiar Consecutivo → Guardar",
+      "condicion": "Prefijo obligatorio.",
+      "noEs": "Imprimir Folios aún no está implementado."
+    },
+    {
+      "necesidad": "Definir el mes de cierre fiscal",
+      "donde": "Parametrización → Parámetros Contables → Nuevo / Editar",
+      "condicion": "Un registro por compañía.",
+      "noEs": "No es Periodos Contables (PRI)."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Aplicar",
+      "icono": "filter_alt",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Movimiento Diario / Errados: aplica los filtros de periodo, tipo de comprobante, tercero, usuario, procedencia y referencias."
+    },
+    {
+      "label": "Editar",
+      "icono": "edit",
+      "color": "blue-10",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Abre la cabecera del comprobante (estado 0 ó 1, no anulado, periodo abierto). Solo MANUAL permite editar todo."
+    },
+    {
+      "label": "Confirmar",
+      "icono": "check_circle",
+      "color": "accent",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Revisa, suma y contabiliza el comprobante en estado 1 (SPK_NC_CONFIRMAR_CONTAB · CONTABILIZAR)."
+    },
+    {
+      "label": "Recalcular totales",
+      "icono": "calculate",
+      "color": "teal-10",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Vuelve a sumar DB y CR y fija el estado 0/1/2 según las líneas (SPK_SUMA_DBCR)."
+    },
+    {
+      "label": "Desconfirmar",
+      "icono": "fa-light fa-unlock-keyhole",
+      "color": "red-10",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Regresa un comprobante contabilizado (2) a preparado (1) si el periodo está abierto."
+    },
+    {
+      "label": "Duplicar",
+      "icono": "content_copy",
+      "color": "purple",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Copia cabecera y detalle a un comprobante MANUAL nuevo en estado 0."
+    },
+    {
+      "label": "Enviar a cambios",
+      "icono": "sync",
+      "color": "amber-10",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Solo procedencia distinta de MANUAL en 0 ó 1: traslada a Comprobantes Errados (SPK_PASA_A_MCPE)."
+    },
+    {
+      "label": "Imprimir",
+      "icono": "print",
+      "color": "brown-10",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Reporte del comprobante (GENERAR_COMPROBANTE_CONTABLE)."
+    },
+    {
+      "label": "Confirmar (masivo)",
+      "icono": "check",
+      "color": "light-green-10",
+      "estilo": "push icono",
+      "descripcion": "Confirma los seleccionados en estado 1 y no anulados; deshabilitado con periodo cerrado."
+    },
+    {
+      "label": "Desconfirmar (masivo)",
+      "icono": "fa-light fa-unlock-keyhole",
+      "color": "deep-orange-10",
+      "estilo": "push icono",
+      "descripcion": "Desconfirma los seleccionados en estado 2."
+    },
+    {
+      "label": "Enviar a cambios (masivo)",
+      "icono": "sync",
+      "color": "lime-9",
+      "estilo": "push icono",
+      "descripcion": "Envía a Errados los seleccionados no MANUAL en 0 ó 1."
+    },
+    {
+      "label": "Descargar formato Excel",
+      "icono": "download",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Subir detalle: plantilla con las columnas del detalle; botones para ver Cuentas, Terceros y Centros de costo."
+    },
+    {
+      "label": "Procesar Detalle",
+      "icono": "upload",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Subir detalle: valida y graba las líneas del Excel en el comprobante (SUBIR_DETALLE_COMPROBANTE)."
+    },
+    {
+      "label": "Nuevo / Editar / Eliminar / Borrar todo",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat icono",
+      "descripcion": "Detalle MCH: una línea, o todas (BORRAR_TODO). Filtro avanzado por condiciones y copia de asiento/cuenta/tercero."
+    },
+    {
+      "label": "Revisar",
+      "icono": "fa-solid fa-magnifying-glass",
+      "color": "primary",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Errados: repite la revisión automática sobre lo corregido (REVISAR_MCPE → SPK_NC_REVISAMCPE)."
+    },
+    {
+      "label": "Reconstruir",
+      "icono": "build",
+      "color": "lime-9",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Errados: borra el intento y vuelve a correr el generador de la procedencia; en NIIF se llama Revisar (NIIF). No MANUAL ni anulados."
+    },
+    {
+      "label": "Diagnosticar errores",
+      "icono": "fa-solid fa-stethoscope",
+      "color": "deep-orange-8",
+      "estilo": "flat icono",
+      "descripcion": "Errados: códigos de error con severidad y sugerencia, por comprobante o por periodo (SPK_DIAG_MCPE_ERRORES)."
+    },
+    {
+      "label": "Reconstruir comprobantes",
+      "icono": "build",
+      "color": "lime-9",
+      "estilo": "flat icono",
+      "descripcion": "Errados: diálogo masivo; Incluir todos los registros reconstruye el periodo completo."
+    },
+    {
+      "label": "KMCOM",
+      "icono": "settings",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Errados: abre la configuración contable del módulo para corregir la cuenta faltante."
+    },
+    {
+      "label": "Ver en ventana / Exportar / Actualizar",
+      "icono": "open_in_new",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Errados: abre el detalle de errores en ventana, exporta el diagnóstico a Excel, recarga."
+    },
+    {
+      "label": "Marcar todo / Desmarcar todo / Procesar",
+      "icono": "check_box",
+      "color": "green-7",
+      "estilo": "outline",
+      "descripcion": "Detalle MCHE: marca líneas y aplica cambio masivo de centro de costo y área; luego reconstruye (PROCESAR_MARCADOS)."
+    },
+    {
+      "label": "Solo errores",
+      "icono": "filter_alt",
+      "color": "negative",
+      "estilo": "flat",
+      "descripcion": "Detalle MCHE: muestra únicamente las líneas en estado 0."
+    },
+    {
+      "label": "Corregir y Reconstruir",
+      "icono": "build",
+      "color": "lime-9",
+      "estilo": "unelevated",
+      "descripcion": "Detalle MCHE: guarda las líneas editadas, reconstruye y vuelve a aplicar los cambios manuales."
+    },
+    {
+      "label": "Buscar",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Otros Módulos: carga los documentos del año-mes (y caja/bodega/banco) de la pestaña."
+    },
+    {
+      "label": "Marcar / Desmarcar",
+      "icono": "check_box",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Otros Módulos: selecciona documentos para enviar; en CxP intenta marcar en servidor."
+    },
+    {
+      "label": "Enviar (n)",
+      "icono": "send",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Otros Módulos: Enviar a Contabilidad los marcados (ENV_CONTA_OTROS_MODULS → SPK_CONTAB_MASIVA)."
+    },
+    {
+      "label": "Enviar a contabilidad / Reconstruir / Desmarcar contabilizado",
+      "icono": "send",
+      "color": "primary",
+      "estilo": "flat menú de la fila",
+      "descripcion": "Conciliaciones: por documento; desmarcar (RESET_CONTABILIZADO) permite reenviar una CxP."
+    },
+    {
+      "label": "Excel",
+      "icono": "fa-regular fa-file-xls",
+      "color": "green-6",
+      "estilo": "outline",
+      "descripcion": "Conciliaciones / Errados / Movimiento Diario: exporta el filtro actual."
+    },
+    {
+      "label": "Elegir / Cambiar tercero",
+      "icono": "person_search",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Liquidación Impuestos: filtra la consulta por tercero (no para generar la CxP)."
+    },
+    {
+      "label": "Generar CxP",
+      "icono": "add_card",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Liquidación Impuestos: crea la CxP a la DIAN del periodo (GEN_CXP_LIQIMP); requiere permiso ACT_CXP_LIQUIIMP y un solo mes sin tercero."
+    },
+    {
+      "label": "Imprimir CxP",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Liquidación Impuestos: imprime la CxP generada del periodo."
+    },
+    {
+      "label": "Certificado",
+      "icono": "fa-solid fa-award",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Liquidación Impuestos: certificado de retención del tercero elegido o de todos (ZIP)."
+    },
+    {
+      "label": "Por tercero / Por cuenta / Detalles CXP",
+      "icono": "fa-solid fa-users",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Liquidación Impuestos: listados agrupados y detalle de la CxP del tercero."
+    },
+    {
+      "label": "Buscar / Procesar",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Reclasificar Terceros / Cuentas: lista los saldos y ejecuta la homologación (SPK_HOMOLOGA_TERCERO / SPK_HOMOLOGA_CUENTA)."
+    },
+    {
+      "label": "Castigar / Difícil Cobro / Limpiar",
+      "icono": "gavel",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Castigo de Cartera: procesa las facturas marcadas (CASTIGO o DIFICIL) o limpia las marcas."
+    },
+    {
+      "label": "Marcar Todos / Desmarcar Todos",
+      "icono": "check_box",
+      "color": "primary",
+      "estilo": "flat icono",
+      "descripcion": "Castigo de Cartera: marca por equipo todas las facturas listadas."
+    },
+    {
+      "label": "Actualizar / Avalar seleccionados",
+      "icono": "verified",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Aval recaudos cartera: recarga pendientes y avala los seleccionados (AVALAR_RECAUDO)."
+    },
+    {
+      "label": "Generar / Limpiar / Resumen",
+      "icono": "play_arrow",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Balance de Prueba: calcula el balance del rango, descarta el cálculo o muestra el resumen por cuenta/centro/tercero."
+    },
+    {
+      "label": "Foto del Mes / Foto del Año",
+      "icono": "photo_camera",
+      "color": "primary",
+      "estilo": "flat icono",
+      "descripcion": "Balance de Prueba y Estado de resultados: guarda la foto en el histórico (TBALANCEH)."
+    },
+    {
+      "label": "S.Acum / S.Agrup",
+      "icono": "summarize",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Libros auxiliares: saldo acumulado (Cuenta, Documento, Cta/CC/Doc, Cta/Ter/Doc) o agrupado (Cta/CCosto, Cta/Tercero) del trabajo terminado."
+    },
+    {
+      "label": "Consultar / Generar PDF",
+      "icono": "picture_as_pdf",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Balance general: consulta al periodo elegido y genera el PDF."
+    },
+    {
+      "label": "Seleccionar Período / Imprimir / Excel / Eliminar",
+      "icono": "history",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Histórico de balances: trabaja con las fotos guardadas; Eliminar es definitivo."
+    },
+    {
+      "label": "Por Tercero / Tercero y Cuenta / Cuenta y Tercero",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Análisis de vencimientos: imprime la cartera por edades agrupada."
+    },
+    {
+      "label": "Consultar / Salvar / Marcar todo / Desmarcar todo",
+      "icono": "account_balance",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Auxiliar de bancos: carga movimientos y guarda la conciliación en MCH."
+    },
+    {
+      "label": "Cerrar Periodo",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Abrir/Cerrar Periodos: validación básica → integridad → cierre (SPK_CIERRA_PERIODOCONTABLE)."
+    },
+    {
+      "label": "Abrir Periodo",
+      "icono": "lock_open",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Abrir/Cerrar Periodos: valida y reabre el último cerrado (SPK_ABRE_PERIODOCONTABLE); opción de anular traslado de costos."
+    },
+    {
+      "label": "Abrir / Cerrar Cartera · Abrir / Cerrar CXP",
+      "icono": "account_balance_wallet",
+      "color": "indigo-8",
+      "estilo": "unelevated",
+      "descripcion": "Sub-cierres del mes para cartera y cuentas por pagar."
+    },
+    {
+      "label": "Ver / Procesar / Generar",
+      "icono": "play_arrow",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Cierre Fiscal: consulta saldos de resultado, calcula SDCUEFIS y genera el comprobante de cierre."
+    },
+    {
+      "label": "Nuevo / Generar detalle / Exportar / Cerrar",
+      "icono": "play_arrow",
+      "color": "primary",
+      "estilo": "flat icono",
+      "descripcion": "Generar Exógena: registro por año y formato, generación de datos, exportación y cierre."
+    },
+    {
+      "label": "Nueva Circular Única / Guardar",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Circular Única: registro por año desde una foto del balance; genera y entrega el XML."
+    },
+    {
+      "label": "Cambiar Consecutivo / Guardar",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Foliar Libros: edita compañía, sede, bodega, prefijo y consecutivo del libro (CRUD_USCXS)."
+    },
+    {
+      "label": "Insertar / Guardar",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Naturaleza: alta y edición de naturalezas DB/CR por dígito (CRUD_NATURALEZA)."
+    },
+    {
+      "label": "Nuevo / Editar / Eliminar",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat icono",
+      "descripcion": "Parámetros Contables, Agrupación de Cuentas, Formatos y conceptos de exógena, Parámetros NIIF: mantenimiento de catálogos."
+    },
+    {
+      "label": "Contabilizar período",
+      "icono": "account_balance",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Depreciación de Activos: envía la depreciación del periodo a contabilidad (DEPR_ACFIJP_ENV_CONTA)."
+    },
+    {
+      "label": "Regresar a Inicio",
+      "icono": "home",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Página de inicio del módulo Contable."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "MENUQ_CONTABLE (MENUQ_COL · CONTABLE)",
+      "accion": "Ver y abrir cada opción del menú Contable",
+      "rol": "Grupo del usuario",
+      "descripcion": "Cada ruta (cont.mcp, cont.errados, cont.procesos…) se habilita si el grupo la tiene con permiso en USGRUH/USPROH. Entrar por URL a una ruta no permitida devuelve «No tiene permiso para acceder a esta sección»."
+    },
+    {
+      "codigo": "MENUQ_CONTABLE · EditarItemMCHE",
+      "accion": "Editar, eliminar y procesar líneas en Comprobantes Errados",
+      "rol": "Contador",
+      "descripcion": "Sin él la línea MCHE es de solo lectura; Reconstruir y Revisar siguen disponibles."
+    },
+    {
+      "codigo": "MENUQ_CONTABLE · ACT_CXP_LIQUIIMP",
+      "accion": "Generar e imprimir la CxP de liquidación de impuestos",
+      "rol": "Contador",
+      "descripcion": "Sin él se puede consultar y emitir certificados, pero no generar ni imprimir la CxP."
+    },
+    {
+      "codigo": "MENUQ_CONTABLE · BAvalRecaudoConta",
+      "accion": "Avalar recaudos de cartera",
+      "rol": "Contador",
+      "descripcion": "Habilita Avalar seleccionados en Aval recaudos cartera."
+    },
+    {
+      "codigo": "MENUQ_CONTABLE · MCH_CRUCE_CXPCXC",
+      "accion": "Cruzar una línea de detalle con CxP / CxC",
+      "rol": "Contador",
+      "descripcion": "Habilita el cruce desde el detalle MCH del comprobante."
+    },
+    {
+      "codigo": "Periodo abierto (PRI.CERRADO = 0)",
+      "accion": "Cualquier acción que mueva saldos",
+      "rol": "Sistema",
+      "descripcion": "No es un permiso de usuario: toda pantalla consulta PRI y bloquea confirmar, desconfirmar, reconstruir, enviar y generar en periodo cerrado."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDCON_TCOM_DEFAULT",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de un tipo de comprobante (COM)",
+      "descripcion": "Tipo de comprobante por defecto: filtro inicial de Movimiento Diario y comprobante de bancos/caja cuando el módulo no define otro."
+    },
+    {
+      "nombre": "IDCON_TCOM_FTR / IDCON_TCOM_ECAJ / IDCON_TCOM_ICAJ / IDCON_TCOM_CXC / IDCON_TCOM_NOTDBCR / IDCON_TCOM_CXC_GLOSA / IDCON_TCOM_CXC_DEVO",
+      "tipo": "USVGS",
+      "valorSugerido": "Código COM por módulo",
+      "descripcion": "Tipo de comprobante que usa cada generador (facturas, egresos e ingresos de caja, recaudos, notas, glosas, devoluciones)."
+    },
+    {
+      "nombre": "IDCON_TCOM_CASTICART / IDCON_TCOM_CXC_DIFIC",
+      "tipo": "USVGS",
+      "valorSugerido": "Código COM",
+      "descripcion": "Comprobantes del castigo de cartera y del traslado a difícil cobro."
+    },
+    {
+      "nombre": "IDCON_TCOM_HOTERCUE",
+      "tipo": "USVGS",
+      "valorSugerido": "Código COM",
+      "descripcion": "Comprobante de homologación que usan Reclasificar Terceros y Reclasificar Cuentas."
+    },
+    {
+      "nombre": "IDCON_TCOM_REVFTR / IDCON_TCOM_REVCAJAIN / IDCON_TCOM_REVCAJAEG / IDCON_TCOMREVNOTDBCR",
+      "tipo": "USVGS",
+      "valorSugerido": "Código COM",
+      "descripcion": "Comprobantes de reversión de facturas, caja y notas (SPK_REVERSAR_MCP)."
+    },
+    {
+      "nombre": "IDCON_TCOM_DEPR",
+      "tipo": "USVGS",
+      "valorSugerido": "Código COM",
+      "descripcion": "Comprobante de depreciación; sin él la pantalla Depreciación de Activos no contabiliza."
+    },
+    {
+      "nombre": "IDMODELOCONTABLE",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de modelo contable",
+      "descripcion": "Modelo que leen todos los generadores para resolver cuentas en KMCOM."
+    },
+    {
+      "nombre": "COMPROBMULTISEDE",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si el consecutivo del comprobante se maneja por sede."
+    },
+    {
+      "nombre": "IDTERCERO_DIAN (o TERCERO_DIAN)",
+      "tipo": "USVGS",
+      "valorSugerido": "IDTERCERO existente en TER",
+      "descripcion": "Tercero al que se genera la CxP de liquidación de impuestos. Sin él: «Variable de sistema IDTERCERO_DIAN no configurada»."
+    },
+    {
+      "nombre": "LIQIMPASUMIDO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si los impuestos asumidos se excluyen (NO) o se incluyen de otra forma en la liquidación."
+    },
+    {
+      "nombre": "IDTIPOCXP_DEFAULT",
+      "tipo": "USVGS",
+      "valorSugerido": "Tipo de CxP",
+      "descripcion": "Tipo de la CxP de liquidación de impuestos y de otras CxP generadas."
+    },
+    {
+      "nombre": "IDCON_FCONTABLE_CXP",
+      "tipo": "USVGS",
+      "valorSugerido": "Radicacion / Factura",
+      "descripcion": "Qué fecha de la CxP define su periodo contable; la lista de integridad la usa para buscar CxP pendientes."
+    },
+    {
+      "nombre": "TERCATAFILIADO",
+      "tipo": "USVGS",
+      "valorSugerido": "Categoría de tercero",
+      "descripcion": "Categoría con la que la revisión crea terceros a partir de afiliados que no existen en TER."
+    },
+    {
+      "nombre": "LONGITUDCODBANCO",
+      "tipo": "USVGS",
+      "valorSugerido": "2 ó 3",
+      "descripcion": "Cómo se descompone la referencia banco+sucursal+cuenta al marcar movimientos bancarios contabilizados."
+    },
+    {
+      "nombre": "GENANTIDESDEORDENSER",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Al contabilizar caja, liga el comprobante a las CxP de anticipos generadas desde orden de servicio."
+    },
+    {
+      "nombre": "VALIDAINVCIERRECONT",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si el cierre exige que no haya movimientos de inventario pendientes por confirmar."
+    },
+    {
+      "nombre": "CONTABGENTRASLACOSTO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si el cierre exige el traslado de costos del mes y la apertura permite anularlo."
+    },
+    {
+      "nombre": "PERMITIR_TODO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Relaja restricciones de edición en el detalle del comprobante."
+    },
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "tipo": "USVGS",
+      "valorSugerido": "IDTERCERO de la institución",
+      "descripcion": "Tercero de la institución para encabezados de reportes y comprobantes de cierre."
+    },
+    {
+      "nombre": "IDIMP_IVA",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de impuesto",
+      "descripcion": "Impuesto IVA que el diagnóstico de errados verifica contra vigencias FIMPDV."
+    },
+    {
+      "nombre": "RAZONSOCIALENSEDES",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Razón social por sede en los encabezados de libros."
+    },
+    {
+      "nombre": "USAR CUENTA PUENTE / CTA_* (USARCUEPUENTE, CTADTOFINANCIERO, CUE_IMP_RECAUDOS, MAN_CTAS_DE_MORA…)",
+      "tipo": "USVGS",
+      "valorSugerido": "Cuentas de detalle",
+      "descripcion": "Cuentas auxiliares que usan los generadores de recaudos, notas y facturas cuando KMCOM no las resuelve."
+    },
+    {
+      "nombre": "PAR.MESDECIERRE",
+      "tipo": "Parámetros Contables",
+      "valorSugerido": "1-12",
+      "descripcion": "Mes del cierre fiscal; cualquier otro mes responde «ESTE PERIODO NO ES DE CIERRE FISCAL»."
+    },
+    {
+      "nombre": "KCDE · CXC_CASTIGO_CARTERA",
+      "tipo": "Tabla KCDE",
+      "valorSugerido": "Cuenta de detalle",
+      "descripcion": "Cuenta contra la que se castiga cartera."
+    },
+    {
+      "nombre": "TTEC.CUEDIFCOB",
+      "tipo": "Tipos de tercero",
+      "valorSugerido": "Cuenta de detalle por tipo",
+      "descripcion": "Cuenta de difícil cobro por tipo de tercero; sin ella el proceso DIFICIL no continúa."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "conta-omcxp-actualizar-marcacont",
+      "tipo": "fe",
+      "detalle": "OMCxPComponent llama CONTABILIDAD_3 · ACTUALIZAR_MARCACONT (Marcar/Desmarcar en servidor); SPQ_CONTABILIDAD_3 no tiene ese método → 'Método no implementado' y la marca no se guarda.",
+      "solucionPropuesta": "Implementar ACTUALIZAR_MARCACONT (UPDATE FCXP.MARCACONT por lista de CNSFCXP y periodo) o quitar la marca en servidor y dejar solo la selección en pantalla."
+    },
+    {
+      "id": "conta-conccxc-tabla-equivocada",
+      "tipo": "sql",
+      "detalle": "CONCCXCComponent (Conciliaciones → CXC) lista FCXC (radicación) y envía PROCEDENCIA 'CXC' con ITEMS=[CNSCXC]; ENV_CONTA_OTROS_MODULS 'CXC' trabaja FPAG por CNSFPAG → 'No hay CXC (FPAG) pendientes'. Desmarcar llama CXC_FCXC_RESET_CONTABILIZADO, inexistente (el FE lo reconoce en un comentario).",
+      "solucionPropuesta": "Definir si la pestaña concilia radicaciones (procedencia RAD CXC → SPK_CONTAB_RADICACXC_1 y método de reset sobre FCXC) o recaudos (cambiar la tabla a FPAG). Añadir los métodos faltantes a SPQ_CONTABILIDAD_3."
+    },
+    {
+      "id": "conta-cierrefiscal-consultar-periodos",
+      "tipo": "fe",
+      "detalle": "CierreFiscalComponent llama CONTABILIDAD · CONSULTAR_PERIODOS_CIERRE para listar periodos del año; SPQ_CONTABILIDAD no lo tiene → 'Error al consultar períodos'.",
+      "solucionPropuesta": "Implementar el método (periodos PRI del año con CERRADO) o reutilizar CONTABILIDAD_2 · OBTENER_PERIODOS_DISPONIBLES."
+    },
+    {
+      "id": "conta-env-activos-hpre-sin-rama",
+      "tipo": "sql",
+      "detalle": "ENV_CONTA_OTROS_MODULS acepta PROCEDENCIA ACTIVOS_MOV (IACTH) y HPRE, marca MARCACONT=1 y llama SPK_CONTAB_MASIVA, que no tiene esas ramas (HPRE comentada). Responde OK 'enviada a contabilidad correctamente' sin generar comprobante; pestaña Mov. Activo visible en Otros Módulos.",
+      "solucionPropuesta": "Añadir las ramas al motor (SPK_CONTAB_IACT / SPK_CONTAB_HPRE) o quitar la pestaña y rechazar la procedencia con KO. Limpiar MARCACONT de los movimientos ya marcados."
+    },
+    {
+      "id": "conta-fnk-revision-notas-year-mes",
+      "tipo": "sql",
+      "detalle": "FNK_REVISION_ANTES_CIERRE_PERIODO, bloque NOTAS DB-CR: WHERE YEAR(F_NOTA)=@ANO AND YEAR(F_NOTA)=@MES (debe ser MONTH). Las notas pendientes nunca aparecen en la lista de integridad antes del cierre.",
+      "solucionPropuesta": "Corregir a MONTH(F_NOTA)=@MES y validar en preversión con un periodo que tenga notas sin contabilizar."
+    },
+    {
+      "id": "conta-fnk-revision-nota-cxp-duplicada",
+      "tipo": "sql",
+      "detalle": "FNK_REVISION_ANTES_CIERRE_PERIODO (PREVERSION = 2.0.7) marca nota de CxP duplicada si FCXPDBCR del mes tiene más de una fila por CNSFCXP, y marca más de un comprobante si agrupa MCP de procedencia NOTDBCRCXP solo por REFERENCIA1. Varias notas con ítem distinto (REFERENCIA2) quedan avisadas. Duplicada es la misma REFERENCIA1 y la misma REFERENCIA2, ANULADO distinto de 1 y más de un NROCOMPROBANTE. El comprobante de la CxP (procedencia CXP) agrupa solo por la cuenta y no exige la misma REFERENCIA2. El INSERT de notas pendientes y el de recaudos están repetidos, así que el mismo consecutivo sale dos veces.",
+      "solucionPropuesta": "Un solo aviso de notas desde MCP agrupado por REFERENCIA1 y REFERENCIA2, con ANULADO distinto de 1. El de la CxP, igual, más REFERENCIA2. Dejar una sola vez el aviso de pendientes. Pedido a desarrollo en SR20261009-001."
+    },
+    {
+      "id": "conta-revisamcpe-rama-notas-muerta",
+      "tipo": "sql",
+      "detalle": "SPK_NC_REVISAMCPE: tras confirmar, la rama IF @PROCEDENCIA='NOTAS' (rebaja FTRCXC.SALDO por nota crédito) nunca se ejecuta porque las notas llegan como 'NOTDBCR'.",
+      "solucionPropuesta": "Verificar si SPK_NC_CONTAB_FNOT actualiza FTRCXC por otro camino; si no, cambiar la condición a NOTDBCR o eliminar el código muerto."
+    },
+    {
+      "id": "conta-liqimp-cerrado-imp-rango",
+      "tipo": "sql",
+      "detalle": "SPK_GEN_CXP_LIQIMP marca PRI.CERRADO_IMP=1 para todo el periodo aunque se liquide con CUENTAINI/CUENTAFINAL parcial; una segunda liquidación de otras cuentas queda bloqueada. La CxP nace con CUECREDITO NULL y F_VENCE = día 1 del mes (vencida al nacer).",
+      "solucionPropuesta": "Marcar CERRADO_IMP solo cuando no queden movimientos pendientes (LIQUI_IMP=0) en el periodo, o no cerrar por rango. Definir cuenta crédito y vencimiento según calendario tributario."
+    },
+    {
+      "id": "conta-menu-opciones-sin-ruta",
+      "tipo": "hueco",
+      "detalle": "ContableLayout.arbolMenu incluye rutas inexistentes en routes.js: cont.proviCartera (Provisiones de Cartera), cont.LibrosOficiales (Libros oficiales), cont.agrupacionCuentas (AgrupacionCuentasComponent existe, ruta no), cont.AuxiliarBancos (duplicado), cont.procesosNiff, cont.balanceApertura, cont.librosOficiales. Siempre deshabilitadas.",
+      "solucionPropuesta": "Registrar la ruta de Agrupación de Cuentas; retirar o implementar las demás; eliminar el duplicado de Auxiliar de bancos."
+    },
+    {
+      "id": "conta-liqimp-ruta-duplicada",
+      "tipo": "fe",
+      "detalle": "routes.js define /cont/liqImp (conta.liqimp) y /cont/liquidacionImpuestos (cont.liquidacionImpuestos) con el mismo componente; el menú usa la segunda. Por la primera el usuario recibe 'No tiene permiso' si el grupo no tiene esa ruta en USPROH.",
+      "solucionPropuesta": "Dejar una sola ruta (o redirigir la vieja) y actualizar USPROH."
+    },
+    {
+      "id": "conta-foliar-imprimir-folios",
+      "tipo": "hueco",
+      "detalle": "FoliarLibrosComponent → Imprimir Folios notifica 'Función de impresión de folios en desarrollo'; SPQ_FOLIAR_LB · INICIALIZAR_LIBROS no se usa desde el FE.",
+      "solucionPropuesta": "Implementar la impresión de folios (o quitar el botón) y exponer Inicializar libros si hace falta."
+    },
+    {
+      "id": "conta-par-dos-procedimientos",
+      "tipo": "decision",
+      "detalle": "ParamsContablesComponent elimina con CONF_CONTABLE · ELIMINA_PAR; crear/editar existen en CONTABILIDAD · CREA_PAR / EDITA_PAR (y también ELIMINA_PAR). Dos procedimientos para la misma tabla PAR.",
+      "solucionPropuesta": "Unificar en un solo procedimiento y revisar que el FE use CREA_PAR/EDITA_PAR para guardar."
+    },
+    {
+      "id": "conta-balanceo-centavos-sin-rastro",
+      "tipo": "decision",
+      "detalle": "SPK_NC_BALANCEO_CENTAVOS ajusta diferencias < 2,00 en la primera línea DB o CR de MCHE sin anotar nada en DETALLE ni en la cabecera.",
+      "solucionPropuesta": "Decidir si el ajuste debe quedar en el detalle de la línea (texto 'ajuste centavos') o en una línea separada."
+    },
+    {
+      "id": "conta-revisamcpe-duplicado-descarta",
+      "tipo": "decision",
+      "detalle": "SPK_NC_REVISAMCPE: si ya existe MCP con el mismo número y datos distintos, borra MCPE/MCHE del intento (RAISERROR + DELETE) y el documento origen no queda marcado como error: desaparece de Errados sin comprobante nuevo.",
+      "solucionPropuesta": "Dejar el intento en MCPE con el error o marcar el documento origen CONTABILIZADA=2 para que se vea."
+    },
+    {
+      "id": "conta-confirmar-crea-terceros",
+      "tipo": "decision",
+      "detalle": "SPK_REVISAR_COMPROBANTE crea terceros desde AFI (SPK_INSERT_TERDEAFI con TERCATAFILIADO) al confirmar si la línea trae un afiliado que no es tercero. Efecto lateral del botón Confirmar.",
+      "solucionPropuesta": "Documentar al cliente; evaluar si debe ser configurable."
+    },
+    {
+      "id": "conta-vwk-liqimp-sin-having",
+      "tipo": "decision",
+      "detalle": "VWK_LIQ_IMP tiene comentado HAVING VALOR>0 (2023-03-31): la consulta de liquidación puede mostrar filas con valor cero o negativo.",
+      "solucionPropuesta": "Confirmar con negocio si deben verse (diferencias entre meses) o filtrarse en pantalla."
+    },
+    {
+      "id": "conta-om-conciliaciones-hpre-oculta",
+      "tipo": "hueco",
+      "detalle": "OtrosModulos.vue tiene comentada la pestaña Conciliaciones (OMConciliacionesComponent, procedencia HPRE); Normas Niif → Procesos / Balance Apertura / Libros Oficiales sin pantalla.",
+      "solucionPropuesta": "Definir alcance Niif y prestaciones; retirar del menú lo que no se vaya a construir."
+    },
+    {
+      "id": "conta-componentes-backup-y-debug",
+      "tipo": "fe",
+      "detalle": "Componentes sin uso: MCHComponentBACKUP, MCPComponentBACKUP, MCPEComponentBackup, OtrosModuls.vue. ContableLayout deja console.log/warn de depuración sobre cont.trazaDoc en producción.",
+      "solucionPropuesta": "Eliminar respaldos del repositorio y los mensajes de consola."
+    }
+  ]
 }

@@ -9,6 +9,58 @@ window.QrysConocimiento = (function () {
   let procesoActual = null;
   let chatPoll = null;
   const kbTimers = { consultas: null, documentar: null };
+  const MODE_META = {
+    analista: {
+      icon: "assignment",
+      title: "Analista de negocio",
+      desc: "Cola, casos, Chat del requerimiento y dictámenes.",
+    },
+    solicitar: {
+      icon: "assignment_add",
+      title: "Solicitar requerimiento",
+      desc: "Necesidades para comité y documento HTML.",
+    },
+    consultas: {
+      icon: "travel_explore",
+      title: "Consultas",
+      desc: "Ubicar capa, control e invariante en procesos documentados.",
+    },
+    documentar: {
+      icon: "edit_note",
+      title: "Documentar",
+      desc: "Pendientes, SP de hoy y Chat de la base de procesos.",
+    },
+    auditoria: {
+      icon: "fact_check",
+      title: "Auditoría de procesos",
+      desc: "Trazas read-only en BD cliente según flujos documentados.",
+    },
+    "revisar-sql": {
+      icon: "rule",
+      title: "Revisar SQL",
+      desc: "Estructura, diferencia de versiones y efectos del cambio.",
+    },
+    agentes: {
+      icon: "smart_toy",
+      title: "Panel de agentes",
+      desc: "Asigne si cada agente corre en local o en Cursor.",
+    },
+    servidores: {
+      icon: "dns",
+      title: "Servidores",
+      desc: "Bases de datos, usuario y clave. El acceso pide usuario y clave de la oficina.",
+    },
+    "informe-contab": {
+      icon: "summarize",
+      title: "Informe contable + DIAN",
+      desc: "Errores MCPE, KMCOM, DIAN vs contabilidad — documento para soporte.",
+    },
+    "soporte-consultas": {
+      icon: "forum",
+      title: "Consultas soporte",
+      desc: "Chat, respuesta oficial y PDF de evidencia para el equipo.",
+    },
+  };
   const ESTADO_UI = {
     consultas: {
       box: "#consultaChatEstado",
@@ -89,7 +141,7 @@ window.QrysConocimiento = (function () {
       ok: true,
       indice,
       pendientes,
-      pendientesAbiertos: items.filter((i) => i.estado !== "completado").length,
+      pendientesAbiertos: items.filter((i) => estaAbierto(i) && colaDe(i) === "fichar").length,
       tarea,
       canal: canal || "documentar",
       chat,
@@ -120,10 +172,39 @@ window.QrysConocimiento = (function () {
     }
   }
 
+  function applyModeChrome(mode) {
+    const strip = $("#appModeStrip");
+    const meta = MODE_META[mode];
+    if (!strip || !meta) return;
+    strip.hidden = false;
+    strip.removeAttribute("hidden");
+    const icon = $("#appModeIcon");
+    const title = $("#appModeTitle");
+    const desc = $("#appModeDesc");
+    if (icon) icon.textContent = meta.icon;
+    if (title) title.textContent = meta.title;
+    if (desc) desc.textContent = meta.desc;
+  }
+
+  function hideModeChrome() {
+    const strip = $("#appModeStrip");
+    if (strip) {
+      strip.hidden = true;
+      strip.setAttribute("hidden", "");
+    }
+  }
+
+  function contarPorFichar(data) {
+    const items = data?.pendientes?.items || [];
+    if (!items.length) return data?.pendientesAbiertos || 0;
+    return items.filter((i) => estaAbierto(i) && colaDe(i) === "fichar").length;
+  }
+
   function badgePendientes(n) {
     const el = $("#hubBadgePendientes");
     if (!el) return;
     el.textContent = n ? String(n) : "";
+    el.title = n ? n + " por fichar. Defectos y hallazgos del libro van en otras colas de Documentar." : "";
     el.hidden = !n;
     const nav = $("#docBadgePendientes");
     if (nav) {
@@ -150,12 +231,47 @@ window.QrysConocimiento = (function () {
     }
     const inicio = $("#btnInicioHub");
     if (inicio) inicio.hidden = true;
+    hideModeChrome();
     loadResumen()
-      .then((d) => badgePendientes(d.pendientesAbiertos || 0))
+      .then((d) => badgePendientes(contarPorFichar(d)))
       .catch(() => {});
+    refreshHubKpis();
+  }
+
+  async function refreshHubKpis() {
+    try {
+      const solData = await fetchJson("/api/solicitar").catch(() => ({ items: [] }));
+      const srItems = solData.items || [];
+      const srAbiertas = srItems.filter((i) => String(i.estado || "").toLowerCase() !== "cerrado" && i.cerrado !== true).length;
+      const srKpi = $("#hubKpiSrTotal");
+      if (srKpi) srKpi.textContent = String(srAbiertas);
+    } catch (_) {}
+
+    try {
+      const colaData = await fetchJson("/api/cola").catch(() => ({ items: [] }));
+      const colaItems = colaData.items || [];
+      const colaActivas = colaItems.filter((i) => i.estado !== "terminado").length;
+      const colaKpi = $("#hubKpiColaTotal");
+      if (colaKpi) colaKpi.textContent = String(colaActivas);
+
+      const casosFase1 = colaItems.filter((i) => i.estado === "en_analisis").length;
+      const fase1Kpi = $("#hubKpiCasosFase1");
+      if (fase1Kpi) fase1Kpi.textContent = String(casosFase1);
+    } catch (_) {}
+
+    try {
+      const indData = await fetchJson("/api/conocimiento").catch(() => ({}));
+      const procs = indData.indice?.procesos || indData.procesos || [];
+      const procKpi = $("#hubKpiProcesosTotal");
+      if (procKpi && procs.length) procKpi.textContent = String(procs.length);
+    } catch (_) {}
   }
 
   function enterMode(mode) {
+    if (window.__qrysOcupado) return;
+    if (window.QrysSoporteConsultas && modoGuardado() === "soporte-consultas" && mode !== "soporte-consultas") {
+      window.QrysSoporteConsultas.stopPoll();
+    }
     try {
       guardarModo(mode);
     } catch (_) {
@@ -170,11 +286,12 @@ window.QrysConocimiento = (function () {
     if (shell) {
       shell.hidden = false;
       shell.removeAttribute("hidden");
-      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar");
+      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar", "modo-auditoria", "modo-agentes", "modo-revisar-sql", "modo-servidores", "modo-informe-contab", "modo-soporte-consultas");
       shell.classList.add(`modo-${mode}`);
     }
     const inicio = $("#btnInicioHub");
     if (inicio) inicio.hidden = false;
+    applyModeChrome(mode);
 
     $$(".view").forEach((v) => v.classList.remove("active"));
     $$(".main-tab").forEach((t) => t.classList.remove("active"));
@@ -198,6 +315,57 @@ window.QrysConocimiento = (function () {
       if (v) v.classList.add("active");
       refreshDocumentar();
       startChatPoll();
+    } else if (mode === "auditoria") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      const v = $("#view-auditoria");
+      if (v) v.classList.add("active");
+      if (window.QrysAuditoria) {
+        window.QrysAuditoria.bind();
+        window.QrysAuditoria.init();
+      }
+    } else if (mode === "informe-contab") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      ["view-cola", "view-formulario", "view-chat", "view-historico"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("active");
+      });
+      const v = $("#view-informe-contab");
+      if (v) v.classList.add("active");
+      if (window.QrysInformeContab) window.QrysInformeContab.enter();
+    } else if (mode === "soporte-consultas") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      ["view-cola", "view-formulario", "view-chat", "view-historico"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("active");
+      });
+      const v = $("#view-soporte-consultas");
+      if (v) v.classList.add("active");
+      if (window.QrysSoporteConsultas) window.QrysSoporteConsultas.enter();
+    } else if (mode === "agentes") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      const v = $("#view-agentes");
+      if (v) v.classList.add("active");
+      if (window.QrysAgentes) window.QrysAgentes.enter();
+    } else if (mode === "servidores") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      ["view-cola", "view-formulario", "view-chat", "view-historico"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("active");
+      });
+      const v = $("#view-servidores");
+      if (v) v.classList.add("active");
+      if (window.QrysServidores) window.QrysServidores.enter();
+    } else if (mode === "revisar-sql") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      const v = $("#view-revisar-sql");
+      if (v) v.classList.add("active");
+      if (window.QrysSqlRevisar) window.QrysSqlRevisar.enter();
     }
   }
 
@@ -390,8 +558,42 @@ window.QrysConocimiento = (function () {
     return comoSql ? n + ".sql" : n;
   }
 
+  const COLA_FICHAR = {
+    documentacion: 1,
+    ficha: 1,
+    doc: 1,
+    sp: 1,
+    gate: 1,
+    flujo: 1,
+    proceso_nuevo: 1,
+    config: 1,
+  };
+  const SALIDA_COLA = {
+    fichar:
+      "Por fichar: baje el .sql y pulse Documentar SP, o Marcar pendiente hecho si la ficha ya está leída.",
+    aclarar: "Por aclarar: responda en el Chat del módulo y luego Marcar pendiente hecho.",
+    defecto:
+      "Defectos: no se documentan aquí. Llévelos a Solicitar requerimiento (uno por módulo) y márquelos hechos cuando el REQ exista.",
+    libro:
+      "Del libro: ya están en el manual. Márquelos hechos si el comité no los va a desarrollar, o al crear la solicitud si sí.",
+  };
+  let colaFiltro = "fichar";
+
+  function estaAbierto(item) {
+    const e = item?.estado || "";
+    return e !== "completado" && e !== "cerrado" && e !== "hecho";
+  }
+
+  function colaDe(item) {
+    const tipo = item?.tipo || "";
+    if (tipo === "hallazgo" || tipo === "libro") return "libro";
+    if (tipo === "aclaracion") return "aclarar";
+    if (COLA_FICHAR[tipo]) return "fichar";
+    return "defecto";
+  }
+
   function spsPendientes(soloValle) {
-    const items = (cache?.pendientes?.items || []).filter((i) => i.estado !== "completado" && i.spNombre);
+    const items = (cache?.pendientes?.items || []).filter((i) => estaAbierto(i) && i.spNombre && colaDe(i) === "fichar");
     const valleId = cache?.valle?.proceso?.id || "";
     const modulo = $("#docFiltroProceso")?.value || chatProceso.documentar || "";
     const porModulo = modulo ? items.filter((i) => i.procesoId === modulo) : items;
@@ -457,11 +659,45 @@ window.QrysConocimiento = (function () {
   function renderPendientes() {
     const box = $("#docPendientesLista");
     if (!box || !cache) return;
-    const todos = (cache.pendientes?.items || []).filter((i) => i.estado !== "completado");
+    const todos = (cache.pendientes?.items || []).filter((i) => estaAbierto(i));
+    const cuentas = { fichar: 0, aclarar: 0, defecto: 0, libro: 0 };
+    todos.forEach((i) => {
+      cuentas[colaDe(i)] += 1;
+    });
+    const selCola = $("#docFiltroCola");
+    if (selCola) {
+      const etiquetas = {
+        fichar: "Por fichar",
+        aclarar: "Por aclarar",
+        defecto: "Defectos",
+        libro: "Del libro",
+        "": "Todos",
+      };
+      Array.from(selCola.options).forEach((op) => {
+        const n = op.value ? cuentas[op.value] || 0 : todos.length;
+        op.textContent = etiquetas[op.value] + " (" + n + ")";
+      });
+      if (selCola.value !== colaFiltro) selCola.value = colaFiltro;
+    }
+    const hintCola = $("#docColaHint");
+    if (hintCola) {
+      hintCola.textContent =
+        (SALIDA_COLA[colaFiltro] || "Todos: elija una cola. Cada una se cierra de una forma distinta.") +
+        " Totales: " +
+        cuentas.fichar +
+        " por fichar, " +
+        cuentas.aclarar +
+        " por aclarar, " +
+        cuentas.defecto +
+        " defectos, " +
+        cuentas.libro +
+        " del libro.";
+    }
     const filtro = $("#docFiltroProceso")?.value || chatProceso.documentar || "";
-    const items = filtro ? todos.filter((i) => (i.procesoId || "") === filtro) : todos;
-    const ocultos = todos.length - items.length;
-    badgePendientes(todos.length);
+    const deCola = colaFiltro ? todos.filter((i) => colaDe(i) === colaFiltro) : todos;
+    const items = filtro ? deCola.filter((i) => (i.procesoId || "") === filtro) : deCola;
+    const ocultos = deCola.length - items.length;
+    badgePendientes(cuentas.fichar);
     if (!items.length) {
       const extra = filtro
         ? `<p class="hint">No hay pendientes de <strong>${esc(nombreProceso(filtro))}</strong>.${ocultos ? " Hay " + ocultos + " de otros módulos (cambie el filtro a «Todos» para verlos)." : ""}</p>`
@@ -471,7 +707,7 @@ window.QrysConocimiento = (function () {
     }
     const aviso = filtro
       ? `<p class="hint compact">Solo <strong>${esc(nombreProceso(filtro))}</strong> (${items.length}).${ocultos ? " Ocultos " + ocultos + " de otros módulos." : ""}</p>`
-      : `<p class="alert alert-warning" style="margin:0 0 .6rem">Viendo todos los módulos (${items.length}). Elija <strong>Presupuesto</strong> o <strong>Nómina</strong> arriba para no mezclar.</p>`;
+      : "";
     box.innerHTML =
       aviso +
       items
@@ -1252,6 +1488,10 @@ window.QrysConocimiento = (function () {
       setProcesoChat("documentar", e.target.value || "");
       refreshDocumentar();
     });
+    $("#docFiltroCola")?.addEventListener("change", (e) => {
+      colaFiltro = e.target.value || "";
+      renderPendientes();
+    });
     $("#docProcesoId")?.addEventListener("change", (e) => {
       if (e.target.value) setProcesoChat("documentar", e.target.value);
     });
@@ -1294,13 +1534,13 @@ window.QrysConocimiento = (function () {
     } catch (_) {
       mode = "hub";
     }
-    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar") {
+    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar" || mode === "revisar-sql" || mode === "auditoria" || mode === "agentes" || mode === "servidores" || mode === "informe-contab" || mode === "soporte-consultas") {
       enterMode(mode);
     } else {
       showHub();
     }
     loadResumen()
-      .then((d) => badgePendientes(d.pendientesAbiertos || 0))
+      .then((d) => badgePendientes(contarPorFichar(d)))
       .catch(() => {});
   }
 

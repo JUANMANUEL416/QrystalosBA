@@ -1,0 +1,306 @@
+{
+  "id": "flujo-recaudos-cartera-contab",
+  "nombre": "Recaudos cartera · CxC · contabilidad",
+  "tipo": "transversal",
+  "familia": "cartera",
+  "estado": "parcial",
+  "resumen": "2026-10-12: traza viva por CNSFPAG; siete INGRESO (CAJA, BANCOS, GLOSAS, CXP, DEVOLUCION, LEVANTAMIENTO); 20 PC-RC; runbook soporte.",
+  "actualizado": "2026-10-12T21:45:00",
+  "procesosHermanos": ["recaudos", "caja", "bancos", "glosas", "contabilidad", "notas-dbcr", "cxp-fcxp"],
+  "parametroTraza": {
+    "nombre": "CNSFPAG",
+    "tipo": "cnsfpag",
+    "ejemplo": "0100001234"
+  },
+  "variantesIngreso": {
+    "CAJA": {
+      "nombre": "Recaudo desde caja",
+      "origen": "FCJ (recibo ingreso externo con RECAUDO=1)",
+      "camposClave": ["CODCAJA", "CNSFACJ"],
+      "precondiciones": [
+        "FCJ.CERRADA=1 y FCJ.ESTADO=P",
+        "FCJ.RECAUDO=1 (casilla Recaudo en caja)",
+        "Tercero del recibo = FPAG.IDTERCERO",
+        "REC_VLRMAX_AJUSTE configurada"
+      ],
+      "operacion": [
+        "Recaudos → INGRESO=CAJA → INSERTAR amarra recibo y FCJ.ENPAGOS=1",
+        "Asignar facturas CxC (FPAGD)",
+        "APLICARPAGO → SPK_PAGOSCXC"
+      ],
+      "contabilidad": [
+        "Comprobante recaudo: procedencia CXC (SPK_NC_CONTAB_CXC)",
+        "Recibo origen: procedencia CAJA en MCP (SPK_NC_CONTAB_CAJA_ING) — validar FCJ.CONTABILIZADA"
+      ],
+      "puntosCriticos": ["PC-RC-01", "PC-RC-04", "PC-RC-06", "PC-RC-14", "PC-RC-17"]
+    },
+    "BANCOS": {
+      "nombre": "Recaudo desde banco / consignación",
+      "origen": "BMOVD (RECAUDO=1, legalización pendiente)",
+      "camposClave": ["BANCO", "SUCURSAL", "CTA_BCO", "ITEM", "RENGLON"],
+      "precondiciones": [
+        "BMOV.ESTADO=O",
+        "BMOVD.RECAUDO=1",
+        "VLRITEM − VLRLEGALIZADO > 0",
+        "BMOVD.ENPAGOS=0 antes de INSERTAR"
+      ],
+      "operacion": [
+        "INSERTAR → BMOVD.ENPAGOS=1",
+        "Asignar facturas",
+        "APLICARPAGO"
+      ],
+      "contabilidad": [
+        "CXC al aplicar",
+        "Movimiento tesorería: comprobante BMOV (SPK_NC_CONTAB_BMOV) si aplica política de la institución"
+      ],
+      "puntosCriticos": ["PC-RC-01", "PC-RC-05", "PC-RC-06", "PC-RC-17"]
+    },
+    "CXP": {
+      "nombre": "Recaudo con cruce cuentas por pagar",
+      "origen": "Sin FCJ/BMOVD; cruce FPAGDCXP",
+      "camposClave": ["FPAGDCXP.CNSFCXP", "FPAGDCXP.VALORPAGO"],
+      "precondiciones": [
+        "REC_VLRMAX_AJUSTE",
+        "FCXP saldo > 0, no anulada",
+        "SUM(cruce) = VLRITEMS antes de aplicar"
+      ],
+      "operacion": [
+        "Facturas CxC en FPAGD (plantilla igual CAJA/BANCOS)",
+        "Pestaña cruce: CRUD_FPAGDCXP",
+        "APLICARPAGO valida VLRCRUCE"
+      ],
+      "contabilidad": ["CXC; efecto cruce en SPK_PAGOSCXC según configuración CxP"],
+      "puntosCriticos": ["PC-RC-01", "PC-RC-10", "PC-RC-12"]
+    },
+    "GLOSAS": {
+      "nombre": "Recaudo glosas",
+      "origen": "Facturas CxC; FINDEVOL = Paso a seguir",
+      "finddevol": {
+        "3": {
+          "nombre": "Recepcionar",
+          "carga": "Excel: N_FACTURA, TIPO, VLRPAGO (+ MOTIVO/OBS si variables)",
+          "alAplicar": "Crea FGLO; no SPK_FINALIDAD_GLOSAS automático",
+          "despues": "Botón Enviar a auditoría (ENVIAR_AUDIT → ENT); FPAG.ENAUDIT"
+        },
+        "4": {
+          "nombre": "Recepcionar y Responder",
+          "carga": "Plantilla extendida CODRPTA, VLR_ACEPTADO, VALIDACION",
+          "alAplicar": "SPK_FINALIDAD_GLOSAS: NC, impresión, devuelve a cartera",
+          "reversos": "No deshacer (aviso FE)"
+        },
+        "5": {
+          "nombre": "Detalles Glosa",
+          "carga": "CARGAR_GLOSAS_DETALLE (ítems FGLOCG/FGLOD)",
+          "alAplicar": "Detalle en auditoría; respuesta manual",
+          "retirarFactura": "Solo con BRetiraFactura si recaudo cerrado (3 y 5)"
+        },
+        "6": {
+          "nombre": "Detalles y Responder",
+          "carga": "DETALLE_RESPONDER (16 columnas FE)",
+          "alAplicar": "Respuesta automática por ítem",
+          "reversos": "No deshacer"
+        }
+      },
+      "contabilidad": ["CXC del recaudo", "Glosa: procedencia RGLO (SPK_CONTAB_FGLO) en pasos posteriores"],
+      "puntosCriticos": ["PC-RC-08", "PC-RC-15", "PC-RC-20"]
+    },
+    "DEVOLUCION": {
+      "nombre": "Devolución de facturas",
+      "origen": "INGRESO=DEVOLUCION o DEVPAR; TIPO F en búsqueda",
+      "finddevol": {
+        "0": "Solo retirar de CxC (SPK_RETIRAFTR_DE_CXC → FCXCR)",
+        "1": "Retirar + anular factura (SPK_FINALIDAD_DEVOL → ENT DEVFACT)",
+        "2": "Retirar + radicar nueva cuenta devuelta"
+      },
+      "despues": "Respuesta Devoluciones `/admin/fcxcr` (SPQ_FCXCR)",
+      "contabilidad": ["CXC según apply; reverso limitado si FINDEVOL≠0"],
+      "puntosCriticos": ["PC-RC-16", "PC-RC-20"]
+    },
+    "LEVANTAMIENTO": {
+      "nombre": "Levantamiento de cartera",
+      "origen": "Facturas con saldo; FPAGD.LEVANTADO",
+      "operacion": ["Asignar facturas elegibles", "APLICARPAGO marca levantamiento"],
+      "contabilidad": ["CXC"],
+      "puntosCriticos": ["PC-RC-19", "PC-RC-12"]
+    }
+  },
+  "pasos": [
+    {
+      "orden": 1,
+      "id": "config-usvgs",
+      "nombre": "Variables USVGS recaudos",
+      "ingreso": ["*"],
+      "qrystalos2": { "path": "/conf/usvgs", "modelo": "USVGS" },
+      "tablas": ["USVGS"],
+      "sps": [],
+      "nota": "REC_VLRMAX_AJUSTE (obligatoria CAJA/BANCOS/CXP), REC_SOLICITA_AVAL, MOBSERVADEVOLFACTURA, MOBSERVAFRECGLOSA.",
+      "puntosCriticos": ["PC-RC-01"]
+    },
+    {
+      "orden": 2,
+      "id": "periodo-pri",
+      "nombre": "Periodo contable (FECHAPAGO)",
+      "ingreso": ["*"],
+      "tablas": ["PRI", "FPAG"],
+      "sps": ["SPQ_FPAG_COL · APLICARPAGO"],
+      "nota": "PRI del año-mes de FPAG.FECHAPAGO debe estar abierto para aplicar.",
+      "puntosCriticos": ["PC-RC-02", "PC-RC-17"]
+    },
+    {
+      "orden": 3,
+      "id": "cabecera-fpag",
+      "nombre": "Cabecera recaudo FPAG",
+      "ingreso": ["*"],
+      "qrystalos2": { "path": "/admin/Recaudos", "vue": "FPAGComponent", "modelo": "FPAG_COL", "metodos": ["INSERTAR", "ACTUALIZAR", "INACTIVAR"] },
+      "tablas": ["FPAG", "TER"],
+      "sps": ["SPQ_FPAG_COL"],
+      "nota": "CNSFPAG, INGRESO, FINDEVOL, CERRADO, ESTADO, VALORPAGO, VLRITEMS, FECHA vs FECHAPAGO.",
+      "puntosCriticos": ["PC-RC-03"]
+    },
+    {
+      "orden": 4,
+      "id": "origen-caja",
+      "nombre": "Origen caja (FCJ)",
+      "ingreso": ["CAJA"],
+      "qrystalos2": { "path": "/admin/caja", "modelo": "CONF_CAJA" },
+      "tablas": ["FCJ", "CAJ"],
+      "sps": ["SPQ_FPAG_COL · INSERTAR"],
+      "nota": "CODCAJA+CNSFACJ; RECAUDO, CERRADA, ESTADO, ENPAGOS, CONTABILIZADA, NROCOMPROBANTE.",
+      "puntosCriticos": ["PC-RC-04", "PC-RC-06", "PC-RC-14"]
+    },
+    {
+      "orden": 5,
+      "id": "origen-banco",
+      "nombre": "Origen banco (BMOVD)",
+      "ingreso": ["BANCOS"],
+      "qrystalos2": { "path": "/admin/Cuentas", "modelo": "BMOV" },
+      "tablas": ["BMOVD", "BMOV", "BCO", "BSU"],
+      "sps": ["SPQ_FPAG_COL · INSERTAR"],
+      "nota": "Llave banco+sucursal+cuenta+item+renglón; RECAUDO, ENPAGOS, saldo legalizar.",
+      "puntosCriticos": ["PC-RC-05", "PC-RC-06"]
+    },
+    {
+      "orden": 6,
+      "id": "cruce-cxp",
+      "nombre": "Cruce CxP (FPAGDCXP)",
+      "ingreso": ["CXP"],
+      "qrystalos2": { "path": "/admin/Recaudos", "metodos": ["CRUD_FPAGDCXP", "REGRESA_FCXPAGDCXP"] },
+      "tablas": ["FPAGDCXP", "FCXP"],
+      "sps": ["SPQ_FPAG_COL"],
+      "nota": "SUM(VALORPAGO) debe igualar VLRITEMS en APLICARPAGO.",
+      "puntosCriticos": ["PC-RC-10"]
+    },
+    {
+      "orden": 7,
+      "id": "detalle-fpagd",
+      "nombre": "Detalle facturas (FPAGD)",
+      "ingreso": ["*"],
+      "qrystalos2": { "metodos": ["CONSULTACXC", "ADD_FACTURA", "ASIGNAR", "CARGAR_FACTURAS"] },
+      "tablas": ["FPAGD", "FCXCD", "FTR", "RPDX"],
+      "sps": ["SPQ_FPAG_COL", "SPK_CARGA_MASIVA_FAC_CXC_02"],
+      "nota": "Conteo líneas, duplicados N_FACTURA+CLASE, ESTADO Retirada, LEVANTADO.",
+      "puntosCriticos": ["PC-RC-07", "PC-RC-08", "PC-RC-19", "PC-RC-20"]
+    },
+    {
+      "orden": 8,
+      "id": "impuestos",
+      "nombre": "Impuestos detalle (FPAGDI / FIMPDV)",
+      "ingreso": ["*"],
+      "tablas": ["FPAGDI", "FIMPDV"],
+      "sps": ["SPQ_FPAG_COL · APLICARPAGO"],
+      "nota": "Validación previa a SPK_PAGOSCXC.",
+      "puntosCriticos": ["PC-RC-09"]
+    },
+    {
+      "orden": 9,
+      "id": "glosas-pre",
+      "nombre": "Glosas — FINDEVOL y staging",
+      "ingreso": ["GLOSAS"],
+      "tablas": ["FGLO", "FCGLO", "RPDX"],
+      "sps": ["SPQ_FPAG_COL · CARGAR_GLOSAS_DETALLE", "DETALLE_RESPONDER", "ENVIAR_AUDIT"],
+      "nota": "Paso a seguir 3–6; plantillas Excel distintas.",
+      "puntosCriticos": ["PC-RC-15"]
+    },
+    {
+      "orden": 10,
+      "id": "devolucion-pre",
+      "nombre": "Devolución — FINDEVOL 0–2",
+      "ingreso": ["DEVOLUCION", "DEVPAR"],
+      "tablas": ["FCXCR"],
+      "sps": ["SPK_RETIRAFTR_DE_CXC", "SPK_FINALIDAD_DEVOL"],
+      "nota": "Tipo F; observaciones según FINDEVOL.",
+      "puntosCriticos": ["PC-RC-16"]
+    },
+    {
+      "orden": 11,
+      "id": "aplicar",
+      "nombre": "Aplicar recaudo",
+      "ingreso": ["*"],
+      "qrystalos2": { "metodos": ["APLICARPAGO"] },
+      "tablas": ["FPAG"],
+      "sps": ["SPQ_FPAG_COL", "SPK_PAGOSCXC", "SPK_FINALIDAD_GLOSAS"],
+      "nota": "Gate: CERRADO=1 al OK; mueve CxC; glosas según FINDEVOL.",
+      "puntosCriticos": ["PC-RC-11"]
+    },
+    {
+      "orden": 12,
+      "id": "contab-fpag",
+      "nombre": "Flags contabilidad FPAG",
+      "ingreso": ["*"],
+      "tablas": ["FPAG", "FPAGD"],
+      "sps": ["SPK_PAGOSCXC"],
+      "nota": "CONTABILIZADO, NROCOMPROBANTE, NOCONTABILIZA; FPAGD.CONTABILIZADA_R.",
+      "puntosCriticos": ["PC-RC-12"]
+    },
+    {
+      "orden": 13,
+      "id": "contab-comprobante",
+      "nombre": "Comprobante CXC (MCP / MCPE)",
+      "ingreso": ["*"],
+      "qrystalos2": { "path": "/cont/mcpe", "modelo": "CONTABILIDAD" },
+      "tablas": ["MCP", "MCPE", "MCHE", "MCH"],
+      "sps": ["SPK_NC_CONTAB_CXC", "SPK_REVISAR_COMPROBANTE"],
+      "nota": "PROCEDENCIA CXC; REFERENCIA1 = CNSFPAG (habitual).",
+      "puntosCriticos": ["PC-RC-13"]
+    },
+    {
+      "orden": 14,
+      "id": "glosas-post",
+      "nombre": "Glosas posteriores (FGLO / ENT)",
+      "ingreso": ["GLOSAS"],
+      "tablas": ["FGLO", "ENT", "ENTD"],
+      "sps": ["SPK_FINALIDAD_GLOSAS", "SPQ_FPAG_COL · ENVIAR_AUDIT"],
+      "nota": "FINDEVOL 3: ENAUDIT; 4/6: respuesta automática; 5: auditoría abierta.",
+      "puntosCriticos": ["PC-RC-15"]
+    },
+    {
+      "orden": 15,
+      "id": "devolucion-post",
+      "nombre": "Devoluciones posteriores (FCXCR)",
+      "ingreso": ["DEVOLUCION", "DEVPAR"],
+      "qrystalos2": { "path": "/admin/fcxcr", "modelo": "FCXCR" },
+      "tablas": ["FCXCR"],
+      "sps": ["SPQ_FCXCR"],
+      "nota": "Respuesta devoluciones tras apply.",
+      "puntosCriticos": ["PC-RC-16"]
+    },
+    {
+      "orden": 16,
+      "id": "aval-reverso",
+      "nombre": "Aval / desaplicar periodo cerrado",
+      "ingreso": ["CAJA", "BANCOS"],
+      "qrystalos2": { "path": "/cont/avalRecaudos", "metodos": ["AVALAR_RECAUDO", "RETIRO_MASIVO_CON_AVAL"] },
+      "tablas": ["FPAG", "PRI"],
+      "sps": ["SPQ_FPAG_COL", "SPK_REVERSAR_RECUADO", "SPK_DESPAGOSCXC"],
+      "nota": "REQ 0100016348 PREVERSION; AVALCONTABLE Pendiente/Avalado.",
+      "puntosCriticos": ["PC-RC-17", "PC-RC-18"]
+    }
+  ],
+  "auditoria": {
+    "habilitada": true,
+    "parametros": ["cnsfpag"],
+    "moduloPython": "scripts/auditoria_procesos.py",
+    "puntosCriticos": "puntos-criticos.json",
+    "runbook": "RUNBOOK-SOPORTE-RECAUDOS.md"
+  }
+}

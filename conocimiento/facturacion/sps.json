@@ -1,7 +1,7 @@
 {
   "procesoId": "facturacion",
-  "actualizado": "2026-09-12T21:15:18",
-  "nota": "2026-09-12: HPREP + SPK reliquidación + FNQ_VAL_SERTOT_PERU + FTR_PHD leídos (REQ 6352: sin SERTOT vigente en las dos ventanas de fecha → 0). Sigue FTR_COL 68/68.",
+  "actualizado": "2026-10-03T13:45:00-05:00",
+  "nota": "2026-10-03: procedencias FTR y énfasis de factura financiera contrastados contra Qrystalos2 e IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 son idénticas para SPQ_SUBIR_AUTCOL y los diez objetos del mapa; IDANT 2.0.6. Confirmado HADM→SALUD, CIT→CI, AUT/NOPOS→CE, AUTPG→AUTPG y recibo/copago→CAJA.",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
@@ -4058,6 +4058,146 @@
           "hace": "Submétodos NOCOBRABLE/ADDPAQUETE/EDITAR/ELIMINAR sobre cargos en calificación.",
           "estado": "listado",
           "gateId": "phd-calificacion-peru"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_FACTURA_ASIS",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURA_ASIS.sql",
+      "actualizado": "2026-10-03",
+      "gateId": "urg-hosp-factura",
+      "capaId": "02-operacion",
+      "hace": "Motor de factura individual o por corte desde admisión. Consume el staging RPDX preparado por FTR_HADM_COL e inserta FTR con PROCEDENCIA=SALUD y detalle FTRD.",
+      "valida": [
+        "Datos de pagador/plan y cargos preparados en RPDX",
+        "Resolución FDIAN cuando BLOQUEADIAN=SI",
+        "Formato de factura del plan o variable general"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT/UPDATE FTR PROCEDENCIA=SALUD, INSERT FTRD, marca cargos de la admisión y puede contabilizar o encolar FTRCO."
+    },
+    {
+      "nombre": "SPK_CREA_FACTURA_POS_CAJA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_CREA_FACTURA_POS_CAJA.sql",
+      "actualizado": "2026-10-03",
+      "gateId": "factura-caja",
+      "capaId": "02-operacion",
+      "hace": "Crea factura POS de contado desde FCJ. Tiene ramas de copago de cita, copago de autorización CE y recibo general; todas insertan FTR.PROCEDENCIA=CAJA.",
+      "valida": [
+        "Recibo FCJ y origen CITAS/CE/SALUD",
+        "Sede y resolución de numeración",
+        "Centro de costo para la rama general"
+      ],
+      "errores": [
+        "No se pudo determinar el centro de costo (CCOSTO) del recibo de caja"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO"
+      ],
+      "efecto": "INSERT FTR/FTRD PROCEDENCIA=CAJA; actualiza CIT o AUT cuando aplica y FCJ.N_FACTURAPOS/RECAUDO."
+    },
+    {
+      "nombre": "SPQ_FACTURACE_ESCMA",
+      "tipo": "SP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FACTURACE_ESCMA.sql",
+      "actualizado": "2026-10-03",
+      "gateId": "facturacion-masiva-aut",
+      "capaId": "02-operacion",
+      "hace": "Motor de facturación masiva CE/unificada. Recibe marcas AUT/CIT y genera cabeceras CI o CE según la clase de factura.",
+      "valida": [
+        "Marcas y staging del usuario",
+        "Resolución FDIAN",
+        "Formato de factura del plan"
+      ],
+      "efecto": "CIT individual/agrupada puede crear FTR PROCEDENCIA=CI; autorización o unificada crea FTR PROCEDENCIA=CE; inserta FTRD y marca los orígenes."
+    },
+    {
+      "nombre": "SPK_FACTURACE_N",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURACE_N.sql",
+      "actualizado": "2026-10-03",
+      "gateId": "facturacion-masiva-aut",
+      "capaId": "02-operacion",
+      "hace": "Motor individual de facturación para @PROC CI o CE. Reutiliza una factura liberada cuando corresponde y conserva banderas NOPOS/IDMIPRESS.",
+      "valida": [
+        "Autorización o cita con valor facturable",
+        "Formato por plan",
+        "Resolución FDIAN"
+      ],
+      "efecto": "INSERT/UPDATE FTR con PROCEDENCIA=@PROC; NOPOS llama este motor con @PROC=CE."
+    },
+    {
+      "nombre": "SPQ_SUBIR_AUTCOL",
+      "tipo": "SPQ",
+      "modelo": "SUBIR_AUTCOL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_SUBIR_AUTCOL.sql",
+      "actualizado": "2026-10-03",
+      "gateId": "rips-externos-financiera",
+      "capaId": "02-operacion",
+      "notaArchivo": "Descargado de IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 idénticas; IDANT 2.0.6.",
+      "metodos": [
+        {
+          "id": "SUBIR_JSON_EXTERNO",
+          "estado": "leido",
+          "hace": "Recibe archivos JSON RIPS ligados a CNSFTR/N_FACTURA. Extrae usuarios y servicios, fusiona duplicados del mismo archivo/paciente, crea AFI básico si el paciente no existe y persiste solo filas válidas en FTRDJSON.",
+          "valida": [
+            "El plan de la factura tiene TIPOSISTEMA configurado",
+            "Tipo de usuario compatible con régimen Contributivo o Subsidiado",
+            "Tipo de documento válido en TGEN",
+            "Paciente activo; el inexistente se crea con datos básicos si hay sede",
+            "No duplica archivo + tipo documento + documento dentro de la factura"
+          ],
+          "noValida": [
+            "No envía el documento a SISPRO",
+            "No genera ni confirma CUV",
+            "La validación de fechas del período se realiza previamente en SubirJsonExterComponent"
+          ],
+          "errores": [
+            "Contrato sin Configuración No se puede Continuar",
+            "No hay sede para crear el paciente"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT AFI con PROCEDENCIA=JSONEXT cuando falta el paciente; INSERT FTRDJSON con JSON_AFI, JSON_SER, VALIDADO y observación."
+        },
+        {
+          "id": "APROBAR_JSON",
+          "estado": "leido",
+          "hace": "Aprueba manualmente una fila FTRDJSON y registra el usuario en OBS_VALIDA.",
+          "valida": [
+            "Existe CNSFTR + ID en FTRDJSON"
+          ],
+          "efecto": "UPDATE FTRDJSON VALIDADO=O."
+        },
+        {
+          "id": "BORRAR_JSON",
+          "estado": "leido",
+          "hace": "Elimina RIPS externos de la factura por todo, fila individual, errores o nombre de archivo.",
+          "valida": [
+            "Existe relación FTRDJSON para la factura",
+            "En acción Archivo, existe el nombre solicitado"
+          ],
+          "efecto": "DELETE controlado sobre FTRDJSON."
+        },
+        {
+          "id": "TOTALES_JSON",
+          "estado": "leido",
+          "hace": "Resume cada archivo externo por número de factura, pacientes, servicios y valor, leyendo los grupos RIPS dentro de JSON_SER.",
+          "valida": [],
+          "efecto": "Consulta de solo lectura agrupada por ARCHIVO_EXT."
         }
       ]
     }

@@ -1,0 +1,212 @@
+{
+  "procedencia": "IACT",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo CNSIACTH — MCP IACT REFERENCIA1.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_CONTAB_IACT.sql",
+  "documentoOrigen": {
+    "tabla": "IACT / IACTH",
+    "claves": [
+      "IDACTIVO",
+      "evento"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "activo"
+    }
+  },
+  "generador": "SPK_CONTAB_IACT",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-iact"
+      ]
+    },
+    {
+      "id": "N3-contab-iact",
+      "orden": 3,
+      "sp": "SPK_CONTAB_IACT",
+      "requiresDocumento": [
+        {
+          "id": "iact-ref",
+          "desc": "REFERENCIA1 = consecutivo IACT/IACTH",
+          "obligatorio": true,
+          "validacionSql": "IACTH + IACT + IACTE",
+          "checkMotor": "doc-iact-*"
+        },
+        {
+          "id": "acfi-estado",
+          "desc": "Activo origen en estado válido para el evento",
+          "obligatorio": true,
+          "validacionSql": "IACT.ESTADO",
+          "checkMotor": "doc-iact-acfi"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-iact",
+          "usvgs": [
+            "IDCON_TCOM_IACT",
+            "IDMODELOCONTABLE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-evento-iact"
+      ],
+      "puntosCriticos": [
+        "PC-IACT-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_CONTAB_IACT.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "IDCON_TCOM_DEFAULT",
+          "IDMODELOCONTABLE",
+          "IDTERCEROINSTALADO"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante evento activo (IACT)"
+    },
+    {
+      "id": "N2-evento-iact",
+      "orden": 2,
+      "desc": "Confirmación movimiento activo",
+      "llamaAnterior": [
+        "N1-registro-iact"
+      ],
+      "nombre": "Confirmar evento activo",
+      "sp": [
+        "SPQ_MOV_ACTIVOS · confirmación evento",
+        "DEPR_IACTD_UNICO (OM AF)"
+      ],
+      "metodoUi": "Traslado, baja, mejora, revaluación",
+      "requiresDocumento": [
+        {
+          "id": "iact-registro",
+          "desc": "IACT/IACTH con tipo evento y activo origen",
+          "obligatorio": true
+        },
+        {
+          "id": "acfi-coherente",
+          "desc": "Saldo y estado activo permiten evento",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-iact",
+          "usvgs": "IDCON_TCOM_IACT",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_CONTAB_IACT; REFERENCIA1 = consecutivo evento",
+      "puntosCriticos": [
+        "PC-IACT-01"
+      ]
+    },
+    {
+      "id": "N1-registro-iact",
+      "orden": 1,
+      "nombre": "Capturar movimiento activo",
+      "sp": "SPQ_MOV_ACTIVOS",
+      "llamaAnterior": [
+        "N0-config-af"
+      ]
+    },
+    {
+      "id": "N0-config-af",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "IDCON_TCOM_IACT",
+            "IDMODELOCONTABLE"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración activos (eventos)"
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "IACT",
+    "tablaOrigen": "IACT"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/iact.json",
+    "procesoHermano": "activos-fijos",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-iact.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

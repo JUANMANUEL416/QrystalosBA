@@ -1,0 +1,144 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "tabla": "USVGS",
+  "consulta": "SELECT IDVARIABLE, DATO FROM dbo.USVGS WHERE IDVARIABLE IN (...);",
+  "documento": "USVGS-INVENTARIO.md",
+  "sqlRefs": "usvgs-sql-refs.json",
+  "validacionApi": "POST /api/auditoria/usvgs",
+  "grupos": [
+    {
+      "id": "catalogo-articulo",
+      "nombre": "Catálogo artículo (IART / SER)",
+      "variables": [
+        { "id": "DEINVNODESER", "paraQue": "Placeholder de IDSERVICIO cuando el artículo aún no tiene SER; VALIDA_SERVICIO KO si vacío.", "donde": "SPQ_IART VALIDA_SERVICIO" },
+        { "id": "IART_SER_UNICO", "paraQue": "Si DATO=SI, SPQ_IART no deja dos artículos activos con el mismo CUM ni la misma descripción. Solo en PREVERSION (no en 2.0.5).", "donde": "SPQ_IART GUARDAR" },
+        { "id": "IDSEDEPRINCIPAL", "paraQue": "Sede para consecutivo automático de IDARTICULO si no envían SEDE.", "donde": "SPQ_IART GUARDAR" },
+        { "id": "NRO_ESPACIOS_ITARCNS", "paraQue": "Longitud numérica del consecutivo tras PRECNS (ITAR).", "donde": "SPQ_IART GUARDAR" },
+        { "id": "PREFIJOMEDICAMENTOS", "paraQue": "Prefijo ITAR medicamento POS al crear SER (CREARSER).", "donde": "SPQ_IART VALIDA_SERVICIO" },
+        { "id": "PREFIJOMEDNOPOS", "paraQue": "Prefijo ITAR medicamento NOPOS.", "donde": "SPQ_IART VALIDA_SERVICIO" },
+        { "id": "IDMEDPOSRIPS", "paraQue": "Concepto RIPS medicamento POS en plantilla SER.", "donde": "SPQ_IART" },
+        { "id": "IDMEDNOPOSRIPS", "paraQue": "Concepto RIPS medicamento NOPOS.", "donde": "SPQ_IART" },
+        { "id": "COD_TARIFA_MAT_VE", "paraQue": "Tarifa por defecto al crear SER desde artículo.", "donde": "SPQ_IART" },
+        { "id": "CAMBIO_ART_ESTADO", "paraQue": "Sincroniza inactivación IART con SER.", "donde": "SPQ_IART EDITAR" },
+        { "id": "INTERFAZ_INV", "paraQue": "INTER_SAP: reglas Perú/SAP (hermanos comerciales, etc.).", "donde": "SPQ_IART; SPK_CONFIRMARENTRADAS" },
+        { "id": "ESFARMACIA", "paraQue": "Modo farmacia en consultas/filtros IART e IMOV.", "donde": "SPQ_IART; SPQ_IMOV" },
+        { "id": "IDITARUNIDOSIS", "paraQue": "ITAR unidosis en listados/filtros.", "donde": "SPQ_IART" }
+      ]
+    },
+    {
+      "id": "tipos-movimiento",
+      "nombre": "Tipos de movimiento (ITMO) referenciados en USVGS",
+      "variables": [
+        { "id": "IDINVMOV_COMPRAS", "paraQue": "IDTIPOMOV de entrada por orden de compra; ITRA al confirmar OC; CONF_ENTRADA KMCOM.", "donde": "SPK_INSERT_ITRA_REQ; SPK_INSERTENTTRANSITO; SPQ_IZSOL CONF_ENTRADA; SPQ_IZSOL_TRANSITO", "critico": true },
+        { "id": "IDINVMOV_PRESTAMOS", "paraQue": "Entrada tránsito cuando FCOM.IDTIPOSER=Presta.", "donde": "SPK_INSERT_ITRA_REQ" },
+        { "id": "IDINVMOV_REMISION_EN", "paraQue": "Entrada por remisión; mismas validaciones factura que compras.", "donde": "SPQ_IZSOL CONF_ENTRADA; SPK_INSERTENTTRANSITO" },
+        { "id": "IDINVMOV_SI", "paraQue": "Tipo entrada alterno en tránsito/CUFE (cliente).", "donde": "SPK_INSERTENTTRANSITO; SPK_CONFIRMARENTRADAS" },
+        { "id": "IDINVTPROPIA", "paraQue": "Producción propia / paciente; exige CNSTRAN; PCOSTO puede ser 0.", "donde": "CONF_ENTRADA; SPK_CONFIRMARENTRADAS; SPQ_IMOV" },
+        { "id": "IDTS", "paraQue": "Traslado salida entre bodegas.", "donde": "SPQ_IZSOL ON_ACEPTA_TRANSITO; SPQ_IMOV" },
+        { "id": "IDTE", "paraQue": "Traslado entrada (par de IDTS).", "donde": "SPQ_IZSOL" },
+        { "id": "IDINVMOV_VENTAS", "paraQue": "Tipo que IZSOL trata como venta. En CEM es 06 (dispensación), distinto del mostrador.", "donde": "SPQ_IZSOL" },
+        { "id": "IDINVMOVVENTAFACTURA", "paraQue": "IMOV que se factura a FTR. En CEM es VC.", "donde": "SPQ_IMOV" },
+        { "id": "INVE_CIRU_TIPO_MOV", "paraQue": "Salida débito cirugía desde IZSOL.", "donde": "SPQ_IZSOL" },
+        { "id": "FAR_MOVANULASALIDA", "paraQue": "Tipo movimiento anulación de salida farmacia.", "donde": "SPK_CONFIRMARENTRADAS" },
+        { "id": "IDINVTFSA", "paraQue": "Traslado/salida específica TFSA (cliente).", "donde": "SPQ_IMOV" },
+        { "id": "IDINVTRASLACTIVOS", "paraQue": "Traslado activos fijos.", "donde": "SPQ_IMOV" },
+        {
+          "id": "IDTIMOVDEV_TRASLBOD",
+          "paraQue": "ITMO crédito para devolver traslado en tránsito (ITRAH_REGRESAR / SPK_REINTGRA_TRASLADO_INV).",
+          "donde": "SPQ_IMOV_3; SPK_REINTGRA_TRASLADO_INV",
+          "critico": true
+        },
+        {
+          "id": "INV_APRU_DEVTRA",
+          "paraQue": "SI: ITRAH_REGRESAR crea ITRADEV pendiente (ITRA ESTADO=3) sin reintegrar stock hasta aceptar en origen. NO: reintegra al instante vía SPK_REINTGRA_TRASLADO_INV.",
+          "donde": "SPQ_IMOV_3 ITRAH_REGRESAR; SPQ_ITRADEV; FE DevTransitoAprobacionDialog"
+        }
+      ]
+    },
+    {
+      "id": "compras-transito-entrada",
+      "nombre": "OC · tránsito · CONF_ENTRADA",
+      "variables": [
+        { "id": "VALID_CCOSTO_CXP", "paraQue": "SI: CONF_ENTRADA valida KMCOM CXP_COMPRAS por ITAR+CCOSTO antes de subir IEXI.", "donde": "SPQ_IZSOL CONF_ENTRADA", "critico": true },
+        { "id": "TRAN_EDIT_OC", "paraQue": "SI: en loteo compra permite editar PCOSTO/IVA vs OC.", "donde": "SPQ_IZSOL_TRANSITO ON_PROCESAR" },
+        { "id": "IDINVDIASPARAVENCER", "paraQue": "Días mínimos antes de vencimiento al lotear (no hemoderivados).", "donde": "SPQ_IZSOL_TRANSITO AGREGAR_IART" },
+        { "id": "NDIASANTESVENCE", "paraQue": "Alerta/bloqueo vencimiento próximo en dispensación/loteo.", "donde": "SPQ_IZSOL; SPQ_IZSOL_TRANSITO" },
+        { "id": "IDBOD_HEMODERIVADOS", "paraQue": "Bodega hemoderivados; reglas lote/fecha distintas.", "donde": "SPQ_IZSOL_TRANSITO; SPK_INSERTENTTRANSITO; SPK_CONFIRMARENTRADAS" },
+        { "id": "IDITARHEMODERIVADOS", "paraQue": "ITAR hemo; excepciones vencimiento/INVIMA.", "donde": "SPQ_IZSOL_TRANSITO" },
+        { "id": "VALID_INVIMA_HEMO", "paraQue": "NO: no exige REGINVIMA en hemo.", "donde": "SPQ_IZSOL_TRANSITO" },
+        { "id": "ANULA_TRANSITO_SINEN", "paraQue": "Permite anular tránsito sin entrada en ciertas condiciones.", "donde": "SPQ_IZSOL CANCELAR_TRANSITO" },
+        { "id": "COLOCAR_TOTAL_IMOV", "paraQue": "SI: totales en cabecera IMOV al crear desde tránsito.", "donde": "SPK_INSERTENTTRANSITO" },
+        { "id": "IDINVENTRADAUNICA", "paraQue": "Reglas entrada única por tipo/lote (tránsito).", "donde": "SPK_INSERTENTTRANSITO" },
+        { "id": "IDINVIDITARUNICA", "paraQue": "Restricción ITAR en entrada única.", "donde": "SPK_INSERTENTTRANSITO" },
+        { "id": "INVCONSECUTIVOSINDEP", "paraQue": "Consecutivos IMOV independientes por flujo.", "donde": "SPK_INSERTENTTRANSITO" },
+        { "id": "CODIGOUNICOICBU", "paraQue": "SI: lote ICBU único en compras/remisión.", "donde": "SPK_INSERTENTTRANSITO; SPQ_IMOV" },
+        { "id": "IDINVENTXOBSEQUIOS", "paraQue": "Tipo movimiento lentes/óptica (cliente).", "donde": "SPK_INSERTENTTRANSITO" },
+        { "id": "MOV_PERIODOS_ANT", "paraQue": "NO: bloquea IMOV en meses anteriores (salidas/entradas).", "donde": "SPQ_IMOV CRUD_IMOV / CRUD_IMOV_SAL" },
+        { "id": "ASI_VAL_CCAF_CARGOS", "paraQue": "SI: al crear IMOV contabilizable exige KMCOM MOV_INVENTARIO.", "donde": "SPQ_IMOV CRUD_IMOV" }
+      ]
+    },
+    {
+      "id": "cxp-contabilidad-inv",
+      "nombre": "Puente CxP y contabilidad inventario",
+      "variables": [
+        { "id": "IDMODELOCONTABLE", "paraQue": "Modelo KMCOM (FNK_CUENTA_KMCOM / FNK_NC_CUENTA_KMCOM).", "donde": "SPK_INSERT_CXP_INV; SPK_CONFIRMARENTRADAS", "critico": true },
+        { "id": "CONTAB_INV_IVA_ITAR", "paraQue": "SI: IVA en FCXPD desde ITAR/CUE_IVA al procesar IMOVH.", "donde": "SPK_INSERT_CXP_INV", "critico": true },
+        { "id": "CUENTA_IVA_CXP", "paraQue": "SI: exige CUENTA_IVA en FCXPD con VLR_IVA; CONTABILIZAR_FCXP valida.", "donde": "SPK_INSERT_CXP_INV; SPQ_FCXP" },
+        { "id": "REDONDEO_COMPRAS_CXP", "paraQue": "SI: redondeo 3 decimales al armar FCXPD desde IMOVH.", "donde": "SPK_INSERT_CXP_INV", "critico": true },
+        { "id": "IDIMP_IVA", "paraQue": "Impuesto IVA por defecto en líneas CxP si falta en artículo.", "donde": "SPK_INSERT_CXP_INV" },
+        { "id": "CTAIMPUESTOCONSUMO", "paraQue": "Cuenta impuesto al consumo en FCXPD.", "donde": "SPK_INSERT_CXP_INV" },
+        { "id": "IDTIPOCXP_DEFAULT", "paraQue": "Tipo CxP al auto-crear desde entrada compra.", "donde": "SPK_CONFIRMARENTRADAS" },
+        { "id": "TERCATPROVEEDOR", "paraQue": "Categoría tercero proveedor en FCXP automática.", "donde": "SPK_CONFIRMARENTRADAS" },
+        { "id": "CONTABIMOV_JOB", "paraQue": "SI: contabilización IMOV vía job tras confirmar.", "donde": "SPK_CONFIRMARENTRADAS" }
+      ]
+    },
+    {
+      "id": "pickpack-venta",
+      "nombre": "Pick & Pack y venta (salidas)",
+      "variables": [
+        {
+          "id": "IDMOVPICKPACK",
+          "paraQue": "Lista CSV de IDTIPOMOV habilitados para órdenes Pick&Pack (CREAR_ORDEN_PICKING, CONFIRMA_PICKING).",
+          "donde": "SPQ_IMOV_4; SPQ_IMOV CONFIRMA_SALIDA (ES_PICKPACK)",
+          "critico": true
+        },
+        {
+          "id": "IDINVENTA_PARTICULAR",
+          "paraQue": "Tipo de la venta a particulares (VENTAFAR). En CEM es VE. Junto a IDINVMOVVENTAFACTURA entra en las reglas de precio del picking.",
+          "donde": "SPQ_IMOV_4; SPQ_VENTAFAR"
+        },
+        {
+          "id": "PVENTA_MOV_SAL",
+          "paraQue": "SI: exige precio venta (PVENTA) en lotes al preparar/confirmar picking para tipos venta.",
+          "donde": "SPQ_IMOV_4 CONFIRMAR_PREPARACION_PICKING; CONFIRMA_PICKING"
+        },
+        {
+          "id": "PVENTA_AUTO_TARIFA",
+          "paraQue": "SI: tarifa automática al agregar lote en pickpack venta.",
+          "donde": "SPQ_IMOV_4 AGREGAR_LOTE_PICKING"
+        }
+      ]
+    },
+    {
+      "id": "dispensacion-izsol",
+      "nombre": "Dispensación / IZSOL (vecino del flujo compras)",
+      "variables": [
+        { "id": "MVIGENCIAIZSOL", "paraQue": "SI: control horas vigencia solicitud.", "donde": "SPQ_IZSOL" },
+        { "id": "HVIGENCIAIZSOL", "paraQue": "Horas máximas vigencia IZSOL.", "donde": "SPQ_IZSOL" },
+        { "id": "IZSOL_MED_SOLI", "paraQue": "SI: muestra médico solicitante en entrega.", "donde": "SPQ_IZSOL" },
+        { "id": "IENF_RECIBE_INSUMOS", "paraQue": "SI: enfermería recibe insumos en flujo CE.", "donde": "SPQ_IZSOL" },
+        { "id": "VALIDA_INVI", "paraQue": "SI: valida REGINVIMA al dispensar.", "donde": "SPQ_IZSOL" },
+        { "id": "IXCOUNTRY", "paraQue": "PERU vs otros: reglas CE, SAP, facturación.", "donde": "Varios SPQ_IZSOL / SPK_*" }
+      ]
+    }
+  ],
+  "listaConsultaSql": [
+    "DEINVNODESER", "IMPUESTO_OBL", "IART_SER_UNICO", "IDSEDEPRINCIPAL", "NRO_ESPACIOS_ITARCNS",
+    "IDINVMOV_COMPRAS", "IDINVMOV_PRESTAMOS", "IDINVMOV_REMISION_EN", "IDINVMOV_SI", "IDINVTPROPIA",
+    "IDTS", "IDTE", "VALID_CCOSTO_CXP", "TRAN_EDIT_OC", "IDINVDIASPARAVENCER", "NDIASANTESVENCE",
+    "IDBOD_HEMODERIVADOS", "IDITARHEMODERIVADOS", "IDMODELOCONTABLE", "CONTAB_INV_IVA_ITAR",
+    "CUENTA_IVA_CXP", "REDONDEO_COMPRAS_CXP", "MOV_PERIODOS_ANT", "ASI_VAL_CCAF_CARGOS",
+    "ESFARMACIA", "CODIGOUNICOICBU", "COLOCAR_TOTAL_IMOV"
+  ]
+}

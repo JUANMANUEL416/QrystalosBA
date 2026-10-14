@@ -1,29 +1,245 @@
 {
   "id": "inventario",
-  "nombre": "Inventario · Movimientos",
-  "modulo": "IMOV",
+  "nombre": "Inventario, Compras y Farmacia",
+  "modulo": "INVENTARIO",
   "familia": "inventario",
   "prioridad": 25,
   "enRuta": false,
-  "estado": "parcial",
-  "resumen": "Gate periodo-inv-abierto leído 2026-09-11. Insertar mira PRI a medias; confirmar/anular IMOV no consulta CERRADO ni CERRADO_INV. No hay CERRAR_INV.",
-  "actualizado": "2026-09-11T19:12:00",
-  "notaSql": "Fichas en sps.json desde sql/SPQ_IMOV.sql, SPQ_IZSOL.sql y SPQ_PRI.sql (2026-09-11). No se leyó el catálogo ni los SPK anidados.",
-  "alcanceHasta": "Gate de periodo (PRI.CERRADO + CERRADO_INV) en confirmación/anulación de IMOV. No se documentó el circuito completo de existencias ni compras.",
+  "estado": "documentado",
+  "incluirProcesoMdEnLibro": false,
+  "resumen": "Releído 2026-10-04 de punta a punta: configuración (tipos de bodega, bodegas, tipos de movimiento, tipos de artículo, catálogos farmacéuticos, artículo, artículo por bodega, estantes), compras (lista de precios → cotización → orden → confirmación → tránsito → loteo → entrada confirmada → CxP automática), salidas y traslados, solicitudes/dispensación, conteo físico y ajustes, devolución a proveedor y vencidos, venta al público con caja y factura, Pick & Pack, informes/kardex y las tres salidas contables. Menú real tomado de USPROH (MENUQ_INVENTARIO). Segunda pasada: fichados los SPK del flujo y los satélites; el libro no contiene volúmenes ni datos de un cliente.",
+  "documentos": [
+    "MOVIMIENTOS-INVENTARIO.md",
+    "catalogo-movimientos-inventario.json",
+    "TICKETS-CAMBIOS-PENDIENTES.md",
+    "../flujo-compras-inv-cxp-caja/CATALOGO-ARTICULO.md",
+    "../flujo-compras-inv-cxp-caja/CONFIG-BODEGA-TIPO-MOV.md",
+    "../flujo-compras-inv-cxp-caja/CONF-ENTRADA-CXP.md",
+    "../flujo-compras-inv-cxp-caja/OC-CONFIRMACION-RECEPCION.md",
+    "../flujo-compras-inv-cxp-caja/USVGS-INVENTARIO.md",
+    "COESME643-flujo-loteo-factura.pdf"
+  ],
+  "actualizado": "2026-10-12T13:40:00",
+  "notaSql": "2026-10-04. Liberada 2.0.7 (IDANT 2.0.6). Se bajó PREVERSION de 39 objetos del módulo (catálogo IXONLINE/SQL). Idénticos a 2.0.7 salvo SPQ_IZSOL (+FORMATO_TRANSFUSION, presupuesto Perú, centro de costo HBALI), SPK_CONFIRMARENTRADAS (corrige total IDXB/IART con líneas ESTADO 9; devoluciones Perú), SPK_CONFIRMASAL_CM (completa CCOSTO/IDAREA en TRANS_CE; quita un AND 1=2) y SPQ_IARTO. Frente a la ficha 2.0.5: SPQ_IART ya liberó IART_SER_UNICO. Variables leídas en pruebas: IDINVMOV_COMPRAS=02, IDINVMOV_REMISION_EN=22, IDINVENTA_PARTICULAR=VE, IDINVMOVVENTAFACTURA=VC, IDINVDEVPROVEEDOR=05, IDINVSALVENCIDOS=07, IDTS=14, IDTE=13, IDINVTRASLOTESAL/ENT=24/25, IDINVSIENT/SISAL=SI/SA, IDINVTPROPIA=PR, IDINVTFSA=21, IDMOVPICKPACK=14,VC. ESFARMACIA vale «SIP» en pruebas (el SP compara con «SI»). 2026-10-10: loteo con factura en el control imov-transito (Todos, faltante, catálogo, IDIMP_IVA, CUFE repetido en RADIAN).",
+  "alcanceHasta": "Desde el tipo de bodega hasta la CxP automática y la contabilización; venta al público hasta factura y recibo de caja. Dispensación clínica detallada en el proceso hermano «dispensacion»; CxP en «cxp-fcxp». Satélites de farmacia clínica (lentes, perfil farmacoterapéutico, 24 horas, lista de trabajo, MAD, mobiliario, interfaz) quedan ubicados en el menú con su MODELO, sin flujo propio.",
+  "flujoResumen": "Configuración (ITBOD → IBOD → ITMO ↔ USVGS → ITAR → catálogos → IART → IDXB) → Compras (ILPRE → ICTZ → FCOM C → CONFIRMAR_ORDEN P → ITRA/ITRAH → loteo → ON_ACEPTA_TRANSITO → IMOV 0 → CONF_ENTRADA → IEXI/IDXB + FCXP → FCOM R/I) → Salidas (IMOV salida / traslado 14→13 / dispensación IZSOL → CONFIRMA_SALIDA o CONFIRMASAL_CM → IEXI) → Conteo (IFIS → listados → 3 conteos → APLICAR ajustes) → Venta (PRESELL → GUARDA_VENTA → IMOV VE + FTR + FCJ) → Contabilidad (OM INV / CxP / FTR).",
+  "menu": {
+    "fuente": "USPROH IDPROCEDIMIENTO = MENUQ_INVENTARIO (PCEM 2026-10-04) vía SPQ_MENUQ_COL; visible según USGRUH del grupo.",
+    "individuales": [
+      "Lista de trabajo (inv.listatrabajo)",
+      "Informes (inv.exis_costo)",
+      "Entrega óptica / lentes (inv.lentes)",
+      "Semáforo (inv.semaforo)",
+      "Perfil farmacoterapéutico",
+      "Solicitudes 24 horas (inv.izsolm)",
+      "Packing (inv.packing)",
+      "Movimientos (inv.imov)",
+      "Canastas (inv.canasta)",
+      "Solicitudes (inv.izsol_2)",
+      "Impresión masiva entregas (inv.printentremasi)",
+      "Fórmulas infusión reporte (FAR_IF_REPORTE)",
+      "Cotización comercial (inventario.ic)",
+      "Horarios de tratamiento",
+      "Recibe solicitud y verifica (inv.solicitudes)",
+      "Impresión de etiquetas (inv.impetiquetas)",
+      "Logística MAD",
+      "Interfaz inventario (inv.loginterfazinv)",
+      "Gasto por consumo (inv.gastosxconsumo)"
+    ],
+    "grupos": {
+      "Procesos": [
+        "Orden de compra (inv.ordcom)",
+        "Devolución a proveedor (inv.devpro)",
+        "Conteo físico (inv.conteo)",
+        "Cuentas por pagar (inv.conf_cxp)",
+        "Ajustes de inventario (inv.Ajustes_gnral)"
+      ],
+      "Venta a particulares": [
+        "Venta de insumos (inv.venta)",
+        "Lista de precios (inv.listprecio)",
+        "Factura INV (inv.Factura)",
+        "Cotización de compras (inv.cotizacion)",
+        "Gestión de ventas (inv.gesventa)"
+      ],
+      "Mobiliario": [
+        "Gestión de mobiliario (inv.mob_solicitado)"
+      ],
+      "Configuración": [
+        "Tipos de bodega (ITBOD)",
+        "Bodegas (IBOD)",
+        "Catálogo fórmulas infusión (FAR_IFCAT)",
+        "Tipos de movimiento (ITMO)",
+        "Tipos de artículo (ITAR)",
+        "Clases (ICLA)",
+        "Gastos por consumo (TGEN)",
+        "Formas farmacéuticas (IFFA)",
+        "Vías de aplicación (TGEN)",
+        "Concentraciones (ICCN)",
+        "Principios activos (IPAC)",
+        "Unidades (IUNI)",
+        "Tipos de genérico (ITGEN)",
+        "Estantes (ESTANTE)",
+        "Genéricos (IGEN)",
+        "Artículos (IART)",
+        "Artículo por bodega (IDXB)",
+        "Clase de riesgo (TGEN)"
+      ]
+    }
+  },
   "ventanas": [
     {
-      "uso": "Movimientos de inventario",
-      "ruta": "inv.imov",
-      "path": "/inv/ges",
-      "vue": "GestionLotePage → GestionTempComponent / IMOVComponent",
-      "entrada": "Inventario → Movimientos. Entrada/salida IMOV; tránsito ITRA."
+      "uso": "Configuración · catálogos",
+      "ruta": "inv.conf.*",
+      "path": "/inv/conf/itbod … /inv/conf/clase_riesgo",
+      "vue": "pages/inv/conf/* → components/conf/inv/*Component.vue",
+      "entrada": "Inventario → Configuración. Cada catálogo guarda con MODELO · GUARDAR / ACTUALIZAR / ELIMINAR (ITBOD, IBOD, IBODS, ITMO, ITAR, ICLA, IFFA, ICCN, IPAC, IUNI, ITGEN, IGEN); IDXB · CRUD_IDXB; ESTANTE · CRUD_*; TGEN para vías, riesgo y gastos por consumo."
     },
     {
-      "uso": "Periodos (bandera inventario)",
-      "ruta": "cont.periodosContables / conf.PRI",
-      "path": "/cont/periodosContables",
-      "vue": "PRIComponent + ProcesosContables",
-      "entrada": "PRI.CERRADO_INV. Cierre contable: CONTABILIDAD_2 · VALIDAR_PERIODO_BASICO (VALIDAINVCIERRECONT)."
+      "uso": "Artículos",
+      "ruta": "inv.conf.iart",
+      "path": "/inv/conf/iart",
+      "vue": "IARTComponent (pestañas Datos Básicos, Datos Adicionales, Alertas, Códigos de Barras, Diagnósticos UNIRS, Unidosis)",
+      "entrada": "MODELO IART: GUARDAR, VALIDA_SERVICIO(_HIJO), GET_CONTADOR, CAMBIAR_ESTADO, TRANSFERIR_ARTICULO, GUARDAR_FABRICANTE, CRUD_IARTK, CRUDITXA, CRUDIARTDX, EXPORTAR. Permisos boton_de_nuevo_articulo, boton_de_editar_articulo, BTN_NUEVO_SKU, BTN_EDITAR_SKU, BTN_CARGAR_PRECIO_REGULADO, CrearFab, TRASLADA_IART."
+    },
+    {
+      "uso": "Lista de precios (compras)",
+      "ruta": "inv.listprecio",
+      "path": "/inv/listprecio",
+      "vue": "ListaPrecioPage → ListaPrecioComponent",
+      "entrada": "MODELO ILPRE: GUARDA_ILPRE, GUARDA_ILPRED, importación Excel de precios y homologación, GUARDA_TERCERO."
+    },
+    {
+      "uso": "Cotización de compras",
+      "ruta": "inv.cotizacion",
+      "path": "/inv/cotizacion",
+      "vue": "CotizacionPage → CotizacionComponent",
+      "entrada": "MODELO ILPRE sobre ICTZ/ICTZD: GUARDA_COTIZACION, GUARDA_ICTZD, IMPORTAR_MASIVO_ICTZD, GENERAR_OC. Permiso BTN_ELIMINAR_ICTZD."
+    },
+    {
+      "uso": "Orden de compra",
+      "ruta": "inv.ordcom",
+      "path": "/inv/ordcom",
+      "vue": "OrdComPage → FComComponent / FCOMDComponent",
+      "entrada": "MODELO FCOM/FCOMD: solicitud (GUARDA_FCOM_SOL, GENERA_OC), orden (GUARDAR, CONFIRMAR_ORDEN, ABRIR, ANULAR, CLONAR), recepción (RECEPCION_MASIVA, RECEPCION_PARCIAL_OC), notas (FCOMNOT) y Excel."
+    },
+    {
+      "uso": "Movimientos",
+      "ruta": "inv.imov",
+      "path": "/inv/ges",
+      "vue": "IMOVPage → IMOVComponetNew (general) / IMOVComponent (hemoderivados) / TraerTransitoTempComponent",
+      "entrada": "MODELO IMOV (entrada, salida, entregas, confirmar, anular), IZSOL (CONF_ENTRADA, tránsito, custodia), IZSOL_TRANSITO (loteo), ITRA/ITRADEV, IMOV_3 (facturar, traslados), IART (fabricante)."
+    },
+    {
+      "uso": "Solicitudes / dispensación",
+      "ruta": "inv.izsol_2",
+      "path": "/inv/sol_2",
+      "vue": "SolicitudesPage → IndexComponent / DispensarComponent",
+      "entrada": "MODELO IZSOL / IZSOL_2: AGREGAR → ENTREGAR → PROCESAR → CONF_MOVIMIENTO. Detalle en el proceso «dispensacion»."
+    },
+    {
+      "uso": "Canastas de cirugía",
+      "ruta": "inv.canasta",
+      "path": "/inv/canasta",
+      "vue": "CanastaPage",
+      "entrada": "MODELO IZSOL: AGREGAR_CANASTA, TRAER_CANASTA, VALIDA_CODIGO_CANASTA, ENTREGAR, DEVOLVER, PROCESAR, ANULAR_CANASTA, DATOS_ETIQUETA. Tipo de movimiento según la variable INVE_CIRU_TIPO_MOV."
+    },
+    {
+      "uso": "Conteo físico",
+      "ruta": "inv.conteo",
+      "path": "/inv/conteo",
+      "vue": "Procesos/ConteoFisicoPage",
+      "entrada": "MODELO CONTEOFISICO: CRUD, CREA_LISTADO, GUARDA_REGISTRO, CERRAR/ABRIR/CLONAR/BORRAR_CONTEO, CREA_NUEVO_LOTE, APLICAR, ANULA_MASIVO, saldo inicial por Excel."
+    },
+    {
+      "uso": "Ajustes",
+      "ruta": "inv.Ajustes_gnral",
+      "path": "/inv/AjustesInv",
+      "vue": "Procesos/AjustesInvPage → AjusPcostoComponent",
+      "entrada": "MODELO INFOMRES_INV: AJUSTA_PCOSTO (Ajustar / Procesar Ajuste) y ACTUALIZAR_EXISTENCIAS (recalcular totales desde lotes)."
+    },
+    {
+      "uso": "Devolución a proveedor",
+      "ruta": "inv.devpro",
+      "path": "/inv/devpro",
+      "vue": "Procesos/DevProPage",
+      "entrada": "MODELO DEVOLU_PROVEEDOR: GUARDA_REGISTRO (desde la OC), GUARDA_REGISTRO_IMOVH, DEVOLUCION_TOTAL, CONFIRMAR_DEVOLUCION. Tipo según IDINVDEVPROVEEDOR."
+    },
+    {
+      "uso": "Semáforo de vencimientos",
+      "ruta": "inv.semaforo",
+      "path": "/inv/sema",
+      "vue": "SemaforoPage",
+      "entrada": "MODELO SEMAFORO: SEMAFORO_STOCK, CONFIG_SEMAFORO_*, GEN_MOVIMIENTO (salida de vencidos tipo 07), EXPORTAR_SEMAFORO. Permisos Configurar semaforo vencimientos, Filtro todas las bodegas, Salida un/todos los articulos vencidos."
+    },
+    {
+      "uso": "Venta a particulares",
+      "ruta": "inv.venta",
+      "path": "/inv/venta",
+      "vue": "VentaPage → VentaPrincipalComponent (pestañas Medicamentos, F. Electrónica)",
+      "entrada": "MODELO VENTAFAR + CONF_CAJA. Carrito PRESELL, recaudo, GUARDA_VENTA con tipo VE; factura FTR y recibo FCJ."
+    },
+    {
+      "uso": "Factura INV (masiva)",
+      "ruta": "inv.Factura",
+      "path": "/inv/facturaInv",
+      "vue": "FacturaPage → FacturaInvComponent",
+      "entrada": "MODELO IMOV_VENTA: MARCA_FACTURAR, FACTMASIVO_INV, ANULA_IMOV_SALVENTA, DEVUELVE_ARTICULO, ANEXO_PREVIO. Tipo VC (IDINVMOVVENTAFACTURA)."
+    },
+    {
+      "uso": "Gestión de ventas",
+      "ruta": "inv.gesventa",
+      "path": "/inv/gesventa",
+      "vue": "GestionVentaPage",
+      "entrada": "Consulta post-venta; GESVENTA · GEN_NC (nota crédito, permiso NoGenerarReingreso) e IMPRESION_FTR."
+    },
+    {
+      "uso": "Packing",
+      "ruta": "inv.packing",
+      "path": "/inv/packing",
+      "vue": "PackingPage",
+      "entrada": "MODELO IMOV_4: LISTA_PICKING/PACKING, CREAR_ORDEN_PICKING, AGREGAR_LOTE_PICKING, CONFIRMA_PICKING, FINALIZAR_PACKING, DEVOLVER_PICKING, roles. Solo bodegas con MANEJA_PICKPACK."
+    },
+    {
+      "uso": "Informes",
+      "ruta": "inv.exis_costo",
+      "path": "/inv/exi_costo",
+      "vue": "izsol/ExistenciaCostoPage (pestañas Dashboard, Históricos de movimientos, Medicamentos controlados, Por artículo, Área y tercero)",
+      "entrada": "MODELO EXISTENCIA (existencias por sede/bodega/lote, consumos, precio-costo, custodia, traslado entre lotes) e INFOMRES_INV (históricos, kardex, promedios, medicamentos pendientes)."
+    },
+    {
+      "uso": "Cuentas por pagar (informes)",
+      "ruta": "inv.conf_cxp",
+      "path": "/inv/conf_cxp",
+      "vue": "Procesos/ConfCxpPage",
+      "entrada": "MODELO CONF_CXP (informes y Excel de CxP) + FCXP completo (proceso cxp-fcxp)."
+    },
+    {
+      "uso": "Gasto por consumo / carga masiva",
+      "ruta": "inv.gastosxconsumo / movcargamasiva",
+      "path": "/inv/gastosxconsumo",
+      "vue": "GastosConsumoComponent",
+      "entrada": "MODELO IZSOL (GUARDAR_SOLICITUD, CONFIRMAR_SOLICITUD, DESHACER_PEDIDO, BORRAR_SOLICITUD), IZSOLD, IZSOL_2 · CANTIDADES_INICIO_OM. Tipos 08 / 8A."
+    },
+    {
+      "uso": "Cotización comercial",
+      "ruta": "inventario.ic",
+      "path": "/inv/cotizaciones",
+      "vue": "CotizacionesPage",
+      "entrada": "MODELO ICTZG. Tercero, plan, bodega; Pendiente / Cerrada / Anulada. No genera orden ni venta."
+    },
+    {
+      "uso": "Periodos y contabilidad",
+      "ruta": "cont.periodosContables / cont.conciContables",
+      "path": "/cont/periodosContables, /cont/conciContables",
+      "vue": "PRIComponent, ConciContablesPage → Inventario",
+      "entrada": "PRI.CERRADO_INV; OM Inventario → SPK_NC_CONTAB_INV por CNSMOV (con CONTABIMOV_JOB = SI la entrada no contabiliza en línea: lo hace el job / OM Inventario)."
+    },
+    {
+      "uso": "Satélites farmacia clínica",
+      "ruta": "inv.listatrabajo, inv.lentes, perfil_farma, inv.izsolm, inv.solicitudes, inv.impetiquetas, inv.logisticamad, inv.loginterfazinv, inv.mob_solicitado, horarios_tratamientos, inv.farIfReporte, inv.horariosTrat, inv.delivery_mad",
+      "path": "/inv/lista, /inv/lentes, /inv/perfil_farma, /inv/izsolm, /inv/mob_sol, /inv/logistica, /inv/loginterfazinv",
+      "vue": "ListaTrabajoPage, GesLentesPage, PerfilFarmaPage, IzsolmPage, MobSolPage, LogisticaMadPage, LogInterfazInvPage",
+      "entrada": "MODELOs LISTA_AUT (40 METODOs), GES_LENTES_COL, PERFIL_FARMACOTERAPEUTICO, IZSOLM, MOBI, FAR_IF, FAR_CTRLDOSIS, DELIVERY_MAD, GES_MED, TRANSFUSIONAL, INTERFAZINV · REENVIAR. Fichados por METODO en sps.json; sin flujo propio en este libro."
     }
   ],
   "capas": [
@@ -31,49 +247,176 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "parcial",
-      "explicacion": "Bodegas IBOD, tipos ITMO, periodo PRI (CERRADO y CERRADO_INV). Gate periodo-inv-abierto leído en sql/ 2026-09-11.",
+      "estado": "documentado",
+      "explicacion": "Orden recomendado: tipos de bodega → bodegas (con seguridad, excepciones y bodega que pide) → tipos de movimiento y su variable USVGS → tipos de artículo → catálogos farmacéuticos (clase, genérico, forma, concentración, principio activo, unidad) → artículo → artículo por bodega (stocks) → estantes. Sin esto no existe el movimiento: la variable dice qué tipo usar, la bodega dice dónde y con qué centro de costo, el artículo dice qué y a qué cuenta.",
       "tablasClave": [
+        "ITBOD",
         "IBOD",
+        "IBODS",
+        "IBODEX",
+        "IEXCEP",
         "ITMO",
+        "ITAR",
+        "ICLA",
+        "IGEN",
+        "IFFA",
+        "ICCN",
+        "IPAC",
+        "IUNI",
+        "IART",
+        "IDXB",
+        "IARTE",
+        "TGEN",
+        "USVGS",
+        "KMCOM",
         "PRI"
       ],
       "controles": [
         {
+          "id": "catalogo-configuracion",
+          "nombre": "Tipos de bodega, bodegas y catálogos",
+          "explicacion": "ITBOD agrupa bodegas (farmacéuticas, carro de paro, botiquín, administrativas). IBOD lleva sede, centro de costo, bodega que pide (IDBODEGAPIDE, obligatoria para solicitar compras), MUEVEEXISTENCIAS, VALIDASTOCK, NOCONTABILIZA, ESDECUSTODIA, MANEJA_PICKPACK, COMPRASOL. Seguridad IBODS: qué usuarios entran (BODEGASELECT) y qué tipos de artículo acepta. Los catálogos (ICLA/ICLAH/IGRU, IGEN+ITGEN, IFFA, ICCN, IPAC, IUNI) solo se borran si nadie los usa.",
+          "invariante": "Nada se borra con hijos: tipo de bodega con bodegas, bodega con IBODEX/IBODS/IDXB/movimientos, catálogo con artículos. Códigos y descripciones únicos.",
+          "ventanasFe": [
+            "/inv/conf/itbod",
+            "/inv/conf/ibod",
+            "/inv/conf/icla",
+            "/inv/conf/igen",
+            "/inv/conf/iffa",
+            "/inv/conf/iccn",
+            "/inv/conf/ipac",
+            "/inv/conf/iuni",
+            "/inv/conf/itgen",
+            "/inv/conf/estan"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_ITBOD",
+              "metodo": "GUARDAR / ACTUALIZAR / ELIMINAR",
+              "rol": "Tipo de bodega."
+            },
+            {
+              "nombre": "SPQ_IBOD",
+              "metodo": "GUARDAR / ACTUALIZAR / ELIMINAR / BODEGASELECT / UPDATEBODEGAUSER",
+              "rol": "Bodega y bodega por defecto del equipo (UBEQ)."
+            },
+            {
+              "nombre": "SPQ_IBODS",
+              "metodo": "GUARDAR / GET_TIPO_SEGURIDAD",
+              "rol": "Seguridad por bodega."
+            },
+            {
+              "nombre": "SPQ_ICLA",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Clase, subclase, grupo."
+            },
+            {
+              "nombre": "SPQ_IGEN",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Genérico DCI."
+            },
+            {
+              "nombre": "SPQ_ESTANTE",
+              "metodo": "CRUD_TGEN / CRUD_IARTE",
+              "rol": "Estantes y artículos por estante."
+            },
+            {
+              "nombre": "SPQ_IDXB",
+              "metodo": "CRUD_IDXB",
+              "rol": "Stock mínimo/máximo/punto de reorden por bodega."
+            }
+          ]
+        },
+        {
+          "id": "catalogo-itmo",
+          "nombre": "Tipos de movimiento y variables USVGS",
+          "explicacion": "ITMO define Débito (salida) o Crédito (entrada), si afecta costo o promedio, si se contabiliza y con qué comprobante, si genera tránsito (y su tipo opuesto), si pide proveedor o valor. El proceso no elige el tipo por nombre sino por variable: IDINVMOV_COMPRAS=02, IDINVMOV_REMISION_EN=22, IDTS/IDTE=14/13 (traslado), IDINVENTA_PARTICULAR=VE, IDINVMOVVENTAFACTURA=VC, IDINVDEVPROVEEDOR=05, IDINVSALVENCIDOS=07, IDINVTRASLOTESAL/ENT=24/25, IDINVSIENT/SISAL=SI/SA (ajustes de conteo), IDINVTPROPIA=PR (custodia), IDINVTFSA=21 (códigos habituales; cada institución configura los suyos).",
+          "invariante": "Cada variable IDINV* apunta a un ITMO activo del tipo correcto (el SP rechaza «La variable configurada no es de tipo salida»). GENTRANSITO exige IDTIPOMOVOP. SECONTABILIZA requiere cuentas KMCOM MOV_INVENTARIO (y CXP_COMPRAS para compras); si faltan, la confirmación falla con «Inconsistencia. No existe configuración contable».",
+          "ventanasFe": [
+            "/inv/conf/itmo",
+            "/conf/usvgs"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_ITMO",
+              "metodo": "GUARDAR / ACTUALIZAR / ELIMINAR",
+              "rol": "Tipo de movimiento; borrar solo valida IEXCEP."
+            },
+            {
+              "nombre": "SPK_INSERT_ITRA_REQ",
+              "metodo": "(confirmar OC)",
+              "rol": "ITRA con el tipo de la variable."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_INV",
+              "metodo": "(OM INV)",
+              "rol": "SECONTABILIZA según ITMO e IBOD.NOCONTABILIZA."
+            }
+          ]
+        },
+        {
+          "id": "iart-maestro",
+          "nombre": "Tipo de artículo y artículo (ITAR / IART / SER)",
+          "explicacion": "ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, concentración, riesgo, IVA), el prefijo del consecutivo y la cuenta. IART GUARDAR genera el código, puede crear el servicio SER (para facturar) y la presentación hija apunta a su principal (IDARTICULOPRIN). Con IART_SER_UNICO = SI (liberado en 2.0.7) no se repite CUM ni descripción. Botón Generar Servicios en ITAR crea SER para todo el tipo. Precio regulado: la pantalla llama IART · CARGAR_PRECIO_REGULADO y ese método no existe en SPQ_IART (pendiente).",
+          "invariante": "Artículo activo, con tipo coherente y servicio cuando se factura. No se borra si está en alguna bodega (IDXB). DEINVNODESER configurada.",
+          "ventanasFe": [
+            "/inv/conf/itar",
+            "/inv/conf/iart",
+            "/inv/conf/idxb"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_ITAR",
+              "metodo": "GUARDAR / ELIMINAR / TARI_EXPORTAR_EXCEL",
+              "rol": "Tipo de artículo."
+            },
+            {
+              "nombre": "SPQ_IART",
+              "metodo": "GUARDAR / VALIDA_SERVICIO / VALIDA_SERVICIO_HIJO / GET_CONTADOR",
+              "rol": "Alta y edición con servicio."
+            },
+            {
+              "nombre": "SPQ_IART",
+              "metodo": "CAMBIAR_ESTADO / TRANSFERIR_ARTICULO / GUARDAR_FABRICANTE",
+              "rol": "Estado con LOG_IART, cambio de tipo, fabricante como tercero."
+            },
+            {
+              "nombre": "SPQ_IART",
+              "metodo": "CRUD_IARTK / CRUDITXA / CRUDIARTDX / NUEVA_DOSIS",
+              "rol": "Kits, transformaciones, diagnósticos UNIRS, unidosis."
+            },
+            {
+              "nombre": "SPQ_IEXI",
+              "metodo": "EDITAR / SACAR_CUARENTENA",
+              "rol": "Corregir lote y liberar cuarentena (BTN_INV_EDIT_ART)."
+            }
+          ]
+        },
+        {
           "id": "periodo-inv-abierto",
           "nombre": "Periodo inventario / contable abierto",
-          "explicacion": "SR20260911-001. Confirmado en sql/ 2026-09-11: CRUD_IMOV NUEVO KO si CERRADO_INV=1; CRUD_IMOV_SAL KO si CERRADO=1 (no mira CERRADO_INV). CONFIRMA_SALIDA, CONFIRMA_ENTREGA, ANULAR_SALIDA, CONF_ENTRADA y ANULAR_ENTRADA no consultan PRI. CRUDPRI puede marcar CERRADO_INV desde el formulario sin listar pendientes. Cierre contable (VALIDAR_PERIODO_BASICO) y OM/ENV_CONTA sí bloquean el asiento.",
-          "invariante": "Propuesta (aún no implementada): con PRI.CERRADO=1 o CERRADO_INV=1 no se inserta, confirma ni anula IMOV del mes. Hoy solo el insert aplica un flag (distinto en entrada vs salida).",
+          "explicacion": "CRUD_IMOV (entrada) rechaza fecha futura, periodo cerrado (PRI.CERRADO_INV) y, si MOV_PERIODOS_ANT ≠ SI, movimientos de meses anteriores. CRUD_IMOV_SAL igual para salidas. Las confirmaciones y anulaciones no consultan PRI; el cierre contable (VALIDAR_PERIODO_BASICO) sí bloquea si quedan pendientes.",
+          "invariante": "Propuesta no implementada (SR20260911-001): con PRI cerrado no insertar/confirmar/anular IMOV del mes.",
           "sps": [
             {
               "nombre": "SPQ_IMOV",
-              "metodo": "CRUD_IMOV",
-              "rol": "Inserta entrada: valida CERRADO_INV, no CERRADO."
-            },
-            {
-              "nombre": "SPQ_IMOV",
-              "metodo": "CRUD_IMOV_SAL",
-              "rol": "Inserta salida: valida CERRADO, no CERRADO_INV."
+              "metodo": "CRUD_IMOV / CRUD_IMOV_SAL",
+              "rol": "Validan fecha y periodo."
             },
             {
               "nombre": "SPQ_IMOV",
               "metodo": "CONFIRMA_SALIDA / CONFIRMA_ENTREGA / ANULAR_SALIDA",
-              "rol": "No valida PRI. Hueco del REQ."
+              "rol": "No validan PRI."
             },
             {
               "nombre": "SPQ_IZSOL",
               "metodo": "CONF_ENTRADA / ANULAR_ENTRADA",
-              "rol": "No valida PRI. Hueco del REQ."
-            },
-            {
-              "nombre": "SPQ_CONTABILIDAD_2",
-              "metodo": "VALIDAR_PERIODO_BASICO",
-              "rol": "Ya KO «MOVIMIENTOS DE INVENTARIO PENDIENTES» al cierre contable."
+              "rol": "No validan PRI."
             },
             {
               "nombre": "SPQ_PRI",
-              "metodo": "CRUDPRI / CERRAR_FACTURA / ABRIR_FACTURA",
-              "rol": "CERRADO_INV se edita a mano. No hay CERRAR_INV/ABRIR_INV."
+              "metodo": "CRUDPRI",
+              "rol": "CERRADO_INV manual."
             }
           ]
         }
@@ -83,50 +426,2083 @@
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio",
-      "estado": "esqueleto",
-      "explicacion": "Crear IMOV (ESTADO 0) → detalle IMOVH → entrega ISAL si salida → CONFIRMA_SALIDA o CONF_ENTRADA (ESTADO 1, IEXI). Anular ESTADO 2. Tránsito: ITRA. Fuente: runbook, no cuerpos SQL.",
+      "estado": "documentado",
+      "explicacion": "El movimiento IMOV nace en ESTADO 0 (pendiente), se confirma a 1 y se anula a 2. Entradas: detalle IMOVH → CONF_ENTRADA → lotes IEXI, totales IDXB/IART, kardex, CxP si es compra. Salidas: entregas ISAL por lote → CONFIRMA_SALIDA → descuento IEXI. Traslado: salida 14 en origen genera tránsito ITRA; la bodega destino lo acepta y confirma la entrada 13. Conteo físico, devolución a proveedor, vencidos y traslado entre lotes son movimientos que el sistema arma y confirma solo.",
       "tablasClave": [
         "IMOV",
         "IMOVH",
         "ISAL",
-        "ITRA"
+        "IEXI",
+        "IDXB",
+        "ITRA",
+        "ITRAH",
+        "IFIS",
+        "IFISH",
+        "IFISHU"
       ],
-      "controles": []
+      "controles": [
+        {
+          "id": "imov-entrada",
+          "nombre": "Entrada de almacén y confirmación",
+          "explicacion": "Entrada manual (CRUD_IMOV + CRUD_IMOVH) o entrada que viene del tránsito de compras (ya en estado 0). Al confirmar (CONF_ENTRADA → SPK_CONFIRMARENTRADAS) se exige fecha de vencimiento en todas las líneas, factura no duplicada con fechas, costo en todos los lotes, paciente si el tipo lo pide y, con VALID_CCOSTO_CXP = SI, centro de costo con cuenta CXP_COMPRAS. El SPK crea IEXI (con PCOSTO base DIAN en recepción de OC), suma IDXB/IART, cierra ITRA, actualiza kardex, pasa la orden a R o I y, si el tipo es 02/22/SI con proveedor, crea la CxP (FCXP + SPK_INSERT_CXP_INV + impuestos). Contabiliza en línea solo si CONTABIMOV_JOB ≠ SI.",
+          "invariante": "Ninguna línea sin lote, vencimiento ni costo. Cuentas KMCOM MOV_INVENTARIO y CXP_COMPRAS presentes para el tipo/centro/área. La entrada confirmada no se edita: se anula o se devuelve.",
+          "ventanasFe": [
+            "/inv/ges"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CRUD_IMOV / CRUD_IMOVH",
+              "rol": "Cabecera y detalle de entrada."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "CONF_ENTRADA / ANULAR_ENTRADA / CAMBIAR_FACTURA",
+              "rol": "Confirmar, anular pendiente, cambiar factura (si la CxP no está contabilizada)."
+            },
+            {
+              "nombre": "SPK_CONFIRMARENTRADAS",
+              "metodo": "(SPK)",
+              "rol": "IEXI, IDXB, kardex, FCOM R/I, CxP automática. PREVERSION corrige el total con líneas ESTADO 9."
+            },
+            {
+              "nombre": "SPK_INSERT_CXP_INV",
+              "metodo": "(SPK)",
+              "rol": "Detalle FCXPD desde IMOVH."
+            }
+          ]
+        },
+        {
+          "id": "imov-salida",
+          "nombre": "Salida de almacén",
+          "explicacion": "CRUD_IMOV_SAL valida permiso sobre el tipo y la bodega destino, fecha y periodo. Se arma la entrega por lote (CRUD_IART / ENTREGA_ISAL con código de barras / IMPORTAR_ARTICULOS) y CONFIRMA_ENTREGA copia IVA del lote a ISAL. CONFIRMA_SALIDA exige al menos una entrega, existencia por lote considerando reservas Pick&Pack, y con ESFARMACIA = SI ningún costo cero; descuenta IEXI, llama SPK_CONFIRMARSALIDAS y deja ESTADO 1. ANULAR_SALIDA usa SPK_ANULAR_MOV_INV y no deja anular si la solicitud de origen no está cerrada. Traslado entre lotes (Informes → TRASLADAR_LOTE) genera salida 24 + entrada 25 confirmadas en el acto.",
+          "invariante": "Sin entregas no hay confirmación. Existencia real por lote ≥ cantidad. Movimiento confirmado o anulado no admite cambios de detalle.",
+          "ventanasFe": [
+            "/inv/ges",
+            "/inv/exi_costo"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CRUD_IMOV_SAL / CRUD_IART / ENTREGA_ISAL / CONFIRMA_ENTREGA / CANCELAR_ENTREGA",
+              "rol": "Armar la salida por lote."
+            },
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CONFIRMA_SALIDA / ANULAR_SALIDA / IMOV_DESCARTAR / IMOV_ACTIVAR",
+              "rol": "Confirmar, anular, quitar o reactivar líneas."
+            },
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "TRAECOMPRA_SALIDA / IMOVH_DESDE_ISAL / FIRMA",
+              "rol": "Salida desde la misma compra; reconstruir detalle; firmas."
+            },
+            {
+              "nombre": "SPK_CONFIRMARSALIDAS",
+              "metodo": "(SPK)",
+              "rol": "Descuento, kardex y contabilidad de la salida."
+            },
+            {
+              "nombre": "SPQ_EXISTENCIA",
+              "metodo": "TRASLADAR_LOTE",
+              "rol": "Traslado entre lotes (24/25)."
+            }
+          ]
+        },
+        {
+          "id": "imov-transito",
+          "nombre": "Tránsito entre bodegas y loteo de compras",
+          "explicacion": "Dos orígenes del tránsito ITRA: la orden de compra confirmada (SPK_INSERT_ITRA_REQ) y el traslado entre bodegas (salida 14 → entrada 13 vía IDTS/IDTE). En «Traer del tránsito» la bodega destino lotea cada artículo (IZSOL_TRANSITO: SEL_RPDX, AGREGAR_IART, ON_PROCESAR → ITRAH INICIAL=1), registra causa si algo no llegó (GUARDA_CAUSA) y acepta (ON_ACEPTA_TRANSITO → SPK_INSERTENTTRANSITO → IMOV estado 0). Con INV_CUFE_LOTEO = SI y orden de compra, antes de lotear se elige Factura o Remisión. En Factura la lista de RADIAN se refresca al escribir documento, fechas o valor; se continúa con la fila elegida aunque ese CUFE esté repetido. El botón Todos completa de una vez los CUM que coinciden (lote y vencimiento; menos cantidad deja el faltante en la línea de abajo). El faltante de dinero se ve en Loteado. Al aceptar una factura, la entrada hereda el CUFE y el número y las fechas de RADIAN, y eso no se edita. Desde el loteo, Nuevo fabricante: al marcar Maneja IVA, Id. Impuesto sale de IDIMP_IVA si está vacío. Prevalidación VALIDAR_PROCESO: formato de verificación de factura diligenciado y cumplido, tránsito no tomado por otra estación. Cancelar: CANCELAR_TRANSITO → CANCELA_1 (evento FCOMTRANEVT y recálculo de la OC). Devolución de traslado: ITRAH_REGRESAR (IDTIMOVDEV_TRASLBOD = 33) con aprobación del origen si INV_APRU_DEVTRA = SI. Custodia: AGREGA_CUSTODIA / SUBIR_CUSTODIA_MASIVA con tipo PR. ITRA ESTADO 0 abierto, 1 recibido, 2 cancelado; el 3 no está rotulado en los SP leídos.",
+          "invariante": "No se acepta tránsito con artículos sin lote ni causa. Un tránsito lo trabaja una sola estación a la vez. La devolución de traslado requiere aprobación del origen cuando la variable está en SI. Con INV_CUFE_LOTEO = SI y documento Factura, el loteo pide el CUFE de RADIAN y deja el resumen en el encabezado. Al elegir el artículo se abren los hermanos a la izquierda, con el CUM junto al código. Si ese CUM está en la factura, la lista arranca filtrada y el check Ver todos la abre. El loteo queda a la derecha. La división arranca en 70 % hermanos y 30 % loteo. Al hacer clic en el loteo pasa a 30/70. Si el usuario arrastra el límite, ese ancho se mantiene hasta que cambie de panel: entonces vuelve a 70/30 del panel elegido. Si se desmarca el hermano, Hermanos vuelve al 70 %. Los nombres largos se ven en dos líneas para que cantidades, INVIMA, vencimiento y CUM sigan a la vista. La unidad de venta sale de IART. La cantidad del lote arranca con lo pedido menos lo loteado. En factura ese número se ve en Unidades y el total sale del precio de la orden por esas unidades. Si el artículo tiene unidad de venta mayor que 1, las cajas deben quedar enteras. Si la línea ya no tiene cantidad pendiente, el panel de loteo se cierra. No se queda el último artículo. Abajo, a la izquierda va lo loteado y a la derecha el detalle de la factura. El usuario arrastra el límite entre los dos para ampliar uno u otro lado. Si es remisión o la variable no está en SI, el detalle de la factura no se muestra y el loteado ocupa todo el ancho. El CUM se lee del texto del artículo (CUM: o CODCUM:); el código inicial es el del proveedor. No procesa si el bruto, el IVA o el total loteado no igualan la factura. Entran los lotes abiertos y los que ya están en el movimiento. Si el IVA no cuadra, no se puede procesar. Si la línea del tránsito tiene % IVA 0, la diferencia de centavos entre costo y sin IVA no cuenta como IVA. El loteo avisa cuál valor no cuadra y en qué artículo está el IVA; esa fila queda marcada. Si el tipo de artículo está marcado para no lotear, la recepción igual abre el loteo de esa línea. El IVA del ítem sale de la orden (tiene IVA y porcentaje). Remisión no usa este control. El aviso queda en la barra, después de la orden, y el botón Es factura abre el documento. Al aceptar el tránsito, el número, la fecha y el vencimiento de la factura se copian desde RADIAN. En la entrada ese CUFE, el tipo de movimiento y esos datos no se pueden modificar. El tipo sale de la variable de compras. En Documento de la entrada la lista se actualiza al escribir el documento, las fechas o el valor; Buscar sigue disponible. Si el CUFE elegido está más de una vez en RADIAN, basta con que exista: se usa la fila elegida y, al procesar, la más reciente. El aviso «El CUFE no está en RADIAN» solo aparece cuando no hay ninguna. El botón Todos, en la factura, muestra los artículos de la orden cuyo CUM está en la factura y aún tienen cantidad por lotear. La cantidad propuesta es la menor entre lo pendiente de la orden y lo que queda de la factura, en cajas. Si se pone menos, aparece debajo una línea con el faltante, sin lote ni fecha; esa línea no se guarda y la cantidad sigue pendiente. No se guarda una línea que tenga cantidad y le falte el lote o la fecha. En el título de Loteado se ve el valor ya loteado, incluidas las líneas que ya pasaron al movimiento, y aparte el faltante (total de la factura menos lo loteado). El detalle de abajo se puede ampliar. Si la diferencia con la factura es de uno o dos centavos, Igualar la carga en el último lote abierto. En la factura la descripción va en dos líneas; no hay columna de faltante por línea. En el catálogo de tránsitos, Exportar queda en la fila de filtros; a la izquierda del número de compra está copiar; el clic derecho abre las acciones del tránsito; se cierra con la X del título. En Nuevo fabricante, en una sola fila van Tipo artículo, Maneja IVA, Id. Impuesto e Id. Clase Impuesto. Al marcar Maneja IVA, si Id. Impuesto está vacío se llena con IDIMP_IVA; al desmarcar se limpian impuesto y clase. El código y la vigencia INVIMA van a la izquierda; los códigos del medicamento, a la derecha. En Documento de la entrada, si el tránsito ya tiene CUFE, Cancelar cierra sin guardar. El clic en una factura la guarda y cierra el diálogo. La lista muestra los ítems de cada factura y las ordena de la más parecida a la orden (ítems y valor) a la menos. La diferencia de ítems entre la factura y la orden no puede superar los ítems de la orden por 3; si la supera, no se asigna. Si el valor de la factura supera en más del 30 % el de la orden, se avisa que lo más probable es que no sea la factura de esa orden y el usuario decide si la usa. Si el valor se parece pero menos de la mitad de los productos de la factura se reconoce en la orden por nombre o CUM, el loteo avisa y marca esas líneas. Si una parte del artículo ya está loteada, el pendiente trae el valor que falta de la factura (o el mismo precio del lote ya hecho) y esa cantidad no se puede volver a valorar. En Loteado la descripción del artículo ocupa el ancho libre y se ve en varias líneas. El lápiz de un lote abierto actualiza el número, la cantidad, el unitario sin IVA y el vencimiento. Lo que ya pasó al movimiento se ve con su descripción y no se edita desde ahí.",
+          "ventanasFe": [
+            "/inv/ges · Traer del tránsito",
+            "/inv/ges · Devolución tránsito (BTN_DEV_TRANSITO)"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOL_TRANSITO",
+              "metodo": "LEER_CUFE_LOTEO / BUSCAR_RADIAN_LOTEO / GUARDAR_CUFE_LOTEO / SEL_RPDX / SEL_IART / AGREGAR_IART / EDITAR_LOTE_LOTEO / ON_PROCESAR",
+              "rol": "Documento de la entrada, loteo y Todos."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "VALIDAR_PROCESO / GUARDA_CAUSA / GUARDA_INV / ON_ACEPTA_TRANSITO",
+              "rol": "Prevalidar, causas, INVIMA, aceptar."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "CANCELAR_TRANSITO / CANCELA_1 / AGREGA_CUSTODIA / SUBIR_CUSTODIA_MASIVA",
+              "rol": "Cancelar; custodia."
+            },
+            {
+              "nombre": "SPQ_ITRA",
+              "metodo": "ON_PROCESAR",
+              "rol": "Líneas de traslado."
+            },
+            {
+              "nombre": "SPQ_IMOV_3",
+              "metodo": "TRASLADAR / ELIMINA_ITRAH / ITRAH_REGRESAR",
+              "rol": "Traslado desde solicitudes; quitar línea; devolver traslado."
+            },
+            {
+              "nombre": "SPQ_ITRADEV",
+              "metodo": "ACEPTAR / RECHAZAR",
+              "rol": "Origen aprueba la devolución."
+            },
+            {
+              "nombre": "SPK_INSERTENTTRANSITO",
+              "metodo": "(SPK)",
+              "rol": "ITRAH → IMOV + IMOVH."
+            }
+          ]
+        },
+        {
+          "id": "conteo-fisico",
+          "nombre": "Conteo físico y aplicación de ajustes",
+          "explicacion": "Un conteo (IFIS) por bodega congela la existencia en IFISH; se reparte en listados por contador (IFISHU) y se digitan hasta tres conteos por lote. Lotes no registrados se crean desde el conteo (CREA_NUEVO_LOTE). Cerrar / abrir / clonar / borrar actúan por contador; el conteo por bodega manda. APLICAR exige los tres conteos cerrados, sin negativos y sin entradas ni salidas pendientes sobre esos artículos; genera los movimientos de ajuste (SPK_APLICARCONTEO; tipos 10/11 o, para saldo inicial, SI/SA) y confirma la salida con SPK_CONFIRMARSALIDAS; si algo falla revierte todo. ANULA_MASIVO anula pendientes de la bodega antes de aplicar. Saldo inicial por Excel: PROCESAR_SALDO_INICIAL valida y ALMACENAR_SALDO_INICIAL crea artículos/IDXB/IEXI.",
+          "invariante": "No se aplica con conteos abiertos, con cantidades negativas ni con movimientos pendientes de la bodega. IDINV_AJUSXITAR (y IDINVSIENT/IDINVSISAL para saldo inicial) configuradas; centro de costo activo en la bodega.",
+          "ventanasFe": [
+            "/inv/conteo"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_CONTEOFISICO",
+              "metodo": "CRUD / CREA_LISTADO / GUARDA_REGISTRO / CREA_NUEVO_LOTE",
+              "rol": "Crear, repartir y digitar."
+            },
+            {
+              "nombre": "SPQ_CONTEOFISICO",
+              "metodo": "CERRAR_CONTEO / ABRIR_CONTEO / CLONAR_CONTEO / BORRAR_CONTEO / ELIMINAR_LISTADO",
+              "rol": "Ciclo por contador."
+            },
+            {
+              "nombre": "SPQ_CONTEOFISICO",
+              "metodo": "APLICAR / ANULA_MASIVO",
+              "rol": "Ajustes de inventario."
+            },
+            {
+              "nombre": "SPQ_CONTEOFISICO",
+              "metodo": "PROCESAR_SALDO_INICIAL / ALMACENAR_SALDO_INICIAL",
+              "rol": "Saldo inicial por Excel."
+            },
+            {
+              "nombre": "SPK_APLICARCONTEO",
+              "metodo": "(SPK)",
+              "rol": "Genera IMOV/IMOVH de ajuste (sin ficha)."
+            }
+          ]
+        },
+        {
+          "id": "ajustes",
+          "nombre": "Ajustes de costo y recálculo de existencias",
+          "explicacion": "Pantalla Ajustes de inventario: Ajustar / Procesar Ajuste cambia el precio de costo del artículo (IART.PCOSTO) y deja rastro en USLOG. ACTUALIZAR_EXISTENCIAS recalcula los totales IDXB/IART desde los lotes IEXI (SPK_AJUSTE_IDXB_IART): es el remedio cuando un artículo «no aparece» aunque el lote tenga saldo.",
+          "invariante": "Solo usuarios con acceso al grupo Procesos. No mueve existencias: corrige costo o totales.",
+          "ventanasFe": [
+            "/inv/AjustesInv"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_INFOMRES_INV",
+              "metodo": "AJUSTA_PCOSTO / ACTUALIZAR_EXISTENCIAS",
+              "rol": "Ajuste de costo y recálculo."
+            }
+          ]
+        },
+        {
+          "id": "devolucion-proveedor",
+          "nombre": "Devolución a proveedor",
+          "explicacion": "Se parte de la orden de compra ya ingresada: GUARDA_REGISTRO crea la salida tipo 05 (IDINVDEVPROVEEDOR) si la OC existe, no fue devuelta y su CxP lo permite; se marcan artículos (uno a uno o DEVOLUCION_TOTAL) y CONFIRMAR_DEVOLUCION arma ISAL y confirma con SPK_CONFIRMARSALIDAS. El tipo 05 tiene MPROVEEDOR y se contabiliza; el efecto sobre la CxP se revisa en cxp-fcxp (nota a proveedor).",
+          "invariante": "Existencia suficiente del lote a devolver. La CxP de la orden no debe estar cerrada/contabilizada para cambios de factura.",
+          "ventanasFe": [
+            "/inv/devpro"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_DEVOLU_PROVEEDOR",
+              "metodo": "GUARDA_REGISTRO / GUARDA_REGISTRO_IMOVH / DEVOLUCION_TOTAL / CONFIRMAR_DEVOLUCION / ELIMINAR_REGISTRO",
+              "rol": "Devolución completa."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "ABRIR_CUENTA / CERRAR_CUENTA",
+              "rol": "Abre/cierra la CxP relacionada (sin ficha)."
+            }
+          ]
+        },
+        {
+          "id": "semaforo-vencidos",
+          "nombre": "Semáforo de vencimientos y salida de vencidos",
+          "explicacion": "SEMAFORO_STOCK pinta los lotes por días a vencer con los rangos ROJO / NARANJA / AMARILLO guardados en TGEN (CONFIG_SEMAFORO_GUARDAR, días crecientes). Con permiso, GEN_MOVIMIENTO saca de la bodega un artículo vencido o todos (SPK_MOVSALIDAVENCIDOS) con el tipo IDINVSALVENCIDOS (07 Salida a destrucción). «Filtro todas las bodegas» abre la vista global.",
+          "invariante": "Variable IDINVSALVENCIDOS configurada y bodega con permiso para ese movimiento.",
+          "ventanasFe": [
+            "/inv/sema"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_SEMAFORO",
+              "metodo": "SEMAFORO_STOCK / CONFIG_SEMAFORO_LEER / CONFIG_SEMAFORO_GUARDAR / GEN_MOVIMIENTO / EXPORTAR_SEMAFORO",
+              "rol": "Semáforo completo."
+            },
+            {
+              "nombre": "SPK_MOVSALIDAVENCIDOS",
+              "metodo": "(SPK)",
+              "rol": "Salida de vencidos (sin ficha)."
+            }
+          ]
+        },
+        {
+          "id": "pick-pack",
+          "nombre": "Pick & Pack (preparación de pedidos)",
+          "explicacion": "Para bodegas con MANEJA_PICKPACK: la salida pasa por picking (lotes reservados, roles de picker/packer en USUSU) y packing antes de CONFIRMA_SALIDA. Tipos permitidos en IDMOVPICKPACK (por ejemplo traslados y venta facturable). CONFIRMA_SALIDA bloquea si el movimiento no terminó packing o si invade existencias reservadas por otros pedidos. Permisos ASIG_LOTES_PICK, QUITAR_ART_PICK, VAL_PICKING, CONF_PICKING.",
+          "invariante": "Movimiento Pick&Pack solo se confirma con packing finalizado; las reservas de otros pedidos no se tocan.",
+          "ventanasFe": [
+            "/inv/packing",
+            "/inv/ges"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_IMOV_4",
+              "metodo": "CREAR_ORDEN_PICKING / AGREGAR_ARTICULOS_PICKING / AGREGAR_LOTE_PICKING / MARCAR_LINEA_PICKING",
+              "rol": "Armar el picking."
+            },
+            {
+              "nombre": "SPQ_IMOV_4",
+              "metodo": "CONFIRMA_PICKING / DEVOLVER_PICKING / FINALIZAR_PACKING / RESUMEN_NOVEDADES_PICKPACK",
+              "rol": "Cerrar picking y packing."
+            },
+            {
+              "nombre": "SPQ_IMOV_4",
+              "metodo": "OBTENER_ROLES_PICKPACK / ACTUALIZAR_ROLES_PICKPACK",
+              "rol": "Roles."
+            },
+            {
+              "nombre": "SPQ_IMOV",
+              "metodo": "CONFIRMA_SALIDA / IMOV_DESCARTAR",
+              "rol": "Respetan reservas Pick&Pack."
+            }
+          ]
+        },
+        {
+          "id": "informes-kardex",
+          "nombre": "Informes, kardex y existencias",
+          "explicacion": "Pantalla Informes: existencias por sede / bodega / lote / institución, consumos y dashboard, precio-costo, custodia, histórico de movimientos con detalle de entrada y salida, kardex por periodos (pantalla, Excel, valorizado y PDF), consumo promedio por bodega o pedido, medicamentos dispensados/aplicados/devueltos/facturados y controlados. Solo lectura salvo TRASLADAR_LOTE (control imov-salida).",
+          "invariante": "Permiso ver_montos_precios para ver costos. Filtros por bodega limitados a las bodegas del usuario (BODEGASELECT).",
+          "ventanasFe": [
+            "/inv/exi_costo",
+            "/inv/impetiquetas"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_EXISTENCIA",
+              "metodo": "IMPRIME_POR_* / EXPORTA_INFORME_* / EXPORT_PRECIO_COSTO / LOTES_X_ARTICULO / DASHBOARD_CONSUMOS",
+              "rol": "Existencias y consumos."
+            },
+            {
+              "nombre": "SPQ_INFOMRES_INV",
+              "metodo": "BUSCAR_MOV / DETALLE_ENTRADA / DETALLE_SALIDA / KARDEX_* / RPT_KARDEX_ARTICULO / BUSCAR_PROME* / MED_DISP_APLI_DEV_FACT / MEDPEN_APLICAR",
+              "rol": "Históricos y kardex."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega",
-      "estado": "esqueleto",
-      "explicacion": "Farmacia/CE/compras pueden generar IMOV (fuera de este esqueleto). No inventado.",
+      "estado": "documentado",
+      "explicacion": "Compras: lista de precios del proveedor → cotización → orden → confirmación → tránsito. Dispensación: la solicitud de farmacia produce la salida. Venta al público: el carrito produce salida, factura y recibo de caja. Gasto por consumo y canastas de cirugía producen salidas por solicitud.",
       "tablasClave": [
-        "IZSOL"
+        "ILPRE",
+        "ILPRED",
+        "ICTZ",
+        "ICTZD",
+        "FCOM",
+        "FCOMD",
+        "FCOMNOT",
+        "ITRA",
+        "IZSOL",
+        "IZSOLD",
+        "PRESELL",
+        "PRESELLR",
+        "FTR",
+        "FCJ",
+        "FCXP"
       ],
-      "controles": []
+      "controles": [
+        {
+          "id": "ilpre-cotizacion-compras",
+          "nombre": "Lista de precios y cotización de compras",
+          "explicacion": "Una lista por proveedor (ILPRE: vigencia, prioridad, valor mínimo aceptado) con artículos ILPRED e histórico; precios y homologación de códigos se importan por Excel. La cotización ICTZ (estado Ingresado) agrega artículos con proveedor y valor (GUARDA_ICTZD o carga masiva) y GENERAR_OC crea una orden FCOM en estado C por proveedor, con procedencia ILPRE, y deja la cotización en Compra. El precio en la orden se puede traer de la lista (GET_PRECIO_ILPRE / GET_PRECIO_PROVEEDOR).",
+          "invariante": "GENERAR_OC no confirma la orden ni crea tránsito. Cotización no cerrada ni ya en Compra; total por proveedor ≥ VLR_MIN_ACEPT. Un artículo una sola vez por lista y por cotización.",
+          "ventanasFe": [
+            "/inv/listprecio",
+            "/inv/cotizacion"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_ILPRE",
+              "metodo": "GUARDA_ILPRE / GUARDA_ILPRED / GUARDA_UNIFICADO_LISTA / IMPORTAR_PRECIO_1-2 / IMPORTAR_HOMOLOGACION_1-2 / GUARDA_TERCERO",
+              "rol": "Lista de precios."
+            },
+            {
+              "nombre": "SPQ_ILPRE",
+              "metodo": "GUARDA_COTIZACION / GUARDA_ICTZD / IMPORTAR_MASIVO_ICTZD / VALIDAR_MASIVO_ICTZD / GENERAR_OC / LEER_DETALLE_OC",
+              "rol": "Cotización y orden."
+            },
+            {
+              "nombre": "SPQ_FCOM",
+              "metodo": "GET_PRECIO_ILPRE",
+              "rol": "Precio vigente del proveedor."
+            }
+          ]
+        },
+        {
+          "id": "fcom-recepcion-imov",
+          "nombre": "Orden de compra → confirmación → tránsito → entrada",
+          "explicacion": "La orden nace en C (abierta; también desde solicitud de compra GUARDA_FCOM_SOL → GENERA_OC, que exige IBOD.COMPRASOL e IDBODEGAPIDE). CONFIRMAR_ORDEN exige detalle y ningún valor unitario en cero; pasa a P, ORDENCOMPRA=1 y crea la requisición de tránsito (SPK_INSERT_ITRA_REQ). ABRIR regresa a C solo si no hay recepción. ANULAR deja A y libera la cotización o los pendientes de aplicación de medicamentos. La bodega recibe con «Traer del tránsito» (loteo) o con Recepción masiva por Excel (SPQ_FCOM_RECEPCION_MASIVA, permiso btnRecepcion_masiva_OC) y confirma la entrada; SPK_CONFIRMARENTRADAS deja la orden en R (parcial) o I (confirmada en bodega) y crea la CxP. Notas de seguimiento FCOMNOT y Excel de seguimiento.",
+          "invariante": "Sin valor unitario cero no se confirma. Bodega de la orden = bodega que recibe. La orden en I no se reabre; se devuelve al proveedor. El SP leído no escribe ni traduce un estado S que puede aparecer en datos.",
+          "ventanasFe": [
+            "/inv/ordcom"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_FCOM",
+              "metodo": "GUARDA_FCOM_SOL / GENERA_OC / GUARDAR / CONFIRMAR_ORDEN / ABRIR / ANULAR / CLONAR",
+              "rol": "Ciclo de la orden."
+            },
+            {
+              "nombre": "SPQ_FCOMD",
+              "metodo": "GUARDAR / GUARDAR_MASIVO / INSERTA_FCOMD / ELIMINA_FCOMD / TRAER_IMPUESTO",
+              "rol": "Detalle y totales (SPK_UPDATE_VLRS_FCOM)."
+            },
+            {
+              "nombre": "SPQ_FCOM",
+              "metodo": "RECEPCION_MASIVA / RECEPCION_PARCIAL_OC / AGREGAR_NOTA_OC / EXPORTAR_EXCEL_SEGUIMIENTO_OC",
+              "rol": "Recepción y seguimiento."
+            },
+            {
+              "nombre": "SPQ_FCOM",
+              "metodo": "VALIDA_APLIM / GEN_OC_APLIM",
+              "rol": "Orden desde aplicación de medicamentos."
+            },
+            {
+              "nombre": "SPQ_FCOM_RECEPCION_MASIVA",
+              "metodo": "(SP)",
+              "rol": "Excel → ITRA/ITRAH → IMOV sin loteo manual."
+            },
+            {
+              "nombre": "SPK_INSERT_ITRA_REQ",
+              "metodo": "(SPK)",
+              "rol": "Requisición de tránsito."
+            }
+          ]
+        },
+        {
+          "id": "izsol-dispensacion",
+          "nombre": "Solicitud de farmacia → salida",
+          "explicacion": "La solicitud IZSOL (clases CE, TRANS_CE, 24HORAS, APLIM, OMEDICA, SENFER, Consumo) se atiende en Solicitudes: AGREGAR → ENTREGAR (picking IZSOLDT por lote) → PROCESAR → CONF_MOVIMIENTO (SPK_CONFIRMASAL_CM), que descuenta, cobra copago si aplica y puede cerrar la solicitud. Deshacer entrega requiere permiso y motivo y no procede si enfermería ya recibió. Canastas de cirugía y gasto por consumo son solicitudes especiales. El detalle clínico está en el proceso «dispensacion».",
+          "invariante": "Admisión abierta, solicitud vigente y no anulada, copago recaudado cuando se exige, medicamento no suspendido ni pendiente PROA.",
+          "ventanasFe": [
+            "/inv/sol_2",
+            "/inv/canasta",
+            "/inv/gastosxconsumo"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "AGREGAR / ENTREGAR / PROCESAR / CONF_MOVIMIENTO / DESHACER_ENTREGA",
+              "rol": "Dispensación."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "AGREGAR_CANASTA / TRAER_CANASTA / ANULAR_CANASTA / DATOS_ETIQUETA",
+              "rol": "Canasta de cirugía."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "GUARDAR_SOLICITUD / CONFIRMAR_SOLICITUD / DESHACER_PEDIDO",
+              "rol": "Gasto por consumo."
+            },
+            {
+              "nombre": "SPK_CONFIRMASAL_CM",
+              "metodo": "(SPK)",
+              "rol": "Confirma salida + cobro. PREVERSION completa CCOSTO/IDAREA en TRANS_CE."
+            },
+            {
+              "nombre": "SPQ_IZSOL_2",
+              "metodo": "TERMINAR_ENTREGA / PROCESAR_DEVOLUCION / AUTORIZAR",
+              "rol": "Post-entrega."
+            }
+          ]
+        },
+        {
+          "id": "venta-al-publico",
+          "nombre": "Venta a particulares (mostrador)",
+          "explicacion": "Con la caja abierta (CONF_CAJA) se lee el código de barras (BUS_CODBARRA) y se arma el carrito PRESELL (INSERTA_PRESELL valida precio > 0 y existencia del lote); el cliente se crea o edita como tercero; se registra el recaudo por medio de pago (GUARDA_RECAUDO) y GUARDA_VENTA cierra todo en una sola transacción: salida IMOV tipo VE + ISAL, descuento IEXI, confirmación, factura FTR (SPK_FAC_VENTA_INV), recibo de caja FCJ (SPK_CIERRERECIBO_CAJA, SPK_NC_CONTAB_CAJA_ING) y domicilio si IDSERVDOMICILIO está configurada. El precio sale de la tarifa (LISTA_TARIFAS), no de la lista de compras.",
+          "invariante": "Caja abierta. Recaudo igual al total. Preselección no repetida. Responsable si es factura electrónica. Tipo IDINVENTA_PARTICULAR configurado.",
+          "ventanasFe": [
+            "/inv/venta",
+            "/inv/gesventa"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_VENTAFAR",
+              "metodo": "BUS_CODBARRA / INSERTA_PRESELL / CREA_TERCERO / EDITA_TERCERO / GUARDA_RECAUDO / ELIMINA_RECAUDO / GUARDA_OBSERVACION / GUARDA_DOMICILIO",
+              "rol": "Carrito y cliente."
+            },
+            {
+              "nombre": "SPQ_VENTAFAR",
+              "metodo": "GUARDA_VENTA / IMPRESION_FTR / ULTIMA_VENTA / RPT_VENTAS / LISTA_TARIFAS",
+              "rol": "Cierre, impresión e informe."
+            },
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "ESTADO_CAJA / ABRIR_CAJA / CERRAR_CAJA",
+              "rol": "Proceso hermano caja."
+            },
+            {
+              "nombre": "SPQ_GESVENTA",
+              "metodo": "GEN_NC",
+              "rol": "Nota crédito post-venta."
+            }
+          ]
+        },
+        {
+          "id": "imov-venta-ftr",
+          "nombre": "Movimiento de venta → factura FTR (masiva)",
+          "explicacion": "Salidas con tipo VC (IDINVMOVVENTAFACTURA) confirmadas se marcan (MARCA_FACTURAR) y se facturan en bloque (FACTMASIVO_INV → SPK_FAC_VENTA_INV_MASIVA; GENFACTURA=1, MARCACONT) o una a una desde Movimientos (IMOV_3 · FACTURAR_IMOV). Devoluciones en venta (tipo 31) y anulación de la salida de venta desde la misma pantalla.",
+          "invariante": "IMOV ESTADO 1, tipo VC, entregas ISAL con lote IEXI válido.",
+          "ventanasFe": [
+            "/inv/facturaInv",
+            "/inv/ges"
+          ],
+          "sps": [
+            {
+              "nombre": "SPQ_IMOV_VENTA",
+              "metodo": "MARCA_FACTURAR / FACTMASIVO_INV / ANULA_IMOV_SALVENTA / DEVUELVE_ARTICULO / ANEXO_PREVIO / LIMPIA_MARCAS",
+              "rol": "Facturación masiva."
+            },
+            {
+              "nombre": "SPQ_IMOV_3",
+              "metodo": "FACTURAR_IMOV / MARCA_FACTURAR",
+              "rol": "Individual."
+            },
+            {
+              "nombre": "SPK_FAC_VENTA_INV_MASIVA",
+              "metodo": "(SPK)",
+              "rol": "Genera FTR."
+            }
+          ]
+        },
+        {
+          "id": "ictzg-cotizacion-comercial",
+          "nombre": "Cotizaciones comerciales (ICTZG)",
+          "explicacion": "Pantalla aparte del flujo de compras: cotiza artículos a un tercero/plan desde una bodega. Cerrar o anular solo cambia el estado.",
+          "invariante": "Solo se cierra o anula si está Pendiente.",
+          "sps": [
+            {
+              "nombre": "SPQ_ICTZG",
+              "metodo": "COTIZA_CRUD / CERRAR_COTIZACION / ANULAR_COTIZACION",
+              "rol": "No alimenta FCOM ni VENTAFAR."
+            }
+          ]
+        },
+        {
+          "id": "satelites",
+          "nombre": "Satélites de farmacia clínica y otros",
+          "explicacion": "En el mismo menú viven procesos que usan el inventario pero tienen su propia lógica: Solicitudes 24 horas (IZSOLM: genera las órdenes del día), Lista de trabajo (LISTA_AUT autorizaciones), Entrega óptica (GES_LENTES_COL), Perfil farmacoterapéutico, Fórmulas de infusión (FAR_IF), Horarios de tratamiento, Logística y delivery MAD, Mobiliario (MOBI), Osteosíntesis (IARTO: la hoja de gasto aprobada crea entrada y salida en BODEGA_OSTEO), Interfaz inventario (INTERFAZINV · REENVIAR), Impresión de etiquetas y entregas masivas.",
+          "invariante": "Cada uno exige su permiso en MENUQ_INVENTARIO; su detalle es tema de otro libro.",
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOLM",
+              "metodo": "HOY / GENERAL_24HS / SECTOR_24HS / ADMISION_24HS / REVISAR_24HS",
+              "rol": "Órdenes 24 horas."
+            },
+            {
+              "nombre": "SPQ_MOBI",
+              "metodo": "CRUD_IACTMOV / CRUD_NOTA / CONSULTA_PENDIENTE",
+              "rol": "Mobiliario."
+            },
+            {
+              "nombre": "SPQ_IARTO",
+              "metodo": "GUARDAR / APROBAR / IMPORTAR_MAT_OSTEO",
+              "rol": "Osteosíntesis."
+            },
+            {
+              "nombre": "SPQ_INTERFAZINV",
+              "metodo": "REENVIAR",
+              "rol": "Interfaz externa (sin patrón @METODO)."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "04-unido",
       "numero": 4,
       "nombre": "Subproceso unido",
-      "estado": "esqueleto",
-      "explicacion": "Tránsito ITRA/ITRAH. Fuera del gate de periodo salvo IMOV ESTADO=0 que bloquea cierre.",
+      "estado": "documentado",
+      "explicacion": "Compra → CxP (FCXP) → tesorería; venta → FTR → cartera/caja; farmacia CE ↔ IMOV; traslados entre sedes vía ITRA. Procesos hermanos: cxp-fcxp, facturacion, recaudos, dispensacion, custodia-medicamentos.",
       "tablasClave": [
         "ITRA",
-        "ITRAH"
+        "FTR",
+        "FCXP",
+        "FCXPD",
+        "FCJ"
       ],
-      "controles": []
+      "controles": [
+        {
+          "id": "compras-a-cxp",
+          "nombre": "Entrada de compra → cuenta por pagar",
+          "explicacion": "Al confirmar una entrada tipo 02/22/SI con proveedor, SPK_CONFIRMARENTRADAS crea FCXP (prefijo @FCXPCM) con cuentas KMCOM CXP_COMPRAS, el detalle FCXPD desde IMOVH (SPK_INSERT_CXP_INV), impuestos (SPK_IMPUESTOS_CXP), anticipos (SPK_ANTICIPO_LEG_CXP) y totales (SPK_CALCULOVALORESCXP). Cambiar la factura después (CAMBIAR_FACTURA) solo si la CxP no está contabilizada.",
+          "invariante": "Proveedor en la orden, cuentas CXP_COMPRAS para el tipo de artículo/centro/área, factura con número y fechas.",
+          "sps": [
+            {
+              "nombre": "SPK_CONFIRMARENTRADAS",
+              "metodo": "(SPK)",
+              "rol": "Crea la CxP."
+            },
+            {
+              "nombre": "SPK_INSERT_CXP_INV",
+              "metodo": "(SPK)",
+              "rol": "FCXPD; CUENTAGRAV si IVA."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "PROCESAR_IMOVH / CONTABILIZAR_FCXP",
+              "rol": "Proceso cxp-fcxp."
+            }
+          ]
+        },
+        {
+          "id": "venta-ftr-contab",
+          "nombre": "Venta → FTR → caja y contabilidad",
+          "explicacion": "La venta de mostrador crea FTR y recibo FCJ en el acto; la factura masiva solo FTR. Luego FTR_COL ENVIA_CONTAB → SPK_NC_CONTAB_FTR; el costo de inventario entra en el mismo comprobante si CONTAB_GASTOVEN_UNI = SI.",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "ENVIA_CONTAB",
+              "rol": "Proceso facturacion."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_INV",
+              "metodo": "(SPK)",
+              "rol": "Costo INV."
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "esqueleto",
-      "explicacion": "OM Inventario CONTABILIDAD_3 · ENV_CONTA / DETALLE_OM_INVENTARIO. PROCEDENCIA INV. Ya bloquea con periodo/INV cerrado; no es el hueco de confirmación.",
+      "estado": "documentado",
+      "explicacion": "Tres salidas: (A) movimientos de inventario que se contabilizan (ITMO.SECONTABILIZA y bodega sin NOCONTABILIZA) → OM Inventario / job → SPK_NC_CONTAB_INV por CNSMOV, cuentas KMCOM MOV_INVENTARIO débito/crédito por tipo de artículo, centro y área; (B) compras → CxP → SPK_NC_CONTAB_CXP; (C) ventas → FTR → SPK_NC_CONTAB_FTR (+ costo). Con CONTABIMOV_JOB = SI la entrada no contabiliza en línea.",
       "tablasClave": [
         "IMOV",
-        "MCP"
+        "KMCOM",
+        "MCP",
+        "MCHE",
+        "FCXPD",
+        "FTR"
       ],
-      "controles": []
+      "controles": [
+        {
+          "id": "contab-inv-mov",
+          "nombre": "Contabilizar movimiento de inventario (OM)",
+          "explicacion": "CONTABILIDAD_3 ENV_CONTA PROCEDENCIA=INV → SPK_CONTAB_MASIVA → SPK_NC_CONTAB_INV. MCHE con PROCEDENCIA INV y REFERENCIA_PRO = CNSMOV. Si faltan cuentas, la confirmación de la entrada ya lo habría rechazado (RAISERROR MOV_INVENTARIO).",
+          "invariante": "IMOV confirmado, tipo con SECONTABILIZA, bodega sin NOCONTABILIZA, sin duplicar CNSMOV.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONTABILIDAD_3",
+              "metodo": "ENV_CONTA_OTROS_MODULS",
+              "rol": "contabilidad/proceso.json."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_INV",
+              "metodo": "(SPK)",
+              "rol": "Comprobante INV."
+            }
+          ]
+        },
+        {
+          "id": "contab-compras-cxp",
+          "nombre": "Contabilizar compra vía CxP",
+          "explicacion": "La CxP automática se contabiliza desde Cuentas por pagar (CONTABILIZAR_FCXP → SPK_NC_CONTAB_CXP). Informes CxP dentro de Inventario → Procesos (CONF_CXP).",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "CONTABILIZAR_FCXP",
+              "rol": "cxp-fcxp."
+            },
+            {
+              "nombre": "SPQ_CONF_CXP",
+              "metodo": "BUSCANDO_CXP / HIST_TOTALES / VENCIMIENTO_TERCERO / EXPORTAR_CXP_*",
+              "rol": "Informes."
+            }
+          ]
+        },
+        {
+          "id": "contab-venta-ftr",
+          "nombre": "Contabilizar venta (FTR)",
+          "explicacion": "FTR de venta se contabiliza como cualquier factura; el costo INV viaja en el mismo comprobante con CONTAB_GASTOVEN_UNI = SI. REQ 6349: homologación gravada en INV o FCXPD según circuito.",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "ENVIA_CONTAB",
+              "rol": "Facturación."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_INV",
+              "metodo": "(SPK)",
+              "rol": "Costo en comprobante venta."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "compras-oc",
+      "nombre": "Compras: de la lista de precios a la orden confirmada",
+      "descripcion": "Quién hace qué desde que el proveedor manda precios hasta que la orden viaja en tránsito.",
+      "icono": "shopping_cart",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Lista de precios del proveedor",
+          "descripcion": "Compras crea la lista (vigencia, prioridad, valor mínimo aceptado) y carga los artículos con precio, a mano o por Excel. También homologa códigos del proveedor.",
+          "rol": "Compras",
+          "pantalla": "Lista de precios",
+          "tablas": [
+            "ILPRE",
+            "ILPRED"
+          ],
+          "sp": "SPQ_ILPRE · GUARDA_ILPRE / GUARDA_ILPRED / IMPORTAR_PRECIO_2"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Cotización de compras",
+          "descripcion": "Se arma la cotización (estado Ingresado) con artículos, proveedor y valor; puede cargarse masivo por Excel. Cada artículo una sola vez.",
+          "rol": "Compras",
+          "pantalla": "Cotización",
+          "tablas": [
+            "ICTZ",
+            "ICTZD"
+          ],
+          "sp": "SPQ_ILPRE · GUARDA_COTIZACION / GUARDA_ICTZD"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Alcanza el mínimo del proveedor?",
+          "descripcion": "Generar OC exige que la cotización no esté cerrada ni ya en Compra y que el total por proveedor llegue al valor mínimo aceptado de su lista.",
+          "rol": "Sistema",
+          "si": "Crea una orden por proveedor en estado C (abierta) con procedencia ILPRE y deja la cotización en Compra.",
+          "no": "«El total de la orden de compra para el proveedor…»: ajuste cantidades o proveedor.",
+          "tablas": [
+            "FCOM",
+            "FCOMD"
+          ],
+          "sp": "SPQ_ILPRE · GENERAR_OC"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Orden abierta (C): revisar detalle",
+          "descripcion": "En Orden de compra se completan cabecera (proveedor, bodega, centro de costo, fechas de factura) y líneas (cantidad, valor unitario, IVA). Alternativa: solicitud de compra desde la bodega que pide (COMPRASOL, bodega destino IDBODEGAPIDE) y Generar OC.",
+          "rol": "Compras",
+          "pantalla": "Orden de compra",
+          "tablas": [
+            "FCOM",
+            "FCOMD",
+            "FCOMNOT"
+          ],
+          "sp": "SPQ_FCOM · GUARDAR / GUARDA_FCOM_SOL / GENERA_OC · SPQ_FCOMD · GUARDAR"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "Confirmar orden",
+          "descripcion": "Debe tener detalle y ninguna línea con valor unitario en cero.",
+          "rol": "Compras",
+          "pantalla": "Orden de compra",
+          "si": "ESTADO P, ORDENCOMPRA = 1 y se crea la requisición de tránsito hacia la bodega (ITRA). Pendientes de aplicación de medicamentos pasan a EN RUTA.",
+          "no": "«No se puede procesar la orden. Hay líneas con valor unitario en cero».",
+          "tablas": [
+            "FCOM",
+            "ITRA",
+            "IEXIF"
+          ],
+          "sp": "SPQ_FCOM · CONFIRMAR_ORDEN → SPK_INSERT_ITRA_REQ"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Reabrir, anular o clonar",
+          "descripcion": "Abrir regresa a C solo si aún no hay recepción en bodega. Anular deja A y libera la cotización o los pendientes APLIM. Clonar copia la orden.",
+          "rol": "Sistema",
+          "tablas": [
+            "FCOM",
+            "ICTZD",
+            "APLIMF"
+          ],
+          "sp": "SPQ_FCOM · ABRIR / ANULAR / CLONAR"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Orden en tránsito",
+          "descripcion": "La orden espera en la bodega destino como tránsito abierto (ITRA ESTADO 0). Sigue el flujo de recepción.",
+          "rol": "Resultado",
+          "tablas": [
+            "ITRA"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recepcion-entrada",
+      "nombre": "Recepción: tránsito, loteo, entrada confirmada y cuenta por pagar",
+      "descripcion": "Lo que hace la bodega cuando llega la mercancía y lo que el sistema genera al confirmar.",
+      "icono": "inventory",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Traer del tránsito",
+          "descripcion": "En Movimientos la bodega abre el catálogo de tránsitos (Exportar en la fila de filtros, copiar a la izquierda del número de compra, clic derecho para las acciones, cerrar con la X) y lotea cada artículo: lote, fecha de vencimiento, cantidad recibida, temperatura si aplica, registro INVIMA. Con INV_CUFE_LOTEO = SI elige Factura o Remisión. En Factura escribe documento, fechas o valor y la lista se refresca sola; muestra los ítems de cada factura. El clic en la fila la guarda y cierra. Si la diferencia de ítems frente a la orden supera los ítems de la orden por 3, no se asigna. Si el valor de la factura supera en más del 30 % el de la orden, se avisa y el usuario decide. Si el valor se parece pero menos de la mitad de los productos de la factura se reconoce en la orden, el loteo avisa y marca esas líneas. Si el tránsito ya tiene CUFE, Cancelar cierra sin guardar. Sigue valiendo aunque el CUFE esté repetido en RADIAN. Todos muestra los CUM que coinciden: solo lote y vencimiento; menos cantidad deja debajo el faltante sin lote, y esa línea no se guarda. El faltante de dinero (factura menos loteado) queda en el título de Loteado y en cada línea de la factura. Remisión no pide CUFE ni muestra el detalle de la factura.",
+          "rol": "Bodega / Farmacia",
+          "pantalla": "Movimientos → Traer del tránsito",
+          "tablas": [
+            "ITRA",
+            "ITRAH",
+            "RPDX"
+          ],
+          "sp": "SPQ_IZSOL_TRANSITO · SEL_RPDX / AGREGAR_IART / ON_PROCESAR"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Todo loteado o con causa?",
+          "descripcion": "Prevalidación: formato de verificación de factura diligenciado y cumplido, tránsito no tomado por otra estación, ningún artículo pendiente sin causa de no loteo.",
+          "rol": "Sistema",
+          "si": "Acepta el tránsito y crea el movimiento de entrada en estado 0 (pendiente).",
+          "no": "«Existen artículos pendientes por no loteo sin causa asignada» / «No se ha realizado la distribución de lotes».",
+          "tablas": [
+            "ITRAH",
+            "IMOV",
+            "IMOVH"
+          ],
+          "sp": "SPQ_IZSOL · VALIDAR_PROCESO / GUARDA_CAUSA / ON_ACEPTA_TRANSITO → SPK_INSERTENTTRANSITO"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Alternativa: recepción masiva por Excel",
+          "descripcion": "Con permiso btnRecepcion_masiva_OC un Excel crea la orden (no lotea una orden ya hecha): una factura y un proveedor son una OC en estado P, el tránsito con los lotes del archivo y el movimiento en estado 0. Las UNIDADES ya son de inventario; el SKU es el artículo fabricante. El botón Elegir facturas sin legalizar lista una sola fila por número y NIT (la recepción más reciente), solo con TIPODOC 01 (factura; no nota crédito), sin cuenta por pagar y sin esa factura en una orden. El filtro «Solo terceros con orden de compra» viene activo: el NIT debe tener una FCOM no anulada y que no sea solicitud (filtro por fecha, número y NIT): se marcan, se ve el PDF o el detalle del XML y el sistema arma la plantilla. En esa plantilla PROVEEDOR, PCOSTO, IVA y # FACTURA van en gris (no se editan); CCOSTO, SKU (sugerido por CUM o código del proveedor), UNIDADES, lote y vencimiento se completan. La columna VALIDACION debe decir OK y no se envía al cargar. El botón Elegir facturas queda a la derecha de la bodega de sesión. En el detalle, cada línea va en dos renglones: artículo arriba y cantidad, unitario, IVA y valor abajo. Si INV_CUFE_LOTEO = SI, antes de crear nada se busca la factura en RADIAN por número y NIT: tiene que existir una sola, sin cuenta por pagar y sin otra orden o entrada vigente; si el XML trae CUM se compara el bruto por CUM y, si no, solo los totales. Si algo no cuadra, no se crea la compra y el Excel de corrección trae el motivo. El CUFE queda en el tránsito y en la entrada. En Movimientos no se puede cambiar el CUFE, el tipo de documento, el tipo de movimiento, el número ni las fechas. La entrada se confirma después.",
+          "rol": "Sistema",
+          "pantalla": "Orden de compra",
+          "tablas": [
+            "FRADIAN",
+            "FCOM",
+            "TER",
+            "ITRA",
+            "ITRAH",
+            "IMOV"
+          ],
+          "sp": "SPQ_FCOM · RECEPCION_MASIVA → SPQ_FCOM_RECEPCION_MASIVA. La lista y la plantilla salen del front (lectura de FRADIAN y ARCHIVOS); no agregan un método nuevo."
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Revisar la entrada pendiente",
+          "descripcion": "En Movimientos se revisa cabecera (factura, fechas, proveedor, centro de costo) y detalle (lote, vencimiento, costo). Un movimiento pendiente se puede anular si no tiene detalle.",
+          "rol": "Bodega / Farmacia",
+          "pantalla": "Movimientos",
+          "tablas": [
+            "IMOV",
+            "IMOVH"
+          ],
+          "sp": "SPQ_IMOV · CRUD_IMOV / CRUD_IMOVH · SPQ_IZSOL · ANULAR_ENTRADA"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "Confirmar entrada",
+          "descripcion": "Exige fecha de vencimiento en todas las líneas, factura no duplicada con fechas, costo en todos los lotes, paciente si el tipo lo pide y, con VALID_CCOSTO_CXP = SI, centro de costo con cuenta CXP_COMPRAS.",
+          "rol": "Bodega / Farmacia",
+          "pantalla": "Movimientos",
+          "si": "Lotes IEXI creados o sumados, totales IDXB/IART actualizados, kardex, tránsito cerrado, orden en R o I.",
+          "no": "Mensaje puntual: «Existen artículos sin Fecha de Vencimiento», «Número de Factura Duplicado», «lotes sin precio de costo», «Inconsistencia. No existe configuración contable…».",
+          "tablas": [
+            "IEXI",
+            "IDXB",
+            "IART",
+            "ITRA",
+            "FCOM"
+          ],
+          "sp": "SPQ_IZSOL · CONF_ENTRADA → SPK_CONFIRMARENTRADAS"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Cuenta por pagar automática",
+          "descripcion": "Si el tipo es compra (02), remisión (22) o saldo inicial y la orden tiene proveedor, el sistema crea la CxP con su detalle, impuestos y anticipos, usando las cuentas CXP_COMPRAS. Si CONTABIMOV_JOB ≠ SI también contabiliza el movimiento en línea.",
+          "rol": "Sistema",
+          "tablas": [
+            "FCXP",
+            "FCXPD"
+          ],
+          "sp": "SPK_INSERT_CXP_INV / SPK_IMPUESTOS_CXP / SPK_CALCULOVALORESCXP"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Existencia disponible y CxP en Cuentas por pagar",
+          "descripcion": "La bodega ya puede dispensar o trasladar; Tesorería ve la cuenta por pagar en su módulo. Cambiar la factura después solo mientras la CxP no esté contabilizada.",
+          "rol": "Resultado",
+          "tablas": [
+            "IEXI",
+            "FCXP"
+          ],
+          "sp": "SPQ_IZSOL · CAMBIAR_FACTURA"
+        }
+      ]
+    },
+    {
+      "id": "salidas-traslados",
+      "nombre": "Salidas y traslados entre bodegas",
+      "descripcion": "Salida manual, traslado 14 → 13, devolución de traslado y traslado entre lotes.",
+      "icono": "local_shipping",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la salida",
+          "descripcion": "Tipo de movimiento (Débito), bodega destino si es traslado, fecha, paciente o centro de costo según el tipo. El sistema valida permiso sobre el tipo y la bodega destino, fecha no futura y periodo.",
+          "rol": "Bodega / Farmacia",
+          "pantalla": "Movimientos",
+          "tablas": [
+            "IMOV"
+          ],
+          "sp": "SPQ_IMOV · CRUD_IMOV_SAL"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Entregar por lote",
+          "descripcion": "Se agrega cada artículo y lote (manual, código de barras o importación). La cantidad no supera la existencia del lote. Confirmar entrega copia el IVA del lote a la entrega.",
+          "rol": "Bodega / Farmacia",
+          "pantalla": "Movimientos",
+          "tablas": [
+            "IMOVH",
+            "ISAL"
+          ],
+          "sp": "SPQ_IMOV · CRUD_IART / ENTREGA_ISAL / IMPORTAR_ARTICULOS / CONFIRMA_ENTREGA"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Confirmar salida",
+          "descripcion": "Al menos una entrega; existencia por lote suficiente contando reservas Pick&Pack; con ESFARMACIA = SI ningún costo cero; si es Pick&Pack, packing terminado.",
+          "rol": "Bodega / Farmacia",
+          "pantalla": "Movimientos",
+          "si": "Descuenta IEXI, actualiza kardex, ESTADO 1. Si el tipo genera tránsito (14) crea el ITRA hacia la bodega destino.",
+          "no": "«No se realizó entrega de al menos un artículo» / «sin existencias suficientes» / «Existe artículos con Costo Cero».",
+          "tablas": [
+            "IEXI",
+            "IMOV",
+            "ITRA"
+          ],
+          "sp": "SPQ_IMOV · CONFIRMA_SALIDA → SPK_CONFIRMARSALIDAS"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Bodega destino acepta el traslado",
+          "descripcion": "Igual que la recepción de compras: Traer del tránsito, lotear y aceptar; la entrada 13 queda pendiente y se confirma. ITRA pasa a recibido.",
+          "rol": "Bodega destino",
+          "pantalla": "Movimientos → Traer del tránsito",
+          "tablas": [
+            "ITRA",
+            "ITRAH",
+            "IMOV"
+          ],
+          "sp": "SPQ_IZSOL · ON_ACEPTA_TRANSITO / CONF_ENTRADA"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Hay que devolver el traslado?",
+          "descripcion": "Con permiso BTN_DEV_TRANSITO el destino devuelve (tipo 33). Si INV_APRU_DEVTRA = SI la bodega origen debe aceptar o rechazar.",
+          "rol": "Bodega destino / origen",
+          "si": "Origen acepta: reingresa a la bodega origen.",
+          "no": "Origen rechaza: la mercancía queda en destino.",
+          "tablas": [
+            "ITRA",
+            "IMOV"
+          ],
+          "sp": "SPQ_IMOV_3 · ITRAH_REGRESAR · SPQ_ITRADEV · ACEPTAR / RECHAZAR"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Anular una salida",
+          "descripcion": "Una salida pendiente se anula marcando estado 2. Una salida confirmada solo se anula en farmacia (ESFARMACIA = SI): SPK_ANULAR_MOV_INV crea la entrada contraria (tipo FAR_MOVANULASALIDA) desde las entregas y la confirma. No procede si la solicitud de origen sigue abierta o la admisión no está cerrada.",
+          "rol": "Sistema",
+          "tablas": [
+            "IMOV",
+            "IMOVH",
+            "ISAL",
+            "IEXI"
+          ],
+          "sp": "SPQ_IMOV · ANULAR_SALIDA"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Traslado entre lotes (misma bodega)",
+          "descripcion": "Desde Informes, con permiso BTN_LOT_TRASLADO: salida 24 + entrada 25 confirmadas en el acto, para corregir un lote mal registrado.",
+          "rol": "Resultado",
+          "tablas": [
+            "IEXI",
+            "IMOV"
+          ],
+          "sp": "SPQ_EXISTENCIA · TRASLADAR_LOTE"
+        }
+      ]
+    },
+    {
+      "id": "conteo-ajustes",
+      "nombre": "Conteo físico y aplicación de ajustes",
+      "descripcion": "Del conteo congelado a los movimientos de ajuste.",
+      "icono": "fact_check",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo conteo por bodega",
+          "descripcion": "Se crea el conteo (detalle, bodega, por estante si aplica); el sistema copia la existencia actual de cada lote como saldo del sistema.",
+          "rol": "Jefe de bodega",
+          "pantalla": "Conteo físico",
+          "tablas": [
+            "IFIS",
+            "IFISH"
+          ],
+          "sp": "SPQ_CONTEOFISICO · CRUD"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Listados por contador",
+          "descripcion": "Se crean listados y se asignan a contadores (CONTADOR). Cada uno digita hasta tres conteos por lote; un lote que no está en sistema se crea desde el conteo.",
+          "rol": "Contadores",
+          "pantalla": "Conteo físico → Digitar",
+          "tablas": [
+            "IFISHU",
+            "IEXI"
+          ],
+          "sp": "SPQ_CONTEOFISICO · CREA_LISTADO / GUARDA_REGISTRO / CREA_NUEVO_LOTE"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cerrar los tres conteos",
+          "descripcion": "Cerrar por contador y por bodega; abrir, clonar (copiar el conteo 1 al 2/3) o borrar según haga falta. Ningún listado puede quedar abierto.",
+          "rol": "Jefe de bodega",
+          "pantalla": "Conteo físico",
+          "tablas": [
+            "IFISH",
+            "IFISHU"
+          ],
+          "sp": "SPQ_CONTEOFISICO · CERRAR_CONTEO / ABRIR_CONTEO / CLONAR_CONTEO / BORRAR_CONTEO"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Se puede aplicar?",
+          "descripcion": "Conteos 1, 2 y 3 cerrados; sin cantidades negativas; sin entradas ni salidas pendientes que toquen los artículos del conteo (Anular masivo las limpia); variables IDINVSIENT, IDINVSISAL e IDINV_AJUSXITAR configuradas; centro de costo activo en la salida de ajuste.",
+          "rol": "Sistema",
+          "si": "Genera la salida de ajuste (tipo IDINVSISAL) por las diferencias negativas y la entrada (tipo IDINVSIENT) por las positivas; confirma la salida en el acto, deja la entrada pendiente y marca el conteo aplicado.",
+          "no": "«No se puede aplicar este conteo: hay salidas sin confirmar…» / «El conteo tiene diferencias pero no se generaron movimientos de ajuste. La aplicación fue revertida».",
+          "tablas": [
+            "IMOV",
+            "IMOVH",
+            "ISAL",
+            "IEXI",
+            "IFIS"
+          ],
+          "sp": "SPQ_CONTEOFISICO · APLICAR → SPK_APLICARCONTEO / SPK_CONFIRMARSALIDAS"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Saldo inicial por Excel",
+          "descripcion": "Para una bodega nueva: plantilla Excel → Procesar (valida) → Almacenar (crea artículos en bodega y lotes) → aplicar; el saldo inicial entra por los mismos tipos IDINVSIENT / IDINVSISAL.",
+          "rol": "Sistema",
+          "tablas": [
+            "IART",
+            "IDXB",
+            "IEXI",
+            "IFISH"
+          ],
+          "sp": "SPQ_CONTEOFISICO · PROCESAR_SALDO_INICIAL / ALMACENAR_SALDO_INICIAL"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Confirmar la entrada de ajuste y revisar totales",
+          "descripcion": "La entrada de ajuste queda en Movimientos en estado 0: se confirma como cualquier entrada (ahí se exigen las cuentas MOV_INVENTARIO). Si un artículo sigue sin aparecer con lote con saldo, Ajustes → Actualizar existencias recalcula los totales.",
+          "rol": "Resultado",
+          "tablas": [
+            "IMOV",
+            "IEXI",
+            "IDXB",
+            "IART"
+          ],
+          "sp": "SPQ_IZSOL · CONF_ENTRADA · SPQ_INFOMRES_INV · ACTUALIZAR_EXISTENCIAS"
+        }
+      ]
+    },
+    {
+      "id": "venta-publico",
+      "nombre": "Venta al público: carrito, caja, factura",
+      "descripcion": "Mostrador de farmacia con caja abierta.",
+      "icono": "point_of_sale",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿Caja abierta?",
+          "descripcion": "La pantalla consulta el estado de la caja del usuario antes de vender.",
+          "rol": "Cajero / Farmacia",
+          "pantalla": "Venta de insumos",
+          "si": "Puede armar el carrito y recaudar.",
+          "no": "Abrir caja (proceso Caja).",
+          "sp": "SPQ_CONF_CAJA · ESTADO_CAJA / ABRIR_CAJA"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Leer artículos al carrito",
+          "descripcion": "Código de barras → artículo/lote de la bodega; precio de la tarifa de mostrador. Valor > 0 y cantidad dentro de la existencia del lote.",
+          "rol": "Cajero / Farmacia",
+          "pantalla": "Venta de insumos",
+          "tablas": [
+            "PRESELL",
+            "PRESELLR"
+          ],
+          "sp": "SPQ_VENTAFAR · BUS_CODBARRA / INSERTA_PRESELL / LISTA_TARIFAS"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cliente y recaudo",
+          "descripcion": "Cliente nuevo o existente (tercero). Medios de pago; el recaudo no supera el pendiente. Factura electrónica exige responsable. Domicilio opcional (IDSERVDOMICILIO).",
+          "rol": "Cajero / Farmacia",
+          "pantalla": "Venta de insumos",
+          "tablas": [
+            "TER",
+            "PRESELLR"
+          ],
+          "sp": "SPQ_VENTAFAR · CREA_TERCERO / GUARDA_RECAUDO / GUARDA_DOMICILIO"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Guardar venta",
+          "descripcion": "Preselección no procesada, tipo de movimiento de venta configurado, recaudo completo y no mayor al total.",
+          "rol": "Sistema",
+          "si": "Salida IMOV tipo VE + ISAL, descuento IEXI por lote, confirmación, factura FTR y recibo de caja FCJ en una sola transacción.",
+          "no": "«Pendiente recaudar» / «No tiene configurado Tipo de Movimiento para Venta» / «No se pudo descontar IEXI por lote».",
+          "tablas": [
+            "IMOV",
+            "ISAL",
+            "IEXI",
+            "FTR",
+            "FCJ",
+            "FCJD"
+          ],
+          "sp": "SPQ_VENTAFAR · GUARDA_VENTA → SPK_CONFIRMARSALIDAS / SPK_FAC_VENTA_INV / SPK_CIERRERECIBO_CAJA"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Imprimir y post-venta",
+          "descripcion": "Impresión de la factura; Gestión de ventas consulta y genera nota crédito (permiso NoGenerarReingreso para no reingresar). Informe de ventas por fechas.",
+          "rol": "Sistema",
+          "pantalla": "Gestión de ventas",
+          "tablas": [
+            "FTR"
+          ],
+          "sp": "SPQ_VENTAFAR · IMPRESION_FTR / RPT_VENTAS · SPQ_GESVENTA · GEN_NC"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Venta cerrada",
+          "descripcion": "Existencia descontada, factura emitida, dinero en caja. La contabilidad llega por FTR y por el recibo de caja.",
+          "rol": "Resultado"
+        }
+      ]
+    }
+  ],
+  "estadosCompra": {
+    "titulo": "Estados de la orden de compra y del tránsito",
+    "descripcion": "Columna ESTADO de FCOM y de ITRA. Lo que se ve en Orden de compra y en Traer del tránsito.",
+    "columnas": [
+      "FCOM.ESTADO",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "C",
+        "tono": "gris",
+        "etiquetas": [
+          "C",
+          "Abierta"
+        ],
+        "significa": "Orden creada o reabierta; se puede editar detalle. ORDENCOMPRA = 0.",
+        "queHacer": "Completar líneas y Confirmar orden."
+      },
+      {
+        "codigo": "P",
+        "tono": "azul",
+        "etiquetas": [
+          "P",
+          "Procesada / Confirmada"
+        ],
+        "significa": "Confirmada: ORDENCOMPRA ≥ 1 y tránsito creado hacia la bodega.",
+        "queHacer": "Esperar la mercancía; la bodega la recibe en Traer del tránsito o recepción masiva."
+      },
+      {
+        "codigo": "R",
+        "tono": "ambar",
+        "etiquetas": [
+          "R",
+          "Recepción parcial"
+        ],
+        "significa": "Al menos una entrada confirmada pero faltan cantidades.",
+        "queHacer": "Recibir el resto; si no llegará, cancelar el tránsito con causa."
+      },
+      {
+        "codigo": "I",
+        "tono": "verde",
+        "etiquetas": [
+          "I",
+          "Confirmada en bodega"
+        ],
+        "significa": "Toda la orden ingresó; CxP creada si tenía proveedor.",
+        "queHacer": "Nada en inventario. Diferencias se resuelven con devolución a proveedor."
+      },
+      {
+        "codigo": "A",
+        "tono": "rojo",
+        "etiquetas": [
+          "A",
+          "Anulada"
+        ],
+        "significa": "Anulada; la cotización o los pendientes de aplicación quedan libres.",
+        "queHacer": "Si fue error, clonar la orden."
+      },
+      {
+        "codigo": "S",
+        "tono": "gris",
+        "etiquetas": [
+          "S",
+          "(sin rótulo)"
+        ],
+        "significa": "Puede aparecer en datos; el SP leído no lo escribe ni lo traduce. El comentario de SPK_UPDATE_VLRS_FCOM documenta además un estado E (pendiente en inventario).",
+        "queHacer": "Pendiente de confirmar con el desarrollador (posible solicitud de compra)."
+      },
+      {
+        "codigo": "ITRA 0",
+        "tono": "ambar",
+        "etiquetas": [
+          "ITRA.ESTADO 0",
+          "Tránsito abierto"
+        ],
+        "significa": "Mercancía viajando o sin lotear en destino.",
+        "queHacer": "Traer del tránsito y lotear."
+      },
+      {
+        "codigo": "ITRA 1",
+        "tono": "verde",
+        "etiquetas": [
+          "ITRA.ESTADO 1",
+          "Recibido"
+        ],
+        "significa": "La entrada se confirmó.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "ITRA 2",
+        "tono": "rojo",
+        "etiquetas": [
+          "ITRA.ESTADO 2",
+          "Cancelado"
+        ],
+        "significa": "Tránsito cancelado; la orden recalculó su recepción.",
+        "queHacer": "Nada; revisar la orden."
+      }
+    ],
+    "nota": "El estado 3 de ITRA no está rotulado en los SP leídos."
+  },
+  "estadosMovimiento": {
+    "titulo": "Estados del movimiento, la solicitud y el conteo",
+    "descripcion": "IMOV.ESTADO, IZSOL.ESTADO e IFIS.CERRADO. Lo que condiciona qué botón aparece.",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "IMOV 0",
+        "tono": "ambar",
+        "etiquetas": [
+          "IMOV.ESTADO 0",
+          "Pendiente"
+        ],
+        "significa": "Movimiento creado, sin confirmar. No afecta existencias.",
+        "queHacer": "Entrada: revisar y Confirmar. Salida: entregar lotes y Confirmar. Si sobra, anular o descartar líneas."
+      },
+      {
+        "codigo": "IMOV 1",
+        "tono": "verde",
+        "etiquetas": [
+          "IMOV.ESTADO 1",
+          "Confirmado"
+        ],
+        "significa": "Existencias afectadas, kardex escrito, contabilizable.",
+        "queHacer": "No se edita. Salidas: anular si procede. Ventas VC: marcar y facturar."
+      },
+      {
+        "codigo": "IMOV 2",
+        "tono": "rojo",
+        "etiquetas": [
+          "IMOV.ESTADO 2",
+          "Anulado"
+        ],
+        "significa": "Reintegrado.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "IZSOL 0",
+        "tono": "gris",
+        "etiquetas": [
+          "IZSOL.ESTADO 0",
+          "Pendiente"
+        ],
+        "significa": "Solicitud creada, farmacia no la ha tomado.",
+        "queHacer": "Agregar y entregar en Solicitudes."
+      },
+      {
+        "codigo": "IZSOL 1",
+        "tono": "ambar",
+        "etiquetas": [
+          "IZSOL.ESTADO 1",
+          "En proceso"
+        ],
+        "significa": "Farmacia la tomó; hay entregas o movimiento pendiente.",
+        "queHacer": "Procesar y Confirmar movimiento."
+      },
+      {
+        "codigo": "IZSOL 2",
+        "tono": "verde",
+        "etiquetas": [
+          "IZSOL.ESTADO 2",
+          "Cerrada"
+        ],
+        "significa": "Movimiento confirmado y solicitud cerrada.",
+        "queHacer": "Deshacer entrega solo con permiso y si enfermería no recibió."
+      },
+      {
+        "codigo": "IFIS",
+        "tono": "azul",
+        "etiquetas": [
+          "IFIS.CERRADO 0/1",
+          "Conteo abierto / aplicado"
+        ],
+        "significa": "0: en digitación; 1: aplicado (ajustes generados).",
+        "queHacer": "Abierto: cerrar los tres conteos y aplicar. Aplicado: no se borra."
+      }
+    ],
+    "nota": "Los estados de la solicitud se leen en el proceso «dispensacion»; aquí solo lo que condiciona el movimiento."
+  },
+  "botones": [
+    {
+      "label": "Nuevo artículo / Editar artículo",
+      "icono": "medication",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Alta y edición del maestro IART (permisos boton_de_nuevo_articulo, boton_de_editar_articulo). Presentaciones (SKU) con BTN_NUEVO_SKU / BTN_EDITAR_SKU y precio regulado con BTN_CARGAR_PRECIO_REGULADO."
+    },
+    {
+      "label": "Generar Servicios",
+      "icono": "playlist_add_check",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "En Tipos de artículo: crea el servicio SER de todos los artículos del tipo para que se puedan facturar."
+    },
+    {
+      "label": "Confirmar orden",
+      "icono": "task_alt",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Orden de compra: pasa a P y crea el tránsito hacia la bodega. Exige detalle sin valores en cero."
+    },
+    {
+      "label": "Recepción masiva OC",
+      "icono": "upload_file",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Permiso btnRecepcion_masiva_OC: recibe la orden desde Excel con lotes, sin pantalla de loteo. Elegir facturas sin legalizar arma esa plantilla desde RADIAN; las columnas en gris no se modifican y VALIDACION debe quedar en OK."
+    },
+    {
+      "label": "Traer del tránsito",
+      "icono": "move_to_inbox",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Movimientos: lotea los artículos del tránsito (compra o traslado) y acepta para crear la entrada pendiente. Con factura (INV_CUFE_LOTEO = SI) se elige el documento en RADIAN, se puede lotear con Todos y el faltante queda en Loteado."
+    },
+    {
+      "label": "Confirmar entrada / salida",
+      "icono": "verified",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Afecta existencias, kardex y, en compras, crea la cuenta por pagar. Después no se edita."
+    },
+    {
+      "label": "Anular salida",
+      "icono": "block",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Permiso ANULAR_SALIDA. Reintegra existencias si la solicitud de origen está cerrada."
+    },
+    {
+      "label": "Devolución tránsito",
+      "icono": "undo",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Permiso BTN_DEV_TRANSITO: devuelve un traslado recibido (tipo 33); el origen aprueba si INV_APRU_DEVTRA = SI."
+    },
+    {
+      "label": "Trasladar lote",
+      "icono": "swap_horiz",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Informes, permiso BTN_LOT_TRASLADO: mueve cantidad de un lote a otro del mismo artículo (24/25)."
+    },
+    {
+      "label": "Nuevo conteo / Cerrar / Aplicar",
+      "icono": "fact_check",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Conteo físico: crear, repartir por contador, cerrar los tres conteos y aplicar ajustes. Anular masivo limpia pendientes."
+    },
+    {
+      "label": "Ajustar / Procesar Ajuste",
+      "icono": "tune",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Ajustes: cambia el precio de costo del artículo con rastro en USLOG. Actualizar existencias recalcula totales desde lotes."
+    },
+    {
+      "label": "Salida artículos vencidos",
+      "icono": "delete_sweep",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Semáforo, permisos Salida un/todos los articulos vencidos: salida tipo 07 a destrucción."
+    },
+    {
+      "label": "Guardar venta",
+      "icono": "point_of_sale",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Venta de insumos: cierra el carrito en movimiento VE, factura FTR y recibo de caja. Requiere caja abierta y recaudo completo."
+    },
+    {
+      "label": "Marcar / Facturar masivo",
+      "icono": "receipt_long",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Factura INV: marca salidas VC confirmadas y genera facturas FTR en bloque."
+    },
+    {
+      "label": "Confirmar picking / Finalizar packing",
+      "icono": "inventory_2",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Packing (bodegas Pick&Pack): reserva lotes, empaca y habilita la confirmación de la salida. Permisos ASIG_LOTES_PICK, VAL_PICKING, CONF_PICKING."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "MENUQ_INVENTARIO · (ítem)",
+      "accion": "Ver cada opción del menú",
+      "rol": "Según grupo",
+      "descripcion": "El menú es dinámico: USPROH define ítems y grupos (Procesos, Venta a particulares, Mobiliario, Configuración); USGRUH da o quita cada uno por grupo."
+    },
+    {
+      "codigo": "boton_de_nuevo_articulo / boton_de_editar_articulo",
+      "accion": "Crear y editar artículos",
+      "rol": "Farmacia / Compras",
+      "descripcion": "Maestro IART."
+    },
+    {
+      "codigo": "BTN_NUEVO_SKU / BTN_EDITAR_SKU / BTN_CARGAR_PRECIO_REGULADO / CrearFab / NuevoFab / TRASLADA_IART / EDITAR_IARTDESC",
+      "accion": "Presentaciones, precio regulado, fabricantes, cambio de tipo",
+      "rol": "Farmacia",
+      "descripcion": "Botones secundarios del artículo."
+    },
+    {
+      "codigo": "BTN_INV_EDIT_ART",
+      "accion": "Editar lote (IEXI) y sacar de cuarentena",
+      "rol": "Jefe de farmacia",
+      "descripcion": "Artículo por bodega."
+    },
+    {
+      "codigo": "btnRecepcion_masiva_OC / btnEditar_notas_OC / btnEliminar_notas_OC",
+      "accion": "Recepción masiva y notas de la orden",
+      "rol": "Compras / Bodega",
+      "descripcion": "Orden de compra."
+    },
+    {
+      "codigo": "BTN_ELIMINAR_ICTZD",
+      "accion": "Borrar línea de cotización",
+      "rol": "Compras",
+      "descripcion": "Cotización de compras."
+    },
+    {
+      "codigo": "ANULAR_SALIDA / EDITAR_SALIDA",
+      "accion": "Anular o editar salidas",
+      "rol": "Jefe de bodega",
+      "descripcion": "Movimientos."
+    },
+    {
+      "codigo": "BTN_DEV_TRANSITO / per_traslado_bodegas / BTN_LOT_TRASLADO",
+      "accion": "Devolver traslado, trasladar entre bodegas, trasladar entre lotes",
+      "rol": "Bodega",
+      "descripcion": "Traslados."
+    },
+    {
+      "codigo": "Bcustodia / Masivo_cus",
+      "accion": "Custodia de medicamentos",
+      "rol": "Farmacia",
+      "descripcion": "Tránsito de custodia (tipo PR) individual o por Excel."
+    },
+    {
+      "codigo": "ASIG_LOTES_PICK / QUITAR_ART_PICK / VAL_PICKING / CONF_PICKING",
+      "accion": "Pick & Pack",
+      "rol": "Picker / Packer",
+      "descripcion": "Packing."
+    },
+    {
+      "codigo": "abrir_solicitud / cerrar_solicitud_dispensacionINV / deshacer_entrega / devolucion_inv / dispensar_sin_validar_periodos / traer_formula_paraDispensacion / print_orden_medica",
+      "accion": "Solicitudes y dispensación",
+      "rol": "Farmacia",
+      "descripcion": "Pantalla Solicitudes."
+    },
+    {
+      "codigo": "Firma_paciente_mov / Firma_recibido_enf",
+      "accion": "Firmas en el movimiento",
+      "rol": "Farmacia / Enfermería",
+      "descripcion": "Movimientos y solicitudes."
+    },
+    {
+      "codigo": "Configurar semaforo vencimientos / Filtro todas las bodegas / Salida un articulo vencido / Salida todos los articulos vencidos",
+      "accion": "Semáforo de vencimientos",
+      "rol": "Jefe de farmacia",
+      "descripcion": "Semáforo."
+    },
+    {
+      "codigo": "ver_montos_precios / pint_mov_formatoM",
+      "accion": "Ver costos; imprimir formato M",
+      "rol": "Supervisor",
+      "descripcion": "Movimientos e informes."
+    },
+    {
+      "codigo": "GESVENTA/NoGenerarReingreso",
+      "accion": "Nota crédito sin reingreso",
+      "rol": "Cajero jefe",
+      "descripcion": "Gestión de ventas."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDINVMOV_COMPRAS",
+      "tipo": "ITMO",
+      "valorSugerido": "02",
+      "descripcion": "Tipo de la entrada por compra; dispara la CxP automática."
+    },
+    {
+      "nombre": "IDINVMOV_REMISION_EN / IDINVMOV_SI",
+      "tipo": "ITMO",
+      "valorSugerido": "22 / SI",
+      "descripcion": "Entrada por remisión y saldo inicial; también crean CxP si hay proveedor."
+    },
+    {
+      "nombre": "IDTS / IDTE",
+      "tipo": "ITMO",
+      "valorSugerido": "14 / 13",
+      "descripcion": "Traslado entre bodegas: salida con tránsito y entrada en destino."
+    },
+    {
+      "nombre": "IDINVENTA_PARTICULAR",
+      "tipo": "ITMO",
+      "valorSugerido": "VE",
+      "descripcion": "Salida de la venta de mostrador."
+    },
+    {
+      "nombre": "IDINVMOVVENTAFACTURA",
+      "tipo": "ITMO",
+      "valorSugerido": "VC",
+      "descripcion": "Salida de venta que se factura masivamente (Factura INV)."
+    },
+    {
+      "nombre": "IDINVDEVPROVEEDOR",
+      "tipo": "ITMO",
+      "valorSugerido": "05",
+      "descripcion": "Devolución a proveedor."
+    },
+    {
+      "nombre": "IDINVSALVENCIDOS",
+      "tipo": "ITMO",
+      "valorSugerido": "07",
+      "descripcion": "Salida de vencidos desde el semáforo."
+    },
+    {
+      "nombre": "IDINVTRASLOTESAL / IDINVTRASLOTEENT",
+      "tipo": "ITMO",
+      "valorSugerido": "24 / 25",
+      "descripcion": "Traslado entre lotes."
+    },
+    {
+      "nombre": "IDINVSIENT / IDINVSISAL / IDINV_AJUSXITAR",
+      "tipo": "ITMO / SI-NO",
+      "valorSugerido": "SI / SA / NO",
+      "descripcion": "Conteo de saldo inicial y ajuste por tipo de artículo al aplicar conteos."
+    },
+    {
+      "nombre": "IDINVTPROPIA / IDINVTFSA",
+      "tipo": "ITMO",
+      "valorSugerido": "PR / 21",
+      "descripcion": "Custodia (producción propia) y tipo auxiliar de salida."
+    },
+    {
+      "nombre": "IDTIMOVDEV_TRASLBOD / INV_APRU_DEVTRA",
+      "tipo": "ITMO / SI-NO",
+      "valorSugerido": "33 / SI",
+      "descripcion": "Devolución de traslado y si el origen debe aprobarla."
+    },
+    {
+      "nombre": "IDMOVPICKPACK",
+      "tipo": "Lista ITMO",
+      "valorSugerido": "14,VC",
+      "descripcion": "Tipos que pasan por Pick & Pack en bodegas con MANEJA_PICKPACK."
+    },
+    {
+      "nombre": "ESFARMACIA",
+      "tipo": "SI-NO",
+      "valorSugerido": "SI",
+      "descripcion": "Con SI, confirmar salida rechaza artículos con costo cero y la anulación en farmacia genera el movimiento contrario. Debe valer exactamente «SI»: cualquier otro valor apaga ambas reglas."
+    },
+    {
+      "nombre": "VALID_CCOSTO_CXP",
+      "tipo": "SI-NO",
+      "valorSugerido": "NO",
+      "descripcion": "Con SI, confirmar entrada exige cuenta CXP_COMPRAS para el centro de costo."
+    },
+    {
+      "nombre": "MOV_PERIODOS_ANT",
+      "tipo": "SI-NO",
+      "valorSugerido": "SI",
+      "descripcion": "Permite crear movimientos de meses anteriores (PRI.CERRADO_INV sigue bloqueando)."
+    },
+    {
+      "nombre": "CONTABIMOV_JOB",
+      "tipo": "SI-NO",
+      "valorSugerido": "SI",
+      "descripcion": "SI: la entrada no contabiliza en línea; lo hace OM Inventario / job."
+    },
+    {
+      "nombre": "IART_SER_UNICO / DEINVNODESER / CAMBIO_ART_ESTADO",
+      "tipo": "SI-NO / servicio",
+      "valorSugerido": "NO / NA / NO",
+      "descripcion": "CUM y descripción únicos; servicio que no debe tener el principal; log de cambio de estado."
+    },
+    {
+      "nombre": "PVENTA_MOV_SAL / PVENTA_AUTO_TARIFA / IDSERVDOMICILIO / IDCJFPAEFECTIVO",
+      "tipo": "SI-NO / servicio / medio",
+      "valorSugerido": "SI / SI / (vacío) / 01",
+      "descripcion": "Venta: salida al confirmar picking, tarifa automática, servicio de domicilio, medio de pago efectivo."
+    },
+    {
+      "nombre": "TERCATPROVEEDOR / TERCATIFART / TERCATCLIENTE / TERCATFABRICANTE",
+      "tipo": "Categoría TER",
+      "valorSugerido": "PRO / IFART / CLI",
+      "descripcion": "Categorías con que se crean proveedores, proveedores de lista, clientes y fabricantes."
+    },
+    {
+      "nombre": "IMPUESTO_OBL / CONTAB_GASTOVEN_UNI / INTERFAZ_INV",
+      "tipo": "SI-NO / texto",
+      "valorSugerido": "SI / SI / (vacío)",
+      "descripcion": "Impuesto obligatorio en recepción masiva; costo INV en el comprobante de venta; interfaz externa (INTER_SAP)."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear una bodega nueva y dejarla lista para recibir",
+      "donde": "Inventario → Configuración → Bodegas → Nuevo → pestañas Seguridad (usuarios, tipos de artículo) y Excepciones",
+      "condicion": "Tipo de bodega creado antes; centro de costo y bodega que pide (IDBODEGAPIDE) si va a solicitar compras; luego Artículo por bodega para stocks.",
+      "noEs": "No es un estante (Configuración → Estantes) ni una sede.",
+      "fraseUsuario": "crear bodega",
+      "control": "IBODComponent",
+      "metodo": "IBOD · GUARDAR / IBODS · GUARDAR"
+    },
+    {
+      "necesidad": "Crear un tipo de movimiento y que el sistema lo use",
+      "donde": "Inventario → Configuración → Tipos de movimiento → Nuevo; después Variables del sistema (IDINV*) para apuntar a él",
+      "condicion": "Débito = salida, Crédito = entrada. Si genera tránsito indique el tipo opuesto; si se contabiliza, comprobante y cuentas KMCOM.",
+      "noEs": "Crear el tipo no basta: el proceso elige por variable, no por nombre.",
+      "fraseUsuario": "nuevo tipo de movimiento",
+      "control": "ITMOComponent",
+      "metodo": "ITMO · GUARDAR"
+    },
+    {
+      "necesidad": "Crear un artículo y poder facturarlo",
+      "donde": "Inventario → Configuración → Artículos → Nuevo artículo (Datos Básicos, Adicionales) → Validar servicio",
+      "condicion": "Permiso boton_de_nuevo_articulo. Tipo de artículo con prefijo; el servicio SER se crea desde la misma pantalla o con Generar Servicios en Tipos de artículo.",
+      "noEs": "La presentación hija (SKU) se crea con Nuevo SKU y apunta al principal.",
+      "fraseUsuario": "crear artículo",
+      "control": "IARTComponent",
+      "metodo": "IART · GUARDAR / VALIDA_SERVICIO"
+    },
+    {
+      "necesidad": "Cargar la lista de precios de un proveedor",
+      "donde": "Inventario → Venta a particulares → Lista de precios → Nueva lista → Importar precios (Excel)",
+      "condicion": "Una lista por proveedor con vigencia y valor mínimo aceptado.",
+      "noEs": "No es la tarifa de mostrador (Lista Precios en Venta) ni la cotización.",
+      "fraseUsuario": "lista de precios proveedor",
+      "control": "ListaPrecioComponent",
+      "metodo": "ILPRE · GUARDA_ILPRE / IMPORTAR_PRECIO_2"
+    },
+    {
+      "necesidad": "Hacer una orden de compra desde una cotización",
+      "donde": "Inventario → Venta a particulares → Cotización de compras → artículos con proveedor → Generar OC; luego Procesos → Orden de compra → Confirmar",
+      "condicion": "Cotización Ingresada; total por proveedor ≥ mínimo de su lista. Generar OC deja la orden abierta (C): hay que confirmarla.",
+      "noEs": "La «Cotización comercial» del menú (ICTZG) no genera órdenes.",
+      "fraseUsuario": "orden de compra desde cotización",
+      "control": "CotizacionComponent / FComComponent",
+      "metodo": "ILPRE · GENERAR_OC / FCOM · CONFIRMAR_ORDEN"
+    },
+    {
+      "necesidad": "Pedir una compra desde mi bodega",
+      "donde": "Inventario → Procesos → Orden de compra → Solicitud (Editar Sol) → Generar OC",
+      "condicion": "La bodega debe tener COMPRASOL y bodega destino (IDBODEGAPIDE) en Configuración → Bodegas.",
+      "noEs": "No es solicitud a farmacia (Solicitudes): esa pide a otra bodega, no al proveedor.",
+      "fraseUsuario": "solicitud de compra",
+      "control": "FComComponent",
+      "metodo": "FCOM · GUARDA_FCOM_SOL / GENERA_OC"
+    },
+    {
+      "necesidad": "Recibir la mercancía de una orden",
+      "donde": "Inventario → Movimientos → Traer del tránsito → lotear → Aceptar → Confirmar entrada; o Orden de compra → Recepción masiva (Excel)",
+      "condicion": "Orden confirmada (P). Con INV_CUFE_LOTEO = SI se elige Factura (lista RADIAN del proveedor, se refresca al escribir) o Remisión. Cada artículo con lote y fecha de vencimiento o causa de no loteo; costo en todos los lotes. Todos solo pide lote y vencimiento en los CUM que coinciden; el faltante de la factura se ve en Loteado. Si la entrada nació de esa factura, el CUFE, el tipo de documento, el tipo de movimiento, el número y las fechas no se editan.",
+      "noEs": "No es una entrada manual sin orden (esa no crea CxP ni cierra la orden).",
+      "fraseUsuario": "recepcionar orden de compra",
+      "control": "TraerTransitoTempComponent / IMOVComponetNew",
+      "metodo": "IZSOL · ON_ACEPTA_TRANSITO / CONF_ENTRADA"
+    },
+    {
+      "necesidad": "Saber si la compra ya generó la cuenta por pagar",
+      "donde": "Inventario → Procesos → Cuentas por pagar (informes) o Tesorería → CxP; en la orden, estado I",
+      "condicion": "Se crea sola al confirmar la entrada tipo compra con proveedor. Cambiar factura solo si la CxP no está contabilizada.",
+      "noEs": "No hay botón «generar CxP»: es automático.",
+      "fraseUsuario": "generar cuenta por pagar de la compra",
+      "control": "SPK_CONFIRMARENTRADAS",
+      "metodo": "(automático) SPK_INSERT_CXP_INV"
+    },
+    {
+      "necesidad": "Trasladar mercancía a otra bodega",
+      "donde": "Inventario → Movimientos → Nueva salida tipo 14 (Traslado) → bodega destino → entregar lotes → Confirmar; destino: Traer del tránsito → Confirmar entrada 13",
+      "condicion": "Permiso per_traslado_bodegas y acceso a la bodega destino. La existencia sale del origen al confirmar la salida.",
+      "noEs": "No es traslado entre lotes (Informes → Trasladar lote) ni un ajuste.",
+      "fraseUsuario": "traslado entre bodegas",
+      "control": "IMOVComponetNew",
+      "metodo": "IMOV · CRUD_IMOV_SAL / CONFIRMA_SALIDA"
+    },
+    {
+      "necesidad": "Devolver mercancía al proveedor",
+      "donde": "Inventario → Procesos → Devolución a proveedor → buscar la orden → marcar artículos → Confirmar devolución",
+      "condicion": "Orden ya ingresada, con CxP; existencia del lote disponible.",
+      "noEs": "No es anular la entrada (solo se anula sin confirmar).",
+      "fraseUsuario": "devolución a proveedor",
+      "control": "DevProPage",
+      "metodo": "DEVOLU_PROVEEDOR · GUARDA_REGISTRO / CONFIRMAR_DEVOLUCION"
+    },
+    {
+      "necesidad": "Hacer inventario físico y ajustar diferencias",
+      "donde": "Inventario → Procesos → Conteo físico → Nuevo conteo → listados por contador → digitar 3 conteos → Cerrar → Aplicar",
+      "condicion": "Tres conteos cerrados, sin negativos, sin movimientos pendientes en la bodega (Anular masivo). Variable IDINV_AJUSXITAR.",
+      "noEs": "No es Ajustes de inventario (eso corrige costo o totales, no cantidades).",
+      "fraseUsuario": "conteo físico",
+      "control": "ConteoFisicoPage",
+      "metodo": "CONTEOFISICO · CRUD / CREA_LISTADO / APLICAR"
+    },
+    {
+      "necesidad": "Un artículo tiene lote con saldo pero no aparece la existencia",
+      "donde": "Inventario → Procesos → Ajustes de inventario → Actualizar existencias",
+      "condicion": "Recalcula IDXB e IART desde los lotes. PREVERSION de SPK_CONFIRMARENTRADAS corrige la causa en entradas con líneas estado 9.",
+      "noEs": "No es un conteo ni un movimiento.",
+      "fraseUsuario": "existencia no aparece",
+      "control": "AjustesInvPage",
+      "metodo": "INFOMRES_INV · ACTUALIZAR_EXISTENCIAS"
+    },
+    {
+      "necesidad": "Sacar los medicamentos vencidos",
+      "donde": "Inventario → Semáforo → filtrar rojo → Salida un artículo / todos los vencidos",
+      "condicion": "Permisos de semáforo; variable IDINVSALVENCIDOS (07). Rangos de días configurables.",
+      "noEs": "No es devolución a proveedor.",
+      "fraseUsuario": "salida de vencidos",
+      "control": "SemaforoPage",
+      "metodo": "SEMAFORO · GEN_MOVIMIENTO"
+    },
+    {
+      "necesidad": "Vender al público en farmacia",
+      "donde": "Inventario → Venta a particulares → Venta de insumos → leer código → cliente → recaudo → Guardar venta",
+      "condicion": "Caja abierta; recaudo igual al total; responsable si es factura electrónica.",
+      "noEs": "No es recaudo de cartera ni la Factura INV masiva.",
+      "fraseUsuario": "vender al público en farmacia",
+      "control": "VentaPrincipalComponent",
+      "metodo": "VENTAFAR · GUARDA_VENTA"
+    },
+    {
+      "necesidad": "Facturar en bloque las salidas de venta",
+      "donde": "Inventario → Venta a particulares → Factura INV → Marcar → Facturar masivo",
+      "condicion": "Salidas tipo VC confirmadas con lotes válidos.",
+      "noEs": "No es la venta de mostrador (esa factura al guardar).",
+      "fraseUsuario": "facturar movimientos de venta inventario",
+      "control": "FacturaInvComponent",
+      "metodo": "IMOV_VENTA · MARCA_FACTURAR / FACTMASIVO_INV"
+    },
+    {
+      "necesidad": "Ver el kardex de un artículo",
+      "donde": "Inventario → Informes → Históricos de movimientos → Kardex por periodos (pantalla, Excel, valorizado, PDF)",
+      "condicion": "Bodegas del usuario; costos solo con permiso ver_montos_precios.",
+      "noEs": "El dashboard es consumos, no kardex.",
+      "fraseUsuario": "kardex",
+      "control": "ExistenciaCostoPage",
+      "metodo": "INFOMRES_INV · KARDEX_PERIODOS / KARDEX_VALORIZADO_EXCEL"
+    },
+    {
+      "necesidad": "Dispensar medicamentos de una solicitud",
+      "donde": "Inventario → Solicitudes → Agregar → Entregar → Procesar → Confirmar movimiento",
+      "condicion": "Admisión abierta, solicitud vigente, copago recaudado si aplica, medicamento no suspendido.",
+      "noEs": "No es entrada ni venta. Detalle en el libro «Dispensación».",
+      "fraseUsuario": "dispensar medicamentos de solicitud farmacia",
+      "control": "IndexComponent",
+      "metodo": "IZSOL · AGREGAR / ENTREGAR / PROCESAR / CONF_MOVIMIENTO"
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer?",
+      "intro": "Diecisiete tareas frecuentes de inventario, compras y farmacia con su ruta exacta en Qrystalos2, la condición que debe cumplirse y con qué no confundirla."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es el inventario de Qrystalos y cómo se mueve",
+      "imagen": "img/inv_que_es_sketchnote.jpg",
+      "imagenAlt": "Mapa: configuración → compras → entradas → existencias por lote → salidas → contabilidad",
+      "intro": "Todo lo que entra o sale de una bodega es un **movimiento** (IMOV) con un **tipo** (ITMO) que dice si suma o resta, si cuesta y si se contabiliza. La existencia vive por **lote** (IEXI); los totales por bodega (IDXB) y por artículo (IART) se recalculan en cada confirmación.",
+      "md": "## Las cuatro piezas\n\n- **Bodega (IBOD)**: dónde está la mercancía, con su centro de costo, su sede y sus reglas (seguridad, excepciones, Pick&Pack, custodia).\n- **Tipo de movimiento (ITMO)**: Débito (salida) o Crédito (entrada). Cada proceso lo elige por una **variable del sistema** (IDINVMOV_COMPRAS = 02, IDTS/IDTE = 14/13, IDINVENTA_PARTICULAR = VE…), no por el nombre.\n- **Artículo (IART)** con su **tipo (ITAR)**: qué datos pide (lote, vencimiento, genérico, concentración), su cuenta contable y su servicio para facturar.\n- **Movimiento (IMOV)** con detalle (IMOVH) y entregas por lote (ISAL): nace pendiente (0), se confirma (1) o se anula (2).\n\n## Cómo se mueve\n\n1. **Compras**: lista de precios → cotización → orden → confirmación → tránsito → loteo en la bodega → entrada confirmada → **cuenta por pagar automática**.\n2. **Salidas**: dispensación por solicitud, salida manual, traslado a otra bodega, venta al público, devolución a proveedor, vencidos, ajustes de conteo.\n3. **Contabilidad**: cada confirmación deja kardex; el comprobante contable sale por OM Inventario (movimientos), por la CxP (compras) o por la factura (ventas).",
+      "puntosClave": [
+        "El tipo de movimiento lo elige la variable del sistema, no el usuario.",
+        "La existencia real está en el lote (IEXI); IDXB e IART son totales que se recalculan.",
+        "Confirmar es el único paso que afecta existencias; pendiente no suma ni resta."
+      ]
+    },
+    {
+      "id": "configuracion",
+      "tipo": "texto",
+      "kicker": "Etapa 1 · Configuración",
+      "titulo": "Configuración: del tipo de bodega al artículo en la bodega",
+      "imagen": "img/inv_configuracion_sketchnote.jpg",
+      "imagenAlt": "Orden de configuración: ITBOD → IBOD → ITMO ↔ USVGS → ITAR → catálogos → IART → IDXB → estantes",
+      "intro": "La configuración vive en Inventario → Configuración y se hace una vez, en orden. Cada catálogo guarda con **Guardar / Actualizar / Eliminar** y rechaza duplicados y borrados con hijos.",
+      "md": "## Orden recomendado\n\n| Paso | Pantalla | Qué define | Regla del sistema |\n|---|---|---|---|\n| 1 | Tipos de bodega | Agrupa bodegas (farmacéuticas, carro de paro, botiquín, administrativas) | No se borra con bodegas asignadas |\n| 2 | Bodegas | Sede, centro de costo, bodega que pide, mueve existencias, valida stock, no contabiliza, custodia, Pick&Pack, solicita compras | Pestañas Seguridad (quién entra, qué tipos acepta), Excepciones, Notificaciones. No se borra con IBODEX/IBODS/IDXB/movimientos |\n| 3 | Tipos de movimiento | Débito/Crédito, afecta costo/promedio, se contabiliza + comprobante, genera tránsito + tipo opuesto, pide proveedor/valor | Borrar solo revisa excepciones (IEXCEP); no revisa movimientos ni variables |\n| 4 | Variables del sistema | IDINVMOV_COMPRAS, IDTS/IDTE, IDINVENTA_PARTICULAR, IDINVDEVPROVEEDOR, IDINVSALVENCIDOS… | El SP rechaza una variable que apunte a un tipo del sentido equivocado |\n| 5 | Tipos de artículo | Qué pide el artículo (lote, vencimiento, clase, genérico, concentración, riesgo, IVA), prefijo del código, cuenta | Botón **Generar Servicios** crea SER para todo el tipo |\n| 6 | Clases, Genéricos, Formas, Concentraciones, Principios activos, Unidades, Tipos de genérico | Catálogos farmacéuticos | Únicos; no se borran con artículos |\n| 7 | Artículos | Maestro IART: código automático, principal y presentaciones (SKU), servicio para facturar, códigos de barras, diagnósticos UNIRS, unidosis, kits, transformaciones | No se borra si está en alguna bodega |\n| 8 | Artículo por bodega | Stock mínimo, máximo, punto de reorden, requiere autorización | Un artículo una vez por bodega |\n| 9 | Estantes, Clase de riesgo, Vías de aplicación, Gastos por consumo | Ubicación física y listas auxiliares (TGEN) | — |\n\n## Bodegas: lo que más se pregunta\n\n- **Bodega que pide (IDBODEGAPIDE)** y **COMPRASOL**: sin ellas la bodega no puede crear solicitudes de compra.\n- **BODEGASELECT**: las pantallas solo muestran las bodegas donde el usuario tiene acceso en Seguridad.\n- **Bodega por defecto del equipo**: se asocia la estación (UBEQ) a una bodega.\n- **ESDECUSTODIA**: la bodega recibe mercancía en custodia (entrada propia, tipo IDINVTPROPIA).\n\n## Artículo: principal y presentaciones\n\nEl **principal** es el medicamento genérico que se formula; las **presentaciones (SKU)** son las cajas reales de cada fabricante y apuntan al principal (IDARTICULOPRIN). La variable DEINVNODESER marca el servicio que un principal no debe tener. Con IART_SER_UNICO = SI (ya liberado en 2.0.7) no se repiten CUM ni descripción entre activos.",
+      "puntosClave": [
+        "Nada se borra con hijos: tipo de bodega con bodegas, bodega con reglas o movimientos, catálogo con artículos.",
+        "Un tipo de movimiento nuevo no sirve hasta que una variable del sistema lo apunte.",
+        "La pantalla Artículos llama IART · CARGAR_PRECIO_REGULADO y ese método no existe en el SP: pendiente de desarrollo."
+      ]
+    },
+    {
+      "id": "tipos-movimiento",
+      "tipo": "texto",
+      "kicker": "Etapa 1 · Configuración",
+      "titulo": "Tipos de movimiento: cuáles existen y quién los usa",
+      "imagen": "img/inv_tipos_movimiento_sketchnote.jpg",
+      "imagenAlt": "Tipos de movimiento agrupados por familia con la variable que los elige",
+      "intro": "El catálogo ITMO es propio de cada institución; aquí van los tipos que mueven el inventario en los procesos de Qrystalos y la **variable del sistema** que los elige. Los códigos son los habituales en la configuración estándar y pueden variar.",
+      "md": "## Entradas (Crédito)\n\n| Código habitual | Nombre | Lo usa | Variable |\n|---|---|---|---|\n| 02 | Entradas por compras | Recepción de OC; crea CxP | IDINVMOV_COMPRAS |\n| 13 | Traslado entre bodegas ENT | Destino acepta el traslado | IDTE |\n| 04 | Devolución de enfermería | Devolución de dispensación | IDINVMOVPREDEV / IDCINVMOVPREDEV |\n| DV | Devolución de dispensación | Solicitudes → Devolver (IDINVMOV_DEVOLUCION) | IDINVMOV_DEVOLUCION |\n| 15 | Entrada por aprovechamiento | Manual | — |\n| 31 | Devolución en ventas | Factura INV → Devuelve artículo | — |\n| 25 | Traslado entre lotes ENT | Informes → Trasladar lote | IDINVTRASLOTEENT |\n| 33 | Devolución de traslados | Devolución de tránsito aprobada | IDTIMOVDEV_TRASLBOD |\n| 63 | Entrada cambio SKU | Cambio de presentación | — |\n| SI | Entrada de ajuste / saldo inicial | Conteo físico (diferencias positivas) | IDINVSIENT |\n| 22 | Entrada por remisión | Remisión sin factura; crea CxP | IDINVMOV_REMISION_EN |\n| PR | Entrada propia (custodia) | Movimientos → Agregar custodia | IDINVTPROPIA |\n| 62 | Corrección lotes ENT | Manual | — |\n| Otros | Bonificaciones, préstamo, convenio, obsequios, hemocomponentes, reposición, reempaque, transformación | Casos especiales | — |\n\n## Salidas (Débito)\n\n| Código habitual | Nombre | Lo usa | Variable |\n|---|---|---|---|\n| 06 | Dispensación | Solicitudes → Confirmar movimiento | — |\n| 14 | Traslados entre bodegas SAL | Movimientos; genera tránsito (opuesto 13) | IDTS |\n| VC | Venta cliente | Salida facturable (Factura INV) | IDINVMOVVENTAFACTURA |\n| VE | Venta | Venta de mostrador | IDINVENTA_PARTICULAR |\n| 08 / 8A | Gasto por consumo | Solicitudes de consumo (08 genera tránsito 10) | — |\n| 24 | Traslado entre lotes SAL | Informes → Trasladar lote | IDINVTRASLOTESAL |\n| SA | Salida de ajuste / saldo inicial | Conteo físico (diferencias negativas) | IDINVSISAL |\n| 64 | Salida cambio SKU | Cambio de presentación | — |\n| 07 | Salida a destrucción | Semáforo → vencidos | IDINVSALVENCIDOS |\n| 05 | Devolución a proveedor | Devolución a proveedor | IDINVDEVPROVEEDOR |\n| 21 | Transformación entre lotes SAL | Transformaciones ITXA | IDINVTFSA |\n| — | Contrario de anulación (farmacia) | Anular entrada / salida confirmada | FAR_MOVANULAENTRADA / FAR_MOVANULASALIDA |\n| Otros | Préstamo, activos, reposición, otras sedes, aplicación, canasta de cirugía, reempaque | Casos especiales | — |\n\n## Banderas que importan\n\n- **SECONTABILIZA + COMPROBANTE**: el movimiento genera comprobante en OM Inventario (y la bodega no debe tener NOCONTABILIZA).\n- **AFECTACOSTO**: recalcula el costo promedio del artículo (compras, ventas, devoluciones a proveedor, destrucción, cambio SKU).\n- **GENTRANSITO + IDTIPOMOVOP**: la salida crea un tránsito que el destino acepta con el tipo opuesto (14 → 13, 08 → 10).\n- **MPROVEEDOR**: pide proveedor (devoluciones, préstamos, remisión, reempaque).",
+      "puntosClave": [
+        "En la operación diaria casi todo es dispensación (06); compras y traslados son el resto relevante.",
+        "Un tipo con GENTRANSITO sin tipo opuesto deja tránsitos que nadie puede aceptar.",
+        "Los tipos de ajuste del conteo son los de IDINVSIENT / IDINVSISAL; no se crean a mano."
+      ]
+    },
+    {
+      "id": "compras",
+      "tipo": "flujo",
+      "flujoId": "compras-oc",
+      "kicker": "Etapa 3 · Compras",
+      "titulo": "Compras: de la lista de precios a la orden confirmada",
+      "imagen": "img/inv_compras_sketchnote.jpg",
+      "imagenAlt": "ILPRE → ICTZ → FCOM C → Confirmar → P + tránsito",
+      "intro": "Compras trabaja en tres pantallas del grupo *Venta a particulares / Procesos*: **Lista de precios**, **Cotización de compras** y **Orden de compra**. La orden nace abierta (C) y solo al **confirmarla** (P) viaja a la bodega como tránsito.",
+      "puntosClave": [
+        "Generar OC desde la cotización no confirma la orden: hay que confirmarla en Orden de compra.",
+        "Ningún valor unitario en cero: la confirmación lo rechaza.",
+        "Abrir una orden confirmada solo mientras no tenga recepción en bodega."
+      ]
+    },
+    {
+      "id": "recepcion",
+      "tipo": "flujo",
+      "flujoId": "recepcion-entrada",
+      "kicker": "Etapa 2 · Entradas",
+      "titulo": "Recepción: tránsito, loteo, entrada confirmada y cuenta por pagar",
+      "imagen": "img/inv_recepcion_sketchnote.jpg",
+      "imagenAlt": "Traer del tránsito → lotear → aceptar → IMOV 0 → Confirmar entrada → IEXI + FCXP",
+      "intro": "La bodega recibe en **Movimientos → Traer del tránsito**: lotea, acepta y confirma. Al confirmar, el sistema crea los lotes, actualiza totales y kardex, cierra el tránsito, pasa la orden a R o I y, si es compra con proveedor, **crea la cuenta por pagar** sin intervención de Tesorería.",
+      "puntosClave": [
+        "Sin lote y fecha de vencimiento (o causa de no loteo) el tránsito no se acepta.",
+        "Sin costo en todos los lotes la entrada no se confirma.",
+        "La CxP es automática: el único botón de Tesorería es contabilizarla.",
+        "PREVERSION de SPK_CONFIRMARENTRADAS corrige el total de bodega/artículo cuando hay líneas en estado 9 (artículo que «desaparecía» con lote con saldo)."
+      ]
+    },
+    {
+      "id": "salidas",
+      "tipo": "flujo",
+      "flujoId": "salidas-traslados",
+      "kicker": "Etapa 2 · Salidas",
+      "titulo": "Salidas y traslados entre bodegas",
+      "imagen": "img/inv_salidas_sketchnote.jpg",
+      "imagenAlt": "Salida manual, traslado 14→13, devolución de traslado, traslado entre lotes",
+      "intro": "Toda salida se arma **por lote** (entregas ISAL) y se confirma en un solo paso que descuenta existencias. El traslado es una salida tipo 14 que crea un tránsito; la bodega destino lo acepta como entrada 13.",
+      "puntosClave": [
+        "Sin entregas no hay confirmación; la cantidad nunca supera la existencia del lote.",
+        "Anular una salida exige que la solicitud de origen esté cerrada.",
+        "Con ESFARMACIA = SI, anular un movimiento confirmado genera el movimiento contrario (FAR_MOVANULAENTRADA / FAR_MOVANULASALIDA) y lo confirma; si venía de una orden, la orden vuelve a abierta.",
+        "La devolución de traslado (33) pide aprobación del origen cuando INV_APRU_DEVTRA = SI."
+      ]
+    },
+    {
+      "id": "dispensacion",
+      "tipo": "texto",
+      "kicker": "Etapa 3 · Farmacia",
+      "titulo": "Solicitudes y dispensación: la salida que nace en el piso",
+      "imagen": "img/inv_dispensacion_sketchnote.jpg",
+      "imagenAlt": "Solicitud IZSOL → Agregar → Entregar por lote → Procesar → Confirmar movimiento → IMOV 06",
+      "intro": "La dispensación es el movimiento más frecuente del inventario. La enfermera o el médico crean la **solicitud** (IZSOL, clases CE, TRANS_CE, 24HORAS, APLIM, OMEDICA, SENFER, Consumo); farmacia la atiende en **Inventario → Solicitudes** y el sistema arma la salida tipo 06.",
+      "md": "## Cuatro pasos en Solicitudes\n\n1. **Agregar**: farmacia toma la solicitud y crea el movimiento pendiente (SPK_CM_GENIMOV_SOL).\n2. **Entregar**: picking por lote (IZSOLDT). Bloqueos: medicamento suspendido en la orden, pendiente o no autorizado por PROA, cantidad ya cumplida.\n3. **Procesar**: pasa el picking al detalle del movimiento. Bloqueos: admisión cerrada, solicitud vencida u orden anulada, copago sin recaudar, usuario sin privilegios.\n4. **Confirmar movimiento**: descuenta existencias (SPK_CONFIRMASAL_CM), cobra si aplica y puede cerrar la solicitud. En PREVERSION completa el centro de costo del movimiento en TRANS_CE desde la fórmula.\n\n## Variantes en el mismo menú\n\n- **Canastas de cirugía**: la canasta configurada en la cirugía (HCINP) se arma con el tipo INVE_CIRU_TIPO_MOV, se entrega por etiqueta y se anula con bloqueo.\n- **Gasto por consumo / carga masiva**: solicitudes de consumo (tipos 08 / 8A) desde GastosConsumoComponent.\n- **Solicitudes 24 horas**: genera las órdenes del día por sector o admisión.\n- **Deshacer entrega**: permiso, motivo de 5+ caracteres y que enfermería no haya recibido.\n\n## Devolver una dispensación\n\n- **Consultar dispensado**: solo movimientos confirmados y con cantidad pendiente de devolver.\n- **Procesar devolución** (IZSOL_2): exige motivo, cantidades dentro de lo pendiente y la variable **IDINVMOV_DEVOLUCION** apuntando a un tipo de entrada. Crea la entrada, la confirma, actualiza la solicitud y la autorización y puede abrir una nueva solicitud con lo devuelto.\n- **Entregas no recibidas** (GES_MED): lo que enfermería no recibió se **regresa** o se **recibe** de vuelta en farmacia por movimiento y lote.\n- **Cambiar cantidad**: solo en movimientos pendientes; ajusta existencia, entrega y picking a la vez.\n\n## Lista de trabajo (LISTA_AUT)\n\nPara farmacia ambulatoria y domiciliaria: la **autorización** (AUT/AUTD) se aprueba por ítem, se **dispensa** por lote (AUTDF) y **Confirmar** arma el movimiento de salida, lo procesa y lo confirma como una solicitud más; **Revertir dispensación** deshace todo y repone existencias. Desde la misma lista se asignan citas, se calculan copagos y se envía a la farmacia principal o al reparto a domicilio.\n\nEl detalle clínico (PROA, copagos, firmas) está en el libro **Dispensación**.",
+      "puntosClave": [
+        "La solicitud no mueve inventario hasta Confirmar movimiento.",
+        "Un medicamento suspendido o sin autorización PROA no se entrega.",
+        "Devolver exige motivo, movimiento confirmado y la variable IDINVMOV_DEVOLUCION.",
+        "Deshacer entrega no procede si enfermería ya recibió."
+      ]
+    },
+    {
+      "id": "conteo",
+      "tipo": "flujo",
+      "flujoId": "conteo-ajustes",
+      "kicker": "Etapa 2 · Control",
+      "titulo": "Conteo físico y aplicación de ajustes",
+      "imagen": "img/inv_conteo_sketchnote.jpg",
+      "imagenAlt": "IFIS → listados por contador → 3 conteos → cerrar → aplicar → salida de ajuste confirmada + entrada de ajuste pendiente",
+      "intro": "El conteo congela la existencia de la bodega, la reparte en listados por contador, admite hasta **tres conteos** por lote y al **aplicar** genera los movimientos de ajuste por la diferencia: una **salida** (tipo IDINVSISAL) que el sistema confirma en el acto y una **entrada** (tipo IDINVSIENT) que queda pendiente para confirmarla en Movimientos.",
+      "puntosClave": [
+        "No se aplica con conteos abiertos, negativos o movimientos pendientes que toquen artículos del conteo.",
+        "La entrada de ajuste queda en estado 0: hay que confirmarla en Movimientos (ahí se exigen las cuentas KMCOM).",
+        "Si la aplicación falla, el sistema revierte todo y lo dice.",
+        "Saldo inicial de una bodega nueva: plantilla Excel → Procesar → Almacenar → aplicar."
+      ]
+    },
+    {
+      "id": "devolucion-vencidos",
+      "tipo": "texto",
+      "kicker": "Etapa 2 · Control",
+      "titulo": "Devolución a proveedor, vencidos y ajustes de costo",
+      "imagen": "img/inv_devolucion_vencidos_sketchnote.jpg",
+      "imagenAlt": "Devolución a proveedor (05), semáforo y salida de vencidos (07), ajuste de costo y recálculo de existencias",
+      "intro": "Tres herramientas del grupo *Procesos* y el *Semáforo* resuelven lo que no es compra ni dispensación: devolver al proveedor, sacar vencidos y corregir costos o totales.",
+      "md": "## Devolución a proveedor (tipo 05)\n\n1. Buscar la **orden de compra** ya ingresada. El sistema valida que exista, que no esté devuelta y que su CxP lo permita.\n2. Marcar artículos y lotes (uno a uno o **Devolución total**).\n3. **Confirmar devolución**: arma las entregas y confirma la salida con SPK_CONFIRMARSALIDAS; exige existencia suficiente.\n4. El efecto en la cuenta por pagar (nota a proveedor) se gestiona en Cuentas por pagar.\n\n## Semáforo de vencimientos\n\n- Rangos **Rojo / Naranja / Amarillo** en días (Configurar semáforo; deben ser crecientes).\n- Filtro por bodega o **todas las bodegas** (permiso).\n- **Salida un artículo vencido / todos los vencidos**: salida a destrucción con el tipo IDINVSALVENCIDOS (SPK_MOVSALIDAVENCIDOS), **confirmada en el acto**. Antes de tocar existencias valida que la bodega tenga centro de costo activo (o toma el primero activo) y, si el tipo contabiliza, que existan las cuentas MOV_INVENTARIO débito y crédito; si no, no genera nada. Requiere que la bodega tenga permiso para ese movimiento.\n- Exportar a Excel.\n\n## Ajustes de inventario\n\n- **Ajustar / Procesar Ajuste**: cambia el precio de costo del artículo (IART.PCOSTO) con rastro en USLOG.\n- **Actualizar existencias**: recalcula los totales por bodega y artículo desde los lotes (SPK_AJUSTE_IDXB_IART): pone en cero lotes negativos, crea en Artículo por bodega los artículos que tienen lote y no estaban, y recalcula IDXB e IART. Corre sobre **todo el inventario**, no por bodega; conviene hacerlo fuera de horario. Úselo cuando un artículo «no aparece» aunque el lote tenga saldo.\n\n## Traslado entre lotes\n\nDesde **Informes → Lotes por artículo → Trasladar lote** (permiso BTN_LOT_TRASLADO): salida 24 + entrada 25 confirmadas en el acto, para corregir un lote mal registrado sin pasar por conteo.",
+      "puntosClave": [
+        "La devolución a proveedor parte de la orden, no de la entrada suelta.",
+        "El semáforo solo genera salidas con permiso y variable configurada.",
+        "Ajustes no mueve cantidades: corrige costo o totales."
+      ]
+    },
+    {
+      "id": "venta",
+      "tipo": "flujo",
+      "flujoId": "venta-publico",
+      "kicker": "Etapa 3 · Venta",
+      "titulo": "Venta al público: carrito, caja y factura",
+      "imagen": "img/inv_venta_sketchnote.jpg",
+      "imagenAlt": "Caja abierta → código de barras → carrito → cliente → recaudo → Guardar venta → IMOV VE + FTR + FCJ",
+      "intro": "La **Venta de insumos** es un mostrador: con la caja abierta se leen códigos de barras, se arma el carrito, se cobra y **Guardar venta** hace todo en una sola transacción: salida tipo VE, descuento por lote, factura FTR y recibo de caja. Lista de precios, Factura INV y Gestión de ventas completan el grupo.",
+      "puntosClave": [
+        "Sin caja abierta no hay venta; sin recaudo completo no se guarda.",
+        "El precio sale de la tarifa de mostrador, no de la lista de compras del proveedor.",
+        "Gestión de ventas → Nota crédito (GEN_NC) puede ser parcial o total; exige concepto FNOT_PAR_CONCEPTO y modelo contable configurados y no reingresa inventario por sí sola.",
+        "Factura INV es otro camino: salidas VC confirmadas que se facturan en bloque."
+      ]
+    },
+    {
+      "id": "packing",
+      "tipo": "texto",
+      "kicker": "Etapa 2 · Logística",
+      "titulo": "Pick & Pack: preparación de pedidos",
+      "imagen": "img/inv_packing_sketchnote.jpg",
+      "imagenAlt": "Orden de picking → lotes reservados → confirmar picking → packing → finalizar → confirmar salida",
+      "intro": "Para bodegas con **MANEJA_PICKPACK**, la salida (tipos listados en IDMOVPICKPACK, normalmente traslados y venta facturable) pasa por **picking** (reserva de lotes por un picker) y **packing** (empaque por un packer) antes de confirmarse.",
+      "md": "## Ciclo\n\n1. **Crear orden de picking** (IMOV + detalle) para la bodega.\n2. **Agregar artículos y lotes**; cada lote queda **reservado**: otra salida no puede tomarlo (CONFIRMA_SALIDA rechaza «invade existencias reservadas»).\n3. **Marcar líneas** y **Confirmar picking**: valida lotes y pasa a packing. Para ventas aplica tarifa automática si PVENTA_AUTO_TARIFA = SI.\n4. **Finalizar packing**: el movimiento queda listo para **Confirmar salida** en Movimientos.\n5. **Devolver picking** regresa a corregir; novedades y resumen por pedido.\n\n## Roles y permisos\n\n- Roles picker / packer por usuario (OBTENER / ACTUALIZAR_ROLES_PICKPACK).\n- Permisos ASIG_LOTES_PICK, QUITAR_ART_PICK, VAL_PICKING, CONF_PICKING.\n- Descartar una línea en picking confirmado no se permite; hay que devolver el picking.",
+      "puntosClave": [
+        "Un movimiento Pick&Pack no se confirma hasta finalizar packing.",
+        "Las reservas protegen lotes de otros pedidos.",
+        "Solo bodegas con MANEJA_PICKPACK y tipos en IDMOVPICKPACK."
+      ]
+    },
+    {
+      "id": "informes",
+      "tipo": "texto",
+      "kicker": "Consultas",
+      "titulo": "Informes, kardex y existencias",
+      "imagen": "img/inv_informes_sketchnote.jpg",
+      "imagenAlt": "Pantalla Informes: existencias, consumos, históricos, kardex, promedios, controlados",
+      "intro": "La pantalla **Informes** (inv.exis_costo) reúne cinco pestañas: Dashboard, Históricos de movimientos, Medicamentos controlados, Por artículo, Área y tercero. Casi todo es lectura; la excepción es Trasladar lote.",
+      "md": "## Qué hay en cada pestaña\n\n| Pestaña | Informes | MODELO · METODO |\n|---|---|---|\n| Dashboard | Consumos por periodo y bodega | EXISTENCIA · DASHBOARD_CONSUMOS |\n| Por artículo | Existencias por sede / bodega / lote / bodega-lote / institución; lotes por artículo; precio-costo; artículo por movimiento y bodega | EXISTENCIA · IMPRIME_POR_*, LOTES_X_ARTICULO, EXPORT_PRECIO_COSTO, EXPORTA_INFORME_ARTICULO_MOV_BODEGA |\n| Históricos | Buscar movimientos, detalle de entrada y salida, **kardex por periodos** (pantalla, Excel, valorizado, PDF), consumo promedio por bodega o pedido, exportar historial de solicitudes | INFOMRES_INV · BUSCAR_MOV, DETALLE_*, KARDEX_*, RPT_KARDEX_ARTICULO, BUSCAR_PROME*, IZSOL_2 · EXPORTAR_HISTORIAL_IZSOL |\n| Controlados / Área y tercero | Medicamentos controlados; dispensados, aplicados, devueltos y facturados por admisión; medicamentos pendientes de aplicar; custodia | INFOMRES_INV · MED_DISP_APLI_DEV_FACT, MEDPEN_APLICAR; EXISTENCIA · EXPORTA_INFORME_CUSTODIA |\n\n## Reglas\n\n- Las bodegas disponibles son las del usuario (Seguridad de bodega).\n- Costos y precios solo con permiso **ver_montos_precios**.\n- **Impresión de etiquetas** (inv.impetiquetas) usa la misma lista de bodegas y lee IART/IEXI.\n- Los informes de **cuentas por pagar** viven en Procesos → Cuentas por pagar (CONF_CXP).",
+      "puntosClave": [
+        "El kardex por periodos es la fuente para conciliar con contabilidad.",
+        "Dashboard es consumo, no existencia.",
+        "Trasladar lote es la única acción que escribe desde Informes."
+      ]
+    },
+    {
+      "id": "contabilidad",
+      "tipo": "texto",
+      "kicker": "Etapa 5 · Contabilidad",
+      "titulo": "Contabilidad: qué asiento genera cada paso",
+      "imagen": "img/inv_contabilidad_sketchnote.jpg",
+      "imagenAlt": "Tres salidas contables: OM Inventario por movimiento, CxP por compra, FTR por venta",
+      "intro": "El inventario llega a contabilidad por tres puertas. Ninguna la abre el usuario de bodega: la abre la configuración (ITMO.SECONTABILIZA, IBOD.NOCONTABILIZA, cuentas KMCOM) y los procesos de Contabilidad, Cuentas por pagar y Facturación.",
+      "md": "## Puerta A · Movimientos (OM Inventario)\n\n- Aplica a tipos con **SECONTABILIZA** en bodegas sin **NOCONTABILIZA**.\n- Cuentas: KMCOM **MOV_INVENTARIO** débito y crédito por tipo de artículo, centro de costo y área. Si faltan, la confirmación de la entrada falla con «Inconsistencia. No existe configuración contable».\n- Con **CONTABIMOV_JOB = SI** la entrada no contabiliza en línea: lo hace OM Inventario / Conciliación → Inventario (SPK_NC_CONTAB_INV por movimiento, referencia = CNSMOV).\n\n## Puerta B · Compras (cuenta por pagar)\n\n- La CxP nace sola al confirmar la entrada 02/22/SI con proveedor, con cuentas KMCOM **CXP_COMPRAS** (proveedor y débito inventario), impuestos y anticipos.\n- Se contabiliza en Cuentas por pagar (CONTABILIZAR_FCXP → SPK_NC_CONTAB_CXP). Homologación gravada: CUENTAGRAV cuando hay IVA.\n- Devolución a proveedor (05) se contabiliza como movimiento y su nota a proveedor se maneja en CxP.\n\n## Puerta C · Ventas (factura)\n\n- Venta de mostrador: FTR + recibo de caja (SPK_NC_CONTAB_CAJA_ING) en el acto.\n- Factura INV masiva: FTR; luego Facturación → Enviar a contabilidad (SPK_NC_CONTAB_FTR). Con **CONTAB_GASTOVEN_UNI = SI** el costo del inventario viaja en el mismo comprobante.\n\n## Periodo\n\nPRI.CERRADO_INV bloquea crear movimientos del mes cerrado; MOV_PERIODOS_ANT = SI permite meses anteriores abiertos. Confirmar y anular no consultan el periodo (propuesta SR20260911-001 pendiente).",
+      "puntosClave": [
+        "Sin cuentas KMCOM para el tipo/centro/área la entrada no se confirma.",
+        "CONTABIMOV_JOB = SI: el comprobante del movimiento sale por OM Inventario, no al confirmar.",
+        "La compra se contabiliza dos veces con sentido distinto: inventario (OM) y pasivo (CxP)."
+      ]
+    },
+    {
+      "id": "estados-compra",
+      "tipo": "semaforo",
+      "datos": "estadosCompra",
+      "kicker": "Semáforo",
+      "titulo": "Estados de la orden de compra y del tránsito",
+      "intro": "Qué significa cada letra de la orden y cada número del tránsito, y qué hacer en cada caso."
+    },
+    {
+      "id": "estados-movimiento",
+      "tipo": "semaforo",
+      "datos": "estadosMovimiento",
+      "kicker": "Semáforo",
+      "titulo": "Estados del movimiento, la solicitud y el conteo",
+      "intro": "Pendiente, confirmado, anulado; solicitud abierta o cerrada; conteo en digitación o aplicado."
+    },
+    {
+      "id": "satelites",
+      "tipo": "texto",
+      "kicker": "Mapa del menú",
+      "titulo": "El menú completo y los satélites de farmacia clínica",
+      "imagen": "img/inv_menu_satelites_sketchnote.jpg",
+      "imagenAlt": "Menú real de Inventario: ítems sueltos y grupos Procesos, Venta a particulares, Mobiliario, Configuración",
+      "intro": "El menú de Inventario es **dinámico**: lo arma SPQ_MENUQ_COL desde USPROH (MENUQ_INVENTARIO) y cada grupo de usuarios ve solo lo que USGRUH le permite.",
+      "md": "## Ítems sueltos\n\nLista de trabajo · Informes · Entrega óptica (lentes) · Semáforo · Perfil farmacoterapéutico · Solicitudes 24 horas · Packing · **Movimientos** · Canastas · **Solicitudes** · Impresión masiva de entregas · Fórmulas de infusión (reporte) · Cotización comercial · Horarios de tratamiento · Recibe solicitud y verifica · Impresión de etiquetas · Logística MAD · Interfaz inventario · Gasto por consumo.\n\n## Grupos\n\n- **Procesos**: Orden de compra, Devolución a proveedor, Conteo físico, Cuentas por pagar, Ajustes de inventario.\n- **Venta a particulares**: Venta de insumos, Lista de precios, Factura INV, Cotización de compras, Gestión de ventas.\n- **Mobiliario**: Gestión de mobiliario.\n- **Configuración**: Tipos de bodega, Bodegas, Catálogo fórmulas infusión, Tipos de movimiento, Tipos de artículo, Clases, Gastos por consumo, Formas farmacéuticas, Vías de aplicación, Concentraciones, Principios activos, Unidades, Tipos de genérico, Estantes, Genéricos, Artículos, Artículo por bodega, Clase de riesgo.\n\n## Satélites de farmacia clínica (qué hacen)\n\n| Opción | MODELO | Qué hace |\n|---|---|---|\n| Lista de trabajo | LISTA_AUT | Autorizaciones de farmacia: aprobar por ítem, asignar cita, copagos, dispensar por lote (AUTDF), **Confirmar** (arma y confirma la salida), Revertir dispensación, devoluciones (IDEV), importar desde Excel. |\n| Entrega óptica | GES_LENTES_COL | Lentes: marcar ítems, entrada y salida del laboratorio, abonos en caja particular, SMS al paciente, terminar la entrega. |\n| Perfil farmacoterapéutico | PERFIL_FARMACOTERAPEUTICO | Solo lectura: pacientes hospitalizados y su perfil (ordenado, dispensado, aplicado). |\n| Solicitudes 24 horas | IZSOLM | Genera las órdenes del día (hoy, por sector, por admisión). |\n| Fórmulas de infusión | FAR_IF | Catálogo de fórmulas (crear, activar/inactivar) y solicitudes con histórico: crear → responder → cerrar → reabrir; pendientes en el censo de enfermería. |\n| Horarios de tratamiento | FAR_CTRLDOSIS + censo | Control de dosis por horario (solo lectura) y hoja de trabajo del censo. |\n| Delivery / Logística MAD | DELIVERY_MAD · RUTA · VEH | Reparto a domicilio desde una autorización dispensada: crear reparto por ruta, entregas del motorizado, marcar entregado con firma del paciente. Rutas, conductores y vehículos. |\n| Entregas no recibidas | GES_MED | Regresar a enfermería o recibir en farmacia lo no recibido. |\n| Hemoderivados | TRANSFUSIONAL | Banco de sangre sobre el mismo inventario: orden y tránsito de unidades, reservas (BSRES) con pruebas cruzadas, fraccionar unidades, entregar, devolver, incinerar con acta. |\n| Mobiliario | MOBI | Préstamo de mobiliario a la historia. |\n| Osteosíntesis | IARTO | Hoja de gasto que crea entrada y salida en la bodega BODEGA_OSTEO. |\n| Interfaz inventario | INTERFAZINV · REENVIAR | Reenvío de movimientos a un sistema externo (INTERFAZ_INV). |\n| Cotización comercial | ICTZG | Cotiza a terceros; no genera orden ni venta. |\n\nLos satélites escriben en inventario a través de los mismos SP de salida y entrada (SPK_CONFIRMASAL_CM, SPK_CONFIRMARENTRADAS); por eso sus bloqueos de existencia, costo y cuentas son los de este libro.",
+      "puntosClave": [
+        "Si un usuario no ve una opción, es USGRUH del grupo, no un error de la pantalla.",
+        "La «Cotización comercial» no es la cotización de compras.",
+        "Los satélites mueven inventario con los mismos confirmadores: sus bloqueos son los de Movimientos."
+      ]
+    },
+    {
+      "id": "pendientes",
+      "tipo": "texto",
+      "kicker": "Cierre",
+      "titulo": "Hallazgos y pendientes de esta lectura",
+      "intro": "Lo que se encontró al cruzar pantalla y procedimientos, para que el coordinador decida qué pedir.",
+      "md": "## Hallazgos\n\n1. **IART · CARGAR_PRECIO_REGULADO** se llama desde Artículos y no existe en SPQ_IART (PREVERSION ni 2.0.7). Confirmar si vive en otro SP o falta.\n2. **ESFARMACIA** debe valer exactamente «SI»: con cualquier otro valor se apagan la validación de costo cero al confirmar salidas y la generación del movimiento contrario al anular (SPK_ANULAR_MOV_INV); una salida confirmada entonces no se anula.\n3. **Conteo físico**: los ajustes usan los tipos de IDINVSIENT / IDINVSISAL para todo conteo (no solo saldo inicial); IDINV_AJUSXITAR se exige pero no cambia la lógica. La entrada de ajuste queda pendiente de confirmar.\n4. **ITMO · ELIMINAR** solo revisa excepciones (IEXCEP): no impide borrar un tipo con movimientos o referenciado por una variable.\n5. **FCOM.ESTADO = S** e **ITRA.ESTADO = 3** no están rotulados en los SP leídos; SPK_UPDATE_VLRS_FCOM documenta un estado **E** (pendiente en inventario) que el FE tampoco rotula.\n6. **Actualizar existencias** (SPK_AJUSTE_IDXB_IART) corre sobre todo el inventario y sin rastro en USLOG.\n7. **PREVERSION ≠ 2.0.7** en SPK_CONFIRMARENTRADAS (corrige total IDXB/IART con líneas estado 9), SPK_CONFIRMASAL_CM (centro de costo en TRANS_CE) y SPQ_IZSOL (FORMATO_TRANSFUSION, presupuesto Perú). No pedir de nuevo esos arreglos; probar en preversión.\n8. **SPQ_IMOV_2** duplica SPQ_IMOV + IMOV_3; la pantalla solo le pide IMPRIME_MOVIMIENTO.\n\n## Documentado en esta lectura\n\nTodos los SPK del flujo (APLICARCONTEO, MOVSALIDAVENCIDOS, AJUSTE_IDXB_IART, INSERT_ITRAH, CLONA_ORDENCOMPRA, UPDATE_VLRS_FCOM, TRAECOMPRA_SALIDA, ANULAR_MOV_INV, PROCESA_IZSOLDT), Gestión de ventas (GEN_NC), IZSOL_2 completo, picking IZSOLDT, entregas no recibidas (GES_MED) y los satélites (LISTA_AUT, GES_LENTES_COL, PERFIL_FARMACOTERAPEUTICO, FAR_IF, FAR_CTRLDOSIS, DELIVERY_MAD, TRANSFUSIONAL). Cuentas por pagar (ORDEN_PAGO) y Caja (CONF_CAJA) están en sus propios libros.\n\n## Queda por profundizar\n\nLos satélites tienen ficha por METODO pero no flujo paso a paso: Lista de trabajo, Hemoderivados y Delivery MAD merecen libro propio cuando llegue un requerimiento.",
+      "puntosClave": [
+        "Antes de dictaminar un REQ de entradas o dispensación, probar en PREVERSION: hay arreglos en canasta.",
+        "El flujo de negocio y sus SP están completos; los satélites quedan fichados sin flujo propio."
+      ]
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "iart-cargar-precio-regulado",
+      "tipo": "fe-sin-sp",
+      "detalle": "IARTComponent llama IART · CARGAR_PRECIO_REGULADO (permiso BTN_CARGAR_PRECIO_REGULADO); el método no existe en SPQ_IART PREVERSION ni 2.0.7."
+    },
+    {
+      "id": "esfarmacia-sip",
+      "tipo": "dato-pruebas",
+      "detalle": "USVGS ESFARMACIA = 'SIP' en PCEM; SPQ_IMOV compara UPPER(...) = 'SI'. Validación de costo cero apagada en pruebas."
+    },
+    {
+      "id": "itmo-eliminar",
+      "tipo": "regla-debil",
+      "detalle": "SPQ_ITMO · ELIMINAR solo valida IEXCEP."
+    },
+    {
+      "id": "fcom-estado-s",
+      "tipo": "estado-sin-rotulo",
+      "detalle": "FCOM.ESTADO 'S' (11) e ITRA.ESTADO 3 (143) sin tratamiento en los SP leídos."
+    },
+    {
+      "id": "conteo-tipos-ajuste",
+      "tipo": "regla-doc",
+      "detalle": "SPK_APLICARCONTEO usa IDINVSIENT / IDINVSISAL para todo conteo; la entrada de ajuste queda ESTADO 0 (se confirma en Movimientos). IDINV_AJUSXITAR se lee pero no cambia la lógica."
+    },
+    {
+      "id": "anular-mov-esfarmacia",
+      "tipo": "regla-debil",
+      "detalle": "SPK_ANULAR_MOV_INV solo genera el movimiento contrario si FNK_VALORVARIABLE('ESFARMACIA') = 'SI'. Con otro valor una salida confirmada no se anula (salvo procedencia HTX)."
+    },
+    {
+      "id": "fcom-estado-e",
+      "tipo": "estado-sin-rotulo",
+      "detalle": "SPK_UPDATE_VLRS_FCOM documenta estado E = pendiente en inventario; el FE no lo rotula."
+    },
+    {
+      "id": "ajuste-idxb-global",
+      "tipo": "regla-debil",
+      "detalle": "SPK_AJUSTE_IDXB_IART no recibe bodega ni artículo: recalcula todo el inventario y no deja rastro en USLOG."
     }
   ]
 }

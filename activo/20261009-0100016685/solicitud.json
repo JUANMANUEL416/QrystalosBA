@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-09T21:47:23.747Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016685",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261009-0100016685",
+    "idReq": "0100016685",
+    "fecha": "2026-10-09",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "hotfix/ASOCAB225",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "CUANDOS E IMPRIME UNA FACTURA MASIVA CON EL FORMATO 03F LA INFORMACION DE LA FIRMA SALE MONTADO CON EL TOTAL.\n\nADEMAS DE QUE EN LA PARTE DE LA INFORMACION GENERAL SE ESTAN SOBREMONTANDO OTRAS INFORMAICON\n\n\nSE SOLICITA QUE NOSE SOBREMONTE NINGUNA INFORMAICON TAL COMO ESTABA ANTES DE LA ACTUALZAICION DEL DIA DE 2.0.9",
+    "criteriosAceptacion": "1. Imprimir o previsualizar PDF de factura masiva CE/AUT con formato 03F (misma factura del REQ o equivalente con muchas líneas): bloque de totales, CUFE, resolución, firmas e «Impreso por» legibles sin superposición.\n2. Encabezado de información general (paciente, administradora, columnas del detalle) sin campos montados unos sobre otros.\n3. Factura con detalle largo: si hay salto de página, totales y pie (firmas) quedan en flujo secuencial, no fijos encima del contenido.\n4. Misma factura con formato distinto de 03F o procedencia FINANCIERO: sin regresión visible respecto al comportamiento previo a 2.0.9.\n5. Contabilización y datos de FTR (valores, CUFE, número) sin cambio; solo maquetación PDF.",
+    "alcance": "Corrección de maquetación del PDF formato 03F en Qrystalos2 (`src/boot/FmtFtr/fmt03F.js`, invocado desde `RptFtr.js` → `ImprimeFormatoFtr`). Aplica a impresión tras facturación masiva (FTRM / FTRMAut / FMAS y equivalentes) y cualquier reimpresión de FTR con IDFORMATO 03F y procedencia CE, CI, SALUD u otras ramas no FINANCIERO del mismo formato. Incluye ajuste de reserva vertical para totales + pie (firmas, CUFE, «Impreso por») y revisión del encabezado en `addencabezado`.",
+    "restricciones": "Sin cambio de datos en BD ni en SPQ_FTR_MASIVA_COL / SPQ_FTR_COL. No modificar otros formatos (03F3, 03FE, 03G*, etc.) salvo regresión demostrada. No alterar flujo de contabilización al imprimir. Hotfix en rama indicada (hotfix/ASOCAB225).",
+    "analisis": "Paso 0 — ¿Ya existe? Capacitación no aplica: el usuario sí llega al control correcto (factura masiva → imprimir PDF 03F). Es defecto de regresión visual tras versión 2.0.9, alineado con la captura (totales, ABONOS e «Impreso por» montados; encabezado general apretado).\n\nControl y caminos: Administrativo → Facturación → pestaña Factura masiva (permiso FACT_MASIVA) → marcar AUT/CE → Facturar (`FTR_MASIVA_COL` · FACTURAR_MASI) → imprimir / ver PDF (`ImprimeFormatoFtr` en FTRMComponent, FTRMAutComponent, FMASComponent, etc.). Reimpresión desde Log/Buscar factura usa el mismo `RptFtr`. Formato lo define `ftrtitu.IDFORMATO` (03F); datos vía `FTR_IMPRESION` · DATOSFTR (API, sin cambio esperado).\n\nCausa técnica (KB + código vivo): en `fmt03F.js` hubo optimización de márgenes (límite Y≈280 mm) y pie reutilizable. Para procedencia distinta de SALUD (p. ej. CE de masiva AUT), `addPiepagina` se invoca con `yyInicio: null` y dibuja firmas/CUFE/«Impreso por» en posición fija desde el borde inferior, mientras los totales se dibujan en el flujo `yy` actual → solape (captura: firma sobre TOTAL COSTO SERVICIOS / ABONOS). Rama SALUD reservó bloque legal+totales pero `ALTURA_TOTALES_MIN` (27 mm) puede quedar por debajo de la altura real de las líneas de totales, cerrando el marco antes de tiempo y pisando el pie. Encabezado: `addencabezado` con offsets distintos para SALUD vs CE puede desalinear títulos de columnas vs datos cuando crece el bloque paciente.\n\nLos METODOs de facturación masiva documentados generan FTR correctamente; el fallo es solo render PDF, no cálculo ni persistencia.",
+    "opciones": [],
+    "recomendacion": "Desarrollo frontend acotado en fmt03F: (1) usar flujo continuo `yyInicio` para CE/CI y demás no FINANCIERO igual que SALUD, o forzar nueva página cuando `yy + altoPie` supere el límite; (2) calcular altura del bloque de totales antes de cerrar el marco (`max(altoLegal, altoTotalesReales)`); (3) validar encabezado tras ajuste Y. Probar factura del REQ, una corta y una multi-página. Sin script SQL. Prioridad alta por impresión operativa al cliente.",
+    "cambioPropuestoSimple": "Al imprimir la factura masiva en formato 03F, el PDF volverá a separar bien la información general, los totales, las firmas y el pie (CUFE e «Impreso por»), como antes de la actualización 2.0.9, sin cambiar valores ni el proceso de facturación.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Facturación masiva CE/AUT usa el mismo cierre FTR que el flujo vigente; no introduce asientos ni tablas contables nuevas. La contabilización automática sigue la configuración existente al confirmar/imprimir FTR (SPK_NC_CONTAB_FTR / cola FTRCO).",
+        "validadoEn": "2026-10-06T15:00:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En el entorno del cliente (2.0.9 / hotfix): reproducir PDF 03F de una factura masiva CE reciente. Si ya no hay solape, cerrar como corregido en canasta; si persiste, aplicar fix FE en fmt03F."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-10-09_135213.png",
+        "ruta": "activo/20261009-0100016685/imagenes/Captura_de_pantalla_2026-10-09_135213.png",
+        "subidaEn": "2026-10-09T16:27:55",
+        "url": "/api/caso/20261009-0100016685/imagen/Captura_de_pantalla_2026-10-09_135213.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1. Imprimir o previsualizar PDF de factura masiva CE/AUT con formato 03F (misma factura del REQ o equivalente con muchas líneas): bloque de totales, CUFE, resolución, firmas e «Impreso por» legibles sin superposición.\n2. Encabezado de información general (paciente, administradora, columnas del detalle) sin campos montados unos sobre otros.\n3. Factura con detalle largo: si hay salto de página, totales y pie (firmas) quedan en flujo secuencial, no fijos encima del contenido.\n4. Misma factura con formato distinto de 03F o procedencia FINANCIERO: sin regresión visible respecto al comportamiento previo a 2.0.9.\n5. Contabilización y datos de FTR (valores, CUFE, número) sin cambio; solo maquetación PDF.",
+      "originalesEn": "2026-10-09T21:46:45.587Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. Imprimir o previsualizar PDF de factura masiva CE/AUT con formato 03F (misma factura del REQ o equivalente con muchas líneas): bloque de totales, CUFE, resolución, firmas e «Impreso por» legibles sin superposición.\n2. Encabezado de información general (paciente, administradora, columnas del detalle) sin campos montados unos sobre otros.\n3. Factura con detalle largo: si hay salto de página, totales y pie (firmas) quedan en flujo secuencial, no fijos encima del contenido.\n4. Misma factura con formato distinto de 03F o procedencia FINANCIERO: sin regresión visible respecto al comportamiento previo a 2.0.9.\n5. Contabilización y datos de FTR (valores, CUFE, número) sin cambio; solo maquetación PDF.",
+      "trasAnalisisEn": "2026-10-09T21:46:48.003Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso facturacion, captura del caso, FTR masiva en Qrystalos2 y fmt03F/RptFtr. Clasificación: defecto (regresión maquetación 03F). Sin releer SP: datos vía FTR_IMPRESION·DATOSFTR; fix solo FE.",
+      "fecha": "2026-10-09T21:45:00.000Z",
+      "estado": "listo",
+      "sps": "Ningún SPQ/SPK del fix; FACTURAR_MASI solo contextual (genera FTR, no imprime)."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261009-0100016685/diagramas/flujo.html",
+      "subidaEn": "2026-10-09T16:47:05",
+      "url": "/api/caso/20261009-0100016685/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261009-0100016685-flujo.html"
+    },
+    "mockups": [
+      "activo/20261009-0100016685/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261009-0100016685\\sql\\",
+    "carpetaRelativa": "activo/20261009-0100016685/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016685\\",
+    "archivosEsperados": [
+      "no requerie"
+    ],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_MASIVA_COL",
+        "metodo": "FACTURAR_MASI",
+        "estado": "leido",
+        "hace": "Genera facturas masivas desde RPDX según PROCEDENCIA (AUT/UNI/CE/…); valida PRI y sede.",
+        "llama": [
+          "SPQ_FACTURACE_ESCMA",
+          "SPK_FACTURACI_ESCIP",
+          "SPK_FACTURACE_EVENTO_MASI",
+          "SPK_FACTURA_MASI_UNIFICAWEB"
+        ]
+      },
+      {
+        "sp": "SPQ_FTR_MASIVA_COL",
+        "metodo": "MARCAAUT_FTR",
+        "estado": "leido",
+        "hace": "Marca/desmarca AUT o CIT para fact. masiva. ACCION 1/2 lote AUTD; 3 individual AUT; 4 unificada CIT/AUT. CNSFACT=@USUARIO.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_MASIVA_COL",
+        "metodo": "CONTEOFTRMARCADAS",
+        "estado": "leido",
+        "hace": "Conteo marcas del usuario: CANTIDAD en filtro + CANTIDADFUERA fuera de tercero/plan/fecha/sede. Ramas CIT, AUT, UNI.",
+        "llama": []
+      }
+    ],
+    "notas": "Fix en FE (fmt03F). Trazabilidad impresión: API FTR_IMPRESION · DATOSFTR (no catalogado en sps.json). Facturación masiva previa: SPQ_FTR_MASIVA_COL · FACTURAR_MASI (leido en KB; sin cambio).",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261009-0100016685.html",
+    "aprobados": "aprobados/20261009-0100016685/",
+    "imagenes": "aprobados/20261009-0100016685/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-09",
+    "ultimoEnvio": "2026-10-09T20:05:21",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

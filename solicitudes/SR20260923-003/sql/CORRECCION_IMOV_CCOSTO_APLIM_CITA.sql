@@ -1,0 +1,368 @@
+/*
+  Dispensación de aplicaciones (IZSOL clase APLIM, IMOV procedencia CM_SOL)
+  confirmada sin centro de costo.
+
+  El alta busca el centro en la cama (HHAB) usando IZSOL.NOADMISION.
+  En APLIM ese número es el id de la aplicación, no una admisión.
+  La cita queda en APLIM.CONSECUTIVOCIT y ahí están CCOSTO e IDAREA.
+
+  Consolidado CEM, 2026-09-23. IDTIPOMOV 06 sin centro. La única
+  procedencia del movimiento es CM_SOL. Lo que cambia es la clase:
+    TRANS_CE confirmados 1182 (1175 con autorización; 7 sin ella).
+    APLIM confirmados 34, todos sin cita: no se tocan.
+    CE confirmados sin centro: ninguno. La confirmación ya copia
+    el centro porque NOADMISION es la autorización.
+  De los confirmados con número de comprobante: 44 siguen en MCPE
+  con «La Cuenta NO Existe.»; 1044 tienen número y ya no tienen
+  cabecera ni detalle.
+
+  Aplicación con cita: el script copia centro y área de CIT.
+  Ejemplo 2900006780, cita 030371681267, centro 10030202, área 4110.
+  Ese par sí tiene modelo tipo 06: débito 61350502, crédito 14150502.
+  Aplicación sin cita, ejemplo 0300026805 (APLIM 19143): no se toca.
+
+  Transcripción confirmada: el script copia centro y área de la
+  autorización enlazada por AUTE, no del afiliado guardado en NOADMISION.
+  Ejemplo 3400009209, autorización 3400009004, centro 10220202, área 4110.
+  Para tipo 06 ese par no tiene modelo. El script pone el centro en el
+  movimiento y no inventa la cuenta. En otros tipos ese centro sí tiene
+  modelo; el tipo 06 en otros centros usa débito 61350502 y crédito 14150502.
+
+  Qué graba, solo con @APLICAR = 1:
+    - IMOV.CCOSTO e IMOV.IDAREA.
+      Aplicación: desde la cita. Transcripción: desde la autorización.
+    - En MCHE, solo si existe el modelo para ese tipo, centro y área,
+      y la línea sigue en NO DEF.KMCOM, y el comprobante está en MCPE
+      y no en MCP: centro, área, cuenta de KMCOM y se limpia el error.
+    - Si no hay modelo, el movimiento igual recibe el centro y la
+      línea del comprobante no se toca.
+  No pasa el comprobante a MCP. No toca MCH.
+  No se ejecuta desde BA.
+
+  1) Deje @APLICAR = 0 y ejecute el script completo: solo lista.
+  2) Revise el listado.
+  3) Ponga @APLICAR = 1 y ejecute de nuevo. Graba y, si algo
+     de la misma regla queda mal, deshace todo.
+*/
+IF OBJECT_ID('tempdb..#corr') IS NOT NULL DROP TABLE #corr;
+IF OBJECT_ID('tempdb..#fuera') IS NOT NULL DROP TABLE #fuera;
+GO
+
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+DECLARE @APLICAR BIT = 0;
+DECLARE @COMPANIA VARCHAR(2) = N'01';
+DECLARE @MODELO VARCHAR(20) = N'01';
+
+CREATE TABLE #corr (
+    CNSMOV varchar(20) NOT NULL,
+    IDTIPOMOV varchar(20) NULL,
+    NROCOMPROBANTE varchar(20) NULL,
+    CONTABILIZADA smallint NULL,
+    CNSIZSOL varchar(20) NULL,
+    NOADMISION varchar(20) NULL,
+    CONSECUTIVOCIT varchar(20) NULL,
+    IDAUT varchar(20) NULL,
+    CCOSTO_NUEVO varchar(20) NULL,
+    IDAREA_NUEVO varchar(20) NULL,
+    FUENTE varchar(20) NULL
+);
+
+INSERT INTO #corr (
+    CNSMOV, IDTIPOMOV, NROCOMPROBANTE, CONTABILIZADA, CNSIZSOL, NOADMISION,
+    CONSECUTIVOCIT, IDAUT, CCOSTO_NUEVO, IDAREA_NUEVO, FUENTE
+)
+SELECT
+    I.CNSMOV,
+    I.IDTIPOMOV,
+    LTRIM(RTRIM(ISNULL(I.NROCOMPROBANTE, N''))),
+    I.CONTABILIZADA,
+    Z.CNSIZSOL,
+    Z.NOADMISION,
+    M.CONSECUTIVOCIT,
+    N'',
+    LTRIM(RTRIM(C.CCOSTO)),
+    LTRIM(RTRIM(C.IDAREA)),
+    N'CITA'
+FROM dbo.IMOV I
+INNER JOIN dbo.IZSOL Z
+    ON Z.CNSIZSOL = I.NODOCUMENTO
+   AND Z.CLASE = N'APLIM'
+INNER JOIN dbo.APLIM M
+    ON M.ID = TRY_CONVERT(int, Z.NOADMISION)
+INNER JOIN dbo.CIT C
+    ON C.CONSECUTIVO = M.CONSECUTIVOCIT
+WHERE I.PROCEDENCIA = N'CM_SOL'
+  AND ISNULL(I.ESTADO, 0) = 1
+  AND NULLIF(LTRIM(RTRIM(ISNULL(I.CCOSTO, N''))), N'') IS NULL
+  AND NULLIF(LTRIM(RTRIM(ISNULL(C.CCOSTO, N''))), N'') IS NOT NULL
+  AND NULLIF(LTRIM(RTRIM(ISNULL(C.IDAREA, N''))), N'') IS NOT NULL
+  AND EXISTS (
+        SELECT 1
+        FROM dbo.CEN N
+        WHERE N.COMPANIA = @COMPANIA
+          AND N.CCOSTO = LTRIM(RTRIM(C.CCOSTO))
+          AND LTRIM(RTRIM(ISNULL(N.ESTADO, N''))) = N'Activo'
+      )
+  AND EXISTS (
+        SELECT 1
+        FROM dbo.KMCOM K
+        WHERE K.IDMODELOCONT = @MODELO
+          AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+          AND K.TIPO = N'DB'
+          AND K.PREFIJO = I.IDTIPOMOV
+          AND K.IDAREA = LTRIM(RTRIM(C.IDAREA))
+          AND K.CCOSTO = LTRIM(RTRIM(C.CCOSTO))
+          AND NULLIF(LTRIM(RTRIM(ISNULL(K.CUENTA, N''))), N'') IS NOT NULL
+      )
+  AND EXISTS (
+        SELECT 1
+        FROM dbo.KMCOM K
+        WHERE K.IDMODELOCONT = @MODELO
+          AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+          AND K.TIPO = N'CR'
+          AND K.PREFIJO = I.IDTIPOMOV
+          AND K.IDAREA = LTRIM(RTRIM(C.IDAREA))
+          AND K.CCOSTO = LTRIM(RTRIM(C.CCOSTO))
+          AND NULLIF(LTRIM(RTRIM(ISNULL(K.CUENTA, N''))), N'') IS NOT NULL
+      )
+  AND (
+        NULLIF(LTRIM(RTRIM(ISNULL(I.NROCOMPROBANTE, N''))), N'') IS NULL
+        OR (
+            EXISTS (
+                SELECT 1 FROM dbo.MCPE E
+                WHERE E.NROCOMPROBANTE = I.NROCOMPROBANTE
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM dbo.MCP P
+                WHERE P.NROCOMPROBANTE = I.NROCOMPROBANTE
+            )
+        )
+      );
+
+INSERT INTO #corr (
+    CNSMOV, IDTIPOMOV, NROCOMPROBANTE, CONTABILIZADA, CNSIZSOL, NOADMISION,
+    CONSECUTIVOCIT, IDAUT, CCOSTO_NUEVO, IDAREA_NUEVO, FUENTE
+)
+SELECT
+    I.CNSMOV,
+    I.IDTIPOMOV,
+    LTRIM(RTRIM(ISNULL(I.NROCOMPROBANTE, N''))),
+    I.CONTABILIZADA,
+    Z.CNSIZSOL,
+    Z.NOADMISION,
+    N'',
+    A.IDAUT,
+    A.CCOSTO,
+    A.IDAREA,
+    N'AUTORIZACION'
+FROM dbo.IMOV I
+INNER JOIN dbo.IZSOL Z
+    ON Z.CNSIZSOL = I.NODOCUMENTO
+   AND Z.CLASE = N'TRANS_CE'
+CROSS APPLY (
+    SELECT TOP 1
+        LTRIM(RTRIM(AU.IDAUT)) AS IDAUT,
+        LTRIM(RTRIM(AU.CCOSTO)) AS CCOSTO,
+        LTRIM(RTRIM(AU.IDAREA)) AS IDAREA
+    FROM dbo.AUTE E
+    INNER JOIN dbo.AUT AU ON AU.IDAUT = E.IDAUT
+    WHERE E.CNSIZSOL = Z.CNSIZSOL
+      AND NULLIF(LTRIM(RTRIM(ISNULL(E.IDAUT, N''))), N'') IS NOT NULL
+      AND NULLIF(LTRIM(RTRIM(ISNULL(AU.CCOSTO, N''))), N'') IS NOT NULL
+      AND NULLIF(LTRIM(RTRIM(ISNULL(AU.IDAREA, N''))), N'') IS NOT NULL
+    ORDER BY AU.IDAUT
+) A
+WHERE I.PROCEDENCIA = N'CM_SOL'
+  AND ISNULL(I.ESTADO, 0) = 1
+  AND NULLIF(LTRIM(RTRIM(ISNULL(I.CCOSTO, N''))), N'') IS NULL
+  AND EXISTS (
+        SELECT 1
+        FROM dbo.CEN N
+        WHERE N.COMPANIA = @COMPANIA
+          AND N.CCOSTO = A.CCOSTO
+          AND LTRIM(RTRIM(ISNULL(N.ESTADO, N''))) = N'Activo'
+      )
+  AND (
+        NULLIF(LTRIM(RTRIM(ISNULL(I.NROCOMPROBANTE, N''))), N'') IS NULL
+        OR (
+            EXISTS (SELECT 1 FROM dbo.MCPE E WHERE E.NROCOMPROBANTE = I.NROCOMPROBANTE)
+            AND NOT EXISTS (SELECT 1 FROM dbo.MCP P WHERE P.NROCOMPROBANTE = I.NROCOMPROBANTE)
+        )
+      );
+
+SELECT
+    I.CNSMOV,
+    Z.CNSIZSOL,
+    ISNULL(M.CONSECUTIVOCIT, N'') AS CONSECUTIVOCIT,
+    ISNULL(C.CCOSTO, N'') AS CIT_CCOSTO,
+    ISNULL(C.IDAREA, N'') AS CIT_IDAREA,
+    ISNULL(I.NROCOMPROBANTE, N'') AS NROCOMPROBANTE,
+    CASE
+        WHEN M.ID IS NULL THEN N'La solicitud no apunta a una aplicación'
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(M.CONSECUTIVOCIT, N''))), N'') IS NULL THEN N'Sin cita'
+        WHEN C.CONSECUTIVO IS NULL THEN N'La cita no existe'
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(C.CCOSTO, N''))), N'') IS NULL THEN N'La cita no tiene centro de costo'
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(C.IDAREA, N''))), N'') IS NULL THEN N'La cita no tiene área'
+        WHEN EXISTS (
+            SELECT 1 FROM dbo.MCP P WHERE P.NROCOMPROBANTE = I.NROCOMPROBANTE
+        ) THEN N'El comprobante ya está en definitivo'
+        WHEN NOT EXISTS (
+            SELECT 1 FROM dbo.CEN N
+            WHERE N.COMPANIA = @COMPANIA
+              AND N.CCOSTO = LTRIM(RTRIM(C.CCOSTO))
+              AND LTRIM(RTRIM(ISNULL(N.ESTADO, N''))) = N'Activo'
+        ) THEN N'El centro de la cita no está activo'
+        ELSE N'No hay modelo MOV_INVENTARIO para ese centro y área'
+    END AS MOTIVO
+INTO #fuera
+FROM dbo.IMOV I
+INNER JOIN dbo.IZSOL Z
+    ON Z.CNSIZSOL = I.NODOCUMENTO
+   AND Z.CLASE = N'APLIM'
+LEFT JOIN dbo.APLIM M
+    ON M.ID = TRY_CONVERT(int, Z.NOADMISION)
+LEFT JOIN dbo.CIT C
+    ON C.CONSECUTIVO = M.CONSECUTIVOCIT
+WHERE I.PROCEDENCIA = N'CM_SOL'
+  AND ISNULL(I.ESTADO, 0) = 1
+  AND NULLIF(LTRIM(RTRIM(ISNULL(I.CCOSTO, N''))), N'') IS NULL
+  AND NOT EXISTS (SELECT 1 FROM #corr X WHERE X.CNSMOV = I.CNSMOV);
+
+SELECT FUENTE, COUNT(*) AS A_CORREGIR FROM #corr GROUP BY FUENTE;
+SELECT COUNT(*) AS NO_SE_TOCAN_APLIM FROM #fuera;
+
+SELECT
+    CNSMOV, FUENTE, CNSIZSOL, NOADMISION, CONSECUTIVOCIT, IDAUT,
+    CCOSTO_NUEVO, IDAREA_NUEVO, NROCOMPROBANTE, CONTABILIZADA
+FROM #corr
+ORDER BY FUENTE, CNSMOV;
+
+SELECT CNSMOV, CNSIZSOL, CONSECUTIVOCIT, CIT_CCOSTO, CIT_IDAREA, NROCOMPROBANTE, MOTIVO
+FROM #fuera
+ORDER BY MOTIVO, CNSMOV;
+
+SELECT
+    C.CNSMOV,
+    H.TIPO,
+    LTRIM(RTRIM(H.CUENTA)) AS CUENTA_HOY,
+    K.CUENTA AS CUENTA_NUEVA,
+    C.CCOSTO_NUEVO,
+    C.IDAREA_NUEVO,
+    H.VALOR
+FROM #corr C
+INNER JOIN dbo.MCHE H
+    ON H.NROCOMPROBANTE = C.NROCOMPROBANTE
+INNER JOIN dbo.KMCOM K
+    ON K.IDMODELOCONT = @MODELO
+   AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+   AND K.TIPO = H.TIPO
+   AND K.PREFIJO = C.IDTIPOMOV
+   AND K.IDAREA = C.IDAREA_NUEVO
+   AND K.CCOSTO = C.CCOSTO_NUEVO
+WHERE NULLIF(C.NROCOMPROBANTE, N'') IS NOT NULL
+  AND LTRIM(RTRIM(ISNULL(H.CUENTA, N''))) = N'NO DEF.KMCOM'
+  AND NULLIF(LTRIM(RTRIM(ISNULL(H.CCOSTO, N''))), N'') IS NULL
+ORDER BY C.CNSMOV, H.TIPO;
+
+SELECT
+    C.CNSMOV, C.FUENTE, C.IDTIPOMOV, C.IDAUT,
+    C.CCOSTO_NUEVO, C.IDAREA_NUEVO, C.NROCOMPROBANTE
+FROM #corr C
+WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.KMCOM K
+        WHERE K.IDMODELOCONT = @MODELO
+          AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+          AND K.TIPO = N'DB'
+          AND K.PREFIJO = C.IDTIPOMOV
+          AND K.IDAREA = C.IDAREA_NUEVO
+          AND K.CCOSTO = C.CCOSTO_NUEVO
+          AND NULLIF(LTRIM(RTRIM(ISNULL(K.CUENTA, N''))), N'') IS NOT NULL
+      )
+   OR NOT EXISTS (
+        SELECT 1 FROM dbo.KMCOM K
+        WHERE K.IDMODELOCONT = @MODELO
+          AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+          AND K.TIPO = N'CR'
+          AND K.PREFIJO = C.IDTIPOMOV
+          AND K.IDAREA = C.IDAREA_NUEVO
+          AND K.CCOSTO = C.CCOSTO_NUEVO
+          AND NULLIF(LTRIM(RTRIM(ISNULL(K.CUENTA, N''))), N'') IS NOT NULL
+      )
+ORDER BY C.CNSMOV;
+
+IF @APLICAR = 0
+BEGIN
+    SELECT 'VISTA PREVIA' AS RESULTADO,
+           'No se grabó. Para corregir, @APLICAR = 1 y ejecute de nuevo.' AS DETALLE;
+    RETURN;
+END
+
+BEGIN TRAN;
+
+UPDATE I
+SET I.CCOSTO = C.CCOSTO_NUEVO,
+    I.IDAREA = C.IDAREA_NUEVO
+FROM dbo.IMOV I
+INNER JOIN #corr C ON C.CNSMOV = I.CNSMOV
+WHERE NULLIF(LTRIM(RTRIM(ISNULL(I.CCOSTO, N''))), N'') IS NULL;
+
+UPDATE H
+SET H.CCOSTO = C.CCOSTO_NUEVO,
+    H.IDAREA = C.IDAREA_NUEVO,
+    H.CUENTA = K.CUENTA,
+    H.ERROR = NULL
+FROM dbo.MCHE H
+INNER JOIN #corr C
+    ON C.NROCOMPROBANTE = H.NROCOMPROBANTE
+INNER JOIN dbo.KMCOM K
+    ON K.IDMODELOCONT = @MODELO
+   AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+   AND K.TIPO = H.TIPO
+   AND K.PREFIJO = C.IDTIPOMOV
+   AND K.IDAREA = C.IDAREA_NUEVO
+   AND K.CCOSTO = C.CCOSTO_NUEVO
+WHERE NULLIF(C.NROCOMPROBANTE, N'') IS NOT NULL
+  AND LTRIM(RTRIM(ISNULL(H.CUENTA, N''))) = N'NO DEF.KMCOM'
+  AND NULLIF(LTRIM(RTRIM(ISNULL(H.CCOSTO, N''))), N'') IS NULL
+  AND EXISTS (SELECT 1 FROM dbo.MCPE E WHERE E.NROCOMPROBANTE = H.NROCOMPROBANTE)
+  AND NOT EXISTS (SELECT 1 FROM dbo.MCP P WHERE P.NROCOMPROBANTE = H.NROCOMPROBANTE)
+  AND NULLIF(LTRIM(RTRIM(ISNULL(K.CUENTA, N''))), N'') IS NOT NULL;
+
+IF EXISTS (
+    SELECT 1
+    FROM dbo.IMOV I
+    INNER JOIN #corr C ON C.CNSMOV = I.CNSMOV
+    WHERE LTRIM(RTRIM(ISNULL(I.CCOSTO, N''))) <> C.CCOSTO_NUEVO
+       OR LTRIM(RTRIM(ISNULL(I.IDAREA, N''))) <> C.IDAREA_NUEVO
+)
+OR EXISTS (
+    SELECT 1
+    FROM dbo.MCHE H
+    INNER JOIN #corr C ON C.NROCOMPROBANTE = H.NROCOMPROBANTE
+    WHERE NULLIF(C.NROCOMPROBANTE, N'') IS NOT NULL
+      AND LTRIM(RTRIM(ISNULL(H.CUENTA, N''))) = N'NO DEF.KMCOM'
+      AND EXISTS (SELECT 1 FROM dbo.MCPE E WHERE E.NROCOMPROBANTE = H.NROCOMPROBANTE)
+      AND NOT EXISTS (SELECT 1 FROM dbo.MCP P WHERE P.NROCOMPROBANTE = H.NROCOMPROBANTE)
+      AND EXISTS (
+            SELECT 1 FROM dbo.KMCOM K
+            WHERE K.IDMODELOCONT = @MODELO
+              AND K.IDTIPOCONT = N'MOV_INVENTARIO'
+              AND K.TIPO = H.TIPO
+              AND K.PREFIJO = C.IDTIPOMOV
+              AND K.IDAREA = C.IDAREA_NUEVO
+              AND K.CCOSTO = C.CCOSTO_NUEVO
+              AND NULLIF(LTRIM(RTRIM(ISNULL(K.CUENTA, N''))), N'') IS NOT NULL
+          )
+)
+BEGIN
+    ROLLBACK TRAN;
+    SELECT 'NO SE GRABÓ' AS RESULTADO,
+           'Quedó un movimiento sin el centro previsto o una línea con modelo que sigue en NO DEF.KMCOM. Se deshizo todo.' AS DETALLE;
+    RETURN;
+END
+
+COMMIT TRAN;
+
+SELECT 'CORREGIDO' AS RESULTADO, COUNT(*) AS MOVIMIENTOS FROM #corr;

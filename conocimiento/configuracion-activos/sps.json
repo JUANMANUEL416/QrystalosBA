@@ -1,0 +1,391 @@
+{
+  "procesoId": "configuracion-activos",
+  "actualizado": "2026-10-04T21:30:00",
+  "nota": "Fichas reutilizadas 2026-10-04 desde IXONLINE/SQL PREVERSION = 2.0.7 (IDANT 2.0.6, idénticas). Lecturas genéricas AppStore.read (IACTT, IACTE, ITAR, IART, TGEN). Sin getPermiso en estas pantallas. PCEM no consultado.",
+  "sps": [
+    {
+      "nombre": "SPQ_TIPOAF",
+      "tipo": "SPQ",
+      "modelo": "TIPOAF",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR IACTT (código, descripción, estado, flags PIDE*, vida útil, base depreciable, tipo salvamento, tipo vida, clase Local/NIIF). Al editar con cambio de código renombra.",
+          "valida": [
+            "Código no repetido"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL ID … YA SE ENCUENTRA REGISTRADO",
+            "EL CODIGO … YA SE ENCUENTRA REGISTRADO"
+          ],
+          "llama": [],
+          "efecto": "IACTT insertado / actualizado.",
+          "capaId": "01-tipos",
+          "controlId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_TIPOACTIVO_USUARIO",
+          "hace": "Administrador por tipo en TGEN (TABLA TIPOACTXUSUARIO, CAMPO = tipo, CODIGO = empleado).",
+          "valida": [
+            "Empleado no repetido en el tipo"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL EMPLEADO YA SE ENCUENTRA ASIGNADO AL TIPO DE ACTIVO …"
+          ],
+          "llama": [],
+          "efecto": "TGEN insertado / actualizado.",
+          "capaId": "01-tipos",
+          "controlId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IACTT por código.",
+          "valida": [],
+          "noValida": [
+            "Activos asociados (depende de FK)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Tipo eliminado.",
+          "capaId": "01-tipos",
+          "controlId": "tipo-activo",
+          "estado": "leido"
+        },
+        {
+          "id": "GENERAR_DEP",
+          "hace": "UPDATE IACT del tipo: DEPRECIABLE = PRECIOCOMPRA >= BASEDEPRECIABLE; VALORSALVAMENTO = base (Valor) o % del costo (Porcentaje). Borra IACTD no contabilizadas de los no depreciables. Cursor por activo depreciable → SPK_GEN_DEPRECIACION.",
+          "valida": [],
+          "noValida": [
+            "Cierre del cursor si un activo falla"
+          ],
+          "errores": [
+            "Propaga el error del SPK"
+          ],
+          "llama": [
+            "SPK_GEN_DEPRECIACION"
+          ],
+          "efecto": "Marcas y cuotas de todos los activos del tipo. No contabiliza.",
+          "capaId": "01-tipos",
+          "controlId": "tipo-activo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_EVENTOAF",
+      "tipo": "SPQ",
+      "modelo": "EVENTOAF",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR IACTE (código, tipo Entrada/Salida/Traslado, descripción, PIDEESTADO, PIDEVALOR, PIDECCOSTO, BAJA, ESTADO asociado, MUEVECONTABILIDAD, COMPROBANTE).",
+          "valida": [
+            "Código no repetido"
+          ],
+          "noValida": [
+            "Comprobante obligatorio si contabiliza (lo exige la pantalla)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "IACTE insertado / actualizado.",
+          "capaId": "02-eventos",
+          "controlId": "eventos-maestro",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IACTE.",
+          "valida": [],
+          "noValida": [
+            "Novedades que usen el evento"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Evento eliminado.",
+          "capaId": "02-eventos",
+          "controlId": "eventos-maestro",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_GRUPAC",
+      "tipo": "SPQ",
+      "modelo": "GRUPAC",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Grupo en TGEN (ACTIVOSFIJOS / GRUPOS).",
+          "valida": [
+            "Código no repetido"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "grupos",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_SUBGRUP",
+          "hace": "Subgrupo en TGEN ligado al grupo.",
+          "valida": [
+            "Código no repetido en el grupo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "grupos",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE grupo.",
+          "valida": [],
+          "noValida": [
+            "Subgrupos / activos asociados"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "grupos",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_SUBGRUP",
+          "hace": "DELETE subgrupo.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "grupos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_ITAR",
+      "tipo": "SPQ",
+      "modelo": "ITAR",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Inserta tipo de artículo (consecutivo). En esta pantalla el listado filtra ESACTIVO = 1.",
+          "valida": [
+            "No repetido"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL TIPO DE ARTICULO YA EXISTE"
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "ITAR.",
+          "capaId": "03-articulos",
+          "controlId": "tipos-articulo",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR",
+          "hace": "UPDATE ITAR (incluye marca ESACTIVO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "ITAR.",
+          "capaId": "03-articulos",
+          "controlId": "tipos-articulo",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE ITAR.",
+          "valida": [
+            "Sin artículos asignados"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL TIPO DE ARTICULO TIENE ARTICULOS ASIGNADOS (IART)"
+          ],
+          "llama": [],
+          "efecto": "ITAR.",
+          "capaId": "03-articulos",
+          "controlId": "tipos-articulo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IART",
+      "tipo": "SPQ",
+      "modelo": "IART",
+      "estado": "listado",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "nota": "Cuerpo y fichas completas en el proceso Inventario. Aquí solo el filtro de Activos F.: ESACTIVO e IDTIPOACTIVO.",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Alta / edición de artículo de inventario con tipo de artículo, tipo de activo y fabricante.",
+          "valida": [
+            "Artículo no repetido"
+          ],
+          "noValida": [
+            "Que el tipo tenga ESACTIVO = 1 (lo filtra la pantalla)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "IART.",
+          "capaId": "03-articulos",
+          "controlId": "articulos-af",
+          "estado": "listado"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE IART.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "IART.",
+          "capaId": "03-articulos",
+          "controlId": "articulos-af",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_EQXSEAF",
+      "tipo": "SPQ",
+      "modelo": "EQXSEAF",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR equipos por sector en TGEN (sector, artículo, descripción, cantidad).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "equipos-sector",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE TGEN.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "equipos-sector",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOTIFPARADAAF",
+      "tipo": "SPQ",
+      "modelo": "NOTIFPARADAAF",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR notificación de parada por servicio en TGEN (contacto, correo).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "noti-parada",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE TGEN.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-grupos-sectores",
+          "controlId": "noti-parada",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IACT",
+      "tipo": "SPQ",
+      "modelo": "IACT",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "nota": "De este objeto el submenú solo usa TRE_TIPOACT (flags del tipo para el alta). El GUARDAR de la ficha vive en Activos Fijos → Gestión.",
+      "metodos": [
+        {
+          "id": "TRE_TIPOACT",
+          "hace": "Devuelve la fila IACTT del tipo (flags PIDE*, vida útil, salvamento, clase).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura: el formulario de alta vuelve obligatorios los campos marcados.",
+          "capaId": "01-tipos",
+          "controlId": "tipo-activo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GEN_DEPRECIACION",
+      "tipo": "SPK",
+      "modelo": "—",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "—",
+          "hace": "Recalcula cuotas IACTD del activo (vida útil y salvamento del tipo). Lo llama GENERAR_DEP por cada activo depreciable.",
+          "valida": [
+            "DEPRECIABLE = 1 para generar"
+          ],
+          "noValida": [
+            "TIPOSALV (toma BASEDEPRECIABLE como valor absoluto si no llega porcentaje)"
+          ],
+          "errores": [
+            "Activo Depreciado Completamente no debo hacer nada"
+          ],
+          "llama": [],
+          "efecto": "IACT e IACTD regenerados. No arma comprobante.",
+          "capaId": "01-tipos",
+          "controlId": "tipo-activo",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1322 @@
+{
+  "id": "honorarios-fxp",
+  "nombre": "Honorarios médicos (FXP)",
+  "modulo": "FXP_COL",
+  "familia": "financiero",
+  "prioridad": 13,
+  "enRuta": false,
+  "estado": "documentado",
+  "resumen": "Ciclo completo del honorario médico: contratación del proveedor (PXSN → PXS → PXSE y la vista de precios VW_CXPPROTOT), marca «Maneja Proveedor» del servicio, captura del proveedor en el cargo o la autorización, generación automática al facturar (SPK_CREACXP_ASIS / CE / CI → FXP/FXPD en P), gestión en Administrativo → Honorarios médicos (SPQ_FXP_COL: cambiar tercero, imprimir, cuenta de cobro) y paso a cuenta por pagar (SPK_INSERT_CXP_SALUD → FCXPD procedencia Salud), que hoy no tiene camino en Qrystalos2.",
+  "actualizado": "2026-10-05T00:10:00",
+  "dictamenRelacionado": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html",
+  "notaSql": "Leídos 2026-10-04 desde DESAIX/SQLIX, PREVERSION idéntica a 2.0.7 (IDANT 2.0.6): SPQ_FXP_COL, FNK_ESTADO_FXP, SPK_CAMBIAR_TERFXP, SPK_CREACXP_ASIS, SPK_CREACXP_ASIS_UNO, SPK_CREACXP_CE, SPK_CREACXP_CI, SPK_CREACXP_QX, SPK_INSERT_CXP_SALUD, SPK_INSERT_CXP_SALUD_TOTAL, SPK_ANULAR_ITEM_CXP, SPQ_CONF_CXP, SPQ_PXSN, SPQ_PXS, SPQ_PXSE, VW_CXPPROTOT, VW_CXPPROPRE, VW_CXPPROSER, VW_CXPPROSER1, VW_PXS (todos en sql/). Fragmentos leídos en línea: SPK_ANULA_FACT, SPK_ANULA_FACT_CAPITADA, SPK_LIBERAR_FACT, SPK_NOTASCXC, SPK_ANULAR_CXP. Búsqueda de invocadores en PREVERSION: SPK_INSERT_CXP_SALUD(_TOTAL), SPK_CREACXP_QX y SPK_CREACXP_ASIS_UNO no tienen quien los llame; ningún objeto del catálogo inserta en HOMED. Metadatos de columnas FXP/FXPD/PXS/PXSE/PXSN/HOMED tomados de sys.columns de la base de pruebas (solo estructura). Documentación viva: sin ficha FXP, FXPD, PXS, PXSE, PXSN ni HOMED; SER.md trae MPROVEEDOR «Marcador proveedor».",
+  "alcanceHasta": "Desde la contratación del proveedor hasta que el honorario queda en estado E (En CxP). El pago de la cuenta por pagar (orden de pago, caja, archivo plano) se documenta en cxp-fcxp.",
+  "hermanoDe": "cxp-fcxp",
+  "flujoResumen": "Terceros → Contratación como Sub-Contratista (PXSN · GUARDAR → PXS · GUARDAR → PXSE · GUARDAR; precio en VW_CXPPROTOT) → Servicio con «Maneja Proveedor» → Cargo con Id.Proveedor (HPRED.IDPROVEEDOR) o Autorización con Proveedor (AUT.IDPROVEEDOR) → Facturar (SPK_FACTURA_* → SPK_CREACXP_ASIS; SPK_FACTURACE_* → SPK_CREACXP_CE / CI) → FXP/FXPD en P → Administrativo → Honorarios médicos (FXP_COL · ESTADO_FXP / CAMBIAR_TERFXP / IMPRIMIR_CXP / IMPRIMIR_CUENTA_COBRO) → Paso a CxP (FXPD S → SPK_INSERT_CXP_SALUD → FCXPD Salud; FXP/FXPD E) → cxp-fcxp.",
+  "incluirProcesoMdEnLibro": false,
+  "diagramas": [],
+  "menu": {
+    "ruta": "Administrativo → Honorarios médicos · Configuración → Terceros → Contratación Como Sub-Contratista · Configuración → Servicios (Maneja Proveedor) · Configuración → Prefijos (Requiere Proveedor / Proveedores)",
+    "fuente": "routes.js admin.FXP (/admin/FXP) → HonorariosMedPage → FXPComponent. TercerosComponent botón «Contratación Como Sub-Contratista» (permiso TERCEROS_WEB · CONTR_SUBCONTR, visible si el tercero es contratante con categoría PRO) → PXSNComponent. ServiciosComponent checkbox MPROVEEDOR. PREComponent REQ_PROVEED, IDPROVEEDORDEF y botón Proveedores (PXS · GUARDAR_PRE)."
+  },
+  "ventanas": [
+    {
+      "uso": "Contratar al proveedor: administradora, plan, tarifa, factor, prefijos y excepciones por servicio",
+      "ruta": "conf.terceros",
+      "path": "/conf/terceros",
+      "vue": "TercerosComponent → PXSNComponent (diálogo «Contratación Como Sub-Contratista»)",
+      "entrada": "Configuración → Terceros → fila del proveedor → Contratación Como Sub-Contratista. Tabla PXSN (administradora, plan, tarifa, factor) con botones Nuevo, Contratación total (VW_CXPPROTOT) y Copiar contratación; al expandir, Prefijos Contratados (PXS: sede, prefijo, tipo tarifa, tarifa, factor, pago compartido) y por prefijo la Excepción de servicios (PXSE: Restringir / Tarifa / Valor). MODELOs PXSN, PXS, PXSE."
+    },
+    {
+      "uso": "Marcar el servicio que genera honorario y el prefijo que exige proveedor",
+      "ruta": "conf.servicios",
+      "path": "/conf/servicios",
+      "vue": "ServiciosComponent · PREComponent",
+      "entrada": "Configuración → Servicios → casilla «Maneja Proveedor» (SER.MPROVEEDOR). Configuración → Prefijos → «Requiere Proveedor», proveedor por defecto y botón Proveedores del prefijo (PXS con prioridad y umbral)."
+    },
+    {
+      "uso": "Capturar el proveedor en el cargo hospitalario o en la autorización de consulta externa",
+      "ruta": "asis.cargos",
+      "path": "/asis",
+      "vue": "HPREComponent (cargos) · AutorizadorComponent (CE)",
+      "entrada": "Cargos: si el servicio maneja proveedor aparece «Id.Proveedor» (lista VW_PXS filtrada por la administradora de la admisión y el prefijo) y es obligatorio. Autorización: campo «Proveedor» (TER), obligatorio si AUT_OBLI_IDPROVEEDOR=SI; se bloquea cuando la autorización está facturada o anulada."
+    },
+    {
+      "uso": "Consultar, cambiar de tercero e imprimir los honorarios generados",
+      "ruta": "admin.FXP",
+      "path": "/admin/FXP",
+      "vue": "HonorariosMedPage → FXPComponent → FXPDComponent",
+      "entrada": "Administrativo → Honorarios médicos. Filtros: proveedor (categoría PRO), fechas de generación, estado (Todos / Preparados / En CXP / Anulados), pestañas Por N. CXP y Por No. Referencia. Botones: Anular, Cambiar tercero, Imprimir CxP, Exportar Excel, Imprimir cuenta de cobro. Al expandir: detalle FXPD por ítem (servicio, prefijo, valor, cantidad, prestación, factura, estado)."
+    },
+    {
+      "uso": "Ver y exportar los honorarios que aún no son cuenta por pagar",
+      "ruta": "admin.CuentasxP",
+      "path": "/admin/CuentasxPagar",
+      "vue": "CXPComponent → Reportes y Cierre → Consulta Cuentas Esperadas en Salud",
+      "entrada": "Administrativo → Cuentas por Pagar → Reportes y Cierre → Consulta Cuentas Esperadas en Salud. Lista FXP con su detalle y exporta a Excel (CONF_CXP · EXPORTAR_CXP_ESPERADAS). Solo consulta: no pasa el honorario a CxP."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "documentado",
+      "explicacion": "Tres piezas deciden si un cargo genera honorario y por cuánto: (1) el servicio marcado «Maneja Proveedor» (SER.MPROVEEDOR) y, opcionalmente, el prefijo con «Requiere Proveedor» y proveedor por defecto; (2) la contratación del tercero proveedor como sub-contratista: PXSN (administradora + plan + tarifa + factor), PXS (prefijos contratados por sede, con tipo de tarifa, tarifa, factor y marcas de pago compartido) y PXSE (excepciones por servicio: Restringir, Tarifa o Valor); (3) la vista de precios VW_CXPPROTOT, que une PXS con las tarifas (TARD/TARF/TARDV) y aplica las excepciones. Variables: IDTERCEROINSTALADO (la propia institución nunca genera honorario), HONORATAR_DIF (modo de cálculo en consulta externa y citas), AUT_OBLI_IDPROVEEDOR (proveedor obligatorio en la autorización), TERCATPROVEEDOR e IDMODELOCONTABLE (al pasar a CxP). Consecutivo @FCXP para numerar el honorario.",
+      "tablasClave": [
+        "TER",
+        "TEXCA",
+        "PXSN",
+        "PXS",
+        "PXSE",
+        "SER",
+        "PRE",
+        "TAR",
+        "TARD",
+        "TARF",
+        "TARDV",
+        "PPT",
+        "USVGS"
+      ],
+      "controles": [
+        {
+          "id": "tercero-proveedor-contratante",
+          "nombre": "El tercero debe ser proveedor y contratante",
+          "explicacion": "El botón «Contratación Como Sub-Contratista» solo aparece si el tercero está marcado como contratante y tiene la categoría PRO (proveedor). Además exige el permiso TERCEROS_WEB · CONTR_SUBCONTR.",
+          "invariante": "Sin categoría PRO no hay contratación y el tercero no aparece como proveedor en los cargos.",
+          "sps": []
+        },
+        {
+          "id": "pxsn-unico",
+          "nombre": "Una contratación por administradora y plan",
+          "explicacion": "PXSN · GUARDAR rechaza el duplicado tercero + administradora + plan («EL REGISTRO SE ENCUENTRA DUPLICADO»). Pide tarifa y factor mayor que cero. La administradora se elige entre terceros activos con categoría CON y el plan entre los de esa administradora.",
+          "invariante": "Clave PXSN = IDTERCERO + IDADMINISTRADORA + IDPLAN.",
+          "sps": [
+            {
+              "nombre": "SPQ_PXSN",
+              "metodo": "GUARDAR",
+              "rol": "Inserta/edita PXSN; copia contratación con SPK_COPIAPROVEEDORXS."
+            }
+          ]
+        },
+        {
+          "id": "pxs-prefijo-unico",
+          "nombre": "Un prefijo contratado por sede y configuración",
+          "explicacion": "PXS · GUARDAR rechaza el prefijo repetido para la misma sede/plan/administradora/tercero («EL PREFIJO YA SE ENCUENTRA REGISTRADO PARA ESTA CONFIGURACIÓN»). Tipo de tarifa Normal (hereda la de PXSN) o Tarifa (tarifa y factor propios). Las marcas Exención / Liquidar / Cobrar pago compartido no afectan el honorario; son de facturación.",
+          "invariante": "Solo los prefijos listados en PXS entran a la vista de precios y a la lista Id.Proveedor del cargo.",
+          "sps": [
+            {
+              "nombre": "SPQ_PXS",
+              "metodo": "GUARDAR",
+              "rol": "CRUD desde la contratación; GUARDAR_PRE / ELIMINAR_PRE desde la pantalla de prefijos (prioridad y umbral)."
+            }
+          ]
+        },
+        {
+          "id": "pxse-excepcion",
+          "nombre": "Excepción por servicio: restringir, tarifa o valor",
+          "explicacion": "PXSE · GUARDAR guarda por tercero/administradora/plan/sede/prefijo/servicio un tipo de restricción: Restringir (el servicio sale de la contratación: no genera honorario), Tarifa (tarifa + factor distintos a los del prefijo) o Valor (valor fijo). Limpia tarifa o valor según el tipo. Rechaza el servicio repetido («LA EXCEPCIÓN DE SERVICIO YA SE ENCUENTRA REGISTRADA»). El buscador de servicios solo ofrece los vigentes para ese tercero/plan/prefijo y que no sean cirugía.",
+          "invariante": "Un servicio con excepción no toma el precio general del prefijo.",
+          "sps": [
+            {
+              "nombre": "SPQ_PXSE",
+              "metodo": "GUARDAR",
+              "rol": "Inserta/edita/elimina PXSE."
+            }
+          ]
+        },
+        {
+          "id": "precio-honorario",
+          "nombre": "Cómo se calcula el honorario (VW_CXPPROTOT)",
+          "explicacion": "La vista une tres fuentes: VW_CXPPROPRE (precio general: PXS × servicio × tarifa; si el servicio es cirugía toma el valor de la tarifa tal cual, si no multiplica valor × factor del proveedor × factor dinero de la tarifa y redondea según la tarifa: unidad, decena, centena, millar, dos decimales o sin redondeo; excluye los servicios que tengan excepción), VW_CXPPROSER (excepciones tipo Tarifa) y VW_CXPPROSER1 (excepciones tipo Valor). Cada fila trae vigencia del servicio en la tarifa y del convenio; el generador exige que la fecha del cargo caiga dentro de ambas. El botón «Contratación total» muestra esta vista para el proveedor.",
+          "invariante": "Si el servicio no tiene fila vigente en VW_CXPPROTOT para ese proveedor, administradora, plan y prefijo, el cargo no genera honorario aunque tenga proveedor.",
+          "sps": [
+            {
+              "nombre": "VW_CXPPROTOT",
+              "metodo": "VW_CXPPROTOT",
+              "rol": "Precio por servicio del proveedor."
+            }
+          ]
+        },
+        {
+          "id": "servicio-maneja-proveedor",
+          "nombre": "El servicio debe manejar proveedor",
+          "explicacion": "La casilla «Maneja Proveedor» del servicio hace que el cargo pida Id.Proveedor y lo exija antes de grabar. Sin la marca el cargo nace sin proveedor y el generador lo ignora. El prefijo puede además exigir proveedor y traer uno por defecto.",
+          "invariante": "HPRED.IDPROVEEDOR vacío = sin honorario.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio: Honorarios médicos",
+      "estado": "documentado",
+      "explicacion": "La pantalla Administrativo → Honorarios médicos no crea honorarios: los consulta por proveedor, fechas y estado, muestra el detalle por ítem y permite tres cosas: cambiar el tercero de un ítem (si la factura de venta no está confirmada en contabilidad), imprimir el listado (PDF «Cuentas por pagar presupuestada» o Excel) e imprimir la cuenta de cobro del proveedor (PDF «Debe a…»). El botón Anular está en pantalla pero no tiene procedimiento detrás.",
+      "tablasClave": [
+        "FXP",
+        "FXPD",
+        "TER",
+        "SER",
+        "HPRED",
+        "FTRD",
+        "FTR",
+        "MCP"
+      ],
+      "controles": [
+        {
+          "id": "filtro-proveedor-fechas",
+          "nombre": "Consulta por proveedor, fechas y estado",
+          "explicacion": "La fecha filtra por la fecha de generación del honorario (fecha de la factura). Estado Preparados agrupa P y S; En CXP = E; Anulados = A. Las pestañas buscan por número de honorario o por referencia (admisión, autorización o cita).",
+          "invariante": "Imprimir exige proveedor y las dos fechas.",
+          "sps": []
+        },
+        {
+          "id": "cambiar-ter-si-no-confirmado",
+          "nombre": "Cambiar tercero solo si la factura no está confirmada en contabilidad",
+          "explicacion": "Se selecciona un ítem del detalle. FXP_COL · ESTADO_FXP busca la factura de venta del ítem (FTRD por admisión, prestación e ítem); si está contabilizada y el comprobante MCP está confirmado, responde ESTADO 1 y la pantalla bloquea con el mensaje de la función. Si no, se elige el nuevo tercero y CAMBIAR_TERFXP mueve el ítem: a un honorario existente del nuevo tercero para la misma referencia (ítem siguiente) o a uno nuevo (consecutivo @FCXP); borra la cabecera que quede vacía; actualiza el proveedor en el cargo (HPRED) y en el detalle de la factura (FTRD); si la factura estaba contabilizada sin confirmar, reconstruye el comprobante con SPK_CONTAB_FTR.",
+          "invariante": "No cambia tercero de un ítem cuya factura de venta esté confirmada en contabilidad.",
+          "sps": [
+            {
+              "nombre": "SPQ_FXP_COL",
+              "metodo": "ESTADO_FXP",
+              "rol": "Consulta."
+            },
+            {
+              "nombre": "SPQ_FXP_COL",
+              "metodo": "CAMBIAR_TERFXP",
+              "rol": "Valida y ejecuta SPK_CAMBIAR_TERFXP."
+            },
+            {
+              "nombre": "FNK_ESTADO_FXP",
+              "metodo": "FNK_ESTADO_FXP",
+              "rol": "Estado contable de la factura del ítem."
+            },
+            {
+              "nombre": "SPK_CAMBIAR_TERFXP",
+              "metodo": "SPK_CAMBIAR_TERFXP",
+              "rol": "Mueve el ítem y actualiza HPRED/FTRD."
+            }
+          ]
+        },
+        {
+          "id": "imprimir-cuenta-cobro",
+          "nombre": "Imprimir listado y cuenta de cobro",
+          "explicacion": "IMPRIMIR_CXP e IMPRIMIR_CUENTA_COBRO comparten la consulta: honorarios del proveedor entre fechas, con estado, número y referencia opcionales; por ítem trae servicio, cantidad, valor, prestación, factura y, según la procedencia, el paciente y la empresa (admisión, autorización o cita). La cabecera trae la razón social y NIT de la institución instalada y el total general. El PDF de cuenta de cobro agrupa «Debe a: proveedor / Por concepto de» y suma por proveedor.",
+          "invariante": "Sin proveedor o sin fechas no imprime.",
+          "sps": [
+            {
+              "nombre": "SPQ_FXP_COL",
+              "metodo": "IMPRIMIR_CXP",
+              "rol": "Datos del PDF/Excel."
+            },
+            {
+              "nombre": "SPQ_FXP_COL",
+              "metodo": "IMPRIMIR_CUENTA_COBRO",
+              "rol": "Misma rama."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega: cómo nace el honorario",
+      "estado": "documentado",
+      "explicacion": "El honorario nace solo, al facturar. Tres generadores activos: (a) hospitalización, urgencias y variantes (SOAT, UCI, domiciliaria): al cerrar la factura de la admisión, SPK_CREACXP_ASIS toma los cargos de esa factura con proveedor distinto a la institución y sin honorario previo (HPRED.CXP=0), los valora con VW_CXPPROTOT vigente a la fecha del cargo, agrupa por proveedor y prestación y crea FXP (P, procedencia SALUD, referencia = admisión) con FXPD por ítem; marca HPRED.CXP=1 y HADM.CXP=1. Un segundo bloque reparte por porcentaje entre recursos si existe HOMED para esa prestación. (b) Consulta externa: al facturar la autorización, SPK_CREACXP_CE usa el proveedor de la cabecera de la autorización (AUT.IDPROVEEDOR) y marca AUT.CXPGEN=1; procedencia CE, referencia = autorización; el valor es el valor proveedor del detalle o, con HONORATAR_DIF=SI, la tarifa diferencial. (c) Citas: SPK_CREACXP_CI usa el médico de la cita como proveedor; procedencia CI, referencia = consecutivo de la cita. SPK_CREACXP_QX (cirugía) y SPK_CREACXP_ASIS_UNO (un ítem) existen pero ningún procedimiento ni pantalla los invoca. La procedencia PYP aparece en la impresión sin generador conocido.",
+      "tablasClave": [
+        "HADM",
+        "HPRE",
+        "HPRED",
+        "AUT",
+        "AUTD",
+        "CIT",
+        "HOMED",
+        "FTR",
+        "FTRD",
+        "FXP",
+        "FXPD"
+      ],
+      "controles": [
+        {
+          "id": "cargo-con-proveedor",
+          "nombre": "El cargo lleva proveedor",
+          "explicacion": "En Cargos, si el servicio maneja proveedor, aparece Id.Proveedor con la lista de proveedores contratados (VW_PXS) para la administradora de la admisión y el prefijo de la prestación. No deja grabar el ítem sin proveedor. En consulta externa el proveedor va en la cabecera de la autorización y es obligatorio solo si AUT_OBLI_IDPROVEEDOR=SI.",
+          "invariante": "El proveedor del cargo debe estar contratado para esa administradora y prefijo.",
+          "sps": []
+        },
+        {
+          "id": "genera-al-facturar",
+          "nombre": "Se genera al facturar, una vez por cargo",
+          "explicacion": "El generador solo toma cargos de la factura que se está cerrando, no anulados, con proveedor distinto a IDTERCEROINSTALADO y con CXP=0. Solo los que tengan precio vigente en VW_CXPPROTOT (fecha del cargo dentro de la vigencia del servicio en la tarifa y del convenio) y valor mayor que cero entran al honorario. Si ningún cargo califica, no se crea FXP.",
+          "invariante": "HPRED.CXP=1 impide generar dos veces el mismo cargo; HADM.CXP=1 marca la admisión.",
+          "sps": [
+            {
+              "nombre": "SPK_CREACXP_ASIS",
+              "metodo": "SPK_CREACXP_ASIS",
+              "rol": "Hospitalización y variantes."
+            },
+            {
+              "nombre": "SPK_CREACXP_CE",
+              "metodo": "SPK_CREACXP_CE",
+              "rol": "Consulta externa."
+            },
+            {
+              "nombre": "SPK_CREACXP_CI",
+              "metodo": "SPK_CREACXP_CI",
+              "rol": "Citas."
+            }
+          ]
+        },
+        {
+          "id": "anular-factura-borra",
+          "nombre": "Anular o liberar la factura borra el honorario",
+          "explicacion": "SPK_ANULA_FACT borra FXP y FXPD de la admisión (procedencia SALUD) o de la factura (CE, CI); SPK_LIBERAR_FACT borra por referencia y procedencia. Ninguno de los dos mira si el honorario ya pasó a cuenta por pagar (estado E). La nota crédito sobre la factura (SPK_NOTASCXC) rebaja el valor del ítem del honorario y recalcula el total.",
+          "invariante": "Al anular la factura el cargo vuelve a CXP=0 y puede generar honorario en la nueva factura.",
+          "sps": [
+            {
+              "nombre": "SPK_ANULA_FACT",
+              "metodo": "SPK_ANULA_FACT",
+              "rol": "Fragmento FXP leído."
+            },
+            {
+              "nombre": "SPK_LIBERAR_FACT",
+              "metodo": "SPK_LIBERAR_FACT",
+              "rol": "Fragmento FXP leído."
+            },
+            {
+              "nombre": "SPK_NOTASCXC",
+              "metodo": "SPK_NOTASCXC",
+              "rol": "Fragmento FXPD leído."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido: paso a cuenta por pagar",
+      "estado": "documentado",
+      "explicacion": "El honorario (FXP) es una cuenta por pagar presupuestada: no se paga desde aquí. El diseño del sistema es marcar los ítems a pagar (FXPD estado S) y ejecutar SPK_INSERT_CXP_SALUD sobre una cuenta por pagar: crea en FCXPD una línea por ítem con procedencia Salud, clase de impuesto del prefijo, cuenta del modelo contable (CXP_SALUD), número y ítem del honorario; recalcula valor, saldo y netos de la FCXP y deja FXPD y FXP en E. SPK_INSERT_CXP_SALUD_TOTAL hace lo mismo para todas las cabeceras en S. Al anular la CxP o un ítem (SPK_ANULAR_CXP / SPK_ANULAR_ITEM_CXP) el honorario vuelve a P. En Qrystalos2 ese camino no existe: la Nueva CXP con procedencia Salud elige un servicio del catálogo sin vincular el honorario, ningún botón marca S ni ejecuta el SPK, y la única pantalla que lo mira es «Consulta Cuentas Esperadas en Salud» (solo lectura y Excel).",
+      "tablasClave": [
+        "FXP",
+        "FXPD",
+        "FCXP",
+        "FCXPD",
+        "KMCOM",
+        "PRE"
+      ],
+      "controles": [
+        {
+          "id": "paso-a-cxp",
+          "nombre": "De honorario a cuenta por pagar",
+          "explicacion": "Solo pasan ítems en S. La línea FCXPD nace en P con N_PRESUP e ITEM_PRESUP para poder regresar. Después, la cuenta por pagar sigue su ciclo normal (impuestos, contabilizar, orden de pago, caja) en cxp-fcxp.",
+          "invariante": "FXPD.ESTADO E ⇔ existe FCXPD con ese N_PRESUP + ITEM_PRESUP.",
+          "sps": [
+            {
+              "nombre": "SPK_INSERT_CXP_SALUD",
+              "metodo": "SPK_INSERT_CXP_SALUD",
+              "rol": "Sin invocador en el catálogo ni en Qrystalos2."
+            },
+            {
+              "nombre": "SPK_INSERT_CXP_SALUD_TOTAL",
+              "metodo": "SPK_INSERT_CXP_SALUD_TOTAL",
+              "rol": "Sin invocador."
+            },
+            {
+              "nombre": "SPK_ANULAR_ITEM_CXP",
+              "metodo": "SPK_ANULAR_ITEM_CXP",
+              "rol": "Devuelve el ítem a P."
+            }
+          ]
+        },
+        {
+          "id": "cuentas-esperadas",
+          "nombre": "Cuentas esperadas en salud",
+          "explicacion": "Desde Cuentas por Pagar → Reportes y Cierre se listan los honorarios (cabecera y detalle) por búsqueda y fechas y se exportan a Excel con dos hojas (Totales y Detalles).",
+          "invariante": "Es consulta; no cambia estados.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CXP",
+              "metodo": "EXPORTAR_CXP_ESPERADAS",
+              "rol": "Excel de FXP/FXPD."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "documentado",
+      "explicacion": "El honorario no genera comprobante propio. La contabilidad llega por dos vías: (1) la factura de venta ya lleva el proveedor en su detalle (FTRD.IDPROVEEDOR), por eso cambiar el tercero de un honorario reconstruye el comprobante de la factura si estaba contabilizada y se bloquea si está confirmada; (2) cuando el honorario pasa a cuenta por pagar, la línea FCXPD toma la cuenta débito del modelo contable para CXP_SALUD (por prefijo, área y centro de costo) y se contabiliza con la CxP.",
+      "tablasClave": [
+        "FTR",
+        "FTRD",
+        "MCP",
+        "KMCOM",
+        "FCXPD"
+      ],
+      "controles": [
+        {
+          "id": "cuenta-cxp-salud",
+          "nombre": "Cuenta contable del honorario en la CxP",
+          "explicacion": "FNK_CUENTA_KMCOM(IDMODELOCONTABLE, 'CXP_SALUD', 'DB', prefijo, área, centro de costo) decide la cuenta débito de cada línea. Si el modelo no tiene la clave CXP_SALUD para ese prefijo, la línea queda sin cuenta y la CxP no contabiliza.",
+          "invariante": "Modelo contable con clave CXP_SALUD por prefijo antes de pasar honorarios a CxP.",
+          "sps": [
+            {
+              "nombre": "SPK_INSERT_CXP_SALUD",
+              "metodo": "SPK_INSERT_CXP_SALUD",
+              "rol": "Asigna CUENTA_SER."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "caminosLibro": [
+    {
+      "codigo": "SALUD",
+      "nombre": "Hospitalización, urgencias y variantes",
+      "origen": "Cargos de la admisión (HPRED) con Id.Proveedor",
+      "icono": "local_hospital",
+      "codigoOrigen": "SPK_CREACXP_ASIS",
+      "descripcion": "Al cerrar la factura de la admisión, los cargos con proveedor distinto a la institución y precio vigente en la contratación se agrupan por proveedor y prestación. Referencia = número de admisión. Marca HPRED.CXP y HADM.CXP.",
+      "ventana": "Asistencial → Cargos → Id.Proveedor · Facturación de la admisión"
+    },
+    {
+      "codigo": "CE",
+      "nombre": "Consulta externa (autorización)",
+      "origen": "Autorización con Proveedor en la cabecera (AUT)",
+      "icono": "assignment_ind",
+      "codigoOrigen": "SPK_CREACXP_CE",
+      "descripcion": "Al facturar la autorización, el valor proveedor del detalle (o la tarifa diferencial si HONORATAR_DIF=SI) forma el honorario del proveedor de la autorización. Referencia = autorización. Marca AUT.CXPGEN.",
+      "ventana": "Consulta externa → Autorizador → campo Proveedor · Facturación CE"
+    },
+    {
+      "codigo": "CI",
+      "nombre": "Citas",
+      "origen": "Médico de la cita (CIT.IDMEDICO) contratado como proveedor",
+      "icono": "event_available",
+      "codigoOrigen": "SPK_CREACXP_CI",
+      "descripcion": "Al facturar la cita, el médico que atendió es el proveedor; el precio sale de su contratación para la administradora y el plan de la cita. Referencia = consecutivo de la cita.",
+      "ventana": "Consulta externa → Citas · Facturación CE"
+    },
+    {
+      "codigo": "HOMED",
+      "nombre": "Reparto por porcentaje entre recursos",
+      "origen": "HOMED: porcentaje por prestación, ítem y tercero",
+      "icono": "pie_chart",
+      "codigoOrigen": "SPK_CREACXP_ASIS / CE (bloque HOMED)",
+      "descripcion": "Si existe un reparto para la prestación, cada tercero recibe su porcentaje del valor del cargo. No se encontró pantalla ni procedimiento que alimente HOMED en la versión actual.",
+      "ventana": "Sin pantalla identificada"
+    },
+    {
+      "codigo": "QX",
+      "nombre": "Cirugía (no activo)",
+      "origen": "SPK_CREACXP_QX / SPK_CREACXP_ASIS_UNO",
+      "icono": "pause_circle",
+      "codigoOrigen": "Sin invocador",
+      "descripcion": "Existen en el catálogo (honorario por admisión para cargos quirúrgicos y honorario de un solo ítem) pero ninguna factura ni pantalla los ejecuta. La liquidación quirúrgica de costos (LiqCx) es otro proceso.",
+      "ventana": "—"
+    }
+  ],
+  "flujos": [
+    {
+      "id": "fxp-configurar",
+      "nombre": "Configurar al proveedor y sus precios",
+      "descripcion": "Desde el tercero hasta ver el precio final por servicio en Contratación total.",
+      "icono": "settings",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear o revisar el tercero proveedor",
+          "descripcion": "Configuración → Terceros. El tercero debe ser contratante y tener la categoría PRO (proveedor). Con eso aparece el botón «Contratación Como Sub-Contratista» (permiso TERCEROS_WEB · CONTR_SUBCONTR).",
+          "rol": "Configuración / Contratación",
+          "pantalla": "Configuración → Terceros",
+          "tablas": [
+            "TER",
+            "TEXCA"
+          ],
+          "sp": "AppStore.read TER / TEXCA"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Contratación: administradora, plan, tarifa y factor",
+          "descripcion": "Nuevo → elegir administradora (tercero activo categoría CON), plan de esa administradora, tarifa y factor (> 0). Es la base del precio: valor de la tarifa × factor. No se repite administradora + plan para el mismo proveedor.",
+          "rol": "Contratación",
+          "pantalla": "Contratación Como Sub-Contratista",
+          "tablas": [
+            "PXSN",
+            "TAR",
+            "PPT"
+          ],
+          "sp": "PXSN · GUARDAR"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Prefijos contratados por sede",
+          "descripcion": "Expandir la fila → Nuevo Prefijo: sede, prefijo, tipo de tarifa (Normal = la de la contratación; Tarifa = tarifa y factor propios) y marcas de pago compartido. Solo estos prefijos entran al precio y a la lista de proveedores del cargo.",
+          "rol": "Contratación",
+          "pantalla": "Prefijos Contratados",
+          "tablas": [
+            "PXS",
+            "PRE",
+            "SED"
+          ],
+          "sp": "PXS · GUARDAR"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Algún servicio se paga distinto?",
+          "descripcion": "Desde el prefijo → Excepción de servicios → Nuevo: servicio vigente del prefijo y tipo Restringir (no genera honorario), Tarifa (tarifa + factor) o Valor (valor fijo). El servicio con excepción deja de tomar el precio general.",
+          "rol": "Contratación",
+          "pantalla": "Excepción de servicios",
+          "tablas": [
+            "PXSE",
+            "SERTOT"
+          ],
+          "sp": "PXSE · GUARDAR"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Marcar el servicio y, si aplica, el prefijo",
+          "descripcion": "Configuración → Servicios → «Maneja Proveedor». Configuración → Prefijos → «Requiere Proveedor», proveedor por defecto y Proveedores del prefijo (prioridad, umbral). Sin la marca del servicio el cargo no pide proveedor.",
+          "rol": "Configuración",
+          "pantalla": "Configuración → Servicios / Prefijos",
+          "tablas": [
+            "SER",
+            "PRE",
+            "PXS"
+          ],
+          "sp": "SER · GUARDAR · PXS · GUARDAR_PRE"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Verificar en Contratación total",
+          "descripcion": "El botón muestra la vista de precios del proveedor (servicio, tarifa, factor, valor, vigencias). Lo que no aparece aquí no generará honorario. Copiar contratación replica toda la configuración de otro proveedor.",
+          "rol": "Contratación",
+          "pantalla": "Contratación total",
+          "tablas": [
+            "VW_CXPPROTOT"
+          ],
+          "sp": "VW_CXPPROTOT · PXSN · COPIAR_CONTRATACION"
+        }
+      ]
+    },
+    {
+      "id": "fxp-generar",
+      "nombre": "El honorario nace al facturar",
+      "descripcion": "Del cargo con proveedor al honorario en estado Preparado.",
+      "icono": "receipt",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Cargar el servicio con su proveedor",
+          "descripcion": "En Cargos, si el servicio maneja proveedor, el campo Id.Proveedor lista los proveedores contratados para la administradora de la admisión y el prefijo; es obligatorio. En consulta externa el proveedor va en la cabecera de la autorización (obligatorio si AUT_OBLI_IDPROVEEDOR=SI; bloqueado si ya está facturada). En citas, el médico es el proveedor.",
+          "rol": "Asistencial / Admisiones",
+          "pantalla": "Asistencial → Cargos · Consulta externa → Autorizador",
+          "tablas": [
+            "HPRED",
+            "AUT",
+            "CIT",
+            "VW_PXS"
+          ],
+          "sp": "AppStore.read VW_PXS"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Facturar",
+          "descripcion": "Al cerrar la factura de la admisión, de la autorización o de la cita, el procedimiento de facturación invoca al generador correspondiente con el número de la nueva factura.",
+          "rol": "Facturación",
+          "pantalla": "Facturación",
+          "tablas": [
+            "FTR",
+            "FTRD"
+          ],
+          "sp": "SPK_FACTURA_* → SPK_CREACXP_ASIS · SPK_FACTURACE_* → SPK_CREACXP_CE / CI"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Selección de cargos",
+          "descripcion": "Toma los cargos de esa factura con proveedor distinto a la institución (IDTERCEROINSTALADO), no anulados y sin honorario previo (CXP=0 / CXPGEN=0). Expande por cantidad.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "HPRED",
+            "AUTD",
+            "CIT"
+          ],
+          "sp": "SPK_CREACXP_ASIS / CE / CI"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Precio",
+          "descripcion": "Busca en la contratación del proveedor (VW_CXPPROTOT) el servicio para la administradora, el plan y el prefijo, con la fecha del cargo dentro de las vigencias. Hospitalización: valor × cantidad. Consulta externa: valor proveedor del detalle o tarifa diferencial si HONORATAR_DIF=SI. Sin precio vigente o con valor cero, el cargo no entra.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "VW_CXPPROTOT",
+            "PXS",
+            "PXSE",
+            "TARDV",
+            "TARF"
+          ],
+          "sp": "VW_CXPPROTOT"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Crear el honorario",
+          "descripcion": "Un número por proveedor y prestación (consecutivo @FCXP: sede + ocho dígitos). Cabecera en P con procedencia SALUD / CE / CI, referencia (admisión, autorización o cita), fecha de generación y total. Detalle por ítem con servicio, prefijo, valor, cantidad, prestación, ítem, factura, centro de costo y área. Si hay reparto HOMED, una cabecera adicional por tercero con su porcentaje.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FXP",
+            "FXPD",
+            "HOMED"
+          ],
+          "sp": "SPK_GENCONSECUTIVO @FCXP"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Cargo marcado",
+          "descripcion": "HPRED.CXP=1 y HADM.CXP=1 (o AUT.CXPGEN=1) impiden generar dos veces. El honorario ya se ve en Administrativo → Honorarios médicos y en Cuentas esperadas en salud.",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Honorarios médicos",
+          "tablas": [
+            "HPRED",
+            "HADM",
+            "AUT"
+          ],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "fxp-gestionar",
+      "nombre": "Consultar, corregir el tercero e imprimir",
+      "descripcion": "Lo que se hace en la pantalla Honorarios médicos.",
+      "icono": "manage_search",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Entrar y filtrar",
+          "descripcion": "Administrativo → Honorarios médicos. Proveedor (categoría PRO), fecha inicial y final (fecha de generación), estado (Todos, Preparados = P y S, En CXP, Anulados). Pestañas: Por N. CXP (número de honorario) o Por No. Referencia (admisión, autorización o cita). Buscar.",
+          "rol": "Tesorería / Contratación",
+          "pantalla": "Administrativo → Honorarios médicos",
+          "tablas": [
+            "FXP",
+            "TER"
+          ],
+          "sp": "AppStore.read FXP + TER"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Expandir el detalle",
+          "descripcion": "Cada fila muestra sus ítems: estado, ítem, prefijo, servicio, valor, cantidad, total, prestación, ítem de prestación, cirugía, factura y tercero. Seleccionar un ítem habilita Cambiar tercero.",
+          "rol": "Tesorería / Contratación",
+          "pantalla": "Detalle del honorario",
+          "tablas": [
+            "FXPD",
+            "SER"
+          ],
+          "sp": "AppStore.read FXPD + SER"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿El proveedor del ítem está mal?",
+          "descripcion": "Cambiar tercero → el sistema consulta el estado contable de la factura de venta del ítem. Si está confirmada en contabilidad, bloquea y muestra el comprobante. Si no, abre el buscador de terceros.",
+          "rol": "Tesorería / Contratación",
+          "pantalla": "Cambiar tercero",
+          "tablas": [
+            "FTR",
+            "FTRD",
+            "MCP"
+          ],
+          "sp": "FXP_COL · ESTADO_FXP → FNK_ESTADO_FXP"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Mover el ítem al nuevo tercero",
+          "descripcion": "Si el nuevo tercero ya tiene honorario para la misma referencia, el ítem se agrega ahí; si no, se crea un honorario nuevo con los mismos datos de cabecera. La cabecera que quede sin ítems se borra. Se actualiza el proveedor en el cargo y en el detalle de la factura; si la factura estaba contabilizada, se reconstruye su comprobante.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FXP",
+            "FXPD",
+            "HPRED",
+            "FTRD"
+          ],
+          "sp": "FXP_COL · CAMBIAR_TERFXP → SPK_CAMBIAR_TERFXP (→ SPK_CONTAB_FTR)"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Imprimir o exportar",
+          "descripcion": "Imprimir CxP: PDF «Cuentas por pagar presupuestada: del … al …» con subtotal por proveedor y total general. Exportar Excel: misma información en hoja. Imprimir cuenta de cobro: PDF con la institución, «Debe a» el proveedor, «Por concepto de» y el detalle. Los tres exigen proveedor y las dos fechas.",
+          "rol": "Tesorería / Contratación",
+          "pantalla": "Botones de impresión",
+          "tablas": [
+            "FXP",
+            "FXPD",
+            "SER",
+            "TER",
+            "HADM",
+            "AUT",
+            "CIT",
+            "AFI"
+          ],
+          "sp": "FXP_COL · IMPRIMIR_CXP / IMPRIMIR_CUENTA_COBRO"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Anular",
+          "descripcion": "El botón aparece para honorarios en P o S, pero hoy solo muestra un aviso: la anulación no tiene procedimiento detrás. El honorario desaparece cuando se anula o libera la factura de venta.",
+          "rol": "Tesorería / Contratación",
+          "pantalla": "Botón Anular",
+          "tablas": [
+            "FXP"
+          ],
+          "sp": "Sin método (pendiente)"
+        }
+      ]
+    },
+    {
+      "id": "fxp-a-cxp",
+      "nombre": "Del honorario a la cuenta por pagar",
+      "descripcion": "El diseño del sistema y lo que hoy existe en la web.",
+      "icono": "swap_horiz",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir qué se va a pagar",
+          "descripcion": "Los ítems del honorario que se van a incluir en una cuenta por pagar se marcan en estado S (seleccionado). El filtro Preparados de la pantalla muestra P y S juntos.",
+          "rol": "Tesorería",
+          "pantalla": "Sin pantalla en la web (hueco)",
+          "tablas": [
+            "FXPD"
+          ],
+          "sp": "—"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Crear las líneas en la CxP",
+          "descripcion": "Sobre una cuenta por pagar del proveedor, por cada ítem en S se crea una línea de detalle con procedencia Salud, el servicio, cantidad y valor, la clase de impuesto del prefijo, la cuenta débito del modelo contable para CXP_SALUD y el número e ítem del honorario. Se recalculan valor, saldo y netos de la cuenta por pagar.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCXP",
+            "FCXPD",
+            "KMCOM"
+          ],
+          "sp": "SPK_INSERT_CXP_SALUD (sin invocador) · SPK_INSERT_CXP_SALUD_TOTAL"
+        },
+        {
+          "num": 3,
+          "tipo": "resultado",
+          "titulo": "Honorario en E",
+          "descripcion": "El detalle y la cabecera del honorario quedan en E (En CxP). Desde aquí la cuenta por pagar sigue el ciclo normal: impuestos, contabilizar, orden de pago y caja (ver cxp-fcxp).",
+          "rol": "Sistema",
+          "pantalla": "Administrativo → Honorarios médicos (filtro En CXP)",
+          "tablas": [
+            "FXP",
+            "FXPD"
+          ],
+          "sp": "—"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Se anula la CxP o un ítem?",
+          "descripcion": "Anular la cuenta por pagar o eliminar una línea de procedencia Salud devuelve el honorario a P y recalcula la CxP y sus impuestos.",
+          "rol": "Tesorería",
+          "pantalla": "Administrativo → Cuentas por Pagar",
+          "tablas": [
+            "FCXP",
+            "FCXPD",
+            "FXP",
+            "FXPD"
+          ],
+          "sp": "SPK_ANULAR_CXP · SPK_ANULAR_ITEM_CXP → SPK_IMPUESTOS_CXP"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Hoy en la web: solo consulta",
+          "descripcion": "Cuentas por Pagar → Reportes y Cierre → Consulta Cuentas Esperadas en Salud lista y exporta los honorarios. Nueva CXP con procedencia Salud permite escribir un servicio del catálogo pero no vincula el honorario (el FXP sigue en P). No hay botón que marque S ni ejecute el paso a CxP.",
+          "rol": "Tesorería",
+          "pantalla": "Administrativo → Cuentas por Pagar",
+          "tablas": [
+            "FXP",
+            "FXPD"
+          ],
+          "sp": "CONF_CXP · EXPORTAR_CXP_ESPERADAS"
+        }
+      ]
+    }
+  ],
+  "estadosSolicitud": {
+    "titulo": "Estados del honorario, su detalle y las marcas del cargo",
+    "descripcion": "FXP.ESTADO y FXPD.ESTADO (P, S, E, A), las marcas que evitan generar dos veces (HPRED.CXP, HADM.CXP, AUT.CXPGEN) y el vínculo con la cuenta por pagar (FCXPD.N_PRESUP / ITEM_PRESUP).",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "FXP P",
+        "tono": "ambar",
+        "etiquetas": [
+          "FXP.ESTADO P",
+          "Preparado"
+        ],
+        "significa": "Honorario generado al facturar y pendiente de pasar a cuenta por pagar. Se puede cambiar de tercero (si la factura no está confirmada) e imprimir.",
+        "queHacer": "Revisar proveedor y valores; pasar a cuenta por pagar cuando corresponda."
+      },
+      {
+        "codigo": "FXP S",
+        "tono": "azul",
+        "etiquetas": [
+          "FXPD.ESTADO S",
+          "Seleccionado"
+        ],
+        "significa": "Ítem marcado para incluir en una cuenta por pagar. Estado transitorio: el paso a CxP solo toma ítems en S. La pantalla lo muestra dentro de Preparados.",
+        "queHacer": "Ejecutar el paso a cuenta por pagar (hoy sin camino en la web)."
+      },
+      {
+        "codigo": "FXP E",
+        "tono": "verde",
+        "etiquetas": [
+          "FXP.ESTADO E",
+          "En CxP"
+        ],
+        "significa": "El ítem ya es una línea de cuenta por pagar (FCXPD con N_PRESUP e ITEM_PRESUP). Se paga desde Cuentas por Pagar.",
+        "queHacer": "Seguir el ciclo en Cuentas por Pagar. Anular la CxP o el ítem lo devuelve a P."
+      },
+      {
+        "codigo": "FXP A",
+        "tono": "gris",
+        "etiquetas": [
+          "FXP.ESTADO A",
+          "Anulado"
+        ],
+        "significa": "Estado previsto en el filtro de la pantalla. No se encontró procedimiento que lo asigne: la anulación de la factura de venta borra el honorario en lugar de marcarlo.",
+        "queHacer": "No esperar honorarios en A; buscar la factura anulada."
+      },
+      {
+        "codigo": "HPRED CXP 1",
+        "tono": "verde",
+        "etiquetas": [
+          "HPRED.CXP = 1",
+          "HADM.CXP = 1"
+        ],
+        "significa": "El cargo ya generó honorario. El generador lo salta aunque se vuelva a facturar. Al anular o liberar la factura vuelve a 0.",
+        "queHacer": "Si un cargo no generó honorario y está en 1, revisar si quedó marcado por una factura anterior."
+      },
+      {
+        "codigo": "AUT CXPGEN 1",
+        "tono": "verde",
+        "etiquetas": [
+          "AUT.CXPGEN = 1"
+        ],
+        "significa": "La autorización de consulta externa ya generó su honorario.",
+        "queHacer": "Igual que el cargo hospitalario."
+      },
+      {
+        "codigo": "FTR conf",
+        "tono": "rojo",
+        "etiquetas": [
+          "FTR.CONTABILIZADA 1",
+          "MCP.ESTADO 2"
+        ],
+        "significa": "La factura de venta del ítem está confirmada en contabilidad. Cambiar tercero se bloquea con el número del comprobante.",
+        "queHacer": "Deshacer la confirmación del comprobante en contabilidad antes de cambiar el tercero, o corregir en la cuenta por pagar."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Definir cuánto se le paga a un profesional o proveedor por cada servicio",
+      "donde": "Configuración → Terceros → Contratación Como Sub-Contratista → Nuevo (administradora, plan, tarifa, factor) → Prefijos contratados → Excepción de servicios",
+      "condicion": "Tercero contratante con categoría PRO; permiso TERCEROS_WEB · CONTR_SUBCONTR.",
+      "noEs": "La contratación como administradora (lo que la IPS cobra) es otro botón del mismo tercero."
+    },
+    {
+      "necesidad": "Que un servicio genere honorario al facturarse",
+      "donde": "Configuración → Servicios → casilla Maneja Proveedor",
+      "condicion": "Además el proveedor debe tener precio vigente para ese servicio en su contratación.",
+      "noEs": "La casilla no asigna proveedor: solo hace que el cargo lo pida."
+    },
+    {
+      "necesidad": "Ver el precio final que recibirá un proveedor por cada servicio",
+      "donde": "Configuración → Terceros → Contratación Como Sub-Contratista → Contratación total",
+      "condicion": "Muestra la vista de precios con vigencias; lo que no aparece ahí no genera honorario.",
+      "noEs": "No es la tarifa de venta a la administradora."
+    },
+    {
+      "necesidad": "Copiar toda la contratación de un proveedor a otro",
+      "donde": "Configuración → Terceros → Contratación Como Sub-Contratista → Copiar contratación",
+      "condicion": "Elegir el proveedor origen; replica administradoras, prefijos y excepciones.",
+      "noEs": "No copia la categoría ni los datos del tercero."
+    },
+    {
+      "necesidad": "Registrar quién hizo el procedimiento para que se le pague",
+      "donde": "Asistencial → Cargos → Id.Proveedor (servicios que manejan proveedor)",
+      "condicion": "La lista solo trae proveedores contratados para la administradora de la admisión y el prefijo.",
+      "noEs": "En consulta externa el proveedor va en la cabecera de la autorización; en citas es el médico."
+    },
+    {
+      "necesidad": "Generar el honorario",
+      "donde": "Facturación → cerrar la factura de la admisión, autorización o cita",
+      "condicion": "Se crea solo, una vez por cargo, para cargos con proveedor distinto a la institución y precio vigente.",
+      "noEs": "No hay botón «generar honorario»; si falta, revisar proveedor del cargo, contratación y vigencias."
+    },
+    {
+      "necesidad": "Ver los honorarios generados a un proveedor",
+      "donde": "Administrativo → Honorarios médicos → proveedor, fechas, estado → Buscar",
+      "condicion": "La fecha es la de generación (factura). Preparados incluye P y S.",
+      "noEs": "No lista cuentas por pagar: para eso, Administrativo → Cuentas por Pagar."
+    },
+    {
+      "necesidad": "Corregir el proveedor de un honorario",
+      "donde": "Administrativo → Honorarios médicos → expandir → seleccionar ítem → Cambiar tercero",
+      "condicion": "La factura de venta del ítem no debe estar confirmada en contabilidad. Actualiza también el cargo y la factura.",
+      "noEs": "No cambia el valor ni la cuenta por pagar si el ítem ya pasó a E."
+    },
+    {
+      "necesidad": "Imprimir la cuenta de cobro de un proveedor",
+      "donde": "Administrativo → Honorarios médicos → proveedor + fechas → Imprimir cuenta de cobro",
+      "condicion": "Exige proveedor y las dos fechas; el estado filtra qué ítems entran.",
+      "noEs": "Imprimir CxP es el listado interno con subtotales; Exportar Excel es la misma información en hoja."
+    },
+    {
+      "necesidad": "Ver los honorarios que todavía no son cuenta por pagar",
+      "donde": "Administrativo → Cuentas por Pagar → Reportes y Cierre → Consulta Cuentas Esperadas en Salud",
+      "condicion": "Búsqueda por proveedor, referencia o número y rango de fechas; exporta Totales y Detalles.",
+      "noEs": "Es consulta: no pasa el honorario a cuenta por pagar."
+    },
+    {
+      "necesidad": "Pasar el honorario a cuenta por pagar y pagarlo",
+      "donde": "Diseño: marcar ítems (S) → paso a CxP (procedencia Salud) → Cuentas por Pagar",
+      "condicion": "Hoy no existe en la web: ni botón que marque S ni el que ejecute el paso. Ver hallazgos.",
+      "noEs": "Nueva CXP con procedencia Salud no vincula el honorario: queda en P aunque se pague."
+    },
+    {
+      "necesidad": "Anular un honorario",
+      "donde": "Facturación → anular o liberar la factura de venta",
+      "condicion": "Al anular la factura se borra el honorario y el cargo vuelve a CXP=0.",
+      "noEs": "El botón Anular de Honorarios médicos aún no hace nada (muestra un aviso)."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Contratación Como Sub-Contratista",
+      "icono": "description",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "En Terceros. Abre la contratación del proveedor (PXSN / PXS / PXSE). Visible si el tercero es contratante con categoría PRO y el usuario tiene CONTR_SUBCONTR."
+    },
+    {
+      "label": "N U E V O",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Nueva contratación: administradora, plan, tarifa, factor (PXSN · GUARDAR)."
+    },
+    {
+      "label": "Contratación total",
+      "icono": "visibility",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Muestra la vista de precios del proveedor (VW_CXPPROTOT)."
+    },
+    {
+      "label": "Copiar contratación",
+      "icono": "content_copy",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Replica la contratación de otro proveedor (PXSN · COPIAR_CONTRATACION → SPK_COPIAPROVEEDORXS)."
+    },
+    {
+      "label": "Nuevo Prefijo",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Prefijo contratado por sede con tipo de tarifa, tarifa, factor y marcas de pago compartido (PXS · GUARDAR)."
+    },
+    {
+      "label": "Excepción de servicios → Nuevo",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Servicio con restricción Restringir / Tarifa / Valor (PXSE · GUARDAR)."
+    },
+    {
+      "label": "Maneja Proveedor",
+      "icono": "check_box",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Casilla del servicio. Hace que el cargo pida y exija Id.Proveedor."
+    },
+    {
+      "label": "Buscar",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Honorarios médicos: consulta FXP por proveedor, fechas y estado."
+    },
+    {
+      "label": "Anular",
+      "icono": "block",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Habilitado en P o S. Hoy solo muestra un aviso de pendiente: no anula."
+    },
+    {
+      "label": "Cambiar tercero",
+      "icono": "swap_horiz",
+      "color": "indigo",
+      "estilo": "unelevated",
+      "descripcion": "Con un ítem seleccionado: ESTADO_FXP y, si no está confirmado en contabilidad, CAMBIAR_TERFXP."
+    },
+    {
+      "label": "Imprimir CxP",
+      "icono": "print",
+      "color": "blue-grey",
+      "estilo": "unelevated",
+      "descripcion": "PDF «Cuentas por pagar presupuestada» con subtotal por proveedor (IMPRIMIR_CXP)."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "table_view",
+      "color": "green-7",
+      "estilo": "unelevated",
+      "descripcion": "Misma consulta en hoja de cálculo."
+    },
+    {
+      "label": "Imprimir cuenta de cobro",
+      "icono": "receipt_long",
+      "color": "teal-7",
+      "estilo": "unelevated",
+      "descripcion": "PDF «Debe a: proveedor / Por concepto de» (IMPRIMIR_CUENTA_COBRO)."
+    },
+    {
+      "label": "Consulta Cuentas Esperadas en Salud",
+      "icono": "request_quote",
+      "color": "purple",
+      "estilo": "outline",
+      "descripcion": "En Cuentas por Pagar → Reportes y Cierre. Lista y exporta FXP/FXPD (EXPORTAR_CXP_ESPERADAS)."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "TERCEROS_WEB · CONTR_SUBCONTR",
+      "accion": "Ver el botón Contratación Como Sub-Contratista",
+      "rol": "Contratación / Configuración",
+      "descripcion": "Sin el permiso no se puede contratar al proveedor. El botón además exige que el tercero sea contratante con categoría PRO."
+    },
+    {
+      "codigo": "Menú Administrativo → Honorarios médicos (admin.FXP)",
+      "accion": "Entrar a la pantalla",
+      "rol": "Tesorería / Contratación",
+      "descripcion": "La pantalla no evalúa permisos por botón: quien entra puede cambiar tercero e imprimir."
+    },
+    {
+      "codigo": "Menú Configuración → Servicios / Prefijos",
+      "accion": "Marcar Maneja Proveedor y Requiere Proveedor",
+      "rol": "Configuración",
+      "descripcion": "Permisos propios de esas pantallas."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "tipo": "USVGS",
+      "valorSugerido": "Código del tercero de la institución",
+      "descripcion": "Los cargos cuyo proveedor es la propia institución nunca generan honorario. También es la razón social y NIT que encabezan la cuenta de cobro."
+    },
+    {
+      "nombre": "HONORATAR_DIF",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Con SI, consulta externa y citas calculan el honorario directamente con la tarifa (valor × factor del proveedor × factor dinero, redondeo de la tarifa) usando el código CUPS del servicio; con NO usan el valor proveedor del detalle de la autorización o la vista de precios. Hospitalización no la consulta."
+    },
+    {
+      "nombre": "AUT_OBLI_IDPROVEEDOR",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Con SI, la autorización de consulta externa exige el campo Proveedor antes de grabar."
+    },
+    {
+      "nombre": "TERCATPROVEEDOR",
+      "tipo": "USVGS",
+      "valorSugerido": "Categoría de tercero para proveedores",
+      "descripcion": "Categoría con la que se recalculan los impuestos de la cuenta por pagar al anular un ítem de honorario."
+    },
+    {
+      "nombre": "IDMODELOCONTABLE",
+      "tipo": "USVGS",
+      "valorSugerido": "Modelo contable KMCOM vigente",
+      "descripcion": "Del modelo se toma la cuenta débito CXP_SALUD (por prefijo, área y centro de costo) para cada línea del honorario que pasa a cuenta por pagar."
+    },
+    {
+      "nombre": "@FCXP",
+      "tipo": "Consecutivo (SPK_GENCONSECUTIVO)",
+      "valorSugerido": "Consecutivo por compañía y sede",
+      "descripcion": "Numera el honorario: sede + ocho dígitos. Es el mismo nombre de consecutivo que usa la cabecera FXP al cambiar de tercero."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "fxp-anular-sin-backend",
+      "tipo": "fe",
+      "detalle": "FXPComponent muestra Anular para honorarios en P o S, pero el manejador solo notifica «La anulación de FXP requiere el procedimiento backend correspondiente (pendiente de integrar)». SPQ_FXP_COL no tiene método de anulación y no se halló SPK que ponga FXP en A.",
+      "solucionPropuesta": "Definir método FXP_COL · ANULAR_FXP: permitir solo en P (ningún ítem en S/E), marcar FXP/FXPD en A y devolver HPRED.CXP=0 (o AUT.CXPGEN=0) para que el cargo pueda regenerar; registrar usuario y motivo. Alternativa: retirar el botón hasta tenerlo.",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-paso-a-cxp-sin-camino",
+      "tipo": "mixto",
+      "detalle": "SPK_INSERT_CXP_SALUD y SPK_INSERT_CXP_SALUD_TOTAL no tienen invocador en PREVERSION ni en Qrystalos2; ningún método marca FXPD en S. En CXPComponent, Nueva CXP con procedencia Salud elige un servicio de FCTSER sin N_PRESUP/ITEM_PRESUP. Resultado: en la web los honorarios nunca llegan a E y las cuentas esperadas crecen aunque se paguen por otra vía.",
+      "solucionPropuesta": "Agregar en Honorarios médicos (o en la CxP, detalle Salud) la selección de ítems y un método FXP_COL · PASAR_A_CXP que cree o elija la FCXP del proveedor y ejecute SPK_INSERT_CXP_SALUD; validar cuenta CXP_SALUD del modelo antes.",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-anula-fact-borra-en-cxp",
+      "tipo": "sql",
+      "detalle": "SPK_ANULA_FACT (bloque «ARREGLO DE HONORARIOS»), SPK_ANULA_FACT_CAPITADA y SPK_LIBERAR_FACT borran FXP/FXPD de la referencia sin filtrar ESTADO. Si el honorario ya está en E, la línea FCXPD queda apuntando a un N_PRESUP inexistente y la CxP sigue viva.",
+      "solucionPropuesta": "Antes de borrar, si existe FXPD en E para la referencia, rechazar la anulación con mensaje (anular primero el ítem en la CxP) o, como mínimo, conservar el FXP y marcarlo A.",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-nota-credito-sin-estado",
+      "tipo": "sql",
+      "detalle": "SPK_NOTASCXC rebaja FXPD.VALOR y VR_TOTAL y recalcula FXP.VR_TOTAL al aplicar una nota crédito a la factura, sin distinguir si el ítem ya pasó a CxP (E): el honorario baja pero la línea FCXPD conserva el valor original.",
+      "solucionPropuesta": "Si FXPD.ESTADO = E, no tocar el FXP y avisar que el ajuste debe hacerse con nota débito sobre la cuenta por pagar; si P/S, rebajar como hoy.",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-cambiar-tercero-ignora-cxp",
+      "tipo": "sql",
+      "detalle": "CAMBIAR_TERFXP solo valida la confirmación contable de la factura de venta (FNK_ESTADO_FXP). Si el ítem está en E, mueve FXPD a otro tercero pero la FCXPD sigue en la CxP del tercero anterior.",
+      "solucionPropuesta": "En FXP_COL · CAMBIAR_TERFXP rechazar ítems con ESTADO E («ya está en cuenta por pagar …»).",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-homed-sin-captura",
+      "tipo": "mixto",
+      "detalle": "El bloque HOMED de SPK_CREACXP_ASIS/CE reparte el honorario por porcentaje entre terceros, pero ningún objeto del catálogo inserta en HOMED ni hay componente en Qrystalos2 que lo capture. Camino heredado sin pantalla.",
+      "solucionPropuesta": "Decidir con negocio si el reparto por porcentaje se necesita; si sí, pantalla sobre la prestación (recurso, tercero, %); si no, documentarlo como inactivo."
+    },
+    {
+      "id": "fxp-generadores-sin-invocador",
+      "tipo": "sql",
+      "detalle": "SPK_CREACXP_QX y SPK_CREACXP_ASIS_UNO existen en PREVERSION sin invocador. QX duplicaría los honorarios de la admisión si se activara (no filtra CXP=0 ni la factura). La procedencia PYP aparece en IMPRIMIR_CXP sin generador.",
+      "solucionPropuesta": "Marcar QX y ASIS_UNO como obsoletos o retirarlos; quitar PYP de la impresión si no hay generador."
+    },
+    {
+      "id": "fxp-honoratar-dif-inconsistente",
+      "tipo": "sql",
+      "detalle": "HONORATAR_DIF=SI cambia el cálculo en CE y CI (TARDV × PXS.FACTOR × TARF.FACTORDINERO con SER.CODCUPS, sin excepciones PXSE ni vigencias) pero SPK_CREACXP_ASIS no la consulta. Un mismo servicio puede valer distinto según el origen y la rama SI ignora las excepciones configuradas.",
+      "solucionPropuesta": "Unificar: que las tres ramas usen VW_CXPPROTOT (o que la vista contemple la tarifa diferencial) y documentar la variable."
+    },
+    {
+      "id": "fxp-proser1-vigencia-fija",
+      "tipo": "sql",
+      "detalle": "VW_CXPPROSER1 (excepciones tipo Valor) fija FECHAINI = 01/01/2002 y FECHAFIN = inicio del año siguiente, sin leer vigencia del convenio; VW_CXPPROPRE y VW_CXPPROSER sí usan las de la tarifa y el contrato.",
+      "solucionPropuesta": "Tomar las vigencias del contrato PXSN/administradora como las otras dos vistas."
+    },
+    {
+      "id": "fxp-estado-a-sin-origen",
+      "tipo": "mixto",
+      "detalle": "El filtro Anulados (ESTADO A) de la pantalla no tiene procedimiento que lo alimente: la anulación de la factura borra el FXP. El filtro siempre devuelve vacío.",
+      "solucionPropuesta": "Cubrir con la solución de anulación (marcar A en lugar de borrar) o retirar la opción del filtro.",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-pantalla-sin-permisos",
+      "tipo": "fe",
+      "detalle": "FXPComponent no consulta USGRUH: Cambiar tercero (que modifica HPRED, FTRD y puede reconstruir comprobante) y Anular quedan disponibles para cualquier usuario con acceso al menú.",
+      "solucionPropuesta": "Agregar controles IDPROCEDIMIENTO FXP_COL con IDCONTROL CAMBIAR_TERCERO, ANULAR e IMPRIMIR.",
+      "dictamen": "dictamenes/20261004-fxp-cierre-ciclo-cxp.html"
+    },
+    {
+      "id": "fxp-tablas-sin-doc",
+      "tipo": "doc",
+      "detalle": "La documentación de tablas no tiene ficha para FXP, FXPD, PXS, PXSE, PXSN ni HOMED. Columnas verificadas en estructura: FXP (N_PRESUP, IDTERCERO, NOREFERENCIA, F_FACTURAREF, F_VENCE, VR_TOTAL, ESTADO, F_CANCELADO, EMPLEADO, PROCEDENCIA, OBSERVACION, COMPANIA, INDCOBRADA, INDGENCTA); FXPD (…, NOPRESTACION, NOITEM, IDCIRUGIA, N_FACTURA, ESTADO, CCOSTO, IDAREAH, IDAREA, VLRORIGINAL); PXS (IDSEDE, IDPLAN, PREFIJO, PRIORIDAD, IDTERCERO, UMBRAL, EXCOBROPC, IDADMINISTRADORA, LIQUIDARPC, COBRARPC, TIPOTARIFA, IDTARIFA, FACTOR); PXSE (IDTERCERO, IDADMINISTRADORA, IDPLAN, IDSEDE, PREFIJO, IDSERVICIO, TIPORESTRICCION, IDTARIFA, FACTOR, VALOR); PXSN (IDTERCERO, IDADMINISTRADORA, IDPLAN, IDTARIFA, FACTOR, IDCONTRATO, NIVELATENCION, TIPOCONTRATO, TIPORECOBRO); HOMED (CNSHOMED, PROCEDENCIA, NOPRESTACION, ITEM, RECURSOH, IDTERCERO, PORCEN).",
+      "solucionPropuesta": "Crear las seis fichas en la documentación viva con estas columnas y las relaciones (FXP ↔ FCXPD por N_PRESUP/ITEM_PRESUP; PXS ↔ TER/PRE/SED/PPT)."
+    },
+    {
+      "id": "fxp-preversion-vs-liberada",
+      "tipo": "sql",
+      "detalle": "Los veinte objetos leídos son idénticos entre PREVERSION y la última liberada: no hay arreglo pendiente en la canasta para ninguno de los hallazgos anteriores."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer?",
+      "intro": "Doce tareas frecuentes del honorario médico, desde contratar al proveedor hasta pasar el honorario a cuenta por pagar, con su ruta, la condición que debe cumplirse y lo que no hay que confundir."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es un honorario médico y cómo viaja",
+      "intro": "Un **honorario médico** es lo que la institución debe pagar a un profesional o proveedor externo por un servicio que facturó al paciente o a la administradora. El sistema lo llama **cuenta por pagar presupuestada** (tabla FXP): nace solo al facturar, se revisa en **Administrativo → Honorarios médicos** y, cuando se decide pagar, se convierte en una línea de **cuenta por pagar** con procedencia Salud. Nada se paga desde Honorarios médicos: el pago sigue el ciclo de Cuentas por Pagar.",
+      "md": "## Las piezas\n\n| Pieza | Tabla | Qué guarda |\n|---|---|---|\n| Contratación del proveedor | PXSN | Administradora, plan, tarifa y factor base |\n| Prefijos contratados | PXS | Sede, prefijo, tipo de tarifa, tarifa, factor, pago compartido |\n| Excepciones por servicio | PXSE | Restringir, Tarifa (+ factor) o Valor fijo |\n| Precio final | VW_CXPPROTOT | Servicio, valor y vigencias por proveedor / administradora / plan / prefijo |\n| Cargo con proveedor | HPRED.IDPROVEEDOR · AUT.IDPROVEEDOR · CIT.IDMEDICO | Quién hizo el servicio |\n| Honorario | FXP | Número, proveedor, referencia, fecha, total, estado, procedencia |\n| Detalle del honorario | FXPD | Servicio, prefijo, valor, cantidad, prestación, factura, estado |\n| Reparto por porcentaje | HOMED | Prestación, ítem, tercero, % (sin pantalla hoy) |\n| Línea en la CxP | FCXPD (procedencia Salud) | N_PRESUP e ITEM_PRESUP apuntan al honorario |\n\n## El ciclo en una línea\n\n**Contratar** al proveedor → marcar el **servicio** → cargar con **Id.Proveedor** → **facturar** (el honorario nace en P) → **revisar** en Honorarios médicos (cambiar tercero, imprimir) → **pasar a cuenta por pagar** (E) → pagar en Cuentas por Pagar.\n\n## Regla de oro\n\nEl honorario se calcula **con la contratación vigente a la fecha del cargo**. Si al facturar no aparece, casi siempre falta una de tres cosas: el servicio no maneja proveedor, el cargo no tiene proveedor, o el proveedor no tiene precio vigente para ese servicio, administradora, plan y prefijo.",
+      "puntosClave": [
+        "El honorario nace al facturar; no hay botón «generar».",
+        "Un cargo genera honorario una sola vez (HPRED.CXP = 1).",
+        "Honorarios médicos consulta, corrige el tercero e imprime; no paga.",
+        "El paso a cuenta por pagar hoy no tiene camino en la web (ver hallazgos)."
+      ]
+    },
+    {
+      "id": "caminos",
+      "tipo": "mapa-procedencias",
+      "datos": "caminosLibro",
+      "kicker": "Mapa",
+      "titulo": "De dónde nace un honorario",
+      "mapa": {
+        "pregunta": "¿Qué origen tiene cada honorario?",
+        "subtitulo": "Tres generadores activos (hospitalización, consulta externa, citas), un reparto por porcentaje heredado y dos procedimientos que ya nadie invoca.",
+        "centroIcono": "payments",
+        "centroTitulo": "Honorario · FXP",
+        "centroSub": "Procedencia y referencia en la cabecera; estado P → S → E",
+        "conector": "Orígenes que alimentan FXP",
+        "destinoPrefijo": "FXP · ",
+        "reglaTitulo": "Regla de lectura",
+        "regla": "La columna <code>Proce</code> de Honorarios médicos dice de dónde vino: <code>SALUD</code> (admisión), <code>CE</code> (autorización) o <code>CI</code> (cita). La <code>Referencia</code> es el número de ese documento origen."
+      }
+    },
+    {
+      "id": "flujo-configurar",
+      "tipo": "flujo",
+      "flujoId": "fxp-configurar",
+      "kicker": "Proceso 1",
+      "titulo": "Configurar al proveedor y sus precios",
+      "imagen": "img/fxp_config_sketchnote.jpg",
+      "imagenAlt": "Tercero PRO → PXSN (administradora, plan, tarifa, factor) → PXS (prefijos por sede) → PXSE (excepciones) → Contratación total",
+      "intro": "Todo lo que se paga a un proveedor sale de su **contratación como sub-contratista** en Terceros. Primero la base por administradora y plan, luego los prefijos por sede y, si hace falta, excepciones por servicio. **Contratación total** muestra el resultado: el precio exacto por servicio con sus vigencias.",
+      "puntosClave": [
+        "Tercero contratante con categoría PRO y permiso CONTR_SUBCONTR.",
+        "Normal hereda la tarifa de la contratación; Tarifa usa una propia por prefijo.",
+        "Restringir saca el servicio: no genera honorario.",
+        "El servicio debe tener la casilla Maneja Proveedor."
+      ]
+    },
+    {
+      "id": "precio",
+      "tipo": "texto",
+      "kicker": "Cálculo",
+      "titulo": "Cómo se calcula el honorario",
+      "intro": "El precio no se digita en el cargo: lo resuelve la vista de precios del proveedor (VW_CXPPROTOT) al facturar, según la contratación vigente a la fecha del cargo.",
+      "md": "## Tres fuentes, una vista\n\n1. **Precio general (VW_CXPPROPRE).** Por cada prefijo contratado (PXS) y cada servicio de la tarifa: si el servicio es **cirugía**, el valor de la tarifa tal cual; si no, **valor de la tarifa × factor del proveedor × factor dinero de la tarifa**, redondeado como diga la tarifa (unidad, decena, centena, millar, dos decimales o sin redondeo). Excluye los servicios que tengan una excepción.\n2. **Excepción tipo Tarifa (VW_CXPPROSER).** El servicio toma otra tarifa y otro factor, solo para ese proveedor, administradora, plan, sede y prefijo.\n3. **Excepción tipo Valor (VW_CXPPROSER1).** Valor fijo.\n\n**Restringir** no está en ninguna de las tres: el servicio queda fuera y el cargo no genera honorario aunque tenga proveedor.\n\n## Vigencias\n\nCada fila trae dos vigencias: la del servicio dentro de la tarifa y la del convenio. El generador exige que la **fecha del cargo** esté dentro de ambas. Un cargo fuera de vigencia no entra al honorario y no avisa.\n\n## Cantidad y total\n\nHospitalización: **valor × cantidad** por ítem; el honorario agrupa por proveedor y prestación. Consulta externa: el **valor proveedor** del detalle de la autorización, salvo que HONORATAR_DIF = SI, caso en el que se recalcula con la tarifa (ver hallazgos). Citas: el médico de la cita es el proveedor y el precio sale de su contratación para la administradora y el plan de la cita.\n\n## Reparto por porcentaje (HOMED)\n\nSi la prestación tiene un reparto registrado, cada tercero recibe su porcentaje del valor del cargo en un honorario aparte. En la versión actual no hay pantalla que lo alimente.",
+      "puntosClave": [
+        "Contratación total = lo que la vista devuelve hoy para ese proveedor.",
+        "Sin precio vigente no hay honorario y no hay mensaje.",
+        "La institución (IDTERCEROINSTALADO) nunca es proveedor de sí misma."
+      ]
+    },
+    {
+      "id": "flujo-generar",
+      "tipo": "flujo",
+      "flujoId": "fxp-generar",
+      "kicker": "Proceso 2",
+      "titulo": "El honorario nace al facturar",
+      "imagen": "img/fxp_generacion_sketchnote.jpg",
+      "imagenAlt": "Cargo con Id.Proveedor → facturar → selección de cargos → precio en VW_CXPPROTOT → FXP/FXPD en P → HPRED.CXP = 1",
+      "intro": "Nadie «crea» un honorario. Al cerrar la factura de la admisión, la autorización o la cita, el sistema recorre los cargos con proveedor, les pone el precio de la contratación y arma un honorario por proveedor en estado **Preparado**. El cargo queda marcado para no generarse dos veces.",
+      "puntosClave": [
+        "Solo cargos de esa factura, no anulados, con proveedor distinto a la institución y sin honorario previo.",
+        "Procedencia SALUD (admisión), CE (autorización) o CI (cita); la referencia es el número de ese documento.",
+        "Anular o liberar la factura borra el honorario y libera el cargo.",
+        "Si falta el honorario: revisar proveedor del cargo, contratación y vigencias."
+      ]
+    },
+    {
+      "id": "flujo-gestionar",
+      "tipo": "flujo",
+      "flujoId": "fxp-gestionar",
+      "kicker": "Proceso 3",
+      "titulo": "Honorarios médicos: consultar, corregir e imprimir",
+      "imagen": "img/fxp_gestion_sketchnote.jpg",
+      "imagenAlt": "Filtros → detalle → Cambiar tercero (ESTADO_FXP / CAMBIAR_TERFXP) → Imprimir CxP / Excel / Cuenta de cobro → Anular pendiente",
+      "intro": "La pantalla **Administrativo → Honorarios médicos** es la mesa de revisión: qué se le generó a cada proveedor, con qué factura y referencia, y la cuenta de cobro para que el proveedor firme. La única corrección posible es el **tercero** del ítem, y solo si la factura de venta no está confirmada en contabilidad.",
+      "puntosClave": [
+        "Preparados = P y S; En CXP = E.",
+        "Cambiar tercero actualiza también el cargo y la factura; si estaba contabilizada, reconstruye el comprobante.",
+        "Imprimir exige proveedor y las dos fechas.",
+        "Anular aún no está implementado."
+      ]
+    },
+    {
+      "id": "flujo-cxp",
+      "tipo": "flujo",
+      "flujoId": "fxp-a-cxp",
+      "kicker": "Proceso 4",
+      "titulo": "Del honorario a la cuenta por pagar",
+      "intro": "El honorario es una **cuenta por pagar presupuestada**: su destino es convertirse en una línea de cuenta por pagar con procedencia **Salud** y pagarse por orden de pago y caja. El procedimiento existe (SPK_INSERT_CXP_SALUD) y lleva el número e ítem del honorario a la línea para poder devolverlo si la CxP se anula. En la web actual **no hay pantalla que lo ejecute**: solo la consulta de cuentas esperadas.",
+      "puntosClave": [
+        "Solo pasan ítems marcados en S.",
+        "La línea toma la cuenta CXP_SALUD del modelo contable por prefijo, área y centro de costo.",
+        "FXP/FXPD quedan en E; anular la CxP o el ítem los devuelve a P.",
+        "Nueva CXP con procedencia Salud no vincula el honorario."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosSolicitud",
+      "kicker": "Semáforo",
+      "titulo": "Estados del honorario y marcas del cargo",
+      "intro": "Qué significa cada valor, qué permite y qué hacer con él."
+    },
+    {
+      "id": "alrededor",
+      "tipo": "texto",
+      "kicker": "Alrededor",
+      "titulo": "Lo que rodea al honorario: anulación, notas, cuentas esperadas y contabilidad",
+      "intro": "El honorario depende de la factura de venta que lo generó y de la cuenta por pagar que lo pagará. Este capítulo ubica esos cruces.",
+      "md": "## Anular o liberar la factura de venta\n\nAl anular la factura (o liberarla para refacturar) el sistema **borra** el honorario de esa referencia y devuelve el cargo a CXP = 0, de modo que la nueva factura lo vuelva a generar. No marca A ni pregunta si el honorario ya está en cuenta por pagar (ver hallazgos).\n\n## Nota crédito sobre la factura\n\nLa nota crédito rebaja el **valor del ítem del honorario** y el total de la cabecera en la misma proporción. Tampoco distingue si el ítem ya pasó a cuenta por pagar.\n\n## Cuentas esperadas en salud\n\nEn **Cuentas por Pagar → Reportes y Cierre → Consulta Cuentas Esperadas en Salud** se listan los honorarios por proveedor, referencia o número y rango de fechas, con su detalle, y se exportan a Excel (hojas Totales y Detalles). Es el informe para saber cuánto se debe a los profesionales antes de convertirlo en cuenta por pagar.\n\n## Contabilidad\n\nEl honorario no genera comprobante propio. La factura de venta ya lleva el proveedor en su detalle, por eso **cambiar tercero** reconstruye el comprobante de la factura si estaba contabilizada y se **bloquea** si el comprobante está confirmado. Al pasar a cuenta por pagar, cada línea toma la cuenta débito **CXP_SALUD** del modelo contable (por prefijo, área y centro de costo); sin esa clave la CxP no contabiliza.\n\n## Lo que no es honorario\n\n- **Liquidación quirúrgica (LiqCx):** costos y paquetes de cirugía; otro proceso.\n- **Contratación como administradora:** lo que la institución **cobra**; es el otro botón del tercero.\n- **Nómina:** los profesionales de planta se pagan por nómina, no por FXP.",
+      "puntosClave": [
+        "Anular la factura borra el honorario.",
+        "Cuentas esperadas es consulta, no pago.",
+        "La contabilidad llega por la factura de venta y por la CxP, no por FXP."
+      ]
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo que se encontró al contrastar las pantallas, la documentación y los procedimientos del ciclo completo, desde la contratación hasta el paso a cuenta por pagar. Los hallazgos 1 a 6, 10 y 11 tienen solución detallada en el dictamen técnico «Honorarios médicos: cierre del ciclo hacia cuentas por pagar e integridad del honorario»; los demás quedan registrados para una fase posterior.",
+      "md": "## Huecos del ciclo\n\n1. **El honorario nunca llega a cuenta por pagar desde la web.** El procedimiento que convierte los ítems en líneas de CxP existe, pero ninguna pantalla ni método lo ejecuta, y nada marca los ítems en S. Nueva CXP con procedencia Salud no vincula el honorario. **Solución:** selección de ítems en Honorarios médicos y método PASAR_A_CXP que cree o elija la CxP del proveedor y ejecute el paso, validando la cuenta CXP_SALUD del modelo.\n2. **Anular no hace nada.** El botón muestra un aviso de pendiente; no hay método ni estado A real. **Solución:** método ANULAR_FXP solo para P (sin ítems en S/E) que marque A y libere el cargo (CXP = 0); o retirar el botón.\n3. **Reparto por porcentaje (HOMED) sin pantalla.** El generador lo usa pero nada lo alimenta. **Solución:** decidir con negocio si se necesita; si sí, pantalla sobre la prestación.\n\n## Riesgos de integridad\n\n4. **Anular la factura borra honorarios que ya están en CxP.** La anulación y la liberación de la factura borran FXP/FXPD sin mirar el estado E; la línea de la CxP queda apuntando a un honorario inexistente. **Solución:** rechazar la anulación si hay ítems en E (anular primero el ítem en la CxP) o conservar el FXP marcándolo A.\n5. **La nota crédito rebaja honorarios ya en CxP.** Baja el valor del ítem sin distinguir estado; la línea de la CxP conserva el valor original. **Solución:** si el ítem está en E, no tocar el FXP y exigir nota débito sobre la CxP.\n6. **Cambiar tercero ignora la CxP.** Solo valida la confirmación contable de la factura de venta; un ítem en E se mueve a otro tercero y la CxP sigue a nombre del anterior. **Solución:** rechazar ítems en E.\n\n## Cálculo del precio\n\n7. **HONORATAR_DIF aplica a consulta externa y citas, no a hospitalización**, y en modo SI calcula con la tarifa por código CUPS ignorando excepciones y vigencias. Un mismo servicio puede valer distinto según el origen. **Solución:** que las tres ramas usen la vista de precios (o que la vista contemple la tarifa diferencial).\n8. **Excepciones tipo Valor con vigencia fija.** La vista correspondiente no lee la vigencia del convenio. **Solución:** tomarla como las otras dos vistas.\n\n## Limpieza y control\n\n9. **Generadores sin invocador.** Los procedimientos de cirugía y de un solo ítem no los llama nadie; el de cirugía duplicaría honorarios si se activara. La procedencia PYP aparece en la impresión sin generador. **Solución:** marcar obsoletos y retirar PYP del reporte.\n10. **Filtro Anulados siempre vacío.** Se resuelve con la solución de anulación o retirando la opción.\n11. **Pantalla sin permisos por botón.** Cambiar tercero modifica el cargo, la factura y puede reconstruir un comprobante sin control USGRUH. **Solución:** controles FXP_COL · CAMBIAR_TERCERO / ANULAR / IMPRIMIR.\n12. **Seis tablas sin ficha** en la documentación (FXP, FXPD, PXS, PXSE, PXSN, HOMED). **Solución:** crear las fichas con las columnas verificadas y sus relaciones.\n\n## Verificado\n\n- Los veinte objetos leídos son **idénticos entre PREVERSION y la última liberada**: no hay arreglo pendiente en la canasta para estos puntos.\n- El generador hospitalario sí evita duplicados (CXP = 0 y marca a 1), sí excluye a la institución y sí respeta las dos vigencias de la contratación.\n- Cambiar tercero sí bloquea cuando el comprobante de la factura está confirmado y sí reconstruye el comprobante cuando solo está contabilizado."
+    }
+  ]
+}

@@ -1,0 +1,974 @@
+{
+  "procesoId": "configuracion-contabilidad",
+  "actualizado": "2026-10-04T20:30:00",
+  "nota": "Fichas leídas 2026-10-04 desde sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas). Lecturas genéricas vía AppStore.read (SED, AFU, CEN, CUE, KCDE, KMCOM, FIMPD, FCTSER, PAR, USVGS, PRI). Menú de Configuración: MENUQ_COL · CONFIGURACION (ya en sps de otros procesos; dato de instalación).",
+  "sps": [
+    {
+      "nombre": "SPQ_CONF_CONTABLE",
+      "tipo": "SPQ",
+      "modelo": "CONF_CONTABLE",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "CRUD de estructura, distribución de gastos, asignación de comprobantes y parámetros.",
+      "metodos": [
+        {
+          "id": "CRUD_SEDES",
+          "hace": "Nueva/Editar SED con todos los campos (incluye bodegas por defecto, interoperabilidad, ESTADOSEDE).",
+          "valida": [
+            "IDSEDE único en Nueva",
+            "Existe en Editar"
+          ],
+          "noValida": [
+            "Ciudad, responsable, modelo, bodegas (FK)",
+            "Formato NIT/DV"
+          ],
+          "errores": [
+            "posible error de Duplicidad, el Id.Sede ya existe",
+            "Sede No encontrada. Verifique e intente de nuevo"
+          ],
+          "llama": [],
+          "efecto": "SED.",
+          "capaId": "01-estructura",
+          "controlId": "sede-crud",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_SEDUNG",
+          "hace": "Nuevo/Editar cruce sede + unidad + centro; Editar solo ESTADO.",
+          "valida": [
+            "Llave única"
+          ],
+          "noValida": [
+            "Que la unidad o el centro existan"
+          ],
+          "errores": [
+            "ya Existe un Registro con estos datos",
+            "Datos no encontrados, no se puede Actualizar"
+          ],
+          "llama": [],
+          "efecto": "SEDUNG.",
+          "capaId": "01-estructura",
+          "controlId": "sede-unidad",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_AFU",
+          "hace": "Nueva/Editar AFU (IDAREAH, DESCRIPCION, CONTABLE, PRESTACION, AMBITO, ESTADO, CE). Nueva fija CCOSTO '', NIVELATENCION 1.",
+          "valida": [
+            "IDAREA único"
+          ],
+          "noValida": [
+            "Que IDAREAH exista"
+          ],
+          "errores": [
+            "Ya existe un Area Funcional con este Codigo",
+            "Area Funcional, no Encontrada"
+          ],
+          "llama": [],
+          "efecto": "AFU.",
+          "capaId": "01-estructura",
+          "controlId": "area-funcional",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_CCOSTO",
+          "hace": "Nuevo/Editar CEN con IDAREA obligatorio; Editar con ESTADO Inactivo exige HOMOLOGO activo.",
+          "valida": [
+            "IDAREA no vacío y existe",
+            "CCOSTO único",
+            "Homólogo activo al inactivar"
+          ],
+          "noValida": [
+            "Sede/ciudad existen"
+          ],
+          "errores": [
+            "Debe seleccionar un Área Funcional para el Centro de Costo",
+            "El Área Funcional no existe. Verifique e intente nuevamente",
+            "Ya Existe un Centro de Costo con este Codigo",
+            "El centro de costo Homologo no existe o no esta activo. No se puede Continuar",
+            "Centro de Costo no encontrado"
+          ],
+          "llama": [],
+          "efecto": "CEN.",
+          "capaId": "01-estructura",
+          "controlId": "centro-costo",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_HARE",
+          "hace": "Nuevo/Editar HARE (IDAREA, DESCRIPCION).",
+          "valida": [
+            "IDAREA único"
+          ],
+          "noValida": [],
+          "errores": [
+            "Grupo de Area ya Existe",
+            "No se encontro grupo de Area"
+          ],
+          "llama": [],
+          "efecto": "HARE.",
+          "capaId": "01-estructura",
+          "controlId": "grupo-area",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KUNG",
+          "hace": "Nuevo/Editar KUNG (CODUNG, DESCRIPCION, LOGO).",
+          "valida": [
+            "CODUNG único"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya existe una unidad de negocio con este codigo",
+            "Unidad de Negocio no Encontrada"
+          ],
+          "llama": [],
+          "efecto": "KUNG.",
+          "capaId": "01-estructura",
+          "controlId": "unidad-negocio",
+          "estado": "leido"
+        },
+        {
+          "id": "FDIS_TRAESUMA",
+          "hace": "Suma de VALOR de FDISD por código.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "03-reglas",
+          "controlId": "fdis",
+          "estado": "leido"
+        },
+        {
+          "id": "FDIS_CRUD",
+          "hace": "Nuevo (CLASE 'FCXP') / Editar / Borrar FDIS. Editar con cambio de código solo valida (UPDATE en el ELSE: hallazgo). Borrar bloquea si hay detalle.",
+          "valida": [
+            "Código único",
+            "Sin detalle para borrar"
+          ],
+          "noValida": [
+            "Editar con código nuevo no actualiza"
+          ],
+          "errores": [
+            "Ya Existe una Distribución de Costo con ese código",
+            "Ya existe un Codigo de Distribucion con este Codigo",
+            "Existen Distribuciones detalles asociados a este código, no se puede continuar"
+          ],
+          "llama": [],
+          "efecto": "FDIS.",
+          "capaId": "03-reglas",
+          "controlId": "fdis",
+          "estado": "leido"
+        },
+        {
+          "id": "FDISD_CRUD",
+          "hace": "Nuevo/Editar/Borrar FDISD; devuelve la suma.",
+          "valida": [
+            "FDIS existe",
+            "CEN existe con IDAREA",
+            "CUE Detalle"
+          ],
+          "noValida": [
+            "Suma ≤ 100 (lo hace el FE)"
+          ],
+          "errores": [
+            "El código de Distribución no existe",
+            "Centro de Costo no existe en el Maestro",
+            "Cuenta contable no valida"
+          ],
+          "llama": [],
+          "efecto": "FDISD.",
+          "capaId": "03-reglas",
+          "controlId": "fdis",
+          "estado": "leido"
+        },
+        {
+          "id": "ASIGNA_COM",
+          "hace": "UPDATE USVGS.DATO = comprobante para IDVARIABLE.",
+          "valida": [
+            "Variable existe",
+            "Comprobante existe en COM"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se Encontro la Variable en la tabla Maestra",
+            "No se encontro el Comprobante en la tabla Maestra"
+          ],
+          "llama": [],
+          "efecto": "USVGS.",
+          "capaId": "04-comprobantes-periodos",
+          "controlId": "asigna-com",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITA_PAR",
+          "hace": "UPDATE PAR (COMPANIA 01): CTA_CAJ_REC_NOLEG, MESDECIERRE, CIERRECOSTOS, CIERREIMP, MCUEORDEN_GLOSAS.",
+          "valida": [
+            "Cuenta puente tipo Detalle"
+          ],
+          "noValida": [
+            "MCUEORDEN_CXC/CXP/INGRESOS/EGRESOS (no se persisten: hallazgo)"
+          ],
+          "errores": [
+            "La cuenta Ingresada no es detella, no se puede continuar"
+          ],
+          "llama": [],
+          "efecto": "PAR.",
+          "capaId": "04-comprobantes-periodos",
+          "controlId": "par",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_SED",
+      "tipo": "SPQ",
+      "modelo": "SED",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Sedes legado + consultorios.",
+      "metodos": [
+        {
+          "id": "CRUDSEDCONS",
+          "hace": "Nuevo/Editar SEDCONS (IDSEDE, NUMCONS, DESCCONS, TIPO, ESTADO).",
+          "valida": [
+            "NUMCONS único por sede"
+          ],
+          "noValida": [],
+          "errores": [
+            "El Código del consultorio, ya existe para esta Sede, por favor revisar."
+          ],
+          "llama": [],
+          "efecto": "SEDCONS.",
+          "capaId": "01-estructura",
+          "controlId": "sede-consultorios",
+          "estado": "leido"
+        },
+        {
+          "id": "REGISTRAR/CONSULTAR/EDITAR/BORRAR/CONSULTA/CONSULTART/LISTADO",
+          "hace": "Métodos legado de SED (no los usa la pantalla de Configuración). BORRAR hace DELETE SED.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SED.",
+          "capaId": "01-estructura",
+          "controlId": "sede-crud",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CENH_COL",
+      "tipo": "SPQ",
+      "modelo": "CENH_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Homologación de centros de costo entre sedes.",
+      "metodos": [
+        {
+          "id": "CRUD_CENH",
+          "hace": "Nuevo/Editar/Eliminar CENH (COMPANIA, IDSEDEORI, CCOSTOOR, IDSEDE, CCOSTO, ESTADO, HOMOANULA).",
+          "valida": [
+            "Compañía, sede y centro origen, sede destino y centro homologado requeridos",
+            "Origen y destino existen en CEN con su sede",
+            "No duplicado"
+          ],
+          "noValida": [],
+          "errores": [
+            "La compañía es requerida",
+            "La sede origen es requerida",
+            "El centro de costo origen es requerido",
+            "La sede destino es requerida",
+            "El centro de costo homologado es requerido",
+            "El centro de costo origen no existe",
+            "El centro de costo homologado no existe",
+            "Proceso no reconocido"
+          ],
+          "llama": [],
+          "efecto": "CENH.",
+          "capaId": "01-estructura",
+          "controlId": "centro-homologacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CUE_COL",
+      "tipo": "SPQ",
+      "modelo": "CUE_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Plan contable local.",
+      "metodos": [
+        {
+          "id": "CRUDCUE",
+          "hace": "INSERTAR/EDITAR CUE con ~45 campos. Graba RUBRO = CUENTA (no @RUBRO: hallazgo). Devuelve CNS.",
+          "valida": [
+            "Cuenta no existe (INSERTAR)"
+          ],
+          "noValida": [
+            "Cuenta suma existe / tipo Suma",
+            "Nivel vs longitud",
+            "Estado"
+          ],
+          "errores": [
+            "LA CUENTA YA EXISTE",
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "CUE.",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cuenta-crud",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDARCUENTAS",
+          "hace": "Lista cuentas con error: cuenta suma ≠ prefijo; cuenta suma no es tipo Suma; longitud impar (>1); nivel incoherente (bucle 1..10; nivel 2 con CASE desalineado: hallazgo).",
+          "valida": [
+            "Jerarquía",
+            "Longitud par",
+            "Nivel"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura (OK + ERROR=1/0 + lista).",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cuenta-validar",
+          "estado": "leido"
+        },
+        {
+          "id": "EXPOCUENTAS",
+          "hace": "Plan completo con descripciones de cuenta suma, homóloga, espejo, cierre de costos, banco (BCT/BCO) y caja (CAJ).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cuenta-exportar",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CUENIIF",
+      "tipo": "SPQ",
+      "modelo": "CUENIIF",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Plan NIIF.",
+      "metodos": [
+        {
+          "id": "GENEALOGICO",
+          "hace": "Dada la cuenta busca el padre (por prefijo) y devuelve NIVEL = padre+1 y CUENTA_SUMA; sin padre → nivel 1.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cueniif-crud",
+          "estado": "leido"
+        },
+        {
+          "id": "INSERTAR",
+          "hace": "INSERT CUENIIF.",
+          "valida": [
+            "Cuenta y nombre obligatorios",
+            "TIPO Suma/Detalle",
+            "ESTADO Activa/Inactiva",
+            "CLASE CXC/CXP/OTROS",
+            "NIVEL ≥ 1"
+          ],
+          "noValida": [
+            "CUENTA_SUMA existe/tipo Suma",
+            "Nivel vs longitud",
+            "Duplicado (lo atrapa la PK)"
+          ],
+          "errores": [
+            "La cuenta es obligatoria",
+            "El nombre de la cuenta es obligatorio",
+            "El tipo debe ser Suma o Detalle",
+            "El estado debe ser Activa o Inactiva",
+            "La clase debe ser CXC, CXP u OTROS",
+            "El nivel de la cuenta no es válido"
+          ],
+          "llama": [],
+          "efecto": "CUENIIF.",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cueniif-crud",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITAR",
+          "hace": "UPDATE por IDCUENIIF; cambio de código solo sin MCHNIIF.",
+          "valida": [
+            "IDCUENIIF",
+            "Mismas reglas de INSERTAR",
+            "Existe",
+            "Sin movimientos para cambiar código"
+          ],
+          "noValida": [
+            "Jerarquía"
+          ],
+          "errores": [
+            "No se indicó el identificador de la cuenta",
+            "La cuenta NIIF no existe",
+            "La cuenta tiene movimientos contables. No se puede editar el código de cuenta. Debe colocarla en estado Inactivo."
+          ],
+          "llama": [],
+          "efecto": "CUENIIF.",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cueniif-crud",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE por IDCUENIIF si no hay MCHNIIF.",
+          "valida": [
+            "Existe",
+            "Sin movimientos"
+          ],
+          "noValida": [],
+          "errores": [
+            "La cuenta tiene movimientos contables. No se puede borrar. Debe colocarla en estado Inactivo."
+          ],
+          "llama": [],
+          "efecto": "CUENIIF.",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cueniif-crud",
+          "estado": "leido"
+        },
+        {
+          "id": "CARGA_MASIVA",
+          "hace": "Valida todas las filas (duplicado en archivo/base, CUENTA_SUMA tipo Suma existente o anterior en archivo, TIPO, ESTADO, flags 0/1 en Detalle, longitud par ≤ 18, nivel por longitud) y si no hay errores inserta en TRAN; si hay, no inserta nada y devuelve CUENTA, NOMCUENTA, ERROR con solución.",
+          "valida": [
+            "Todo lo anterior"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se recibieron filas para cargar",
+            "Duplicado en el archivo…",
+            "Duplicado: la cuenta ya existe en CUENIIF…",
+            "Falta CUENTA_SUMA…",
+            "CUENTA_SUMA inválida…",
+            "TIPO vacío / inválido",
+            "ESTADO vacío / inválido",
+            "Flags inválidos en cuenta Detalle…",
+            "Longitud de cuenta inválida…",
+            "Cuenta fuera de rango… (máximo 18)",
+            "No se pudo calcular el nivel…",
+            "Error al insertar el lote…"
+          ],
+          "llama": [],
+          "efecto": "CUENIIF (lote).",
+          "capaId": "02-plan-cuentas",
+          "controlId": "cueniif-masiva",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_KMCOM_COL",
+      "tipo": "SPQ",
+      "modelo": "KMCOM_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Contabilización por ubicación.",
+      "metodos": [
+        {
+          "id": "TRAER_KTCO",
+          "hace": "Tipos de contabilización; oculta NIIF_DEPRECIACION, NIIF_INGRESO, PRESTACIONES si IDPROCESOCONTABLE <> MIXTO.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "Solo lectura.",
+          "capaId": "03-reglas",
+          "controlId": "kmcom-tipo",
+          "estado": "leido"
+        },
+        {
+          "id": "TRAE_CUENTAS",
+          "hace": "Cuentas DB/CR (+ IPS, PGP, CAPITA en Ventas) de una llave tipo+prefijo+centro.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "03-reglas",
+          "controlId": "kmcom-regla",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KMCOM",
+          "hace": "Nuevo/Editar/Borrar filas DB y CR de KMCOM; Ventas graba CUENTAIPS, MPGP, CUECRPGP, MCAPITA, CUECRCAP en la fila CR; MIVA/CUENTAIVA.",
+          "valida": [
+            "CEN existe con IDAREA",
+            "Cuentas DB y CR existen",
+            "Prefijo según tipo: VENTAS/DESCUENTOS→PRE, CAJA_MENOR→concepto caja DECAJAMENOR, CXP_COMPRAS→ITAR, CXP_SERVICIOS→FCTSER, DEPRECIACION→IACTT, MOV_ACTIVOS→IACTE, MOV_INVENTARIO→ITMO, NOMINA→NCON"
+          ],
+          "noValida": [
+            "Prefijo para CXP_SALUD, NIIF_*, PRESTACIONES",
+            "Cuentas tipo Detalle"
+          ],
+          "errores": [
+            "Centro de Costo no Valido",
+            "Cuenta contable Debito No Valida",
+            "Cuenta contable Credito No Valida",
+            "Prefijo no Valido",
+            "Concepto de Caja no Valido",
+            "Tipo de Articulo no Valido",
+            "Tipo de Servicio no Valido",
+            "Tipo de Activo  no Valido",
+            "Evento de Activo  no Valido",
+            "Tipo de Movimiento  no Valido"
+          ],
+          "llama": [],
+          "efecto": "KMCOM.",
+          "capaId": "03-reglas",
+          "controlId": "kmcom-regla",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_KMCOMS",
+          "hace": "Nuevo/Editar/Borrar excepciones por servicio (filas DB y CR, ESTADO Activo, CUENTAIPS, MIVA, CUENTAIVA).",
+          "valida": [
+            "Cuenta válida",
+            "Servicio existe y activo"
+          ],
+          "noValida": [],
+          "errores": [
+            "La cuenta contable no es valida",
+            "El Servicio no existe o esta Inactivo",
+            "Ya existe un registro con esta Exepción"
+          ],
+          "llama": [],
+          "efecto": "KMCOMS.",
+          "capaId": "03-reglas",
+          "controlId": "kmcom-excepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDA_CODNOMI",
+          "hace": "Si el concepto es Egreso sin VALOR_EMPRESA devuelve la cuenta CR de KMCOM NOMINA del concepto IDCONPSALARIO; si no, 'Ingreso'.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE"
+          ],
+          "efecto": "Solo lectura.",
+          "capaId": "03-reglas",
+          "controlId": "kmcom-nomina",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_KCDE_COL",
+      "tipo": "SPQ",
+      "modelo": "KCDE_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Deducibles.",
+      "metodos": [
+        {
+          "id": "CRUDKCDE",
+          "hace": "INSERT/UPDATE KCDE (CUENTA, CUENTAANTES, DESCRIPCION, IDMODELOCONT, TIPO).",
+          "valida": [],
+          "noValida": [
+            "Cuenta existe"
+          ],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "KCDE.",
+          "capaId": "03-reglas",
+          "controlId": "kcde",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TTEC_COL",
+      "tipo": "SPQ",
+      "modelo": "TTEC_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Tipos de terceros contables.",
+      "metodos": [
+        {
+          "id": "CRUDTTEC",
+          "hace": "INSERT/UPDATE TTEC: TIPO, DETALLE, CUENTA, TIPOMOV, CUEORDENGLOSADB/CR, CTAGLOSADB, CUENTACG, CUENTALG, CUENTARAD, CUECOJURI, CUEDIFCOB, CREECR, CREEDB, CXC_ESTIMADA, INGRESOEST, PASIVO_EST.",
+          "valida": [],
+          "noValida": [
+            "Que las cuentas existan"
+          ],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "TTEC.",
+          "capaId": "03-reglas",
+          "controlId": "ttec",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_COM_COL",
+      "tipo": "SPQ",
+      "modelo": "COM_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Tipos de comprobante.",
+      "metodos": [
+        {
+          "id": "CRUDCOM",
+          "hace": "INSERT/UPDATE COM (COMPANIA, COMPROBANTE, NOMCOMPROBANTE, HOMOLOGO, COM_EXT).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "COM.",
+          "capaId": "04-comprobantes-periodos",
+          "controlId": "com",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PRI",
+      "tipo": "SPQ",
+      "modelo": "PRI",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Periodos contables.",
+      "metodos": [
+        {
+          "id": "CRUDPRI",
+          "hace": "INSERTAR/EDITAR PRI (COMPANIA 01). INSERTAR inicializa todos los cierres en 0 salvo CERRADO_INV/CERRADO_FAC del JSON; FECHA_FIN a 23:59:59. EDITAR actualiza NOMPERIODO, fechas, CERRADO_INV, CERRADO_FAC, SI, SINIIF, TCAMBIOFINAL, PAAG, TIPO_AJ (ejecuta el UPDATE antes de evaluar el error de SI: hallazgo).",
+          "valida": [
+            "ANO+MES único (INSERTAR)",
+            "Un solo SI=1",
+            "Un solo SINIIF=1"
+          ],
+          "noValida": [
+            "CERRADO en EDITAR (lo hace el FE)",
+            "Pendientes antes de CERRADO_FAC/INV",
+            "Solapamiento de fechas"
+          ],
+          "errores": [
+            "Periodo insertado ya existe, por favor validar, Periodo: …",
+            "Ya existe un periodo de saldos iniciales, no pueden existir mas de uno"
+          ],
+          "llama": [],
+          "efecto": "PRI.",
+          "capaId": "04-comprobantes-periodos",
+          "controlId": "pri",
+          "estado": "leido"
+        },
+        {
+          "id": "CERRAR_FACTURA",
+          "hace": "Cierre de facturación/cartera: exige periodo no cerrado, CERRADO_FAC=0 y CERRADO_CARTERA=0, sin MCPE de CXC/RAD CXC/NOTDBCR/FACTURA/RGLO/CONCI; EXEC SPK_CIERRA_CARTERA. Lo usa Cartera/Facturación, no Configuración.",
+          "valida": [
+            "Errados que afectan cartera"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo Cerrado...",
+            "No se Encontro el Periodo de Facturación o ya esta Cerrado",
+            "No se Encontro el Periodo de Cartera o ya esta Cerrado",
+            "Existen comprobantes con Error que Afectan la Cartera, no se puede cerrar con comprobantes  con error"
+          ],
+          "llama": [
+            "SPK_CIERRA_CARTERA"
+          ],
+          "efecto": "PRI.CERRADO_FAC/CERRADO_CARTERA; FCARTH.",
+          "capaId": "04-comprobantes-periodos",
+          "controlId": "pri",
+          "estado": "leido"
+        },
+        {
+          "id": "ABRIR_FACTURA",
+          "hace": "Reabre facturación, cartera (borra FCARTH del mes) o CxP según PROCEDENCIA.",
+          "valida": [
+            "Periodo cerrado en ese módulo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "PRI.CERRADO_FAC/CARTERA/CXP = 0; FCARTH.",
+          "capaId": "04-comprobantes-periodos",
+          "controlId": "pri",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_MND_COL",
+      "tipo": "SPQ",
+      "modelo": "MND_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Monedas.",
+      "metodos": [
+        {
+          "id": "CRUDMND",
+          "hace": "INSERT/UPDATE MND (IDMONEDA, DESCRIPCION, SIMBOLO, CODIFICACION).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "MND.",
+          "capaId": "05-generales",
+          "controlId": "mnd",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_MNDV_COL",
+      "tipo": "SPQ",
+      "modelo": "MNDV_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Vigencias de moneda.",
+      "metodos": [
+        {
+          "id": "CRUDMNDV",
+          "hace": "INSERT/UPDATE MNDV (IDMONEDA, ITEM, FECHA, VALOR).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "MNDV.",
+          "capaId": "05-generales",
+          "controlId": "mnd",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FIMP_COL",
+      "tipo": "SPQ",
+      "modelo": "FIMP_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Impuestos.",
+      "metodos": [
+        {
+          "id": "CRUDFIMP",
+          "hace": "INSERT/UPDATE FIMP (IDIMPUESTO, DESCRIPCION, HOMOLOGODIAN).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "FIMP.",
+          "capaId": "05-generales",
+          "controlId": "fimp",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FIMPD_COL",
+      "tipo": "SPQ",
+      "modelo": "FIMPD_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Divisiones de impuesto.",
+      "metodos": [
+        {
+          "id": "CRUDFIMPD",
+          "hace": "INSERT/UPDATE FIMPD (IDIMPUESTO, IDCLASE, DESCRIPCION, BASE).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "FIMPD.",
+          "capaId": "05-generales",
+          "controlId": "fimp",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FIMPDV_COL",
+      "tipo": "SPQ",
+      "modelo": "FIMPDV_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Vigencias de división.",
+      "metodos": [
+        {
+          "id": "CRUDFIMPDV",
+          "hace": "INSERT/UPDATE FIMPDV (IDIMPUESTO, IDCLASE, ITEM, FECHAINI, FECHAFIN, VALOR, VALOR_INICIAL, VALOR_FINAL, MUVT, VLRUTV, CUENTA, CUENTA_ASUM).",
+          "valida": [],
+          "noValida": [
+            "Solapamiento de vigencias"
+          ],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "FIMPDV.",
+          "capaId": "05-generales",
+          "controlId": "fimp",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FCTSER_COL",
+      "tipo": "SPQ",
+      "modelo": "FCTSER_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Tipos de servicio.",
+      "metodos": [
+        {
+          "id": "CRUDFCTSER",
+          "hace": "INSERT/UPDATE FCTSER (IDTIPOSER, DESCRIPCION, CUENTA, RUBRO, RUBRO_ID, UNSPSC, IDGRUPOIMP, DECONSUMO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "FCTSER.",
+          "capaId": "05-generales",
+          "controlId": "fctser",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FCTSERD_COL",
+      "tipo": "SPQ",
+      "modelo": "FCTSERD_COL",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Servicios por tipo.",
+      "metodos": [
+        {
+          "id": "CRUDFCTSERD",
+          "hace": "INSERT/UPDATE FCTSERD (IDTIPOSER, IDSERVICIO, DESCRIPCION, VALOR, CLASECOBRO, ENBRIGADA).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "FCTSERD.",
+          "capaId": "05-generales",
+          "controlId": "fctser",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_RETEFTE_SALARIO",
+      "tipo": "SPQ",
+      "modelo": "RETEFTE_SALARIO",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Retención en la fuente por salarios.",
+      "metodos": [
+        {
+          "id": "CRUD_RETEI",
+          "hace": "INSERTAR (código R### automático) / EDITAR / INACTIVAR RETEI.",
+          "valida": [
+            "Descripción y clase requeridas",
+            "Clase suma/resta",
+            "Estado Activo/Inactivo",
+            "Código para editar"
+          ],
+          "noValida": [],
+          "errores": [
+            "La descripción es requerida",
+            "La clase (suma/resta) es requerida",
+            "El código es requerido para editar o inactivar",
+            "La clase debe ser suma o resta",
+            "El estado debe ser Activo o Inactivo",
+            "Error al generar código. Intente de nuevo."
+          ],
+          "llama": [],
+          "efecto": "RETEI.",
+          "capaId": "05-generales",
+          "controlId": "retei",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR_UVT",
+          "hace": "UPDATE/INSERT USVGS IDVARIABLE (por defecto VALOR_UVT_RETEFTE) = VALOR; observación con el año.",
+          "valida": [
+            "Valor requerido"
+          ],
+          "noValida": [],
+          "errores": [
+            "El valor UVT es requerido",
+            "Error al actualizar UVT: …"
+          ],
+          "llama": [],
+          "efecto": "USVGS.",
+          "capaId": "05-generales",
+          "controlId": "retei",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_RETTER",
+          "hace": "Retención por tercero (RETTER): no lo usa la pantalla de Configuración.",
+          "valida": [
+            "IDTERCERO y CODRETI",
+            "RETEI activo",
+            "No duplicado"
+          ],
+          "noValida": [],
+          "errores": [
+            "IDTERCERO es requerido",
+            "CODRETI (tipo de retención) es requerido",
+            "Ya existe una retención con ese código para este tercero",
+            "El tipo de retención (CODRETI) no existe o está inactivo en RETEI"
+          ],
+          "llama": [],
+          "efecto": "RETTER.",
+          "capaId": "05-generales",
+          "controlId": "retei",
+          "estado": "leido"
+        },
+        {
+          "id": "LIQUIDAR_RTFTASALA",
+          "hace": "Liquida retención de una CxP: EXEC SPK_CALCULA_REFTE_NOMI y devuelve RETEL. Lo usa CxP.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_CALCULA_REFTE_NOMI"
+          ],
+          "efecto": "RETEL.",
+          "capaId": "05-generales",
+          "controlId": "retei",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

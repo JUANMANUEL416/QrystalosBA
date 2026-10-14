@@ -1,0 +1,178 @@
+/*
+CEM — centro de costo en el detalle de facturas CE que están en comprobantes con error.
+
+Qué hace
+  1. Al detalle sin centro le pone el único centro activo de la sede de la autorización
+     que ya tiene ventas de ese prefijo y dispensación de medicamentos (inventario tipo 06).
+  2. Si la sede no tiene ese centro, le pone uno al azar entre los de dispensación
+     que ya tienen ventas de ese prefijo. El sorteo de esta ejecución es el que se graba.
+  Copia también el área de ese centro.
+
+Qué no hace
+  No reconstruye el comprobante. Después de grabar, reconstruir cada factura.
+  No toca el movimiento de inventario: el mismo número puede existir en IMOV y no es esta factura.
+  No parte el valor entre varios centros.
+  No modifica un detalle que ya tenga centro.
+
+Uso
+  @APLICAR = 0  solo lista.
+  @APLICAR = 1  graba FTRD.CCOSTO y FTRD.AREAPRESTACION.
+*/
+SET NOCOUNT ON;
+
+DECLARE @APLICAR BIT = 0;
+
+IF OBJECT_ID('tempdb..#LINEA') IS NOT NULL DROP TABLE #LINEA;
+IF OBJECT_ID('tempdb..#CENTRO') IS NOT NULL DROP TABLE #CENTRO;
+IF OBJECT_ID('tempdb..#UNICO') IS NOT NULL DROP TABLE #UNICO;
+IF OBJECT_ID('tempdb..#ALEATORIO') IS NOT NULL DROP TABLE #ALEATORIO;
+
+SELECT
+    F.N_FACTURA,
+    D.N_CUOTA,
+    D.NOITEM,
+    D.REFERENCIA,
+    D.PREFIJO,
+    A.IDSEDE,
+    D.VLR_SERVICI
+INTO #LINEA
+FROM MCPE M WITH (NOLOCK)
+INNER JOIN FTR F WITH (NOLOCK) ON F.N_FACTURA = M.NOREFERENCIA
+INNER JOIN FTRD D WITH (NOLOCK)
+    ON D.N_FACTURA = F.N_FACTURA
+   AND D.VLR_SERVICI <> 0
+   AND COALESCE(D.CCOSTO, '') = ''
+INNER JOIN AUT A WITH (NOLOCK) ON A.NOAUT = D.NOADMISION
+WHERE M.ESTADO = 0
+  AND M.PROCEDENCIA = 'FACTURA'
+  AND F.PROCEDENCIA = 'CE';
+
+SELECT
+    L.N_FACTURA,
+    L.N_CUOTA,
+    L.NOITEM,
+    L.REFERENCIA,
+    L.PREFIJO,
+    L.IDSEDE,
+    L.VLR_SERVICI,
+    C.CCOSTO,
+    C.IDAREA
+INTO #CENTRO
+FROM #LINEA L
+INNER JOIN CEN C WITH (NOLOCK)
+    ON C.IDSEDE = L.IDSEDE
+   AND C.ESTADO = 'Activo'
+INNER JOIN KMCOM KV WITH (NOLOCK)
+    ON KV.IDTIPOCONT = 'VENTAS'
+   AND KV.TIPO = 'CR'
+   AND KV.PREFIJO = L.PREFIJO
+   AND KV.CCOSTO = C.CCOSTO
+INNER JOIN KMCOM K6 WITH (NOLOCK)
+    ON K6.IDTIPOCONT = 'MOV_INVENTARIO'
+   AND K6.PREFIJO = '06'
+   AND K6.TIPO = 'DB'
+   AND K6.CCOSTO = C.CCOSTO;
+
+SELECT
+    N_FACTURA, N_CUOTA, NOITEM, REFERENCIA, PREFIJO, IDSEDE, VLR_SERVICI,
+    MIN(CCOSTO) AS CCOSTO,
+    MIN(IDAREA) AS IDAREA
+INTO #UNICO
+FROM #CENTRO
+GROUP BY N_FACTURA, N_CUOTA, NOITEM, REFERENCIA, PREFIJO, IDSEDE, VLR_SERVICI
+HAVING COUNT(DISTINCT CCOSTO) = 1;
+
+SELECT
+    L.N_FACTURA, L.N_CUOTA, L.NOITEM, L.REFERENCIA, L.PREFIJO, L.IDSEDE, L.VLR_SERVICI,
+    X.CCOSTO, X.IDAREA
+INTO #ALEATORIO
+FROM #LINEA L
+CROSS APPLY (
+    SELECT TOP 1 C.CCOSTO, C.IDAREA
+    FROM CEN C WITH (NOLOCK)
+    INNER JOIN KMCOM K6 WITH (NOLOCK)
+        ON K6.IDTIPOCONT = 'MOV_INVENTARIO'
+       AND K6.PREFIJO = '06'
+       AND K6.TIPO = 'DB'
+       AND K6.CCOSTO = C.CCOSTO
+    INNER JOIN KMCOM KV WITH (NOLOCK)
+        ON KV.IDTIPOCONT = 'VENTAS'
+       AND KV.TIPO = 'CR'
+       AND KV.PREFIJO = L.PREFIJO
+       AND KV.CCOSTO = C.CCOSTO
+    WHERE C.ESTADO = 'Activo'
+    ORDER BY NEWID()
+) X
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM #UNICO U
+    WHERE U.N_FACTURA = L.N_FACTURA
+      AND U.N_CUOTA = L.N_CUOTA
+      AND COALESCE(U.NOITEM, 0) = COALESCE(L.NOITEM, 0)
+      AND U.REFERENCIA = L.REFERENCIA
+);
+
+PRINT '=== Por sede: un solo centro de dispensacion ===';
+SELECT
+    IDSEDE, PREFIJO, CCOSTO, IDAREA,
+    COUNT(*) AS LINEAS,
+    COUNT(DISTINCT N_FACTURA) AS FACTURAS,
+    CAST(SUM(VLR_SERVICI) AS DECIMAL(18, 2)) AS VALOR
+FROM #UNICO
+GROUP BY IDSEDE, PREFIJO, CCOSTO, IDAREA
+ORDER BY IDSEDE, PREFIJO;
+
+PRINT '=== Sin centro en la sede: uno al azar entre los de dispensacion con ventas del prefijo ===';
+SELECT N_FACTURA, IDSEDE, PREFIJO, CCOSTO, IDAREA, CAST(VLR_SERVICI AS DECIMAL(18, 2)) AS VALOR
+FROM #ALEATORIO
+ORDER BY N_FACTURA;
+
+PRINT '=== Siguen sin centro ===';
+SELECT L.N_FACTURA, L.IDSEDE, L.PREFIJO
+FROM #LINEA L
+WHERE NOT EXISTS (
+    SELECT 1 FROM #UNICO U
+    WHERE U.N_FACTURA = L.N_FACTURA AND U.N_CUOTA = L.N_CUOTA
+      AND COALESCE(U.NOITEM, 0) = COALESCE(L.NOITEM, 0) AND U.REFERENCIA = L.REFERENCIA
+)
+AND NOT EXISTS (
+    SELECT 1 FROM #ALEATORIO A
+    WHERE A.N_FACTURA = L.N_FACTURA AND A.N_CUOTA = L.N_CUOTA
+      AND COALESCE(A.NOITEM, 0) = COALESCE(L.NOITEM, 0) AND A.REFERENCIA = L.REFERENCIA
+);
+
+IF @APLICAR = 1
+BEGIN
+    BEGIN TRAN;
+
+    UPDATE D
+       SET D.CCOSTO = U.CCOSTO,
+           D.AREAPRESTACION = U.IDAREA
+    FROM FTRD D
+    INNER JOIN #UNICO U
+        ON U.N_FACTURA = D.N_FACTURA
+       AND U.N_CUOTA = D.N_CUOTA
+       AND COALESCE(U.NOITEM, 0) = COALESCE(D.NOITEM, 0)
+       AND U.REFERENCIA = D.REFERENCIA
+    WHERE COALESCE(D.CCOSTO, '') = '';
+
+    PRINT 'Lineas por sede: ' + CAST(@@ROWCOUNT AS VARCHAR(20));
+
+    UPDATE D
+       SET D.CCOSTO = A.CCOSTO,
+           D.AREAPRESTACION = A.IDAREA
+    FROM FTRD D
+    INNER JOIN #ALEATORIO A
+        ON A.N_FACTURA = D.N_FACTURA
+       AND A.N_CUOTA = D.N_CUOTA
+       AND COALESCE(A.NOITEM, 0) = COALESCE(D.NOITEM, 0)
+       AND A.REFERENCIA = D.REFERENCIA
+    WHERE COALESCE(D.CCOSTO, '') = '';
+
+    PRINT 'Lineas al azar: ' + CAST(@@ROWCOUNT AS VARCHAR(20));
+    COMMIT TRAN;
+END
+ELSE
+BEGIN
+    PRINT 'Solo listado. El azar de este listado no se guarda. Para grabar, @APLICAR = 1: el listado de esa ejecución es el que queda. Luego reconstruya el comprobante.';
+END

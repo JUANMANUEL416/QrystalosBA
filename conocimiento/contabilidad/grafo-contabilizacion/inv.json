@@ -1,0 +1,314 @@
+{
+  "procedencia": "INV",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "catalogo",
+    "nota": "Validación global en Auditoría BA; cruce documento pendiente salvo CNSFPAG.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_INV.sql; SPK_CONFIRMARENTRADAS / SPK_CONFIRMARSALIDAS",
+  "documentoOrigen": {
+    "tabla": "IMOV",
+    "claves": [
+      "CNSMOV"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSMOV"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_INV",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-inv"
+      ]
+    },
+    {
+      "id": "N3-contab-inv",
+      "orden": 3,
+      "sp": "SPK_NC_CONTAB_INV",
+      "metodoUi": [
+        "Confirmación IMOV",
+        "SPQ_CONTABILIDAD_3 · Inventario",
+        "Anidado desde SPK_NC_CONTAB_FTR/FNOT"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "imov-confirmado",
+          "desc": "IMOV ESTADO=1; SECONTABILIZA=1; FECHACONF en periodo abierto",
+          "obligatorio": true,
+          "validacionSql": "IMOV CNSMOV=REFERENCIA1"
+        },
+        {
+          "id": "imovh-isal",
+          "desc": "IMOVH / ISAL con IVA según CONTAB_INV_IVA_ITAR",
+          "obligatorio": true
+        },
+        {
+          "id": "ibod-itmo",
+          "desc": "IBOD.NOCONTABILIZA=0; ITMO.SECONTABILIZA=1",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "kmcom-inv",
+          "tabla": "KMCOM",
+          "desc": "FNK_NC_CUENTA_KMCOM MOV_INVENTARIO; KO en confirmación si falta",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-inv",
+          "usvgs": [
+            "IDCON_TCOM_INV",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "tipos-mov",
+          "usvgs": [
+            "IDINVDEVPROVEEDOR",
+            "IDTIPOMOVDEV_CLIENTE",
+            "IDINVMOVVENTAFACTURA",
+            "CONTAB_INV_IVA_ITAR",
+            "CONTABIMOV_JOB"
+          ],
+          "obligatorio": "según ITMO"
+        },
+        {
+          "id": "pri-fechaconf",
+          "tabla": "PRI",
+          "desc": "Periodo = FECHACONF (no FECHAMOV en grilla OM)",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-confirmar-imov"
+      ],
+      "puntosCriticos": [
+        "PC-INV-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_INV.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "CONTAB_GASTOVEN_UNI",
+          "CONTAB_INV_IVA_ITAR",
+          "IDCON_IMOVDBENT_COMP",
+          "IDCON_TCOM_DEFAULT",
+          "IDCON_TCOM_INV",
+          "IDINVDEVPROVEEDOR",
+          "IDINVENTA_PARTICULAR",
+          "IDINVMOVVENTAFACTURA",
+          "IDINVMOV_PRESTAMOS",
+          "IDMODELOCONTABLE",
+          "IDTERCEROINSTALADO",
+          "IDTIPOMOVDEV_CLIENTE"
+        ],
+        "validacionesKo": [
+          "Este movimiento no se contabiliza",
+          "SE CONTABILIZA LA NOTA DE DEVOLUCION",
+          "Per�odo Contable No Existe..",
+          "Periodo Del Movimiento de Inventario y Periodo Actual Cerrados"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante inventario (PROCEDENCIA INV)",
+      "llamaAnidado": [
+        "SPK_PRI",
+        "SPK_NC_SUMA_DBCR"
+      ],
+      "efectoDocumento": "IMOV.CONTABILIZADA, NROCOMPROBANTE"
+    },
+    {
+      "id": "N2-confirmar-imov",
+      "orden": 2,
+      "sp": [
+        "SPK_CONFIRMARENTRADAS",
+        "SPK_CONFIRMARSALIDAS",
+        "SPK_CONFIRMASAL_CM"
+      ],
+      "efecto": "IMOV.ESTADO=1; FECHACONF; si CONTABIMOV_JOB≠SI → SPK_NC_CONTAB_INV inline",
+      "llamaAnterior": [
+        "N1-crear-imov"
+      ],
+      "nombre": "Confirmar movimiento inventario",
+      "metodoUi": [
+        "SPQ_IMOV · CONF_ENTRADA / CONF_SALIDA",
+        "Dispensación / traslados / ajustes conteo"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "imovh-lotes",
+          "desc": "IMOVH con cantidades, lotes IEXI si aplica",
+          "obligatorio": true
+        },
+        {
+          "id": "ccosto-area",
+          "desc": "CCOSTO e IDAREA en líneas (salidas 06)",
+          "obligatorio": "salidas costo"
+        },
+        {
+          "id": "pri-fechaconf",
+          "desc": "PRI abierto para FECHACONF que usará contab",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "itmo-secont",
+          "tabla": "ITMO",
+          "desc": "SECONTABILIZA=1 para disparar SPK",
+          "obligatorio": true
+        },
+        {
+          "id": "ibod-nocont",
+          "tabla": "IBOD",
+          "desc": "NOCONTABILIZA=0",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom-mov",
+          "tabla": "KMCOM",
+          "desc": "MOV_INVENTARIO por IDTIPOMOV+CCOSTO+AREA",
+          "obligatorio": true
+        }
+      ],
+      "puntosCriticos": [
+        "PC-INV-01",
+        "PC-INV-02"
+      ]
+    },
+    {
+      "id": "N1-crear-imov",
+      "orden": 1,
+      "sp": [
+        "SPQ_IMOV*",
+        "SPK_APLICARCONTEO",
+        "SPK_MOVSALIDAVENCIDOS"
+      ],
+      "llamaAnterior": [
+        "N0-config-inv"
+      ],
+      "nombre": "Crear / editar movimiento",
+      "metodoUi": "Entradas, salidas, traslados, devoluciones, venta INV",
+      "requiresDocumento": [
+        {
+          "id": "iart-ibod",
+          "desc": "Artículo en bodega con existencia si salida",
+          "obligatorio": "salida"
+        },
+        {
+          "id": "orden-compra",
+          "desc": "FCOM/OC si entrada compra",
+          "obligatorio": "compras"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "itmo",
+          "tabla": "ITMO",
+          "obligatorio": true
+        },
+        {
+          "id": "ibod",
+          "tabla": "IBOD",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-inv",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "itmo",
+          "tabla": "ITMO",
+          "desc": "Tipo movimiento, SECONTABILIZA, signo",
+          "obligatorio": true
+        },
+        {
+          "id": "ibod",
+          "tabla": "IBOD",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-inv",
+          "usvgs": [
+            "IDCON_TCOM_INV",
+            "CONTABIMOV_JOB",
+            "CONTAB_INV_IVA_ITAR",
+            "IDINVMOV_COMPRAS"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración inventario contable",
+      "pantallas": [
+        "Tipos movimiento ITMO",
+        "Bodegas IBOD",
+        "KMCOM MOV_INVENTARIO",
+        "USVGS IDINV* / CONTABIMOV_JOB"
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "INV",
+    "tablaOrigen": "IMOV",
+    "nota": "FECHAMOV en grilla; periodo asiento usa FECHACONF"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/inv.json",
+    "procesoHermano": "inventario",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-inv.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

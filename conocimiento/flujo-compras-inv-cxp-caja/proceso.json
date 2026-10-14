@@ -1,0 +1,192 @@
+{
+  "id": "flujo-compras-inv-cxp-caja",
+  "nombre": "Flujo compras · inventario · CxP · caja · contabilidad",
+  "tipo": "transversal",
+  "familia": "inventario",
+  "estado": "parcial",
+  "resumen": "2026-09-19: catálogo IART + IBOD/ITMO/USVGS; 16 pasos; traza OC con artículos y bodega/tipo mov en Auditoría BA.",
+  "catalogoArticulo": "catalogo-articulo.json",
+  "catalogoBodegaTipoMov": "catalogo-bodega-tipo-mov.json",
+  "catalogoOcConfirmacion": "catalogo-oc-confirmacion-recepcion.json",
+  "catalogoConfEntradaCxp": "catalogo-conf-entrada-cxp.json",
+  "nucleoCriticoIexiCxp": "nucleo-critico-iexi-cxp.json",
+  "runbookSoporteIexiCxp": "RUNBOOK-SOPORTE-IEXI-CXP.md",
+  "actualizado": "2026-09-19T18:00:00",
+  "procesosHermanos": ["inventario", "cxp-fcxp", "caja", "contabilidad"],
+  "flujoComprasResumen": "FCOM → ITRA/ITRAH → [loteo IZSOL_TRANSITO | recepción masiva directa] → SPK_INSERTENTTRANSITO → IMOV(0) → CONF_ENTRADA → FCXP → … → caja",
+  "pasos": [
+    {
+      "orden": 1,
+      "id": "iart",
+      "nombre": "Creación artículo",
+      "qrystalos2": { "ruta": "conf.inv", "path": "/conf/inv", "vue": "IARTComponent", "modelo": "IART", "metodos": ["GUARDAR", "VALIDA_SERVICIO"] },
+      "tablas": ["IART", "SER", "ITAR", "ITXA", "KMCOM"],
+      "sps": ["SPQ_IART"],
+      "nota": "Orden: ITAR → IART (consecutivo PRECNS/MCNS) → SER si CREARSER → KMCOM. Ver CATALOGO-ARTICULO.md y PC-00a…PC-01.",
+      "puntosCriticos": ["PC-00a", "PC-00b", "PC-00c", "PC-00d", "PC-00e", "PC-01"]
+    },
+    {
+      "orden": 2,
+      "id": "ibod-itmo",
+      "nombre": "Bodega y tipo movimiento (USVGS)",
+      "qrystalos2": {
+        "path": "/conf/inv",
+        "vue": "IBODComponent / ITMOComponent",
+        "modelo": "IBOD / ITMO",
+        "metodos": ["GUARDAR", "BODEGASELECT"]
+      },
+      "tablas": ["IBOD", "ITMO", "USVGS", "IBODS", "IDXB"],
+      "sps": ["SPK_INSERT_ITRA_REQ", "SPK_INSERTENTTRANSITO"],
+      "nota": "IDINVMOV_COMPRAS → ITMO; FCOM.IDBODEGA → IBOD. CONFIG-BODEGA-TIPO-MOV.md · PC-00g…PC-00i.",
+      "puntosCriticos": ["PC-00g", "PC-00h", "PC-00i"]
+    },
+    {
+      "orden": 3,
+      "id": "cotizacion",
+      "nombre": "Cotización (opcional)",
+      "qrystalos2": { "path": "/inv/cotizacion", "vue": "CotizacionComponent", "modelo": "ILPRE", "metodos": ["GENERAR_OC"] },
+      "tablas": ["ICTZ", "ICTZD"],
+      "sps": ["SPQ_ILPRE"],
+      "nota": "GENERAR_OC: una FCOM por proveedor; FCOM PROCEDENCIA=ILPRE; luego CONFIRMAR_ORDEN en ordcom."
+    },
+    {
+      "orden": 4,
+      "id": "fcom",
+      "nombre": "Orden de compra",
+      "qrystalos2": { "path": "/inv/ordcom", "vue": "FComComponent", "modelo": "FCOM", "metodos": ["GENERA_OC", "CONFIRMAR_ORDEN", "RECEPCION_MASIVA", "RECEPCION_PARCIAL_OC", "ABRIR"] },
+      "tablas": ["FCOM", "FCOMD"],
+      "sps": ["SPQ_FCOM", "SPK_INSERT_ITRA_REQ"],
+      "nota": "CONFIRMAR_ORDEN: C→P, ORDENCOMPRA++, ITRA/ITRAH. Ver OC-CONFIRMACION-RECEPCION.md (PC-02…PC-02c).",
+      "puntosCriticos": ["PC-02", "PC-02b", "PC-02c"]
+    },
+    {
+      "orden": 5,
+      "id": "itra_transito",
+      "nombre": "Tránsito de compra (ITRA / ITRAH)",
+      "qrystalos2": { "path": "/inv/ordcom", "vue": "FComComponent recepción", "modelo": "FCOM", "metodos": ["RECEPCION_MASIVA", "RECEPCION_PARCIAL_OC"] },
+      "tablas": ["ITRA", "ITRAH", "MOV_TRAN"],
+      "sps": ["SPQ_FCOM_RECEPCION_MASIVA", "SPK_INSERT_ITRA_REQ"],
+      "nota": "Recepción crea o alimenta ITRA ligado a CNSFCOM. ITRAH INICIAL=0 pendiente de loteo o INICIAL=1 si viene de Excel/masiva."
+    },
+    {
+      "orden": 6,
+      "id": "loteo_transito",
+      "nombre": "Loteo en tránsito",
+      "qrystalos2": { "path": "/inv/ges", "vue": "IMOVComponetNew → TraerTransitoTempComponent", "modelo": "IZSOL_TRANSITO", "metodos": ["LEER_CUFE_LOTEO", "BUSCAR_RADIAN_LOTEO", "GUARDAR_CUFE_LOTEO", "VALIDA_TRAN", "SEL_RPDX", "AGREGAR_IART", "ON_PROCESAR", "ON_ELIMINAR"] },
+      "tablas": ["ITRAH", "MOV_TRAN", "RPDX", "IART", "FRADIAN"],
+      "sps": ["SPQ_IZSOL_TRANSITO"],
+      "nota": "MLOTEO en ITAR. IZSOL.GUARDA_INV/GUARDA_CUM en flujos especiales. Hemoderivados: TRANSFUSIONAL. Con INV_CUFE_LOTEO = SI y factura, el CUFE queda en ITRA y lo loteado debe igualar el XML; el IVA del ítem sale de la orden. Remisión no usa ese control. La recepción masiva aún no cruza cada OC con su factura."
+    },
+    {
+      "orden": 7,
+      "id": "acepta_transito",
+      "nombre": "Aceptar tránsito → IMOV borrador",
+      "qrystalos2": { "path": "/inv/ges", "vue": "IMOVComponetNew", "modelo": "IZSOL", "metodos": ["ON_ACEPTA_TRANSITO", "CANCELAR_TRANSITO"] },
+      "tablas": ["ITRA", "ITRAH", "IMOV", "IMOVH"],
+      "sps": ["SPQ_IZSOL", "SPK_INSERTENTTRANSITO"],
+      "nota": "Valida causas sin loteo e ITRAH INICIAL=1 con NOLOTE. Recepción masiva puede saltar UI y llamar SPK_INSERTENTTRANSITO en SPQ_FCOM_RECEPCION_MASIVA."
+    },
+    {
+      "orden": 8,
+      "id": "imov_entrada",
+      "nombre": "Confirmar entrada inventario",
+      "qrystalos2": { "path": "/inv/ges", "vue": "IMOVComponetNew", "modelo": "IZSOL", "metodos": ["CONF_ENTRADA", "ANULAR_ENTRADA"] },
+      "tablas": ["IMOV", "IMOVH", "IEXI"],
+      "sps": ["SPQ_IZSOL", "SPK_CONFIRMARENTRADAS", "SPK_FCOM_RECALCULA_RECEPCION"],
+      "nota": "CONF_ENTRADA valida costo/factura/KMCOM; SPK sube IEXI y FCOM R/I. CONF-ENTRADA-CXP.md · PC-04/PC-04b.",
+      "puntosCriticos": ["PC-04", "PC-04b", "PC-01"]
+    },
+    {
+      "orden": 9,
+      "id": "cxp_detalle",
+      "nombre": "Envío a CxP",
+      "qrystalos2": { "path": "/admin/CuentasxPagar", "vue": "CXPComponent", "modelo": "FCXP", "metodos": ["PROCESAR_IMOVH", "RECONSTRUIR_CUENTAS_FCXPD", "VALIDAR_FCXP"] },
+      "tablas": ["FCXP", "FCXPD", "IMOVH"],
+      "sps": ["SPK_INSERT_CXP_INV", "SPQ_FCXP"],
+      "nota": "PROCESAR_IMOVH → SPK_INSERT_CXP_INV (FCXPD.N_PRESUP=CNSMOV). Luego CONTABILIZAR_FCXP. PC-05…PC-08.",
+      "puntosCriticos": ["PC-05", "PC-06"]
+    },
+    {
+      "orden": 10,
+      "id": "cxp_validacion",
+      "nombre": "Validación CxP",
+      "qrystalos2": { "vue": "CXPComponent", "modelo": "FCXP", "metodos": ["VALIDAR_FCXP", "VAL_CONTABLE"] },
+      "tablas": ["FCXP", "FCXPD", "FCXPI"],
+      "sps": ["SPQ_FCXP"]
+    },
+    {
+      "orden": 11,
+      "id": "cxp_contab",
+      "nombre": "Contabilización CxP",
+      "qrystalos2": { "vue": "CXPComponent", "modelo": "FCXP", "metodos": ["CONTABILIZAR_FCXP"] },
+      "tablas": ["MCP", "MCHE"],
+      "sps": ["SPK_NC_CONTAB_CXP"]
+    },
+    {
+      "orden": 12,
+      "id": "cxp_impuestos",
+      "nombre": "Impuestos CxP",
+      "qrystalos2": { "vue": "CXPComponent", "modelo": "FCXP", "metodos": ["CRUD_FCXPI"] },
+      "tablas": ["FCXPI"],
+      "sps": ["SPQ_FCXP"]
+    },
+    {
+      "orden": 13,
+      "id": "orden_pago",
+      "nombre": "Orden de pago",
+      "qrystalos2": { "path": "/admin/ordenPago", "vue": "OPComponent", "modelo": "ORDEN_PAGO", "metodos": ["CRUD_FCXPPM", "PAGO_CXPTOTAL", "AUTORIZAR"] },
+      "tablas": ["FCXPPM", "FCXPP"],
+      "sps": ["SPQ_ORDEN_PAGO"]
+    },
+    {
+      "orden": 14,
+      "id": "caja",
+      "nombre": "Pago en caja",
+      "qrystalos2": { "path": "/admin/caja", "vue": "CAJMovinComponent", "modelo": "CONF_CAJA", "metodos": ["CONFIRMAR_RECIBO_EGRESO"] },
+      "tablas": ["FCJ", "FCXPP"],
+      "sps": ["SPQ_CONF_CAJA", "SPK_NC_CONTAB_CAJA_EGR"]
+    },
+    {
+      "orden": 15,
+      "id": "imov_salida",
+      "nombre": "Salida inventario",
+      "qrystalos2": { "path": "/inv/ges", "vue": "IMOVComponetNew", "modelo": "IMOV", "metodos": ["CONFIRMA_SALIDA"] },
+      "tablas": ["IMOV", "ISAL", "IEXI"],
+      "sps": ["SPQ_IMOV", "SPK_CONFIRMARSALIDAS"]
+    },
+    {
+      "orden": 16,
+      "id": "contab_inv",
+      "nombre": "Contabilización INV (IVA / sin IVA)",
+      "qrystalos2": { "path": "/cont/conciContables", "modelo": "CONTABILIDAD_3", "metodos": ["ENV_CONTA_OTROS_MODULS"] },
+      "tablas": ["MCP", "MCHE"],
+      "sps": ["SPK_NC_CONTAB_INV"]
+    }
+  ],
+  "catalogoSp": {
+    "nota": "Copia de trabajo en sql/ 2026-09-19. Ficha detallada en inventario/sps.json y cxp-fcxp/sps.json.",
+    "obligatoriosTramoOcEntrada": [
+      "SPQ_ILPRE",
+      "SPQ_FCOM",
+      "SPQ_FCOM_RECEPCION_MASIVA",
+      "SPQ_IZSOL_TRANSITO",
+      "SPQ_IZSOL",
+      "SPK_INSERTENTTRANSITO",
+      "SPK_INSERT_ITRA_REQ",
+      "SPK_CONFIRMARENTRADAS",
+      "SPK_FCOM_RECALCULA_RECEPCION",
+      "SPQ_ITRA"
+    ],
+    "pendientesDocumentar": [
+      "SPQ_IART",
+      "SPQ_IMOV (CRUD completo)",
+      "SPQ_ILPRE (importaciones y cotización masiva)"
+    ]
+  },
+  "auditoria": {
+    "habilitada": true,
+    "parametros": ["cnsfcom", "ordencompra"],
+    "moduloPython": "scripts/auditoria_procesos.py",
+    "puntosCriticos": "puntos-criticos.json"
+  }
+}

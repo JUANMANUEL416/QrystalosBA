@@ -1,0 +1,75 @@
+{
+  "tipo": "solicitud-req",
+  "id": "SR20260926-001",
+  "creadoEn": "2026-09-26T13:50:00",
+  "actualizadoEn": "2026-10-01T08:55:13",
+  "estado": "cerrado",
+  "cerradoEn": "2026-10-01T08:55:13",
+  "analista": "JOSE MANUEL JIMENEZ",
+  "proyecto": "COMITE DE ESTUDIOS MEDICOS",
+  "modulo": "Compras / Cuentas por pagar",
+  "procesoId": "flujo-compras-inv-cxp-caja",
+  "prioridad": "Alta",
+  "titulo": "La CxP de compras nace de la entrada y se contrasta con la factura de RADIAN",
+  "necesidad": "La cuenta por pagar de una compra debe quedar por lo que entró. Si la factura electrónica trae más, lo que falta espera otra entrada y otra cuenta por pagar. Hoy, en la recepción masiva, el encabezado se reemplaza con el total de la orden aunque el detalle sea solo la entrada.",
+  "hoy": "En CEM, septiembre 2026, tres cuentas sin contabilizar quedaron con el total de la orden en el encabezado y con la entrada en el detalle.\n\n26CM000528, factura DPE11790. Orden 2600001260, artículo MX04-1, 303.696 unidades, 106.891.881,12. Entró 210.432 unidades, 74.065.751,04. El encabezado, el neto y el saldo quedaron en 106.891.881,12. La factura en RADIAN (0100017975) está en 74.067.680,00 y el CUFE ya está en la entrada. La entrada y RADIAN difieren en 1.928,96.\n\n03CM001951 (DPE11721) y 34CM000083 (DPE12636) son la misma orden 2600001259, total 5.680.472. MX1203-2 llegó en dos entradas: 570 unidades (132.810) y 21.270 unidades (4.955.910). MX1206-1, 2.800 unidades y 591.752, no ha entrado. Las dos cuentas quedaron en 5.680.472.\n\nLa recepción masiva marca la orden y el tránsito. Al confirmar, el detalle sale de la entrada y después el encabezado se pisa con el valor de la orden. El CUFE se pide a mano, por Excel aparte o con un botón. Esa sincronización no compara montos y, si no encuentra la factura, la confirmación sigue.",
+  "propuesta": "El encabezado de la cuenta por pagar queda en la suma de la entrada. El total de la orden no lo reemplaza.\n\nSe activa la variable CUFE_DESDE_RADIAN. En SI, antes de armar la cuenta por pagar el sistema trae el CUFE desde RADIAN (número de factura y NIT) si la entrada no lo trae. Con ese CUFE compara la entrada contra el monto de la factura electrónica.\n\nSi la entrada es el 100 % de la factura, el encabezado queda en ese valor. Si es una parte, el encabezado queda en lo que entró y el resto de la factura espera otra entrada. Si la entrada supera la factura, o si no hay un solo CUFE, la confirmación se detiene.\n\nEn la recepción masiva el CUFE viene en el mismo Excel, uno por factura, y se guarda en la entrada antes de confirmar. Corre la misma comparación. Sin CUFE en el archivo, no se genera la entrada.\n\nLas tres cuentas ya identificadas se corrigen con un script de datos, aparte de este desarrollo. El script no se ejecuta desde esta oficina.",
+  "justificacion": "DPE11790 dejó 32.826.130,08 de mercancía no recibida dentro de la misma cuenta por pagar. DPE11721 y DPE12636 repiten el total de la orden en dos cuentas, y además incluyen 591.752 de un artículo que no entró. Eso es saldo de proveedor por mercancía que sigue en tránsito.",
+  "analisis": "Paso 0. No es capacitación. El detalle sí nace de la entrada. El defecto es el reemplazo del encabezado en la recepción masiva.\n\nClasificación. Defecto en SPK_CONFIRMARENTRADAS. Hueco de control: no existe la variable que obligue a traer el CUFE desde RADIAN ni a comparar la entrada con FRADIAN.MONTO. El cruce de CUFE ya existe y no bloquea.\n\nDónde ocurre. Al confirmar una entrada de compra (SPQ_IZSOL, METODO CONF_ENTRADA) se ejecuta SPK_CONFIRMARENTRADAS. Ese procedimiento arma el detalle con SPK_INSERT_CXP_INV y recalcula el encabezado con la suma de las líneas. Si la orden o el tránsito dicen Recepción masiva, tres actualizaciones posteriores dejan VALOR, VLR_NETO y SALDO en FCOM.VR_ANTESIVA cuando ese valor existe. La suma de la entrada solo se usa si la orden no tiene valor.\n\nLa canasta abierta y la última cerrada 2.0.5 traen el mismo texto. En CEM el procedimiento está cifrado y se modificó el 10 de septiembre de 2026, antes de estas entradas.\n\nCUFE hoy. La pantalla de la entrada ya pide el CUFE, permite cargarlo masivo y tiene el botón Sincronizar CUFE. CONF_ENTRADA llama SPK_SINCRONIZAR_CUFE_RADIAN después de confirmar, dentro de un bloque que no detiene el proceso. El procedimiento escribe IMOV.CUFE si hay un solo UUID de 96 caracteres para esa factura y ese NIT. No lee FRADIAN.MONTO.\n\nRecepción masiva. El Excel de la orden de compra llama FCOM / RECEPCION_MASIVA. Trae número de factura, cantidades y costo. No trae CUFE.\n\nDatos. Las tres cuentas están en estado N, sin contabilizar, sin comprobante, sin abonos ni notas. El detalle coincide con la entrada. El script de datos baja el encabezado a esa suma y deja pendiente lo no recibido.",
+  "alcance": "Incluye el encabezado de la cuenta por pagar de compras: debe quedar en la entrada y no en el total de la orden. Incluye la variable CUFE_DESDE_RADIAN, el cruce con FRADIAN.MONTO antes de confirmar, y la columna CUFE en la recepción masiva con la misma validación. Incluye el mensaje cuando no hay un solo CUFE o cuando la entrada supera la factura.\n\nNo incluye contabilizar ni modificar las cuentas ya causadas. No incluye crear la cuenta por pagar desde el tab Facturas Radian. No incluye explicar los 1.928,96 entre la entrada DPE11790 y el monto RADIAN 74.067.680,00: el encabezado de esa cuenta queda en la entrada.",
+  "restricciones": "La variable en NO conserva la captura manual del CUFE. Aun así el encabezado no puede tomar el total de la orden si la entrada es menor. La variable en SI hace obligatorio el CUFE de RADIAN en la confirmación manual y en la recepción masiva. Un CUFE ya digitado no se reemplaza si coincide con la factura; si no está en RADIAN, la confirmación se detiene. No se suman dos facturas en una misma entrada. Lo que no entró permanece en la orden.",
+  "criterios": "1) Confirmar una recepción masiva parcial deja el encabezado, el neto y el saldo en la suma de la entrada. El total de la orden no queda en la cuenta por pagar.\n2) Con CUFE_DESDE_RADIAN en SI, una entrada sin CUFE lo toma de RADIAN por factura y NIT. Si hay cero o más de un UUID, no confirma.\n3) Si la entrada es igual al monto de esa factura en RADIAN, el encabezado queda en ese valor.\n4) Si la entrada es menor que la factura, el encabezado queda en lo recibido y se puede confirmar otra entrada por el resto, con su propia cuenta por pagar.\n5) Si la entrada es mayor que la factura, no confirma.\n6) El Excel de recepción masiva, con la variable en SI, exige CUFE por factura. Sin esa columna no genera la entrada. Con la columna, valida igual que la confirmación manual.\n7) Con la variable en NO, la entrada se puede confirmar sin CUFE y el encabezado sigue siendo la suma de lo recibido.\n8) DPE11790, DPE11721 y DPE12636 no las corrige este desarrollo. Las corrige el script de datos, y solo si siguen sin contabilizar y con el detalle actual.",
+  "recomendacion": "Llevar al comité el defecto del encabezado y la variable CUFE_DESDE_RADIAN. El script de las tres cuentas se corre en CEM aparte, antes o en paralelo, y no forma parte del desarrollo.",
+  "cambioPropuestoSql": "Objetos: SPK_CONFIRMARENTRADAS (defecto del encabezado), SPQ_IZSOL METODO CONF_ENTRADA y SPK_SINCRONIZAR_CUFE_RADIAN (CUFE obligatorio si la variable está en SI), SPQ_FCOM METODO RECEPCION_MASIVA (el CUFE llega en el proceso). Variable nueva USVGS CUFE_DESDE_RADIAN = SI / NO.\n\nCanasta: PREVERSION idéntica a la cerrada 2.0.5 en SPK_CONFIRMARENTRADAS. El arreglo no está en la canasta.\n\n--- BEFORE (recepción masiva, tres veces después de armar el detalle) ---\nBASE = COALESCE(FCOM.VR_ANTESIVA, suma de la entrada)\nIVA  = COALESCE(FCOM.IVA, IVA de la entrada)\nEse BASE se graba en FCXP.VALOR y, en el último paso, también en VLR_NETO y SALDO.\n\n--- AFTER ---\nBASE = suma de CANTIDAD * PCOSTO de esta entrada\nIVA  = suma de VLRIVA de esta entrada\nFCXP.VALOR, VLR_NETO y SALDO salen de esa suma. FCOM.VR_ANTESIVA no reemplaza el encabezado.\n\nSi CUFE_DESDE_RADIAN = SI, antes de ese cálculo:\n1. Si IMOV.CUFE está vacío, EXEC SPK_SINCRONIZAR_CUFE_RADIAN con el CNSMOV.\n2. Si no quedó un solo UUID, detener la confirmación.\n3. Leer FRADIAN.MONTO de ese UUID.\n4. Si la suma de la entrada es mayor que ese monto, detener.\n5. Si es menor o igual, el encabezado queda en la entrada. El faltante de la factura no entra en esta cuenta por pagar.\n\nEn RECEPCION_MASIVA el archivo trae CUFE. Se guarda en IMOV.CUFE antes de confirmar y se aplica la misma comparación. Si la variable está en SI y el archivo no trae CUFE, no se genera la entrada.\n\nDatos ya identificados, script aparte, no ejecutar desde BA:\nsql/CORRECCION_FCXP_ENCABEZADO_ENTRADA_SEP2026.sql\n26CM000528 -> 74.065.751,04\n03CM001951 -> 132.810,00\n34CM000083 -> 4.955.910,00\n",
+  "normativa": "No hay norma adjunta. La factura electrónica de RADIAN (UUID y monto) es la referencia de lo facturado. La orden de compra no sustituye esa factura cuando la entrada es parcial.",
+  "analisisLanzado": true,
+  "archivos": [],
+  "mockups": [
+    "solicitudes/SR20260926-001/mockups/mockup-ux-pantalla.html"
+  ],
+  "siguiente": "Comité: aprobar el encabezado por la entrada y la variable CUFE_DESDE_RADIAN. El script de las tres cuentas se corre en CEM y no se ejecuta desde BA.",
+  "aval": {
+    "aplica": false,
+    "idReq": "",
+    "idCaso": "",
+    "titulo": "",
+    "notas": ""
+  },
+  "documento": {
+    "nombre": "documento.html",
+    "ruta": "solicitudes/SR20260926-001/documento.html",
+    "url": "/api/solicitar/SR20260926-001/documento",
+    "dictamenCopia": "dictamenes/SR20260926-001.html",
+    "mockups": [
+      "solicitudes/SR20260926-001/mockups/mockup-ux-pantalla.html"
+    ],
+    "diagramaFlujo": "solicitudes/SR20260926-001/diagramas/flujo.html",
+    "generadoEn": "2026-10-01T08:52:12"
+  },
+  "diagramaFlujo": "solicitudes/SR20260926-001/diagramas/flujo.html",
+  "plataforma": {
+    "carpeta": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\solicitudes\\SR20260926-001\\plataforma",
+    "carpetaRel": "solicitudes/SR20260926-001/plataforma",
+    "exportadoEn": "2026-10-01T08:54:43",
+    "archivos": [
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260926-001-documento-comite.pdf",
+        "ruta": "solicitudes/SR20260926-001/plataforma/SR20260926-001-documento-comite.pdf",
+        "url": "/api/solicitar/SR20260926-001/plataforma/SR20260926-001-documento-comite.pdf"
+      },
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260926-001-mockups.pdf",
+        "ruta": "solicitudes/SR20260926-001/plataforma/SR20260926-001-mockups.pdf",
+        "url": "/api/solicitar/SR20260926-001/plataforma/SR20260926-001-mockups.pdf"
+      },
+      {
+        "tipo": "png",
+        "nombre": "SR20260926-001-diagrama-flujo.png",
+        "ruta": "solicitudes/SR20260926-001/plataforma/SR20260926-001-diagrama-flujo.png",
+        "url": "/api/solicitar/SR20260926-001/plataforma/SR20260926-001-diagrama-flujo.png"
+      }
+    ]
+  }
+}

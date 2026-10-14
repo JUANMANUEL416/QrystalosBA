@@ -1,0 +1,333 @@
+{
+  "procedencia": "CXP",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "catalogo",
+    "nota": "Validación global en Auditoría BA; cruce documento pendiente salvo CNSFPAG.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_CXP.sql; SPQ_FCXP · CONTABILIZAR_FCXP",
+  "documentoOrigen": {
+    "tabla": "FCXP",
+    "claves": [
+      "CNSFCXP"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFCXP",
+      "REFERENCIA2": "NOREFERENCIA factura proveedor"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_CXP",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-cxp"
+      ]
+    },
+    {
+      "id": "N3-contab-cxp",
+      "orden": 3,
+      "sp": "SPK_NC_CONTAB_CXP",
+      "metodoUi": [
+        "SPQ_FCXP · CONTABILIZAR_FCXP",
+        "SPQ_CONTABILIDAD_3 · CxP"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcxp-detalle",
+          "desc": "FCXP + FCXPD + FCXPI (impuestos); #TH temporal desde detalle",
+          "obligatorio": true,
+          "validacionSql": "FCXP + COUNT(FCXPD) por CNSFCXP",
+          "checkMotor": "doc-fcxp-*"
+        },
+        {
+          "id": "sin-duplicado",
+          "desc": "KO: Duplicidad… ya existe esta CXP registrada (REFERENCIA1=CNSFCXP)",
+          "obligatorio": true,
+          "validacionSql": "MCP/MCPE PROCEDENCIA CXP REFERENCIA1",
+          "checkMotor": "doc-fcxp-duplicado"
+        },
+        {
+          "id": "fecha-contable-doc",
+          "desc": "Mes contable según IDCON_FCONTABLE_CXP (FECHA vs F_FACTURAREF)",
+          "obligatorio": true
+        },
+        {
+          "id": "proc-fcxp",
+          "desc": "PROCEDENCIA FCXP elige @CXP_TIPO y ramas (Compras, Nómina, Servicios…)",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "kmcom-cxp",
+          "tabla": "KMCOM",
+          "desc": "FNK_NC_CUENTA_KMCOM(@IDMODELOCONT, @CXP_TIPO, DB/CR, PREFIJO, CCOSTO, …)",
+          "obligatorio": true
+        },
+        {
+          "id": "idmodelo",
+          "usvgs": "IDMODELOCONTABLE",
+          "obligatorio": true
+        },
+        {
+          "id": "cuenta-iva",
+          "usvgs": "CUENTA_IVA_CXP",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-cxp",
+          "usvgs": [
+            "IDCON_TCOM_CXP",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "fimpdv",
+          "tabla": "FIMPDV",
+          "desc": "FCXPI / impuesto al consumo en cuenta propia",
+          "obligatorio": "si aplica"
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "desc": "KO: Periodo Contable NO Existe / Cerrado",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-contabilizar-fcxp"
+      ],
+      "puntosCriticos": [
+        "PC-CXP-01",
+        "PC-CXP-02"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_CXP.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "CCOSTO_ASUM",
+          "COMPROBMULTISEDE",
+          "CTA_CR_COMISIONADMIN",
+          "CUENTA_IVA_CXP",
+          "CUE_COPAGO_ARS",
+          "CUE_MODERADORA_ARS",
+          "FCXPDBCR_PORCENT_IVA",
+          "FCXP_ENVIO_DIAN_AUTO",
+          "IDAUD_CUECREDITO",
+          "IDAUD_CUENTASERGLO",
+          "IDAUD_LEVDEBI",
+          "IDCON_FCONTABLE_CXP",
+          "IDCON_TCOM_CONC",
+          "IDCON_TCOM_CXP_COM",
+          "IDCON_TCOM_CXP_LvGlo",
+          "IDCON_TCOM_CXP_NOM",
+          "IDCON_TCOM_CXP_OTR",
+          "IDCON_TCOM_CXP_SAL",
+          "IDCON_TCOM_CXP_SER",
+          "IDCON_TCOM_DEFAULT",
+          "IDIMP_IVA",
+          "IDIMP_IVADESC",
+          "IDIMP_RETEIVA",
+          "IDMODELOCONTABLE",
+          "IDNOTA_COMISIONADMIN",
+          "IXCOUNTRY"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe",
+          "Duplicidad de comprobantes, ya existe esta CXP registrada, no se puede volver a insertar."
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante CxP (PROCEDENCIA CXP)",
+      "llamaAnidado": [
+        "SPK_NUMERODIAN_CXP",
+        "FNK_NC_CUENTA_KMCOM"
+      ],
+      "efectoDocumento": "FCXP.NROCOMPROBANTE, CONTABILIZADA"
+    },
+    {
+      "id": "N2-contabilizar-fcxp",
+      "orden": 2,
+      "sp": "SPQ_FCXP · CONTABILIZAR_FCXP",
+      "requiresDocumento": [
+        {
+          "id": "fcxp-estado",
+          "desc": "FCXP causada; FCXPD con cuentas KMCOM CXP_COMPRAS",
+          "obligatorio": true
+        },
+        {
+          "id": "sin-mcp-previo",
+          "desc": "CONTABILIZADA=0 o rearma desde MCPE",
+          "obligatorio": true
+        },
+        {
+          "id": "ter-proveedor",
+          "tabla": "TER",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N1-origen-fcxp"
+      ],
+      "nombre": "Gate contabilizar CxP",
+      "metodoUi": [
+        "CxP → Contabilizar",
+        "SPQ_CONTABILIDAD_3 · CxP",
+        "Recepción compra (CxP automática ya creada)"
+      ],
+      "requiresConfig": [
+        {
+          "id": "fecha-contable-gate",
+          "usvgs": "IDCON_FCONTABLE_CXP",
+          "desc": "Mes contable = FECHA radicación o F_FACTURAREF",
+          "obligatorio": true
+        },
+        {
+          "id": "pri-gate",
+          "tabla": "PRI",
+          "desc": "Periodo fecha contable abierto",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_NC_CONTAB_CXP; actualiza NROCOMPROBANTE / CONTABILIZADA",
+      "puntosCriticos": [
+        "PC-CXP-01"
+      ]
+    },
+    {
+      "id": "N1-radicar-comprar",
+      "orden": 1,
+      "desc": "FCOM recepción, orden compra, servicios, nómina CxP, etc.",
+      "llamaAnterior": [
+        "N0-config-cxp"
+      ],
+      "nombre": "Origen operativo CxP",
+      "sp": [
+        "SPK_INSERT_CXP_INV",
+        "SPK_CREACXP_*",
+        "SPK_GENCXP_NOMINA_*",
+        "Radicación manual FCXP"
+      ],
+      "metodoUi": [
+        "SPQ_FCOM · recepción → CxP automática",
+        "Servicios / nómina / anticipos",
+        "SPQ_FCXP alta manual"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcxpd-servicios",
+          "desc": "FCXPD con IDSERVICIO, CUENTA_SER, IVA",
+          "obligatorio": true
+        },
+        {
+          "id": "fcom-si-compras",
+          "desc": "FCOM recepción R/I ligada si PROCEDENCIA Compras",
+          "obligatorio": "Compras"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "kmcom-cxp",
+          "tabla": "KMCOM",
+          "desc": "IDTIPOCONT CXP_COMPRAS por prefijo servicio",
+          "obligatorio": true
+        },
+        {
+          "id": "itar-fimp",
+          "desc": "ITAR/FIMPDV para IVA e impoconsumo",
+          "obligatorio": "si impuestos"
+        }
+      ]
+    },
+    {
+      "id": "N0-config-cxp",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "fimp",
+          "desc": "FIMPDV vigencia IVA / impoconsumo",
+          "obligatorio": true
+        },
+        {
+          "id": "ter",
+          "tabla": "TER",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-cxp",
+          "usvgs": [
+            "IDCON_TCOM_CXP",
+            "CUENTA_IVA_CXP",
+            "IDCON_FCONTABLE_CXP",
+            "IDMODELOCONTABLE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración CxP y contable",
+      "pantallas": [
+        "/conf/kmcom",
+        "Parámetros CxP USVGS",
+        "Plan CUE + TER proveedores"
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "CXP",
+    "tablaOrigen": "FCXP"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/cxp.json",
+    "procesoHermano": "cxp-fcxp",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-cxp.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

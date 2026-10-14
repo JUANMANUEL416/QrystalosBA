@@ -1,0 +1,242 @@
+{
+  "id": "grafo-cierre-periodo",
+  "procedencia": "CIERRE-PERIODO",
+  "fase": 2,
+  "estadoGrafo": "parcial",
+  "actualizado": "2026-10-13",
+  "descripcion": "Cierre/apertura PRI, sub-cierres cartera/inventario, SALDOMES, MCPE pendientes.",
+  "fuenteSql": "SPQ / pantallas cierre; SALDOMES; libros",
+  "nodos": [
+    {
+      "id": "N0-obtener-periodo",
+      "orden": 0,
+      "nombre": "OBTENER_PERIODO_A_CERRAR (secuencia PRI)",
+      "requiresConfig": [
+        {
+          "id": "opc-secuencia",
+          "tabla": "PRI",
+          "desc": "SI, saltos, anterior cerrado, cierre fiscal",
+          "checkMotor": "opc-periodo-anterior-cerrado"
+        }
+      ]
+    },
+    {
+      "id": "N1-validar-basico",
+      "orden": 1,
+      "nombre": "Validar periodo básico (paso 1 pantalla)",
+      "requiresDocumento": [
+        {
+          "id": "vpb-paquete",
+          "desc": "Inventario FECHAMOV, SI único, MCP ANOMES, MCPE, traslado costos",
+          "obligatorio": true,
+          "validacionSql": "SPQ_CONTABILIDAD_2 VALIDAR_PERIODO_BASICO (réplica BA)",
+          "checkMotor": "vpb-periodo-no-cerrado"
+        }
+      ]
+    },
+    {
+      "id": "N3-cierre-contable",
+      "orden": 3,
+      "nombre": "Cerrar periodo contable (PRI.CERRADO)",
+      "requiresDocumento": [
+        {
+          "id": "mcpe-sin-errados",
+          "desc": "Sin MCPE estado 0 pendientes de revisión",
+          "obligatorio": true,
+          "validacionSql": "MCPE ESTADO=0 en periodo",
+          "checkMotor": "mcpe-estado-0"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-abierto",
+          "tabla": "PRI",
+          "desc": "Mes a cerrar existe y CERRADO=0",
+          "obligatorio": true,
+          "validacionSql": "PRI ANO/MES CERRADO",
+          "checkMotor": "pri-foco"
+        }
+      ],
+      "efecto": "PRI.CERRADO=1; bloquea contabilización operativa"
+    },
+    {
+      "id": "N3-cierre-cartera",
+      "orden": 3,
+      "nombre": "Cerrar cartera (PRI.CERRADO_CARTERA)",
+      "requiresConfig": [
+        {
+          "id": "pri-cartera",
+          "tabla": "PRI",
+          "obligatorio": true,
+          "validacionSql": "PRI.CERRADO_CARTERA",
+          "checkMotor": "pri-cartera"
+        }
+      ]
+    },
+    {
+      "id": "N3-precierre-modulos",
+      "orden": 2,
+      "nombre": "Integridad pre-cierre (módulos)",
+      "requiresDocumento": [
+        {
+          "id": "precierre-modulos",
+          "desc": "Inventario, caja, CxP, recaudos, etc. sin contabilizar",
+          "obligatorio": true,
+          "validacionSql": "Conteos alineados FNK_REVISION_ANTES_CIERRE_PERIODO",
+          "checkMotor": "precierre-modulos"
+        },
+        {
+          "id": "precierre-fnk",
+          "desc": "Función FNK en BD (si disponible)",
+          "obligatorio": false,
+          "checkMotor": "precierre-fnk"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "mcp-sin-confirmar",
+          "tabla": "MCP",
+          "desc": "ESTADO<>2 en periodo",
+          "checkMotor": "mcp-sin-confirmar"
+        }
+      ]
+    },
+    {
+      "id": "N3-integridad-paso2",
+      "orden": 3,
+      "nombre": "Integridad paso 2 (extra FNK)",
+      "requiresDocumento": [
+        {
+          "id": "int-fnk-paso2",
+          "desc": "VALIDAR_INTEGRIDAD_PERIODO vía FNK detalle",
+          "checkMotor": "int-fnk-validar-integridad"
+        },
+        {
+          "id": "int-notdbcrcxp",
+          "desc": "MCP NOTDBCRCXP duplicados por CNSFCXP/ITEM",
+          "checkMotor": "int-notdbcrcxp-mcp-duplicado"
+        },
+        {
+          "id": "int-notdbcr",
+          "desc": "MCP NOTDBCR duplicados CNSFNOT/CLASE",
+          "checkMotor": "int-notdbcr-mcp-duplicado"
+        },
+        {
+          "id": "int-cue-detalle",
+          "desc": "MCP confirmados con cuenta no detalle",
+          "checkMotor": "int-mcp-cuenta-no-detalle"
+        }
+      ]
+    },
+    {
+      "id": "N5-libros-informes",
+      "orden": 5,
+      "nombre": "Libros / foliado (USCXS)",
+      "requiresConfig": [
+        {
+          "id": "libros-uscxs",
+          "tabla": "USCXS",
+          "desc": "Seis libros LBGR…LMAY",
+          "checkMotor": "libros-uscxs-seis-tipos"
+        },
+        {
+          "id": "tbalanceh-fotos",
+          "tabla": "TBALANCEH",
+          "desc": "Foto mes BPRUEBA/ESTRES · MES=13 anual",
+          "checkMotor": "tbalanceh-fotos-mes"
+        }
+      ]
+    },
+    {
+      "id": "N2-apertura-siguiente",
+      "orden": 4,
+      "nombre": "Apertura periodo nuevo",
+      "requiresConfig": [
+        {
+          "id": "saldomes-arrastre",
+          "tabla": "SALDOMES",
+          "desc": "Saldos iniciales cuentas de balance",
+          "obligatorio": "según política",
+          "validacionSql": "SALDOMES ANO/MES",
+          "checkMotor": "saldomes-periodo"
+        },
+        {
+          "id": "saldomester-terceros",
+          "tabla": "SALDOMESTER",
+          "desc": "Saldos por tercero tras cierre",
+          "obligatorio": "según política",
+          "validacionSql": "SALDOMESTER ANO/MES",
+          "checkMotor": "saldomester-periodo"
+        },
+        {
+          "id": "saldomesterfac-cartera",
+          "tabla": "SALDOMESTERFAC",
+          "desc": "Saldos tercero/factura",
+          "obligatorio": "según política",
+          "checkMotor": "saldomesterfac-periodo"
+        },
+        {
+          "id": "pri-siguiente",
+          "tabla": "PRI",
+          "desc": "Fila periodo posterior",
+          "obligatorio": true,
+          "validacionSql": "PRI periodo siguiente",
+          "checkMotor": "pri-siguiente"
+        }
+      ]
+    }
+  ],
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "motor": "validar_cierre_periodo_contable",
+    "traza": "flujo-cierre-periodo-contab",
+    "nota": "Selector CIERRE_PERIODO o traza Fase 2; no ejecuta SP de cierre."
+  },
+  "puntosCriticos": [
+    {
+      "id": "PC-CIERRE-01",
+      "nombre": "PRI coherente",
+      "invariante": "No contabilizar en mes CERRADO=1."
+    },
+    {
+      "id": "PC-CIERRE-02",
+      "nombre": "MCPE errados",
+      "invariante": "Estado 0 impide cierre limpio."
+    },
+    {
+      "id": "PC-CIERRE-03",
+      "nombre": "SALDOMES y cartera",
+      "invariante": "SALDOMES tras cierre; CERRADO_CARTERA vs CERRADO."
+    },
+    {
+      "id": "PC-CIERRE-04",
+      "nombre": "Pre-cierre módulos",
+      "invariante": "Sin pendientes inventario/caja/CxP/recaudos antes de cerrar PRI."
+    },
+    {
+      "id": "PC-CIERRE-05",
+      "nombre": "Validar periodo básico",
+      "invariante": "Mismas reglas que paso 1 CerrarPeriodos antes de integridad FNK."
+    },
+    {
+      "id": "PC-CIERRE-06",
+      "nombre": "Secuencia PRI",
+      "invariante": "OBTENER_PERIODO_A_CERRAR: SI, saltos, anterior cerrado, cierre fiscal."
+    },
+    {
+      "id": "PC-CIERRE-07",
+      "nombre": "Integridad paso 2 extra",
+      "invariante": "NOTDBCRCXP duplicados y cuentas no detalle (FNK CONTABILIDAD)."
+    },
+    {
+      "id": "PC-CIERRE-08",
+      "nombre": "Libros USCXS",
+      "invariante": "Parametrización foliado antes de imprimir libros oficiales."
+    },
+    {
+      "id": "PC-CIERRE-09",
+      "nombre": "Integridad FNK paso 2 e informes",
+      "invariante": "FNK detalle como VALIDAR_INTEGRIDAD; fotos TBALANCEH BPRUEBA/ESTRES."
+    }
+  ]
+}

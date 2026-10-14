@@ -1,0 +1,180 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-16T14:18:20.905Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016426",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260915-0100016426",
+    "idReq": "0100016426",
+    "fecha": "2026-09-15",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "SANITAS PERU",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": "/admin/facturacionPe"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Yineth Carrillo",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/KERPER179",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "FACTURAS INCIDENTES: F002-00048752 Y F002-00048753\nEstimados estas 2 facturas en el Registro de Ventas aparecen con estado EN PROCESO pero en el sistema de facturación IQCARE se visualiza en estado: ACEPTADO.\n\nRequerimos que los estados de las facturas se regularicen en el REGISTRO DE VENTAS (RV) DETALLE: Se requiere realizar una tarea a las 01:00 que consulte el estado de las boletas y las facturas en SUNAT - MIFACT, con la siguiente periodicidad:\nfactura cada 24 hora\nboleta cada 48 horas\nal finalizar si encuentra diferencia debe enviar por correo (crear una variable para la configuración destino del correo), indicando cuales son las facturas - boletas que tienen el inconvenite, para que directamente IQcare realice la validación.\nEsta información debe quedar visible en el modulo de facturación para consulta posterior.",
+    "criteriosAceptacion": "1) Incidentes F002-00048752 y F002-00048753: tras la regularización (manual o por el proceso batch), el estado en RV detalle deja de mostrar EN PROCESO cuando MiFact/SUNAT y IQCARE coinciden en aceptado (FACTEP 101/102 u homólogo visual ACEPTADO/OK).\n2) Job programado diario ~01:00 (hora servidor Perú): recorre comprobantes pendientes de verificación según tipo — facturas (TIPOFIN≠N, tipo MiFact 01) cada 24 h; boletas (TIPOFIN=N, tipo 03) cada 48 h — y consulta GetEstatusInvoice en MiFact (misma lógica que SPK_CONSULTA_DOCUMENTO_ELECTRONICA).\n3) Si el estado devuelto por MiFact no coincide con FTR.FACTEP (mapeo FE: 101/102/103→OK o ACEPTADO; vacío/104/104A→pendiente o rechazo), el comprobante queda registrado en el log de discrepancias y se incluye en el correo de alerta.\n4) Variable USVGS nueva (destino configurable, p. ej. EMAIL_ALERTA_SYNC_SUNAT) con al menos un correo válido; el mail lista serie-correlativo, tipo (factura/boleta), FACTEP en IQCARE, estado MiFact y fecha de la corrida.\n5) En Facturación Perú (/admin/facturacionPe) hay consulta histórica de discrepancias (últimas corridas, filtros por fecha y N_FACTURA), sin depender solo del correo.\n6) Solo aplica con PROVEEDOR_FACTUELECT=MIFACT e IXCOUNTRY=PERU; no altera ENVIA_CONTAB ni asientos MCP. Boletas/facturas ya correctas no generan alerta.",
+    "alcance": "Perú · MiFact/SUNAT · proceso json-peru. Pantalla principal: Administrativo → Facturación Perú (FTRPeComponent.vue; captura Keralty muestra grilla serie F002 y columna de envío SUNAT en ACEPTADO para 48752/48753).\nSQL: nuevo METODO batch en SPQ_FTR_PERU (o SPK dedicado) que reutiliza SPK_CONSULTA_DOCUMENTO_ELECTRONICA; tabla o uso extendido de FTRAPILOG para bitácora de sincronización y discrepancias; variable USVGS destino correo; job SQL Server Agent (o scheduler acordado con infra) 01:00.\nBackend/API: endpoint JSON para disparo manual o lectura del log si el job no invoca SQL directo.\nFE: pestaña o diálogo «Sincronización SUNAT / discrepancias» en Facturación Perú.\nRegularización puntual de las dos facturas del REQ (datos +, si aplica, actualización del origen de RV detalle una vez ubicado en BD).\nFuera de alcance: XML DIAN Colombia, RIPS JSON, radicación CXC, cambio de JSON de envío (SPK_GENERA_JSON_PERU_*), rama INTER_SAP (GetEstatusInvoice no aplica; otro ticket si RV depende de CIPERU/SAP).",
+    "restricciones": "Requiere PROVEEDOR_FACTUELECT=MIFACT y token/URL USVGS vigentes (≥20 / ≥30 caracteres); fuera de BDATA_PRODUCCION los SP de consulta usan RUC/token de prueba.\nRespetar rate limits de MiFact: el batch debe paginar (TOP/lotes) y registrar última consulta por N_FACTURA para cumplir 24 h / 48 h sin reconsultar todo el histórico.\nLIBERAR_SUNAT y NOTIFICA_BOLETAS no sustituyen este REQ: Liberar es unitario y orientado a reintento; NOTIFICA_BOLETAS envía PDF al paciente (store NotiBoleta.js, intervalo 5 min), no reconcilia RV ni alerta a soporte.\nEl «Registro de Ventas (RV) detalle» no está documentado en qrystalos.documentacion como tabla FTR; si RV es vista SAP/interfaz externa, la actualización de EN PROCESO puede requerir segundo paso en integración — el job igual deja IQCARE alineado con MiFact y evidencia en log.\nRama de trabajo: feature/KERPER179 — validar en preversión si ya existe job o pantalla similar antes de duplicar.\nNo ejecutar MERGE masivo sin filtro de fechas en producción.",
+    "analisis": "REQ (cola IX OnLine.htm + formulario): desfase RV detalle «EN PROCESO» vs IQCARE «ACEPTADO» en F002-00048752 y F002-00048753; además piden automatización nocturna de consulta MiFact, alerta por correo y consulta en módulo de facturación.\n\nCaptura (activo/imagenes): Keralty Salud, facturas serie F002 (incl. correlativos 48752 y 48753 marcados), emisión 08/09/2026, tercero SANITAS PERU S.A. EPS, columna de envío a SUNAT en ACEPTADO para las filas visibles — coherente con FACTEP aceptado en Perú aunque el etiquetado difiera de la columna estándar «Est.Sunat» (OK) de FTRPe en otras sedes.\n\nPaso 0 — ¿Ya existe?\n• Texto del REQ ≠ solo la captura: el problema de negocio es RV detalle + proceso batch; la captura prueba que IQCARE ya ve aceptado.\n• Controles inventariados (json-peru + FE):\n  – Enviar a contabilidad → FTR_COL · ENVIA_CONTAB → JSON MiFact (no reconcilia después).\n  – Facturación Perú → botón Corregir → FTR_PERU · LIBERAR_SUNAT → SPK_CONSULTA_DOCUMENTO_ELECTRONICA (unitario; sincroniza FACTEP/FTRE; no actualiza RV ni corre batch).\n  – Quitar error → QUITAR_ERROR_API (solo FACTEP=104A).\n  – Notificación boletas cliente → NOTIFICA_BOLETAS / MARCA_ENVIO (Pinia useNotiBoleta, cada 5 min; correo al paciente).\n  – Reporte Excel «Registro Ventas» → FTR_RPT_COL · GENERAR_RPT proceso Rventas (informe, no estado operativo RV detalle).\n• Clasificación: **hueco** (no hay job 01:00, ni variable de correo de discrepancias, ni panel de consulta documentado). **Defecto puntual** en las dos facturas (RV rezagado respecto a IQCARE/MiFact). No es capacitación pura: Liberar no cubre periodicidad ni visibilidad ni RV.\n\nCausa probable (KB): tras envío exitoso, FTR.FACTEP queda en 101/102 pero el RV detalle (origen por confirmar en sitio Keralty/Sanitas) no se refresca; no existe reconciliación programada que vuelva a consultar MiFact y propague o alerte. SPK_CONSULTA ya implementa GetEstatusInvoice y actualiza FACTEP/FTRE cuando se invoca.\n\nContabilidad: no afecta MCP/MCPE (validado).",
+    "opciones": [],
+    "recomendacion": "Opción recomendada (reutilizar núcleo documentado):\nA) **Incidentes:** en test, para F002-00048752 y F002-00048753 verificar FTR.FACTEP, FTRE y estado en RV detalle; si MiFact ya está aceptado y RV sigue EN PROCESO, aplicar script puntual acordado con L3 del origen RV (tabla/vista o callback SAP) — no solo LIBERAR_SUNAT.\nB) **Batch:** nuevo METODO en SPQ_FTR_PERU (p. ej. SINCRONIZA_ESTADOS_SUNAT / CONSULTA_ESTADOS_MASIVA) que seleccione FTR con ESTADO=P, proveedor MIFACT, y última revisión >24 h (factura) o >48 h (boleta); por cada fila ejecutar SPK_CONSULTA_DOCUMENTO_ELECTRONICA; persistir resultado y flag discrepancia.\nC) **Correo:** USVGS EMAIL_ALERTA_SYNC_SUNAT (o nombre acordado); al cierre de la corrida, si hay discrepancias, enviar listado (reutilizar patrón sendMail del FE o SP de notificación existente en servidor).\nD) **FE:** grilla de log en FTRPeComponent (read vía AppStore.json nuevo METODO LISTAR_SYNC_SUNAT o AppStore.read sobre tabla de log).\nE) **Operación:** SQL Agent 01:00 America/Lima ejecutando el METODO batch.\nImpacto: SQL y FE sí; API backend sí si el scheduler no llama SQL directo. validarAntes: revisar rama KERPER179 y PREVERSION por job/pantalla duplicados.",
+    "cambioPropuestoSimple": "Cada noche el sistema revisa en MiFact el estado real de facturas y boletas (cada 24 o 48 horas según el tipo), corrige IQCARE cuando haga falta, avisa por correo si algo no cuadra con lo que ve el usuario y deja un historial consultable en Facturación Perú; las dos facturas del ticket se regularizan como parte de esa lógica o con un ajuste puntual del Registro de Ventas.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Sincronización de estado electrónico (FACTEP/FTRE) y alertas; no modifica ENVIA_CONTAB, MCP/MCPE ni radicación CXC.",
+        "validadoEn": "2026-09-16T14:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En test/preversión (rama feature/KERPER179 si aplica): 1) Confirmar FACTEP y FTRE de F002-00048752 y F002-00048753 vs consulta manual MiFact. 2) Ubicar en BD o interfaz dónde RV detalle guarda «EN PROCESO». 3) Buscar si ya existe job 01:00 o METODO batch en PREVERSION — si ya está, no duplicar desarrollo."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "FACTURAS_INCIDENTES_F00200048752_Y_F00200048753.png",
+        "ruta": "activo/20260915-0100016426/imagenes/FACTURAS_INCIDENTES_F00200048752_Y_F00200048753.png",
+        "subidaEn": "2026-09-16T09:04:43",
+        "url": "/api/caso/20260915-0100016426/imagen/FACTURAS_INCIDENTES_F00200048752_Y_F00200048753.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Incidentes F002-00048752 y F002-00048753: tras la regularización (manual o por el proceso batch), el estado en RV detalle deja de mostrar EN PROCESO cuando MiFact/SUNAT y IQCARE coinciden en aceptado (FACTEP 101/102 u homólogo visual ACEPTADO/OK).\n2) Job programado diario ~01:00 (hora servidor Perú): recorre comprobantes pendientes de verificación según tipo — facturas (TIPOFIN≠N, tipo MiFact 01) cada 24 h; boletas (TIPOFIN=N, tipo 03) cada 48 h — y consulta GetEstatusInvoice en MiFact (misma lógica que SPK_CONSULTA_DOCUMENTO_ELECTRONICA).\n3) Si el estado devuelto por MiFact no coincide con FTR.FACTEP (mapeo FE: 101/102/103→OK o ACEPTADO; vacío/104/104A→pendiente o rechazo), el comprobante queda registrado en el log de discrepancias y se incluye en el correo de alerta.\n4) Variable USVGS nueva (destino configurable, p. ej. EMAIL_ALERTA_SYNC_SUNAT) con al menos un correo válido; el mail lista serie-correlativo, tipo (factura/boleta), FACTEP en IQCARE, estado MiFact y fecha de la corrida.\n5) En Facturación Perú (/admin/facturacionPe) hay consulta histórica de discrepancias (últimas corridas, filtros por fecha y N_FACTURA), sin depender solo del correo.\n6) Solo aplica con PROVEEDOR_FACTUELECT=MIFACT e IXCOUNTRY=PERU; no altera ENVIA_CONTAB ni asientos MCP. Boletas/facturas ya correctas no generan alerta.",
+      "originalesEn": "2026-09-16T14:17:15.217Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Incidentes F002-00048752 y F002-00048753: tras la regularización (manual o por el proceso batch), el estado en RV detalle deja de mostrar EN PROCESO cuando MiFact/SUNAT y IQCARE coinciden en aceptado (FACTEP 101/102 u homólogo visual ACEPTADO/OK).\n2) Job programado diario ~01:00 (hora servidor Perú): recorre comprobantes pendientes de verificación según tipo — facturas (TIPOFIN≠N, tipo MiFact 01) cada 24 h; boletas (TIPOFIN=N, tipo 03) cada 48 h — y consulta GetEstatusInvoice en MiFact (misma lógica que SPK_CONSULTA_DOCUMENTO_ELECTRONICA).\n3) Si el estado devuelto por MiFact no coincide con FTR.FACTEP (mapeo FE: 101/102/103→OK o ACEPTADO; vacío/104/104A→pendiente o rechazo), el comprobante queda registrado en el log de discrepancias y se incluye en el correo de alerta.\n4) Variable USVGS nueva (destino configurable, p. ej. EMAIL_ALERTA_SYNC_SUNAT) con al menos un correo válido; el mail lista serie-correlativo, tipo (factura/boleta), FACTEP en IQCARE, estado MiFact y fecha de la corrida.\n5) En Facturación Perú (/admin/facturacionPe) hay consulta histórica de discrepancias (últimas corridas, filtros por fecha y N_FACTURA), sin depender solo del correo.\n6) Solo aplica con PROVEEDOR_FACTUELECT=MIFACT e IXCOUNTRY=PERU; no altera ENVIA_CONTAB ni asientos MCP. Boletas/facturas ya correctas no generan alerta.",
+      "trasAnalisisEn": "2026-09-16T14:17:23.705Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (sin dictamen HTML). Falta fichar METODO batch nuevo en SPQ_FTR_PERU y confirmar en sitio el almacén de RV detalle para el fix de las dos facturas.",
+      "fecha": "2026-09-16T14:30:00.000Z",
+      "estado": "listo",
+      "sps": [
+        {
+          "sp": "SPK_CONSULTA_DOCUMENTO_ELECTRONICA",
+          "metodo": "(SP)",
+          "estado": "leido",
+          "nota": "Núcleo GetEstatusInvoice; reutilizar en batch"
+        },
+        {
+          "sp": "SPQ_FTR_PERU",
+          "metodo": "LIBERAR_SUNAT",
+          "estado": "leido",
+          "nota": "Patrón consulta unitaria; no sustituye batch"
+        },
+        {
+          "sp": "SPQ_FTR_PERU",
+          "metodo": "NOTIFICA_BOLETAS",
+          "estado": "leido",
+          "nota": "Referencia scheduler/correo paciente; no es reconciliación"
+        },
+        {
+          "sp": "SPQ_FTR_PERU",
+          "metodo": "SINCRONIZA_ESTADOS_SUNAT (propuesto)",
+          "estado": "no_documentado",
+          "nota": "Bajar SPQ_FTR_PERU de PREVERSION al implementar; no está en sps.json"
+        }
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260915-0100016426/diagramas/flujo.html",
+      "subidaEn": "2026-09-16T09:18:05",
+      "url": "/api/caso/20260915-0100016426/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "json-peru",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260915-0100016426-flujo.html"
+    }
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016426\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "json-peru",
+    "catalogo": "conocimiento/json-peru/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_PERU",
+        "metodo": "LIBERAR_SUNAT",
+        "estado": "leido",
+        "hace": "Si ESTADO=P, TIPOANULACION≠NC y FACTEP no es 101/102: llama SPK_CONSULTA_DOCUMENTO_ELECTRONICA y luego pone FACTEP=NULL solo si después de la consulta FACTEP sigue sin ser 101/102. El FE muestra Sin Notificar. Si MiFact respondió 101/102, CONSULTA deja ese estado y Liberar no lo borra.",
+        "llama": [
+          "SPK_CONSULTA_DOCUMENTO_ELECTRONICA"
+        ]
+      },
+      {
+        "sp": "SPQ_FTR_PERU",
+        "metodo": "NOTIFICA_BOLETAS",
+        "estado": "leido",
+        "hace": "Marca boletas (TIPOFIN=N) con FTRE.NOTIFICADO=0 para envío de correo. Libera marcas de más de 10 min. PROCESO=FRONTEND devuelve el lote del usuario; si no, TOP 1. Fuera de BDATA_PRODUCCION: OK y no envía.",
+        "llama": []
+      }
+    ],
+    "notas": "METODO batch y tabla de log a diseñar en dictamen/implementación. Releer SPQ_FTR_PERU en PREVERSION al codificar.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260915-0100016426.html",
+    "aprobados": "aprobados/20260915-0100016426/",
+    "imagenes": "aprobados/20260915-0100016426/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-16",
+    "ultimoEnvio": "2026-09-16T09:24:30",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

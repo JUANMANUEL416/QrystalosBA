@@ -1,0 +1,384 @@
+{
+  "id": "custodia-medicamentos",
+  "nombre": "Custodia de medicamentos",
+  "modulo": "IDINVTPROPIA",
+  "familia": "inventario",
+  "prioridad": 24,
+  "enRuta": false,
+  "estado": "documentado",
+  "resumen": "Recibir en una bodega de custodia el medicamento que un proveedor entrega para un paciente concreto, sin compra ni factura: entrada propia (tipo IDINVTPROPIA), una unidad por línea, con acta de recepción y enlace automático con la aplicación de medicamentos.",
+  "actualizado": "2026-10-04T12:30:00",
+  "notaSql": "2026-10-04. Fichas leídas sobre PREVERSION (SPQ_IZSOL: AGREGA_CUSTODIA, CONSULTA_ARTICULOS_PRUEBA, AGREGA_ARTICULO_ITRAH, SUBIR_CUSTODIA_MASIVA, CONF_ENTRADA parte custodia y enlace automático; SPK_CONFIRMARENTRADAS reglas de custodia; SPQ_IMOV_3 tres actas; SPQ_EXISTENCIA EXPORTA_INFORME_CUSTODIA). Comparación DESAIX PREVERSION vs liberada 2.0.7 (anterior 2.0.6): todos los bloques de custodia idénticos; CONF_ENTRADA solo agrega lectura de PROCEDENCIA; SPK_CONFIRMARENTRADAS difiere en devoluciones/IDXB. El runbook de qrystalos.documentacion (2026-06-02) cita GestionTempComponent.vue y SPQ_IMOV para actas: hoy la pantalla es IMOVComponetNew.vue y las actas viven en SPQ_IMOV_3.",
+  "alcanceHasta": "Configuración de bodega y variable, apertura del tránsito de custodia (manual o Excel), entrada del paciente, confirmación con enlace a la aplicación, actas e informe. No incluye la aplicación del medicamento ni la dispensación de la solicitud (otros libros).",
+  "flujoResumen": "Ingresar Custodia (ITRA CNSMOVORI = CUSTODIA, tipo IDINVTPROPIA) → artículos a mano o Excel → entrada IMOV por paciente (CNSTRAN) → Confirmar entrada → existencia por unidad en la bodega de custodia + reserva automática de la aplicación pendiente del paciente → acta por movimiento o por proveedor → informe de custodia.",
+  "incluirProcesoMdEnLibro": false,
+  "ventanas": [
+    {
+      "uso": "Recibir custodia (manual y masiva), confirmar, acta",
+      "ruta": "inv.imov",
+      "path": "/inv/ges",
+      "vue": "IMOVPage → IMOVComponetNew",
+      "entrada": "Inventario → Movimientos, con bodega elegida y tipo Crédito (entradas). Botón morado Ingresar Custodia en la barra (masiva: pide permiso Masivo_cus dentro del diálogo) y botón Ingresar Custodia en el panel de tránsito (manual). Clic derecho sobre un movimiento del tipo IDINVTPROPIA: Acta de Recepción de Custodia. Botón Acta custodia por tercero."
+    },
+    {
+      "uso": "Informe de custodia",
+      "ruta": "inv.exis_costo",
+      "path": "/inv/exi_costo",
+      "vue": "ExistenciaCostoPage → pestaña Informe de Custodia → InformeCustodiaComponent",
+      "entrada": "Existencias. Solo lista bodegas activas con Es de Custodia. Muestra paciente, medicamento, lote del proveedor, lote interno, existencia, INVIMA, CUM, laboratorio, fecha de ingreso y vencimiento. Casilla Solo con existencia (oculta lotes consumidos pero sigue mostrando la custodia cargada y no confirmada). Exporta a Excel."
+    },
+    {
+      "uso": "Marcar la bodega como de custodia",
+      "ruta": "conf.ibod",
+      "path": "/conf/ibod",
+      "vue": "IBODComponent",
+      "entrada": "Configuración → Bodegas → casilla Es de Custodia (IBOD.ESDECUSTODIA). También define los tipos de artículo permitidos (IBODS) que luego valida la carga masiva."
+    },
+    {
+      "uso": "Bodega de custodia por sede",
+      "ruta": "conf.sedes",
+      "path": "/conf/sedes",
+      "vue": "SedesComponent",
+      "entrada": "Configuración → Sedes → campo Bodega de Custodia (SED.IDBODEGACUSTODIA). Es un dato de parametrización de la sede; en esta versión del frontend solo lo guarda y muestra esa pantalla."
+    },
+    {
+      "uso": "Dónde se consume la custodia",
+      "ruta": "ce.aplim",
+      "path": "/ce/apli",
+      "vue": "APLIComponent / APLIMAgendaCitaComponent",
+      "entrada": "Aplicación de medicamentos. Si la variable APLIM_USA_MEDCUSTOD está activa, la aplicación muestra la casilla Medicamento en Custodia y el chip DE CUSTODIA; al agendar la cita, los lotes se buscan solo entre los movimientos de tipo IDINVTPROPIA del mismo paciente."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "documentado",
+      "explicacion": "Tres piezas: la variable IDINVTPROPIA (tipo de movimiento Entrada propia), la bodega marcada Es de Custodia con sus tipos de artículo permitidos, y los permisos del procedimiento BrwTransito (Bcustodia y Masivo_cus). Sin la variable no se abre el tránsito; sin la marca de la bodega no corre la carga masiva ni aparece la bodega en el informe.",
+      "tablasClave": ["USVGS", "IBOD", "IBODS", "ITMO", "USGRUH", "SED"],
+      "controles": [
+        {
+          "id": "custodia-variable",
+          "nombre": "Tipo de movimiento y bodega de custodia",
+          "explicacion": "IDINVTPROPIA debe apuntar a un tipo de movimiento de entrada (ITMO) distinto al de compras. La bodega donde se recibe debe tener ESDECUSTODIA = 1 y, en IBODS, el tipo de artículo con acceso. El informe y la carga masiva filtran por esa marca.",
+          "invariante": "El tipo de la entrada de custodia es el de la variable, nunca el de compras ni el de remisión: por eso no exige factura ni costo.",
+          "sps": []
+        },
+        {
+          "id": "custodia-permisos",
+          "nombre": "Permisos",
+          "explicacion": "Los botones de custodia solo aparecen con BrwTransito · Bcustodia y con el filtro en Crédito. Subir el Excel exige además BrwTransito · Masivo_cus. Las actas no tienen permiso propio: siguen al botón que las abre.",
+          "invariante": "Sin Bcustodia la pantalla de Movimientos no muestra nada de custodia, aunque la variable esté configurada.",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "documentado",
+      "explicacion": "Dos formas de recibir, un solo cierre. Manual: Ingresar Custodia abre el tránsito del proveedor, se agregan artículos, se trae del tránsito a una entrada con paciente y se confirma. Masiva: Ingresar Custodia (barra) abre el tránsito, se sube el Excel, el sistema arma un movimiento por paciente y proveedor con una unidad por línea y queda listo para confirmar. Confirmar entrada es lo único que da existencia.",
+      "tablasClave": ["ITRA", "ITRAH", "IMOV", "IMOVH", "IEXI", "AFI", "TER", "IART", "SER"],
+      "controles": [
+        {
+          "id": "custodia-abrir",
+          "nombre": "Abrir el tránsito de custodia",
+          "explicacion": "AGREGA_CUSTODIA crea el ITRA con origen CUSTODIA, tipo IDINVTPROPIA, estado 0 y el proveedor en USUARIOTRA. En la manual el tercero es obligatorio en pantalla (Seleccione un Tercero); en la masiva va vacío porque cada fila del Excel trae el NIT. AGREGA_ARTICULO_ITRAH agrega el detalle manual sin lote del proveedor ni vencimiento. Luego el tránsito se lotea en el panel y se acepta: ON_ACEPTA_TRANSITO exige todo loteado o con causa y llama SPK_INSERTENTTRANSITO, que genera la entrada en estado 0 con el tipo del tránsito y el proveedor como tercero; el tránsito pasa a estado 1.",
+          "invariante": "Un tránsito de custodia pertenece a un proveedor. El paciente no está en el tránsito: entra en el movimiento. Sin loteo no hay entrada.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "AGREGA_CUSTODIA", "rol": "Alta del ITRA. Leído." },
+            { "nombre": "SPQ_IZSOL", "metodo": "AGREGA_ARTICULO_ITRAH", "rol": "Detalle manual. Leído: hoy no valida nada." },
+            { "nombre": "SPQ_IZSOL", "metodo": "ON_ACEPTA_TRANSITO", "rol": "Aceptar el tránsito manual. Leído (parte que afecta custodia)." },
+            { "nombre": "SPK_INSERTENTTRANSITO", "metodo": "(cuerpo)", "rol": "Genera la entrada desde las líneas loteadas. Leído (parte que afecta custodia)." }
+          ]
+        },
+        {
+          "id": "custodia-masiva",
+          "nombre": "Carga masiva por Excel",
+          "explicacion": "SUBIR_CUSTODIA_MASIVA recibe las filas, valida bodega, tránsito, NIT, fechas, artículos (existen, activos, no principales, permitidos en la bodega, con servicio), campos obligatorios y pacientes activos. Luego crea un ITRA por proveedor, un IMOV por paciente y proveedor, y por cada unidad un IMOVH, un ITRAH y un IEXI con existencia cero. El tránsito queda loteado y en estado 2.",
+          "invariante": "Una unidad = una línea = un lote interno. La existencia sigue en cero hasta confirmar cada movimiento.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "SUBIR_CUSTODIA_MASIVA", "rol": "Procesa el Excel. Leído." },
+            { "nombre": "SPQ_IZSOL", "metodo": "CONSULTA_ARTICULOS_PRUEBA", "rol": "Listas de artículos y proveedores del diálogo. Leído." }
+          ]
+        },
+        {
+          "id": "custodia-confirmar",
+          "nombre": "Confirmar la entrada",
+          "explicacion": "CONF_ENTRADA en el tipo IDINVTPROPIA exige el paciente (CNSTRAN), no exige costo ni factura y llama SPK_CONFIRMARENTRADAS, que suma la unidad al IEXI pre-creado sin fusionar unidades de pacientes distintos. Después corre el enlace automático: las líneas de aplicación pendientes del mismo paciente y servicio quedan RESERVADO con ese lote (primero las que vencen antes) y el requerimiento IEXIF pasa a RECEPCIONADO.",
+          "invariante": "No hay existencia disponible hasta confirmar. El paciente es obligatorio en este tipo. Una unidad nunca se mezcla con la de otro paciente.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "CONF_ENTRADA", "rol": "Confirma y enlaza. Leído (parte custodia)." },
+            { "nombre": "SPK_CONFIRMARENTRADAS", "metodo": "(cuerpo)", "rol": "Suma existencia; reglas de custodia. Leído." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "documentado",
+      "explicacion": "La custodia no nace de una orden de compra ni de una solicitud: nace de la entrega física de un proveedor (tercero categoría PRO) para un paciente (afiliado activo, identificado por cédula en el Excel). El artículo debe ser el código de presentación (PRINCIPAL = 0), estar activo, permitido en la bodega y con servicio asociado para que la aplicación lo pueda enlazar.",
+      "tablasClave": ["TER", "AFI", "IART", "SER", "IBODS"],
+      "controles": [
+        {
+          "id": "custodia-catalogos",
+          "nombre": "Proveedor, paciente y artículo",
+          "explicacion": "El diálogo manual llena proveedor y artículo con CONSULTA_ARTICULOS_PRUEBA (solo artículos no principales permitidos en la bodega y terceros PRO). La masiva valida lo mismo por NIT y por código, y además que el paciente exista y esté activo.",
+          "invariante": "Nunca se recibe custodia sobre el artículo principal (genérico): siempre sobre la presentación del fabricante.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "CONSULTA_ARTICULOS_PRUEBA", "rol": "Catálogos del diálogo. Leído." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "documentado",
+      "explicacion": "Tres salidas de la custodia: la aplicación de medicamentos (que reserva y consume el lote del paciente), las actas (por movimiento y consolidada por proveedor) y el informe de existencias en bodegas de custodia. La dispensación posterior toma el lote como cualquier otro, pero el lote está atado al paciente por el movimiento.",
+      "tablasClave": ["IEXI", "APLI", "APLIM", "APLIMF", "IEXIF", "DOCS", "ARCHIVOS"],
+      "controles": [
+        {
+          "id": "custodia-acta",
+          "nombre": "Actas",
+          "explicacion": "Clic derecho en un movimiento del tipo IDINVTPROPIA → Acta de Recepción de Custodia (RPT_ACTA_RECEPCION_CUSTODIA: cabecera, firma del que confirmó y detalle por paciente con temperatura, cumple y aprobado). Botón Acta custodia por tercero → lista (RPT_ACTAS_CUSTODIA_TERCERO_LISTA) y consolidado (RPT_ACTA_CUSTODIA_TERCERO_CONSOLIDADA) por proveedor, bodega, fechas y estado.",
+          "invariante": "El acta de custodia solo se ofrece si el movimiento es del tipo de entrada propia. La consolidada exige proveedor.",
+          "sps": [
+            { "nombre": "SPQ_IMOV_3", "metodo": "RPT_ACTA_RECEPCION_CUSTODIA", "rol": "Acta de un movimiento. Leído." },
+            { "nombre": "SPQ_IMOV_3", "metodo": "RPT_ACTAS_CUSTODIA_TERCERO_LISTA", "rol": "Lista por proveedor. Leído." },
+            { "nombre": "SPQ_IMOV_3", "metodo": "RPT_ACTA_CUSTODIA_TERCERO_CONSOLIDADA", "rol": "Acta consolidada. Leído." }
+          ]
+        },
+        {
+          "id": "custodia-informe",
+          "nombre": "Informe de custodia",
+          "explicacion": "Existencias → Informe de Custodia lee los lotes de bodegas ESDECUSTODIA con el paciente del movimiento. Exporta con EXPORTA_INFORME_CUSTODIA (cantidad ingresada y existencia actual por lote).",
+          "invariante": "Solo bodegas activas marcadas como de custodia. Un lote cargado y no confirmado aparece con existencia cero.",
+          "sps": [
+            { "nombre": "SPQ_EXISTENCIA", "metodo": "EXPORTA_INFORME_CUSTODIA", "rol": "Exportación. Leído." }
+          ]
+        },
+        {
+          "id": "custodia-aplicacion",
+          "nombre": "Enlace con la aplicación de medicamentos",
+          "explicacion": "Al confirmar, CONF_ENTRADA busca las líneas APLIMF en PENDIENTE GESTION del mismo paciente (sin lote asignado, aplicación no aplicada ni cancelada) y les asigna el IDIEXI del lote: ruta 1 con requerimiento IEXIF pendiente, ruta 2 con cita agendada, ruta 3 paciente + servicio directo, ruta 4 cualquier lote de custodia del paciente. Al agendar la cita, la aplicación solo ofrece lotes de movimientos IDINVTPROPIA del paciente.",
+          "invariante": "El lote de custodia es del paciente: la aplicación nunca lo toma para otro.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "CONF_ENTRADA", "rol": "Enlace automático (cuatro rutas). Leído." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "documentado",
+      "explicacion": "La entrada propia no es una compra: no pide factura, fecha ni costo mayor que cero, y TIPO_DOC_COMPRA queda en N. No genera cuenta por pagar. Si el tipo de movimiento de la variable está configurado para contabilizar, la entrada sigue el camino común de inventario con el costo que traiga la línea (cero si no se digitó PCOSTO).",
+      "tablasClave": ["IMOV", "IMOVH", "ITMO"],
+      "controles": [
+        {
+          "id": "custodia-sin-cxp",
+          "nombre": "Sin factura ni cuenta por pagar",
+          "explicacion": "CONF_ENTRADA excluye al tipo IDINVTPROPIA de la validación de costo cero y de la de factura. El medicamento es del paciente, no de la institución; la custodia lo guarda y lo entrega.",
+          "invariante": "Una custodia confirmada nunca produce factura de compra ni CxP. Si el cliente necesita valorizarla, debe digitar PCOSTO en el Excel.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "CONF_ENTRADA", "rol": "Exclusiones de costo y factura. Leído." }
+          ]
+        }
+      ]
+    }
+  ],
+  "caminosLibro": [
+    {
+      "codigo": "Manual",
+      "nombre": "Entrega de un proveedor, pocas unidades",
+      "origen": "Panel de tránsito",
+      "icono": "person_add",
+      "codigoOrigen": "Ingresar Custodia",
+      "descripcion": "Se elige el proveedor, se agregan artículos y cantidades al tránsito, se lotea (lote del proveedor, vencimiento) y se acepta: eso genera la entrada en borrador. En la entrada se pone el paciente y se confirma.",
+      "ventana": "Inventario → Movimientos → Tránsito → Ingresar Custodia"
+    },
+    {
+      "codigo": "Excel",
+      "nombre": "Entrega de uno o varios proveedores para muchos pacientes",
+      "origen": "Barra superior (Crédito)",
+      "icono": "upload_file",
+      "codigoOrigen": "Ingresar Custodia → Subir Custodia Masivo",
+      "descripcion": "Plantilla con cédula, artículo, cantidad, cantidad revisada, NIT, lote, vencimiento, costo, temperatura, cumple y aprobado. El sistema arma los movimientos por paciente y proveedor, una unidad por línea.",
+      "ventana": "Inventario → Movimientos → Ingresar Custodia (morado)"
+    },
+    {
+      "codigo": "Aplicación",
+      "nombre": "La aplicación de medicamentos consume el lote",
+      "origen": "Hacia adelante",
+      "icono": "vaccines",
+      "codigoOrigen": "APLIM · cita",
+      "descripcion": "Al confirmar la entrada, las líneas de aplicación pendientes del paciente quedan reservadas con el lote. Al agendar la cita solo se ofrecen lotes de custodia de ese paciente.",
+      "ventana": "Consulta externa → Aplicación de medicamentos"
+    },
+    {
+      "codigo": "Acta",
+      "nombre": "Soporte firmado de la recepción",
+      "origen": "Hacia adelante",
+      "icono": "history_edu",
+      "codigoOrigen": "Clic derecho / Acta por tercero",
+      "descripcion": "Acta por movimiento (paciente, lotes, temperatura, cumple, aprobado, firma de quien confirmó) o consolidada por proveedor en un rango de fechas.",
+      "ventana": "Inventario → Movimientos"
+    },
+    {
+      "codigo": "Informe",
+      "nombre": "Qué hay en custodia y de quién",
+      "origen": "Hacia adelante",
+      "icono": "inventory",
+      "codigoOrigen": "Existencias",
+      "descripcion": "Lotes de las bodegas de custodia con paciente, laboratorio, vencimiento, cantidad ingresada y existencia. Exporta a Excel.",
+      "ventana": "Inventario → Existencias → Informe de Custodia"
+    },
+    {
+      "codigo": "No es",
+      "nombre": "Lo que se confunde con custodia",
+      "origen": "Otros procesos",
+      "icono": "block",
+      "codigoOrigen": "Compra / Entrevista",
+      "descripcion": "Una compra con factura es Entrada de compras. Registrar en la entrevista farmacéutica que el paciente trae medicamentos propios (líneas CUSTODIA de FAR_ENTCD) es farmacia clínica: no crea tránsito ni existencia.",
+      "ventana": "Compras · Farmacia clínica"
+    }
+  ],
+  "flujos": [
+    {
+      "id": "custodia-manual",
+      "nombre": "Recibir custodia a mano",
+      "descripcion": "Un proveedor entrega pocas unidades para un paciente. Se trabaja desde el panel de tránsito de Movimientos.",
+      "icono": "person_add",
+      "pasos": [
+        { "num": 1, "tipo": "accion", "titulo": "Elegir bodega y tipo Crédito", "descripcion": "En Inventario → Movimientos la farmacia elige la bodega de custodia y deja el filtro en Crédito (entradas). Sin eso los botones de custodia no aparecen.", "rol": "Farmacia", "pantalla": "Inventario → Movimientos", "tablas": ["IBOD"], "sp": "Permiso BrwTransito · Bcustodia" },
+        { "num": 2, "tipo": "accion", "titulo": "Ingresar Custodia (panel de tránsito)", "descripcion": "Se abre el diálogo: consecutivo en blanco, proveedor (tercero PRO) y observación. Aceptar crea el tránsito y muestra el CNSITRA.", "rol": "Farmacia", "pantalla": "Diálogo Custodia", "tablas": ["ITRA", "TER"], "sp": "IZSOL · AGREGA_CUSTODIA" },
+        { "num": 3, "tipo": "decision", "titulo": "¿Hay proveedor y variable?", "descripcion": "Sin proveedor la pantalla detiene (Seleccione un Tercero). Sin IDINVTPROPIA el procedimiento responde Debe de configurar la variable IDINVTPROPIA.", "rol": "Sistema", "pantalla": "Diálogo Custodia", "tablas": ["USVGS"], "sp": "IZSOL · AGREGA_CUSTODIA" },
+        { "num": 4, "tipo": "accion", "titulo": "Agregar artículos", "descripcion": "Nuevo artículo: código de presentación (no el principal) y cantidad. Cada clic agrega una línea al tránsito (cantidad original, sin lote del proveedor ni vencimiento).", "rol": "Farmacia", "pantalla": "Diálogo Custodia → grilla de artículos", "tablas": ["ITRAH", "IART"], "sp": "IZSOL · AGREGA_ARTICULO_ITRAH" },
+        { "num": 5, "tipo": "accion", "titulo": "Lotear el tránsito", "descripcion": "En el panel de tránsito (Traer del Tránsito) se abre el CNSITRA y se distribuye cada artículo en lotes: lote del proveedor, vencimiento y cantidad. Lo que no se lotee queda pendiente y necesita una causa para poder aceptar.", "rol": "Farmacia", "pantalla": "Panel de tránsito → loteo", "tablas": ["ITRAH"], "sp": "IZSOL · ON_PROCESAR (loteo)" },
+        { "num": 6, "tipo": "decision", "titulo": "¿Todo loteado o con causa?", "descripcion": "Aceptar el tránsito se detiene si hay líneas pendientes sin causa (Existen artículos pendientes por no loteo sin causa asignada…) o si ninguna línea quedó loteada (No hay detalle de tránsito con INICIAL=1 …).", "rol": "Sistema", "pantalla": "Panel de tránsito → Aceptar", "tablas": ["ITRAH"], "sp": "IZSOL · ON_ACEPTA_TRANSITO" },
+        { "num": 7, "tipo": "sistema", "titulo": "Generar la entrada desde el tránsito", "descripcion": "Aceptar crea el movimiento de entrada en estado 0 con el tipo del tránsito (IDINVTPROPIA), el proveedor del tránsito como tercero y las líneas loteadas. El tránsito pasa a estado 1.", "rol": "Sistema", "pantalla": "—", "tablas": ["IMOV", "IMOVH", "ITRA"], "sp": "SPK_INSERTENTTRANSITO" },
+        { "num": 8, "tipo": "accion", "titulo": "Poner el paciente y confirmar", "descripcion": "Se abre la entrada: la cabecera muestra Información del Paciente; con Buscar paciente se elige el afiliado (ID Paciente). Confirmar exige ese paciente, no pide costo ni factura, suma la existencia y enlaza la aplicación pendiente del paciente.", "rol": "Farmacia / Sistema", "pantalla": "Entrada → cabecera → Confirmar", "tablas": ["IMOV", "AFI", "IEXI", "APLIMF", "IEXIF"], "sp": "IZSOL · CONF_ENTRADA → SPK_CONFIRMARENTRADAS" },
+        { "num": 9, "tipo": "resultado", "titulo": "Acta de recepción", "descripcion": "Clic derecho sobre el movimiento → Acta de Recepción de Custodia. Queda la existencia atada al paciente en la bodega de custodia.", "rol": "Farmacia", "pantalla": "Inventario → Movimientos", "tablas": ["IMOV", "ITRAH", "DOCS"], "sp": "IMOV_3 · RPT_ACTA_RECEPCION_CUSTODIA" }
+      ]
+    },
+    {
+      "id": "custodia-masiva",
+      "nombre": "Recibir custodia por Excel",
+      "descripcion": "Uno o varios proveedores entregan medicamentos para muchos pacientes. Un archivo, varios movimientos.",
+      "icono": "upload_file",
+      "pasos": [
+        { "num": 1, "tipo": "accion", "titulo": "Ingresar Custodia (botón morado)", "descripcion": "Con bodega de custodia y filtro Crédito. El diálogo pide solo la observación: el proveedor va por NIT en cada fila del Excel. Aceptar abre el tránsito.", "rol": "Farmacia", "pantalla": "Inventario → Movimientos", "tablas": ["ITRA"], "sp": "IZSOL · AGREGA_CUSTODIA (IDTERCERO vacío)" },
+        { "num": 2, "tipo": "accion", "titulo": "Descargar plantilla y llenarla", "descripcion": "Columnas: CEDULA, IDARTICULO, CANTIDAD, CANTIDADREV, TERCERO (NIT), NOLOTEPEDIDO, FECHAVENCE (YYYY-MM-DD), PCOSTO (opcional), TEMPERATURA, CUMPLE, APROBADO. La plantilla trae filas de ejemplo que deben borrarse.", "rol": "Farmacia", "pantalla": "Diálogo Subir Custodia Masivo", "tablas": [], "sp": "Plantilla Excel (frontend)" },
+        { "num": 3, "tipo": "accion", "titulo": "Subir Custodia Masivo", "descripcion": "Requiere permiso Masivo_cus. La pantalla revisa el archivo (cantidades, columnas) y muestra el resumen: unidades, filas, pacientes, proveedores y movimientos esperados.", "rol": "Farmacia", "pantalla": "Diálogo Subir Custodia Masivo", "tablas": [], "sp": "Validación en pantalla" },
+        { "num": 4, "tipo": "decision", "titulo": "¿Pasa las validaciones del procedimiento?", "descripcion": "Bodega de custodia, tránsito abierto, NIT en TER, fechas válidas, artículos activos no principales y permitidos en la bodega con servicio, campos obligatorios, pacientes activos. Cualquier falla devuelve la lista exacta y no graba nada.", "rol": "Sistema", "pantalla": "Diálogo Subir Custodia Masivo", "tablas": ["IBOD", "IBODS", "TER", "IART", "SER", "AFI"], "sp": "IZSOL · SUBIR_CUSTODIA_MASIVA" },
+        { "num": 5, "tipo": "sistema", "titulo": "Armar tránsitos y movimientos", "descripcion": "Un tránsito por proveedor (el primero reutiliza el abierto), un movimiento por paciente y proveedor, y por cada unidad una línea de movimiento, una de tránsito y un lote interno con existencia cero. El tránsito queda loteado (estado 2).", "rol": "Sistema", "pantalla": "—", "tablas": ["ITRA", "ITRAH", "IMOV", "IMOVH", "IEXI"], "sp": "IZSOL · SUBIR_CUSTODIA_MASIVA" },
+        { "num": 6, "tipo": "accion", "titulo": "Confirmar cada movimiento", "descripcion": "Los movimientos quedan en estado 0 en la lista de entradas. Se confirman uno a uno (o con la confirmación de la pantalla). Hasta entonces el informe los muestra con existencia cero.", "rol": "Farmacia", "pantalla": "Inventario → Movimientos", "tablas": ["IMOV", "IEXI"], "sp": "IZSOL · CONF_ENTRADA → SPK_CONFIRMARENTRADAS" },
+        { "num": 7, "tipo": "resultado", "titulo": "Acta consolidada por proveedor", "descripcion": "Acta custodia por tercero: proveedor obligatorio, bodega, fechas y estado opcionales. Un documento con todos los movimientos del proveedor.", "rol": "Farmacia", "pantalla": "Inventario → Movimientos", "tablas": ["IMOV", "IMOVH", "ITRAH"], "sp": "IMOV_3 · RPT_ACTA_CUSTODIA_TERCERO_CONSOLIDADA" }
+      ]
+    },
+    {
+      "id": "custodia-despues",
+      "nombre": "Después de confirmar: aplicación, informe y actas",
+      "descripcion": "Lo que el sistema hace solo al confirmar y lo que la institución puede consultar.",
+      "icono": "vaccines",
+      "pasos": [
+        { "num": 1, "tipo": "sistema", "titulo": "Reservar la aplicación pendiente", "descripcion": "Busca líneas de aplicación en PENDIENTE GESTION del mismo paciente, sin lote, con aplicación vigente. Ruta 1: requerimiento IEXIF pendiente de gestión o compra. Ruta 2: cita agendada. Ruta 3: paciente + servicio. Ruta 4: cualquier lote de custodia del paciente.", "rol": "Sistema", "pantalla": "—", "tablas": ["APLI", "APLIM", "APLIMF", "IEXIF", "IEXI"], "sp": "IZSOL · CONF_ENTRADA (enlace automático)" },
+        { "num": 2, "tipo": "resultado", "titulo": "Línea RESERVADO, requerimiento RECEPCIONADO", "descripcion": "La línea de aplicación queda con el IDIEXI del lote (primero el que vence antes) y el artículo físico; el requerimiento de compra o gestión se marca recibido.", "rol": "Sistema", "pantalla": "Aplicación de medicamentos", "tablas": ["APLIMF", "IEXIF"], "sp": "IZSOL · CONF_ENTRADA" },
+        { "num": 3, "tipo": "accion", "titulo": "Agendar y aplicar", "descripcion": "Al agendar la cita de aplicación, el sistema ofrece solo los lotes de movimientos IDINVTPROPIA del paciente. La aplicación y la dispensación posterior siguen sus propios libros.", "rol": "Enfermería / Farmacia", "pantalla": "Consulta externa → Aplicación de medicamentos", "tablas": ["IMOV", "IEXI", "APLIM"], "sp": "Lectura IMOV / IEXI" },
+        { "num": 4, "tipo": "accion", "titulo": "Consultar el informe de custodia", "descripcion": "Existencias → Informe de Custodia: bodega de custodia, paciente, lote, existencia, vencimiento. Solo con existencia oculta lo consumido. Exportar a Excel.", "rol": "Farmacia / Auditoría", "pantalla": "Inventario → Existencias", "tablas": ["IEXI", "IMOV", "IBOD"], "sp": "EXISTENCIA · EXPORTA_INFORME_CUSTODIA" }
+      ]
+    }
+  ],
+  "estadosSolicitud": {
+    "titulo": "Estados del tránsito, del movimiento y del lote",
+    "descripcion": "ITRA.ESTADO, IMOV.ESTADO e IEXI.EXISLOTE. Lo que condiciona qué puede hacer la farmacia con una custodia.",
+    "columnas": ["Valor", "Pantalla"],
+    "filas": [
+      { "codigo": "ITRA 0", "tono": "ambar", "etiquetas": ["ITRA.ESTADO 0", "LOTEADO 0"], "significa": "Tránsito de custodia abierto, recién creado por Ingresar Custodia. Puede recibir artículos (manual) o el Excel (masiva).", "queHacer": "Agregar artículos y traerlo a una entrada, o subir el Excel." },
+      { "codigo": "ITRA 1", "tono": "azul", "etiquetas": ["ITRA.ESTADO 1", "Aceptado"], "significa": "Tránsito manual aceptado: ya generó la entrada en estado 0 (camino manual).", "queHacer": "Abrir la entrada, poner el paciente y confirmar." },
+      { "codigo": "ITRA 2", "tono": "verde", "etiquetas": ["ITRA.ESTADO 2", "LOTEADO 1"], "significa": "Tránsito ya volcado a movimientos por la carga masiva (CNSMOVDES guarda el movimiento o VARIOS).", "queHacer": "Nada en el tránsito. Confirmar los movimientos que nacieron de él." },
+      { "codigo": "ITRA 3", "tono": "rojo", "etiquetas": ["ITRA.ESTADO 3", "Anulado"], "significa": "Tránsito anulado desde el panel (usuario y fecha de anulación).", "queHacer": "Abrir uno nuevo si la entrega es real." },
+      { "codigo": "IMOV 0", "tono": "ambar", "etiquetas": ["IMOV.ESTADO 0", "Borrador"], "significa": "Entrada de custodia sin confirmar. El informe la muestra con existencia cero.", "queHacer": "Revisar paciente y lotes y Confirmar entrada. Si está mal, anular antes de confirmar." },
+      { "codigo": "IMOV 1", "tono": "verde", "etiquetas": ["IMOV.ESTADO 1", "Confirmada"], "significa": "Existencia sumada por unidad, aplicación del paciente enlazada, acta disponible.", "queHacer": "Imprimir acta, agendar la aplicación, consultar el informe." },
+      { "codigo": "IMOV 2", "tono": "rojo", "etiquetas": ["IMOV.ESTADO 2", "Anulada"], "significa": "El movimiento no cuenta. Las actas por tercero la excluyen si se filtra por estado.", "queHacer": "Volver a recibir si la entrega es real." },
+      { "codigo": "IEXI 0", "tono": "gris", "etiquetas": ["IEXI.EXISLOTE 0", "CANTINICIAL 1"], "significa": "Lote interno pre-creado por la carga masiva, aún sin confirmar, o unidad ya consumida.", "queHacer": "Si el movimiento está en 0: confirmarlo. Si está en 1: la unidad ya se aplicó o dispensó." },
+      { "codigo": "IEXI 1", "tono": "verde", "etiquetas": ["IEXI.EXISLOTE 1", "Unidad disponible"], "significa": "Una unidad del paciente en la bodega de custodia, lista para la aplicación o la dispensación.", "queHacer": "La toma la aplicación agendada o la solicitud del paciente." },
+      { "codigo": "APLIMF", "tono": "azul", "etiquetas": ["APLIMF RESERVADO", "IEXIF RECEPCIONADO"], "significa": "La aplicación pendiente del paciente ya tiene este lote asignado.", "queHacer": "Agendar la cita y aplicar (libro de aplicación)." }
+    ],
+    "nota": "Las etiquetas de pantalla pueden variar por tipo de movimiento configurado; los valores numéricos son los de la base."
+  },
+  "necesidadesYaCubiertas": [
+    { "necesidad": "Recibir el medicamento que un proveedor trae para un paciente", "donde": "Inventario → Movimientos → bodega de custodia → Crédito → panel Tránsito → Ingresar Custodia", "condicion": "Permiso BrwTransito · Bcustodia; variable IDINVTPROPIA configurada.", "noEs": "Entrada de compras: esa pide factura, costo y genera cuenta por pagar." },
+    { "necesidad": "Cargar muchos pacientes y proveedores de una vez", "donde": "Inventario → Movimientos → botón morado Ingresar Custodia → Subir Custodia Masivo", "condicion": "Permiso Masivo_cus; bodega marcada Es de Custodia; plantilla con las 11 columnas.", "noEs": "La carga manual no acepta Excel; la masiva no acepta artículos principales." },
+    { "necesidad": "Descargar la plantilla del Excel", "donde": "Diálogo Subir Custodia Masivo → Descargar plantilla", "condicion": "Dentro del diálogo masivo. Borrar las filas de ejemplo.", "noEs": "No sirve la plantilla de compras ni la de conteo." },
+    { "necesidad": "Que la existencia aparezca", "donde": "Inventario → Movimientos → entrada en estado 0 → Confirmar", "condicion": "Paciente en la cabecera; movimiento en 0.", "noEs": "Subir el Excel no suma existencia: deja todo en cero hasta confirmar." },
+    { "necesidad": "Imprimir el acta de recepción de una custodia", "donde": "Inventario → Movimientos → clic derecho en el movimiento → Acta de Recepción de Custodia", "condicion": "Movimiento del tipo IDINVTPROPIA (la opción no aparece en otros tipos).", "noEs": "El acta de recepción técnica de compras es otro documento." },
+    { "necesidad": "Un acta con todo lo que entregó un proveedor", "donde": "Inventario → Movimientos → Acta custodia por tercero", "condicion": "Proveedor obligatorio; bodega, fechas y estado opcionales.", "noEs": "No es por paciente: para un paciente use el acta del movimiento." },
+    { "necesidad": "Ver qué hay en custodia y de qué paciente", "donde": "Inventario → Existencias → pestaña Informe de Custodia", "condicion": "La bodega debe estar marcada Es de Custodia y activa.", "noEs": "La existencia general no muestra el paciente." },
+    { "necesidad": "Ver también lo cargado y aún no confirmado", "donde": "Informe de Custodia → desmarcar Solo con existencia", "condicion": "La casilla oculta lotes en cero consumidos; desmarcada muestra todo.", "noEs": "No es un error del informe: la carga masiva deja existencia cero hasta confirmar." },
+    { "necesidad": "Exportar el informe", "donde": "Informe de Custodia → Exportar", "condicion": "Mismos filtros de la grilla.", "noEs": "El Excel del informe no es la plantilla de carga." },
+    { "necesidad": "Que la aplicación de medicamentos use el lote del paciente", "donde": "Automático al Confirmar entrada; luego Consulta externa → Aplicación → agendar cita", "condicion": "Aplicación del paciente pendiente y vigente; artículo con servicio asociado; variable APLIM_USA_MEDCUSTOD si se marca Medicamento en Custodia.", "noEs": "No hay botón para enlazar a mano: si no enlazó, revise el servicio del artículo." },
+    { "necesidad": "Habilitar una bodega para custodia", "donde": "Configuración → Bodegas → Es de Custodia + tipos de artículo permitidos", "condicion": "Permiso de configuración de bodegas.", "noEs": "La bodega de hemoderivados tiene su propio proceso." },
+    { "necesidad": "Registrar que el paciente trae medicamentos propios en la entrevista", "donde": "Farmacia clínica → Entrevista farmacéutica → líneas Custodia", "condicion": "Es un registro clínico.", "noEs": "No crea tránsito ni existencia: para guardar físicamente el medicamento se usa este proceso." }
+  ],
+  "botones": [
+    { "label": "Ingresar Custodia (barra)", "icono": "fa-duotone fa-clipboard-medical", "color": "purple-8", "estilo": "push", "descripcion": "Abre el tránsito para la carga masiva. Visible con filtro Crédito y permiso Bcustodia." },
+    { "label": "Ingresar Custodia (tránsito)", "icono": "fad fa-draw-circle", "color": "primary", "estilo": "unelevated", "descripcion": "Abre el diálogo manual: proveedor, observación y grilla de artículos. Permiso Bcustodia." },
+    { "label": "Aceptar (diálogo Custodia)", "icono": "check", "color": "primary", "estilo": "unelevated", "descripcion": "Crea el tránsito (AGREGA_CUSTODIA) y muestra el consecutivo." },
+    { "label": "Nuevo artículo", "icono": "add", "color": "primary", "estilo": "flat", "descripcion": "Agrega una línea al tránsito manual (AGREGA_ARTICULO_ITRAH)." },
+    { "label": "Subir Custodia Masivo", "icono": "fa-solid fa-upload", "color": "indigo-10", "estilo": "unelevated", "descripcion": "Abre el cargador del Excel. Solo con permiso Masivo_cus." },
+    { "label": "Descargar plantilla", "icono": "download", "color": "primary", "estilo": "flat", "descripcion": "Excel con las 11 columnas y filas de ejemplo." },
+    { "label": "Procesar archivo", "icono": "upload", "color": "primary", "estilo": "unelevated", "descripcion": "Envía las filas al procedimiento (SUBIR_CUSTODIA_MASIVA). Si falta tránsito o bodega, la pantalla lo avisa antes." },
+    { "label": "Traer del Tránsito", "icono": "move_to_inbox", "color": "orange-7", "estilo": "push", "descripcion": "Abre el panel de tránsito: ahí se lotea el tránsito de custodia manual y se acepta para generar la entrada." },
+    { "label": "Aceptar tránsito", "icono": "done_all", "color": "primary", "estilo": "unelevated", "descripcion": "ON_ACEPTA_TRANSITO → SPK_INSERTENTTRANSITO: crea la entrada en borrador con el tipo de custodia. Exige todo loteado o con causa." },
+    { "label": "Buscar paciente", "icono": "search", "color": "primary", "estilo": "flat", "descripcion": "En la cabecera de una entrada de tipo IDINVTPROPIA: ID y nombre del afiliado (CNSTRAN)." },
+    { "label": "Confirmar entrada", "icono": "check_circle", "color": "positive", "estilo": "unelevated", "descripcion": "CONF_ENTRADA: suma existencia por unidad y enlaza la aplicación." },
+    { "label": "Acta de Recepción de Custodia", "icono": "print", "color": "primary", "estilo": "menu", "descripcion": "Clic derecho en el movimiento. Solo si el tipo es IDINVTPROPIA." },
+    { "label": "Acta custodia por tercero", "icono": "description", "color": "purple-8", "estilo": "push", "descripcion": "Filtros proveedor, bodega, fechas, estado → lista y acta consolidada." },
+    { "label": "Solo con existencia", "icono": "filter_alt", "color": "primary", "estilo": "toggle", "descripcion": "Informe de Custodia: oculta lotes consumidos; sigue mostrando lo cargado y no confirmado." },
+    { "label": "Exportar (Informe de Custodia)", "icono": "file_download", "color": "positive", "estilo": "unelevated", "descripcion": "Excel Informe_Custodia_<fecha>.xlsx con EXPORTA_INFORME_CUSTODIA." },
+    { "label": "Es de Custodia", "icono": "check_box", "color": "primary", "estilo": "checkbox", "descripcion": "Configuración → Bodegas. Marca IBOD.ESDECUSTODIA." }
+  ],
+  "permisos": [
+    { "codigo": "BrwTransito · Bcustodia", "accion": "Ver los botones Ingresar Custodia, Acta custodia por tercero y el diálogo manual", "rol": "Farmacia que recibe custodia", "descripcion": "Sin él, Movimientos no muestra nada de custodia aunque la variable esté configurada." },
+    { "codigo": "BrwTransito · Masivo_cus", "accion": "Subir Custodia Masivo (Excel)", "rol": "Farmacia / coordinación", "descripcion": "Se pide además de Bcustodia. El botón del Excel no aparece sin él." },
+    { "codigo": "BrwTransito · ver_montos_precios", "accion": "Ver costos en el detalle de la entrada", "rol": "Opcional", "descripcion": "Afecta la columna de costo, no la custodia en sí." },
+    { "codigo": "Confirmar entrada (permiso general de Movimientos)", "accion": "Confirmar la entrada de custodia", "rol": "Farmacia", "descripcion": "La custodia usa el mismo permiso de confirmar que cualquier entrada." },
+    { "codigo": "Configuración → Bodegas", "accion": "Marcar Es de Custodia y tipos de artículo permitidos", "rol": "Administrador", "descripcion": "Permiso del módulo de configuración; no es del procedimiento BrwTransito." }
+  ],
+  "variables": [
+    { "nombre": "IDINVTPROPIA", "tipo": "USVGS", "valorSugerido": "Código del tipo de movimiento Entrada propia (ITMO) definido por la institución", "descripcion": "Tipo de la entrada de custodia. Sin ella AGREGA_CUSTODIA y las actas responden con error. Cada institución define el código; no se copia de otra." },
+    { "nombre": "IBOD.ESDECUSTODIA", "tipo": "Campo de bodega", "valorSugerido": "1 en la bodega donde se guarda la custodia", "descripcion": "Habilita la carga masiva y hace que la bodega aparezca en el Informe de Custodia." },
+    { "nombre": "IBODS (tipos de artículo con acceso)", "tipo": "Configuración de bodega", "valorSugerido": "Los tipos de artículo que se van a custodiar, con ACCESO = Si", "descripcion": "La masiva rechaza artículos cuyo tipo no esté permitido en la bodega." },
+    { "nombre": "APLIM_USA_MEDCUSTOD", "tipo": "USVGS", "valorSugerido": "Activa si la aplicación de medicamentos marca Medicamento en Custodia", "descripcion": "Muestra la casilla y el chip DE CUSTODIA en la aplicación. No afecta la recepción." },
+    { "nombre": "SED.IDBODEGACUSTODIA", "tipo": "Campo de sede", "valorSugerido": "Bodega de custodia de la sede", "descripcion": "Dato de parametrización en Configuración → Sedes. En esta versión del frontend solo se guarda y muestra allí." },
+    { "nombre": "IDBOD_HEMODERIVADOS", "tipo": "USVGS", "valorSugerido": "Bodega de hemoderivados, si existe", "descripcion": "Referencia para no confundir: los hemoderivados tienen su propio proceso y no se reciben por custodia." }
+  ],
+  "hallazgos": [
+    { "id": "custodia-itrah-sin-validacion", "tipo": "sql", "detalle": "AGREGA_ARTICULO_ITRAH tiene el bloque de validación como marcador vacío (IF 'VALIDACION' <> 'VALIDACION'): no valida artículo, cantidad ni tránsito. La pantalla solo exige que haya artículo seleccionado. Riesgo: cantidad cero o negativa y artículo no permitido en la bodega en la ruta manual (la masiva sí lo valida). El loteo posterior y SPK_INSERTENTTRANSITO (solo líneas INICIAL = 1) frenan parte del daño, pero el tránsito queda sucio." },
+    { "id": "custodia-manual-exige-loteo", "tipo": "flujo", "detalle": "El libro anterior y el runbook decían «Traer del Tránsito → entrada» como un solo paso. En realidad ON_ACEPTA_TRANSITO exige que todas las líneas estén loteadas (INICIAL = 1) o con causa, y SPK_INSERTENTTRANSITO lanza «No hay detalle de tránsito con INICIAL=1 para generar la entrada…» si ninguna lo está. Se agregó el paso de loteo al flujo manual." },
+    { "id": "custodia-runbook-desactualizado", "tipo": "doc", "detalle": "El runbook de qrystalos.documentacion (2026-06-02) cita GestionTempComponent.vue y SPQ_IMOV para las actas. Hoy la pantalla es components/inv/izsol/IMOVComponetNew.vue y las actas están en SPQ_IMOV_3 (MODELO IMOV_3 en boot/Inventario/rptActaRecepcion.js). Conviene actualizar el runbook." },
+    { "id": "custodia-cnstran-fallback", "tipo": "sql", "detalle": "SPK_CONFIRMARENTRADAS, al actualizar tránsitos, usa CNSTRAN como respaldo cuando CNSITRA va vacío. En custodia CNSTRAN es el paciente. En la masiva y en Traer del tránsito el CNSITRA siempre va lleno, así que no hay efecto; una entrada de tipo IDINVTPROPIA creada a mano sin tránsito podría buscar un ITRA con el ID del paciente (sin coincidencia, sin daño). Anotado como riesgo bajo." },
+    { "id": "custodia-vencimiento-no-valida", "tipo": "sql", "detalle": "SUBIR_CUSTODIA_MASIVA valida el formato de FECHAVENCE pero no rechaza fechas ya vencidas. Decisión de negocio: la custodia puede recibir lo que el paciente trae; el informe lo muestra con su vencimiento." },
+    { "id": "custodia-preversion-igual", "tipo": "sql", "detalle": "Comparación DESAIX 2026-10-04: todos los bloques de custodia son idénticos en PREVERSION y en la última liberada (2.0.7). No hay arreglo pendiente en la canasta." }
+  ],
+  "capitulosLibro": [
+    { "id": "guia-rapida", "tipo": "guia-rapida", "kicker": "Empiece aquí", "titulo": "Guía rápida: ¿qué necesita hacer?", "intro": "Doce tareas frecuentes de la custodia de medicamentos, con su ruta exacta, la condición que debe cumplirse y lo que no hay que confundir." },
+    { "id": "que-es", "tipo": "texto", "kicker": "Visión general", "titulo": "Qué es la custodia y qué no es", "intro": "La **custodia** es guardar en una bodega de la institución un medicamento que **no es de la institución**: lo entrega un proveedor (o un programa) para un **paciente concreto**, sin compra ni factura. El sistema lo recibe como una **entrada propia** (tipo de movimiento de la variable IDINVTPROPIA), una unidad por línea, con el paciente en la cabecera.", "md": "## Las tres piezas\n\n- **Tránsito de custodia (ITRA / ITRAH)**: el paquete que el proveedor entrega. Origen `CUSTODIA`, un tránsito por proveedor.\n- **Entrada del paciente (IMOV / IMOVH)**: el movimiento de inventario, tipo IDINVTPROPIA, con el afiliado en `CNSTRAN`. Nace en borrador (estado 0) y solo da existencia al confirmar.\n- **Lote interno (IEXI)**: una fila por unidad, en la bodega de custodia, atada al movimiento del paciente.\n\n## Qué no es\n\n| Si lo que quiere es… | Entonces el camino es… |\n|---|---|\n| Comprar medicamento con factura | Entrada de compras (pide factura, costo y genera cuenta por pagar) |\n| Anotar que el paciente trae sus medicamentos en la entrevista | Farmacia clínica → Entrevista farmacéutica (no crea existencia) |\n| Recibir hemoderivados | Proceso de hemoderivados (bodega propia) |\n| Entregar al paciente lo custodiado | Aplicación de medicamentos o Dispensación (otros libros) |\n\n## Quién participa\n\n- **Proveedor / laboratorio**: entrega físicamente y queda como tercero del tránsito.\n- **Farmacia**: abre la custodia, carga, confirma e imprime el acta.\n- **Sistema**: valida, crea una unidad por línea, suma existencia y reserva la aplicación pendiente del paciente.\n- **Enfermería / aplicación**: consume el lote del paciente en la cita.", "puntosClave": ["Custodia = entrada propia: sin factura, sin costo obligatorio, sin cuenta por pagar.", "Una unidad es una línea y un lote interno: nunca se mezclan unidades de pacientes distintos.", "Subir o agregar no da existencia; solo Confirmar entrada lo hace."] },
+    { "id": "caminos", "tipo": "mapa-procedencias", "datos": "caminosLibro", "kicker": "Mapa", "titulo": "Por dónde entra y hacia dónde sale la custodia", "mapa": { "pregunta": "¿Cómo llega una custodia y qué pasa con ella después?", "subtitulo": "Dos formas de entrar (manual y Excel), tres salidas (aplicación, acta, informe) y lo que se confunde con custodia.", "centroIcono": "medication", "centroTitulo": "Entrada propia · IMOV tipo IDINVTPROPIA", "centroSub": "Paciente en la cabecera, una unidad por línea", "conector": "Caminos alrededor de la entrada de custodia", "destinoPrefijo": "", "reglaTitulo": "Regla de lectura", "regla": "Para saber si un movimiento es custodia mire <code>IMOV.IDTIPOMOV</code> contra la variable <code>IDINVTPROPIA</code> y el paciente en <code>IMOV.CNSTRAN</code>. El tránsito de origen se reconoce por <code>ITRA.CNSMOVORI = 'CUSTODIA'</code>." } },
+    { "id": "flujo-manual", "tipo": "flujo", "flujoId": "custodia-manual", "kicker": "Proceso", "titulo": "Recibir custodia a mano", "imagen": "img/cus_flujo_sketchnote.jpg", "imagenAlt": "Abrir tránsito → agregar artículos → traer a entrada con paciente → confirmar → acta", "intro": "Para pocas unidades de un proveedor. El tránsito se abre con **Ingresar Custodia** en el panel de tránsito, se le agregan artículos, se **lotea** (lote del proveedor, vencimiento, cantidad), se **acepta** —eso genera la entrada en borrador con el tipo de custodia— y en la entrada se elige el **paciente** y se confirma.", "puntosClave": ["Sin proveedor no se abre el tránsito; sin variable IDINVTPROPIA tampoco.", "Agregar artículo no pide lote ni vencimiento: se completan al lotear el tránsito.", "Aceptar el tránsito exige todo loteado o con causa; sin ninguna línea loteada no genera entrada.", "El procedimiento de agregar artículo no valida cantidad ni bodega (hallazgo).", "Confirmar exige paciente y no pide costo ni factura."] },
+    { "id": "flujo-masiva", "tipo": "flujo", "flujoId": "custodia-masiva", "kicker": "Proceso", "titulo": "Recibir custodia por Excel", "imagen": "img/cus_masiva_sketchnote.jpg", "imagenAlt": "Plantilla de 11 columnas → validaciones → un tránsito por proveedor, un movimiento por paciente, una unidad por línea → confirmar", "intro": "Para muchos pacientes y uno o varios proveedores. Un solo archivo; el sistema arma los tránsitos y movimientos. **Nada se graba** si falla una sola validación: la respuesta trae la lista exacta de lo que falta.", "md": "## Columnas de la plantilla\n\n| Columna | Obligatoria | Qué va | Validación del sistema |\n|---|---|---|---|\n| CEDULA | Sí | Documento del paciente | Afiliado existe y está activo |\n| IDARTICULO | Sí | Código de la **presentación** (PRINCIPAL = 0) | Existe, activo, no principal, permitido en la bodega, con servicio asociado |\n| CANTIDAD | Sí (≥ 1) | Unidades entregadas | Se convierte en una línea por unidad |\n| CANTIDADREV | Sí (0 … CANTIDAD) | Unidades revisadas | Queda 1 o 0 en cada línea |\n| TERCERO | Sí | NIT del proveedor | Existe en terceros |\n| NOLOTEPEDIDO | Sí | Lote del proveedor | Texto; se conserva tal cual |\n| FECHAVENCE | Sí | Vencimiento `YYYY-MM-DD` | Formato válido (no rechaza fechas pasadas) |\n| PCOSTO | No | Costo unitario | Admite 0 |\n| TEMPERATURA | Sí | Temperatura de recepción | Se guarda en el tránsito y sale en el acta |\n| CUMPLE | Sí | SI / NO | Sale en el acta |\n| APROBADO | Sí | SI / NO | Sale en el acta |\n\n## Mensajes que devuelve el procedimiento\n\n- La bodega seleccionada (…) no está configurada para custodia masiva.\n- El consecutivo de custodia no existe. / La custodia ya está procesada o anulada.\n- Los siguientes NIT de proveedor no existen en catálogo TER: …\n- Hay fechas inválidas. Formato esperado: YYYY-MM-DD\n- No se encontraron artículos para procesar.\n- Artículos no existen o inactivos: …\n- No se permiten artículos principales (IART.PRINCIPAL = 1). Utilice el código del fabricante/presentación (PRINCIPAL = 0): …\n- Algunos artículos no están permitidos en esta bodega (IBODS).\n- Campos obligatorios vacíos o inválidos: CEDULA, PROVEEDOR (NIT), CANTIDAD (>=1), CANTIDADREV (>=0 y <= CANTIDAD), NOLOTEPEDIDO, FECHAVENCE, CUMPLE, APROBADO, TEMPERATURA.\n- Pacientes no existen o inactivos: …\n- Artículos sin servicio asociado (IDSERVICIO/SER): …\n\n## Qué arma el sistema\n\n- **Un tránsito por proveedor**: el primero reutiliza el consecutivo abierto; los demás se clonan con consecutivo nuevo. Todos quedan loteados (estado 2).\n- **Un movimiento por paciente y proveedor**, tipo IDINVTPROPIA, estado 0, observación `Custodia masiva - Paciente: … - Tránsito: …`.\n- **Por cada unidad**: una línea del movimiento (cantidad 1), una línea del tránsito (temperatura, cumple, aprobado) y un lote interno con existencia **cero** hasta confirmar.", "puntosClave": ["Permiso Masivo_cus además de Bcustodia; bodega marcada Es de Custodia.", "Borre las filas de ejemplo de la plantilla antes de subir.", "Después de subir hay que confirmar cada movimiento: el Excel no suma existencia.", "La respuesta trae artículos procesados, totales, consecutivo y movimientos generados por paciente y proveedor."] },
+    { "id": "despues", "tipo": "flujo", "flujoId": "custodia-despues", "kicker": "Después", "titulo": "Confirmar, enlazar con la aplicación, acta e informe", "imagen": "img/cus_despues_sketchnote.jpg", "imagenAlt": "Confirmar → existencia por unidad → reserva automática de la aplicación → acta → informe", "intro": "Confirmar entrada es el único paso que da existencia. En el mismo acto el sistema **reserva** las líneas de aplicación pendientes del paciente con el lote recibido (primero el que vence antes) y marca su requerimiento como recibido. Luego quedan el acta y el informe.", "puntosClave": ["El tránsito se toma solo desde CNSITRA; el paciente (CNSTRAN) nunca se usa como tránsito.", "Cuatro rutas de enlace: requerimiento pendiente, cita agendada, paciente + servicio, cualquier lote del paciente.", "Si el artículo no tiene servicio asociado, no hay enlace: la masiva lo rechaza antes.", "El acta individual trae temperatura, cumple, aprobado y la firma de quien confirmó."] },
+    { "id": "estados", "tipo": "semaforo", "datos": "estadosSolicitud", "kicker": "Semáforo", "titulo": "Estados del tránsito, del movimiento y del lote", "intro": "Qué significa cada valor y qué hacer con él." },
+    { "id": "actas-informe", "tipo": "texto", "kicker": "Soportes", "titulo": "Actas e informe de custodia", "intro": "Dos actas y un informe. Las actas son el soporte de la recepción; el informe responde qué hay guardado y de quién.", "md": "## Acta de Recepción de Custodia (por movimiento)\n\n- **Dónde**: Inventario → Movimientos → clic derecho sobre el movimiento → *Acta de Recepción de Custodia*. Solo aparece si el tipo del movimiento es el de IDINVTPROPIA.\n- **Qué trae**: fecha, proveedor, bodega, observación, usuario que confirmó y su firma (primero la firma guardada en documentos del movimiento; si no, la firma del usuario). Detalle por paciente, artículo, lote del proveedor y vencimiento: cantidad, revisada, temperatura, cumple, aprobado, riesgo, forma farmacéutica.\n\n## Acta custodia por tercero (consolidada)\n\n- **Dónde**: botón *Acta custodia por tercero* en la barra de Movimientos (filtro Crédito).\n- **Filtros**: proveedor **obligatorio**; bodega, fechas y estado opcionales.\n- **Mensajes**: *Debe indicar el proveedor en el filtro.* · *Variable IDINVTPROPIA no configurada.* · *No hay movimientos de custodia para el proveedor con los filtros actuales.*\n\n## Informe de Custodia\n\n- **Dónde**: Inventario → Existencias → pestaña *Informe de Custodia*.\n- **Bodegas**: solo activas y marcadas *Es de Custodia*.\n- **Columnas**: paciente, medicamento, lote del proveedor, lote interno, existencia, registro INVIMA, CUM, laboratorio, fecha de ingreso, vencimiento.\n- **Solo con existencia**: oculta lotes consumidos (existencia 0) pero sigue mostrando la custodia cargada y no confirmada.\n- **Exportar**: Excel `Informe_Custodia_<fecha>.xlsx` con cantidad ingresada y existencia actual por lote.", "puntosClave": ["Sin la variable IDINVTPROPIA las actas por tercero no corren.", "El acta consolidada no es por paciente: para un paciente, el acta del movimiento.", "Un lote en cero no siempre está consumido: puede estar sin confirmar."] },
+    { "id": "alrededor", "tipo": "texto", "kicker": "Alrededor", "titulo": "Configuración y procesos vecinos", "intro": "Lo que debe existir antes y lo que sigue después de la custodia.", "md": "## Antes\n\n- **Variable IDINVTPROPIA**: tipo de movimiento *Entrada propia*. Cada institución define su código.\n- **Bodega**: Configuración → Bodegas → *Es de Custodia* y tipos de artículo permitidos (IBODS).\n- **Permisos**: BrwTransito · Bcustodia (ver y recibir) y BrwTransito · Masivo_cus (Excel).\n- **Artículos**: código de presentación (no principal), activo, con servicio asociado.\n- **Sede**: campo *Bodega de Custodia* en Configuración → Sedes (dato de parametrización).\n\n## Después\n\n- **Aplicación de medicamentos**: con APLIM_USA_MEDCUSTOD la aplicación marca *Medicamento en Custodia*; al agendar la cita solo se ofrecen lotes de custodia del paciente.\n- **Dispensación**: la solicitud del paciente puede tomar el lote como cualquier otro de la bodega.\n- **Entrevista farmacéutica**: registra que el paciente trae medicamentos propios (líneas *Custodia*); es un registro clínico, no crea existencia.\n\n## Contabilidad\n\nLa entrada propia no pide factura ni costo y no genera cuenta por pagar. Si el tipo de movimiento está configurado para contabilizar, sigue el camino común de inventario con el costo digitado (cero si no se puso PCOSTO).", "puntosClave": ["Custodia no es compra: no hay CxP.", "El lote es del paciente: la aplicación no lo toma para otro.", "Hemoderivados y entrevista farmacéutica son procesos distintos."] },
+    { "id": "hallazgos", "tipo": "texto", "kicker": "Hallazgos", "titulo": "Hallazgos y pendientes", "intro": "Lo que se encontró al contrastar el libro con la pantalla, la documentación y los procedimientos.", "md": "## Hallazgos\n\n1. **Agregar artículo (manual) no valida nada.** El bloque de validación del procedimiento es un marcador vacío: acepta cantidad cero o negativa y artículos no permitidos en la bodega. La carga masiva sí valida. Pendiente de corrección.\n2. **El camino manual exige lotear y aceptar el tránsito.** El libro anterior y el runbook lo resumían como «Traer del Tránsito → entrada». Aceptar se detiene si hay líneas sin lotear y sin causa, y no genera entrada si ninguna línea quedó loteada. Se agregó el paso al flujo.\n3. **Runbook de documentación desactualizado.** Cita una pantalla y un procedimiento de actas que ya cambiaron de nombre. Conviene actualizarlo.\n4. **Respaldo CNSTRAN al actualizar tránsitos.** Al confirmar, si el consecutivo de tránsito va vacío el procedimiento usa el campo del paciente como respaldo. En los dos caminos documentados el consecutivo siempre va lleno; riesgo bajo.\n5. **Vencimiento pasado no se rechaza** en la carga masiva (solo el formato). Decisión de negocio: el informe lo muestra con su fecha.\n\n## Verificado\n\n- Los bloques de custodia son idénticos en la canasta de trabajo y en la última versión liberada: no hay arreglo pendiente.\n- El flujo del libro anterior era correcto en lo esencial (dos formas de recibir, paciente obligatorio, sin costo ni factura, enlace con la aplicación); se completaron el loteo del camino manual, las validaciones exactas, los mensajes, los estados, los permisos y los procesos vecinos.", "puntosClave": ["Sin datos de ningún cliente en este libro.", "Las fichas de los diez métodos y procedimientos quedaron leídas."] }
+  ]
+}

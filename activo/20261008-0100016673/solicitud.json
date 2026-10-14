@@ -1,0 +1,203 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-09T15:15:10.567Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016673",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261008-0100016673",
+    "idReq": "0100016673",
+    "fecha": "2026-10-08",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Maicao",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CARTERA · Cartera",
+    "rutaPantalla": "/admin/Recaudos"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CMAICA198",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CARTERA · Cartera",
+    "requerimiento": "Problema con la contabilización de factura FEV320008 en recaudo de cartera\n\nLa factura FEV320008 presenta dos glosas tipo G, lo que impide que se baje correctamente en el recaudo de cartera. Actualmente, el sistema solo permite registrar un pago en lugar de los dos necesarios.\n\n1. Acceder al módulo de recaudo de cartera.\n2. Intentar bajar la factura FEV320008.\n3. Observar que solo se permite un pago en lugar de dos. DETALLE: En el caso de la factura FEV320008, el sistema permitió registrar dos glosas tipo G. Sin embargo, al momento de procesar el recaudo en cartera, la plataforma restringe el proceso y solo permite aplicar el pago a una de las glosas por transacción.\n\nRequerimiento / Solicitud:\n- Se solicita modificar el módulo de recaudo para que permita aplicar un único pago a una misma factura que cuenta con múltiples glosas o diferentes estados.\n- Dado que el usuario final está cancelando ambos saldos en un mismo movimiento de banco, el sistema debe permitir asociar ambas glosas (los dos saldos) al mismo registro de recaudo.",
+    "criteriosAceptacion": "1. Recaudo BANCOS (o CAJA/CXP/GLOSAS) abierto: al buscar una factura con dos o más líneas FCXCDV tipo G (distinto CNSGLO), la grilla «Asignar facturas» sigue mostrando las glosas no asignadas aunque otra línea G de la misma N_FACTURA ya esté en FPAGD.\n2. Se pueden asignar dos glosas G de FEV320008 (CNSGLO 0101011075 y 0101011599) en el mismo CNSFPAG 0100058751; la suma de Vlr Pago cuadra con Valor Recaudo ($252.453) y Aplicar cierra sin error de duplicado.\n3. Carga masiva Excel/plano con dos filas misma N_FACTURA y TIPO G pero distinto CNSGLO (o columna que identifique la glosa) incorpora ambas y ASIGNAR/APLICARPAGO no bloquea.\n4. Regresión: no se permiten dos líneas idénticas (misma N_FACTURA, misma CLASE y mismo CNSGLO); devolución sigue una sola línea por N_FACTURA; factura tipo F + glosa G distinta sigue usando N_FACTURA+CLASE.\n5. Tras aplicar, saldos FCXCDV de ambas glosas disminuyen y el recaudo queda Cerrado con comprobante habitual (sin cambio de reglas contables).",
+    "alcance": "Proceso Cartera · Recaudos (FPAG_COL): control «Asignar facturas» en RecaudosPage → FPAGComponent → CXCComponent (INGRESO BANCOS del caso; aplica también CAJA, CXP y GLOSAS).\nFrontend: filtro AppStore.read sobre VWK_CXC1, composable useFpapdDuplicados.js y validadores locales en CXCComponent.\nBackend: SPQ_FPAG_COL — METODOs APLICARPAGO, ASIGNAR, ASIGNA_PLANO, PROCESAR_FACTURA, CARGAR_FACTURAS (validaciones de duplicado alineadas a CNSGLO cuando CLASE/TIPO = G).\nReferencia de diseño ya existente: LISTAR_FACTURAS_HUERFANAS distingue glosas por CNSGLO.",
+    "restricciones": "Fuera de alcance: crear glosas (proceso Glosas), conciliaciones, notas DB/CR, cambiar SPK_PAGOSCXC / lógica de asientos, ni permitir duplicar la misma glosa (mismo CNSGLO) dos veces.\nNo se exige segundo recaudo bancario ni workaround manual de dos CNSFPAG para un solo movimiento BMOVD.\nDesarrollo en PREVERSION IXONLINE/SQL; validar en copia con FEV320008 o factura análoga antes de liberar.",
+    "analisis": "Paso 0 — ¿Ya existe? Capacitación descartada: no hay botón alterno para «segunda glosa mismo recaudo»; el camino correcto es Asignar facturas dentro del mismo FPAG (conocimiento/recaudos, control asignar-facturas).\n\nREQ vs capturas: el texto menciona «contabilización», pero las capturas muestran la fase previa — recaudo BANCOS CNSFPAG 0100058751, Valor Recaudo $252.453. Captura 1: búsqueda FEV320008 devuelve dos filas tipo G (CNSGLO 0101011075 saldo $162.530 y 0101011599 $157.031). Captura 2: tras asignar la primera glosa ($162.530), la grilla superior muestra «No se han encontrado resultados» aunque el saldo disponible ($89.923) coincide con la segunda glosa; el detalle inferior solo tiene una línea. Clasificación: defecto (la cuenta por cobro sí tiene dos saldos G; el recaudo impide completar el mismo movimiento).\n\nCausa técnica: la clave de «factura ya asignada / duplicada» usa N_FACTURA + CLASE (tipo) sin CNSGLO. En FCXCDV varias glosas comparten N_FACTURA y TIPO=G y se distinguen por CNSGLO. El FE (filtroExcluirFacturaEnFpapdORpdx en CXCComponent y useFpapdDuplicados) oculta todas las líneas G al existir una en FPAGD. El SPQ_FPAG_COL repite el mismo criterio en APLICARPAGO, ASIGNAR, PROCESAR_FACTURA, CARGAR_FACTURAS y ASIGNA_PLANO, por lo que aunque el FE se corrija, aplicar o cargar masiva seguiría bloqueando. Contraste: LISTAR_FACTURAS_HUERFANAS ya excluye con (TIPO <> 'G' OR CNSGLO coincide) — patrón a replicar.\n\nContabilidad: sin cambio de generación de asientos; solo más líneas FPAGD legítimas en un mismo FPAG.",
+    "opciones": [],
+    "recomendacion": "Defecto acotado a reglas de duplicado/exclusión. Desarrollar alineación CNSGLO para CLASE/TIPO = G en FE + SPQ_FPAG_COL (métodos listados), tomando como plantilla LISTAR_FACTURAS_HUERFANAS. Prioridad funcional sobre el rótulo «Performance» del ticket. Tras el fix, documentar en proceso recaudos → necesidadesYaCubiertas que un recaudo bancario puede incluir varias glosas (G) de la misma factura si CNSGLO difiere. Rama sugerida: bugfix/CMAICA198.",
+    "cambioPropuestoSimple": "Hoy, al asignar una glosa (tipo G) de una factura en un recaudo de bancos, el sistema trata toda la factura como «ya usada» y no deja elegir otra glosa de la misma factura en ese mismo recaudo, aunque el banco pague ambos saldos en un solo movimiento. Se propone que cada glosa se identifique por su consecutivo (CNSGLO): se podrán asignar y aplicar varias líneas G de la misma factura en un único recaudo, sin duplicar la misma glosa dos veces.",
+    "cambioPropuestoSql": "Objeto: SPQ_FPAG_COL (IXONLINE/SQL, PREVERSION).\n\n--- APLICARPAGO: anti-duplicado en FPAGD ---\nBEFORE (resumen): GROUP BY N_FACTURA, CLASE HAVING COUNT(*)>1 para INGRESO IN ('GLOSAS','CAJA','BANCOS','CXP').\nAFTER: agrupar por N_FACTURA, CLASE y CASE WHEN CLASE='G' THEN COALESCE(CNSGLO,'') ELSE '' END; HAVING COUNT(*)>1. Mensaje: duplicar misma factura+clase+glosa.\nValidación: SELECT N_FACTURA, CLASE, CNSGLO, COUNT(*) FROM FPAGD WHERE CNSFPAG=@CNSFPAG GROUP BY N_FACTURA, CLASE, CNSGLO HAVING COUNT(*)>1 → vacío con dos G distintas.\n\n--- ASIGNAR / ASIGNA_PLANO: cruce RPDX vs FPAGD y duplicados en lote ---\nBEFORE: JOIN FPAGD ON N_FACTURA y CLASE; GROUP BY N_FACTURA, CLASE en RPDX.\nAFTER: añadir AND (F.CLASE <> 'G' OR COALESCE(F.CNSGLO,'') = COALESCE(R.CNS5,'')) en JOIN; en GROUP BY del lote incluir COALESCE(R.CNS5,'') cuando GRUPOETAREO/ID2 = 'G'.\n\n--- PROCESAR_FACTURA y CARGAR_FACTURAS ---\nBEFORE: EXISTS FPAGD/RPDX por N_FACTURA + CLASE=@TIPOF sin CNSGLO.\nAFTER: para @TIPOF='G', exigir también COALESCE(CNSGLO,'') = COALESCE(@CNSGLO,'') / RPDX.CNS5; duplicado en lote misma regla.\n\nPatrón referencia (ya en catálogo): LISTAR_FACTURAS_HUERFANAS — AND (D.TIPO <> 'G' OR COALESCE(FD.CNSGLO,'') = COALESCE(D.CNSGLO,'')).",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "El fix es criterio de consulta en FE (read FPAG); no altera asientos MCP/MCH, MCPE ni generadores SPK_NC_CONTAB_CXC al contabilizar.",
+        "validadoEn": "2026-10-09T01:55:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En copia/pruebas, repetir recaudo BANCOS con FEV320008 (o factura con ≥2 saldos FCXCDV TIPO G): confirmar que hoy solo deja una línea G y que la grilla deja de listar la segunda tras la primera asignación. Si ya aplicara ambas glosas sin error, no desarrollar."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-09-21_164844.png",
+        "ruta": "activo/20261008-0100016673/imagenes/Captura_de_pantalla_2026-09-21_164844.png",
+        "subidaEn": "2026-10-08T20:53:45",
+        "url": "/api/caso/20261008-0100016673/imagen/Captura_de_pantalla_2026-09-21_164844.png"
+      },
+      {
+        "nombre": "Captura_de_pantalla_2026-09-21_164858.png",
+        "ruta": "activo/20261008-0100016673/imagenes/Captura_de_pantalla_2026-09-21_164858.png",
+        "subidaEn": "2026-10-08T20:53:45",
+        "url": "/api/caso/20261008-0100016673/imagen/Captura_de_pantalla_2026-09-21_164858.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1. Recaudo BANCOS (o CAJA/CXP/GLOSAS) abierto: al buscar una factura con dos o más líneas FCXCDV tipo G (distinto CNSGLO), la grilla «Asignar facturas» sigue mostrando las glosas no asignadas aunque otra línea G de la misma N_FACTURA ya esté en FPAGD.\n2. Se pueden asignar dos glosas G de FEV320008 (CNSGLO 0101011075 y 0101011599) en el mismo CNSFPAG 0100058751; la suma de Vlr Pago cuadra con Valor Recaudo ($252.453) y Aplicar cierra sin error de duplicado.\n3. Carga masiva Excel/plano con dos filas misma N_FACTURA y TIPO G pero distinto CNSGLO (o columna que identifique la glosa) incorpora ambas y ASIGNAR/APLICARPAGO no bloquea.\n4. Regresión: no se permiten dos líneas idénticas (misma N_FACTURA, misma CLASE y mismo CNSGLO); devolución sigue una sola línea por N_FACTURA; factura tipo F + glosa G distinta sigue usando N_FACTURA+CLASE.\n5. Tras aplicar, saldos FCXCDV de ambas glosas disminuyen y el recaudo queda Cerrado con comprobante habitual (sin cambio de reglas contables).",
+      "originalesEn": "2026-10-09T15:14:12.787Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. Recaudo BANCOS (o CAJA/CXP/GLOSAS) abierto: al buscar una factura con dos o más líneas FCXCDV tipo G (distinto CNSGLO), la grilla «Asignar facturas» sigue mostrando las glosas no asignadas aunque otra línea G de la misma N_FACTURA ya esté en FPAGD.\n2. Se pueden asignar dos glosas G de FEV320008 (CNSGLO 0101011075 y 0101011599) en el mismo CNSFPAG 0100058751; la suma de Vlr Pago cuadra con Valor Recaudo ($252.453) y Aplicar cierra sin error de duplicado.\n3. Carga masiva Excel/plano con dos filas misma N_FACTURA y TIPO G pero distinto CNSGLO (o columna que identifique la glosa) incorpora ambas y ASIGNAR/APLICARPAGO no bloquea.\n4. Regresión: no se permiten dos líneas idénticas (misma N_FACTURA, misma CLASE y mismo CNSGLO); devolución sigue una sola línea por N_FACTURA; factura tipo F + glosa G distinta sigue usando N_FACTURA+CLASE.\n5. Tras aplicar, saldos FCXCDV de ambas glosas disminuyen y el recaudo queda Cerrado con comprobante habitual (sin cambio de reglas contables).",
+      "trasAnalisisEn": "2026-10-09T15:14:17.983Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Brecha cerrada: defecto en clave duplicado N_FACTURA+CLASE sin CNSGLO para tipo G (FE + SPQ_FPAG_COL). Fichas SP leidas; no fue necesario bajar SPQ_FPAG_COL al caso.",
+      "fecha": "2026-10-09T02:05:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_FPAG_COL · APLICARPAGO, ASIGNAR, ASIGNA_PLANO, PROCESAR_FACTURA, CARGAR_FACTURAS — leido en conocimiento/recaudos/sps.json"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261008-0100016673/diagramas/flujo.html",
+      "subidaEn": "2026-10-09T10:14:53",
+      "url": "/api/caso/20261008-0100016673/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "recaudos",
+      "aviso": null,
+      "dictamenIncrustado": true,
+      "sidecar": "dictamenes/20261008-0100016673-flujo.html"
+    },
+    "mockups": [
+      "activo/20261008-0100016673/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261008-0100016673\\sql\\",
+    "carpetaRelativa": "activo/20261008-0100016673/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016673\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "recaudos",
+    "catalogo": "conocimiento/recaudos/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "ADD_FACTURA",
+        "estado": "leido",
+        "hace": "Agrega factura al staging/detalle del recaudo.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "CARGAR_FACTURAS",
+        "estado": "leido",
+        "hace": "Carga Excel (mismas cols que SUBIR_TXT + CODRPTA/VLR_ACEPTA + IMP3/IMP4) → RPDX; borra RPDX previo si reenvía.",
+        "llama": [
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "ASIGNAR",
+        "estado": "leido",
+        "hace": "Cierra staging RPDX→FPAGD vía SPK_CARGA_MASIVA_FAC_CXC_02; borra RPDX/FTIMP.",
+        "llama": [
+          "SPK_CARGA_MASIVA_FAC_CXC_02"
+        ]
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "APLICARPAGO",
+        "estado": "leido",
+        "hace": "Gate apply: PRI abierto, detalle FPAGD, duplicados, ajuste REC_VLRMAX_AJUSTE, FPAGDI/FIMPDV; SPK_PAGOSCXC; si GLOSAS+FINDEVOL 4/5/6 → SPK_FINALIDAD_GLOSAS.",
+        "llama": [
+          "SPK_PRI",
+          "SPK_PAGOSCXC",
+          "SPK_FINALIDAD_GLOSAS"
+        ]
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "PROCESAR_FACTURA",
+        "estado": "leido",
+        "hace": "Procesa factura en staging.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "ASIGNA_PLANO",
+        "estado": "leido",
+        "hace": "Asigna desde plano.",
+        "llama": []
+      }
+    ],
+    "notas": "Fix FE adicional: CXCComponent.vue (filtroExcluirFacturaEnFpapdORpdx, filaFpapdCoincide/filaRpdxCoincide) y composables/useFpapdDuplicados.js — no son METODO SQL pero obligatorios para el REQ.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261008-0100016673.html",
+    "aprobados": "aprobados/20261008-0100016673/",
+    "imagenes": "aprobados/20261008-0100016673/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-12",
+    "ultimoEnvio": "2026-10-12T14:38:56",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

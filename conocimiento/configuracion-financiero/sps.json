@@ -1,0 +1,600 @@
+{
+  "procesoId": "configuracion-financiero",
+  "actualizado": "2026-10-04T21:30:00",
+  "nota": "Fichas reutilizadas 2026-10-04 desde IXONLINE/SQL PREVERSION = 2.0.7 (IDANT 2.0.6, idénticas). CAJ_COL solo CRUDCAJ INSERTAR/EDITAR. ELIMINAR_FPA existe en SP; la pantalla no lo llama. PCEM no consultado.",
+  "sps": [
+    {
+      "nombre": "SPQ_CAJ_COL",
+      "tipo": "SPQ",
+      "modelo": "CAJ_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDCAJ",
+          "hace": "INSERT o UPDATE en CAJ (código, nombre, tipo Cobro/Pago/Ambas, clase Principal/Auxiliar/Menor, fondo fijo, bodega, cuentas, comprobante, tercero, concepto, no contabilizar, tipo factura).",
+          "valida": [
+            "ISJSON del payload",
+            "PROCESO INSERTAR o EDITAR"
+          ],
+          "noValida": [
+            "CUENTA en CUE, comprobante en COM, responsable en TER",
+            "INSERT no valida CODCAJA duplicado (queda a la BD)",
+            "No hay rama DELETE (el botón Eliminar de la pantalla está oculto)"
+          ],
+          "errores": [
+            "Json: Formato Erroneo"
+          ],
+          "llama": [],
+          "efecto": "CAJ insertado / actualizado.",
+          "capaId": "01-caja",
+          "controlId": "caja-ficha",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TUR_COL",
+      "tipo": "SPQ",
+      "modelo": "TUR_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDTUR",
+          "hace": "INSERT / UPDATE / DELETE de turno (horario, días, clase).",
+          "valida": [
+            "CODTURNO no duplicado al insertar",
+            "ELIMINAR: sin filas CXT"
+          ],
+          "noValida": [
+            "Solapamiento de horarios"
+          ],
+          "errores": [
+            "EL TURNO YA EXISTE",
+            "EL TURNO TIENE CAJERO ASIGNADO"
+          ],
+          "llama": [],
+          "efecto": "TUR.",
+          "capaId": "01-caja",
+          "controlId": "turnos-cajeros",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CJR_COL",
+      "tipo": "SPQ",
+      "modelo": "CJR_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDCJR",
+          "hace": "INSERT / UPDATE / DELETE de cajero (código, descripción, clase, estado).",
+          "valida": [
+            "CODCAJERO no duplicado",
+            "ELIMINAR: sin filas CXT"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL CAJERO YA EXISTE",
+            "EL CAJERO TIENE TURNOS ASIGNADO"
+          ],
+          "llama": [],
+          "efecto": "CJR.",
+          "capaId": "01-caja",
+          "controlId": "turnos-cajeros",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CXT_COL",
+      "tipo": "SPQ",
+      "modelo": "CXT_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDCXT",
+          "hace": "Asigna cajero + caja + turno.",
+          "valida": [
+            "Par CODCAJA+CODTURNO no duplicado"
+          ],
+          "noValida": [
+            "Existencia de CAJ, CJR, TUR"
+          ],
+          "errores": [
+            "EL TURNO YA EXISTE PARA ESTA CAJA"
+          ],
+          "llama": [],
+          "efecto": "CXT.",
+          "capaId": "01-caja",
+          "controlId": "turnos-cajeros",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CPCJ_COL",
+      "tipo": "SPQ",
+      "modelo": "CPCJ_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CREA_CPCJ",
+          "hace": "Inserta concepto de caja (ingreso/egreso, cuenta, comprobante, caja menor, homólogo DIAN).",
+          "valida": [
+            "CODIGO obligatorio"
+          ],
+          "noValida": [
+            "Duplicado, cuenta en CUE, comprobante en COM"
+          ],
+          "errores": [
+            "Codigo es obligatorio"
+          ],
+          "llama": [],
+          "efecto": "CPCJ.",
+          "capaId": "01-caja",
+          "controlId": "conceptos-caja",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZA_CPCJ",
+          "hace": "UPDATE CPCJ por código.",
+          "valida": [
+            "CODIGO obligatorio"
+          ],
+          "noValida": [],
+          "errores": [
+            "Codigo es obligatorio"
+          ],
+          "llama": [],
+          "efecto": "CPCJ.",
+          "capaId": "01-caja",
+          "controlId": "conceptos-caja",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_CPCJ",
+          "hace": "DELETE CPCJ por código.",
+          "valida": [
+            "CODIGO obligatorio"
+          ],
+          "noValida": [
+            "Referencias FCJD / USVGS"
+          ],
+          "errores": [
+            "Codigo es obligatorio"
+          ],
+          "llama": [],
+          "efecto": "CPCJ.",
+          "capaId": "01-caja",
+          "controlId": "conceptos-caja",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FPA_COL",
+      "tipo": "SPQ",
+      "modelo": "FPA_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CREA_FPA",
+          "hace": "Inserta forma de pago (código, cuenta, comprobante, físico, datafono, pide banco/doc/autorización).",
+          "valida": [
+            "FORMAPAGO obligatorio"
+          ],
+          "noValida": [
+            "Duplicado, cuenta, comprobante"
+          ],
+          "errores": [
+            "Codigo es obligatorio"
+          ],
+          "llama": [],
+          "efecto": "FPA.",
+          "capaId": "02-bancos-formas",
+          "controlId": "formas-pago",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZA_FPA",
+          "hace": "UPDATE FPA por código.",
+          "valida": [
+            "FORMAPAGO obligatorio"
+          ],
+          "noValida": [],
+          "errores": [
+            "Codigo es obligatorio"
+          ],
+          "llama": [],
+          "efecto": "FPA.",
+          "capaId": "02-bancos-formas",
+          "controlId": "formas-pago",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_FPA",
+          "hace": "DELETE FPA por código. Existe en el procedimiento; la pantalla muestra botón sin handler.",
+          "valida": [
+            "FORMAPAGO obligatorio"
+          ],
+          "noValida": [
+            "Referencias PCJ/TGEN"
+          ],
+          "errores": [
+            "Codigo es obligatorio"
+          ],
+          "llama": [],
+          "efecto": "FPA (solo si se invocara).",
+          "capaId": "02-bancos-formas",
+          "controlId": "formas-pago",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_BCO",
+      "tipo": "SPQ",
+      "modelo": "BCO",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "Inserta banco (código, descripción, ACH, tercero categoría banco).",
+          "valida": [
+            "BANCO no duplicado",
+            "IDTERCERO no duplicado en BCO"
+          ],
+          "noValida": [
+            "Existencia del tercero"
+          ],
+          "errores": [
+            "CODIGO DE BANCO YA EXISTE",
+            "TERCERO YA SE ENCUENTRA REGISTRADP"
+          ],
+          "llama": [],
+          "efecto": "BCO.",
+          "capaId": "02-bancos-formas",
+          "controlId": "bancos",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITAR",
+          "hace": "Actualiza descripción, ACH y tercero.",
+          "valida": [
+            "BANCO existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "CODIGO DE BANCO NO EXISTE"
+          ],
+          "llama": [],
+          "efecto": "BCO.",
+          "capaId": "02-bancos-formas",
+          "controlId": "bancos",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "Borra el banco si no tiene sucursales.",
+          "valida": [
+            "Sin filas BSU"
+          ],
+          "noValida": [
+            "Referencias BCT/BMOV"
+          ],
+          "errores": [
+            "No se puede eliminar un banco con sucursales"
+          ],
+          "llama": [],
+          "efecto": "BCO.",
+          "capaId": "02-bancos-formas",
+          "controlId": "bancos",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDARBSU",
+          "hace": "Inserta sucursal del banco.",
+          "valida": [
+            "Par BANCO+SUCURSAL no duplicado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Sucursal ya existe."
+          ],
+          "llama": [],
+          "efecto": "BSU.",
+          "capaId": "02-bancos-formas",
+          "controlId": "bancos",
+          "estado": "leido"
+        },
+        {
+          "id": "EDITARBSU",
+          "hace": "Actualiza sucursal.",
+          "valida": [
+            "BANCO+SUCURSAL existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "Sucursal no existe."
+          ],
+          "llama": [],
+          "efecto": "BSU.",
+          "capaId": "02-bancos-formas",
+          "controlId": "bancos",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINARBSU",
+          "hace": "Borra sucursal.",
+          "valida": [
+            "BANCO+SUCURSAL existe"
+          ],
+          "noValida": [
+            "Referencias BCT"
+          ],
+          "errores": [
+            "Sucursal no existe."
+          ],
+          "llama": [],
+          "efecto": "BSU.",
+          "capaId": "02-bancos-formas",
+          "controlId": "bancos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_OFIN_COL",
+      "tipo": "SPQ",
+      "modelo": "OFIN_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDOFIN",
+          "hace": "INSERTAR / EDITAR / ELIMINAR operación financiera (tipo DB/CR, recaudo, nómina, traslado, genera CxP, cuenta, cuenta destino).",
+          "valida": [
+            "Código no duplicado al insertar"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "OFIN.",
+          "capaId": "02-bancos-formas",
+          "controlId": "ofin",
+          "estado": "leido"
+        },
+        {
+          "id": "SOLICITA_RECA_NOMINA",
+          "hace": "Consulta si la operación pide recaudo o es de nómina (lo usa el movimiento bancario).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-bancos-formas",
+          "controlId": "ofin",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CPNT_COL",
+      "tipo": "SPQ",
+      "modelo": "CPNT_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDCPNT",
+          "hace": "INSERTAR / EDITAR / ELIMINAR concepto de nota (cuenta, homologación DIAN DB/CR, tipo de respuesta).",
+          "valida": [
+            "Código no duplicado"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "CPNT. Lo consume FNOT.IDCONCEPTO.",
+          "capaId": "03-notas-func",
+          "controlId": "conceptos-notas",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FNT_COL",
+      "tipo": "SPQ",
+      "modelo": "FNT_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDFNT",
+          "hace": "INSERTAR / EDITAR / ELIMINAR tipo de nota débito/crédito (clase, comprobante, homologación DIAN).",
+          "valida": [
+            "Código no duplicado"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FNT.",
+          "capaId": "03-notas-func",
+          "controlId": "tipos-nota",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FDIAN_COL",
+      "tipo": "SPQ",
+      "modelo": "FDIAN_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDFDIAN",
+          "hace": "INSERTAR / EDITAR / ELIMINAR resolución (prefijo, rango, vigencia, tipo, sede, ambiente).",
+          "valida": [
+            "CNSRESOL no duplicado al insertar",
+            "ELIMINAR: sin facturas que la usen"
+          ],
+          "noValida": [
+            "Rango vs consecutivo actual",
+            "Vigencia FECHAVEN"
+          ],
+          "errores": [
+            "LA RESOLUCION DIAN YA EXISTE",
+            "ESTA RESOLUCION YA FUE USADA EN FACTURACION. NO ES POSIBLE ELIMINAR."
+          ],
+          "llama": [],
+          "efecto": "FDIAN.",
+          "capaId": "04-dian",
+          "controlId": "resolucion-dian",
+          "estado": "leido"
+        },
+        {
+          "id": "GET_DATOS_FDIAN",
+          "hace": "Devuelve filas TGEN del facturador electrónico (CONTACTO, SOFTWARE, SOFTWARE_NOMINA).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "04-dian",
+          "controlId": "resolucion-dian",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDFTRDIAN",
+          "hace": "Actualiza parámetros TGEN del facturador (solo EDITAR).",
+          "valida": [],
+          "noValida": [
+            "Existencia IDTGEN, formato email"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "TGEN.",
+          "capaId": "04-dian",
+          "controlId": "resolucion-dian",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FDIANCER_COL",
+      "tipo": "SPQ",
+      "modelo": "FDIANCER_COL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDFDIANCER",
+          "hace": "INSERTAR / EDITAR / BORRAR certificado (descripción, clave, fechas, proveedor).",
+          "valida": [
+            "ID existe en EDITAR/BORRAR"
+          ],
+          "noValida": [
+            "Referencias FTR al borrar",
+            "Vigencia fechas"
+          ],
+          "errores": [
+            "No se encontró la firma digital"
+          ],
+          "llama": [],
+          "efecto": "FDIANCER.",
+          "capaId": "04-dian",
+          "controlId": "firma-digital",
+          "estado": "leido"
+        },
+        {
+          "id": "GETVENCIMIENTO",
+          "hace": "Consulta el certificado más reciente si DIANCERTIFICADO está encendida y DIASNOTIFICACERT > 0.",
+          "valida": [
+            "DIANCERTIFICADO = SI",
+            "DIASNOTIFICACERT > 0"
+          ],
+          "noValida": [],
+          "errores": [
+            "La variable DIASNOTIFICACERT no esta configurada"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura (banner de facturación).",
+          "capaId": "04-dian",
+          "controlId": "firma-digital",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FUSU_COL",
+      "tipo": "SPQ",
+      "modelo": "FUSU_COL",
+      "estado": "listado",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDFUSU",
+          "hace": "Liga el tercero de oficina (funcionario) al usuario que autoriza notas, recaudos o CxP.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "FUSU.",
+          "capaId": "03-notas-func",
+          "controlId": "funcionarios",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CJTE_COL",
+      "tipo": "SPQ",
+      "modelo": "CJTE_COL",
+      "estado": "listado",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDCJTE",
+          "hace": "Catálogo de tipos de egreso (pestaña Tipos de egreso). La caja elige cuáles usa al expandir la fila (TGEN TIPOEGRESO).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "CJTE.",
+          "capaId": "01-caja",
+          "controlId": "conceptos-caja",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TANT_COL",
+      "tipo": "SPQ",
+      "modelo": "TANT_COL",
+      "estado": "listado",
+      "fuente": "IXONLINE/SQL PREVERSION",
+      "metodos": [
+        {
+          "id": "CRUDTANT",
+          "hace": "Catálogo de tipos de anticipo (pestaña Tipos de anticipo).",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "TANT.",
+          "capaId": "01-caja",
+          "controlId": "conceptos-caja",
+          "estado": "listado"
+        }
+      ]
+    }
+  ]
+}

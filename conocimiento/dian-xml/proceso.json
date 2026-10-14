@@ -2,33 +2,935 @@
   "id": "dian-xml",
   "nombre": "Facturación · XML DIAN / FEV",
   "modulo": "DIAN_XML",
+  "familia": "facturacion",
   "estado": "parcial",
-  "resumen": "Factura electrónica Colombia: encolar (FACTE), servicio facturador (XML + CUFE), FTRE y descarga TREA_XML. No es RIPS/CUV ni JSON Perú/SUNAT ni radicar CXC.",
-  "actualizado": "2026-09-12T22:20:00",
-  "notaSql": "SPQ de cola, resolución y certificado leídos 2026-09-06. El XML/CUFE lo escribe el servicio facturador (FACTE 1→2), no un SPQ de Qrystalos.",
-  "alcanceHasta": "FACTE=2 + FTRE (CUFE/XML). No genera RIPS ni radica FCXC.",
+  "resumen": "Factura electrónica Colombia: encolar facturas y notas, estados DIAN, rechazos, descargas, correo al cliente, resolución y firma. Contraste 2026-10-03 con Qrystalos2 + IXONLINE/SQL PREVERSION=2.0.7. No es RIPS/CUV ni JSON Perú ni radicar CXC.",
+  "actualizado": "2026-10-03T17:30:00",
+  "notaSql": "SPQ de cola, resolución, certificado y notas contrastados con PREVERSION = 2.0.7 (idéntico a la liberada). El XML y el CUFE los escribe el servicio facturador (fuera de los SPQ).",
+  "alcanceHasta": "Estado DIAN Notificada + CUFE/XML. No genera RIPS ni radica la cuenta.",
   "hermanoDe": "facturacion",
-  "ventanas": [
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "Es el envío de la factura electrónica de venta, y de sus notas crédito y débito, a la DIAN. Qrystalos deja el documento «en cola»; el servicio facturador electrónico arma el XML, lo firma con el certificado digital y lo transmite. Si la DIAN lo acepta, el documento queda Notificado y con su CUFE.",
+    "paraQueSirve": "Para que la factura tenga validez tributaria antes de entregarla, saber en qué va cada documento, corregir los rechazos, descargar el XML y el PDF y reenviar el correo al cliente.",
+    "proposito": "Que ninguna factura salga sin CUFE. Es la primera de tres validaciones: CUFE (DIAN), CUV (Ministerio, solo salud) y radicación (pagador)."
+  },
+  "necesidadesYaCubiertas": [
     {
-      "uso": "Facturas · notificar DIAN",
-      "ruta": "admin.facturacion",
-      "path": "/admin/facturacion",
-      "vue": "FTRComponent.vue · NotificaDian",
-      "entrada": "Administrativo → Facturación → pestaña Facturas. Encolar una FV (NOTI_DIAN)."
+      "necesidad": "Enviar una factura a la DIAN",
+      "donde": "Administrativo → Facturación → abrir la factura → Encolar DIAN",
+      "condicion": "Factura en estado P, Sin Notificar, con fecha de hoy y permiso Notificación DIAN. Según su configuración, debe estar contabilizada antes (CONTAB_FTR_POSTDIAN = NO) o después (= SI) de la DIAN.",
+      "metodo": "FTR_COL · NOTI_DIAN",
+      "noEs": "Validar el RIPS ante el Ministerio: eso da el CUV y es otro proceso."
     },
     {
-      "uso": "Proceso DIAN",
+      "necesidad": "Enviar muchas facturas o notas a la vez",
+      "donde": "Facturación → pestaña Proceso DIAN → filtrar → Encolar",
+      "condicion": "Encola todo lo filtrado que esté Sin Notificar. Los Con Errores no entran: desencólelos primero. No pide confirmación ni muestra mensaje: revise la columna Es. Dian.",
+      "metodo": "FTR_COL · ENCOLAR_MASIVO (ACCION 1)",
+      "noEs": "FEV/NC/NA-RIPS Masivo: valida RIPS, no envía a la DIAN."
+    },
+    {
+      "necesidad": "Qrystalos dice que la fecha de la factura debe ser la actual",
+      "donde": "Detalle de la factura → botón del calendario (Actualizar fecha) → Encolar DIAN",
+      "condicion": "Solo con la factura Sin Notificar. Si ya está contabilizada, también se corre la fecha contable.",
+      "metodo": "FTRFE_COL · FE_FECHAFTR",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Saber por qué la DIAN rechazó un documento",
+      "donde": "Icono Envíos y Respuestas (columna Fevrips en Facturación, o fila en Proceso DIAN) → Respuestas DIAN → Respuesta",
+      "condicion": "Verá «Documento Rechazado por la Dian». Copiar o Xml Respuesta le permiten llevar el detalle a soporte.",
+      "metodo": "Lectura de FDIANR",
+      "noEs": "Rechazo del Ministerio (RIPS): se revisa en la pestaña FEV RIPS de la misma ventana."
+    },
+    {
+      "necesidad": "Sacar un documento de la cola para corregirlo",
+      "donde": "Detalle de la factura → Desencolar, o Proceso DIAN → icono Encolar de la fila → Confirmar",
+      "condicion": "Solo si está En Cola, Con Errores o Procesando. Una factura Notificada no se puede desencolar.",
+      "metodo": "FTRFE_COL · FE_DESENCOLAR / FTR_COL · DESCOLA_ITEM",
+      "noEs": "Anular la factura: eso se hace con nota crédito."
+    },
+    {
+      "necesidad": "Descargar el XML y el PDF de facturas notificadas",
+      "donde": "Proceso DIAN → Descargar Xml (por fila) o XML+PDF (todo lo filtrado). En el detalle: Notificar",
+      "condicion": "Solo documentos Notificados. El botón Notificar del detalle descarga un ZIP; no envía correo.",
+      "metodo": "FTR_COL · TREA_XML / LISTAR_FTRE",
+      "noEs": "Paquete FEV-RIPS: incluye el JSON y el CUV; se descarga desde FEV/NC/NA-RIPS Masivo."
+    },
+    {
+      "necesidad": "Reenviar el correo de la factura al cliente",
+      "donde": "Facturación → pestaña Log Facturas → Reenviar (una) o Reenviar Filtrados (varias)",
+      "condicion": "Permiso Log / envío de facturas. Qrystalos deja el correo pendiente y el servicio de correo lo vuelve a enviar.",
+      "metodo": "FTR_COL · RESET_NOTIFICADOS / RESET_NOTIFICADOS_MASIVO",
+      "noEs": "Reenviar a la DIAN: el documento ya está Notificado; no se vuelve a transmitir."
+    },
+    {
+      "necesidad": "Enviar una nota crédito o débito a la DIAN",
+      "donde": "Administrativo → Notas Debito - Credito → abrir la nota → Encolar",
+      "condicion": "Nota confirmada y no anulada, con la factura ya Notificada (o Prevalidada). Si la fecha es anterior a hoy, primero Actualizar Fecha.",
+      "metodo": "FNOT_COL · FNOT_ENCOLAR",
+      "noEs": "Nota de ajuste RIPS (NA): es del Ministerio, no de la DIAN."
+    },
+    {
+      "necesidad": "Registrar una resolución nueva o ver por qué no deja facturar",
+      "donde": "Configuración → Financiero → Resolución DIAN → N u e v o",
+      "condicion": "Los avisos de resolución al facturar solo aparecen si la variable BLOQUEADIAN está en SI.",
+      "metodo": "FDIAN_COL · CRUDFDIAN / FTR_COL · VALIDADIAN2",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Renovar la firma digital",
+      "donde": "Configuración → Financiero → Gestión de Firma Digital → Agregar Firmas Digitales",
+      "condicion": "El aviso rojo o naranja en Facturación necesita DIANCERTIFICADO = SI. El aviso al facturar lee la fecha registrada en Facturador Electrónico (Software): actualícela también allí.",
+      "metodo": "FDIANCER_COL · CRUDFDIANCER / GETVENCIMIENTO",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Entender los avisos «<5 días», «5-10 días» y «11-15 días»",
+      "donde": "Facturación → banner naranja de la lista de facturas",
+      "condicion": "Cuentan los días que faltan para la fecha máxima de radicación. Al pulsarlos filtra esas facturas.",
+      "metodo": "FTR_COL · SEDFACUMASI",
+      "noEs": "No miden la cola DIAN ni el tiempo de respuesta de la DIAN."
+    }
+  ],
+  "ventanas": [
+    {
+      "uso": "Factura · Encolar DIAN",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "FTRComponent.vue",
+      "entrada": "Administrativo → Facturación → Detalle de factura. Botones Encolar DIAN, Actualizar fecha, Desencolar, Notificar y Ajustar totales DIAN."
+    },
+    {
+      "uso": "Proceso DIAN (lote)",
       "ruta": "admin.facturacion",
       "path": "/admin/facturacion",
       "vue": "FTREComponent.vue",
-      "entrada": "Pestaña Proceso DIAN (permiso NOTIDIAN): cola masiva, LISTAR_FTRE, TREA_XML, reenvío correo, aging SEDFACUMASI."
+      "entrada": "Facturación → pestaña Proceso DIAN (permiso ADMINQ_FACTURAS · NOTIDIAN). Encolar, Desencolar, Solo PDF, XML+PDF, PDF Notas, Paquete FEVRIPS."
     },
     {
-      "uso": "Resolución y firma",
+      "uso": "Log Facturas (correo)",
+      "ruta": "admin.facturacion",
+      "path": "/admin/facturacion",
+      "vue": "LOGFacturas.vue",
+      "entrada": "Facturación → pestaña Log Facturas (permiso ADMINQ_FACTURAS · TAB_SEND_FTR). Reenviar, Reenviar Filtrados."
+    },
+    {
+      "uso": "Notas débito y crédito",
+      "ruta": "admin.notasdbcr",
+      "path": "/admin/notasdbcr",
+      "vue": "NotasDBCRComponent.vue",
+      "entrada": "Administrativo → Notas Debito - Credito. Encolar, Desencolar, Actualizar Fecha, Envios y Respuestas."
+    },
+    {
+      "uso": "Resolución DIAN",
       "ruta": "conf.fdian",
       "path": "/conf/fdian",
-      "vue": "FDIANComponent · FDIANCERComponent",
-      "entrada": "Configuración → Resolución DIAN y Certificado digital. Banner Facturación: VALIDADIAN2 / GETVENCIMIENTO."
+      "vue": "FDIANComponent.vue",
+      "entrada": "Configuración → Financiero → Resolución DIAN. N u e v o, F a c t u r a d o r E l e c t r o n i c o."
+    },
+    {
+      "uso": "Firma digital",
+      "ruta": "conf.firmadigital",
+      "path": "/conf/firmadigital",
+      "vue": "FDIANCERComponent.vue",
+      "entrada": "Configuración → Financiero → Gestión de Firma Digital. Agregar Firmas Digitales."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Guía rápida",
+      "titulo": "¿Qué necesita hacer?"
+    },
+    {
+      "id": "envio-dian",
+      "tipo": "envio-dian",
+      "flujoId": "flujo-dian-fev",
+      "kicker": "Panorama",
+      "titulo": "Cómo viaja la factura a la DIAN"
+    },
+    {
+      "id": "estados-dian",
+      "tipo": "semaforo",
+      "datos": "estadosDian",
+      "kicker": "Estados",
+      "titulo": "Estados DIAN: qué significa cada uno"
+    },
+    {
+      "id": "encolar-una",
+      "tipo": "flujo",
+      "flujoId": "flujo-encolar-una",
+      "kicker": "Una factura",
+      "titulo": "Enviar una factura a la DIAN"
+    },
+    {
+      "id": "proceso-dian",
+      "tipo": "flujo",
+      "flujoId": "flujo-proceso-dian",
+      "kicker": "Por lote",
+      "titulo": "Pestaña Proceso DIAN: trabajar por lote"
+    },
+    {
+      "id": "rechazos-dian",
+      "tipo": "flujo",
+      "flujoId": "flujo-rechazos-dian",
+      "kicker": "Errores",
+      "titulo": "Rechazos y correcciones"
+    },
+    {
+      "id": "notas-dian",
+      "tipo": "flujo",
+      "flujoId": "flujo-notas-dian",
+      "kicker": "Notas",
+      "titulo": "Notas crédito y débito"
+    },
+    {
+      "id": "correo-descargas",
+      "tipo": "flujo",
+      "flujoId": "flujo-correo-descargas",
+      "kicker": "Entrega",
+      "titulo": "Descargas y correo al cliente"
+    },
+    {
+      "id": "alertas-facturar",
+      "tipo": "semaforo",
+      "datos": "alertasFacturar",
+      "kicker": "Configuración",
+      "titulo": "Resolución y firma: los avisos al facturar"
+    }
+  ],
+  "estadosDian": {
+    "titulo": "Un número, tres nombres",
+    "descripcion": "Qrystalos guarda el estado DIAN como un número del 0 al 7, pero cada pantalla lo muestra con un texto distinto. Guíese por el número.",
+    "columnas": [
+      "Detalle de la factura",
+      "Filtro Estado FACTE (Facturas)",
+      "Filtro Es. DIAN (Proceso DIAN)"
+    ],
+    "filas": [
+      {
+        "codigo": "0",
+        "tono": "gris",
+        "etiquetas": [
+          "Sin Notificar",
+          "0-sin Enviar",
+          "0-sin Notificar"
+        ],
+        "significa": "Todavía no se ha enviado.",
+        "queHacer": "Encolar DIAN (detalle) o Encolar (Proceso DIAN)."
+      },
+      {
+        "codigo": "1",
+        "tono": "ambar",
+        "etiquetas": [
+          "En Cola",
+          "1-En cola",
+          "1-EnCola"
+        ],
+        "significa": "Espera a que el servicio facturador la tome.",
+        "queHacer": "Espere. Si necesita corregirla, Desencolar."
+      },
+      {
+        "codigo": "4",
+        "tono": "ambar",
+        "etiquetas": [
+          "Procesando",
+          "4-Notificada",
+          "4-Por Consultar"
+        ],
+        "significa": "Ya se transmitió y espera la respuesta de la DIAN.",
+        "queHacer": "Espere; no la vuelva a encolar. Ojo: el filtro de Facturas la llama «Notificada» aunque todavía no lo está."
+      },
+      {
+        "codigo": "2",
+        "tono": "verde",
+        "etiquetas": [
+          "Notificada",
+          "2-Enviada",
+          "2-Enviada"
+        ],
+        "significa": "La DIAN la aceptó: tiene CUFE y XML.",
+        "queHacer": "Descargar XML y PDF, validar el RIPS (salud) y radicar."
+      },
+      {
+        "codigo": "3",
+        "tono": "rojo",
+        "etiquetas": [
+          "Con Errores",
+          "3-Con error",
+          "3-Con errores"
+        ],
+        "significa": "La DIAN o el servicio la rechazó.",
+        "queHacer": "Envíos y Respuestas → leer el error → corregir → Desencolar → Encolar DIAN."
+      },
+      {
+        "codigo": "5",
+        "tono": "azul",
+        "etiquetas": [
+          "Por prevalidar",
+          "5-Por prevalidar",
+          "5-Por prevalidar"
+        ],
+        "significa": "En cola de prevalidación (prueba previa ante la DIAN, si su institución la usa).",
+        "queHacer": "Espere el resultado."
+      },
+      {
+        "codigo": "6",
+        "tono": "verde",
+        "etiquetas": [
+          "Prevalidada",
+          "6-Prevalidada",
+          "6-Prevalidada"
+        ],
+        "significa": "Pasó la prevalidación.",
+        "queHacer": "Revise con Resultado prevalidación DIAN (Proceso DIAN)."
+      },
+      {
+        "codigo": "7",
+        "tono": "rojo",
+        "etiquetas": [
+          "Rechazada en pruebas",
+          "7-Rechazada en pruebas",
+          "7-Rechazada en pruebas"
+        ],
+        "significa": "No pasó la prevalidación.",
+        "queHacer": "Resultado prevalidación DIAN → corregir → volver a enviar."
+      }
+    ],
+    "nota": "En Notas Debito - Credito los textos cambian otra vez: Sin Enviar (0), En Cola (1), Notificada (2), Con Errores (3) y Enviada (4)."
+  },
+  "alertasFacturar": {
+    "titulo": "Lo que revisa Qrystalos antes de numerar",
+    "descripcion": "Al facturar, Qrystalos revisa la resolución y la firma de la sede. Los avisos amarillos dejan continuar (¿Desea continuar de todas formas?); los rojos no.",
+    "columnas": [
+      "Mensaje en pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "✓",
+        "tono": "verde",
+        "etiquetas": [
+          "Validación exitosa. Puede continuar con la facturación."
+        ],
+        "significa": "Resolución vigente, con consecutivos y firma al día.",
+        "queHacer": "Continúe."
+      },
+      {
+        "codigo": "!",
+        "tono": "ambar",
+        "etiquetas": [
+          "Advertencia: la resolución está próxima a vencer"
+        ],
+        "significa": "Faltan 30 días o menos para su vencimiento.",
+        "queHacer": "Solicite la nueva resolución a la DIAN y regístrela en Resolución DIAN."
+      },
+      {
+        "codigo": "!",
+        "tono": "ambar",
+        "etiquetas": [
+          "Advertencia: el certificado electrónico está próximo a vencer"
+        ],
+        "significa": "La firma vence en 30 días o menos.",
+        "queHacer": "Renueve la firma y actualice la fecha en Facturador Electrónico (Software) y en Gestión de Firma Digital."
+      },
+      {
+        "codigo": "!",
+        "tono": "ambar",
+        "etiquetas": [
+          "Tanto la resolución como el certificado están próximos a vencer"
+        ],
+        "significa": "Los dos casos anteriores a la vez.",
+        "queHacer": "Atienda ambos."
+      },
+      {
+        "codigo": "✕",
+        "tono": "rojo",
+        "etiquetas": [
+          "Error: el consecutivo no está autorizado por la DIAN"
+        ],
+        "significa": "El número siguiente supera el rango de la resolución. Qrystalos la marca como vencida.",
+        "queHacer": "Registre la nueva resolución."
+      },
+      {
+        "codigo": "✕",
+        "tono": "rojo",
+        "etiquetas": [
+          "Error: la resolución de la DIAN está vencida"
+        ],
+        "significa": "La fecha de vigencia ya pasó.",
+        "queHacer": "Registre la nueva resolución."
+      },
+      {
+        "codigo": "✕",
+        "tono": "rojo",
+        "etiquetas": [
+          "Error: no existe resolución de la DIAN disponible"
+        ],
+        "significa": "No hay resolución activa de facturación para la sede.",
+        "queHacer": "Revise sede y procedencia en Resolución DIAN."
+      },
+      {
+        "codigo": "✕",
+        "tono": "rojo",
+        "etiquetas": [
+          "Error: no hay consecutivos DIAN suficientes"
+        ],
+        "significa": "En facturación masiva se piden más números de los que quedan en el rango.",
+        "queHacer": "Facture menos documentos o registre la nueva resolución."
+      }
+    ],
+    "nota": "Estos avisos solo aparecen si la variable BLOQUEADIAN está en SI. Con BLOQUEADIAN en NO, Qrystalos factura sin revisar la resolución. El aviso de firma en la parte superior de Facturación es otro control: necesita DIANCERTIFICADO = SI."
+  },
+  "flujos": [
+    {
+      "id": "flujo-dian-fev",
+      "nombre": "Envío de factura electrónica a DIAN",
+      "descripcion": "Qrystalos pone la factura en cola; el servicio facturador arma, firma y transmite el XML; la DIAN responde con el CUFE o con errores.",
+      "icono": "send",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Validar factura y resolución",
+          "descripcion": "La factura debe tener detalle; cápita o PGP requiere la relación de capitados, y la sede debe tener resolución y firma vigentes.",
+          "si": "Encolar la factura.",
+          "no": "Corregir factura, sede, resolución o certificado.",
+          "sp": "FTR_COL · VALIDADIAN2",
+          "tablas": [
+            "FTR",
+            "FTRD",
+            "FTRDC",
+            "FDIAN"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Encolar la factura electrónica",
+          "descripcion": "Encolar DIAN (detalle) o Encolar (Proceso DIAN) la dejan En Cola para el servicio facturador.",
+          "sp": "FTR_COL · NOTI_DIAN / ENCOLAR_ITEM / ENCOLAR_MASIVO",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Generar, firmar y transmitir el XML",
+          "descripcion": "El servicio facturador electrónico toma la cola, construye el XML, aplica la firma digital y lo transmite a la DIAN.",
+          "tablas": [
+            "FTR",
+            "FTRE"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Interpretar la respuesta de la DIAN",
+          "descripcion": "La DIAN verifica estructura, firma, resolución, numeración, identificación e impuestos.",
+          "si": "Acepta la factura y devuelve el CUFE.",
+          "no": "Queda Con Errores: corregir y volver a encolar.",
+          "tablas": [
+            "FTR",
+            "FTRE",
+            "FDIANR"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Factura Notificada con CUFE",
+          "descripcion": "La factura queda Notificada y con CUFE y XML disponibles. No genera CUV ni radica la cuenta.",
+          "tablas": [
+            "FTR",
+            "FTRE"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-encolar-una",
+      "nombre": "Enviar una factura a la DIAN",
+      "descripcion": "Desde el detalle de la factura: revisar fecha, pulsar Encolar DIAN y esperar la respuesta.",
+      "icono": "send",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir la factura",
+          "descripcion": "Administrativo → Facturación → buscar la factura y abrir su detalle. Debe estar en estado P (no anulada) y con estado DIAN Sin Notificar.",
+          "rol": "Facturación",
+          "pantalla": "Detalle de factura"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿La fecha de la factura es de hoy?",
+          "descripcion": "La DIAN recibe la factura con la fecha del día. Si tiene más de un día, Qrystalos responde «La fecha de la Factura debe ser la Misma de la Actual».",
+          "si": "Siga al paso 3.",
+          "no": "Pulse el botón del calendario (Actualizar fecha). Si la factura ya está contabilizada, también se corre la fecha contable.",
+          "sp": "FTRFE_COL · FE_FECHAFTR"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Aparece el botón Encolar DIAN?",
+          "descripcion": "Necesita el permiso Notificación DIAN. Además depende de la variable CONTAB_FTR_POSTDIAN: en SI, la factura NO debe estar contabilizada (se contabiliza después de la DIAN); en NO, debe estar contabilizada primero.",
+          "si": "Pulse Encolar DIAN.",
+          "no": "Pida el permiso o contabilice la factura, según su configuración."
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "La factura queda En Cola",
+          "descripcion": "Mensaje «Registro Encolado Para Enviar a la Dian». Si es de cápita o PGP sin relación de capitados, sale «Factura Capitada/PGP sin relación de Capitado…» y no se encola.",
+          "rol": "Sistema",
+          "sp": "FTR_COL · NOTI_DIAN",
+          "tablas": [
+            "FTR",
+            "FTRDC"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "El servicio facturador la transmite",
+          "descripcion": "Fuera de Qrystalos: arma el XML, lo firma y lo envía. El estado pasa a Procesando y luego a Notificada o Con Errores.",
+          "rol": "Servicio facturador",
+          "tablas": [
+            "FTRE",
+            "FDIANR"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Factura Notificada",
+          "descripcion": "Ya tiene CUFE. Puede descargar XML y PDF, validar el RIPS si es de salud y radicar la cuenta."
+        }
+      ]
+    },
+    {
+      "id": "flujo-proceso-dian",
+      "nombre": "Pestaña Proceso DIAN",
+      "descripcion": "Los botones de arriba trabajan sobre todo lo filtrado, no sobre filas marcadas. Filtre bien antes de pulsar.",
+      "icono": "fact_check",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir Proceso DIAN",
+          "descripcion": "Facturación → pestaña Proceso DIAN. Solo la ve quien tiene el permiso Notificación DIAN.",
+          "rol": "Facturación",
+          "pantalla": "Proceso DIAN"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Filtrar",
+          "descripcion": "F. Inicial y F. Final, Es. DIAN, Es. RIPS, Procedencia, Tipo doc. (FACTURA, NOTACR, NOTADB), Sede, Tercero, Contrato, Usuario fac., Sin correo y sin Part. (oculta particulares)."
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Encolar o desencolar el lote?",
+          "descripcion": "Encolar envía lo filtrado que esté Sin Notificar. Desencolar devuelve a Sin Notificar lo filtrado que esté En Cola.",
+          "si": "Los Con Errores no entran al Encolar del lote: desencólelos uno a uno y vuelva a encolar.",
+          "no": "Para un solo documento use el icono Encolar de la fila: si está Sin Notificar lo encola; si está En Cola pregunta «Esta Seguro de Desencolar…».",
+          "sp": "FTR_COL · ENCOLAR_MASIVO / ENCOLAR_ITEM / DESCOLA_ITEM",
+          "tablas": [
+            "FTR",
+            "FNOT"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Descargar",
+          "descripcion": "Arriba: Solo PDF, XML+PDF y PDF Notas para lo filtrado; Paquete FEVRIPS cuando Es. RIPS = Validado. Por fila: Descargar Factura, Descargar Xml (solo Notificada), Descargar Rips y Envíos y Respuestas.",
+          "sp": "FTR_COL · LISTAR_FTRE / TREA_XML"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Confirmar en la columna Es. Dian",
+          "descripcion": "Al encolar o desencolar la pantalla solo se refresca, sin mensaje. Revise la columna Es. Dian para confirmar el cambio."
+        }
+      ]
+    },
+    {
+      "id": "flujo-rechazos-dian",
+      "nombre": "Rechazos y correcciones",
+      "descripcion": "Un documento Con Errores no se arregla solo: hay que leer la respuesta, corregir y volver a encolar.",
+      "icono": "report",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Encontrar los rechazados",
+          "descripcion": "Proceso DIAN → Es. DIAN = 3-Con errores (o 7-Rechazada en pruebas).",
+          "pantalla": "Proceso DIAN"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Leer la respuesta",
+          "descripcion": "Icono Envíos y Respuestas → Respuestas DIAN → abrir el envío → Respuesta. Verá «Documento Rechazado por la Dian» y el motivo. Copiar o Xml Respuesta sirven para llevarlo a soporte.",
+          "tablas": [
+            "FDIANR"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿El error es de la factura o de la configuración?",
+          "descripcion": "Lea el motivo de la DIAN.",
+          "si": "Datos de la factura (tercero, valores, códigos): corríjala en Facturación.",
+          "no": "Resolución, firma o software: revise Configuración → Resolución DIAN o Gestión de Firma Digital. Si no es claro, escale a soporte con el XML de respuesta."
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Los totales no cuadran por centavos?",
+          "descripcion": "En facturas financieras de cápita existe Ajustar totales DIAN (permiso «Ajustar totales factura para envío DIAN»), solo mientras está Sin Notificar.",
+          "si": "Ajuste los totales antes de volver a encolar.",
+          "no": "Siga al paso 5.",
+          "sp": "FTR_COL · AJUSTAR_TOTALES_DIAN"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Volver a enviar",
+          "descripcion": "Desencolar (deja la factura Sin Notificar) → Actualizar fecha si hace falta → Encolar DIAN.",
+          "sp": "FTRFE_COL · FE_DESENCOLAR / FTR_COL · NOTI_DIAN"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Factura Notificada",
+          "descripcion": "Una factura Notificada nunca se desencola: si hay que corregirla, se hace con nota crédito o débito."
+        }
+      ]
+    },
+    {
+      "id": "flujo-notas-dian",
+      "nombre": "Notas crédito y débito",
+      "descripcion": "La nota sigue a su factura: primero la factura debe estar Notificada.",
+      "icono": "remove_circle_outline",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir la nota",
+          "descripcion": "Administrativo → Notas Debito - Credito. La nota debe estar confirmada y no anulada; si no: «No se puede enviar a la Dian una nota Sin Confirmar / Anulada».",
+          "pantalla": "Notas Debito - Credito"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿La factura de la nota ya está Notificada?",
+          "descripcion": "La nota solo sale si su factura está Notificada (o Prevalidada). Si no: «Factura … no se ha notificado a la DIAN».",
+          "si": "Siga al paso 3.",
+          "no": "Primero notifique la factura."
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿La fecha de la nota es anterior a hoy?",
+          "descripcion": "Qrystalos no deja encolar una nota con fecha pasada: «La fecha de la nota no puede ser menor a la fecha actual».",
+          "si": "Pulse Actualizar Fecha y luego Encolar.",
+          "no": "Pulse Encolar.",
+          "sp": "FNOT_COL · FNOT_ACTUALIZAR_FECHA"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "La nota queda En Cola",
+          "descripcion": "Mensaje «Nota encolada correctamente». Si ya estaba en proceso hoy: «Esta nota ya esta en proceso de envio».",
+          "sp": "FNOT_COL · FNOT_ENCOLAR",
+          "tablas": [
+            "FNOT"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Revisar o corregir",
+          "descripcion": "Envios y Respuestas muestra la respuesta de la DIAN. Desencolar solo si está En Cola o Con Errores.",
+          "sp": "FNOT_COL · FNOT_DESENCOLAR"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Nota Notificada",
+          "descripcion": "Si es de salud, después se valida su RIPS en la pestaña NC / ND de FEV/NC/NA-RIPS Masivo."
+        }
+      ]
+    },
+    {
+      "id": "flujo-correo-descargas",
+      "nombre": "Descargas y correo al cliente",
+      "descripcion": "Descargar el archivo y reenviar el correo son caminos distintos.",
+      "icono": "mail",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿Necesita el archivo o reenviar el correo?",
+          "descripcion": "Elija el camino.",
+          "si": "El archivo: paso 2.",
+          "no": "Reenviar el correo: paso 3."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Descargar XML y PDF",
+          "descripcion": "Factura Notificada → Notificar: descarga un ZIP con XML y PDF; no envía correo. Para varias: Proceso DIAN → XML+PDF o Solo PDF.",
+          "sp": "FTR_COL · TREA_XML / LISTAR_FTRE"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Reenviar el correo",
+          "descripcion": "Facturación → pestaña Log Facturas (permiso Log / envío de facturas) → Reenviar en la fila → «Sí, reenviar». Para varias: filtre → Reenviar Filtrados.",
+          "pantalla": "Log Facturas",
+          "sp": "FTR_COL · RESET_NOTIFICADOS / RESET_NOTIFICADOS_MASIVO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "El correo vuelve a la cola",
+          "descripcion": "El servicio de correo lo envía. Estados: Pendiente → En proceso → Notificada o Error.",
+          "rol": "Servicio de correo"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Correo entregado",
+          "descripcion": "En Proceso DIAN, el filtro Sin correo muestra los documentos cuyo correo no se ha enviado."
+        }
+      ]
+    }
+  ],
+  "botones": [
+    {
+      "label": "Encolar DIAN",
+      "icono": "send",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Detalle de factura. Deja la factura En Cola. Aparece con estado P, Sin Notificar, permiso Notificación DIAN y la contabilización que pida CONTAB_FTR_POSTDIAN."
+    },
+    {
+      "label": "Actualizar fecha",
+      "icono": "event",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Icono de calendario en el detalle. Lleva la fecha de la factura a hoy (y la contable si ya está contabilizada). Solo Sin Notificar."
+    },
+    {
+      "label": "Desencolar",
+      "icono": "undo",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Icono en el detalle. Devuelve a Sin Notificar una factura En Cola, Con Errores o Procesando."
+    },
+    {
+      "label": "Notificar",
+      "icono": "mail",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Detalle de factura Notificada. Descarga un ZIP con XML y PDF. No envía correo."
+    },
+    {
+      "label": "Ajustar totales DIAN",
+      "icono": "balance",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Factura financiera de cápita Sin Notificar. Cuadra centavos del total con la DIAN. Permiso propio."
+    },
+    {
+      "label": "Envíos y Respuestas",
+      "icono": "description",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Columna Fevrips de Facturación o fila de Proceso DIAN. Muestra cada envío, la respuesta de la DIAN y la pestaña FEV RIPS."
+    },
+    {
+      "label": "Encolar (Proceso DIAN)",
+      "icono": "playlist_add_check",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Encola todo lo filtrado que esté Sin Notificar. Sin mensaje: revise Es. Dian."
+    },
+    {
+      "label": "Desencolar (Proceso DIAN)",
+      "icono": "playlist_remove",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Devuelve a Sin Notificar todo lo filtrado que esté En Cola."
+    },
+    {
+      "label": "Solo PDF",
+      "icono": "picture_as_pdf",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Descarga el PDF de lo filtrado."
+    },
+    {
+      "label": "XML+PDF",
+      "icono": "folder_zip",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Descarga XML y PDF de lo filtrado."
+    },
+    {
+      "label": "PDF Notas",
+      "icono": "picture_as_pdf",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Descarga el PDF de las notas filtradas."
+    },
+    {
+      "label": "Paquete FEVRIPS",
+      "icono": "inventory_2",
+      "color": "indigo-10",
+      "estilo": "outline",
+      "descripcion": "Disponible cuando el filtro Es. RIPS es Validado."
+    },
+    {
+      "label": "Descargar Xml",
+      "icono": "code",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Icono por fila en Proceso DIAN. Solo documentos Notificados."
+    },
+    {
+      "label": "Resultado prevalidación DIAN",
+      "icono": "rule",
+      "color": "blue-grey",
+      "estilo": "outline",
+      "descripcion": "Icono por fila con estado Prevalidada o Rechazada en pruebas."
+    },
+    {
+      "label": "Reenviar / Reenviar Filtrados",
+      "icono": "forward_to_inbox",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Pestaña Log Facturas. Vuelve a enviar el correo al cliente, uno o todos los filtrados."
+    },
+    {
+      "label": "Encolar (Notas)",
+      "icono": "send",
+      "color": "blue",
+      "estilo": "unelevated",
+      "descripcion": "Notas Debito - Credito. Nota confirmada, Sin Enviar y con su factura Notificada."
+    },
+    {
+      "label": "Actualizar Fecha (Notas)",
+      "icono": "event",
+      "color": "indigo-10",
+      "estilo": "outline",
+      "descripcion": "Notas con fecha anterior a hoy. Hay que usarlo antes de Encolar."
+    },
+    {
+      "label": "N u e v o",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Configuración → Resolución DIAN. Registra una resolución: prefijo, rango, vigencia, sede, procedencia y ambiente."
+    },
+    {
+      "label": "F a c t u r a d o r E l e c t r o n i c o",
+      "icono": "settings",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Configuración → Resolución DIAN. Datos de contacto y software. Incluye la fecha de vencimiento del certificado que usan los avisos al facturar."
+    },
+    {
+      "label": "Agregar Firmas Digitales",
+      "icono": "add_circle",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Configuración → Gestión de Firma Digital. Registra la firma: clave, expedición, vencimiento y proveedor."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "NOTIDIAN",
+      "accion": "Pestaña Proceso DIAN y botón Encolar DIAN",
+      "rol": "Facturación",
+      "descripcion": "Procedimiento ADMINQ_FACTURAS · «Notificación DIAN». Desencolar y Actualizar fecha del detalle no lo piden."
+    },
+    {
+      "codigo": "TAB_SEND_FTR",
+      "accion": "Pestaña Log Facturas (reenvío de correo)",
+      "rol": "Facturación",
+      "descripcion": "Procedimiento ADMINQ_FACTURAS · «Log / envío de facturas»."
+    },
+    {
+      "codigo": "AJUSTAR_DIAN",
+      "accion": "Ajustar totales DIAN",
+      "rol": "Facturación / Cartera",
+      "descripcion": "Procedimiento ADMINQ_FACTURAS · «Ajustar totales factura para envío DIAN»."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "BLOQUEADIAN",
+      "tipo": "SI / NO",
+      "valorSugerido": "SI",
+      "descripcion": "Activa la revisión de resolución, consecutivos y firma al facturar. En NO, Qrystalos factura sin revisar."
+    },
+    {
+      "nombre": "DIANCERTIFICADO",
+      "tipo": "SI / NO",
+      "valorSugerido": "SI",
+      "descripcion": "Muestra en Facturación el aviso de firma digital vencida o por vencer."
+    },
+    {
+      "nombre": "DIASNOTIFICACERT",
+      "tipo": "Numérico (días)",
+      "valorSugerido": "30",
+      "descripcion": "Días de anticipación del aviso de la firma. Gestión de Firma Digital pide configurarla."
+    },
+    {
+      "nombre": "CONTAB_FTR_POSTDIAN",
+      "tipo": "SI / NO",
+      "valorSugerido": "Según la institución",
+      "descripcion": "SI: se contabiliza después de la DIAN (Encolar DIAN exige factura sin contabilizar). NO: se contabiliza antes."
+    },
+    {
+      "nombre": "FACTSEDE",
+      "tipo": "SI / NO",
+      "valorSugerido": "Según la institución",
+      "descripcion": "Usa la resolución de la sede de la factura; en NO usa la de la sede principal (IDSEDEPRINCIPAL)."
+    },
+    {
+      "nombre": "FTR_PREVALIDA_ACTIVA",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "Envía a prevalidación (estado 5) las notas sin factura asociada."
+    },
+    {
+      "nombre": "GEN_PDF_AUTOMATICO",
+      "tipo": "SI / NO",
+      "valorSugerido": "Según la institución",
+      "descripcion": "Genera el PDF de la factura automáticamente después de la DIAN (pestaña Gen. PDF)."
+    },
+    {
+      "nombre": "FACTURAPOS_ACTIVA",
+      "tipo": "SI / NO",
+      "valorSugerido": "Según la institución",
+      "descripcion": "Habilita la procedencia Factura POS en Resolución DIAN."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "Texto",
+      "valorSugerido": "CO",
+      "descripcion": "País. Este proceso aplica a Colombia; Perú usa JSON SUNAT."
     }
   ],
   "capas": [
@@ -37,19 +939,37 @@
       "numero": 1,
       "nombre": "Configuración",
       "estado": "parcial",
-      "explicacion": "Resolución FDIAN (rango, prefijo, ambiente, sede), certificado FDIANCER, TGEN facturador (CONTACTO/SOFTWARE). BLOQUEADIAN=SI activa VALIDADIAN2 al numerar. CONTAB_FTR_POSTDIAN=SI exige FACTE=2 antes de ENVIA_CONTAB.",
-      "tablasClave": ["FDIAN", "FDIANCER", "TGEN", "USVGS", "SED"],
+      "explicacion": "Resolución FDIAN (rango, prefijo, ambiente, sede), certificado FDIANCER, TGEN facturador (CONTACTO/SOFTWARE, incluida FVCERTIFICADO). BLOQUEADIAN=SI activa VALIDADIAN2 al numerar. CONTAB_FTR_POSTDIAN define si se contabiliza antes o después de la DIAN.",
+      "tablasClave": [
+        "FDIAN",
+        "FDIANCER",
+        "TGEN",
+        "USVGS",
+        "SED"
+      ],
       "controles": [
         {
           "id": "config-dian",
           "nombre": "Resolución, certificado y bloqueo",
-          "explicacion": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN. Certificado: CRUDFDIANCER + GETVENCIMIENTO (DIANCERTIFICADO=SI). VALIDADIAN2: CONTINUA 0=rango agotado, 2=vencida, 3=sin resolución, 4/5/9=alertas. Si BLOQUEADIAN≠SI sale CONTINUA=1.",
+          "explicacion": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN. Certificado: CRUDFDIANCER + GETVENCIMIENTO (DIANCERTIFICADO=SI). VALIDADIAN2: CONTINUA 0=consecutivo fuera de rango (marca VENCIDA), 2=vencida, 3=sin resolución, 6=consecutivos insuficientes, 4/5/9=alertas ≤30 días. La alerta de firma lee TGEN FDIAN·SOFTWARE·FVCERTIFICADO, no FDIANCER. Si BLOQUEADIAN≠SI sale CONTINUA=1.",
           "invariante": "No emitir si la resolución venció o el consecutivo salió del rango. Firma vencida alerta o bloquea en el banner.",
           "ventanasFe": "/conf/fdian · /conf/firmadigital · banner Facturación",
           "sps": [
-            { "nombre": "SPQ_FDIAN_COL", "metodo": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN", "rol": "Leído." },
-            { "nombre": "SPQ_FDIANCER_COL", "metodo": "CRUDFDIANCER / GETVENCIMIENTO", "rol": "Leído." },
-            { "nombre": "SPQ_VALIDADIAN2", "metodo": "(SP)", "rol": "Leído. Wrapper FTR_COL · VALIDADIAN2." }
+            {
+              "nombre": "SPQ_FDIAN_COL",
+              "metodo": "CRUDFDIAN / GET_DATOS_FDIAN / CRUDFTRDIAN",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_FDIANCER_COL",
+              "metodo": "CRUDFDIANCER / GETVENCIMIENTO",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_VALIDADIAN2",
+              "metodo": "(SP)",
+              "rol": "Leído PREVERSION 2.0.7. Wrapper FTR_COL · VALIDADIAN2."
+            }
           ]
         }
       ]
@@ -60,28 +980,68 @@
       "nombre": "Proceso propio",
       "estado": "parcial",
       "explicacion": "Encolar (FACTE=1) → servicio facturador arma XML y CUFE → FACTE=2 + FTRE. Qrystalos no genera el XML en un SPQ: TREA_XML lo lee de FTRE/almacén. Distinto de RIPS JSON y de SUNAT Perú.",
-      "tablasClave": ["FTR", "FNOT", "FTRE", "FDIANR"],
+      "tablasClave": [
+        "FTR",
+        "FNOT",
+        "FTRE",
+        "FDIANR"
+      ],
       "controles": [
         {
           "id": "encolar-dian",
           "nombre": "Encolar / desencolar (FACTE)",
-          "explicacion": "Facturas: NOTI_DIAN o FTRFE_COL · FE_ENCOLAR. Pestaña Proceso DIAN: ENCOLAR_ITEM / DESCOLA_ITEM / ENCOLAR_MASIVO (VWK_ESTADODIAN_FTRE). Notas: FNOT_ENCOLAR si la FV tiene FACTE=2 o 6.",
-          "invariante": "FACTE ∈ (0,3). F_FACTURA=hoy si aún no notificada. Capita/PGP sin FTRDC → KO. FE_DESENCOLAR no toca FACTE=2.",
+          "explicacion": "Detalle: NOTI_DIAN (FACTE 0 o 3, fecha ≤1 día, cápita/PGP exige FTRDC). Proceso DIAN: ENCOLAR_ITEM / DESCOLA_ITEM por fila; ENCOLAR_MASIVO ACCION 1 (solo FACTE=0) / 2 (solo FACTE=1) sobre lo filtrado. Notas: FNOT_ENCOLAR si la FV tiene FACTE=2 (destino 1) o 6 (destino 5). FE_ENCOLAR existe en SQL pero el FE no lo usa.",
+          "invariante": "No encolar sin fecha de hoy ni cápita/PGP sin FTRDC (NOTI_DIAN). FE_DESENCOLAR / DESCOLA_ITEM no tocan FACTE=2. ENCOLAR_ITEM y ENCOLAR_MASIVO no revisan fecha ni FTRDC (ver pendientes).",
           "ventanasFe": "Facturas · Proceso DIAN · Notas DB/CR",
           "sps": [
-            { "nombre": "SPQ_FTR_COL", "metodo": "NOTI_DIAN / ENCOLAR_ITEM / DESCOLA_ITEM / ENCOLAR_MASIVO", "rol": "Leído." },
-            { "nombre": "SPQ_FTRFE_COL", "metodo": "FE_ENCOLAR / FE_DESENCOLAR / FE_FECHAFTR", "rol": "Leído." }
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "NOTI_DIAN / ENCOLAR_ITEM / DESCOLA_ITEM / ENCOLAR_MASIVO",
+              "rol": "Leído PREVERSION 2.0.7."
+            },
+            {
+              "nombre": "SPQ_FTRFE_COL",
+              "metodo": "FE_DESENCOLAR / FE_FECHAFTR",
+              "rol": "Leído PREVERSION 2.0.7."
+            },
+            {
+              "nombre": "SPQ_FNOT_COL",
+              "metodo": "FNOT_ENCOLAR / FNOT_DESENCOLAR / FNOT_ACTUALIZAR_FECHA",
+              "rol": "Leído PREVERSION 2.0.7."
+            }
           ]
         },
         {
           "id": "seguimiento-xml",
           "nombre": "Seguimiento FTRE y XML",
-          "explicacion": "Servicio externo: FACTE 1→2, inserta/actualiza FTRE (CUFE, XML). LISTAR_FTRE (solo FACTE=2). TREA_XML descarga. RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO reenvío correo. AJUSTAR_TOTALES_DIAN centavos. SEDFACUMASI aging.",
-          "invariante": "FACTE=2 no es radicado FCXC ni CUV RIPS. El XML del paquete FEVRIPS (FNK_AttachedDocument / FDIANR) se usa en el módulo rips-json.",
+          "explicacion": "Servicio externo: FACTE 1→2, inserta/actualiza FTRE (CUFE, XML). Antes del XML, SPK_GENERAR_XML_DIAN llama SPK_VALID_CRUZADA_FEV (tipo usuario vs cobertura) salvo CAJA/INVENTARIO o plan IDPLANPART%. LISTAR_FTRE / TREA_XML / reenvío.",
+          "invariante": "FACTE=2 no es radicado FCXC ni CUV RIPS. Particular por ENVIODICAJA aún entra a la cruzada si el plan no está en IDPLANPART%.",
           "ventanasFe": "FTREComponent · Paquete FEVRIPS",
           "sps": [
-            { "nombre": "SPQ_FTR_COL", "metodo": "LISTAR_FTRE / TREA_XML / RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO / AJUSTAR_TOTALES_DIAN / SEDFACUMASI", "rol": "Leído." }
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "LISTAR_FTRE / TREA_XML / RESET_NOTIFICADOS / CONTAR_FACTURAS_REENVIO / AJUSTAR_TOTALES_DIAN / SEDFACUMASI",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPK_GENERAR_XML_DIAN",
+              "metodo": "(SP)",
+              "rol": "Leído PREVERSION 2.0.7 (sin cambios desde 2.0.0). Guard clause cruzada."
+            },
+            {
+              "nombre": "SPK_VALID_CRUZADA_FEV",
+              "metodo": "(SP)",
+              "rol": "Leído PREVERSION 2.0.7 (sin cambios desde 2.0.0). TU_INVALIDO = tipo afiliado/usuario."
+            }
           ]
+        },
+        {
+          "id": "estados-tres-nombres",
+          "nombre": "Un estado, tres nombres",
+          "explicacion": "El mismo FACTE se rotula distinto en el detalle (ESTDIAN), el filtro de Facturas y el filtro de Proceso DIAN; en notas es otro juego. FACTE=4 aparece como «Procesando», «4-Notificada» y «4-Por Consultar».",
+          "invariante": "Capacitar por número de estado. Notificada (FACTE=2) es la única aceptada por la DIAN.",
+          "ventanasFe": "Facturación · Proceso DIAN · Notas",
+          "sps": []
         }
       ]
     },
@@ -91,7 +1051,11 @@
       "nombre": "Lo que llega",
       "estado": "parcial",
       "explicacion": "La factura ya armada (FTR/FTRD y FTRDC si capita/PGP). Notas FNOT aplicadas. Resolución de la sede.",
-      "tablasClave": ["FTRD", "FTRDC", "FNOT"],
+      "tablasClave": [
+        "FTRD",
+        "FTRDC",
+        "FNOT"
+      ],
       "controles": [
         {
           "id": "factura-lista",
@@ -108,7 +1072,10 @@
       "nombre": "Subproceso unido",
       "estado": "parcial",
       "explicacion": "Tras FACTE=2 puede seguir RIPS JSON (módulo rips-json) o cartera (INDCARTERA). El XML FEV se reusa en el sobre RIPS. No es JSON Perú.",
-      "tablasClave": ["FDIANR", "FTRJSON"],
+      "tablasClave": [
+        "FDIANR",
+        "FTRJSON"
+      ],
       "controles": [
         {
           "id": "despues-cufe",
@@ -125,7 +1092,10 @@
       "nombre": "Contabilidad",
       "estado": "parcial",
       "explicacion": "Este módulo no genera OM. Si CONTAB_FTR_POSTDIAN=SI, ENVIA_CONTAB exige FACTE=2 (SPK_NC_CONTAB_FTR). El asiento es de Facturación.",
-      "tablasClave": ["FTR", "MCP"],
+      "tablasClave": [
+        "FTR",
+        "MCP"
+      ],
       "controles": [
         {
           "id": "post-dian-contab",

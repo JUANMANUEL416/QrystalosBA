@@ -19,6 +19,7 @@ from cursor_bot import (  # noqa: E402
     lanzar_bot,
     leer_estado_bot,
     load_api_key,
+    modelo_id,
 )
 from quatec_db import get_db  # noqa: E402
 import desarrolladores as devs  # noqa: E402
@@ -292,7 +293,7 @@ class QuatecHandler(SimpleHTTPRequestHandler):
                 "openai": {"configurado": False, "deshabilitado": True, "motivo": "Los textos del formulario los escribe el agente (Cursor)."},
                 "cursorBot": {
                     "configurado": bool(load_api_key()),
-                    "modelo": os.environ.get("CURSOR_BOT_MODEL", "composer-2.5"),
+                    "modelo": modelo_id("chat"),
                 },
             })
 
@@ -596,7 +597,7 @@ class QuatecHandler(SimpleHTTPRequestHandler):
                         "restricciones y análisis; liste los SP/METODO documentados a usar. "
                         "No haga el dictamen completo. Deje el resultado en este Chat y en "
                         "solicitud.contenido (criterios, alcance, restricciones, analisis, "
-                        "brechaAnalisis)."
+                        "brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos)."
                     ),
                     "fecha": ahora,
                 },

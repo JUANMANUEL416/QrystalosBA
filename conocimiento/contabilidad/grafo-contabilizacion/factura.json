@@ -1,0 +1,368 @@
+{
+  "procedencia": "FACTURA",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "catalogo",
+    "nota": "Validación global en Auditoría BA; cruce documento pendiente salvo CNSFPAG.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_FTR.sql; conocimiento/facturacion/sps.json",
+  "documentoOrigen": {
+    "tabla": "FTR",
+    "claves": [
+      "N_FACTURA"
+    ],
+    "referenciasMcp": {
+      "NOREFERENCIA": "FTR.NOREFERENCIA",
+      "REFERENCIA1": "N_FACTURA"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_FTR",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-ftr"
+      ]
+    },
+    {
+      "id": "N3-contab-ftr",
+      "orden": 3,
+      "nombre": "Generar comprobante factura (PROCEDENCIA FACTURA)",
+      "sp": "SPK_NC_CONTAB_FTR",
+      "metodoUi": [
+        "Emisión / cierre factura (AUTPG, CI, CE, inventario…)",
+        "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS pestaña Facturas",
+        "FTRCO job si CONTAB_FTR_JOB=SI"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "ftr-vigente",
+          "desc": "FTR + FTRD; ESTADO <> A; NOREFERENCIA coherente",
+          "obligatorio": true,
+          "validacionSql": "SELECT N_FACTURA, ESTADO, CONTABILIZADA FROM FTR WHERE N_FACTURA=@ref"
+        },
+        {
+          "id": "ftr-no-duplicada",
+          "desc": "Sin MCP/MCPE FACTURA vigente mismo NOREFERENCIA o N_FACTURA (KO: ERROR DE DUPLICIDAD)",
+          "obligatorio": true
+        },
+        {
+          "id": "ftrd-kmcom",
+          "desc": "FNK_NC_CUENTA_KMCOM resuelve PREFIJO/CCOSTO/IDSERVICIO por línea",
+          "obligatorio": true
+        },
+        {
+          "id": "pri-f-factura",
+          "desc": "PRI existe y CERRADO=0 para F_FACTURA",
+          "obligatorio": true,
+          "validacionSql": "PRI por YEAR(F_FACTURA), MONTH(F_FACTURA)"
+        },
+        {
+          "id": "post-dian-facte",
+          "desc": "Si CONTAB_FTR_POSTDIAN=SI: FACTE=2 antes de contabilizar",
+          "obligatorio": "según USVGS"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "idmodelo",
+          "usvgs": "IDMODELOCONTABLE",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-ftr",
+          "usvgs": [
+            "IDCON_TCOM_FTR",
+            "COMPROBMULTISEDE"
+          ],
+          "desc": "COMMS clase factura si multisede",
+          "obligatorio": true
+        },
+        {
+          "id": "imp-ftr",
+          "usvgs": [
+            "CONTAB_IMP_FTR",
+            "CUENTA_CR_ANTIMPUEST",
+            "ANTIPO_IMP_RESTA_FTR",
+            "BASE_IVA_SERVICIOS"
+          ],
+          "obligatorio": "si impuestos"
+        },
+        {
+          "id": "copago-pos",
+          "usvgs": [
+            "FACTURAPOS_ACTIVA",
+            "PYG_COPAGOMAYORSER",
+            "TERCATAFILIADO"
+          ],
+          "obligatorio": "rama POS/copago"
+        },
+        {
+          "id": "cue-detalle",
+          "tabla": "CUE",
+          "desc": "Cuentas KMCOM y CUENTA_CR_ANTIMPUEST tipo Detalle",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-gate-factura"
+      ],
+      "puntosCriticos": [
+        "PC-FTR-01",
+        "PC-FTR-02",
+        "PC-FTR-03"
+      ],
+      "llamaAnidado": [
+        "SPK_DIST_COPA_UNIFICA",
+        "SPK_NC_CONTAB_CAJA_ING",
+        "SPK_NC_CONTAB_INV",
+        "SPK_INSERT_TERDEAFI",
+        "FNK_CALCULO_IMPUESTO"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_FTR.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "ANTIPO_IMP_RESTA_FTR",
+          "BASE_IVA_SERVICIOS",
+          "CAPITA_SIN_GANANCIA",
+          "CAPITA_SIN_PERDIDA",
+          "COMPROBMULTISEDE",
+          "CONTABFTR_PRO",
+          "CONTAB_FTR_POSTDIAN",
+          "CONTAB_GASTOVEN_UNI",
+          "CONTAB_IMP_FTR",
+          "CUENTA_CR_ANTIMPUEST",
+          "CUF_CPF_DE_SEDE",
+          "FACTURAPOS_ACTIVA",
+          "IDCON_TCOM_FTR",
+          "IDCON_TERCEROIVA",
+          "IDIMPAUTOCREE",
+          "IDMODELOCONTABLE",
+          "IDTERCEROINSTALADO",
+          "IDTIPOCXP_DEFAULT",
+          "IDTIPODED_DEDUCIBLES",
+          "INGRE_ESTIMA_NIIF_AC",
+          "IXCOUNTRY",
+          "PREFIJOCITAS",
+          "PYG_CAPITADO_G",
+          "PYG_CAPITADO_P",
+          "PYG_COPAGOMAYORSER",
+          "PYG_PAQUETE_G",
+          "PYG_PAQUETE_P",
+          "TERCATAFILIADO"
+        ],
+        "validacionesKo": [
+          "Periodo Contable no Existe no se Puede Contabilizar",
+          "Periodo Contable Esta Cerrado, No se Puede Contabilizar",
+          "ERROR DE DUPLICIDAD EN CONTABILIDAD, VERIFIQUE",
+          "COMPORBANTE YA SE ENCUENTRA EN CONTABILIDAD, VERIFIQUE"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "efectoDocumento": "FTR.CONTABILIZADA / NROCOMPROBANTE; puede actualizar PREFIJO FTRD desde PREFIJOCITAS"
+    },
+    {
+      "id": "N2-gate-factura",
+      "orden": 2,
+      "nombre": "Factura lista para contabilizar",
+      "sp": [
+        "SPK_FACTURA_AUTPG",
+        "SPK_FACTURACE_N",
+        "SPK_FACTURA_ASIS",
+        "SPK_FAC_VENTA_INV",
+        "SPQ_FTR_COL · cierre/emisión"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "contabilizada-0",
+          "desc": "FTR.CONTABILIZADA=0 antes del SPK",
+          "obligatorio": true
+        },
+        {
+          "id": "ftrd-completo",
+          "desc": "FTRD con prefijos, centros, IVA coherentes",
+          "obligatorio": true
+        },
+        {
+          "id": "si-dian",
+          "desc": "FACTE=2 y XML DIAN cuadrado si CONTAB_FTR_POSTDIAN=SI",
+          "obligatorio": "según variable"
+        },
+        {
+          "id": "tercero-ftr",
+          "desc": "IDTERCERO en TER (o homologación AFI)",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N1-origen-ftr"
+      ],
+      "metodoUi": [
+        "Facturación masiva / individual (AUTPG, CI, CE, ARS)",
+        "Inventario venta → SPK_FAC_VENTA_INV",
+        "Job FTRCO si CONTAB_FTR_JOB=SI",
+        "SPQ_CONTABILIDAD_3 · pestaña Facturas"
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-f-factura",
+          "tabla": "PRI",
+          "desc": "PRI.CERRADO=0 mes F_FACTURA",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "Dispara SPK_NC_CONTAB_FTR (inline o OM); puede anidar SPK_NC_CONTAB_CAJA_ING (copago POS), SPK_NC_CONTAB_INV (costo venta)",
+      "puntosCriticos": [
+        "PC-FTR-01"
+      ]
+    },
+    {
+      "id": "N1-origen-ftr",
+      "orden": 1,
+      "nombre": "Emitir / armar factura",
+      "requiresDocumento": [
+        {
+          "id": "origen-modulo",
+          "desc": "Documento fuente (AUT, HADM, IMOV, FCJ copago…) según FTR.PROCEDENCIA operativa",
+          "obligatorio": true
+        },
+        {
+          "id": "plan-cobertura",
+          "desc": "PPT/PLAN/CONTRATO resuelto para líneas y TIPOTTEC",
+          "obligatorio": "según módulo"
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-factura"
+      ],
+      "sp": [
+        "SPQ_FTR_COL",
+        "SPK_CREA_FACTURA_POS_CAJA",
+        "Origen HADM/HPRE/CIT según procedencia operativa"
+      ],
+      "metodos": [
+        "FTR_CRUD / generación desde admisión",
+        "Prefactura → factura",
+        "RIPS / PGP si aplica"
+      ],
+      "requiresConfig": [
+        {
+          "id": "kmcom-prefijos",
+          "tabla": "KMCOM",
+          "desc": "Modelo IDMODELOCONTABLE + prefijos FTRD",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec-ingreso",
+          "tabla": "TTEC",
+          "desc": "TIPOTTEC → cuentas ingreso/cartera",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-factura",
+      "orden": 0,
+      "nombre": "Configuración facturación y contable",
+      "requiresConfig": [
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "desc": "IDTIPOCONT DESCUENTOS, ingresos por prefijo",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "desc": "Detalle para cuentas FTRD y impuestos",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-ftr",
+          "usvgs": [
+            "IDCON_TCOM_FTR",
+            "CONTAB_FTR_POSTDIAN",
+            "CONTAB_IMP_FTR",
+            "FACTURAPOS_ACTIVA",
+            "CONTAB_GASTOVEN_UNI",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "fimp",
+          "tabla": "FIMPDV",
+          "desc": "Vigencia impuestos en líneas",
+          "obligatorio": "si IVA"
+        }
+      ],
+      "llamaAnterior": [],
+      "pantallas": [
+        "/conf/kmcom",
+        "/conf/ttec",
+        "/cont/params_contables",
+        "USVGS facturación y CONTAB_FTR*"
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS",
+    "procedencia": "FACTURA",
+    "tablaOrigen": "FTR"
+  },
+  "enlaceGrafo": {
+    "caja": "grafo-contabilizacion/caja.json",
+    "inv": "grafo-contabilizacion/inv.json"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/factura.json",
+    "procesoHermano": "facturacion",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-factura.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

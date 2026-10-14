@@ -1,0 +1,74 @@
+---
+description: Si falta un SP del análisis, bajarlo de DESAIX.SQLIX a la carpeta de ESE caso (activo/{id}/sql/ o solicitudes/{id}/sql/). Primero PREVERSION, luego la última liberada; comparar ambas. No usar la carpeta compartida sql/.
+alwaysApply: true
+---
+
+# SQL: descargar objeto faltante desde DESAIX / SQLIX
+
+Si se necesita un procedimiento, función (`FNK`), trigger o vista y **no está** en la carpeta SQL **de este análisis** (ni ficha `leido` que cubra el alcance), **no detenerse a esperar el .sql**. Descargar desde el catálogo, **comparar PREVERSION vs última liberada**, guardar en la carpeta del análisis y **después** leer.
+
+Cada análisis tiene su carpeta. No mezclar scripts de otro caso.
+
+| Trabajo | Carpeta |
+|---|---|
+| Analista (REQ en fase 1) | `activo/{id-caso}/sql/` |
+| Solicitud de comité | `solicitudes/{id}/sql/` |
+| Documentar (sin caso) | `sql/` — solo ese flujo; un SP de catálogo |
+
+Comando: `python scripts/sqlix_bajar_objeto.py --caso {id-caso} NOMBRE` o `--solicitud {id} NOMBRE`.
+
+Este proyecto **no implementa** el cambio. La comparación sirve para no dictaminar ni pedir un arreglo que **ya esté en la canasta abierta**.
+
+## Conexión (solo lectura)
+
+- Credenciales: `servidor9` en `QrystalosBA/.env.local`. Base: **DESAIX**.
+- **No** pegar claves. Solo `SELECT`. Prohibido `INSERT`/`UPDATE`/`DELETE`/`MERGE`, ejecutar SP/funciones/triggers y publicar el script.
+
+## Flujo
+
+1. Confirmar que no existe en la carpeta de **este** análisis (`activo/{id-caso}/sql/{NOMBRE}.sql` o `solicitudes/{id}/sql/{NOMBRE}.sql`). No reutilizar el `.sql` de otro caso ni el de `sql/` compartida.
+2. Resolver la **última versión liberada** (el `ID` cambia: `2.0.0`, `2.0.1`, …). No hardcodear.
+
+```sql
+SELECT TOP 1 ID, PRODUCTO, FECHA, ESTADO, IDANT
+FROM dbo.VERSIONES
+WHERE PRODUCTO = N'Krystalos IPS'
+  AND ESTADO = N'Cerrada'
+ORDER BY FECHA DESC;
+```
+
+`ID` = `@ID_LIBERADA`. `IDANT` = anterior. Informar ambos IDs y que también se consulta `PREVERSION`.
+
+3. Buscar el objeto **primero en `PREVERSION`**, **después** en `@ID_LIBERADA`:
+
+```sql
+SELECT ID, ORDEN, NOMBRE, TIPO, IDUNICO, LEN(INSTRUCCION) AS LEN_INS
+FROM dbo.SQLIX
+WHERE ID IN (N'PREVERSION', @ID_LIBERADA)
+  AND (
+        NOMBRE = @OBJETO
+     OR NOMBRE = N'dbo.' + @OBJETO
+     OR NOMBRE LIKE N'%.' + @OBJETO
+  )
+ORDER BY CASE ID WHEN N'PREVERSION' THEN 0 ELSE 1 END, ORDEN, IDUNICO;
+```
+
+4. **Validar integridad PREVERSION vs liberada** (obligatorio si existen las dos):
+   - Comparar `INSTRUCCION` (no asumir que son iguales).
+   - Informar: idénticas / ya corregido en PREVERSION / PREVERSION incompleta o distinta / solo en una de las dos.
+   - Si el cambio o el error del ticket **ya está resuelto en PREVERSION**: **no** solicitar ni proponer de nuevo el arreglo; avisar en el Chat. En el dictamen, `validarAntes` = probar en preversión.
+   - Si PREVERSION **perdió** lógica que sí está en la liberada: avisar (no está íntegra) y no dictaminar sobre la liberada a ciegas.
+5. Si no está en PREVERSION ni en `@ID_LIBERADA`, buscar en `SQLIX` con `ID = @IDANT`.
+6. Guardar en la carpeta de este análisis (`activo/{id-caso}/sql/{NOMBRE}.sql` o `solicitudes/{id}/sql/{NOMBRE}.sql`; UTF-8, `INSTRUCCION` completa, sin volcar al chat):
+   - Hay PREVERSION → guardar **PREVERSION** (trabajo vigente).
+   - Solo liberada → guardar la liberada y decir que aún no está en PREVERSION.
+   - Comando: `python scripts/sqlix_bajar_objeto.py --caso {id-caso} {NOMBRE}` (o `--solicitud`).
+7. Recién entonces leer el archivo local y fichar. El archivo de partida es PREVERSION cuando exista.
+
+## Si no aparece
+
+Si no está en `PREVERSION`, `@ID_LIBERADA` ni `@IDANT`: informar el nombre y las tres `ID`, y **entonces** detenerse. No usar `OBJECT_DEFINITION` de otra base ni el `.sql` de otro análisis.
+
+## Dependencias
+
+Si el `.sql` llama a otro objeto ausente en la carpeta de este análisis y hace falta para el alcance, repetir este flujo (incluida la comparación) y guardarlo en la misma carpeta.

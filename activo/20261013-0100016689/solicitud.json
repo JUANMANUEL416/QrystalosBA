@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-13T19:37:05.751Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016689",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261013-0100016689",
+    "idReq": "0100016689",
+    "fecha": "2026-10-13",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Rendimos",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Oredys Adrianny Quintero Zerpa",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/RENDIM56",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "Configuración de comprobantes de nómina para mostrar días pagados/descontados\n\nSe requiere ajustar la configuración de los comprobantes de nómina para que reflejen el número real de días pagados o descontados, en lugar de horas fraccionadas.\n\n1. Acceder al módulo de nómina\n2. Seleccionar un comprobante existente\n3. Revisar la configuración actual de días y horas DETALLE: La liquidación guarda las horas en NIEPED.CANTIDAD y el formato de la colilla imprime ese dato tal cual. \n\nMostrar horas no se aplica al imprimir. Es necesario ajustar la impresión de la colilla para que, cuando el concepto esté en días, la cantidad impresa sea el número de días de la novedad y no las horas de NIEPED.CANTIDAD.\n\n Por qué soporte pidió pasar esta solicitud a requerimiento.\n\nLa liquidación guarda las horas en NIEPED.CANTIDAD y el formato de la colilla imprime ese dato tal cual. \n\nMostrar horas no se aplica al imprimir. Es necesario ajustar la impresión de la colilla para que, cuando el concepto esté en días, la cantidad impresa sea el número de días de la novedad y no las horas de NIEPED.CANTIDAD.",
+    "criteriosAceptacion": "1. Con concepto configurado en Nómina → Conceptos con «Mostrar Cantidad» = Días, la colilla PDF (liquidación cerrada) muestra en la columna Cantidad el número de días de la novedad (NEDIA.DIAS/NDIAS agregados al concepto en el período), no las horas fraccionadas de NIEPED.CANTIDAD.\n2. Con «Mostrar Cantidad» = Horas, la colilla sigue mostrando NIEPED.CANTIDAD como hoy (ej. 214,67 horas laboradas).\n3. Con «Mostrar Cantidad» = No, la línea no muestra cantidad (coherente con NCON.MOSTRARHORAS; la variable global NOM_COLILLA_CANTIDAD=NO puede ocultar toda la columna).\n4. Mismo criterio en exportación Excel de colillas (EXPORTA_DATOS_COLILLAS) y en colilla de prenómina (COLILLAS_PRENOMINA) para el mismo concepto.\n5. Caso Rendimos: incapacidad E20 del ejemplo — si el concepto está en Días y la novedad registra 2 días, la colilla muestra 2 (o 2,00), no 15,33.\n6. No cambian valores devengados/deducidos ni NIEPED en base de datos; solo la cantidad impresa/exportada.",
+    "alcance": "Ajuste de la cantidad mostrada en desprendible de pago: SPQ_RPT_NOMINA · COLILLAS, COLILLAS_PRENOMINA y EXPORTA_DATOS_COLILLAS, respetando NCON.MOSTRARHORAS (No / Días / Horas / Cuota / Detalle). Pantalla Talento humano → Colillas (PDF e envío por correo vía useNomi/formatoColilla). Opcional FE: formateo por fila si el dataset devuelve MOSTRARHORAS o cantidad ya convertida.",
+    "restricciones": "Fuera de alcance: recalcular liquidación, cambiar NIEPED.CANTIDAD en cierre, motor FNK_VALORCONCEPTO_NEMPFD_RUN, nómina electrónica DIAN, comprobante contable MCPE, certificados laborales (SPQ_FORMATOS_NOMINA / NCERT). No sustituir la configuración del concepto por variable de sistema única (NOM_COLILLA_CANTIDAD solo oculta/muestra la columna completa).",
+    "analisis": "Paso 0 — ¿Ya existe? Clasificación: **defecto** (no capacitación). El REQ habla de «comprobantes de nómina» en sentido de **colilla/desprendible**, no del comprobante contable (MCPE). En configuración (ConceptosComponent) ya existe NCON.MOSTRARHORAS («Mostrar Cantidad»: No, Días, Horas, Cuota, Detalle). Soporte indica que pusieron Días en el concepto pero al imprimir sigue saliendo NIEPED.CANTIDAD en horas: la impresión **no consulta** ese campo.\n\nCaminos del control inventariados: (1) Talento humano → Colillas → Imprimir colilla / envío masivo (ColillasNoComponent → RPT_NOMINA · COLILLAS); (2) Exportar datos colillas; (3) Prenómina → colilla previa (COLILLAS_PRENOMINA); (4) Configuración → Conceptos → Mostrar Cantidad (solo persiste NCON, no afecta PDF); (5) Variable NOM_COLILLA_CANTIDAD en useNomi/index.js — oculta toda la columna Cantidad si es NO, independiente del concepto.\n\nCausa técnica: en IXONLINE/SQL · SPQ_RPT_NOMINA · COLILLAS el detalle proyecta `CONVERT(DECIMAL(14,2), NIEPED.CANTIDAD) AS CANTIDAD` sin leer NCON.MOSTRARHORAS. FmtColillasNom.js pinta `s.CANTIDAD` tal cual. El motor de prenómina guarda en NIEPED las horas liquidadas (p. ej. incapacidad 15,33 h frente a 214,67 h de salario en período 230 h — captura REQ 0100016689). Para conceptos en días, el dato de negocio está en NEDIA.DIAS/NDIAS (y en agregados vía FNK_CALCULO_VLR_NOVEDAD_NOM en horas).\n\nSolución: en el dataset de colilla, calcular CANTIDAD según NCON.MOSTRARHORAS — para «Días», preferir suma de días de novedades del concepto en el período (mismos criterios PorPago/PorFecha que el motor); fallback prorrateo horas→días con HORASXCARGO/DIASXCARGO histórico a NPER.FECHAFIN cuando no hay novedad desglosada. Replicar en COLILLAS_PRENOMINA y EXPORTA_DATOS_COLILLAS. Impacto contabilidad: no.",
+    "opciones": [],
+    "recomendacion": "Desarrollo acotado en SPQ_RPT_NOMINA (tres métodos de salida de colilla). Priorizar función escalar reutilizable (p. ej. FNK_NOM_CANTIDAD_COLILLA) invocada desde COLILLAS/COLILLAS_PRENOMINA/EXPORTA para no duplicar joins a NEDIA/NEVE. Validar en copia con empleado de la captura (incapacidad E20), conceptos en Horas vs Días, y SEREPITE=Si (varias filas por novedad). No requiere regenerar nómina. Tras publicar, capacitar: «Mostrar Cantidad» en concepto + NOM_COLILLA_CANTIDAD distinto de NO para ver la columna.",
+    "cambioPropuestoSimple": "Hoy la colilla siempre imprime la cantidad en horas guardadas en la liquidación. Si en el concepto de nómina se configuró «Mostrar cantidad en días», el PDF debe mostrar los días de la incapacidad o novedad (por ejemplo 2 días), no 15,33 horas. Los valores de dinero no cambian.",
+    "cambioPropuestoSql": "-- Objeto: IXONLINE/SQL · SPQ_RPT_NOMINA · METODO COLILLAS (y COLILLAS_PRENOMINA, EXPORTA_DATOS_COLILLAS)\n-- BEFORE (detalle liquidación):\n--   CONVERT(DECIMAL(14, 2), NIEPED.CANTIDAD) CANTIDAD\n\n-- AFTER (especificación — usar expresión centralizada en función o CTE):\n--   CONVERT(DECIMAL(14, 2),\n--     CASE COALESCE(NCON.MOSTRARHORAS, 'Horas')\n--       WHEN 'No' THEN NULL\n--       WHEN 'Horas' THEN NIEPED.CANTIDAD\n--       WHEN 'Cuota' THEN NIEPED.CANTIDAD  -- o NIEPED.NUMCUOTA si aplica al concepto préstamo\n--       WHEN 'Dias' THEN COALESCE(\n--         (SELECT SUM(CONVERT(DECIMAL(14,2), COALESCE(NEDIA.DIAS, NEDIA.NDIAS, 0)))\n--          FROM NPER NP\n--          INNER JOIN NEDIA ON ( /* mismos filtros PorPago/PorFecha que FNK_CALCULO_VLR_NOVEDAD_NOM */ )\n--          INNER JOIN NEVE ON NEDIA.IDEVENTO = NEVE.IDEVENTO\n--          WHERE NEDIA.NUMDOC = NIEPED.NUMDOC\n--            AND (NEVE.CODCONCEPTO = NIEPED.CODCONCEPTO OR EXISTS (SELECT 1 FROM NEVEC WHERE NEVEC.IDEVENTO = NEVE.IDEVENTO AND NEVEC.IDCONCEPTO = NIEPED.CODCONCEPTO))\n--            AND NP.CNSPAGO = NIEPE.CNSPAGO),\n--         NIEPED.CANTIDAD / NULLIF(\n--           (SELECT TOP 1 CASE WHEN COALESCE(HIS.DIASXCARGO,0) > 0 THEN HIS.HORASXCARGO / HIS.DIASXCARGO ELSE 8 END\n--            FROM FNK_INFO_NEMPHIS_NEMP(NPER.FECHAFIN, NIEPED.NUMDOC) HIS), 0))\n--       ELSE NIEPED.CANTIDAD\n--     END) AS CANTIDAD\n\n-- COLILLAS_PRENOMINA: misma lógica sobre NEMPFD.CANTIDAD + NCON.MOSTRARHORAS.\n\n-- Validación (solo lectura, empleado/período del ticket):\n-- SELECT NIEPED.CODCONCEPTO, NCON.MOSTRARHORAS, NIEPED.CANTIDAD,\n--        (SELECT SUM(COALESCE(NEDIA.DIAS,NEDIA.NDIAS,0)) FROM NEDIA ... ) AS DIAS_NOV\n-- FROM NIEPED INNER JOIN NCON ON ... INNER JOIN NIEPE ON ... WHERE CNSPAGO = @CNSPAGO AND NUMDOC = @NUMDOC;\n-- Comparar PDF antes/después para E20 vs 01-1.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Colilla/desprendible de nómina (SPQ_RPT_NOMINA · COLILLAS): solo formateo de cantidad impresa. No genera MCPE/MCHE ni modifica NIEPED.VALOR ni contabilidad.",
+        "validadoEn": "2026-10-13T19:35:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-10-09_171036.png",
+        "ruta": "activo/20261013-0100016689/imagenes/Captura_de_pantalla_2026-10-09_171036.png",
+        "subidaEn": "2026-10-13T14:28:28",
+        "url": "/api/caso/20261013-0100016689/imagen/Captura_de_pantalla_2026-10-09_171036.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1. Con concepto configurado en Nómina → Conceptos con «Mostrar Cantidad» = Días, la colilla PDF (liquidación cerrada) muestra en la columna Cantidad el número de días de la novedad (NEDIA.DIAS/NDIAS agregados al concepto en el período), no las horas fraccionadas de NIEPED.CANTIDAD.\n2. Con «Mostrar Cantidad» = Horas, la colilla sigue mostrando NIEPED.CANTIDAD como hoy (ej. 214,67 horas laboradas).\n3. Con «Mostrar Cantidad» = No, la línea no muestra cantidad (coherente con NCON.MOSTRARHORAS; la variable global NOM_COLILLA_CANTIDAD=NO puede ocultar toda la columna).\n4. Mismo criterio en exportación Excel de colillas (EXPORTA_DATOS_COLILLAS) y en colilla de prenómina (COLILLAS_PRENOMINA) para el mismo concepto.\n5. Caso Rendimos: incapacidad E20 del ejemplo — si el concepto está en Días y la novedad registra 2 días, la colilla muestra 2 (o 2,00), no 15,33.\n6. No cambian valores devengados/deducidos ni NIEPED en base de datos; solo la cantidad impresa/exportada.",
+      "originalesEn": "2026-10-13T19:31:36.646Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. Con concepto configurado en Nómina → Conceptos con «Mostrar Cantidad» = Días, la colilla PDF (liquidación cerrada) muestra en la columna Cantidad el número de días de la novedad (NEDIA.DIAS/NDIAS agregados al concepto en el período), no las horas fraccionadas de NIEPED.CANTIDAD.\n2. Con «Mostrar Cantidad» = Horas, la colilla sigue mostrando NIEPED.CANTIDAD como hoy (ej. 214,67 horas laboradas).\n3. Con «Mostrar Cantidad» = No, la línea no muestra cantidad (coherente con NCON.MOSTRARHORAS; la variable global NOM_COLILLA_CANTIDAD=NO puede ocultar toda la columna).\n4. Mismo criterio en exportación Excel de colillas (EXPORTA_DATOS_COLILLAS) y en colilla de prenómina (COLILLAS_PRENOMINA) para el mismo concepto.\n5. Caso Rendimos: incapacidad E20 del ejemplo — si el concepto está en Días y la novedad registra 2 días, la colilla muestra 2 (o 2,00), no 15,33.\n6. No cambian valores devengados/deducidos ni NIEPED en base de datos; solo la cantidad impresa/exportada.",
+      "trasAnalisisEn": "2026-10-13T19:31:46.654Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso nomina (control colilla-nombres), Qrystalos2 ColillasNoComponent + useNomi/FmtColillasNom.js + ConceptosComponent (MOSTRARHORAS). Fichas SPQ_RPT_NOMINA · COLILLAS/COLILLAS_PRENOMINA/EXPORTA en sps.json estado leido; línea exacta de CANTIDAD confirmada en catálogo IXONLINE/SQL (no se exige copia en activo/…/sql/ para este análisis). Implementación: releer PREVERSION de SPQ_RPT_NOMINA antes de codificar.",
+      "fecha": "2026-10-13T19:35:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_RPT_NOMINA · COLILLAS — leido — dataset colilla; fix CANTIDAD | COLILLAS_PRENOMINA — leido — idem prenómina | EXPORTA_DATOS_COLILLAS — leido — Excel mismo campo"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261013-0100016689/diagramas/flujo.html",
+      "subidaEn": "2026-10-13T14:32:11",
+      "url": "/api/caso/20261013-0100016689/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "nomina",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261013-0100016689-flujo.html"
+    },
+    "mockups": [
+      "activo/20261013-0100016689/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261013-0100016689\\sql\\",
+    "carpetaRelativa": "activo/20261013-0100016689/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016689\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261013-0100016689.html",
+    "aprobados": "aprobados/20261013-0100016689/",
+    "imagenes": "aprobados/20261013-0100016689/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-13",
+    "ultimoEnvio": "2026-10-13T14:56:25",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

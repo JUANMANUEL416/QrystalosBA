@@ -1,0 +1,258 @@
+{
+  "procedencia": "AJDEP",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo AJDEP_REF — MCPE/MCP PROCEDENCIA AJDEP por periodo o NRO.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_APL_AJDEPRECIACION.sql",
+  "documentoOrigen": {
+    "tabla": "MCP cabecera",
+    "claves": [
+      "ANO",
+      "MES",
+      "IDSEDE"
+    ],
+    "referenciasMcp": {
+      "NOREFERENCIA": "consecutivo depreciación"
+    }
+  },
+  "generador": "SPK_APL_AJDEPRECIACION",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-ajdep"
+      ]
+    },
+    {
+      "id": "N3-contab-ajdep",
+      "orden": 3,
+      "sp": "SPK_APL_AJDEPRECIACION",
+      "metodoUi": [
+        "Activos fijos · depreciación periodo",
+        "SPQ_CONTABILIDAD_3 · Depreciación"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "cabecera-periodo",
+          "desc": "REFERENCIA MCP = año/mes/sede depreciación masiva",
+          "obligatorio": true,
+          "validacionSql": "MCPE/MCP PROCEDENCIA AJDEP",
+          "checkMotor": "doc-ajdep-*"
+        },
+        {
+          "id": "activos-dep",
+          "desc": "Activos con depreciación calculada en el periodo",
+          "obligatorio": true,
+          "validacionSql": "MCHE líneas depreciación",
+          "checkMotor": "doc-ajdep-mche"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-depr",
+          "usvgs": [
+            "IDCON_TCOM_DEPR",
+            "COMPROBMULTISEDE"
+          ],
+          "desc": "COMMS clase DEPRECIACION por sede",
+          "obligatorio": true
+        },
+        {
+          "id": "con-actfijo",
+          "usvgs": "CON_ACTFIJO_CONTAXCC",
+          "desc": "Depreciación por centro de costo vs global",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom-af",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-calc-dep"
+      ],
+      "puntosCriticos": [
+        "PC-AJDEP-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_APL_AJDEPRECIACION.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "CON_ACTFIJO_CONTAXCC",
+          "IDCON_TCOM_DEPR",
+          "IDMODELOCONTABLE",
+          "IDTERCEROINSTALADO"
+        ],
+        "validacionesKo": []
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante depreciación (AJDEP)",
+      "notaTecnica": "Distinto de SPK_CONTAB_IACT (eventos de activo)"
+    },
+    {
+      "id": "N2-calc-dep",
+      "orden": 2,
+      "desc": "Cálculo depreciación activos",
+      "llamaAnterior": [
+        "N1-maestro-activos"
+      ],
+      "nombre": "Calcular depreciación del periodo",
+      "sp": [
+        "SPK_GEN_DEPRECIACION",
+        "SPQ_MOV_ACTIVOS · depreciación masiva"
+      ],
+      "metodoUi": "Activos fijos → depreciar periodo; OM DEPRECIACION_ACTIVOS_LISTA",
+      "requiresDocumento": [
+        {
+          "id": "activos-vigentes",
+          "desc": "ACFIJP/ACFI con vida útil y valor en libros",
+          "obligatorio": true
+        },
+        {
+          "id": "sin-dep-duplicada",
+          "desc": "No MCP AJDEP duplicado mismo año/mes/sede",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-depr",
+          "usvgs": [
+            "IDCON_TCOM_DEPR",
+            "COMPROBMULTISEDE"
+          ],
+          "desc": "COMMS clase DEPRECIACION por sede",
+          "obligatorio": true
+        },
+        {
+          "id": "con-actfijo",
+          "usvgs": "CON_ACTFIJO_CONTAXCC",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "Cabecera MCP año/mes → SPK_APL_AJDEPRECIACION",
+      "puntosCriticos": [
+        "PC-AJDEP-01"
+      ]
+    },
+    {
+      "id": "N1-maestro-activos",
+      "orden": 1,
+      "nombre": "Alta y parametrización activo",
+      "sp": "SPQ_MOV_ACTIVOS",
+      "requiresDocumento": [
+        {
+          "id": "acfi-alta",
+          "desc": "Activo con cuentas depreciación/gasto en clase",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "clase-activo",
+          "desc": "Catálogo clases con métodos depreciación",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-af"
+      ],
+      "nota": "Eventos IACT usan grafo iact.json, no este N2"
+    },
+    {
+      "id": "N0-config-af",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "kmcom-af",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-af",
+          "usvgs": [
+            "IDCON_TCOM_DEPR",
+            "CON_ACTFIJO_CONTAXCC"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración activos fijos contables",
+      "pantallas": [
+        "Clases activo",
+        "KMCOM depreciación",
+        "COMMS multisede"
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "AJDEP",
+    "tablaOrigen": "(periodo)"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/ajdep.json",
+    "procesoHermano": "activos-fijos",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-ajdep.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

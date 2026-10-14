@@ -1,0 +1,242 @@
+{
+  "procedencia": "NOMINA",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo NOMINA_PAGO — NUMDOC/CNSPAGO/CNSNIEPE (MCP REF1/2/3).",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_NOMINA.sql",
+  "documentoOrigen": {
+    "tabla": "Nómina cerrada",
+    "referenciasMcp": {
+      "REFERENCIA1": "lote",
+      "REFERENCIA2": "sede",
+      "REFERENCIA3": "tipo"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_NOMINA",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-nom"
+      ]
+    },
+    {
+      "id": "N3-contab-nom",
+      "orden": 3,
+      "sp": "SPK_NC_CONTAB_NOMINA",
+      "requiresDocumento": [
+        {
+          "id": "lote-nom",
+          "desc": "REFERENCIA1/2/3 = lote, sede, tipo nómina cerrada",
+          "obligatorio": true,
+          "validacionSql": "NIEPE NUMDOC+CNSPAGO+CNSNIEPE",
+          "checkMotor": "doc-nomina-*"
+        },
+        {
+          "id": "conceptos-cuenta",
+          "desc": "Cada concepto nómina mapeado a cuenta contable",
+          "obligatorio": true,
+          "validacionSql": "NIEPED + NCON",
+          "checkMotor": "doc-nomina-conceptos"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "nom-tipo",
+          "usvgs": "NOMINATIPOCONTAB",
+          "desc": "Agrupación del asiento (global, CC, empleado…)",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-nom",
+          "usvgs": [
+            "IDCON_TCOM_NOMINA",
+            "IDCON_TCOM_DEFAULT",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom-nom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-cierre-nom"
+      ],
+      "puntosCriticos": [
+        "PC-NOM-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_NOMINA.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "IDCON_TCOM_CXP_NOM",
+          "IDCON_TCOM_DEFAULT",
+          "IDCON_TCOM_NOMINA",
+          "IDMODELOCONTABLE",
+          "NOMINATIPOCONTAB"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe",
+          "La variable de Sistemas IDCON_TCOM_DEFAULT est� sin Definir."
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante nómina (NOMINA)",
+      "notaTecnica": "SPK_NC_CONTAB_RECOBRONOMI es otro flujo (recobro)"
+    },
+    {
+      "id": "N2-cierre-nom",
+      "orden": 2,
+      "desc": "Cierre nómina → causación",
+      "llamaAnterior": [
+        "N1-prenomina"
+      ],
+      "nombre": "Cierre nómina → causación",
+      "sp": [
+        "SPK_REVISANOMINA_ANTES",
+        "Proceso cierre nómina (SPQ_NOMI*)"
+      ],
+      "metodoUi": "Nómina → cerrar periodo / enviar contabilidad",
+      "requiresDocumento": [
+        {
+          "id": "nom-cerrada",
+          "desc": "Lote nómina cerrado; no duplicar MCP mismo REF1/2/3",
+          "obligatorio": true
+        },
+        {
+          "id": "conceptos-map",
+          "desc": "Conceptos nómina con cuenta contable",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "nom-tipo",
+          "usvgs": "NOMINATIPOCONTAB",
+          "desc": "Agrupación asiento (centro, empleado, global)",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_NC_CONTAB_NOMINA",
+      "puntosCriticos": [
+        "PC-NOM-01",
+        "PC-NOM-02"
+      ]
+    },
+    {
+      "id": "N1-prenomina",
+      "orden": 1,
+      "nombre": "Prenómina / liquidación",
+      "sp": "SPQ_NOMI*",
+      "requiresDocumento": [
+        {
+          "id": "empleados-activos",
+          "desc": "NEMP con contrato vigente en periodo",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-nom"
+      ]
+    },
+    {
+      "id": "N0-config-nom",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "conceptos-nom",
+          "desc": "Mapa conceptos → cuentas débito/crédito",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom-nom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "NOMINATIPOCONTAB",
+            "IDCON_TCOM_NOMINA",
+            "IDCON_TCOM_DEFAULT"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración nómina contable",
+      "pantallas": [
+        "Conceptos nómina → cuentas",
+        "KMCOM nómina",
+        "USVGS NOMINATIPOCONTAB"
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "NOMINA",
+    "tablaOrigen": "(nómina)"
+  },
+  "nota": "SPK_NC_CONTAB_RECOBRONOMI es recobro, no este generador",
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/nomina.json",
+    "procesoHermano": "nomina",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-nomina.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

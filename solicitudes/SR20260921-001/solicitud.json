@@ -1,0 +1,78 @@
+{
+  "tipo": "solicitud-req",
+  "id": "SR20260921-001",
+  "creadoEn": "2026-09-21T10:32:23",
+  "actualizadoEn": "2026-09-22T22:31:38",
+  "estado": "cerrado",
+  "cerradoEn": "2026-09-22T22:31:38",
+  "analista": "",
+  "proyecto": "comite de estudioas medicos",
+  "modulo": "DIAN_XML",
+  "procesoId": "dian-xml",
+  "prioridad": "Media",
+  "titulo": "FE DIAN: adquirente solo NIT, razon social y correo",
+  "necesidad": "Validar si el envío de factura electrónica (XML DIAN) cumple la regla: del adquirente solo son obligatorios NIT, razón social y correo. Dirección, teléfono, ciudad y departamento (y similares) se envían si existen en maestro; si no, van en blanco y no detienen el envío.",
+  "hoy": "SPK_GENERAR_XML_DIAN tumba el XML si al adquirente le falta departamento, ciudad, dirección, teléfono, código postal, NIT, razón social, correo o responsabilidad fiscal.",
+  "propuesta": "Relajar solo las validaciones opcionales del adquirente; si hay dato en TER se incluye en el XML; si no, no RAISERROR. Mantener NIT, razón social y correo como obligatorios.",
+  "justificacion": "Comité de Estudios Médicos: terceros sin ficha de domicilio completa no deberían quedar en FACTE error si la DIAN ya no exige esos campos.",
+  "analisis": "**Necesidad:** En el envío de FE Colombia, la DIAN (según el cliente) ya no exige dirección, teléfono, ciudad ni departamento del adquirente; solo NIT, razón social y correo. Si el maestro tiene el dato, incluirlo; si no, ir en blanco y no tumbar el envío.\n\n**Proceso:** `dian-xml` (XML DIAN / FEV), no facturación genérica ni RIPS ni SUNAT. Control: seguimiento XML.\n\n**Paso 0 — ¿Ya existe?** **Defecto / desalineación normativa**, no capacitación. El camino de notificar DIAN existe (`NOTI_DIAN` → cola FACTE=1 → `SPK_GENERAR_XML_DIAN` → servicio FACTE=2). El usuario no busca un botón nuevo: el SP **bloquea** facturas cuyo tercero no tiene domicilio completo.\n\n**Hoy (fichas `conocimiento/dian-xml` + cuerpo en `sql_refe/0100016436` / copia Qrystalos2, leído 2026-09-16 PREVERSION=liberada):** el SP lee el adquirente de `TER` (NIT, RAZONSOCIAL, DIRECCION, CIUDAD, TELEFONOS, EMAIL / EMAIL_RL / EMAIL_TH) y homologa ciudad/depto con `CIU`/`DEP`. **RAISERROR** si falta: depto, NIT, razón social, ciudad, dirección, teléfono, correo, responsabilidad fiscal, código postal. Correo y teléfono vacíos se rellenan con el contacto OFE (`TGEN` FDIAN/CONTACTO). El maestro ya tiene `TER.EMAILRECIBOFE` (correo de FE; lo usa el log de facturas), pero **el SP de XML no lo toma**.\n\n**Qué no es:** relajar datos del **OFE/emisor** (TGEN CONTACTO y TER del facturador: ahí el SP sigue exigiendo nombre, teléfono, email, dirección y ciudad del emisor). Eso no lo pidió el comité.\n\n**Causa:** validaciones locales más estrictas que la regla de negocio descrita. No hay circular adjunta en esta SR para citar artículo.\n\n**Clasificación para el plan:** desarrollo SQL puntual en `SPK_GENERAR_XML_DIAN` (tres ramas: FV y notas). No es módulo nuevo.\n\n**Norma (Res. 000202/2025 art. 69 + Comunicado 026):** del adquirente solo son exigibles nombre/razon, tipo y N de identificacion, y correo. Direccion, telefono, ciudad y departamento no son exigibles.\n\n**DESAIX (PREVERSION = 2.0.3, identica a la ultima Cerrada; IDANT 2.0.2):** SPK_GENERAR_XML_DIAN todavia hace RAISERROR si faltan depto, ciudad, direccion, telefono o codigo postal del adquirente (ramas FV y notas). El cambio no esta en canasta. TER.EMAILRECIBOFE existe y el SP no lo usa. No relajar OFE/emisor.",
+  "alcance": "**Incluye:** `SPK_GENERAR_XML_DIAN` — validaciones y nodos XML del **adquirente** (dirección, teléfono, ciudad, departamento, código postal): si hay dato se envía; si no, no detener FACTE. Mantener obligatorios NIT, razón social y correo. Revisar las tres ramas (FV y NC/ND). Opcional: incluir `TER.EMAILRECIBOFE` en la cadena de correo.\n**No incluye:** datos obligatorios del OFE/emisor; `NOTI_DIAN` / `TREA_XML` / `VALIDADIAN2`; RIPS JSON; SUNAT; radicación CXC; volver obligatorio el domicilio en maestro de terceros; cambio de pantalla de Facturación.",
+  "restricciones": "Proyecto Comité de Estudios Médicos. No mezclar con RIPS/CUV ni Perú. No relajar OFE sin pedido aparte. En XML, preferir **omitir** nodos vacíos (un tag vacío puede fallar el esquema). Antes de desarrollar: probar en PREVERSION que el bloqueo siga; la ficha 2026-09-16 decía PREVERSION idéntica a liberada. Adjuntar circular/resolución/anexo técnico DIAN cuando la tengan (esta SR no trae archivo).",
+  "criterios": "1) Con TER que tenga NIT, razón social y correo (EMAIL o EMAILRECIBOFE), y sin dirección/ciudad/depto/teléfono/postal, el XML se genera y la factura no queda en error por esos campos.\n2) Si el tercero sí tiene dirección, teléfono, ciudad o departamento, esos valores siguen viajando en el XML.\n3) Sin NIT, sin razón social o sin correo: el envío sigue detenido con mensaje claro.\n4) El emisor (OFE / TGEN CONTACTO) no cambia.\n5) Notas débito/crédito con el mismo tercero se comportan igual que la FV.\n6) Validar antes: un tercero CEM sin domicilio; si en PREVERSION ya pasa, no hay desarrollo.",
+  "recomendacion": "Llevar al plan de trabajo como **ajuste de `SPK_GENERAR_XML_DIAN`** (único objeto que arma y valida el XML del adquirente). Relajar RAISERROR de dirección, ciudad, departamento, teléfono y código postal del adquirente; enviar el dato si existe. No tocar cola ni FE. En implementación, contrastar de nuevo PREVERSION vs última Cerrada. Pedir al cliente la norma (anexo/resolución) para no relajar de más (p. ej. responsabilidad fiscal: el SP hoy la exige y el texto de la SR no la menciona).",
+  "cambioPropuestoSql": "-- Especificación (no ejecutar desde BA).\n-- Objeto único: SPK_GENERAR_XML_DIAN\n-- Fuente: sql/SPK_GENERAR_XML_DIAN.sql\n-- Catálogo DESAIX: PREVERSION = 2.0.3, idéntica a la última Cerrada (IDANT 2.0.2). El cambio no está en canasta.\n-- Alcance: solo adquirente. No relajar validaciones del OFE/emisor (TGEN FDIAN/CONTACTO).\n-- Repetir el mismo criterio en las 3 ramas: FV (~L701-749 y XML ~L1282-1330) y notas (~L2175 / ~L2871 y sus bloques XML).\n\n-- ========== 1) Correo del adquirente (FV ~L413; notas ~L2137 y ~L2850) ==========\n-- BEFORE\n,@EMAIL_ADQUIRIENTE=DBO.FNK_LIMPIATEXTO(COALESCE(TER.EMAIL,TER.EMAIL_RL,TER.EMAIL_TH,@EMAIL_CONTACTO,''),'a-zA-Z0-9@._')\n\n-- AFTER  (usar primero TER.EMAILRECIBOFE, ya existe en maestro)\n,@EMAIL_ADQUIRIENTE=DBO.FNK_LIMPIATEXTO(COALESCE(TER.EMAILRECIBOFE,TER.EMAIL,TER.EMAIL_RL,TER.EMAIL_TH,@EMAIL_CONTACTO,''),'a-zA-Z0-9@._')\n\n-- ========== 2) Validaciones adquirente (FV ~L701-749) ==========\n-- BEFORE: RAISERROR si faltan departamento, ciudad, dirección, teléfono o código postal\n--         (además de NIT, razón social, correo y responsabilidad fiscal).\n-- AFTER: quitar estos 5 bloques. Conservar NIT, razón social y correo.\n--        Responsabilidad fiscal: el XML ya fuerza R-99-PN (~L1300); se puede quitar el RAISERROR de @CODRESPFISCALADQ.\n\n-- Quitar (y los gemelos de ciudad, dirección, teléfono y postal):\nIF COALESCE(@CODDEPTOADQUI,'')=''\nBEGIN\n  SET @MENSAJE_ERROR='El Código del departamento de la ciudad de la Dirección del adquiriente de la factura '+@N_FACTURA+' es incorrecto'\n  IF @PREVALIDACION=0 UPDATE FTR SET FACTE=0 WHERE N_FACTURA=@N_FACTURA\n  RAISERROR (@MENSAJE_ERROR, 16, 1);\nEND\n\n-- Conservar:\nIF COALESCE(@NIT_ADQUIRIENTE,'')=''\nBEGIN\n  SET @MENSAJE_ERROR='NIT del adquiriente de la factura '+@N_FACTURA+' sin configurar'\n  IF @PREVALIDACION=0 UPDATE FTR SET FACTE=0 WHERE N_FACTURA=@N_FACTURA\n  RAISERROR (@MENSAJE_ERROR, 16, 1);\nEND\nIF COALESCE(@RAZONSOCIAL_ADQUIRIENTE,'')=''\nBEGIN\n  SET @MENSAJE_ERROR='Razón social del adquiriente de la factura '+@N_FACTURA+' sin configurar'\n  RAISERROR (@MENSAJE_ERROR, 16, 1);\nEND\nIF COALESCE(@EMAIL_ADQUIRIENTE,'')=''\nBEGIN\n  SET @MENSAJE_ERROR='Email del adquiriente de la factura '+@N_FACTURA+' sin configurar'\n  IF @PREVALIDACION=0 UPDATE FTR SET FACTE=0 WHERE N_FACTURA=@N_FACTURA\n  RAISERROR (@MENSAJE_ERROR, 16, 1);\nEND\n\n-- ========== 3) Nodos XML opcionales (FV ~L1282-1330; repetir en notas) ==========\n-- Preferir omitir el tag si el dato va vacío (un tag vacío puede fallar el esquema).\nIF COALESCE(@CIUDAD_ADQUIRIENTE,'') <> ''\n  SET @XML += ... '<cbc:ID>' + @CIUDAD_ADQUIRIENTE + '</cbc:ID>'\nIF COALESCE(@CODDEPTOADQUI,'') <> ''\n  SET @XML += ... '<cbc:CountrySubentityCode>' + @CODDEPTOADQUI + '</cbc:CountrySubentityCode>'\nIF COALESCE(@DIRADQUI,'') <> ''\n  SET @XML += ... '<cbc:Line>' + @DIRADQUI + '</cbc:Line>'\nIF COALESCE(@TELCONTACTOADQUI,'') <> ''\n  SET @XML += ... '<cbc:Telephone>' + @TELCONTACTOADQUI + '</cbc:Telephone>'\nIF COALESCE(@CODPOSTALADQUI,'') <> ''\n  SET @XML += ... '<cbc:PostalZone>' + @CODPOSTALADQUI + '</cbc:PostalZone>'\n\n-- Validación (solo lectura en copia/preversión; no ejecutar desde BA):\n-- 1) TER con NIT + razón + correo, sin dirección/ciudad/depto/tel/postal → XML OK, no FACTE error por esos campos.\n-- 2) El mismo TER con domicilio → esos nodos viajan.\n-- 3) Sin NIT o sin razón o sin correo → sigue RAISERROR.\n-- 4) OFE / TGEN CONTACTO no cambia.\n",
+  "normativa": "**Resolucion 000202 de 31-03-2025 (DIAN)**, modifica el art. 69 de la Res. 165/2023. Comunicado 026 (1-abr-2025).\n\nAl pedir factura a su nombre solo se puede exigir: (1) nombre o razon social, (2) tipo y numero de identificacion, (3) correo. Queda prohibido exigir direccion, telefono o RUT. El correo se puede omitir si se entrega la representacion grafica impresa (art. 35 Res. 165).\n\nArt. 70 (autollenado por NIT) queda fuera de esta solicitud.\n\nFuentes: Normograma DIAN Res. 000202/2025; Comunicado de Prensa 026-2025.",
+  "analisisLanzado": true,
+  "archivos": [],
+  "mockups": [
+    "solicitudes/SR20260921-001/mockups/mockup-ux-pantalla.html"
+  ],
+  "siguiente": "Comité: aprobar o devolver. Si aprueba, abrir REQ de implementación (Analista) sobre dian-xml / SPK_GENERAR_XML_DIAN. Adjuntar normativa si la tienen.",
+  "aval": {
+    "aplica": false,
+    "idReq": "",
+    "idCaso": "",
+    "titulo": "",
+    "notas": ""
+  },
+  "documento": {
+    "nombre": "documento.html",
+    "ruta": "solicitudes/SR20260921-001/documento.html",
+    "url": "/api/solicitar/SR20260921-001/documento",
+    "dictamenCopia": "dictamenes/SR20260921-001.html",
+    "mockups": [
+      "solicitudes/SR20260921-001/mockups/mockup-ux-pantalla.html"
+    ],
+    "diagramaFlujo": "solicitudes/SR20260921-001/diagramas/flujo.html",
+    "generadoEn": "2026-09-22T22:31:37"
+  },
+  "diagramaFlujo": "solicitudes/SR20260921-001/diagramas/flujo.html",
+  "plataforma": {
+    "carpeta": "C:\\Users\\JOSE MANUEL\\Desktop",
+    "carpetaRel": "../../../Users/JOSE MANUEL/Desktop",
+    "exportadoEn": "2026-09-21T17:13:38",
+    "archivos": [
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260921-001-documento-comite.pdf",
+        "ruta": "../../../Users/JOSE MANUEL/Desktop/SR20260921-001-documento-comite.pdf",
+        "url": "/api/solicitar/SR20260921-001/plataforma/SR20260921-001-documento-comite.pdf"
+      },
+      {
+        "tipo": "pdf",
+        "nombre": "SR20260921-001-mockups.pdf",
+        "ruta": "../../../Users/JOSE MANUEL/Desktop/SR20260921-001-mockups.pdf",
+        "url": "/api/solicitar/SR20260921-001/plataforma/SR20260921-001-mockups.pdf"
+      },
+      {
+        "tipo": "png",
+        "nombre": "SR20260921-001-diagrama-flujo.png",
+        "ruta": "../../../Users/JOSE MANUEL/Desktop/SR20260921-001-diagrama-flujo.png",
+        "url": "/api/solicitar/SR20260921-001/plataforma/SR20260921-001-diagrama-flujo.png"
+      }
+    ],
+    "avisos": [
+      "PDF/PNG: No se pudo generar PDF del documento (Chrome/Edge headless). No se pudo generar PDF de mockups. No se pudo capturar PNG del diagrama de flujo."
+    ]
+  }
+}

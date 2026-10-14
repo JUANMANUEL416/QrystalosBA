@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-07T07:40:00",
+    "listoParaAnalisis": true,
+    "nota": "Análisis de Cursor. Sin HTML de cola. Dictamen pendiente de confirmar alcance."
+  },
+  "cola": {
+    "archivoCola": "",
+    "idReq": "0100016573",
+    "rutaCola": "",
+    "instruccion": "El coordinador pegó el texto del REQ en Cursor. No hay HTML en cola/."
+  },
+  "identificacion": {
+    "idCaso": "20261007-0100016573",
+    "idReq": "0100016573",
+    "fecha": "2026-10-07",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "",
+    "area": "ASISTENCIAL",
+    "modulo": "",
+    "rutaPantalla": "Admisiones asistenciales → Altas y cierre → Descuentos"
+  },
+  "personas": {
+    "asesor": "",
+    "coordinador": "",
+    "soporteProyecto": "",
+    "desarrollador": "",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "0100016573",
+    "rama": "",
+    "prioridad": "Media",
+    "estado": "En análisis",
+    "aval": "Sin aval",
+    "tipo": "Defecto"
+  },
+  "contenido": {
+    "titulo": "No borrar el descuento de la admisión",
+    "requerimiento": "Se solicita que, en la parte asistencial, cuando una admisión tenga un descuento, esta se deje inactiva o se cambie su estado. Además, se requiere que se registre la fecha en que se cambió el estado y el usuario que realizó el cambio.\n\nDetalle del cliente: el sistema nunca debe eliminar un registro de descuento. Se generó una factura con descuento y, al validar los descuentos, no hay registro en la admisión. Los logs confirman que existió y fue eliminado tras la facturación.\n\nSe pide: no eliminar el registro; estado modificable o anulable; fecha de modificación o anulación; usuario que creó; usuario que modificó o anuló por última vez; botón para ver qué se modificó; al anular, validar si fue facturado; si no fue facturado, pedir motivo. Desarrollo puede agregar validaciones.",
+    "criteriosAceptacion": "1) Tras facturar, el descuento sigue en la grilla, en Facturado, con el número de esa factura.\n2) El corte 1 consume el pendiente. El corte 2 no lo repite. Un pendiente nuevo sí sale en el corte 2.\n3) Anular un pendiente pide motivo y la fila no desaparece.\n4) No existe botón Borrar.\n5) La factura ya impresa no cambia de valor al anular o al crear otro ítem.\n6) La admisión no cambia de estado clínico ni administrativo por este proceso.",
+    "alcance": "Ventana Descuentos de la admisión. HADMDT con NOITEM y estados Pendiente, Anulado y Facturado. SPQ_HADMDT sin borrado. Procedimientos de factura de admisión, incluido el corte: leen solo el pendiente y graban N_FACTURA al pasar a Facturado. Precarga de cargos solo con pendiente. Copia y reactivación por ítem.",
+    "restricciones": "No inactivar la admisión. No modificar la factura ya emitida ni generar nota crédito. No cambiar el descuento de la línea de cargo. La purga de la copia Kant no es el botón de la ventana.",
+    "analisis": "Paso 0. El título del ticket habla de inactivar la admisión. La captura y el detalle hablan del descuento. Clasificación: defecto (el botón Eliminar borra la fila) y hueco (no hay estado, factura ni historial). No es capacitación.\n\nVentana: Admisiones asistenciales → Altas y cierre → Descuentos. Hoy: agregar, editar y eliminar. Columnas visibles: tipo, valor, razón social y tercero.\n\nLa facturación no borra el descuento. Lo lee y copia el valor calculado a la factura. El impreso muestra ese valor de la factura. Por eso la factura conserva el descuento aunque la grilla quede vacía. Quien borra es el método ELIMINAR. En IXONLINE/SQL, PREVERSION y la última cerrada 2.0.7 traen el mismo SPQ_HADMDT (IDANT 2.0.6). El arreglo no está en preversión.\n\nInventario de columnas documentado de HADMDT: NOADMISION, IDTERCERO, TIPODTO, DESCUENTO. No hay NOITEM. El procedimiento vigente además identifica la fila por ID. La copia y la reactivación de admisiones tratan como única la pareja admisión + tercero. Con esa llave no cabe un historial: el corte vuelve a leer la misma fila y aplica otra vez el mismo descuento.\n\nDecisión: llave de negocio (NOADMISION, NOITEM). Estados Pendiente, Anulado y Facturado. Al facturar, incluso por corte, se graba N_FACTURA y el estado pasa a Facturado. La siguiente factura solo lee Pendiente. Se quita Eliminar. Se conservan usuario que crea, usuario y fecha de la última modificación, y motivo al anular. Si se edita un pendiente, se guarda el valor anterior para el botón Ver cambios.\n\nUn solo descuento Pendiente por admisión y tercero. El Facturado no se edita ni se anula: la factura ya emitida no se recalcula. Anular solo aplica al Pendiente y exige motivo.\n\nContabilidad: no. El valor ya impreso permanece en la factura.",
+    "opciones": [
+      {
+        "id": "A",
+        "texto": "Elegida. Historial por NOITEM. Al facturar o cortar: estado Facturado y N_FACTURA. La siguiente factura ignora facturados y anulados. Sin botón borrar."
+      }
+    ],
+    "recomendacion": "Implementar historial por NOITEM y estados Pendiente, Anulado y Facturado. Al facturar o cortar, marcar Facturado con N_FACTURA. La factura siguiente ignora facturados y anulados. Sin botón borrar. Contabilidad: no.",
+    "cambioPropuestoSimple": "Hoy el descuento de la admisión se puede borrar. Si se borra después de facturar, la factura sigue mostrando el descuento y la ventana queda vacía. Además, cuando se factura por corte, el mismo descuento se vuelve a aplicar en la factura siguiente.\n\nSe propone que cada descuento quede guardado con un consecutivo dentro de la admisión. Nace pendiente. Al facturar, incluso por corte, ese descuento pasa a facturado y muestra el número de la factura, quién lo trabajó y cuándo. La factura siguiente no lo vuelve a usar: solo entra un descuento que siga pendiente. Si todavía no se facturó, se puede anular diciendo el motivo, y la fila sigue visible. No existe borrar. Lo ya facturado no se modifica y no cambia la factura impresa.",
+    "cambioPropuestoSql": "Fuente: IXONLINE/SQL PREVERSION = 2.0.7.\n\nLlave de negocio (NOADMISION, NOITEM). Estados PENDIENTE, ANULADO, FACTURADO. N_FACTURA se llena al facturar.\n\nINSERTAR asigna NOITEM y ESTADO pendiente. ACTUALIZAR y ANULAR solo si pendiente. ELIMINAR no borra.\n\nLectura de factura y corte:\nWHERE NOADMISION = @NOADMISION AND IDTERCERO = @IDTERCERO AND ESTADO = 'PENDIENTE'\nLuego:\nUPDATE HADMDT SET ESTADO = 'FACTURADO', N_FACTURA = @NVOCONSEC WHERE NOADMISION = @NOADMISION AND NOITEM = @NOITEM AND ESTADO = 'PENDIENTE'\n\nFilas actuales: NOITEM = 1. Si ya hay factura con descuento de ese tercero, ESTADO facturado y ese número. Si no, pendiente.\n\nEspecificación. No ejecutar desde BA.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "No aplica: el descuento ya facturado permanece en FTR.DESCUENTO. La anulación no recalcula la factura ni mueve cartera ni comprobante.",
+        "validadoEn": "2026-10-07T07:30:00"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En preversión, registre un descuento, facture la admisión (o un corte) y compruebe dos cosas: la fila sigue en Descuentos y la factura guarda el valor. Luego use Eliminar y compruebe que la grilla queda vacía mientras la factura conserva el monto. SPQ_HADMDT está igual en PREVERSION y en 2.0.7. Si en la copia del cliente la fila ya no se puede borrar y permanece después de facturar, no desarrolle e informe que está correcto."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "",
+      "originalesEn": "",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "",
+      "trasAnalisisEn": "2026-10-07T07:30:00",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Defecto: ELIMINAR borra la fila después de que la factura ya guardó el valor. Hueco: sin ítem, sin estado y sin número de factura, el corte reutiliza el mismo descuento. Decisión: NOITEM, estados Pendiente/Anulado/Facturado, sin borrado. La factura nueva solo lee pendiente.",
+      "fecha": "2026-10-07T07:40:00",
+      "estado": "listo",
+      "sps": "SPQ_HADMDT leído (PREVERSION = 2.0.7). Factura: contraste por fragmento en SQLIX, cuerpos de SPK_FACTURA_* aún no guardados en la carpeta del caso."
+    },
+    "diagramaFlujo": null,
+    "mockups": [],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "",
+    "archivosEsperados": [
+      "SPQ_HADMDT.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "",
+    "catalogo": "",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_HADMDT",
+        "metodo": "INSERTAR",
+        "estado": "leido",
+        "hace": "Inserta HADMDT (tercero, tipo, valor, admisión) sin usuario ni fecha.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_HADMDT",
+        "metodo": "ACTUALIZAR",
+        "estado": "leido",
+        "hace": "Sobrescribe tipo, valor y tercero por ID, sin historial.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_HADMDT",
+        "metodo": "ELIMINAR",
+        "estado": "leido",
+        "hace": "Borra físicamente HADMDT por ID, sin validar factura.",
+        "llama": []
+      }
+    ],
+    "notas": "PREVERSION y 2.0.7 idénticas (IDANT 2.0.6). Los SPK_FACTURA_* leen HADMDT y no lo borran; bajarlos a esta carpeta si se cierra el dictamen.",
+    "pruebasUnitarias": ""
+  }
+}

@@ -1,0 +1,185 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-13T18:34:32.563Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016706",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261013-0100016706",
+    "idReq": "0100016706",
+    "fecha": "2026-10-13",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinivida IPS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": "Administrativo > Facturación > pestaña Traslados Facturas (ENTComponent)"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "Isan Martinez Uriana",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/CLIVID39",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": ""
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Error en fecha de cierre de envío de factura\n\nAl cerrar un consecutivo de envío para traslado de factura, el sistema toma la misma fecha de apertura en lugar de la fecha de cierre. Se requiere que el sistema registre correctamente la fecha de cierre.\n\n1. Abrir un consecutivo de envío para traslado de factura.\n2. Cerrar el envío. DETALLE: Se requiere pasar a Desarrollo porque el ajuste implica modificar la lógica y estructura del módulo de Facturación para garantizar el correcto registro y trazabilidad de las fechas del proceso.\n\nSe requiere pasar a Desarrollo porque el ajuste implica modificar la lógica y estructura del módulo de Facturación para garantizar el correcto registro y trazabilidad de las fechas del proceso.",
+    "criteriosAceptacion": "1. Al crear un consecutivo de envío (ENT), la columna de fecha de apertura/entrega (F_Entrega) conserva la fecha/hora registrada en ENT.FECHAENTREGA al abrir el envío.\n2. Al pulsar Cerrar envío sobre una ENT abierta con detalle (ENTD), el sistema persiste la fecha y hora real de cierre en ENT (campo dedicado) y la muestra en la grilla de Traslados Facturas.\n3. Al reabrir el envío (Abrir envío), se limpia la fecha de cierre y el envío vuelve a estado Abierto sin alterar FECHAENTREGA.\n4. Un envío cerrado en un día distinto al de apertura muestra fechas de apertura y de cierre diferentes en pantalla (no la misma fecha en ambos conceptos).\n5. La recepción en cartera/auditoría (PROCESAR_ENVIO / RECIBIR_AUDIFACTU) sigue registrando FECHARECIBE como hoy; no se confunde con la fecha de cierre del envío en facturación.\n6. Prueba de regresión: agregar/retirar facturas, imprimir acta, exportar Excel y Crear CxC sobre envío cerrado siguen operando igual.",
+    "alcance": "Control Traslados Facturas (proceso FACTURAS): persistencia de fecha de cierre al usar Cerrar envío / Abrir envío; visualización en la grilla principal de envíos; ajuste del METODO CERRAR_ENT en SPQ_ENT_COL; columna nueva en ENT si no existe en la base del cliente; documentación de tabla ENT en qrystalos.documentacion. Incluye acta PDF (IMPRIMIR_ENT) solo si hoy imprime una fecha de cierre que deba leer el nuevo campo.",
+    "restricciones": "No incluye envío electrónico DIAN ni RIPS. No modifica la lógica de recepción CREARCXC_ENT / PROCESAR_ENVIO / RECIBIR_AUDIFACTU salvo mostrar fechas ya existentes. No backfill masivo de históricos salvo script opcional acordado con el cliente. El PDF REQ_TRASLADO_DE_FACTURAS.pdf no tuvo extracto automático; no se citan numerales normativos hasta revisar el original. Proceso DEVFACT fuera de alcance salvo que comparta el mismo METODO CERRAR_ENT (mismo fix, sin pantalla adicional).",
+    "analisis": "REQ 0100016706 (Clinivida): al cerrar el consecutivo de envío de traslado de facturas, el usuario espera ver registrada la fecha de cierre; en pantalla solo existe F_Entrega (ENT.FECHAENTREGA), fijada al crear el envío con CRUD_ENT (DBO.FNK_GETDATE()), por lo que envíos cerrados días después siguen mostrando la fecha de apertura — coincide con la captura IMG_TRASLADO_FACTURAS (Envio Cerrado con la misma F_Entrega que envíos abiertos del mismo día).\n\nPaso 0 — ¿Ya existe? Clasificación: defecto / hueco funcional (no capacitación). El botón Cerrar envío y el flujo están documentados (HelpManualTrasladosFacturas, proceso facturación flujo-envio-recepcion). No hay otro menú que registre “fecha de cierre” del envío; FECHARECIBE aplica al recibir en cartera/auditoría, no al cierre en facturación.\n\nInventario del control (ENTComponent, permiso FACT_TRASLADAR): filtros por proceso FACTURAS/DEVFACT, fechas, estado, sede, usuario; acciones Enviar a Cartera / Enviar a Auditoría (CRUD_ENT); por fila expandida Agregar/Retirar facturas (ASIGNAR_FACT, QUITAFACT_ENTD…); Cerrar envío / Abrir envío → AppStore.json ENT_COL · CERRAR_ENT (toggle CERRADO); Imprimir/Exportar; Crear CxC (CREARCXC_ENT); Recibir entrega (PROCESAR_ENVIO). Permisos ENT_*_OTRO para envíos de otro usuario.\n\nCausa técnica (KB + IXONLINE/SQL SPQ_ENT_COL): CERRAR_ENT solo ejecuta UPDATE ENT SET CERRADO = CASE … END; no actualiza ninguna fecha. El diccionario Clarion/SQL de ENT no incluye FECHACIERRE (sí FECHAENTREGA y FECHARECIBE). La ficha en conocimiento/facturacion/sps.json (estado leido) coincide con el cuerpo archivado en sql_refe.\n\nContabilidad: no aplica; el traslado ENT no genera comprobante MCUE/CON por sí mismo.",
+    "opciones": [],
+    "recomendacion": "Aprobar desarrollo acotado: agregar ENT.FECHACIERRE (datetime, nullable), poblarla en CERRAR_ENT al pasar a Cerrado y anularla al reabrir; mostrar F_Apertura (FECHAENTREGA) y F_Cierre (FECHACIERRE) en la grilla de Traslados Facturas. Validar en preversión que PREVERSION aún no incluya el cambio (validarAntes). Impacto: FE (ENTComponent.vue), API existente ENT_COL, SQL (DDL + SPQ_ENT_COL). Tipo de ticket corregido a Defecto (no performance).",
+    "cambioPropuestoSimple": "Hoy, cuando facturación cierra un envío de facturas, el sistema solo marca el envío como «Cerrado» pero no guarda cuándo se cerró; la pantalla sigue mostrando la fecha en que se abrió el envío. Se propone guardar la fecha/hora de cierre al cerrar (y borrarla si se reabre) y mostrarla en la lista de envíos, manteniendo visible la fecha de apertura.",
+    "cambioPropuestoSql": "-- Especificación (no ejecutar desde BA). Fuente: IXONLINE/SQL SPQ_ENT_COL (CERRAR_ENT), tabla ENT.\n\n-- 1) Estructura (si la columna no existe en la base del cliente)\nIF COL_LENGTH('dbo.ENT', 'FECHACIERRE') IS NULL\n   ALTER TABLE dbo.ENT ADD FECHACIERRE datetime NULL;\nGO\n\n-- 2) SPQ_ENT_COL · METODO CERRAR_ENT — reemplazar bloque UPDATE actual\n-- BEFORE:\n--   UPDATE ENT SET CERRADO=CASE COALESCE(CERRADO,0) WHEN 1 THEN 0 ELSE 1 END WHERE CNSENTREGA=@CNSENTREGA\n-- AFTER (conceptual):\n--   UPDATE ENT\n--   SET CERRADO = CASE COALESCE(CERRADO,0) WHEN 1 THEN 0 ELSE 1 END,\n--       FECHACIERRE = CASE COALESCE(CERRADO,0) WHEN 1 THEN NULL ELSE DBO.FNK_GETDATE() END\n--   WHERE CNSENTREGA = @CNSENTREGA;\n\n-- 3) Validación post-despliegue\nSELECT CNSENTREGA, CERRADO, FECHAENTREGA, FECHACIERRE, FECHARECIBE, ESTADO\nFROM dbo.ENT\nWHERE PROCESO = 'FACTURAS'\n  AND COALESCE(CERRADO,0) = 1\nORDER BY FECHAENTREGA DESC;\n-- Esperado: FECHACIERRE NOT NULL en cierres nuevos; FECHAENTREGA = apertura; FECHACIERRE >= FECHAENTREGA.\n\n-- 4) Históricos (opcional, fuera de alcance por defecto)\n-- UPDATE dbo.ENT SET FECHACIERRE = FECHAENTREGA WHERE COALESCE(CERRADO,0)=1 AND FECHACIERRE IS NULL;\n-- Solo si el comité acuerda aproximar cierres antiguos.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Traslado ENT (FTR): actualiza ENT/ENTD/FTR de ubicación; no genera asiento MCUE/CON ni comprobante. coherente con afecta=false.",
+        "validadoEn": "2026-10-13T18:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En preversión/copia Clinivida: abrir un envío FACTURAS, cerrarlo al día siguiente (o cambiar reloj de prueba) y comprobar si ENT ya tiene columna FECHACIERRE poblada o si CERRAR_ENT ya escribe fecha distinta de FECHAENTREGA. Si ya está corregido en PREVERSION, no repetir desarrollo."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "IMG_TRASLADO_FACTURAS.png",
+        "ruta": "activo/20261013-0100016706/imagenes/IMG_TRASLADO_FACTURAS.png",
+        "subidaEn": "2026-10-13T13:27:27",
+        "url": "/api/caso/20261013-0100016706/imagen/IMG_TRASLADO_FACTURAS.png"
+      }
+    ],
+    "archivosAnalisis": [
+      {
+        "nombre": "REQ_TRASLADO_DE_FACTURAS.pdf",
+        "ruta": "activo/20261013-0100016706/archivos/REQ_TRASLADO_DE_FACTURAS.pdf",
+        "extracto": "REQ_TRASLADO_DE_FACTURAS.extracto.txt",
+        "extractoRuta": "activo/20261013-0100016706/archivos/REQ_TRASLADO_DE_FACTURAS.extracto.txt",
+        "tipo": "otro",
+        "mime": "application/pdf",
+        "bytes": 476158,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-10-13T13:28:11",
+        "url": "/api/caso/20261013-0100016706/archivo/REQ_TRASLADO_DE_FACTURAS.pdf",
+        "urlExtracto": "/api/caso/20261013-0100016706/archivo/REQ_TRASLADO_DE_FACTURAS.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1. Al crear un consecutivo de envío (ENT), la columna de fecha de apertura/entrega (F_Entrega) conserva la fecha/hora registrada en ENT.FECHAENTREGA al abrir el envío.\n2. Al pulsar Cerrar envío sobre una ENT abierta con detalle (ENTD), el sistema persiste la fecha y hora real de cierre en ENT (campo dedicado) y la muestra en la grilla de Traslados Facturas.\n3. Al reabrir el envío (Abrir envío), se limpia la fecha de cierre y el envío vuelve a estado Abierto sin alterar FECHAENTREGA.\n4. Un envío cerrado en un día distinto al de apertura muestra fechas de apertura y de cierre diferentes en pantalla (no la misma fecha en ambos conceptos).\n5. La recepción en cartera/auditoría (PROCESAR_ENVIO / RECIBIR_AUDIFACTU) sigue registrando FECHARECIBE como hoy; no se confunde con la fecha de cierre del envío en facturación.\n6. Prueba de regresión: agregar/retirar facturas, imprimir acta, exportar Excel y Crear CxC sobre envío cerrado siguen operando igual.",
+      "originalesEn": "2026-10-13T18:33:08.403Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1. Al crear un consecutivo de envío (ENT), la columna de fecha de apertura/entrega (F_Entrega) conserva la fecha/hora registrada en ENT.FECHAENTREGA al abrir el envío.\n2. Al pulsar Cerrar envío sobre una ENT abierta con detalle (ENTD), el sistema persiste la fecha y hora real de cierre en ENT (campo dedicado) y la muestra en la grilla de Traslados Facturas.\n3. Al reabrir el envío (Abrir envío), se limpia la fecha de cierre y el envío vuelve a estado Abierto sin alterar FECHAENTREGA.\n4. Un envío cerrado en un día distinto al de apertura muestra fechas de apertura y de cierre diferentes en pantalla (no la misma fecha en ambos conceptos).\n5. La recepción en cartera/auditoría (PROCESAR_ENVIO / RECIBIR_AUDIFACTU) sigue registrando FECHARECIBE como hoy; no se confunde con la fecha de cierre del envío en facturación.\n6. Prueba de regresión: agregar/retirar facturas, imprimir acta, exportar Excel y Crear CxC sobre envío cerrado siguen operando igual.",
+      "trasAnalisisEn": "2026-10-13T18:33:12.107Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso facturación (flujo-envio-recepcion), ENTComponent.vue, tablas ENT/ENTD, fichas leídas SPQ_ENT_COL (CERRAR_ENT, CRUD_ENT). Defecto confirmado: no hay persistencia de fecha de cierre. PDF adjunto sin extracto. SQL releído vía ficha + sql_refe/xsql (no requiere carpeta activo/sql para dictaminar solución). Pendiente dictamen HTML y mockup propuesto.",
+      "fecha": "2026-10-13T18:45:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_ENT_COL · CERRAR_ENT (fix), CRUD_ENT (FECHAENTREGA apertura), IMPRIMIR_ENT (revisar leyenda fecha si aplica)"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261013-0100016706/diagramas/flujo.html",
+      "subidaEn": "2026-10-13T13:33:54",
+      "url": "/api/caso/20261013-0100016706/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261013-0100016706-flujo.html"
+    },
+    "mockups": [
+      "activo/20261013-0100016706/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261013-0100016706\\sql\\",
+    "carpetaRelativa": "activo/20261013-0100016706/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016706\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": false,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "CRUD_ENT",
+        "estado": "leido",
+        "hace": "Crea/edita ENT: GENCONSECUTIVO @ENT; PROCESO FACTURAS/DEVFACT/AUDITORIA; ENT_ENTREGA/ENT_RECIBE.",
+        "llama": [
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "CERRAR_ENT",
+        "estado": "leido",
+        "hace": "Alterna ENT.CERRADO si entrega ESTADO=0 y tiene ENTD.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "IMPRIMIR_ENT",
+        "estado": "leido",
+        "hace": "Recordsets acta traslado ENT+ENTD.",
+        "llama": []
+      }
+    ],
+    "notas": "No se copió el catálogo completo de facturación. Cuerpo CERRAR_ENT contrastado con sql_refe/xsql; bajar a activo/sql solo si el dictamen exige diff PREVERSION línea a línea.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261013-0100016706.html",
+    "aprobados": "aprobados/20261013-0100016706/",
+    "imagenes": "aprobados/20261013-0100016706/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-13",
+    "ultimoEnvio": "2026-10-13T13:38:29",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

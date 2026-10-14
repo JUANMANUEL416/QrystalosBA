@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-05T23:04:07.837Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016625",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261005-0100016625",
+    "idReq": "0100016625",
+    "fecha": "2026-10-05",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "ACCTRAN · Accidentes de Transito SOAT",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "JUAN LLAMAS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/ASOCAB212",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "ACCTRAN · Accidentes de Transito SOAT",
+    "requerimiento": "Incluir en la ventana de soat una columna que indique si se utiiizo el soat y crear filtro de numero factura del soat de aquellas que estan facturadas DETALLE: Se solicita que se muestre en algún lado de la ventana de SOAT si dicho SOAT ya fue asignado a un proceso, es decir, si está asignado a SALUD, CE o CI. Sin embargo, esta solo indicará si fue asignado o no.\n\nAdemás, se crearán cuatro filtros para buscar en el módulo:\n- Que busque por número de factura.\n- Que busque por módulo usado (SALUD, CE o CI).\n- Que busque por número de ingreso del módulo usado.\n- Que busque por fecha de creación del SOAT inicial y final.",
+    "criteriosAceptacion": "1) En Asistencial → SOAT (lista «Accidentes de transito»), existe una columna visible «Asignado» (o equivalente acordado) con valores Si/No: Si cuando el expediente tiene al menos un vínculo operativo con SALUD (HADM.CNSHACTRAN), CE (AUT.CNSHACTRAN) o CI (CIT.CNSHACTRAN); No en caso contrario.\n2) Filtro por número de factura SOAT: al digitar un N_FACTURA, la grilla muestra solo expedientes que tengan esa factura en estado válido de cartera (misma lógica que el conteo FTRS actual: FTR procedencia SALUD/CE/CI, estado P, sin NC), incluyendo ramas VARIOS vía FTRD cuando aplique.\n3) Filtro por módulo usado: opciones SALUD, CE, CI; restringe a expedientes con enlace en la tabla correspondiente (HADM, AUT o CIT) por CNSHACTRAN.\n4) Filtro por número de ingreso del módulo: con módulo SALUD filtra HADM.NOADMISION; con CE filtra AUT.NOAUT; con CI filtra CIT.CONSECUTIVO; si el módulo está vacío, busca el número en cualquiera de las tres tablas vinculadas al CNSHACTRAN.\n5) Filtro por rango de fechas de creación del SOAT: usa HACTRAN.FECHA (registro del expediente), inicial y final inclusive; sin fechas no restringe por este criterio.\n6) Los filtros nuevos se combinan con el filtro existente de Aseguradora y con la búsqueda rápida (doc/nombre/consecutivo); botón o acción para limpiar filtros.\n7) Sin regresión: alta/edición del modal, exportaciones FURIPS/FURTRAN y diálogo desde admisión/CE siguen operando igual.",
+    "alcance": "Pantalla Asistencial → SOAT (`AccidentesPage.vue` → `HactranComponent.vue`), modo lista completa (sin paciente embebido). Columna «Asignado» en la grilla server-side. Panel de cuatro filtros solicitados más conservación del filtro Aseguradora. Ajuste de `columnas_visibles`, `columnas`, `whereHactran` y UI de filtros. Optimización opcional: subconsulta FTRS ya calculada en SELECT pero no mostrada en columnas (ticket Performance).",
+    "restricciones": "La columna «Asignado» no detalla qué módulo (solo Si/No); el detalle por módulo queda en el filtro dedicado. No incluye rediseño del modal HACTRAN ni pestaña HACTRAND. No crea vista/SP nuevo salvo que pruebas de carga exijan vista de listado (fuera de alcance mínimo). No modifica facturación, FURIPS ni contabilidad. Fuera de alcance: filtrar por fecha de accidente (FECHAACC) salvo que negocio confirme equivalencia con «creación del SOAT».",
+    "analisis": "Paso 0 — ¿Ya existe? Texto del REQ pide columna de uso/asignación y cuatro filtros en la ventana SOAT del menú. La captura (`Filtros_soat.png`) coincide con esa lista (breadcrumb SOAT, título «Accidentes de transito»). Caminos actuales del control: (a) filtro Aseguradora (`BaseSelect` TER); (b) búsqueda genérica del `ServerSideTableComponent` sobre doc/nombre/consecutivo; (c) acciones por fila (editar, PDF/planos); (d) alta accidente y diálogo cuentas de cobro; (e) en modal, pestaña/detalle `HACTRAND` con PROCEDENCIA/NOREFERENCIA — no visible en la grilla. No hay columna «Asignado» ni filtros por factura, módulo, ingreso o fecha de creación. Clasificación: **hueco funcional** (consulta/presentación), no capacitación ni defecto de un botón oculto.\n\nCausa técnica: el listado usa `AppStore.read` sobre tabla `HACTRAN` con SQL embebido en `dtHactran.columnas_visibles` (`HactranComponent.vue`). Ya existe lógica pesada de conteo de facturas (alias FTRS) en el SELECT pero **no** se expone en `columnas`; tampoco hay expresión de asignación ni `whereHactran` extendido (solo Aseguradora e idafiliado en modal). Los vínculos SALUD/CE/CI están modelados: `HADM.CNSHACTRAN`, `AUT.CNSHACTRAN`, `CIT.CNSHACTRAN` (documentación tablas). Fecha de creación del expediente: `HACTRAN.FECHA`. Facturas SOAT facturadas: unión SALUD/CE/CI (+ FTRD VARIOS) igual al bloque FTRS existente en FE.\n\nImpacto: FE Sí; API Sí (solo `/read` con nuevas columnas/condición); SQL Parcial (expresiones en lectura genérica, sin cambio obligatorio en SPQ); contabilidad No.\n\nRiesgo Performance (tipo ticket): agregar EXISTS/FTRS duplicados empeora el SELECT; conviene reutilizar un solo bloque para columna y filtros de factura y evaluar quitar FTRS del SELECT si no se usa en UI.",
+    "opciones": [],
+    "recomendacion": "Desarrollar en frontend `HactranComponent.vue`: (1) añadir columna calculada ASIGNADO (Si/No) en `columnas_visibles` + definición en `columnas`; (2) panel de filtros alineado al mockup del REQ (factura, módulo, ingreso, rango HACTRAN.FECHA); (3) ampliar `whereHactran` con EXISTS parametrizados (misma convención de comillas que el componente). Extraer a constante/composable el subquery de facturas SOAT ya usado en FTRS para no duplicar cinco UNION. Pruebas: expediente solo en HADM, solo AUT, solo CIT, sin vínculo, con factura en CE y filtro cruzado. Si el listado supera umbral de tiempo, escalar a vista `VWK_HACTRAN_LISTADO` en IXONLINE/SQL (fase 2, no bloqueante). No requiere bajar SPQ_HACTRAN para el listado (CONSULTAR es un registro en modal, no la grilla).",
+    "cambioPropuestoSimple": "En la lista de accidentes SOAT del menú, el usuario verá si cada caso ya se usó en hospitalización, consulta externa o citas (Si/No) y podrá acotar la búsqueda por número de factura del SOAT, por módulo, por número de ingreso y por fechas en que se creó el expediente, además del filtro de aseguradora que ya existe.",
+    "cambioPropuestoSql": "-- Especificación (lectura genérica HACTRAN vía POST /read; no ejecutar desde BA)\n-- Fuente de joins de factura: mismo patrón que columnas_visibles actuales en HactranComponent (FTR SALUD/CI/CE + FTRD VARIOS).\n\n-- Columna ASIGNADO (añadir al SELECT de columnas_visibles):\n, CASE WHEN EXISTS (SELECT 1 FROM HADM H WITH (NOLOCK) WHERE H.CNSHACTRAN = HACTRAN.CNSHACTRAN)\n        OR EXISTS (SELECT 1 FROM AUT A WITH (NOLOCK) WHERE A.CNSHACTRAN = HACTRAN.CNSHACTRAN)\n        OR EXISTS (SELECT 1 FROM CIT C WITH (NOLOCK) WHERE C.CNSHACTRAN = HACTRAN.CNSHACTRAN)\n      THEN 'Si' ELSE 'No' END AS ASIGNADO\n\n-- Filtro fecha creación SOAT (condicion_adicional):\n-- AND CONVERT(date, HACTRAN.FECHA) >= CONVERT(date, @fechaIni)\n-- AND CONVERT(date, HACTRAN.FECHA) <= CONVERT(date, @fechaFin)\n\n-- Filtro módulo SALUD:\n-- AND EXISTS (SELECT 1 FROM HADM H WHERE H.CNSHACTRAN = HACTRAN.CNSHACTRAN)\n-- CE: EXISTS AUT; CI: EXISTS CIT\n\n-- Filtro ingreso (ejemplo SALUD):\n-- AND EXISTS (SELECT 1 FROM HADM H WHERE H.CNSHACTRAN = HACTRAN.CNSHACTRAN AND H.NOADMISION = @ingreso)\n\n-- Filtro N_FACTURA (reutilizar subconsulta UNION de facturas válidas P sin NC ligada a CNSHACTRAN):\n-- AND EXISTS (SELECT 1 FROM ( ... UNION ALL ... ) F WHERE F.CNSHACTRAN = HACTRAN.CNSHACTRAN AND F.N_FACTURA = @nFactura)\n\n-- Validación manual (DESAIX/copia cliente):\n-- SELECT TOP 20 H.CNSHACTRAN, H.FECHA,\n--   CASE WHEN EXISTS (SELECT 1 FROM HADM X WHERE X.CNSHACTRAN=H.CNSHACTRAN) OR ... THEN 1 ELSE 0 END ASIGNADO\n-- FROM HACTRAN H ORDER BY H.FECHA DESC;",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Consulta y filtros sobre HACTRAN/HADM/AUT/CIT/FTR; no genera comprobantes ni mueve MCP/MCH/MCPE.",
+        "validadoEn": "2026-10-05T23:05:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Filtros_soat.png",
+        "ruta": "activo/20261005-0100016625/imagenes/Filtros_soat.png",
+        "subidaEn": "2026-10-05T18:00:02",
+        "url": "/api/caso/20261005-0100016625/imagen/Filtros_soat.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Asistencial → SOAT (lista «Accidentes de transito»), existe una columna visible «Asignado» (o equivalente acordado) con valores Si/No: Si cuando el expediente tiene al menos un vínculo operativo con SALUD (HADM.CNSHACTRAN), CE (AUT.CNSHACTRAN) o CI (CIT.CNSHACTRAN); No en caso contrario.\n2) Filtro por número de factura SOAT: al digitar un N_FACTURA, la grilla muestra solo expedientes que tengan esa factura en estado válido de cartera (misma lógica que el conteo FTRS actual: FTR procedencia SALUD/CE/CI, estado P, sin NC), incluyendo ramas VARIOS vía FTRD cuando aplique.\n3) Filtro por módulo usado: opciones SALUD, CE, CI; restringe a expedientes con enlace en la tabla correspondiente (HADM, AUT o CIT) por CNSHACTRAN.\n4) Filtro por número de ingreso del módulo: con módulo SALUD filtra HADM.NOADMISION; con CE filtra AUT.NOAUT; con CI filtra CIT.CONSECUTIVO; si el módulo está vacío, busca el número en cualquiera de las tres tablas vinculadas al CNSHACTRAN.\n5) Filtro por rango de fechas de creación del SOAT: usa HACTRAN.FECHA (registro del expediente), inicial y final inclusive; sin fechas no restringe por este criterio.\n6) Los filtros nuevos se combinan con el filtro existente de Aseguradora y con la búsqueda rápida (doc/nombre/consecutivo); botón o acción para limpiar filtros.\n7) Sin regresión: alta/edición del modal, exportaciones FURIPS/FURTRAN y diálogo desde admisión/CE siguen operando igual.",
+      "originalesEn": "2026-10-05T23:02:58.658Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Asistencial → SOAT (lista «Accidentes de transito»), existe una columna visible «Asignado» (o equivalente acordado) con valores Si/No: Si cuando el expediente tiene al menos un vínculo operativo con SALUD (HADM.CNSHACTRAN), CE (AUT.CNSHACTRAN) o CI (CIT.CNSHACTRAN); No en caso contrario.\n2) Filtro por número de factura SOAT: al digitar un N_FACTURA, la grilla muestra solo expedientes que tengan esa factura en estado válido de cartera (misma lógica que el conteo FTRS actual: FTR procedencia SALUD/CE/CI, estado P, sin NC), incluyendo ramas VARIOS vía FTRD cuando aplique.\n3) Filtro por módulo usado: opciones SALUD, CE, CI; restringe a expedientes con enlace en la tabla correspondiente (HADM, AUT o CIT) por CNSHACTRAN.\n4) Filtro por número de ingreso del módulo: con módulo SALUD filtra HADM.NOADMISION; con CE filtra AUT.NOAUT; con CI filtra CIT.CONSECUTIVO; si el módulo está vacío, busca el número en cualquiera de las tres tablas vinculadas al CNSHACTRAN.\n5) Filtro por rango de fechas de creación del SOAT: usa HACTRAN.FECHA (registro del expediente), inicial y final inclusive; sin fechas no restringe por este criterio.\n6) Los filtros nuevos se combinan con el filtro existente de Aseguradora y con la búsqueda rápida (doc/nombre/consecutivo); botón o acción para limpiar filtros.\n7) Sin regresión: alta/edición del modal, exportaciones FURIPS/FURTRAN y diálogo desde admisión/CE siguen operando igual.",
+      "trasAnalisisEn": "2026-10-05T23:03:06.282Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": null,
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261005-0100016625/diagramas/flujo.html",
+      "subidaEn": "2026-10-05T18:03:41",
+      "url": "/api/caso/20261005-0100016625/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "acctran",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261005-0100016625-flujo.html"
+    },
+    "mockups": [
+      "activo/20261005-0100016625/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261005-0100016625\\sql\\",
+    "carpetaRelativa": "activo/20261005-0100016625/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016625\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "acctran",
+    "catalogo": "conocimiento/acctran/sps.json",
+    "metodosDocumentados": [],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261005-0100016625.html",
+    "aprobados": "aprobados/20261005-0100016625/",
+    "imagenes": "aprobados/20261005-0100016625/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-05",
+    "ultimoEnvio": "2026-10-05T18:07:14",
+    "reenvios": 0,
+    "destinatario": "juan.llamas@ixcolombia.com",
+    "via": "smtp"
+  }
+}

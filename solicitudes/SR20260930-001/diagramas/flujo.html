@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagrama de flujo — Cargar la relación de capitado desde plantilla Excel · REQ SR20260930-001</title>
+  <style>
+    :root {
+      --naranja: #E67817;
+      --naranja-2: #CB500F;
+      --fondo: #fff8ee;
+      --texto: #1a1a1a;
+      --muted: #5d4e37;
+      --borde: #e4d5c0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "Segoe UI", Tahoma, sans-serif;
+      background: var(--fondo); color: var(--texto); padding: 1.25rem;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; background: #fff; border: 1px solid #000; border-radius: 4px; padding: 1.5rem 1.75rem 2rem; }
+    header { border-bottom: 3px solid var(--naranja); padding-bottom: 1rem; margin-bottom: 1.25rem; }
+    header h1 { margin: 0 0 .35rem; font-size: 1.35rem; color: var(--naranja); }
+    header p { margin: 0; color: var(--muted); font-size: .92rem; }
+    h2 { font-size: 1.05rem; color: var(--naranja-2); margin: 1.4rem 0 .6rem; }
+    .flow {
+      display: flex; flex-wrap: wrap; align-items: stretch; gap: .45rem .35rem;
+      padding: .85rem; background: #faf6f0; border: 1px dashed var(--borde); border-radius: 6px;
+    }
+    .node {
+      flex: 1 1 140px; min-width: 130px; max-width: 220px;
+      border-radius: 6px; padding: .65rem .7rem; border: 1px solid var(--borde); background: #fff;
+    }
+    .node .k { font-weight: 700; font-size: .82rem; margin-bottom: .25rem; }
+    .node .d { font-size: .78rem; color: var(--muted); line-height: 1.35; }
+    .node-user { border-color: var(--naranja); background: #fff4e8; }
+    .node-vue { border-color: #3d7ea6; }
+    .node-api { border-color: #6b4c9a; background: #f7f2fc; }
+    .node-sql { border-color: #1e8449; background: #f2faf5; }
+    .node-out { border-color: var(--naranja-2); background: #fff0e4; }
+    .arrow { align-self: center; color: var(--naranja); font-weight: 700; padding: 0 .15rem; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    @media (max-width: 720px) { .split { grid-template-columns: 1fr; } .arrow { display: none; } }
+    .box { border: 1px solid var(--borde); border-radius: 6px; padding: .85rem 1rem; }
+    .box h3 { margin: 0 0 .4rem; font-size: .9rem; }
+    .box-hoy { background: #fdf2f2; border-color: #e6b0aa; }
+    .box-ok { background: #eafaf1; border-color: #a9dfbf; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    th, td { border: 1px solid var(--borde); padding: .4rem .5rem; vertical-align: top; text-align: left; }
+    th { background: #fff4e8; }
+    .gates { display: grid; gap: .65rem; }
+    .gate { border: 1px solid var(--borde); border-radius: 6px; padding: .75rem 1rem; }
+    .gate-on { border-color: var(--naranja); box-shadow: 0 0 0 2px #f5d0b0; }
+    .gate h3 { margin: 0 0 .2rem; font-size: .95rem; }
+    .meta, .inv, .empty, .foot { color: var(--muted); font-size: .82rem; }
+    .inv { margin-bottom: .35rem; }
+    .foot { margin-top: 1.5rem; border-top: 1px solid var(--borde); padding-top: .75rem; }
+    code { font-size: .85em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Cargar la relación de capitado desde plantilla Excel</h1>
+      <p>
+        REQ SR20260930-001
+         · caso SR20260930-001
+        · proceso <code>facturacion</code>
+        · Facturación
+         · Qrystalos
+      </p>
+    </header>
+
+    <section>
+      <h2>Recorrido técnico</h2>
+      <div class="flow">
+        <div class="node node-user"><div class="k">Usuario</div><div class="d">Administrativo → Facturación → pestaña Facturas → factura capitada (financiero, pendiente) → ítem → Asignación de prestaciones.</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="node node-vue"><div class="k">Pantalla</div><div class="d"><code>FTRComponent.vue</code>: botón Subir Excel → diálogo (plantilla + archivo) → lotes de 400 filas.</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="node node-api"><div class="k">API</div><div class="d"><code>AppStore.json</code> MODELO <code>FTR_COL</code> · METODO <code>CARGAR_FTRDC_EXCEL</code> (CNSFTR, N_CUOTA, REGISTROS, FINALIZAR).</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="node node-sql"><div class="k">SQL</div><div class="d"><code>SPQ_FTR_COL</code>: INSERT FTRDC desde vista/aut/cit; omite duplicados; marca origen facturado; <code>SPK_TOTALFACTURFIN</code> si FINALIZAR=1.</div></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="node node-out"><div class="k">Resultado</div><div class="d">Grilla FTRDC actualizada; totales FTR recalculados; resumen insertadas / omitidas / sin origen.</div></div>
+      </div>
+      <p class="meta" style="margin-top:.65rem"><strong>No interviene</strong> Facturación Programa (AUTPG), <code>FTRCITPGComponent</code> ni <code>SPQ_AUTPG</code>.</p>
+    </section>
+
+    <section>
+      <h2>Hoy frente a lo propuesto</h2>
+      <div class="split">
+        <div class="box box-hoy">
+          <h3>Hoy</h3>
+          <p>Paso 0. No es capacitación. Agregar prestaciones y quitar prestaciones cubren cargos que ya están en la vista del sistema. No cubren un listado externo con claves concretas. Es un hueco. Dónde ocurre. Facturación, factura capitada, procedencia financiero, estado pendiente y sin notificar a la DIAN (o con permiso de modificar la relación). Diálogo Asignación…</p>
+        </div>
+        <div class="box box-ok">
+          <h3>Propuesto (análisis del REQ)</h3>
+          <p>El botón Subir Excel abre un diálogo. Ahí se descarga la plantilla y se busca el archivo. La hoja Prestaciones trae dos filas de encabezado. La primera dice Obligatorio u Opcional. La segunda es el nombre del campo. Los datos empiezan en la tercera. Obligatorios: PROCEDENCIA, NOADMISION, NOPRESTACION y NOITEM. Opcionales: IDSEDE, IDSERVICIO, PACIENTE, FECHA…</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>SP · METODO (conocimiento + análisis)</h2>
+      <table>
+        <thead><tr><th>SP</th><th>METODO</th><th>Estado</th><th>Hace / rol</th><th>Llama</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>SPQ_FTR_COL</code></td>
+            <td><code>CARGAR_FTRDC_EXCEL</code></td>
+            <td>Implementado en rama de trabajo (Qrystalos2, feature/JOSEFACT01)</td>
+            <td>Carga masiva de claves de prestación al FTRDC del ítem abierto; omite claves ya relacionadas; cuenta sin origen; marca AUTD/CIT/HPRED facturados.</td>
+            <td><code>SPK_TOTALFACTURFIN</code> (último lote FINALIZAR=1)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Controles en la base de procesos</h2>
+      <div class="gates"><article class="gate"><h3>Armar y confirmar la factura</h3><p class="meta">Proceso propio · <code>armar-factura</code></p><p>Pestaña Facturas: una a una (paciente, ítems, copago). Masiva: muchos servicios a la vez (permiso FACT_MASIVA). Evento: citas. Programa: autorizaciones de programa. Urg-Hospi-Domi: hospitalización/urgencias/domiciliaria. Pendientes por facturar: lo que aún no tiene factura. Tras confirmar, la factura queda con número y valor.</p><p class="inv"><strong>Invariante:</strong> La factura (FTR) es el documento. Sin factura confirmada no hay cuenta de cobro ni radicación.</p><p class="meta">SP: SPQ_FTR_COL · CREARFTR / CRUDFTRD / ANULARFAC / LIBERARFAC / ENVIA_CONTAB / NOTI_DIAN, SPQ_FTR_MASIVA_COL · (varios; pantalla FTRM / FTR_MASIVA_COL), SPQ_FTR_HADM_COL · (hospitalización / urgencias)</p></article><article class="gate"><h3>Facturación Programa (AUTPG)</h3><p class="meta">Proceso propio · <code>facturacion-programa-autpg</code></p><p>Pestaña **Facturación Programa** (`FTRComponent` tab `FacturacionPrograma` → `FTRCITPGComponent`). Permiso **FACT_AUTPG** + USVGS **USA_AUTPG=SI**. Grilla **AUTPG** (autorizaciones de programa por periodo ANOMES, aseguradora, plan, sede). Estados visibles: Autorizado/Autorizado Recuperado (FACTURABLE=1, ENFACT=1) → facturar; Rechazado Facturacion; FACTURADO=1. Flujo: filtrar → opcional export/import Excel → **VALIDADIAN_AUTPG** → **CONTEOAUTORIZADO** → **FACTURAR_AUTPG** (agrupa por MAX_AFILIADOS_FACTURA, servicio paquete IDSERPAQ) → FTR PROCEDENCIA=AUTPG. Alternativa import: **PROCESAR_IMPORTACION_EXCEL** → **FACTURAR_AUTPG_IMPORTADOS**. Auxiliares: rechazar, recalcular copagos, retirar copago, actualizar fecha atención, log CONSULTAR_LOG.</p><p class="inv"><strong>Invariante:</strong> Sin autorización en estado Autorizado + ENFACT no entra a facturar. Rechazo exige CAU IDCLASE=RECHAZO_FTR. Validación DIAN previa (VALIDADIAN_AUTPG / useValidacionDian). Factura generada queda en pestaña Facturas con PROCEDENCIA=AUTPG.</p><p class="meta">SP: SPQ_AUTPG · 24 METODOs leídos sql/SPQ_AUTPG.sql 16:43, SPQ_CIT_COL_3 · HELPER_AUTPG, SPK_FACTURA_AUTPG · (SP leído), SPK_RIPS_JSON_FTR_AUTPG · (SP anidado)</p></article><article class="gate"><h3>Capita, PGP y relación de servicios (FTRDC)</h3><p class="meta">Proceso propio · <code>capita-pgp</code></p><p>Viene del plan pagador (PPT): PGPEVE=1 contrato capitado, PGPEVE=2 PGP; si no, factura por evento. Capita exige TIPOCAP (1 Inicial → 2 Periodo → 3 Final) validado en CREARFTR contra facturas previas del mismo tercero/plan. PGP usa la misma bandera CAPITADA=1 pero sin secuencia Inicial/Periodo/Final en pantalla (capipgpeve=2). Relación FTRDC: cargos marcados desde VWK_CARGOS_HADMAUTCIT (ADDFTRDC / ADDFTRDC_MARCA); copago propio (COPAPROPIO) recalcula vía SPK_TOTALFACTURFIN. Sin FTRDC no encola DIAN ni contabiliza capita/PGP.</p><p class="inv"><strong>Invariante:</strong> Capita/PGP no es un menú aparte: es variante de FTR en pestaña Facturas (y marcas masivas en evento/masiva). ANULARFAC deriva a SPK_ANULA_FACT_CAPITADA si aplica.</p><p class="meta">SP: SPQ_FTR_COL · CREARFTR / ADDFTRDC / ADDFTRDC_MARCA / REV_DUP_FTRDC, SPK_TOTALFACTURFIN · (SP leído 18:26), SPK_ADDSERCAP · (SP leído 18:36 sql/), SPK_DELSERCAP · (SP leído 18:33 sql/), SPK_ANULA_FACT_CAPITADA · (SP leído 18:35 sql/)</p></article></div>
+    </section>
+
+    <section><h2>Alcance</h2><p>Incluye el diálogo Subir Excel en la asignación de prestaciones de la factura capitada, la descarga de la plantilla con la marca Obligatorio u Opcional, la lectura del archivo y la carga en la factura y el ítem abiertos, sin duplicar lo ya relacionado.</p></section>
+    
+
+    <p class="foot">
+      Generado 2026-10-01T04:27:42 desde el <strong>alcance de este REQ</strong>
+      cruzado con <code>conocimiento/facturacion/</code>.
+      No se listan SPs de otros controles del módulo.
+    </p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Flujo REQ 0100016349 — CxP compras DPE*</title>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; background: #fff8ee; padding: 1.5rem; color: #1a1a1a; }
+    h1 { color: #E67817; font-size: 1.2rem; }
+    .meta { color: #5d4e37; font-size: 0.85rem; margin-bottom: 1rem; }
+    .df-flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.45rem; padding: 0.85rem; background: #faf6f0; border: 1px dashed #e4d5c0; border-radius: 6px; margin: 1rem 0; }
+    .df-node { flex: 1 1 140px; border-radius: 6px; padding: 0.55rem 0.65rem; border: 1px solid #e4d5c0; background: #fff; font-size: 0.85rem; }
+    .df-node .k { font-weight: 700; margin-bottom: 0.2rem; }
+    .df-user { border-color: #E67817; background: #fff4e8; }
+    .df-vue { border-color: #3d7ea6; }
+    .df-api { border-color: #6b4c9a; background: #f7f2fc; }
+    .df-sql { border-color: #1e8449; background: #f2faf5; }
+    .df-out { border-color: #CB500F; background: #fff0e4; }
+    .df-arrow { align-self: center; color: #E67817; font-weight: 700; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; margin-top: 1rem; }
+    .box { border: 1px solid #e4d5c0; border-radius: 6px; padding: 0.75rem; font-size: 0.88rem; }
+    .hoy { background: #fdf2f2; border-color: #e6b0aa; }
+    .ok { background: #eafaf1; border-color: #a9dfbf; }
+    h2 { font-size: 0.95rem; color: #CB500F; margin: 1.25rem 0 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Flujo técnico — REQ 0100016349</h1>
+  <p class="meta">Caso 20260915-0100016349 · Proceso cxp-fcxp + inventario · COESME · DPE* compras</p>
+
+  <h2>Circuito principal (DPE* → FCXP)</h2>
+  <div class="df-flow">
+    <div class="df-node df-user"><div class="k">1. Entrada IMOV</div>Confirmar compra con IVA (IZSOL · CONF_ENTRADA)</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-sql"><div class="k">2. SPK_INSERT_CXP_INV</div>IMOVH → FCXPD · VLR_IVA · UPDATE CUENTAGRAV</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-vue"><div class="k">3. CXPComponent</div>Revisar FCXPD · Contabilidad</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-api"><div class="k">4. SPQ_FCXP</div>CONTABILIZAR_FCXP</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-sql"><div class="k">5. SPK_NC_CONTAB_CXP</div>MCP/MCHE PROCEDENCIA CXP</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-out"><div class="k">6. Comprobante</div>Cuenta gravada en DB</div>
+  </div>
+
+  <h2>Camino alterno — Reconstrucción</h2>
+  <div class="df-flow">
+    <div class="df-node df-vue"><div class="k">RECONSTRUIR_CUENTAS_FCXPD</div>Solo KMCOM → CUENTA_SER</div>
+    <div class="df-arrow">⚠</div>
+    <div class="df-node df-hoy" style="border-color:#e6b0aa;background:#fdf2f2;"><div class="k">Hueco</div>No CUENTAGRAV</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-sql"><div class="k">PROCESAR_IMOVH</div>SPK_INSERT_CXP_INV completo</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-ok" style="border-color:#a9dfbf;background:#eafaf1;"><div class="k">OK</div>Homologación gravada</div>
+  </div>
+
+  <h2>Circuito secundario (MCFL / INST / FV — si en FTR)</h2>
+  <div class="df-flow">
+    <div class="df-node df-vue"><div class="k">FTRComponent</div>ENVIA_CONTAB</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-sql"><div class="k">SPK_NC_CONTAB_FTR</div>CONTAB_GASTOVEN_UNI</div>
+    <div class="df-arrow">→</div>
+    <div class="df-node df-sql"><div class="k">SPK_NC_CONTAB_INV</div>CNSPAGO IVA · CUENTAGRAV</div>
+  </div>
+
+  <div class="split">
+    <div class="box hoy"><strong>Defecto reportado</strong><p style="margin-top:0.35rem;">Producto gravado amarra cuenta de excluidos en comprobante (CxP DPE* y/o costo INV en FTR).</p></div>
+    <div class="box ok"><strong>Validar antes</strong><p style="margin-top:0.35rem;">DPE10066 en PREVERSION. Si OK → recontabilizar listado. Si KO → fix SPK_INSERT_CXP_INV / RECONSTRUIR_CUENTAS_FCXPD.</p></div>
+  </div>
+</body>
+</html>

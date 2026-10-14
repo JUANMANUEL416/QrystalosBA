@@ -12,7 +12,8 @@
         .join("\n");
     }
     const archivos = sql.archivosEsperados || [];
-    if (archivos.length) return archivos.map((a) => `- sql/${a}`).join("\n");
+    const id = d.identificacion?.idCaso || "{id-caso}";
+    if (archivos.length) return archivos.map((a) => `- activo/${id}/sql/${a}`).join("\n");
     return "(indique SP/METODO en el formulario o en Consultas)";
   }
 

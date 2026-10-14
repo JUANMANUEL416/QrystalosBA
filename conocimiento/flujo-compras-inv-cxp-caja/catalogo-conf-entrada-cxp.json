@@ -1,0 +1,64 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "proposito": "CONF_ENTRADA (existencias) y PROCESAR_IMOVH / SPK_INSERT_CXP_INV (puente contable CxP).",
+  "continuaDesde": "catalogo-oc-confirmacion-recepcion.json",
+  "capas": [
+    {
+      "id": "capa-conf-entrada",
+      "nombre": "Confirmación entrada (IMOV → IEXI)",
+      "pantalla": { "path": "/inv/ges", "modelo": "IZSOL", "metodo": "CONF_ENTRADA" },
+      "sps": ["SPQ_IZSOL", "SPK_CONFIRMARENTRADAS", "SPK_FCOM_RECALCULA_RECEPCION"],
+      "precondiciones": [
+        "IMOV.ESTADO=0",
+        "IMOV.CNSFCOM ligado a OC compras",
+        "NODOCUMENTO / F_FACTURA / F_VENCE según TIPO_DOC_COMPRA",
+        "IMOVH PCOSTO>0 (compras)",
+        "KMCOM CXP_COMPRAS si VALID_CCOSTO_CXP=SI"
+      ],
+      "efecto": ["IMOV.ESTADO=1", "IEXI actualizado", "FCOM ESTADO R/I"],
+      "puntosCriticos": ["PC-04", "PC-01", "PC-00h"]
+    },
+    {
+      "id": "capa-procesar-imovh",
+      "nombre": "Puente CxP (IMOVH → FCXPD)",
+      "pantalla": { "path": "/admin/CuentasxPagar", "modelo": "FCXP", "metodo": "PROCESAR_IMOVH" },
+      "sps": ["SPQ_FCXP", "SPK_INSERT_CXP_INV", "SPK_CALCULOVALORESCXP"],
+      "precondiciones": [
+        "IMOV.ESTADO=1",
+        "FCXP cabecera existente (CNSFCXP)",
+        "FCXP.CONTABILIZADA=0 para reconstruir",
+        "Plan CUE: CUENTA_SER / CUENTAGRAV / CUENTA_IVA"
+      ],
+      "efecto": [
+        "FCXPD.N_PRESUP=CNSMOV",
+        "IMOVH.ENCXP=1",
+        "Totales FCXP recalculados",
+        "IEXI cuentas desde FCXPD"
+      ],
+      "puntosCriticos": ["PC-05", "PC-06"]
+    },
+    {
+      "id": "capa-contab-cxp",
+      "nombre": "Contabilización CxP",
+      "pantalla": { "modelo": "FCXP", "metodos": ["VALIDAR_FCXP", "CONTABILIZAR_FCXP"] },
+      "sps": ["SPQ_FCXP", "SPK_NC_CONTAB_CXP"],
+      "puntosCriticos": ["PC-07", "PC-08"]
+    }
+  ],
+  "variablesUsvgs": [
+    "VALID_CCOSTO_CXP",
+    "IDINVMOV_COMPRAS",
+    "IDINVMOV_REMISION_EN",
+    "IDINVTPROPIA",
+    "CUENTA_IVA_CXP",
+    "REDONDEO_COMPRAS_CXP"
+  ],
+  "nucleoCritico": "nucleo-critico-iexi-cxp.json",
+  "documentoNucleo": "NUCLEO-CRITICO-IEXI-CXP.md",
+  "invariantesPuente": {
+    "fcxpd": "N_PRESUP debe ser CNSMOV del IMOV confirmado",
+    "gravado": "VLR_IVA>0 → CUENTAGRAV distinta de CUENTA_SER cuando aplica homologación",
+    "dobleContab": "Entrada compra contabilizada en CxP no debe repetir costo en OM INV (PC-08)"
+  }
+}

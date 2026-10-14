@@ -1,0 +1,479 @@
+Extracto de REQUERIMIENTO_VALIDAR_PILA_Y_PLANILLA_INCAPACIDADES.html
+Caso: 20260915-0100016407
+Tipo: circular
+Texto extraído para citar en el dictamen.
+============================================================
+
+Requerimiento — Validar con la PILA y generar planilla de incapacidades 
+ 
+ 
+ 
+ 
+ 
+ Validar con la PILA y generar planilla de incapacidades 
+ Requerimiento funcional y técnico para el desarrollador de nómina Qrystalos 
+ 
+ Para Desarrollador de nómina 
+ Fecha 10 de septiembre de 2026 
+ Origen Cruce PILA vs nómina — CEM y Alcaldía, julio 2026 
+ Módulo Nómina → Procesos 
+ 
+ 
+
+ 
+ Contenido 
+ 
+ Texto del requerimiento 
+ Pantallas y anclaje en código 
+ Flujo del usuario 
+ Entrega 1 — Validar con la PILA 
+ Entrega 2 — Planilla de incapacidades 
+ Permisos 
+ Criterios de aceptación 
+ Fuera de alcance 
+ Pruebas sugeridas 
+ Consultas de validación 
+ Archivos previstos 
+ Decisiones que no se adivinan 
+ 
+ 
+
+ 
+ 
+ Entrega 1 · Liquidación 
+ Botón «Validar con la PILA» 
+ Al lado de Cerrar Nomina : subir la planilla integrada pagada, comparar y, si es redondeo, llevar el sistema a esos montos para contabilidad y CxP . 
+ 
+ 
+ Entrega 2 · Prenómina 
+ Generar planilla de incapacidades 
+ Desde las novedades ya cargadas en Qrystalos, generar 3. PLANILLA DE INCAPACIDADES.xlsx para subirla al operador y evitar la doble digitación . 
+ 
+ 
+
+ 
+ Importante: no es un cruce “de informe”. El resultado de la Entrega 1 debe quedar reflejado en NIEPED antes de cerrar, para que Contabilizar y Generar CxP usen los valores de la PILA.
+ 
+
+ 
+ 1. Texto del requerimiento (negocio) 
+ Hoy el usuario liquida la nómina en Qrystalos, cierra, contabiliza y genera CxP. En paralelo arma (o recibe) la planilla integrada (PILA) en Excel y paga aportes. Los montos no siempre coinciden: la PILA redondea a centenas y hay casos reales (centro de trabajo / tarifa ARL, retiros, salario integral). El usuario necesita ver la diferencia persona a persona , ajustar y que contabilidad y CxP salgan con el valor que realmente se pagó en la PILA . 
+ Además, las novedades de incapacidad / licencia de maternidad se digitan hoy dos veces: en Qrystalos y en el archivo que se sube al operador. El archivo 3. PLANILLA DE INCAPACIDADES .xlsx es el previo oficial de ese cargue. El flujo correcto es: 
+ 
+ El usuario registra las novedades solo en Qrystalos (herramientas que ya existen). 
+ El sistema genera ese Excel. 
+ El usuario lo sube a la planilla integrada . 
+ Cuando la planilla ya está pagada, vuelve a Liquidación, pulsa Validar con la PILA , compara y ajusta. 
+ 
+ 
+
+ 
+ 2. Pantallas y anclaje en código 
+ Menú: Nómina → Procesos ( src/pages/nom/ProcesosPage.vue ). No inventar rutas nuevas. 
+ 
+ Pestaña Prenomina → src/components/nomina/prenomina/PreNominaComponent.vue 
+ Pestaña Liquidación → src/components/nomina/liquidacion/LiquidaNomComponent.vue 
+ 
+
+ 2.1 Entrega 1 — botón en Liquidación 
+ En LiquidaNomComponent.vue , barra superior, inmediatamente al lado del botón Cerrar Nomina (hoy líneas ~67–72): 
+ 
+ Texto: Validar con la PILA 
+ Visible si hay periodo elegido ( selectedNPER ). 
+ Habilitado si la nómina no está cerrada ( CERRADO != 1 ). El ajuste ocurre antes de Cerrar → Contabilizar → Generar CxP. 
+ Si ya está cerrada: deshabilitar y tooltip: Abra la nómina para validar y ajustar con la PILA. 
+ Permiso nuevo: MENUQ_NOMINA / BtnValidarPila . 
+ 
+ No tocar componentes genéricos protegidos ( ServerSideTableComponent , SelectGenericoComponent , carpeta genericos/ ). Diálogo y tabla del cruce en componente nuevo, por ejemplo: 
+ src/components/nomina/liquidacion/ValidarPilaComponent.vue 
+
+ 2.2 Entrega 2 — botón en Prenómina 
+ En PreNominaComponent.vue , barra de acciones (junto a Novedades ): 
+ 
+ Texto: Planilla de incapacidades 
+ Requiere periodo elegido y prenómina no cerrada (mismo criterio que Novedades). 
+ Permiso: MENUQ_NOMINA / BtnPlanillaIncapacidades . 
+ Acción: generar y descargar el .xlsx con el layout del archivo de referencia (no un Excel “libre”). 
+ 
+ No reinventar la captura de novedades. El usuario ya carga con las herramientas actuales. 
+ 
+ 
+ Herramienta Archivo 
+ 
+ 
+ Carga masiva / interactiva prenomina/NovedadesMasivoComponent.vue y NovedadesMasivoInteractivoComponent.vue 
+ Novedad por empleado prenomina/RegistNovedadesComponent.vue (tabla NEDIA ) 
+ Catálogo de eventos configuracion/novedades/NovedadesComponent.vue ( NEVE / NEVED ) 
+ Vacaciones vacaciones/VacacionesNominaComponent.vue (fuera de alcance de este Excel, salvo mapeo posterior) 
+ 
+ 
+ Cadena de datos: NEDIA (empleado + CNSPAGO + IDEVENTO + días + fechas) → NEVE / NEVED → conceptos → liquidación NIEPE / NIEPED . 
+ 
+
+ 
+ 3. Flujo del usuario 
+ 3.1 Prenómina → archivo para la planilla integrada 
+ 
+ 1 Usuario elige periodo ( NPER ). 
+ 2 Carga novedades (masivo o por empleado) — ya existe . 
+ 3 Pulsa Planilla de incapacidades y descarga 3. PLANILLA DE INCAPACIDADES.xlsx . 
+ 4 Sube ese archivo al operador de la PILA. 
+ 5 Se liquida / se genera la nómina en Liquidación. 
+ 
+
+ 3.2 Liquidación → validar PILA pagada y ajustar 
+ 
+ 1 Usuario elige el mismo periodo (o el de pago de aportes). 
+ 2 Pulsa Validar con la PILA y sube el .xls / .xlsx de la planilla pagada . 
+ 3 El sistema parsea, cruza por cédula y muestra OK / REDONDEO / DIF / SOLO PILA / SOLO NÓMINA. 
+ 4 REDONDEO: un clic «Aplicar redondeos PILA» actualiza NIEPED al monto PILA. 
+ DIF real: el usuario revisa y ajusta (no auto-pisar). 
+ Se puede exportar el Excel del cruce. 
+ 5 Cerrar Nomina → Contabilizar → Generar CxP (ya existen; deben leer los valores ya ajustados). 
+ 
+ 
+
+ 
+ 4. Entrega 1 — Validar con la PILA (detalle técnico) 
+
+ 4.1 Archivos de referencia (mismo layout) 
+ 
+ Archivo Uso 
+ 
+ PLANILLA INTEGRADA CEM JULIO PAGADA EN AGOSTO 2026 (1).xls Nóminas CEM 01 + 02 + 09 
+ PLANILLA INTEGRADA S.S ALCALDIA JULIO PAGADA EN AGOSTO 2026 (1).xls Nómina 07 Alcaldía 
+ CRUCE_PILA_NOMINA_CEM_JULIO2026.xlsx Resultado esperado del cruce CEM 
+ CRUCE_PILA_NOMINA_ALCALDIA_JULIO2026.xlsx Resultado esperado del cruce Alcaldía 
+ 
+ 
+ Hoja 1 = detalle afiliados. Hoja 2 = resumen (pensión, EPS, ARL, CCF). El parseo usa hoja 1 . 
+
+ 4.2 Columnas de la planilla integrada (hoja 1) 
+ Índices 1-based (Excel). El layout es el mismo en CEM y Alcaldía. 
+ 
+ Col Contenido 
+ 
+ 7 Número de documento (cédula). Llave de cruce. 
+ 9 Nombre 
+ 67 Salario / IBC reportado 
+ 70–81 AFP (fondo + valor pensión / FSP) 
+ 83–89 EPS (fondo + valor salud) 
+ 95 CCF 
+ 96–101 ARL (centro, tarifa, valor) 
+ 
+ 
+ Ignorar encabezados y filas vacías. Agrupar por cédula : si un afiliado sale en más de una línea, sumar aportes. 
+
+ 4.3 Llave de cruce (obligatorio; ya validado) 
+ 
+ PILA col. 7 = NEMP.DOCIDEMPLEADO (sin puntos ni espacios). 
+ No usar NIEPE.NUMDOC como cédula: es el código interno de contrato. 
+ Una cédula puede tener más de un NUMDOC en el periodo: sumar NIEPED de todos los contratos de esa cédula. 
+ Casos reales Alcaldía julio 2026 (2 contratos): Estrada Monsalve, Murillo Benítez, Cogollo Miranda, Álvarez Cossio. 
+ 
+
+ 4.4 Alcance de nóminas (no mezclar) 
+ Leer selectedNPER.CODNOMINA y no cruzar planillas distintas: 
+ 
+ Planilla NOMI.CODNOMINA 
+ 
+ CEM (administrativa / asistencial / integral) 01 , 02 , 09 
+ Alcaldía 07 
+ 
+ 
+ Si el usuario sube la planilla CEM sobre un periodo 07 (o al revés), rechazar con mensaje claro. 
+ Periodo: NIEPE.ANO / NIEPE.MES / NIEPE.CNSPAGO del selectedNPER . En las muestras, pensión PILA = mes de causación (julio) y salud = mes de pago (agosto). El cruce se hace contra la nómina del periodo elegido , no contra el mes de salud de la planilla. 
+
+ 4.5 Conceptos NIEPED a sumar (incluir salario integral) 
+ Si se omiten CN04-1 y CNSI07-1 , el salario integral (nómina 09 ) queda mal. Caso de prueba: Natalia Arango, cédula 43602394 , IBC = 70&nbsp;% de SI002 . 
+ 
+ Salud (vs casilla EPS PILA): CN02 + CN04 + CN04-1 (8,5&nbsp;% SI) + CN45 + CN65 
+ Pensión + FSP: CN05 + CN06 + CN64 + CN07 + CNSI07-1 
+ ARL: CN09 / CN69 (2,433&nbsp;%) y CN09-1 / CN66 (0,522&nbsp;%) 
+ CCF: CN08 + CN08-1 
+ 
+ En Alcaldía ( 07 ) no aparecen CN04 ni FSP; el motor debe sumar solo lo que exista . Trabajador CN02 / CN05 → VALOR ; patronales → VALOR_APORTES . No mezclar columnas. 
+
+ 4.6 Clasificación de cada persona 
+ Tolerancia de redondeo: $150 (la PILA redondea a cien ). 
+ 
+ Estado Criterio Acción del sistema 
+ 
+ OK Abs(PILA − nómina) ≤ $150 en salud, pensión, ARL y CCF Nada 
+ REDONDEO Diferencia ≤ $150 y residual explicable por redondeo a cien Elegible para «Aplicar redondeos PILA» 
+ DIF Diferencia &gt; $150 en algún rubro No auto-ajustar. Mostrar y que el usuario decida 
+ SOLO PILA Cédula en el Excel y no en NIEPE Aviso. CEM julio: Montaño Vásquez Sully Yuliana 1098706277 
+ SOLO NÓMINA En NIEPE y no en la PILA Aviso. Alcaldía julio: Chavarría Taborda Luz Emerida 43504574 
+ 
+ 
+ Informativo (no bloquean): EPS/AFP distintas con valor igual (CEM julio: 20 EPS y 35 AFP); residual de totales hoja 2 vs suma del cruce. 
+
+ 4.7 Diferencias que NO son redondeo (no pisar en automático) 
+ Del cruce CEM julio 2026, dejarlas como DIF : 
+ 
+ ARL / centro de trabajo: 13 personas, ≈ −$851.551. PILA centro ADMINISTRATIVO 0,522&nbsp;% vs nómina CN09 2,433&nbsp;% . Cluster típico ≈ −$79.150 (Orozco, Pulgarín, Quintero, Valencia, Zapata, Betancur Gallón). Acosta Bustillo ≈ −$227.906 (VAC-LR). 
+ CCF con retiro: Ramos −$64.000, Mejía +$18.413, Vergara −$7.600. 
+ 
+ Alcaldía julio 2026: 0 DIF de valor (967 vs 967). Sirve como prueba de “todo OK + residual de redondeo”. 
+
+ 4.8 Ajuste al sistema (contabilidad / CxP) 
+ Objetivo: NIEPED quede con el monto de la PILA para que MODELO: NC_CONTAB_NOMINA (Contabilizar) y la generación de CxP ( GenerarCxp ) usen el valor pagado en la planilla . 
+ 
+ Solo nómina abierta . 
+ Aplicar redondeos PILA: prorratear la diferencia sobre el concepto patronal principal ( CN04 salud, CN06 pensión, CN09 / CN09-1 ARL, CN08 CCF). No inventar concepto nuevo. 
+ Ajuste manual de una fila DIF: el usuario elige rubro y monto destino (el de la PILA). Auditoría: usuario, fecha, cédula, concepto, valor anterior, valor nuevo, origen PILA . 
+ No recalcular toda la nómina al aplicar redondeo. El ajuste es post-liquidación, pre-cierre . 
+ Tras aplicar, refrescar totales del periodo y el tablero del cruce. 
+ 
+
+ 4.9 UI del diálogo 
+ 
+ Periodo visible (nómina, año, mes, CNSPAGO ). 
+ Carga de archivo ( .xls / .xlsx ). 
+ Resumen: afiliados PILA, cruzados, OK, REDONDEO, DIF, solo PILA, solo nómina, Δ salud / pensión / ARL / CCF. 
+ Tabla filtrable por estado. 
+ Acciones: Aplicar redondeos PILA , Exportar cruce , Cerrar. 
+ Tabla Quasar local (no ServerSideTableComponent ). 
+ 
+
+ 4.10 Backend sugerido 
+ Pantalla → appStore.json , mismo patrón que Cerrar: MODELO: "LIQUIDACION" . 
+ 
+ METODO Función 
+ 
+ PILA_CRUZAR Periodo + filas parseadas. Devuelve el tablero. Solo lectura. 
+ PILA_APLICAR_REDONDEO Aplica §4.8 a las filas REDONDEO. 
+ PILA_AJUSTAR_RUBRO Ajuste puntual de una cédula / rubro. 
+ 
+ 
+ El parseo del .xls puede ir en el front (SheetJS) y mandar JSON al SP. Scripts SQL solo en Qrystalos2/SQL/ . Si el SPQ de LIQUIDACION no está en esa carpeta, detenerse y pedirlo. Comentario de cambio: -- feature/&lt;rama&gt; -- 2026-09-10 -- ... 
+ 
+
+ 
+ 5. Entrega 2 — Generar planilla de incapacidades 
+
+ 5.1 Archivo de referencia (plantilla obligatoria) 
+ 3. PLANILLA DE INCAPACIDADES .xlsx (hay un espacio antes de .xlsx en el nombre original). 
+ 
+ Hoja Uso 
+ 
+ Novedades Única hoja a llenar. Datos desde la fila 9. Encabezados en filas 7–8. 
+ DatosPruebaEmp Catálogos del operador. Copiarla tal cual ; no regenerarla. 
+ Sheet2 / Sheet3 Vacías; se pueden omitir o dejar. 
+ 
+ 
+ La entrega es un archivo listo para subir al operador, no un reporte interno. 
+
+ 5.2 Columnas de la hoja Novedades (fila 8) 
+ 
+ Col Campo Origen en Qrystalos 
+ 
+ 1 No. Consecutivo 1…n 
+ 2 Tipo ID NEMP.TIPO_DOC (muestra: CC , PT ) 
+ 3 No ID NEMP.DOCIDEMPLEADO 
+ 4 Año Año de pensión / novedad (muestra: 2026). Usar año de NPER o de causación; ser consistente. 
+ 5 Mes Mes de la novedad (muestra: 8 = agosto) 
+ 6 Tipo de Novedad Mapeo NEVE.IDEVENTO → texto PILA (§5.3) 
+ 7 Valor Total Valor de la novedad a reportar (§5.4) 
+ 8 Ajustar Valor de la Novedad En la muestra siempre SI 
+ 9 Realizar Aportes Parafiscales En la muestra siempre NO 
+ 10 Inicial Día de inicio en el mes ( DAY de NEDIA.FECHAINI o NEDIA.DIAINI ) 
+ 11 Duración NEDIA.DIAS / NEDIA.NDIAS 
+ 12 Tipo de Ingreso o Retiro Muestra: Todos los sistemas (ARL, AFP, CCF, EPS) 
+ 13 Variación salario IBC parafiscales Muestra: SI 
+ 14 Variación salario IBC SENA e ICBF Muestra: NO 
+ 15 Tipo de Incapacidad INCAPACIDAD GENERAL si IGE; completar IRL según catálogo 
+ 16 Cotizar días al 100&nbsp;% Muestra: NO 
+ 17 Tipo de Licencia Solo si el tipo es licencia 
+ 18 Tarifa de Pensión Muestra: TARIFA DEL EMPLEADOR 
+ 19 Tipo de Vacaciones No exportar vacaciones en v1 salvo mapeo explícito 
+ 20 Total Horas Laboradas Mes 0 si no aplica 
+ 21 Tipo de Licencia de Maternidad Solo si tipo = LICENCIA DE MATERNIDAD (LMA) 
+ 
+ 
+ La plantilla del operador rellena varias columnas 12–21 con valores por defecto aunque el tipo sea IGE. Generar igual que la muestra para IGE/IRL/LMA, para que el archivo no sea rechazado. 
+
+ 5.3 Tipos de novedad en la muestra (210 filas) 
+ 
+ Tipo PILA (col. 6) Filas Eventos Qrystalos 
+ 
+ INCAPACIDAD GENERAL (IGE) 189 Eventos de IGE / enfermedad general 
+ INCAPACIDAD LABORAL (IRL) 17 Eventos de accidente / enfermedad laboral 
+ LICENCIA DE MATERNIDAD (LMA) 4 Eventos de LMA 
+ 
+ 
+ No hardcodear un IDEVENTO de un solo cliente. Tabla de mapeo (preferible TGEN o parámetro de nómina): IDEVENTO → TIPO_NOVEDAD_PILA ( IGE / IRL / LMA ). Si no está mapeado, no se exporta y se lista en un aviso. 
+ v1 no incluye VAC, SLN, ING, RET, VST. 
+
+ 5.4 Valor Total 
+ En la muestra: IGE de 6 días = 362000 ; IRL de 27 días = 1634178 . Es el valor que la planilla espera , no el neto del empleado. 
+ 
+ Si ya está liquidado: valor del concepto ligado al evento ( NEVED.CODCONCEPTO ). 
+ Si no: IBC diario × días × factor del evento ( NEVED.FACTOR ), redondeado a peso. 
+ 
+ Dejar el valor editable en una previsualización antes de descargar. 
+
+ 5.5 Filtro de filas a exportar 
+ NEDIA ⋈ NEVE ⋈ NEMP
+WHERE NEDIA.CNSPAGO = @CNSPAGO
+ AND NEVE.IDEVENTO está en el mapeo IGE / IRL / LMA 
+ Una fila NEDIA = una fila en el Excel. Si la novedad cruza de mes, exportar solo los días del mes del archivo (cols. 4, 5, 10, 11). 
+
+ 5.6 UI 
+ 
+ Periodo. 
+ Conteos: IGE / IRL / LMA / omitidas sin mapeo. 
+ Tabla previa (cédula, nombre, tipo, día inicial, duración, valor). 
+ Descargar Excel . 
+ Texto: “Suba este archivo en la planilla integrada. No vuelva a digitar las novedades.” 
+ 
+ Partir de una copia de la plantilla de referencia (hoja DatosPruebaEmp intacta) y solo rellenar Novedades desde la fila 9. 
+ 
+
+ 
+ 6. Permisos 
+ IDPROCEDIMIENTO : MENUQ_NOMINA (el mismo de Cerrar / Prenomina / Liquidación). 
+ 
+ IDCONTROL Dónde 
+ 
+ BtnValidarPila Liquidación — Validar con la PILA 
+ BtnPlanillaIncapacidades Prenómina — generar Excel 
+ 
+ 
+ 
+ src/composables/catalogoPermisos/catalogoDocumentado.js → entrada nom.procesos . 
+ Script USPROH / USGRUH en SQL/ . No crear el control solo en el Vue. 
+ En LiquidaNomComponent.vue (~líneas 489–502) añadir BtnValidarPila igual que BtnCerrarNomina . 
+ 
+ 
+
+ 
+ 7. Criterios de aceptación 
+ Entrega 1 
+ 
+ El botón Validar con la PILA está al lado de Cerrar Nomina y respeta el permiso. 
+ Se puede subir el .xls CEM de julio 2026 sobre nóminas 01 / 02 / 09 y el de Alcaldía sobre 07 . 
+ Cruce por DOCIDEMPLEADO ; se suman varios NUMDOC de la misma cédula. 
+ Conceptos SI incluidos ( CN04-1 , CNSI07-1 ). Natalia Arango 43602394 cierra en salud/pensión. 
+ CEM julio: 0 DIF en salud/pensión/FSP con tol. $150; ARL y CCF de retiro quedan DIF , no se auto-aplican. 
+ Alcaldía julio: 967 cruzados, 0 DIF de valor; Chavarría 43504574 sale como solo nómina. 
+ Aplicar redondeos PILA deja NIEPED en el monto PILA; Contabilizar y CxP coinciden con la planilla (centenas). 
+ No se puede aplicar con la nómina cerrada. 
+ Se puede exportar el cruce a Excel. 
+ 
+ Entrega 2 
+ 
+ Desde Prenómina, con novedades IGE/IRL/LMA en NEDIA , se descarga un Excel compatible con la plantilla (encabezados filas 7–8, datos desde fila 9). 
+ Tipo ID + No ID salen de NEMP ; no del NUMDOC . 
+ Eventos no mapeados se listan; no se silencian. 
+ El usuario no vuelve a digitar esas novedades en el operador: solo sube el archivo. 
+ No se modifica el flujo actual de carga masiva ni RegistNovedadesComponent . 
+ 
+ Regresiones que no se tocan 
+ 
+ Cerrar / Abrir / Contabilizar / Generar CxP / CxP especiales / Imprimir / Exportar. 
+ Componentes en src/components/genericos/ ni ServerSideTableComponent / SelectGenericoComponent . 
+ 
+ 
+
+ 
+ 8. Fuera de alcance (v1) 
+ 
+ Enviar el archivo al operador de la PILA por API (solo se genera / se lee el Excel). 
+ Corregir en automático tarifas ARL o centros de trabajo mal parametrizados. 
+ Exportar vacaciones, licencias no remuneradas, ingresos/retiros en este mismo archivo. 
+ Implementar en rama master / calidad / develop . Crear rama desde develop : 
+ 
+ git checkout develop
+git pull
+git checkout -b feature/validar-pila-incapacidades 
+ 
+
+ 
+ 9. Pruebas sugeridas 
+ Desarrollador 
+ 
+ Parseo de los dos .xls de julio 2026 (CEM y Alcaldía). 
+ Cédula con 2 NUMDOC (Alcaldía). 
+ Salario integral 09 + CN04-1 / CNSI07-1 . 
+ Aplicar redondeo y verificar NIEPED + que un segundo cruce quede OK. 
+ Generar planilla con 1 IGE, 1 IRL y 1 LMA; comparar columnas con la plantilla. 
+ Permiso apagado: no se ve el botón. 
+ 
+ Coordinador (usuario) 
+ 
+ Novedades en prenómina → genera Excel → (simular) subida al operador. 
+ Liquidar → Validar con la PILA → aplicar redondeos → cerrar → contabilizar → CxP = totales PILA (a centenas). 
+ Rechazo si sube la planilla de Alcaldía en una nómina CEM. 
+ Las 13 ARL y 3 CCF de CEM deben verse; no “desaparecer” aplicadas solas. 
+ 
+ Soporte 
+ 
+ Dato del cliente: CNSPAGO , archivo PILA, cédula ejemplo. 
+ Si el cruce da 0 cruzados: casi siempre DOCIDEMPLEADO vacío o planilla / nómina cruzadas. 
+ Rollback: no aplicar redondeo, o Abrir nómina y volver a generar (el ajuste vive en NIEPED del periodo). 
+ 
+ 
+
+ 
+ 10. Consultas de validación (solo lectura) 
+ Placeholders. Sin nombres de base ni host. No publicar SP ni hacer UPDATE en el entorno de análisis. 
+ -- Empleados del periodo + cédula
+SELECT E.CODNOMINA, E.CNSPAGO, E.NUMDOC, N.DOCIDEMPLEADO, E.NOMBRE_EMPLEADO
+FROM NIEPE E
+INNER JOIN NEMP N ON N.NUMDOC = E.NUMDOC
+WHERE E.CNSPAGO = @CNSPAGO;
+
+-- Aportes a comparar (lógica de suma del §4.5)
+SELECT D.NUMDOC, D.CODCONCEPTO, D.VALOR, D.VALOR_APORTES
+FROM NIEPED D
+INNER JOIN NIEPE E ON E.CNSPAGO = D.CNSPAGO AND E.NUMDOC = D.NUMDOC
+WHERE E.CNSPAGO = @CNSPAGO
+ AND D.CODCONCEPTO IN (
+ 'CN02','CN04','CN04-1','CN45','CN65',
+ 'CN05','CN06','CN64','CN07','CNSI07-1',
+ 'CN09','CN69','CN09-1','CN66',
+ 'CN08','CN08-1'
+ );
+
+-- Novedades a exportar (tras definir el mapeo de eventos)
+SELECT NEDIA.CNSPAGO, NEDIA.NUMDOC, NEMP.DOCIDEMPLEADO, NEMP.TIPO_DOC,
+ NEDIA.IDEVENTO, NEVE.DESCRIPCION, NEDIA.DIAS, NEDIA.NDIAS,
+ NEDIA.FECHAINI, NEDIA.FECHAFIN, NEDIA.DIAINI
+FROM NEDIA
+INNER JOIN NEVE ON NEVE.IDEVENTO = NEDIA.IDEVENTO
+INNER JOIN NEMP ON NEMP.NUMDOC = NEDIA.NUMDOC
+WHERE NEDIA.CNSPAGO = @CNSPAGO; 
+ 
+
+ 
+ 11. Archivos / módulos previstos 
+ 
+ Pieza Notas 
+ 
+ src/pages/nom/ProcesosPage.vue Sin cambio de rutas; solo pestañas existentes 
+ src/components/nomina/liquidacion/LiquidaNomComponent.vue Botón + permiso + diálogo 
+ src/components/nomina/liquidacion/ValidarPilaComponent.vue Nuevo 
+ src/components/nomina/prenomina/PreNominaComponent.vue Botón generar Excel 
+ Util de generación Excel Nuevo, junto a prenómina 
+ src/composables/catalogoPermisos/catalogoDocumentado.js Dos controles 
+ SQL/ — SP de LIQUIDACION + permisos Solo si el .sql ya está en SQL/ 
+ Plantilla Excel de incapacidades Copiar la de referencia al front 
+ 
+ 
+ 
+
+ 
+ 12. Decisiones que el desarrollador no debe adivinar 
+ 
+ Redondeo sí se pisa; DIF real no. El usuario de nómina decide las DIF. 
+ La verdad para CxP y contabilidad, después del ajuste, es la PILA. 
+ Las novedades se digitan una sola vez , en Qrystalos; el Excel de incapacidades es de salida . 
+ El mapeo IDEVENTO → IGE/IRL/LMA es por cliente (configuración), no un IF de un hospital. 
+ Rama de trabajo desde develop ; no commitear en protegidas. 
+ 
+ 
+
+ 
+ Qrystalos · Nómina · Requerimiento PILA e incapacidades · 10 de septiembre de 2026 
+ Documento autocontenido para adjuntar por correo. Puede imprimirse a PDF desde el navegador (Ctrl+P).

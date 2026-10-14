@@ -1,0 +1,810 @@
+"""Consultas de soporte: chat + documento PDF de respuesta (data/soporte-consultas/)."""
+from __future__ import annotations
+
+import base64
+import html as html_lib
+import json
+import re
+from datetime import date, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = ROOT / "data" / "soporte-consultas"
+INDEX_FILE = DATA_DIR / "index.json"
+
+_ID_SAFE = re.compile(r"[^a-zA-Z0-9_-]+")
+_AUTORES = frozenset({"soporte", "coordinador", "agente", "sistema"})
+
+
+def _instruccion_md(sid: str, meta: dict) -> str:
+    return f"""# Consulta soporte — {sid}
+
+## Objetivo
+Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, grafos, runbooks) y documentación viva.
+
+## Leer primero
+1. `data/soporte-consultas/{sid}/meta.json`
+2. `data/soporte-consultas/{sid}/chat.json`
+3. `conocimiento/INDICE.json` → procesos relacionados con la pregunta
+
+## Entregables
+1. Mensaje en **chat.json** (autor: `agente`).
+2. Borrador en **meta.json** → `respuestaOficial` (texto para PDF).
+3. **meta.json** → `proposito` (2–4 frases): nace de la **necesidad** (`preguntaInicial`) y resume qué entrega el documento según su **análisis** (no texto genérico).
+4. Cada **consulta SQL** en bloque ```sql … ``` o sección «BLOQUE N» con líneas ═══ (como dictámenes); la app la muestra en formato copiar/pegar.
+5. No ejecutar SQL ni implementar en Qrystalos2.
+
+Título: {meta.get("titulo") or ""}
+Cliente: {meta.get("cliente") or ""}
+"""
+
+
+def escribir_instruccion(sid: str) -> None:
+    meta = leer_meta(sid)
+    (carpeta_consulta(sid) / "INSTRUCCION-AGENTE.md").write_text(
+        _instruccion_md(sid, meta), encoding="utf-8"
+    )
+
+
+def _ensure_dir() -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _read_json(path: Path, default):
+    if not path.is_file():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default
+
+
+def _write_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_index() -> dict:
+    _ensure_dir()
+    return _read_json(INDEX_FILE, {"consultas": []})
+
+
+def _save_index(idx: dict) -> None:
+    _write_json(INDEX_FILE, idx)
+
+
+def nueva_id() -> str:
+    return f"sc{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+
+def carpeta_consulta(sid: str) -> Path:
+    safe = _ID_SAFE.sub("", sid or "")
+    if not safe.startswith("sc"):
+        raise ValueError("Consulta no válida.")
+    p = DATA_DIR / safe
+    if not p.is_dir():
+        raise FileNotFoundError("Consulta no encontrada.")
+    return p
+
+
+def crear_consulta(
+    titulo: str,
+    pregunta: str,
+    solicitante: str = "",
+    cliente: str = "",
+) -> dict:
+    _ensure_dir()
+    titulo = (titulo or "").strip()
+    pregunta = (pregunta or "").strip()
+    if not titulo:
+        raise ValueError("Indique un título breve para la consulta.")
+    if not pregunta:
+        raise ValueError("Indique la pregunta o contexto inicial.")
+    sid = nueva_id()
+    carp = DATA_DIR / sid
+    carp.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "id": sid,
+        "titulo": titulo[:200],
+        "solicitante": (solicitante or "").strip(),
+        "cliente": (cliente or "").strip(),
+        "preguntaInicial": pregunta,
+        "respuestaOficial": "",
+        "proposito": "",
+        "creado": datetime.now().isoformat(timespec="seconds"),
+        "estado": "abierta",
+        "documentoGenerado": None,
+        "pdfGenerado": None,
+        "cerrada": None,
+    }
+    _write_json(carp / "meta.json", meta)
+    chat = {"mensajes": []}
+    msg = {
+        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+        "autor": "soporte",
+        "texto": pregunta,
+        "en": meta["creado"],
+    }
+    chat["mensajes"].append(msg)
+    _write_json(carp / "chat.json", chat)
+    escribir_instruccion(sid)
+    idx = _load_index()
+    fila = {
+        k: meta[k]
+        for k in (
+            "id",
+            "titulo",
+            "solicitante",
+            "cliente",
+            "creado",
+            "estado",
+            "documentoGenerado",
+            "pdfGenerado",
+        )
+    }
+    consultas = [c for c in idx.get("consultas", []) if c.get("id") != sid]
+    consultas.insert(0, fila)
+    idx["consultas"] = consultas[:100]
+    _save_index(idx)
+    return meta
+
+
+def listar_consultas(limit: int = 40) -> list[dict]:
+    return (_load_index().get("consultas") or [])[:limit]
+
+
+def leer_meta(sid: str) -> dict:
+    return _read_json(carpeta_consulta(sid) / "meta.json", {})
+
+
+def leer_chat(sid: str) -> dict:
+    return _read_json(carpeta_consulta(sid) / "chat.json", {"mensajes": []})
+
+
+def append_chat(sid: str, autor: str, texto: str) -> dict:
+    autor = (autor or "soporte").strip().lower()
+    if autor not in _AUTORES:
+        autor = "soporte"
+    texto = (texto or "").strip()
+    if not texto:
+        raise ValueError("Mensaje vacío.")
+    chat = leer_chat(sid)
+    msg = {
+        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+        "autor": autor,
+        "texto": texto,
+        "en": datetime.now().isoformat(timespec="seconds"),
+    }
+    chat.setdefault("mensajes", []).append(msg)
+    _write_json(carpeta_consulta(sid) / "chat.json", chat)
+    return msg
+
+
+def guardar_respuesta(sid: str, respuesta: str, proposito: str | None = None) -> dict:
+    meta = leer_meta(sid)
+    meta["respuestaOficial"] = (respuesta or "").strip()
+    if proposito is not None:
+        meta["proposito"] = (proposito or "").strip()
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    return meta
+
+
+def actualizar_meta(sid: str, **campos) -> dict:
+    meta = leer_meta(sid)
+    meta.update(campos)
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    idx = _load_index()
+    for c in idx.get("consultas", []):
+        if c.get("id") == sid:
+            for k in ("estado", "documentoGenerado", "pdfGenerado", "titulo", "cliente"):
+                if k in campos:
+                    c[k] = campos[k]
+            break
+    _save_index(idx)
+    return meta
+
+
+def cerrar_consulta(sid: str) -> dict:
+    meta = leer_meta(sid)
+    meta["estado"] = "cerrada"
+    meta["cerrada"] = datetime.now().isoformat(timespec="seconds")
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    idx = _load_index()
+    for c in idx.get("consultas", []):
+        if c.get("id") == sid:
+            c["estado"] = meta["estado"]
+            break
+    _save_index(idx)
+    return meta
+
+
+def _esc(s: str) -> str:
+    return html_lib.escape(str(s or ""))
+
+
+_SEP_DECOR = re.compile(r"^═{10,}\s*$")
+_FENCE = re.compile(r"```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```")
+_SQL_LINE = re.compile(
+    r"^\s*(--|SELECT|WITH|DECLARE|INSERT|UPDATE|DELETE|FROM|JOIN|LEFT|RIGHT|INNER|OUTER|WHERE|GROUP|ORDER|EXEC|COALESCE|CASE|WHEN)\b",
+    re.I,
+)
+
+
+def _looks_like_sql(para: str) -> bool:
+    lines = [ln for ln in (para or "").splitlines() if ln.strip()]
+    if not lines:
+        return False
+    hits = sum(1 for ln in lines if _SQL_LINE.match(ln))
+    if hits >= 2:
+        return True
+    if len(lines) >= 1 and hits >= 1 and any(";" in ln for ln in lines):
+        return True
+    return bool(len(lines) >= 4 and hits >= 1 and lines[0].lstrip().startswith("--"))
+
+
+def _sql_bloque_html(titulo: str | None, codigo: str, *, aviso: bool = True) -> str:
+    codigo = (codigo or "").strip("\n")
+    if not codigo:
+        return ""
+    h = ""
+    if titulo:
+        h += f'<p class="sql-block-title">{_esc(titulo.replace(chr(10), " · "))}</p>\n'
+    if aviso:
+        h += (
+            '<p class="sql-aviso"><strong>Consulta SQL</strong> — Copie y pegue en SQL Server '
+            "(solo lectura; valide en copia/preversión).</p>\n"
+        )
+    h += f'<pre class="sql-spec">{_esc(codigo)}</pre>\n'
+    return h
+
+
+def _parrafos(texto: str) -> str:
+    t = (texto or "").strip()
+    if not t:
+        return '<p class="meta">(Sin texto)</p>'
+    return _markdown_basico(t)
+
+
+_MD_HEADING = re.compile(r"^(#{1,4})\s+(.+?)\s*$")
+_MD_NUMBERED_HEADING = re.compile(r"^(\d+(?:\.\d+)*)[.)]\s+(.+?)\s*$")
+_MD_UL = re.compile(r"^\s*[-*•]\s+(.+?)\s*$")
+_MD_OL = re.compile(r"^\s*(\d+)[.)]\s+(.+?)\s*$")
+_MD_TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
+
+
+def _inline_md(texto: str) -> str:
+    """Markdown inline seguro: énfasis y código, sin permitir HTML de entrada."""
+    value = _esc(texto)
+    placeholders: list[str] = []
+
+    def code_repl(match: re.Match) -> str:
+        placeholders.append(f"<code>{match.group(1)}</code>")
+        return f"\x00CODE{len(placeholders) - 1}\x00"
+
+    value = re.sub(r"`([^`\n]+)`", code_repl, value)
+    value = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", value)
+    value = re.sub(r"__(.+?)__", r"<strong>\1</strong>", value)
+    value = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<em>\1</em>", value)
+    for idx, rendered in enumerate(placeholders):
+        value = value.replace(f"\x00CODE{idx}\x00", rendered)
+    return value
+
+
+def _table_cells(line: str) -> list[str]:
+    value = line.strip()
+    if value.startswith("|"):
+        value = value[1:]
+    if value.endswith("|"):
+        value = value[:-1]
+    return [cell.strip() for cell in value.split("|")]
+
+
+def _render_table(lines: list[str], start: int) -> tuple[str, int] | None:
+    if start + 1 >= len(lines) or "|" not in lines[start]:
+        return None
+    if not _MD_TABLE_SEPARATOR.match(lines[start + 1]):
+        return None
+    headers = _table_cells(lines[start])
+    rows: list[list[str]] = []
+    i = start + 2
+    while i < len(lines) and lines[i].strip() and "|" in lines[i]:
+        rows.append(_table_cells(lines[i]))
+        i += 1
+    head = "".join(f"<th>{_inline_md(cell)}</th>" for cell in headers)
+    body = "".join(
+        "<tr>"
+        + "".join(
+            f"<td>{_inline_md(row[col] if col < len(row) else '')}</td>"
+            for col in range(len(headers))
+        )
+        + "</tr>"
+        for row in rows
+    )
+    return (
+        '<div class="table-wrap"><table><thead><tr>'
+        + head
+        + "</tr></thead><tbody>"
+        + body
+        + "</tbody></table></div>",
+        i,
+    )
+
+
+def _paragraph_class(texto: str) -> str:
+    plain = re.sub(r"[*_`]", "", texto).strip().lower()
+    if plain.startswith(("importante:", "atención:", "advertencia:")):
+        return "callout callout-warning"
+    if plain.startswith(("recomendación:", "recomendacion:", "idea clave:", "resultado esperado:")):
+        return "callout callout-tip"
+    if plain.startswith(("nota:", "tenga en cuenta:", "cómo leer", "como leer")):
+        return "callout callout-info"
+    return ""
+
+
+def _markdown_basico(texto: str) -> str:
+    """Convierte el formato habitual del agente a HTML de manual, sin dependencias."""
+    lines = (texto or "").replace("\r\n", "\n").splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        stripped = raw.strip()
+        if not stripped:
+            i += 1
+            continue
+        if re.fullmatch(r"-{3,}", stripped):
+            out.append('<hr class="section-rule">')
+            i += 1
+            continue
+
+        table = _render_table(lines, i)
+        if table:
+            rendered, i = table
+            out.append(rendered)
+            continue
+
+        heading = _MD_HEADING.match(stripped)
+        if heading:
+            level = min(4, len(heading.group(1)) + 1)
+            out.append(f"<h{level}>{_inline_md(heading.group(2))}</h{level}>")
+            i += 1
+            continue
+
+        numbered = _MD_NUMBERED_HEADING.match(stripped)
+        if numbered and (i + 1 == len(lines) or not lines[i + 1].strip()):
+            depth = numbered.group(1).count(".")
+            tag = "h3" if depth == 0 else "h4"
+            out.append(
+                f'<{tag} class="numbered-heading"><span>{_esc(numbered.group(1))}</span>'
+                f"{_inline_md(numbered.group(2))}</{tag}>"
+            )
+            i += 1
+            continue
+
+        unordered = _MD_UL.match(raw)
+        ordered = _MD_OL.match(raw)
+        if unordered or ordered:
+            list_tag = "ul" if unordered else "ol"
+            items: list[str] = []
+            while i < len(lines):
+                match = (_MD_UL if list_tag == "ul" else _MD_OL).match(lines[i])
+                if not match:
+                    break
+                item_text = match.group(1 if list_tag == "ul" else 2)
+                items.append(f"<li>{_inline_md(item_text)}</li>")
+                i += 1
+            out.append(f'<{list_tag} class="manual-list">' + "".join(items) + f"</{list_tag}>")
+            continue
+
+        paragraph: list[str] = [stripped]
+        i += 1
+        while i < len(lines) and lines[i].strip():
+            candidate = lines[i].strip()
+            if (
+                _MD_HEADING.match(candidate)
+                or _MD_UL.match(lines[i])
+                or _MD_OL.match(lines[i])
+                or re.fullmatch(r"-{3,}", candidate)
+                or _render_table(lines, i)
+            ):
+                break
+            paragraph.append(candidate)
+            i += 1
+        joined = "<br>".join(_inline_md(line) for line in paragraph)
+        css_class = _paragraph_class(" ".join(paragraph))
+        class_attr = f' class="{css_class}"' if css_class else ""
+        out.append(f"<p{class_attr}>{joined}</p>")
+    return "".join(out)
+
+
+def _parrafos_mixed(text: str) -> str:
+    chunks = re.split(r"\n\s*\n", (text or "").strip())
+    out: list[str] = []
+    for chunk in chunks:
+        c = chunk.strip()
+        if not c:
+            continue
+        if _looks_like_sql(c):
+            out.append(_sql_bloque_html(None, c))
+        else:
+            out.append(_markdown_basico(c))
+    return "".join(out)
+
+
+def _procesar_texto_plano(text: str) -> str:
+    parts: list[str] = []
+    pos = 0
+    for m in _FENCE.finditer(text):
+        if m.start() > pos:
+            parts.append(_parrafos_mixed(text[pos : m.start()]))
+        lang = (m.group(1) or "").lower()
+        code = m.group(2).strip("\n")
+        if lang in ("sql", "tsql", "mssql") or _looks_like_sql(code):
+            parts.append(_sql_bloque_html(None, code))
+        else:
+            parts.append(f'<pre class="text-spec">{_esc(code)}</pre>')
+        pos = m.end()
+    if pos < len(text):
+        parts.append(_parrafos_mixed(text[pos:]))
+    return "".join(parts)
+
+
+def _procesar_bloques_decorativos(text: str) -> str:
+    lines = text.replace("\r\n", "\n").splitlines()
+    out_parts: list[str] = []
+    text_buf: list[str] = []
+    i = 0
+    n = len(lines)
+
+    def flush_text() -> None:
+        nonlocal text_buf
+        if text_buf:
+            blob = "\n".join(text_buf)
+            out_parts.append(_procesar_texto_plano(blob))
+            text_buf = []
+
+    while i < n:
+        if _SEP_DECOR.match(lines[i].strip()):
+            flush_text()
+            i += 1
+            title_lines: list[str] = []
+            while i < n and not _SEP_DECOR.match(lines[i].strip()):
+                title_lines.append(lines[i])
+                i += 1
+            if i < n:
+                i += 1
+            title = "\n".join(title_lines).strip()
+            sql_lines: list[str] = []
+            while i < n:
+                if _SEP_DECOR.match(lines[i].strip()):
+                    break
+                low = lines[i].strip().lower()
+                if low.startswith("notas (no copiar"):
+                    notes = "\n".join(lines[i:])
+                    out_parts.append(_parrafos_mixed(notes))
+                    return "".join(out_parts)
+                sql_lines.append(lines[i])
+                i += 1
+            if title.lower().startswith("notas"):
+                out_parts.append(_parrafos_mixed(title + "\n\n" + "\n".join(sql_lines)))
+            else:
+                out_parts.append(_sql_bloque_html(title, "\n".join(sql_lines)))
+            continue
+        text_buf.append(lines[i])
+        i += 1
+    flush_text()
+    return "".join(out_parts)
+
+
+def texto_respuesta_a_html(texto: str) -> str:
+    """Respuesta oficial → HTML con bloques SQL copiables (como dictámenes)."""
+    t = (texto or "").replace("\r\n", "\n").strip()
+    if not t:
+        return '<p class="meta">(Sin texto)</p>'
+    if "═" in t and _SEP_DECOR.search(t):
+        return _procesar_bloques_decorativos(t)
+    return _procesar_texto_plano(t)
+
+
+def _logo_embebido(logo_href: str) -> str:
+    """El PDF se genera desde file://; incrusta el logo para que no dependa del servidor."""
+    logo = ROOT / "app" / "assets" / "logo-ixcolombia.svg"
+    if logo.is_file():
+        encoded = base64.b64encode(logo.read_bytes()).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
+    return logo_href
+
+
+def _trunc(text: str, max_len: int) -> str:
+    t = (text or "").replace("\r\n", "\n").strip()
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 1].rstrip() + "…"
+
+
+def _resumen_analisis_respuesta(respuesta: str) -> str:
+    """Primer párrafo útil de la respuesta (sin SQL ni bloques decorativos)."""
+    t = (respuesta or "").replace("\r\n", "\n").strip()
+    if not t:
+        return ""
+    for part in re.split(r"\n\s*\n", t):
+        p = part.strip()
+        if not p or p.startswith("═") or _looks_like_sql(p):
+            continue
+        if re.match(r"^(Informe|Reporte|Respuesta)\s*[—–-]", p, re.I):
+            continue
+        if re.match(r"^\d+\.\s", p):
+            one = p.split("\n", 1)[0]
+            return _trunc(one.replace("\n", " "), 520)
+        return _trunc(p.replace("\n", " "), 520)
+    m = re.search(r"(?m)^\d+\.\s.+", t)
+    if m:
+        return _trunc(m.group(0).replace("\n", " "), 520)
+    return ""
+
+
+def resolver_proposito(meta: dict) -> str:
+    """Propósito del PDF: explícito en meta o sintetizado desde necesidad + análisis."""
+    manual = (meta.get("proposito") or "").strip()
+    if manual:
+        return manual
+    cliente = (meta.get("cliente") or "").strip()
+    titulo = (meta.get("titulo") or "").strip()
+    pregunta = (meta.get("preguntaInicial") or "").strip()
+    need = pregunta.split("\n\n")[0].replace("\n", " ").strip() or titulo
+    need = _trunc(need, 420)
+    analisis = _resumen_analisis_respuesta(meta.get("respuestaOficial") or "")
+    cli = f" para {cliente}" if cliente else ""
+    if analisis:
+        return (
+            f"Atender la necesidad planteada{cli}: {need} "
+            f"Este documento entrega la respuesta oficial según el análisis realizado; "
+            f"en síntesis: {analisis}"
+        )
+    return (
+        f"Atender la necesidad planteada{cli}: {need} "
+        "Este documento consolida la respuesta oficial derivada de ese planteamiento."
+    )
+
+
+def generar_html_documento(sid: str, logo_href: str = "/app/assets/logo-ixcolombia.svg") -> tuple[str, dict]:
+    meta = leer_meta(sid)
+    hoy = date.today().isoformat()
+    respuesta = meta.get("respuestaOficial") or ""
+    if not respuesta.strip():
+        raise ValueError("Complete la «Respuesta oficial» antes de generar el documento.")
+
+    proposito = resolver_proposito(meta)
+    proposito_html = _esc(proposito).replace(chr(10), "<br>")
+    logo_src = _logo_embebido(logo_href)
+
+    doc = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{_esc(meta.get('titulo'))} — Respuesta soporte</title>
+  <style>
+    :root {{
+      --brand: #e67817; --brand-dark: #a94908; --brand-soft: #fff5ea;
+      --ink: #172033; --text: #344054; --muted: #667085; --line: #e4e7ec;
+      --surface: #f8fafc; --success: #087a55; --info: #175cd3;
+    }}
+    * {{ box-sizing: border-box; }}
+    @page {{ size: A4; margin: 14mm 15mm 16mm; }}
+    html {{ background: #eef1f5; }}
+    body {{ font-family: "Segoe UI", Aptos, Calibri, sans-serif; font-size: 10.5pt; line-height: 1.58;
+      color: var(--text); background: #eef1f5; margin: 0; padding: 28px; }}
+    .container {{ max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 12px 32px rgba(16,24,40,.10); }}
+    .top-accent {{ height: 7px; background: linear-gradient(90deg, var(--brand) 0 72%, #273248 72%); }}
+    .page-content {{ padding: 30px 42px 26px; }}
+    .brand-head {{ display: flex; align-items: center; justify-content: space-between; gap: 18px;
+      padding-bottom: 20px; border-bottom: 1px solid var(--line); }}
+    .brand-id {{ display:flex; align-items:center; gap:13px; }}
+    .brand-mark {{ height: 42px; width: auto; background: #111827; border-radius: 9px; padding: 5px 9px; }}
+    .brand-name {{ font-weight: 750; letter-spacing: .08em; color: var(--ink); }}
+    .brand-area {{ color: var(--muted); text-transform: uppercase; font-size: 7.5pt; letter-spacing: .11em; }}
+    .doc-kind {{ color: var(--brand-dark); background: var(--brand-soft); border: 1px solid #f7d6b5;
+      border-radius: 999px; padding: 5px 11px; font-size: 7.5pt; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; white-space: nowrap; }}
+    .title-block {{ padding: 26px 0 18px; }}
+    .eyebrow {{ margin: 0 0 7px; color: var(--brand-dark); font-size: 8pt; font-weight: 750;
+      text-transform: uppercase; letter-spacing: .12em; }}
+    h1 {{ color: var(--ink); font-size: 24pt; line-height: 1.16; letter-spacing: -.025em; margin: 0; font-weight: 730; }}
+    .doc-meta {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 20px; }}
+    .meta-item {{ background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }}
+    .meta-label {{ display:block; color:var(--muted); font-size: 7pt; font-weight:700; letter-spacing:.06em;
+      text-transform:uppercase; margin-bottom:2px; }}
+    .meta-value {{ display:block; color:var(--ink); font-size:8.5pt; font-weight:600; overflow-wrap:anywhere; }}
+    .doc-purpose {{ position: relative; background: linear-gradient(135deg, #fff8f0, #fff);
+      border: 1px solid #f5d4b2; border-radius: 10px; padding: 15px 18px 15px 50px; margin: 0 0 24px; }}
+    .doc-purpose::before {{ content:"✓"; position:absolute; left:17px; top:16px; display:grid; place-items:center;
+      width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff; font-weight:800; }}
+    .doc-purpose h2 {{ margin:0 0 4px; padding:0; border:0; color:var(--brand-dark); font-size:9pt;
+      text-transform:uppercase; letter-spacing:.08em; }}
+    .doc-purpose p {{ margin:0; color:#4f3b2b; font-size:9.5pt; }}
+    .question-card {{ background:var(--surface); border:1px solid var(--line); border-left:4px solid #98a2b3;
+      border-radius:8px; padding:12px 15px; margin:0 0 27px; }}
+    .question-card h2 {{ margin:0 0 5px; padding:0; border:0; font-size:8pt; color:var(--muted);
+      text-transform:uppercase; letter-spacing:.08em; }}
+    .question-card p {{ margin:.15rem 0; font-size:9.5pt; }}
+    .manual-title {{ display:flex; align-items:center; gap:10px; margin:0 0 16px; color:var(--ink);
+      font-size:15pt; border-bottom:2px solid var(--ink); padding-bottom:8px; }}
+    .manual-title span {{ display:grid; place-items:center; width:25px; height:25px; border-radius:6px;
+      color:#fff; background:var(--brand); font-size:12pt; }}
+    .manual-content h2 {{ color:var(--ink); font-size:15pt; line-height:1.25; margin:28px 0 11px;
+      padding:0 0 7px; border-bottom:2px solid var(--brand); break-after:avoid; page-break-after:avoid; }}
+    .manual-content h3 {{ color:var(--ink); font-size:12pt; line-height:1.3; margin:22px 0 9px;
+      break-after:avoid; page-break-after:avoid; }}
+    .manual-content h4 {{ color:#344054; font-size:10.5pt; margin:17px 0 7px;
+      break-after:avoid; page-break-after:avoid; }}
+    .numbered-heading {{ display:flex; align-items:center; gap:8px; }}
+    .numbered-heading > span {{ display:inline-grid; place-items:center; min-width:25px; height:25px; padding:0 6px;
+      border-radius:6px; background:var(--brand-soft); color:var(--brand-dark); font-size:8.5pt; font-weight:800; }}
+    p {{ margin: 7px 0 10px; }}
+    strong {{ color:var(--ink); font-weight:700; }}
+    code {{ font-family:Consolas,"Courier New",monospace; font-size:.88em; color:#9a3412;
+      background:#fff1e7; border:1px solid #fed7bd; border-radius:4px; padding:1px 4px; }}
+    .section-rule {{ border:0; height:1px; background:var(--line); margin:24px 0; }}
+    .manual-list {{ margin:8px 0 14px; padding-left:0; list-style:none; }}
+    ul.manual-list li {{ position:relative; padding:3px 0 3px 23px; break-inside:avoid; page-break-inside:avoid; }}
+    ul.manual-list li::before {{ content:""; position:absolute; left:4px; top:11px; width:7px; height:7px;
+      border-radius:2px; background:var(--brand); transform:rotate(45deg); }}
+    ol.manual-list {{ counter-reset:step; }}
+    ol.manual-list li {{ counter-increment:step; position:relative; padding:5px 0 7px 35px;
+      min-height:29px; break-inside:avoid; page-break-inside:avoid; }}
+    ol.manual-list li::before {{ content:counter(step); position:absolute; left:0; top:2px; display:grid; place-items:center;
+      width:25px; height:25px; border-radius:50%; background:var(--ink); color:#fff; font-size:8pt; font-weight:750; }}
+    .callout {{ border-radius:8px; padding:10px 13px 10px 40px; margin:13px 0; position:relative;
+      break-inside:avoid; page-break-inside:avoid; }}
+    .callout::before {{ position:absolute; left:14px; top:10px; font-weight:800; }}
+    .callout-warning {{ background:#fffaeb; border:1px solid #fedf89; color:#7a2e0e; }}
+    .callout-warning::before {{ content:"!"; }}
+    .callout-tip {{ background:#ecfdf3; border:1px solid #abefc6; color:#085d3a; }}
+    .callout-tip::before {{ content:"✓"; }}
+    .callout-info {{ background:#eff8ff; border:1px solid #b2ddff; color:#1849a9; }}
+    .callout-info::before {{ content:"i"; }}
+    .table-wrap {{ overflow-x:auto; margin:12px 0 18px; border:1px solid var(--line); border-radius:8px;
+      break-inside:avoid; page-break-inside:avoid; }}
+    table {{ width:100%; border-collapse:collapse; font-size:8.5pt; }}
+    thead {{ display:table-header-group; }}
+    th {{ background:#273248; color:#fff; text-align:left; padding:8px 10px; font-size:7.5pt;
+      letter-spacing:.025em; }}
+    td {{ padding:8px 10px; border-top:1px solid var(--line); vertical-align:top; }}
+    tbody tr:nth-child(even) {{ background:#f8fafc; }}
+    .sql-block-title {{ color:var(--ink); font-weight:750; font-size:10pt; margin:19px 0 5px;
+      padding-left:10px; border-left:4px solid var(--brand); break-after:avoid; page-break-after:avoid; }}
+    .sql-aviso {{ position:relative; font-size:8pt; color:#475467; background:#f2f4f7; border:1px solid #e4e7ec;
+      border-bottom:0; border-radius:7px 7px 0 0; margin:8px 0 0; padding:7px 10px 7px 30px; }}
+    .sql-aviso::before {{ content:"</>"; position:absolute; left:9px; color:var(--brand-dark); font-weight:800; }}
+    pre.sql-spec {{ background:#172033; color:#e5e7eb; padding:13px 15px; overflow-x:auto; font-size:7.5pt;
+      line-height:1.42; border-radius:0 0 7px 7px; margin:0 0 14px; white-space:pre-wrap; overflow-wrap:anywhere;
+      font-family:Consolas,"Courier New",monospace; -webkit-user-select:all; user-select:all; }}
+    pre.text-spec {{ background:#f4f4f4; border:1px solid var(--line); padding:11px 13px; border-radius:7px;
+      font-size:8pt; white-space:pre-wrap; font-family:Consolas,monospace; }}
+    footer {{ display:flex; justify-content:space-between; gap:20px; margin-top:30px; color:#7b8494;
+      border-top:1px solid var(--line); padding-top:11px; font-size:7.5pt; }}
+    @media print {{
+      html, body {{ background:#fff; }}
+      body {{ padding:0; }}
+      .container {{ max-width:none; box-shadow:none; }}
+      .page-content {{ padding:0; }}
+      .top-accent {{ margin:0 0 8mm; }}
+      .brand-head, .doc-purpose, .question-card, .meta-item, th, pre.sql-spec, .callout,
+      .numbered-heading > span, ul.manual-list li::before, ol.manual-list li::before {{
+        -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
+      }}
+      .brand-head, .title-block, .doc-meta, .doc-purpose, .question-card, footer {{
+        break-inside:avoid; page-break-inside:avoid;
+      }}
+    }}
+    @media (max-width:700px) {{
+      body {{ padding:0; }}
+      .page-content {{ padding:22px; }}
+      .doc-meta {{ grid-template-columns:repeat(2,1fr); }}
+      .doc-kind {{ display:none; }}
+      h1 {{ font-size:20pt; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-accent"></div>
+    <div class="page-content">
+      <div class="brand-head">
+        <div class="brand-id">
+          <img class="brand-mark" src="{_esc(logo_src)}" alt="IX Colombia SAS">
+          <div>
+            <div class="brand-name">IX COLOMBIA SAS</div>
+            <div class="brand-area">Business Analyst · Soporte Qrystalos</div>
+          </div>
+        </div>
+        <div class="doc-kind">Guía de soporte</div>
+      </div>
+      <header class="title-block">
+        <p class="eyebrow">Orientación funcional y operativa</p>
+        <h1>{_esc(meta.get('titulo'))}</h1>
+      </header>
+      <div class="doc-meta">
+        <div class="meta-item"><span class="meta-label">Consulta</span><span class="meta-value">{_esc(meta.get('id'))}</span></div>
+        <div class="meta-item"><span class="meta-label">Quién pregunta</span><span class="meta-value">{_esc(meta.get('solicitante') or '—')}</span></div>
+        <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-value">{_esc(meta.get('cliente') or '—')}</span></div>
+        <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-value">{_esc(hoy)}</span></div>
+      </div>
+      <section class="doc-purpose">
+        <h2>Propósito de esta guía</h2>
+        <p>{proposito_html}</p>
+      </section>
+      <section class="question-card">
+        <h2>Necesidad planteada</h2>
+        {_parrafos(meta.get('preguntaInicial') or '')}
+      </section>
+      <h2 class="manual-title"><span>✓</span> Guía de solución</h2>
+      <main class="manual-content">
+      {texto_respuesta_a_html(respuesta)}
+      </main>
+      <footer>
+        <span>Qrystalos BA · Documento de orientación para soporte</span>
+        <span>Uso interno IX Colombia · {_esc(meta.get('id'))}</span>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>"""
+    ts = datetime.now().isoformat(timespec="seconds")
+    meta["documentoGenerado"] = ts
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    (carpeta_consulta(sid) / "respuesta.html").write_text(doc, encoding="utf-8")
+    idx = _load_index()
+    for c in idx.get("consultas", []):
+        if c.get("id") == sid:
+            c["documentoGenerado"] = ts
+            break
+    _save_index(idx)
+    return doc, meta
+
+
+def ruta_html(sid: str) -> Path:
+    return carpeta_consulta(sid) / "respuesta.html"
+
+
+def ruta_pdf(sid: str) -> Path:
+    return carpeta_consulta(sid) / "respuesta.pdf"
+
+
+def generar_pdf(sid: str) -> Path:
+    generar_html_documento(sid)
+    html_path = ruta_html(sid)
+    import correo as mailer
+
+    dest = ruta_pdf(sid)
+    out = mailer._html_a_pdf(html_path=str(html_path), dest_pdf=str(dest))
+    if not mailer._pdf_utilizable(out):
+        detalle = (getattr(mailer, "_ULTIMO_ERROR_NAVEGADOR", None) or "").strip()
+        raise RuntimeError(detalle or "No se pudo generar el PDF.")
+    meta = leer_meta(sid)
+    meta["pdfGenerado"] = datetime.now().isoformat(timespec="seconds")
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    idx = _load_index()
+    for c in idx.get("consultas", []):
+        if c.get("id") == sid:
+            c["pdfGenerado"] = meta["pdfGenerado"]
+            break
+    _save_index(idx)
+    return Path(out)
+
+
+def panel_consulta(sid: str) -> dict:
+    from cursor_bot import leer_estado_bot
+
+    meta = leer_meta(sid)
+    respuesta = meta.get("respuestaOficial") or ""
+    return {
+        "meta": meta,
+        "mensajes": leer_chat(sid).get("mensajes", []),
+        "bot": leer_estado_bot(sid),
+        "respuestaPreviewHtml": texto_respuesta_a_html(respuesta) if respuesta.strip() else "",
+        "propositoDocumento": resolver_proposito(meta)
+        if respuesta.strip() or (meta.get("preguntaInicial") or "").strip()
+        else "",
+    }

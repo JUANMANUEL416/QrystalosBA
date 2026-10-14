@@ -1,0 +1,303 @@
+{
+  "procesoId": "radicaciones",
+  "actualizado": "2026-09-19T16:20:00",
+  "nota": "PREVERSION = 2.0.3 idénticas. RLOT/RLOTD en docs viva.",
+  "sps": [
+    {
+      "nombre": "SPQ_RLOT_LOTE",
+      "tipo": "SPQ",
+      "modelo": "RLOT_LOTE",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RLOT_LOTE.sql",
+      "metodos": [
+        {
+          "id": "CRUDRLOT",
+          "hace": "INSERTAR: cabecera RLOT + detalle RLOTD desde Excel (estado Sin Tramitar).",
+          "valida": [
+            "Detalle con RADICADO",
+            "NIT, razón, factura, valor, fechas, radicado, IDASIGNACION",
+            "Radicado único en archivo y no existente en RLOTD"
+          ],
+          "noValida": [
+            "Chequeo 'IDASIGNACION ya existe' está muerto (AND 1=2)"
+          ],
+          "errores": [
+            "El archivo Excel no contiene registros.",
+            "Carga Fallida! Se encontraron N radicados con errores…",
+            "Radicado ya existe.",
+            "Radicado duplicado dentro del mismo archivo Excel."
+          ],
+          "llama": [],
+          "efecto": "Nuevo RLOT (ESTADO_LOTE por defecto) + RLOTD Sin Tramitar.",
+          "capaId": "03-alimentadores",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPRIORI",
+          "hace": "Prioriza radicados (manual o masiva).",
+          "valida": [
+            "Manual: radicado + lista asignación",
+            "Masiva: archivo con NIT/factura/radicado existentes"
+          ],
+          "noValida": [],
+          "errores": [
+            "El Radicado y la lista de Asignación son obligatorios…",
+            "El archivo de priorización masiva no contiene registros.",
+            "Error: Uno o más registros del lote (NIT/NRO_FACTURA/RADICADO) no existen…"
+          ],
+          "llama": [],
+          "efecto": "UPDATE prioridad en RLOTD.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ACCIONES",
+          "hace": "Responde o reasigna pendiente de lote.",
+          "valida": [
+            "Parámetros según rama responder/reasignar"
+          ],
+          "noValida": [],
+          "errores": [
+            "Faltan parametros para procesar la respuesta del pendiente.",
+            "Faltan parametros para reasignar el pendiente."
+          ],
+          "llama": [],
+          "efecto": "Actualiza pendiente + RLOTDL.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTIVACION",
+          "hace": "ACTIVAR: RLOT.ESTADO_LOTE 0→1 + bitácora RLOTDL. ELIMINAR: borra lote.",
+          "valida": [
+            "ACTIVAR: ID y USUARIO",
+            "ELIMINAR: ID existe"
+          ],
+          "noValida": [],
+          "errores": [
+            "Faltan parametros para activar el lote.",
+            "Falta el ID del lote para eliminar.",
+            "No se encontro el lote…"
+          ],
+          "llama": [],
+          "efecto": "Lote activo para asignación, o lote eliminado.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "MANTENIMIENTO",
+          "hace": "Utilidades de lote (restablecer datos).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Error al restablecer datos: …"
+          ],
+          "llama": [],
+          "efecto": "Según PROCESO de mantenimiento.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_RLOTD_ASIGNAR",
+      "tipo": "SPQ",
+      "modelo": "RLOTD_ASIGNAR",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RLOTD_ASIGNAR.sql",
+      "metodos": [
+        {
+          "id": "CRUDASIGNAR",
+          "hace": "ASIGNAR: toma el siguiente RLOTD Sin Tramitar de lote activo (prioridad DESC). EDITAR/finalizar y RESPUESTA_CLIENTE.",
+          "valida": [
+            "Lote ESTADO_LOTE=1",
+            "Hay Sin Tramitar"
+          ],
+          "noValida": [
+            "ASIGNAR ignora IDRLOTD del JSON: elige TOP 1"
+          ],
+          "errores": [
+            "No hay registros en estado Sin Tramitar para asignar."
+          ],
+          "llama": [],
+          "efecto": "RLOTD Asignado + RLOTDL. Otras ramas editan/cierran o registran respuesta cliente.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUDPROCESADOS",
+          "hace": "Consulta/traza de procesados e inconsistencias.",
+          "valida": [
+            "ID para ver detalles"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe especificar el ID para ver los detalles."
+          ],
+          "llama": [],
+          "efecto": "SELECT trazabilidad RLOTDL.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_RCAL_CALIDAD",
+      "tipo": "SPQ",
+      "modelo": "RCAL_CALIDAD",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RCAL_CALIDAD.sql",
+      "metodos": [
+        {
+          "id": "CRUDINSERTAR",
+          "hace": "Crea lote de calidad por rango de fechas (no cubre hoy ni solapa lote existente).",
+          "valida": [
+            "FECHA_FIN < hoy",
+            "Rango no cubierto por lote calidad"
+          ],
+          "noValida": [],
+          "errores": [
+            "La Fecha Final del filtro (…) no puede ser igual o posterior a la fecha actual.",
+            "El rango de fechas seleccionado (…) ya se encuentra total o parcialmente cubierto…"
+          ],
+          "llama": [],
+          "efecto": "Nuevo lote RCAL + detalle.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "CRUD_CARGA_MASIVA",
+          "hace": "Ajuste masivo: 100% de filas deben existir. Usuario asignado obligatorio.",
+          "valida": [
+            "Usuario asignado",
+            "Archivo con registros",
+            "100% encontrados"
+          ],
+          "noValida": [],
+          "errores": [
+            "El Usuario Asignado es obligatorio…",
+            "El archivo de detalle no contiene registros válidos…",
+            "Fallo la validación de carga masiva de Ajuste…"
+          ],
+          "llama": [],
+          "efecto": "Actualiza detalle calidad.",
+          "capaId": "03-alimentadores",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_RCALD_CALIDAD",
+      "tipo": "SPQ",
+      "modelo": "RCALD_CALIDAD",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RCALD_CALIDAD.sql",
+      "metodos": [
+        {
+          "id": "CRUDASIGNAR",
+          "hace": "Asigna (estado Auditoria sin asignar), aprueba o rechaza detalle de calidad.",
+          "valida": [
+            "Detalle y lote existen",
+            "Hay registros Auditoria sin asignar (rama asignar)"
+          ],
+          "noValida": [],
+          "errores": [
+            "El registro de detalle de calidad no fue encontrado.",
+            "El lote principal no fue encontrado.",
+            "No hay registros en estado Auditoria y sin asignar."
+          ],
+          "llama": [],
+          "efecto": "Detalle asignado / aprobado / rechazado.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_RFIN",
+      "tipo": "SPQ",
+      "modelo": "RFIN",
+      "estado": "leido",
+      "fuente": "sql/SPQ_RFIN.sql",
+      "metodos": [
+        {
+          "id": "CARGAR_PAGOS",
+          "hace": "Carga Excel de pagos por radicado+observación. Radicado debe existir. Marca inconsistentes.",
+          "valida": [
+            "Archivo no vacío",
+            "Radicado y observación por fila",
+            "Sin duplicados en periodo",
+            "Radicado existe en facturación"
+          ],
+          "noValida": [
+            "No es FPAG"
+          ],
+          "errores": [
+            "El archivo Excel no contiene registros válidos o está vacío.",
+            "Carga Cancelada: Se encontraron errores de contenido…",
+            "Carga Cancelada: Existen radicados en el archivo que no están registrados…"
+          ],
+          "llama": [],
+          "efecto": "Cabecera/detalle de carga RFIN. TOTAL_OK vs Inconsistente.",
+          "capaId": "03-alimentadores",
+          "estado": "leido"
+        },
+        {
+          "id": "DASHBOARD",
+          "hace": "Tablero de pagos radicaciones.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT agregados.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "LISTAR_DETALLE_CARGA",
+          "hace": "Detalle de una carga.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT detalle.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "BUSCAR_RADICADO",
+          "hace": "Busca radicado en el circuito RFIN.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT coincidencias.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_PAGOS_MENSUAL",
+          "hace": "Reporte mensual de pagos.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT OK + datos.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
+          "id": "REPORTE_PAGOS_TOTALES",
+          "hace": "Reporte totales. Visto en SQL; el FE de FinancieroComponent usa MENSUAL.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "SELECT OK + totales.",
+          "capaId": "02-operacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

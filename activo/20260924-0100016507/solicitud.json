@@ -1,0 +1,176 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-25T01:25:47.609Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016507",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260924-0100016507",
+    "idReq": "0100016507",
+    "fecha": "2026-09-24",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "COMITE DE ESTUDIOS MEDICOS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CXP · Cuentas Por Pagar",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "GUILLERMO GARCIA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/COESME629",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CXP · Cuentas Por Pagar",
+    "requerimiento": "Que la cuenta por pagar de una compra quede con el IVA de cada lote, no con el IVA de\ntoda la factura repetido en cada línea.",
+    "criteriosAceptacion": "1) En preversión, al procesar la entrada 0300025869 (PROCESAR_IMOVH), las cinco líneas de la CxP 03CM001766 quedan con el IVA de su lote: 550.585,80; 3.854.100,60; 5.117.209,20; 2.979.640,80 y 8.096.850,00.\n2) La suma del IVA del detalle FCXPD y el IVA de la cabecera FCXP es 20.598.386,40.\n3) La base (108.412.560) y el neto de cabecera (129.010.946,40) no cambian respecto al caso documentado en comité.\n4) Una compra de un solo lote por artículo conserva los mismos importes que hoy cuando ya cuadraban.\n5) SPK_CALCULOVALORESCXP sigue solo totalizando el detalle en cabecera; no se modifica.\n6) RECONSTRUIR_CUENTAS_FCXPD no sustituye este arreglo (solo cuentas, no VLR_IVA).",
+    "alcance": "Incluye la vista DBO.VWK_IMOVH_AGRUPADO y el procedimiento SPK_INSERT_CXP_INV (rama compras inventario → CxP). El IVA de cada línea FCXPD queda amarrado al grupo artículo + lote de compra (NOLOTEPEDIDO) + vencimiento + costo (PCOSTO) + estado de lectura IMOVH. Proceso transversal flujo-compras-inv-cxp-caja (control compras-a-cxp / PROCESAR_IMOVH en CXPComponent). No incluye SPK_CALCULOVALORESCXP, salidas de inventario, contabilización MCP ni reproceso masivo de CxP ya contabilizadas. Script puntual para siete CxP abiertas en CEM (CORRECCION_FCXPD_IVA_SEP2026) es corrección de datos, no parte del objeto publicable.",
+    "restricciones": "Publicar en PREVERSION y validar en DESAIX; no ejecutar correcciones en CEM desde BA. Rama bugfix/COESME629. Las CxP contabilizadas no se regeneran automáticamente con el cambio de objeto; las abiertas en cliente se corrigen con PROCESAR_IMOVH tras publicar o con script puntual acordado. Sin cambio de pantalla ni METODO nuevo en SPQ_FCXP.",
+    "analisis": "**REQ (IX 0100016507 / cola IX OnLine.htm)** y documento de comité **SR20260922-002** (adjunto al caso): misma necesidad — al armar el detalle de CxP desde una entrada de compra con varios lotes del mismo artículo, cada línea FCXPD guardaba el IVA total de la factura en lugar del IVA del lote.\n\n**Paso 0 — ¿ya existe?** Clasificación **defecto** (no capacitación, no hueco de pantalla). El camino operativo ya está: confirmar entrada IMOV → generar o abrir CxP de compras → menú **Procesar movimiento** (`CXPComponent.vue` → `MODELO FCXP`, `METODO PROCESAR_IMOVH`) → `SPK_INSERT_CXP_INV`. También existe **Reconstruir cuentas** (`RECONSTRUIR_CUENTAS_FCXPD`), pero la ficha documenta que **no repuebla VLR_IVA desde IMOVH**; no resuelve este caso. No hay botón alterno que reparta IVA por lote sin tocar objetos SQL.\n\n**Causa (KB + especificación BA).** El cursor de `SPK_INSERT_CXP_INV` lee `VWK_IMOVH_AGRUPADO`, que agrupa por artículo, lote de pedido, vencimiento, estado y costo. En liberada histórica, la columna IVA de la vista sumaba `VLRIVA` por artículo+lote y **repetía** ese total en cada fila del grupo (cada vencimiento/costo). El SP copiaba `IMOVH.IVA` a `FCXPD.VLR_IVA`. `SPK_CALCULOVALORESCXP` solo suma líneas a cabecera; por eso la cabecera puede verse coherente con la entrada mientras el detalle infla el IVA al contabilizar.\n\n**Caso CEM (comité).** Entrada `0300025869`, CxP `03CM001766`, factura DPE11105, artículo INS0038-3, cinco lotes, costo 2.841, IVA 19%: cinco líneas con 20.598.386,40 cada una (suma detalle 102.991.932 vs IVA real 20.598.386,40). Sin contabilizar al reportarse.\n\n**Diagrama** `SR20260922-002-diagrama-flujo.png`: IMOVH → VWK_IMOVH_AGRUPADO → SPK_INSERT_CXP_INV → FCXPD; coherente con `conocimiento/flujo-compras-inv-cxp-caja` y `cxp-fcxp` (control compras-a-cxp). El diagrama cita `SPK_CALCULOVALORESCXP` como paso de totales; **no entra al fix**.\n\n**Impacto.** SQL **Sí** (vista + SPK). Frontend y API **No** (mismo `PROCESAR_IMOVH`; sin cambio de contrato JSON). Contabilidad **No** afecta definición de cuentas; solo corrige montos de IVA en detalle antes de `CONTABILIZAR_FCXP`.\n\n**Validar antes de codificar:** comparar PREVERSION vs última liberada en DESAIX; los scripts de especificación en BA (`sql/VWK_IMOVH_AGRUPADO.sql`, `sql/SPK_INSERT_CXP_INV.sql`) ya reflejan el arreglo propuesto en comité — confirmar que no esté duplicado en canasta.",
+    "opciones": [],
+    "recomendacion": "Implementar en producto la vista y el SPK según especificación del comité (SR20260922-002). Desarrollo: publicar `VWK_IMOVH_AGRUPADO` y `SPK_INSERT_CXP_INV` en preversión; probar `PROCESAR_IMOVH` con entrada 0300025869; luego reprocesar CxP abiertas en cliente si aplica. No usar RECONSTRUIR_CUENTAS_FCXPD para corregir IVA. Para las siete CxP ya dañadas en CEM, usar script transaccional puntual documentado aparte. Mockup UX: sin ventana nueva — el resultado esperado es el detalle FCXPD con IVA por lote (referencia mockup comité SR20260922-002).",
+    "cambioPropuestoSimple": "Hoy, cuando una factura de compra trae el mismo medicamento en varios lotes, el sistema arma varias líneas en la cuenta por pagar pero en cada línea repite el IVA de toda la factura. La cabecera de la CxP a veces cuadra con la entrada, pero el detalle suma varias veces el impuesto y, al contabilizar, el IVA de la compra quedaría registrado de más. Se corrige la forma en que se agrupa la entrada de inventario y el procedimiento que copia esos valores al detalle de la CxP, para que cada línea lleve solo el IVA de su lote (mismo vencimiento y costo). El usuario sigue usando el mismo botón de procesar la entrada en CxP; no hay pantalla nueva.",
+    "cambioPropuestoSql": "-- Especificación. No ejecutar desde BA.\n-- Objetos: DBO.VWK_IMOVH_AGRUPADO, DBO.SPK_INSERT_CXP_INV\n-- Fuente análisis comité: solicitudes/SR20260922-002; copia especificación BA: sql/VWK_IMOVH_AGRUPADO.sql, sql/SPK_INSERT_CXP_INV.sql\n-- SPK_CALCULOVALORESCXP: sin cambios.\n\n-- 1) VWK_IMOVH_AGRUPADO — columna IVA\n-- ANTES (liberada con bug): subconsulta SUM(VLRIVA) por CNSMOV+IDARTICULO+NOLOTEPEDIDO → mismo total en cada fila del GROUP BY.\n-- DESPUÉS:\n,SUM(ISNULL(IMOVH.VLRIVA, 0)) AS IVA\n-- (El GROUP BY existente por CNSMOV, IDARTICULO, NOLOTEPEDIDO, FECHAVENCE, ESTADO, PCOSTO se mantiene.)\n\n-- 2) SPK_INSERT_CXP_INV — cursor y WHILE\n-- Agregar al SELECT del cursor: IMOVH.FECHAVENCE, IMOVH.COSTO → variables @FECHAVENCE_CUR, @PCOSTO_GRP (FETCH inicial y FETCH NEXT).\n-- Antes de la cascada de impuesto en el WHILE, fijar IVA de la línea desde IMOVH filas leídas (ESTADO=9):\nSELECT @VLRIVA_CUR = COALESCE(SUM(H.VLRIVA), 0)\nFROM IMOVH H\nWHERE H.CNSMOV = @CNSMOV\n  AND H.IDARTICULO = @IDARTICULO_CUR\n  AND ISNULL(H.NOLOTEPEDIDO, '') = ISNULL(@NOLOTE_CUR, '')\n  AND H.ESTADO = 9\n  AND H.PCOSTO = @PCOSTO_GRP\n  AND ((H.FECHAVENCE = @FECHAVENCE_CUR) OR (H.FECHAVENCE IS NULL AND @FECHAVENCE_CUR IS NULL));\n\n-- INSERT FCXPD sigue usando @VLRIVA_CUR para VLR_IVA y VLR_NETO.\n\n-- 3) Validación SQL (preversión, post PROCESAR_IMOVH 0300025869 / 03CM001766):\nSELECT D.ITEM, D.NOLOTE, D.VLR_IVA\nFROM FCXPD D WHERE D.CNSFCXP = '03CM001766' ORDER BY D.ITEM;\n-- Esperado IVA por línea: 550585.80, 3854100.60, 5117209.20, 2979640.80, 8096850.00; SUM = 20598386.40.\n\n-- 4) Fuera de producto (solo CEM, datos ya grabados): sql/CORRECCION_FCXPD_IVA_SEP2026.sql",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Corrige VLR_IVA/VLR_NETO en FCXPD antes de contabilizar; no cambia KMCOM, plan CUE ni reglas de SPK_NC_CONTAB_CXP. Con CUENTA_IVA_CXP=SI siguen aplicando las mismas validaciones de CUENTA_IVA en líneas con IVA.",
+        "validadoEn": "2026-09-25T01:32:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de desarrollar: en DESAIX comparar PREVERSION vs última versión Cerrada — si VWK_IMOVH_AGRUPADO ya usa SUM(VLRIVA) por grupo y SPK_INSERT_CXP_INV ya recalcula @VLRIVA_CUR por lote/vencimiento/costo, el defecto ya está en canasta (solo validar con entrada 0300025869). Si no, aplicar la especificación del comité."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "SR20260922-002-diagrama-flujo.png",
+        "ruta": "activo/20260924-0100016507/imagenes/SR20260922-002-diagrama-flujo.png",
+        "subidaEn": "2026-09-24T20:20:52",
+        "url": "/api/caso/20260924-0100016507/imagen/SR20260922-002-diagrama-flujo.png"
+      }
+    ],
+    "archivosAnalisis": [
+      {
+        "nombre": "SR20260922-002-documento-comite.pdf",
+        "ruta": "activo/20260924-0100016507/archivos/SR20260922-002-documento-comite.pdf",
+        "extracto": "SR20260922-002-documento-comite.extracto.txt",
+        "extractoRuta": "activo/20260924-0100016507/archivos/SR20260922-002-documento-comite.extracto.txt",
+        "tipo": "circular",
+        "mime": "application/pdf",
+        "bytes": 288561,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-09-24T20:20:59",
+        "url": "/api/caso/20260924-0100016507/archivo/SR20260922-002-documento-comite.pdf",
+        "urlExtracto": "/api/caso/20260924-0100016507/archivo/SR20260922-002-documento-comite.extracto.txt"
+      },
+      {
+        "nombre": "SR20260922-002-mockups.pdf",
+        "ruta": "activo/20260924-0100016507/archivos/SR20260922-002-mockups.pdf",
+        "extracto": "SR20260922-002-mockups.extracto.txt",
+        "extractoRuta": "activo/20260924-0100016507/archivos/SR20260922-002-mockups.extracto.txt",
+        "tipo": "circular",
+        "mime": "application/pdf",
+        "bytes": 51856,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-09-24T20:20:59",
+        "url": "/api/caso/20260924-0100016507/archivo/SR20260922-002-mockups.pdf",
+        "urlExtracto": "/api/caso/20260924-0100016507/archivo/SR20260922-002-mockups.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1) En preversión, al procesar la entrada 0300025869 (PROCESAR_IMOVH), las cinco líneas de la CxP 03CM001766 quedan con el IVA de su lote: 550.585,80; 3.854.100,60; 5.117.209,20; 2.979.640,80 y 8.096.850,00.\n2) La suma del IVA del detalle FCXPD y el IVA de la cabecera FCXP es 20.598.386,40.\n3) La base (108.412.560) y el neto de cabecera (129.010.946,40) no cambian respecto al caso documentado en comité.\n4) Una compra de un solo lote por artículo conserva los mismos importes que hoy cuando ya cuadraban.\n5) SPK_CALCULOVALORESCXP sigue solo totalizando el detalle en cabecera; no se modifica.\n6) RECONSTRUIR_CUENTAS_FCXPD no sustituye este arreglo (solo cuentas, no VLR_IVA).",
+      "originalesEn": "2026-09-25T01:23:50.841Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En preversión, al procesar la entrada 0300025869 (PROCESAR_IMOVH), las cinco líneas de la CxP 03CM001766 quedan con el IVA de su lote: 550.585,80; 3.854.100,60; 5.117.209,20; 2.979.640,80 y 8.096.850,00.\n2) La suma del IVA del detalle FCXPD y el IVA de la cabecera FCXP es 20.598.386,40.\n3) La base (108.412.560) y el neto de cabecera (129.010.946,40) no cambian respecto al caso documentado en comité.\n4) Una compra de un solo lote por artículo conserva los mismos importes que hoy cuando ya cuadraban.\n5) SPK_CALCULOVALORESCXP sigue solo totalizando el detalle en cabecera; no se modifica.\n6) RECONSTRUIR_CUENTAS_FCXPD no sustituye este arreglo (solo cuentas, no VLR_IVA).",
+      "trasAnalisisEn": "2026-09-25T01:24:04.761Z",
+      "definitivos": "1) Preversión: PROCESAR_IMOVH entrada 0300025869 → cinco IVAs por lote en 03CM001766. 2) Suma IVA detalle = cabecera 20.598.386,40. 3) Base/neto cabecera estables. 4) Un solo lote sin regresión. 5) SPK_CALCULOVALORESCXP sin cambio. 6) RECONSTRUIR no corrige IVA.",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo. REQ alineado con SR20260922-002. Fichas SPQ_FCXP/PROCESAR_IMOVH y SPK_INSERT_CXP_INV en estado leido; no se requieren scripts en activo/20260924-0100016507/sql/ para este turno. Vista VWK documentada en especificación sql/VWK_IMOVH_AGRUPADO.sql (carpeta Documentar BA). PDF comité sin extracto automático; contenido funcional tomado de solicitudes/SR20260922-002 y diagrama adjunto.",
+      "fecha": "2026-09-25T01:32:00.000Z",
+      "estado": "listo",
+      "sps": "VWK_IMOVH_AGRUPADO (vista, espec sql/) · SPK_INSERT_CXP_INV (SPK, leido) · SPQ_FCXP·PROCESAR_IMOVH (leido, rol: invoca SPK)"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260924-0100016507/diagramas/flujo.html",
+      "subidaEn": "2026-09-24T20:24:39",
+      "url": "/api/caso/20260924-0100016507/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "flujo-compras-inv-cxp-caja",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260924-0100016507-flujo.html"
+    },
+    "mockups": [
+      "activo/20260924-0100016507/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20260924-0100016507\\sql\\",
+    "carpetaRelativa": "activo/20260924-0100016507/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016507\\",
+    "archivosEsperados": [
+      "VWK_IMOVH_AGRUPADO.sql",
+      "SPK_INSERT_CXP_INV.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "flujo-compras-inv-cxp-caja",
+    "catalogo": "conocimiento/flujo-compras-inv-cxp-caja/sps.json",
+    "metodosDocumentados": [],
+    "notas": "VWK_IMOVH_AGRUPADO no está en sps.json; publicar como vista SQL. No listar SPK_CALCULOVALORESCXP ni RECONSTRUIR_CUENTAS_FCXPD. Especificación de referencia en sql/ (Documentar); bajar a activo/sql al cerrar dictamen si se relee DESAIX.",
+    "pruebasUnitarias": "Caso 0300025869 / CxP 03CM001766 / INS0038-3 (comité SR20260922-002)."
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260924-0100016507.html",
+    "aprobados": "aprobados/20260924-0100016507/",
+    "imagenes": "aprobados/20260924-0100016507/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-24",
+    "ultimoEnvio": "2026-09-24T20:29:44",
+    "reenvios": 0,
+    "destinatario": "guillermo.garcia@ixcolombia.com",
+    "via": "smtp"
+  }
+}

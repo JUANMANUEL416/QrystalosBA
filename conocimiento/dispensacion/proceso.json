@@ -1,0 +1,1191 @@
+{
+  "id": "dispensacion",
+  "nombre": "Dispensación",
+  "modulo": "IZSOL",
+  "familia": "inventario",
+  "prioridad": 24,
+  "enRuta": false,
+  "estado": "documentado",
+  "resumen": "Farmacia entrega lo pedido en una solicitud (IZSOL) y confirma la salida. La procedencia de la solicitud (enfermería, orden médica, consulta externa, cirugía, aplicación, consumo…) cambia las validaciones, el tercero y el cobro. Libro: 10 capítulos, 3 mapas, 2 flujos, 1 semáforo.",
+  "actualizado": "2026-10-04T11:30:00",
+  "notaSql": "2026-10-04. SPQ_IZSOL (AGREGAR, ENTREGAR, PROCESAR, CONF_MOVIMIENTO, VALIDA_TOTAL, ACTUALIZA_CARGO, IMPRE_MOVIMIENTO), SPQ_IZSOL_2 y SPK_CONFIRMASAL_CM leídos en PREVERSION para las procedencias (IZSOL.CLASE). Fichas en inventario/sps.json. 2026-10-02. Los métodos de entregar, procesar y confirmar ya están leídos en la ficha de inventario (SPQ_IZSOL, SPQ_IZSOL_2, SPK_CONFIRMASAL_CM). PREVERSION de SPQ_IZSOL va por delante de la 2.0.5 en el cobro y en la firma del PDF. El rechazo por medicamento suspendido ya está en la 2.0.5.",
+  "alcanceHasta": "Desde que se toma la solicitud hasta la salida confirmada y, si aplica, el cierre. No reescribe compras ni la pantalla de aplicación.",
+  "flujoResumen": "Solicitud IZSOL → tomar (AGREGAR) → entregar por lote (ENTREGAR) → procesar (PROCESAR) → confirmar salida (CONF_MOVIMIENTO → SPK_CONFIRMASAL_CM) → cobro, firmas, devolución.",
+  "ventanas": [
+    {
+      "uso": "Solicitudes de dispensación",
+      "ruta": "inv.izsol_2",
+      "path": "/inv/sol_2",
+      "vue": "pages/inv/izsol/SolicitudesPage.vue → components/inv/izsol/IndexComponent.vue",
+      "entrada": "Inventario → Solicitudes. Hay que elegir bodega. Filtros: Tipo, Estado (Abiertas/Cerradas/Todas), Procedencia, Servicio/Sector, artículo, fechas, sede, Urgencias, Todos los pedidos."
+    },
+    {
+      "uso": "Movimiento de la solicitud (entregar / procesar / confirmar)",
+      "ruta": "inv.izsol_2",
+      "path": "/inv/sol_2 (diálogo)",
+      "vue": "components/inv/izsol/IMOVComponent.vue · IMOVComponetNew.vue",
+      "entrada": "Desde la fila de la solicitud: Dispensar → Entregar por lote o Código de barras → Procesar dispensación → Conf. Mov."
+    },
+    {
+      "uso": "Nueva dispensación CE (manual)",
+      "ruta": "inv.izsol_2",
+      "path": "/inv/sol_2 (diálogo)",
+      "vue": "components/inv/izsol/NuevaDispensacionCEDialog.vue",
+      "entrada": "Botón Nueva dispensación (permiso CEFM_WEB · NUEVA_SOLICITUD): paciente, SKU y lote; reserva y dispensa. Crea CEFM / AUT y la solicitud TRANS_CE."
+    },
+    {
+      "uso": "Aplicación de medicamentos desde farmacia",
+      "ruta": "inv.izsol_2",
+      "path": "/inv/sol_2 (diálogo)",
+      "vue": "components/inv/izsol/ListaAplicacionMedicamentos.vue",
+      "entrada": "Botón Apli.Med (USA_APLIMF = SI): insumos pedidos por el ciclo de aplicación (APLIMF) que farmacia dispensa."
+    },
+    {
+      "uso": "Gestión de movimientos",
+      "ruta": "inv.ges",
+      "path": "/inv/ges",
+      "vue": "pages/inv/izsol/IMOVPage.vue",
+      "entrada": "Inventario → Movimientos: la misma salida de la dispensación vista como movimiento (confirmar, anular, imprimir)."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "documentado",
+      "explicacion": "La bodega activa manda el stock. La vigencia de la solicitud, el INVIMA y el país cambian reglas. El tipo de movimiento de la dispensación lo fija la configuración de la institución (no es la venta de mostrador ni la custodia).",
+      "tablasClave": [
+        "IBOD",
+        "USVGS",
+        "ITMO"
+      ],
+      "controles": [
+        {
+          "id": "dispensacion-vigencia",
+          "nombre": "Solicitud vigente",
+          "explicacion": "Si la vigencia está activa, no se entrega una solicitud más vieja que las horas configuradas. La admisión cerrada también bloquea, con las excepciones ya fichadas (producción, consumo, consulta externa, cirugía y prestaciones).",
+          "invariante": "No se abre el movimiento si otro equipo ya tiene la solicitud, salvo que el usuario la tome.",
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "AGREGAR",
+              "rol": "Fichado en inventario."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "documentado",
+      "explicacion": "Tomar la solicitud arma o reabre el movimiento en borrador. Entregar elige lote y cantidad. Procesar pasa eso al detalle del movimiento. Confirmar descuenta y cierra la solicitud si no queda nada pendiente.",
+      "tablasClave": [
+        "IZSOL",
+        "IZSOLD",
+        "IZSOLDT",
+        "IMOV",
+        "IMOVH",
+        "IEXI"
+      ],
+      "controles": [
+        {
+          "id": "dispensacion-entregar",
+          "nombre": "Entregar, procesar y confirmar",
+          "explicacion": "ENTREGAR reserva el lote. Desde la 2.0.5 no deja dispensar un medicamento suspendido en la orden médica (clases de hospitalización, orden médica, enfermería y prestaciones). PROCESAR arma el detalle. CONF_MOVIMIENTO confirma la salida con SPK_CONFIRMASAL_CM. El presupuesto de materiales de esa confirmación está apagado (INV-TCK-04).",
+          "invariante": "Hasta confirmar, el movimiento sigue en borrador. No se dispensa lo suspendido ni más cantidad que la existencia.",
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "ENTREGAR / PROCESAR / CONF_MOVIMIENTO",
+              "rol": "Fichado en inventario."
+            },
+            {
+              "nombre": "SPK_CONFIRMASAL_CM",
+              "metodo": "(SPK)",
+              "rol": "Confirma la salida. HPREP de materiales apagado en 2.0.5 y en PREVERSION."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "documentado",
+      "explicacion": "La solicitud puede nacer de enfermería, orden médica, orden de 24 horas, prestaciones, consulta externa (autorización, transcripción, fórmula), programa de cirugía, oncología, hemodinamia, aplicación de medicamentos, producción o consumo. IZSOL.CLASE guarda esa procedencia y el SP decide por ella qué valida, de dónde saca el paciente y el tercero y si cobra. El capítulo «Procedencias» del libro las explica una por una.",
+      "tablasClave": [
+        "HADM",
+        "AUT",
+        "APLIMF",
+        "HCATD"
+      ],
+      "controles": [
+        {
+          "id": "dispensacion-origen",
+          "nombre": "Origen de la solicitud",
+          "explicacion": "AGREGAR y CONF_MOVIMIENTO leen IZSOL.CLASE. Admisión (SENFER, OMEDICA, 24HORAS, HTX…): bloquea si la admisión está cerrada (ALTAS_QUE_VALIDA_INV) o la solicitud venció (MVIGENCIAIZSOL / HVIGENCIAIZSOL); tercero de HADM, área y centro de HHAB. Consulta externa CE: la orden AUT no puede estar anulada; si generó caja, el copago debe estar recaudado; tercero, área y centro de AUT. Manual CE (TRANS_CE, FORMEDCE, CE con MANUALCE): salta vigencia, cierre y copago. PROD y Consumo: sin admisión y sin cobro. APLIM: al confirmar marca la línea APLIMF como DISPENSADA.",
+          "invariante": "No se entrega una orden de consulta externa anulada ni una solicitud de admisión cerrada o vencida.",
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "AGREGAR / CONF_MOVIMIENTO",
+              "rol": "Validan la clase. Fichado en inventario."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "documentado",
+      "explicacion": "Después de entregar se puede cerrar la entrega domiciliaria, devolver y autorizar. El cobro de la solicitud y la firma del PDF solo cambian en la canasta abierta, todavía no en la 2.0.5.",
+      "tablasClave": [
+        "AUT",
+        "HPRE",
+        "DOCS"
+      ],
+      "controles": [
+        {
+          "id": "dispensacion-despues",
+          "nombre": "Después de entregar",
+          "explicacion": "Devolver una salida confirmada y terminar la entrega están en SPQ_IZSOL_2, ya leído. Cerrar la solicitud anula movimientos vacíos y deja la solicitud cerrada.",
+          "invariante": "Reabrir solo si queda alguna línea pendiente.",
+          "sps": [
+            {
+              "nombre": "SPQ_IZSOL_2",
+              "metodo": "TERMINAR_ENTREGA / PROCESAR_DEVOLUCION",
+              "rol": "Fichado en inventario."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "CERRAR_IZSOL / ABRIR_IZSOL",
+              "rol": "Fichado en inventario."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "documentado",
+      "explicacion": "Al confirmar, si el tipo y la bodega se contabilizan, nace el comprobante de inventario. Si la salida llega sin centro de costo, el comprobante queda con cuenta no definida; el centro se corrige en el movimiento, no en esta pantalla.",
+      "tablasClave": [
+        "IMOV",
+        "MCP"
+      ],
+      "controles": [
+        {
+          "id": "dispensacion-contab",
+          "nombre": "Comprobante de la salida",
+          "explicacion": "SPK_CONFIRMASAL_CM llama la contabilización del movimiento cuando corresponde. El centro y el área tienen que venir en el movimiento.",
+          "invariante": "No se repite el comprobante del mismo movimiento.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_INV",
+              "metodo": "(SPK)",
+              "rol": "Proceso inventario, capa de contabilidad."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "incluirProcesoMdEnLibro": false,
+  "procedenciasLibro": [
+    {
+      "codigo": "SENFER",
+      "nombre": "Enfermería",
+      "origen": "Hospitalización",
+      "icono": "local_hospital",
+      "codigoOrigen": "HADM · pedido del piso",
+      "descripcion": "Solicitud del servicio para un paciente admitido. Valida admisión cerrada y vigencia; no dispensa medicamento suspendido. El cargo al paciente se genera al confirmar.",
+      "ventana": "Enfermería → pedido a farmacia"
+    },
+    {
+      "codigo": "OMEDICA",
+      "nombre": "Orden médica",
+      "origen": "Hospitalización",
+      "icono": "medical_information",
+      "codigoOrigen": "HADM · orden médica",
+      "descripcion": "Nace de la orden médica. Al confirmar toma el tercero de la admisión y el área y centro de costo de la habitación.",
+      "ventana": "Orden médica → solicitud"
+    },
+    {
+      "codigo": "24HORAS",
+      "nombre": "Orden 24 horas",
+      "origen": "Hospitalización",
+      "icono": "schedule",
+      "codigoOrigen": "IZSOLM · pedido del día",
+      "descripcion": "El pedido consolidado del día. Para artículos con autorización (PROA) se busca el Iniciar vigente del servicio en la admisión.",
+      "ventana": "Farmacia clínica → 24 horas"
+    },
+    {
+      "codigo": "HTX",
+      "nombre": "Cargos de historia",
+      "origen": "Hospitalización",
+      "icono": "history_edu",
+      "codigoOrigen": "HTX · cargo",
+      "descripcion": "Solicitud ligada a un cargo de la historia clínica del paciente admitido.",
+      "ventana": "Historia clínica"
+    },
+    {
+      "codigo": "HBALINI",
+      "nombre": "Balance inicial",
+      "origen": "Hospitalización",
+      "icono": "balance",
+      "codigoOrigen": "HBALI",
+      "descripcion": "Medicamentos del balance de líquidos. Si MODOCOBROMEDHBALI = HBALI, el cobro lo hace ese módulo y no la dispensación.",
+      "ventana": "Balance de líquidos"
+    },
+    {
+      "codigo": "OMSOLI",
+      "nombre": "Solicitud desde la orden",
+      "origen": "Hospitalización",
+      "icono": "assignment",
+      "codigoOrigen": "OM · solicitud",
+      "descripcion": "Solicitud generada desde el módulo de órdenes. Se trata como solicitud de admisión.",
+      "ventana": "Órdenes"
+    },
+    {
+      "codigo": "HPRE",
+      "nombre": "Prestaciones",
+      "origen": "Prestación",
+      "icono": "receipt",
+      "codigoOrigen": "HPRE · prestación",
+      "descripcion": "La referencia es la prestación, no la admisión: no valida cierre ni vigencia, pero sí medicamento suspendido.",
+      "ventana": "Prestaciones"
+    },
+    {
+      "codigo": "CE",
+      "nombre": "Autorizaciones",
+      "origen": "Consulta externa",
+      "icono": "verified",
+      "codigoOrigen": "AUT · IDAUT",
+      "descripcion": "La autorización es la referencia. Orden anulada bloquea. Si la autorización generó caja, el copago debe estar recaudado. Al confirmar, el CUM dispensado se guarda en la autorización.",
+      "ventana": "Autorizador CE"
+    },
+    {
+      "codigo": "TRANS_CE",
+      "nombre": "Transcripciones CE",
+      "origen": "Consulta externa",
+      "icono": "edit_note",
+      "codigoOrigen": "AFI · afiliado (manual)",
+      "descripcion": "Dispensación manual: farmacia transcribe la fórmula. Guarda el afiliado; la orden es AUT.CNSMOV / AUTE. Salta vigencia, cierre de admisión y copago.",
+      "ventana": "Nueva dispensación / Transcripciones"
+    },
+    {
+      "codigo": "FORMEDCE",
+      "nombre": "Fórmula médica CE",
+      "origen": "Consulta externa",
+      "icono": "description",
+      "codigoOrigen": "FME · fórmula",
+      "descripcion": "Nace de la fórmula médica de consulta externa. Guarda el afiliado; se trata como manual CE y bloquea si la orden asociada está anulada.",
+      "ventana": "Fórmula médica"
+    },
+    {
+      "codigo": "FORMEDASIS",
+      "nombre": "Fórmula médica asistencial",
+      "origen": "Asistencial",
+      "icono": "description",
+      "codigoOrigen": "FME · fórmula",
+      "descripcion": "Fórmula generada en el módulo asistencial (historia). Mismo documento FME que la de consulta externa.",
+      "ventana": "Historia clínica → fórmula"
+    },
+    {
+      "codigo": "APOYODX",
+      "nombre": "Apoyo diagnóstico",
+      "origen": "Servicios",
+      "icono": "biotech",
+      "codigoOrigen": "Apoyo Dx",
+      "descripcion": "Insumos de apoyo diagnóstico. El cargo se genera de inmediato, igual que enfermería.",
+      "ventana": "Apoyo diagnóstico"
+    },
+    {
+      "codigo": "QXPGCX",
+      "nombre": "Programa de cirugía",
+      "origen": "Cirugía",
+      "icono": "vaccines",
+      "codigoOrigen": "QXPCX · programación",
+      "descripcion": "La programación quirúrgica es la referencia. No valida vigencia ni cierre de admisión. Se puede surtir leyendo la etiqueta del paquete.",
+      "ventana": "Programación QX"
+    },
+    {
+      "codigo": "ONCO",
+      "nombre": "Oncológico",
+      "origen": "Oncología",
+      "icono": "healing",
+      "codigoOrigen": "CIT · cita",
+      "descripcion": "Paciente, plan y contratante salen de la cita oncológica.",
+      "ventana": "Oncología"
+    },
+    {
+      "codigo": "HEMOD",
+      "nombre": "Hemodinamia",
+      "origen": "Procedimiento",
+      "icono": "monitor_heart",
+      "codigoOrigen": "Hemodinamia",
+      "descripcion": "Insumos del procedimiento de hemodinamia.",
+      "ventana": "Hemodinamia"
+    },
+    {
+      "codigo": "APLIM",
+      "nombre": "Aplicación de medicamentos",
+      "origen": "Consulta externa",
+      "icono": "vaccines",
+      "codigoOrigen": "APLIM · evento",
+      "descripcion": "La línea del insumo (APLIMF) guarda el número de solicitud. Al confirmar queda DISPENSADA con el movimiento y el artículo real.",
+      "ventana": "Aplicación de medicamentos / botón Apli.Med"
+    },
+    {
+      "codigo": "PROD",
+      "nombre": "Producción",
+      "origen": "Interno",
+      "icono": "precision_manufacturing",
+      "codigoOrigen": "Sin paciente",
+      "descripcion": "Sin admisión: no valida cierre ni vigencia y no genera cobro.",
+      "ventana": "Producción"
+    },
+    {
+      "codigo": "Consumo",
+      "nombre": "Gasto por consumo",
+      "origen": "Interno",
+      "icono": "inventory",
+      "codigoOrigen": "CCOSTO · sector",
+      "descripcion": "La solicitud de consumo usa el centro de costo como sector. No cobra a un paciente; es gasto.",
+      "ventana": "Gasto por consumo"
+    }
+  ],
+  "flujos": [
+    {
+      "id": "dispensar",
+      "nombre": "Dispensar: de la solicitud a la salida confirmada",
+      "descripcion": "Quién hace qué desde que la solicitud aparece en la bodega hasta que la existencia baja y el paciente tiene el cargo.",
+      "icono": "medication",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir bodega y ubicar la solicitud",
+          "descripcion": "La farmacia entra a Solicitudes con su bodega. Filtra por Tipo, Estado, Procedencia, Servicio/Sector, artículo o fechas; «Urgencias» resalta las marcadas.",
+          "rol": "Farmacia",
+          "pantalla": "Inventario → Solicitudes",
+          "tablas": [
+            "IZSOL",
+            "IZSOLD",
+            "VWK_IZSOL"
+          ],
+          "sp": "AppStore.read VWK_IZSOL"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Tomar la solicitud",
+          "descripcion": "Abre o reabre el movimiento de salida en borrador para esa solicitud. Si otra estación la tiene, avisa.",
+          "rol": "Sistema",
+          "pantalla": "Dispensar",
+          "tablas": [
+            "IMOV"
+          ],
+          "sp": "SPQ_IZSOL · AGREGAR → SPK_CM_GENIMOV_SOL"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Se puede entregar?",
+          "descripcion": "Admisión cerrada (ALTAS_QUE_VALIDA_INV), solicitud vencida (MVIGENCIAIZSOL / HVIGENCIAIZSOL), orden de consulta externa anulada o copago sin recaudar detienen aquí. Las procedencias manuales CE, producción, consumo, cirugía y prestaciones no pasan por vigencia ni cierre.",
+          "rol": "Sistema",
+          "pantalla": "Dispensar",
+          "tablas": [
+            "HADM",
+            "AUT",
+            "FCJ"
+          ],
+          "sp": "SPQ_IZSOL · AGREGAR"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Entregar por lote",
+          "descripcion": "Para cada línea elige lote y cantidad (o lee el código de barras). No supera la existencia del lote ni dispensa un medicamento suspendido en la orden. Artículos con autorización exigen la línea Iniciar vigente.",
+          "rol": "Farmacia",
+          "pantalla": "Dispensar → Entregar / Código de barras",
+          "tablas": [
+            "IEXI",
+            "IZSOLDT",
+            "FAR_OM_EVENTO",
+            "HCATD"
+          ],
+          "sp": "SPQ_IZSOL · ENTREGAR / VALIDA_TOTAL"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Procesar",
+          "descripcion": "Pasa lo entregado al detalle del movimiento. La línea con faltante queda abierta para una próxima entrega.",
+          "rol": "Farmacia",
+          "pantalla": "Procesar dispensación",
+          "tablas": [
+            "IMOVH",
+            "IZSOLD"
+          ],
+          "sp": "SPQ_IZSOL · PROCESAR"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Confirmar el movimiento",
+          "descripcion": "Completa tercero, área y centro según la procedencia (admisión/habitación o autorización) y confirma la salida: existencias, kardex y contabilidad.",
+          "rol": "Farmacia",
+          "pantalla": "Conf. Mov.",
+          "tablas": [
+            "IMOV",
+            "IEXI",
+            "IDXB",
+            "IART"
+          ],
+          "sp": "SPQ_IZSOL · CONF_MOVIMIENTO → SPK_CONFIRMASAL_CM"
+        },
+        {
+          "num": 7,
+          "tipo": "sistema",
+          "titulo": "Cobro, aplicación y cierre",
+          "descripcion": "Genera el cargo al paciente (salvo producción y consumo); en aplicación marca la línea como dispensada; los insumos quedan recibidos si IENF_RECIBE_INSUMOS ≠ SI; si no queda nada pendiente, la solicitud pasa a Cerrada.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "HPRE",
+            "APLIMF",
+            "IZSOL"
+          ],
+          "sp": "SPK_GENCOBRO_INSCENTRAL"
+        },
+        {
+          "num": 8,
+          "tipo": "resultado",
+          "titulo": "Firmas y comprobante",
+          "descripcion": "Firma del paciente o de la enfermera que recibe (manuscrita, Wacom o huella), impresión del movimiento y comprobante al paciente.",
+          "rol": "Farmacia / Enfermería",
+          "pantalla": "Firma manuscrita · Comprobante",
+          "tablas": [
+            "IMOV",
+            "DOCS"
+          ],
+          "sp": "SPQ_IZSOL · FIRMAR_PACIENTE_MOV / IMPRE_MOVIMIENTO"
+        }
+      ]
+    },
+    {
+      "id": "despues-entregar",
+      "nombre": "Después de entregar: cerrar, deshacer, devolver y recibir",
+      "descripcion": "Lo que puede pasar con una solicitud ya tomada o ya confirmada.",
+      "icono": "undo",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Retirar entrega / Deshacer entrega",
+          "descripcion": "Antes de confirmar: clic derecho en el lote → Retirar entrega; o Deshacer entrega con permiso. En Nueva dispensación CE, «Deshacer y corregir» anula solicitud, autorización y fórmula si el candado no se ejecutó.",
+          "rol": "Farmacia",
+          "pantalla": "Dispensar",
+          "tablas": [
+            "IZSOLDT",
+            "IMOVH",
+            "CEFM",
+            "AUT"
+          ],
+          "sp": "SPQ_IZSOL · DESHACER_ENTREGA · CEFM · DESHACER_DISP_MANUAL"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Cerrar o abrir la solicitud",
+          "descripcion": "Cerrar anula los movimientos vacíos y deja la solicitud Cerrada; con IZSOL_CIERRE_MOTIVO = SI pide motivo. Abrir requiere permiso y líneas pendientes.",
+          "rol": "Farmacia",
+          "pantalla": "Cerrar / Abrir solicitud",
+          "tablas": [
+            "IZSOL",
+            "IMOV"
+          ],
+          "sp": "SPQ_IZSOL · VALIDA_CERRAR_IZSOL / CERRAR_IZSOL / ABRIR_IZSOL"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Hay devolución?",
+          "descripcion": "Si el servicio devuelve medicamento ya confirmado, la devolución se procesa desde la misma solicitud con motivo.",
+          "rol": "Farmacia",
+          "pantalla": "Devoluciones Pendientes → Procesar devolución",
+          "tablas": [
+            "IZSOL",
+            "IMOV"
+          ],
+          "sp": "SPQ_IZSOL_2 · CONSULTA_DEV_PENDIENTES"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Procesar la devolución",
+          "descripcion": "Crea y confirma una entrada con el tipo IDINVMOV_DEVOLUCION que reintegra el lote; la solicitud muestra «Dev. parcial» o «Dev. total».",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "IMOV",
+            "IMOVH",
+            "IEXI"
+          ],
+          "sp": "SPQ_IZSOL_2 · PROCESAR_DEVOLUCION → SPK_CONFIRMARENTRADAS"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Entregas no recibidas",
+          "descripcion": "Enfermería recibe o regresa lo que farmacia envió; con INV_RECIBE_CON_LOGIN = SI identifica al que recibe. Terminar entrega cierra la entrega domiciliaria.",
+          "rol": "Enfermería / Farmacia",
+          "pantalla": "Entregas No Recib. · Terminar Ent.",
+          "tablas": [
+            "IMOVH",
+            "IMOV"
+          ],
+          "sp": "SPQ_IZSOL_2 · TERMINAR_ENTREGA · SPQ_GES_MED"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Autorizar, cambiar cantidad, copago",
+          "descripcion": "Desde el menú contextual: Autorizar este ítem / todos, Cambiar cantidad y Modificar copago, cada uno con su permiso.",
+          "rol": "Farmacia",
+          "pantalla": "Menú contextual",
+          "tablas": [
+            "IZSOLD",
+            "AUT"
+          ],
+          "sp": "SPQ_IZSOL_2 · AUTORIZAR / CAMBIAR_CANTIDAD / MODIFICA_COPAGO"
+        }
+      ]
+    }
+  ],
+  "estadosSolicitud": {
+    "titulo": "Estados de la solicitud, sus líneas y el movimiento",
+    "descripcion": "IZSOL.ESTADO, IZSOLD.ESTADO e IMOV.ESTADO. Lo que condiciona qué botón aparece en Solicitudes.",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "IZSOL 1",
+        "tono": "ambar",
+        "etiquetas": [
+          "IZSOL.ESTADO 1",
+          "Abierta"
+        ],
+        "significa": "Hay algo por entregar. Es la que se trabaja en farmacia.",
+        "queHacer": "Dispensar → entregar, procesar y confirmar. Si ya no se va a entregar, Cerrar solicitud (con motivo si está configurado)."
+      },
+      {
+        "codigo": "IZSOL 2",
+        "tono": "verde",
+        "etiquetas": [
+          "IZSOL.ESTADO 2",
+          "Cerrada"
+        ],
+        "significa": "Todo entregado o cerrada a mano. Los movimientos vacíos quedaron anulados.",
+        "queHacer": "Consultar, imprimir, devolver. Abrir solo con permiso y si quedan líneas pendientes."
+      },
+      {
+        "codigo": "Línea 1",
+        "tono": "ambar",
+        "etiquetas": [
+          "IZSOLD.ESTADO 1",
+          "Con faltante"
+        ],
+        "significa": "La línea pidió más de lo entregado; al confirmar se reabre para que la solicitud no se cierre.",
+        "queHacer": "Entregar el resto en una nueva pasada o cerrar la solicitud."
+      },
+      {
+        "codigo": "Línea 0",
+        "tono": "verde",
+        "etiquetas": [
+          "IZSOLD.ESTADO 0",
+          "Completa"
+        ],
+        "significa": "Entregado todo lo pedido.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "Suspendido",
+        "tono": "rojo",
+        "etiquetas": [
+          "SUSPENDIDO = 1",
+          "Candado"
+        ],
+        "significa": "El médico suspendió el medicamento en la orden (24 horas, orden médica, enfermería, prestaciones).",
+        "queHacer": "No se dispensa. Si la orden cambia, la línea se libera sola."
+      },
+      {
+        "codigo": "IMOV 0",
+        "tono": "ambar",
+        "etiquetas": [
+          "IMOV.ESTADO 0",
+          "Borrador"
+        ],
+        "significa": "El movimiento de la dispensación existe pero no afecta existencias.",
+        "queHacer": "Procesar y Conf. Mov.; o retirar entregas."
+      },
+      {
+        "codigo": "IMOV 1",
+        "tono": "verde",
+        "etiquetas": [
+          "IMOV.ESTADO 1",
+          "Confirmado"
+        ],
+        "significa": "Existencias descontadas, kardex y cargo generados.",
+        "queHacer": "Devolver desde la solicitud si el servicio regresa medicamento."
+      },
+      {
+        "codigo": "Dev.",
+        "tono": "azul",
+        "etiquetas": [
+          "Dev. parcial / total",
+          "Insignia"
+        ],
+        "significa": "La solicitud tiene devoluciones procesadas; el motivo se ve al pasar el mouse.",
+        "queHacer": "Consultar."
+      }
+    ],
+    "nota": "El filtro Estado de la pantalla ofrece Abiertas (1), Cerradas (2) y Todas."
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Entregar los medicamentos de una solicitud",
+      "donde": "Inventario → Solicitudes → fila → Dispensar → Entregar",
+      "condicion": "Bodega elegida; solicitud Abierta; lote con existencia y vencimiento vigente.",
+      "noEs": "Movimientos → salida manual: esa no cierra la solicitud ni cobra al paciente."
+    },
+    {
+      "necesidad": "Dispensar leyendo el código de barras",
+      "donde": "Dispensar → Código de barras",
+      "condicion": "El artículo tiene código registrado (AGREGA_CODIGO_BARRA); valida total por línea.",
+      "noEs": "Etiqueta de reserva de hemoderivados."
+    },
+    {
+      "necesidad": "Confirmar la salida y que baje la existencia",
+      "donde": "Dispensar → Procesar dispensación → Conf. Mov.",
+      "condicion": "Al menos una línea procesada; admisión no cerrada; presupuesto aprobado si aplica.",
+      "noEs": "Procesar solo arma el detalle: sin Conf. Mov. no hay salida."
+    },
+    {
+      "necesidad": "Saber de dónde viene la solicitud",
+      "donde": "Solicitudes → filtro Procedencia · columna CLASE del detalle",
+      "condicion": "El código (SENFER, OMEDICA, CE, TRANS_CE, APLIM…) decide validaciones y cobro.",
+      "noEs": "El Tipo del filtro es otra cosa (cama, servicio…)."
+    },
+    {
+      "necesidad": "Dispensar una fórmula de consulta externa sin solicitud previa",
+      "donde": "Solicitudes → Nueva dispensación (o Volver a transcripciones)",
+      "condicion": "Permiso CEFM_WEB · NUEVA_SOLICITUD; paciente, SKU y lote.",
+      "noEs": "Autorizador CE clásico (CE): ese exige copago en caja."
+    },
+    {
+      "necesidad": "Devolver medicamento que el servicio regresó",
+      "donde": "Solicitudes → Devoluciones Pendientes → Procesar devolución",
+      "condicion": "Movimiento confirmado, motivo y tipo IDINVMOV_DEVOLUCION configurado; permiso devolucion_inv.",
+      "noEs": "Devolución a proveedor (otro proceso)."
+    },
+    {
+      "necesidad": "Quitar un lote que entregué por error",
+      "donde": "Dispensar → clic derecho en el lote → Retirar entrega",
+      "condicion": "Antes de Conf. Mov.; con permiso deshacer_entrega para entregas ya procesadas.",
+      "noEs": "Si ya confirmó, use Devolver."
+    },
+    {
+      "necesidad": "Cerrar una solicitud que no se va a entregar",
+      "donde": "Solicitudes → fila → Cerrar solicitud",
+      "condicion": "Permiso cerrar_solicitud_dispensacionINV; motivo si IZSOL_CIERRE_MOTIVO = SI.",
+      "noEs": "Anular el movimiento desde Movimientos deja la solicitud abierta."
+    },
+    {
+      "necesidad": "Reabrir una solicitud cerrada",
+      "donde": "Solicitudes → fila → Abrir solicitud",
+      "condicion": "Permiso abrir_solicitud y líneas con faltante.",
+      "noEs": "Una solicitud completa no se reabre: se pide otra."
+    },
+    {
+      "necesidad": "Surtir desde otra bodega",
+      "donde": "Solicitudes → Traer de otra Bodega",
+      "condicion": "Permiso per_traslado_bodegas; genera traslado (salida IDTS → entrada IDTE).",
+      "noEs": "No es la custodia ni la entrada propia."
+    },
+    {
+      "necesidad": "Dispensar insumos de un ciclo de aplicación",
+      "donde": "Solicitudes → Apli.Med",
+      "condicion": "USA_APLIMF = SI; la línea APLIMF queda DISPENSADA al confirmar.",
+      "noEs": "La aplicación la marca enfermería en Aplicación de medicamentos."
+    },
+    {
+      "necesidad": "Firmar la entrega (paciente o enfermera)",
+      "donde": "Dispensar → Firma manuscrita / Huella dactilar",
+      "condicion": "Permisos Firma_paciente_mov / Firma_recibido_enf; Wacom si FIRMA_WACOM = SI.",
+      "noEs": "La firma no confirma el movimiento."
+    },
+    {
+      "necesidad": "Imprimir el movimiento o el comprobante del paciente",
+      "donde": "Fila → Imprimir · Comprobante",
+      "condicion": "Permisos COMPROBANTES_INV · Print_comp_paciente; prescripción en PDF si IZSOL_PDF_PRESCRIP = SI.",
+      "noEs": "La orden médica se imprime con print_orden_medica."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Dispensar",
+      "icono": "medication",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Abre el movimiento de la solicitud (IZSOL · AGREGAR). Si otra estación la tiene, avisa."
+    },
+    {
+      "label": "Entregar · Código de barras",
+      "icono": "qr_code_scanner",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Elige lote y cantidad por línea o lee el código (IZSOL · ENTREGAR / VALIDA_CODIGO_BARRA / VALIDA_TOTAL)."
+    },
+    {
+      "label": "Procesar dispensación",
+      "icono": "playlist_add_check",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Pasa lo entregado al detalle del movimiento (IZSOL · PROCESAR). Sigue en borrador."
+    },
+    {
+      "label": "Conf. Mov.",
+      "icono": "lock",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma la salida (IZSOL · CONF_MOVIMIENTO → SPK_CONFIRMASAL_CM): existencias, kardex, cargo, cierre."
+    },
+    {
+      "label": "Retirar entrega / Deshacer entrega",
+      "icono": "undo",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Quita un lote antes de confirmar (menú contextual; permiso deshacer_entrega para entregas procesadas)."
+    },
+    {
+      "label": "Cerrar / Abrir solicitud",
+      "icono": "lock_open",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Cerrar anula movimientos vacíos (permiso cerrar_solicitud_dispensacionINV; motivo si IZSOL_CIERRE_MOTIVO = SI). Abrir exige abrir_solicitud."
+    },
+    {
+      "label": "Devoluciones Pendientes → Procesar devolución",
+      "icono": "assignment_return",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Entrada que reintegra el lote con IDINVMOV_DEVOLUCION y motivo (IZSOL_2 · PROCESAR_DEVOLUCION). Insignia Dev. parcial / total."
+    },
+    {
+      "label": "Nueva dispensación · Volver a transcripciones",
+      "icono": "post_add",
+      "color": "teal",
+      "estilo": "solid",
+      "descripcion": "Dispensación manual de consulta externa (CEFM_WEB · NUEVA_SOLICITUD / VOLVER_TRANSCRIPCIONES). Crea TRANS_CE."
+    },
+    {
+      "label": "Apli.Med",
+      "icono": "vaccines",
+      "color": "purple",
+      "estilo": "outline",
+      "descripcion": "Insumos del ciclo de aplicación pedidos a farmacia (USA_APLIMF = SI)."
+    },
+    {
+      "label": "Traer de otra Bodega",
+      "icono": "swap_horiz",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Surte la solicitud con traslado desde otra bodega (permiso per_traslado_bodegas)."
+    },
+    {
+      "label": "Entregas No Recib. · Terminar Ent.",
+      "icono": "local_shipping",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Enfermería recibe o regresa; cierre de la entrega domiciliaria (IZSOL_2 · TERMINAR_ENTREGA)."
+    },
+    {
+      "label": "Firma manuscrita · Huella dactilar",
+      "icono": "draw",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Firma del paciente o de la enfermera que recibe (FIRMAR_PACIENTE_MOV). Wacom opcional."
+    },
+    {
+      "label": "Imprimir · Comprobante · OM · FM",
+      "icono": "print",
+      "color": "grey-8",
+      "estilo": "outline",
+      "descripcion": "Movimiento, comprobante al paciente (COMPROBANTES_INV), orden médica y fórmula."
+    },
+    {
+      "label": "Autorizar este ítem / todos · Cambiar cantidad · Modificar copago",
+      "icono": "rule",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Menú contextual de la línea (IZSOL_2 · AUTORIZAR / CAMBIAR_CANTIDAD / MODIFICA_COPAGO), cada uno con permiso."
+    },
+    {
+      "label": "Trasladar · Dest. Residuos Hemo. · Trazabilidad Hemo.",
+      "icono": "bloodtype",
+      "color": "red-8",
+      "estilo": "outline",
+      "descripcion": "Solo en bodega de hemoderivados (IDBOD_HEMODERIVADOS): reservas, pruebas cruzadas, fraccionar, destrucción y trazabilidad (TRANSFUSIONAL)."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "MENUQ_INVENTARIO · Solicitudes",
+      "accion": "Ver la pantalla",
+      "rol": "Farmacia",
+      "descripcion": "Ítem del menú dinámico de Inventario; USGRUH del grupo."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · cerrar_solicitud_dispensacionINV",
+      "accion": "Cerrar solicitud",
+      "rol": "Jefe de farmacia",
+      "descripcion": "Habilita el botón Cerrar en la fila."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · abrir_solicitud",
+      "accion": "Abrir solicitud cerrada",
+      "rol": "Jefe de farmacia",
+      "descripcion": "Solo si quedan líneas con faltante."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · deshacer_entrega",
+      "accion": "Deshacer entrega procesada",
+      "rol": "Farmacia",
+      "descripcion": "Retira lotes del borrador antes de confirmar."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · devolucion_inv",
+      "accion": "Procesar devolución",
+      "rol": "Farmacia",
+      "descripcion": "Entrada de devolución desde la solicitud."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · per_traslado_bodegas",
+      "accion": "Traer de otra bodega",
+      "rol": "Farmacia",
+      "descripcion": "Surtir con traslado."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · RECIBESOLVERIFICA",
+      "accion": "Recibir solicitud con verificación",
+      "rol": "Farmacia",
+      "descripcion": "Flujo de verificación de la solicitud (PROCESAR_VERIFICACION)."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · print_orden_medica",
+      "accion": "Imprimir orden médica",
+      "rol": "Farmacia",
+      "descripcion": "Botón OM."
+    },
+    {
+      "codigo": "MENUQ_INVENTARIO · Firma_paciente_mov / Firma_recibido_enf",
+      "accion": "Firmar entrega",
+      "rol": "Farmacia / Enfermería",
+      "descripcion": "Firma del paciente o de la enfermera que recibe."
+    },
+    {
+      "codigo": "COMPROBANTES_INV · Print_comp_paciente",
+      "accion": "Comprobante al paciente",
+      "rol": "Farmacia",
+      "descripcion": "Impresión del comprobante de dispensación."
+    },
+    {
+      "codigo": "CEFM_WEB · NUEVA_SOLICITUD / COMPROBANTE / CORREGIR / VOLVER_TRANSCRIPCIONES / BODEGA_LOTES",
+      "accion": "Nueva dispensación CE",
+      "rol": "Farmacia CE",
+      "descripcion": "Crear, imprimir, deshacer y corregir la dispensación manual; elegir bodega y lotes."
+    },
+    {
+      "codigo": "Brw:BrwVerSolicitudes_InvPeru · ModificarCopago / Particular / CBodega",
+      "accion": "Copago, particular, cambio de bodega",
+      "rol": "Farmacia",
+      "descripcion": "Menú contextual de la línea."
+    },
+    {
+      "codigo": "Brw:RevisarReservaBS2 · AceptarReserva",
+      "accion": "Aceptar reserva de hemoderivados",
+      "rol": "Banco de sangre",
+      "descripcion": "Solo bodega de hemoderivados."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "MVIGENCIAIZSOL / HVIGENCIAIZSOL",
+      "tipo": "SI/NO · horas",
+      "valorSugerido": "según institución",
+      "descripcion": "Si la vigencia está activa, no se entrega una solicitud de admisión más vieja que las horas configuradas."
+    },
+    {
+      "nombre": "ALTAS_QUE_VALIDA_INV",
+      "tipo": "lista de estados HADM.CERRADA",
+      "valorSugerido": "según institución",
+      "descripcion": "Estados de alta que bloquean la dispensación por admisión cerrada."
+    },
+    {
+      "nombre": "IDINVMOV_DEVOLUCION",
+      "tipo": "ITMO",
+      "valorSugerido": "según institución",
+      "descripcion": "Tipo de la entrada que reintegra una dispensación devuelta."
+    },
+    {
+      "nombre": "IDINVMOV_VENTAS",
+      "tipo": "ITMO",
+      "valorSugerido": "según institución",
+      "descripcion": "Tipo que la solicitud trata como venta/dispensación en IZSOL."
+    },
+    {
+      "nombre": "IZSOL_CIERRE_MOTIVO",
+      "tipo": "SI/NO",
+      "valorSugerido": "SI",
+      "descripcion": "Pide motivo al cerrar la solicitud."
+    },
+    {
+      "nombre": "IENF_RECIBE_INSUMOS",
+      "tipo": "SI/NO",
+      "valorSugerido": "NO",
+      "descripcion": "Con NO los insumos (no medicamentos) quedan recibidos al confirmar; con SI pasan por el recibido de enfermería."
+    },
+    {
+      "nombre": "MODOCOBROMEDHBALI",
+      "tipo": "texto",
+      "valorSugerido": "según institución",
+      "descripcion": "Con HBALI el cobro de medicamentos del balance lo hace ese módulo y no la dispensación."
+    },
+    {
+      "nombre": "USA_APLIMF",
+      "tipo": "SI/NO",
+      "valorSugerido": "SI",
+      "descripcion": "Muestra el botón Apli.Med y el flujo de aplicación de medicamentos."
+    },
+    {
+      "nombre": "INV_RECIBE_CON_LOGIN",
+      "tipo": "SI/NO",
+      "valorSugerido": "según institución",
+      "descripcion": "La enfermera que recibe se identifica con usuario."
+    },
+    {
+      "nombre": "IZSOL_REFRE_VER / IZSOL_REFRE_AUT",
+      "tipo": "SI/NO",
+      "valorSugerido": "según institución",
+      "descripcion": "Refresco automático de la lista de solicitudes y contador visible."
+    },
+    {
+      "nombre": "IZSOL_PDF_PRESCRIP",
+      "tipo": "SI/NO",
+      "valorSugerido": "según institución",
+      "descripcion": "Incluye la prescripción en el PDF del movimiento."
+    },
+    {
+      "nombre": "IZSOL_MED_SOLI",
+      "tipo": "SI/NO",
+      "valorSugerido": "según institución",
+      "descripcion": "En la impresión muestra el médico solicitante en lugar del usuario."
+    },
+    {
+      "nombre": "IDITARUNIDOSIS",
+      "tipo": "ITAR",
+      "valorSugerido": "según institución",
+      "descripcion": "Tipo de artículo de unidosis; se excluye del loteo normal al entregar."
+    },
+    {
+      "nombre": "IDBOD_HEMODERIVADOS",
+      "tipo": "IBOD",
+      "valorSugerido": "según institución",
+      "descripcion": "Bodega que activa el formulario transfusional (reservas, pruebas cruzadas, fraccionar)."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "país",
+      "valorSugerido": "según instalación",
+      "descripcion": "Con PERU cambian filtros, recaudo y la recreación de la autorización en CE."
+    },
+    {
+      "nombre": "FIRMA_WACOM",
+      "tipo": "SI/NO",
+      "valorSugerido": "NO",
+      "descripcion": "Firma con tableta Wacom además de la manuscrita."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "izsol-agregar-entregalog",
+      "tipo": "doc",
+      "detalle": "AGREGAR cambia la clase a ENTREGALOG (salvo Consumo) solo para llamar SPK_CM_GENIMOV_SOL; la IZSOL conserva su CLASE real. No es una procedencia."
+    },
+    {
+      "id": "izsol-cobro-formedce-trans-ce",
+      "tipo": "riesgo",
+      "detalle": "El comentario de CONF_MOVIMIENTO advierte que SPK_GENCOBRO_INSCENTRAL inserta HPRE con FK a HADM y que FORMEDCE / TRANS_CE guardan el afiliado en NOADMISION; la validación de admisión real está comentada. Revisar si el cobro falla en esas procedencias."
+    },
+    {
+      "id": "izsol-permisos-peru-hardcoded",
+      "tipo": "fe",
+      "detalle": "ModificarCopago, Particular y CBodega se leen del procedimiento Brw:BrwVerSolicitudes_InvPeru aunque la instalación no sea Perú."
+    },
+    {
+      "id": "izsol-presupuesto-apagado",
+      "tipo": "doc",
+      "detalle": "El presupuesto de materiales (HPREP) en SPK_CONFIRMASAL_CM está apagado (INV-TCK-04); en Perú CONF_MOVIMIENTO sí bloquea si hay presupuesto no aprobado."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer?",
+      "intro": "Trece tareas frecuentes de la farmacia en **Inventario → Solicitudes**, con su ruta exacta, la condición que debe cumplirse y lo que no hay que confundir."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es la dispensación y qué no es",
+      "intro": "La **dispensación** es la entrega de lo que ya fue pedido para un paciente o un servicio: una admisión, una orden, una cita, una fórmula o una aplicación. La farmacia no inventa el pedido; lo encuentra como **solicitud** (IZSOL) en su bodega, entrega por lote y confirma.",
+      "md": "## Las tres piezas\n\n- **Solicitud (IZSOL / IZSOLD)**: qué se pidió, para quién y desde dónde (CLASE = procedencia). Estado 1 abierta, 2 cerrada.\n- **Entrega (IZSOLDT)**: qué lote y qué cantidad se eligió por línea.\n- **Movimiento (IMOV / IMOVH)**: la salida de inventario que nace en borrador al tomar la solicitud y que solo afecta existencias al confirmar.\n\n## Qué no es\n\n| Si lo que quiere es… | Entonces el camino es… |\n|---|---|\n| Vender en mostrador con caja y factura | Venta a particulares → Venta de insumos |\n| Recibir un medicamento del paciente para guardarlo | Custodia (entrada propia) |\n| Sacar algo sin solicitud | Movimientos → salida manual (no cobra ni cierra solicitud) |\n| Enviar a otra bodega | Traslado (desde Solicitudes: Traer de otra Bodega) |\n\n## Quién participa\n\n- **Servicio o módulo que pide**: enfermería, médico, consulta externa, cirugía, aplicación, consumo.\n- **Farmacia**: toma, entrega, procesa, confirma, imprime y firma.\n- **Enfermería**: recibe (entregas no recibidas) o devuelve.\n- **Sistema**: valida, descuenta, contabiliza y genera el cargo al paciente.",
+      "puntosClave": [
+        "La solicitud la crea quien pide; la farmacia la dispensa.",
+        "Procesar no baja existencias: solo Conf. Mov. lo hace.",
+        "La procedencia (CLASE) decide validaciones, paciente, tercero y cobro."
+      ]
+    },
+    {
+      "id": "flujo",
+      "tipo": "flujo",
+      "flujoId": "dispensar",
+      "kicker": "Proceso",
+      "titulo": "Dispensar: de la solicitud a la salida confirmada",
+      "imagen": "img/disp_flujo_sketchnote.jpg",
+      "imagenAlt": "Tomar → Entregar por lote → Procesar → Confirmar → cobro, cierre, firmas",
+      "intro": "Cuatro botones en orden: **Dispensar** (toma), **Entregar** (lote y cantidad), **Procesar dispensación** y **Conf. Mov.** El sistema valida al tomar y al confirmar; en medio, la farmacia trabaja en borrador y puede retirar entregas.",
+      "puntosClave": [
+        "Sin bodega elegida no hay lista de solicitudes.",
+        "Admisión cerrada, solicitud vencida, orden anulada o copago sin recaudar detienen la toma.",
+        "Medicamento suspendido en la orden: candado en la línea, no se entrega.",
+        "Al confirmar se genera el cargo al paciente salvo producción y consumo."
+      ]
+    },
+    {
+      "id": "procedencias",
+      "tipo": "mapa-procedencias",
+      "datos": "procedenciasLibro",
+      "kicker": "Procedencias",
+      "titulo": "De dónde nace cada solicitud y qué cambia en farmacia",
+      "imagen": "img/disp_procedencias_sketchnote.jpg",
+      "imagenAlt": "IZSOL.CLASE: hospitalización, consulta externa, procedimientos y programas, sin paciente que cobrar",
+      "intro": "El filtro **Procedencia** y la columna **CLASE** muestran el mismo código. Ese valor decide quién es el paciente (admisión, autorización, cita, afiliado), de dónde salen el tercero y el centro de costo al confirmar, qué validaciones aplican y si hay cobro.",
+      "mapa": {
+        "pregunta": "¿De dónde viene cada solicitud?",
+        "subtitulo": "Cada tarjeta muestra el módulo que pide, la referencia que guarda la solicitud y lo que cambia en farmacia.",
+        "centroIcono": "medication",
+        "centroTitulo": "Solicitud · IZSOL",
+        "centroSub": "CLASE = procedencia",
+        "conector": "Orígenes que alimentan IZSOL",
+        "destinoPrefijo": "CLASE · ",
+        "reglaTitulo": "Regla de lectura",
+        "regla": "Las procedencias <b>manuales de consulta externa</b> (TRANS_CE, FORMEDCE y CE con MANUALCE) saltan vigencia, cierre de admisión y copago. <b>PROD</b> y <b>Consumo</b> no tienen paciente: no cobran. Las de <b>admisión</b> (SENFER, OMEDICA, 24HORAS, HTX, HBALINI, OMSOLI) validan admisión cerrada, vigencia y medicamento suspendido."
+      },
+      "puntosClave": [
+        "CE: la referencia es la autorización; orden anulada bloquea y el copago debe estar en caja.",
+        "TRANS_CE / FORMEDCE guardan el afiliado, no la admisión.",
+        "APLIM: al confirmar, la línea de aplicación queda DISPENSADA con el movimiento.",
+        "Al confirmar: admisión → tercero HADM y centro HHAB; consulta externa → tercero, área y centro de AUT."
+      ]
+    },
+    {
+      "id": "entregar-detalle",
+      "tipo": "texto",
+      "kicker": "Detalle",
+      "titulo": "Entregar por lote: reglas que aplica el sistema",
+      "intro": "Entregar es elegir **lote y cantidad** por cada línea pedida. Aquí viven la mayoría de los bloqueos que la farmacia ve en pantalla.",
+      "md": "## Lo que valida ENTREGAR / VALIDA_TOTAL\n\n| Regla | Qué pasa |\n|---|---|\n| Cantidad > existencia del lote | No deja; hay que elegir otro lote |\n| Lote vencido | No aparece en la lista de lotes (vencimiento ≥ hoy) |\n| Artículo de unidosis (IDITARUNIDOSIS) | Se maneja aparte del loteo normal |\n| Medicamento suspendido en la orden (FAR_OM_EVENTO vigente) | Candado «Suspendido» en la línea; aplica a 24HORAS, OMEDICA, SENFER, HPRE |\n| Artículo con autorización PROA (MAUTORIZACION) | Exige la línea **Iniciar** vigente del servicio en la admisión; en 24HORAS busca el Iniciar más reciente |\n| Solicitud manual CE | Se valida la especialidad/plan del artículo contra la autorización (ESP) |\n\n## Código de barras\n\n`VALIDA_CODIGO_BARRA` identifica el artículo; `VALIDA_TOTAL` aplica las mismas reglas de arriba por línea. Los códigos se registran con `AGREGA_CODIGO_BARRA` desde la misma pantalla.\n\n## Retirar o deshacer\n\nMientras el movimiento esté en borrador: clic derecho en el lote → **Retirar entrega**. Para entregas ya procesadas, **Deshacer entrega** (permiso `deshacer_entrega`).",
+      "puntosClave": [
+        "El lote lo elige la farmacia; la cantidad nunca supera la existencia.",
+        "El candado de suspendido lo pone la orden médica, no la farmacia.",
+        "Deshacer solo antes de confirmar; después es devolución."
+      ]
+    },
+    {
+      "id": "confirmar-cobro",
+      "tipo": "texto",
+      "kicker": "Detalle",
+      "titulo": "Confirmar: existencias, cargo al paciente y cierre",
+      "intro": "**Conf. Mov.** es el único paso que afecta existencias. Además completa el movimiento con tercero y centro de costo según la procedencia, genera el cargo al paciente y cierra la solicitud si no queda nada pendiente.",
+      "md": "## Antes de confirmar\n\n- Al menos una línea procesada («No hay ningún artículo para confirmar»).\n- Admisión no cerrada y facturable (salvo manual CE, PROD, Consumo y sector FORMULA).\n- En Perú: sin presupuesto (HPREP) pendiente de aprobar.\n\n## Lo que hace\n\n1. **Tercero, área y centro**: admisión → tercero de HADM, área y centro de HHAB; consulta externa (CE, TRANS_CE) → tercero, área y centro de AUT. Solo rellena lo que venga vacío.\n2. **SPK_CONFIRMASAL_CM**: descuenta IEXI, recalcula IDXB/IART, escribe kardex y contabiliza si el tipo y la bodega lo piden (ver libro de Inventario → Contabilidad).\n3. **Líneas**: la línea con faltante vuelve a estado 1 para que la solicitud no se cierre.\n4. **Cargo**: `SPK_GENCOBRO_INSCENTRAL` genera el cargo al paciente, salvo PROD y Consumo. Con `MODOCOBROMEDHBALI = HBALI` el balance cobra por su lado.\n5. **Insumos**: si `IENF_RECIBE_INSUMOS ≠ SI`, los no medicamentos quedan recibidos (RENFER = 1).\n6. **CUM**: el CUM realmente dispensado se guarda en la autorización (AUTD.CODCUM_DISP).\n7. **Aplicación (APLIM)**: la línea APLIMF pasa a DISPENSADA con el movimiento y el artículo real.\n8. **Cierre**: si no quedan líneas pendientes, IZSOL pasa a 2.\n\n## Si la salida llega sin centro de costo\n\nEl comprobante contable queda con cuenta no definida. Se corrige en el movimiento (Movimientos), no en Solicitudes.",
+      "puntosClave": [
+        "Confirmar es irreversible: lo que sobra se devuelve, no se anula desde aquí.",
+        "El cargo al paciente nace en la confirmación, no en la entrega.",
+        "Centro de costo vacío = comprobante con cuenta no definida."
+      ]
+    },
+    {
+      "id": "despues",
+      "tipo": "flujo",
+      "flujoId": "despues-entregar",
+      "kicker": "Después",
+      "titulo": "Después de entregar: cerrar, deshacer, devolver y recibir",
+      "imagen": "img/disp_despues_sketchnote.jpg",
+      "imagenAlt": "Cerrar/abrir, deshacer entrega, devolver, entregas no recibidas, firmas",
+      "intro": "Una solicitud no termina en Conf. Mov. La farmacia puede **cerrar** lo que no se va a entregar, **deshacer** antes de confirmar, **devolver** lo que el servicio regresa y gestionar las **entregas no recibidas**; además firma e imprime.",
+      "puntosClave": [
+        "Devolver crea una entrada con IDINVMOV_DEVOLUCION; la solicitud muestra Dev. parcial / total.",
+        "Cerrar pide motivo si IZSOL_CIERRE_MOTIVO = SI y anula los movimientos vacíos.",
+        "Abrir solo con permiso y líneas pendientes."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosSolicitud",
+      "kicker": "Semáforo",
+      "titulo": "Estados de la solicitud, sus líneas y el movimiento",
+      "intro": "Qué significa cada estado que se ve en Solicitudes y qué botón corresponde."
+    },
+    {
+      "id": "satelites",
+      "tipo": "texto",
+      "kicker": "Alrededor",
+      "titulo": "Lo que rodea a la dispensación",
+      "intro": "Varias pantallas y módulos conviven con Solicitudes. Aquí se ubican para no confundir caminos; su detalle está en el libro de Inventario.",
+      "md": "| Pantalla / módulo | Qué hace | Relación con la dispensación |\n|---|---|---|\n| Nueva dispensación CE (CEFM) | Farmacia transcribe la fórmula y dispensa | Crea la solicitud TRANS_CE y la autorización |\n| Aplicación de medicamentos (APLIM) | Enfermería agenda y aplica | La línea APLIMF pide a farmacia y queda DISPENSADA al confirmar |\n| Lista de trabajo (LISTA_AUT) | Autorizaciones por dispensar | Otro camino para CE |\n| Entregas no recibidas (GES_MED) | Enfermería recibe o regresa | Cierra el ciclo de la entrega |\n| Delivery MAD | Entrega domiciliaria con motorizado | Terminar entrega / asignaciones |\n| Hemoderivados (TRANSFUSIONAL) | Reservas, pruebas cruzadas, fraccionar | Misma pantalla cuando la bodega es IDBOD_HEMODERIVADOS |\n| Custodia | Entrada propia del paciente | La existencia que se entrega puede ser de custodia |\n| Movimientos (/inv/ges) | La salida como movimiento | Confirmar, anular, imprimir |\n| Semáforo | Vencidos por bodega | Lotes que no conviene entregar |",
+      "puntosClave": [
+        "Si la bodega es de hemoderivados, la pantalla cambia de formulario.",
+        "Custodia y aplicación tienen su propio libro."
+      ]
+    },
+    {
+      "id": "pendientes",
+      "tipo": "texto",
+      "kicker": "Cierre",
+      "titulo": "Hallazgos y pendientes de esta lectura",
+      "intro": "Lo que se contrastó entre pantalla y procedimientos y queda anotado para el equipo.",
+      "md": "## Hallazgos\n\n- **ENTREGALOG no es una procedencia**: AGREGAR cambia la clase a ENTREGALOG solo para generar el movimiento (salvo Consumo); la solicitud conserva su CLASE.\n- **Cobro en FORMEDCE / TRANS_CE**: el cargo exige una admisión real y esas procedencias guardan el afiliado; la validación está comentada en el procedimiento. Revisar en preversión.\n- **Permisos con procedimiento de Perú**: ModificarCopago, Particular y CBodega se leen de `Brw:BrwVerSolicitudes_InvPeru` en cualquier país.\n- **Presupuesto de materiales**: apagado en la confirmación; en Perú sí bloquea si hay presupuesto sin aprobar.\n\n## Documentado en esta lectura\n\n- Las 18 procedencias del filtro y lo que cada una cambia en AGREGAR, ENTREGAR y CONF_MOVIMIENTO.\n- Botones, permisos (USGRUH) y variables (USVGS) de la pantalla.\n- Flujos de dispensar y de después de entregar; semáforo de estados.\n\n## Queda por profundizar\n\n- Flujo propio de **Lista de trabajo** (LISTA_AUT) y de **Delivery MAD**.\n- Formulario **transfusional** (hemoderivados) paso a paso.\n- **Verificación** de solicitudes (RECIBESOLVERIFICA / PROCESAR_VERIFICACION).",
+      "puntosClave": [
+        "Los procedimientos se leyeron en IXONLINE/SQL (PREVERSION frente a la última liberada).",
+        "Las fichas de métodos viven en el libro de Inventario (SPQ_IZSOL, SPQ_IZSOL_2)."
+      ]
+    }
+  ]
+}

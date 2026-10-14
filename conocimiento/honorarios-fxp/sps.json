@@ -1,0 +1,771 @@
+{
+  "procesoId": "honorarios-fxp",
+  "actualizado": "2026-10-05T00:10:00",
+  "nota": "Leídos 2026-10-04 desde DESAIX/SQLIX (PREVERSION idéntica a 2.0.7; IDANT 2.0.6). Fuente de cuerpo completo: sql/{NOMBRE}.sql. SPK_ANULA_FACT, SPK_LIBERAR_FACT, SPK_NOTASCXC y SPK_ANULAR_CXP leídos solo en el fragmento que toca FXP/FXPD (estado parcial). Invocadores verificados en PREVERSION: SPK_INSERT_CXP_SALUD(_TOTAL), SPK_CREACXP_QX y SPK_CREACXP_ASIS_UNO sin invocador; ningún objeto inserta en HOMED.",
+  "sps": [
+    {
+      "nombre": "SPQ_FXP_COL",
+      "tipo": "SPQ",
+      "modelo": "FXP_COL",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FXP_COL.sql",
+      "metodos": [
+        {
+          "id": "ESTADO_FXP",
+          "hace": "Consulta el estado contable de la factura de venta del ítem del honorario (vía FNK_ESTADO_FXP).",
+          "parametros": "N_PRESUP, ITEM, NOPRESTACION, NOITEM",
+          "valida": [
+            "Los cuatro parámetros presentes"
+          ],
+          "noValida": [
+            "No cambia datos",
+            "No mira FCXP ni el estado E del ítem"
+          ],
+          "errores": [
+            "Falta el consecutivo CXP (N_PRESUP).",
+            "Falta el ítem del detalle.",
+            "Falta el número de prestación.",
+            "Falta el número de ítem de prestación."
+          ],
+          "llama": [
+            "FNK_ESTADO_FXP"
+          ],
+          "efecto": "OK + fila ESTADO (1 = comprobante confirmado), DOCUMENTO, MENSAJE.",
+          "capaId": "02-operacion",
+          "controlId": "cambiar-ter-si-no-confirmado",
+          "estado": "leido"
+        },
+        {
+          "id": "CAMBIAR_TERFXP",
+          "hace": "Cambia el tercero de un ítem del honorario; bloquea si la factura de venta está confirmada en contabilidad.",
+          "parametros": "N_PRESUP, ITEM, NOPRESTACION, NOITEM, IDTERCERO (destino), COMPANIA, IDSEDE; USUARIO del JSON",
+          "valida": [
+            "Parámetros presentes",
+            "FNK_ESTADO_FXP.ESTADO <> 1"
+          ],
+          "noValida": [
+            "No valida permisos USGRUH",
+            "No valida que el ítem no esté en E (ya en CxP)",
+            "No valida que el tercero destino esté contratado (PXS)"
+          ],
+          "errores": [
+            "Falta el consecutivo CXP (N_PRESUP).",
+            "Falta el ítem del detalle.",
+            "Falta el número de prestación.",
+            "Falta el número de ítem de prestación.",
+            "Falta el tercero destino.",
+            "Falta la compañía.",
+            "Falta la sede.",
+            "MENSAJE de FNK_ESTADO_FXP si ESTADO = 1",
+            "ERROR_MESSAGE() del SPK (TRY/CATCH)"
+          ],
+          "llama": [
+            "FNK_ESTADO_FXP",
+            "SPK_CAMBIAR_TERFXP"
+          ],
+          "efecto": "«Cambio de tercero realizado correctamente.» Ítem en FXP del nuevo tercero; HPRED y FTRD.IDPROVEEDOR actualizados; posible SPK_CONTAB_FTR.",
+          "capaId": "02-operacion",
+          "controlId": "cambiar-ter-si-no-confirmado",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_CXP",
+          "hace": "Arma el reporte de honorarios del proveedor entre fechas (cabecera institución + detalle por ítem con paciente, empresa y fecha de servicio según procedencia SALUD/CE/CI/PYP).",
+          "parametros": "IDPROVEEDOR, F_INICIAL, F_FINAL (yyyy-mm-dd), ESTADO (T/P/E/A; P incluye S), N_PRESUP (LIKE), NOREFERENCIA (LIKE), COMPANIA",
+          "valida": [
+            "IDPROVEEDOR",
+            "F_INICIAL y F_FINAL convertibles a fecha"
+          ],
+          "noValida": [
+            "COMPANIA no filtra"
+          ],
+          "errores": [
+            "Debe indicar el proveedor para imprimir.",
+            "Debe indicar fecha inicial y final."
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE('IDTERCEROINSTALADO')"
+          ],
+          "efecto": "rs0 OK; rs1 cabecera (RAZONSOCIAL_DPR, NIT_DPR, TIPO_ID/NIT/RAZONSOCIAL proveedor, fechas, TOTAL_GENERAL); rs2 detalle ordenado por proveedor, referencia, ítem.",
+          "capaId": "02-operacion",
+          "controlId": "imprimir-cuenta-cobro",
+          "estado": "leido"
+        },
+        {
+          "id": "IMPRIMIR_CUENTA_COBRO",
+          "hace": "Misma rama que IMPRIMIR_CXP; el FE cambia el formato del PDF (Debe a / Por concepto de).",
+          "parametros": "Igual que IMPRIMIR_CXP",
+          "valida": [
+            "IDPROVEEDOR",
+            "Fechas"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe indicar el proveedor para imprimir.",
+            "Debe indicar fecha inicial y final."
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE('IDTERCEROINSTALADO')"
+          ],
+          "efecto": "Mismos recordsets que IMPRIMIR_CXP.",
+          "capaId": "02-operacion",
+          "controlId": "imprimir-cuenta-cobro",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_ESTADO_FXP",
+      "tipo": "FNK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/FNK_ESTADO_FXP.sql",
+      "metodos": [
+        {
+          "id": "FNK_ESTADO_FXP",
+          "hace": "Con la referencia del FXP (admisión) y la prestación/ítem busca FTRD → FTR; si CONTABILIZADA = 1 lee MCP.ESTADO.",
+          "parametros": "@N_PRESUP, @ITEM, @NOPRESTACION, @NOITEM",
+          "valida": [],
+          "noValida": [
+            "Solo sirve para procedencia SALUD (cruza NOREFERENCIA con FTRD.NOADMISION)",
+            "No mira FCXP"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "ESTADO 1 + «Confirmada en Contabilidad» si MCP.ESTADO = 2; 0 si «No Confirmada» o «No está en Contabilidad».",
+          "capaId": "05-contabilidad",
+          "controlId": "cambiar-ter-si-no-confirmado",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CAMBIAR_TERFXP",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CAMBIAR_TERFXP.sql",
+      "metodos": [
+        {
+          "id": "SPK_CAMBIAR_TERFXP",
+          "hace": "Si el tercero destino ya tiene FXP para la misma referencia, mueve el FXPD allí con ITEM = MAX+1; si no, genera consecutivo @FCXP, copia la cabecera FXP al nuevo número/tercero y mueve el FXPD con ITEM 1. Borra la cabecera origen si queda sin ítems. Actualiza HPRED.IDPROVEEDOR y FTRD.IDPROVEEDOR. Si FTR.CONTABILIZADA = 1 ejecuta SPK_CONTAB_FTR (reconstruye el comprobante).",
+          "parametros": "@N_PRESUP, @ITEM, @NOPRESTACION, @NOITEM, @IDTERCERO, @COMPANIA, @SEDE, @USUARIO",
+          "valida": [],
+          "noValida": [
+            "No vuelve a chequear MCP confirmado (lo hizo el SPQ)",
+            "No cambia FXPD.ESTADO",
+            "No toca FCXPD si el ítem estaba en E"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO @FCXP",
+            "SPK_CONTAB_FTR (si CONTABILIZADA = 1)"
+          ],
+          "efecto": "FXP/FXPD/HPRED/FTRD con el nuevo tercero; posible comprobante reconstruido.",
+          "capaId": "02-operacion",
+          "controlId": "cambiar-ter-si-no-confirmado",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CREACXP_ASIS",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CREACXP_ASIS.sql",
+      "metodos": [
+        {
+          "id": "SPK_CREACXP_ASIS",
+          "hace": "Generador de honorarios de hospitalización/urgencias y variantes al facturar. Toma HPRED de la factura con IDPROVEEDOR <> '' y <> IDTERCEROINSTALADO, no anulado, CXP = 0; expande por cantidad; valora con VW_CXPPROTOT (IDPLAN, PREFIJO, IDPROVEEDOR, IDTERCEROCA, IDSERVICIO, fecha del cargo dentro de FECHAINIFD/FECHAFINFD y FECHAINI/FECHAFIN); agrupa por proveedor y prestación con VALORCXP > 0; crea FXP (P, SALUD, NOREFERENCIA = admisión, F_FACTURAREF = hoy, INDCOBRADA 0) y FXPD (P, VLRORIGINAL). Marca HPRED.CXP = 1 y HADM.CXP = 1. Bloque 2: HOMED PROCEDENCIA 'HADM' → FXP/FXPD por tercero con VALOR × CANTIDAD × PORCEN/100.",
+          "parametros": "@NOADMISION, @COMPANIA, @SEDE, @USUARIO, @NVOCONSECFTR",
+          "valida": [
+            "Hay cargos candidatos (si no, retorna sin crear)",
+            "Precio vigente en la vista",
+            "Valor > 0"
+          ],
+          "noValida": [
+            "No consulta HONORATAR_DIF",
+            "No avisa qué cargos quedaron sin precio",
+            "No valida que el proveedor del cargo esté en PXS para ese prefijo"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE('IDTERCEROINSTALADO')",
+            "VW_CXPPROTOT",
+            "SPK_GENCONSECUTIVO @FCXP"
+          ],
+          "efecto": "FXP/FXPD en P por proveedor y prestación; HPRED.CXP = 1; HADM.CXP = 1.",
+          "capaId": "03-alimentadores",
+          "controlId": "genera-al-facturar",
+          "estado": "leido",
+          "invocadoPor": [
+            "SPK_FACTURA_ADMISION",
+            "SPK_FACTURA_ASIS",
+            "SPK_FACTURA_SOAT",
+            "SPK_FACTURA_UCI",
+            "SPK_FACTURA_DOMI"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CREACXP_CE",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CREACXP_CE.sql",
+      "metodos": [
+        {
+          "id": "SPK_CREACXP_CE",
+          "hace": "Generador de honorarios de consulta externa al facturar la autorización. Candidatos: AUT con IDPROVEEDOR <> '' y CXPGEN = 0, AUTD de la factura. Valor: si HONORATAR_DIF = 'SI', TARDV.VALOR × PXS.FACTOR × TARF.FACTORDINERO (redondeo TARF.REDONDEO, TARDV por SER.CODCUPS, PXS por proveedor/plan/administradora); si no, AUTD.VALORPROV. Crea FXP (P, 'CE', NOREFERENCIA = IDAUT) + FXPD; marca AUT.CXPGEN = 1. Bloque HOMED PROCEDENCIA 'AUT' por ítem (NO_ITEM) con porcentaje.",
+          "parametros": "@NOAUT, @COMPANIA, @SEDE, @USUARIO, @NVOCONSECFTR",
+          "valida": [
+            "Hay AUTD candidatos (si no, retorna)"
+          ],
+          "noValida": [
+            "Rama HONORATAR_DIF = SI no aplica PXSE ni vigencias",
+            "No excluye IDTERCEROINSTALADO"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE('HONORATAR_DIF')",
+            "SPK_GENCONSECUTIVO @FCXP"
+          ],
+          "efecto": "FXP/FXPD en P procedencia CE; AUT.CXPGEN = 1.",
+          "capaId": "03-alimentadores",
+          "controlId": "genera-al-facturar",
+          "estado": "leido",
+          "invocadoPor": [
+            "SPK_FACTURACE_N",
+            "SPK_FACTURACE_PERU"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CREACXP_CI",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CREACXP_CI.sql",
+      "metodos": [
+        {
+          "id": "SPK_CREACXP_CI",
+          "hace": "Generador de honorarios de citas. Proveedor = CIT.IDMEDICO. Valor: HONORATAR_DIF = 'SI' → tarifa × PXS.FACTOR × FACTORDINERO; si no, VW_CXPPROTOT por plan/médico/administradora/servicio. Crea FXP (P, 'CI', NOREFERENCIA = consecutivo de la cita) + FXPD.",
+          "parametros": "@CONSECUTIVO, @COMPANIA, @SEDE, @USUARIO",
+          "valida": [],
+          "noValida": [
+            "No exige vigencias en la rama SI",
+            "No excluye IDTERCEROINSTALADO"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE('HONORATAR_DIF')",
+            "VW_CXPPROTOT",
+            "SPK_GENCONSECUTIVO @FCXP"
+          ],
+          "efecto": "FXP/FXPD en P procedencia CI.",
+          "capaId": "03-alimentadores",
+          "controlId": "genera-al-facturar",
+          "estado": "leido",
+          "invocadoPor": [
+            "SPK_FACTURACE_N",
+            "SPK_FACTURACE_PERU"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CREACXP_QX",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CREACXP_QX.sql",
+      "metodos": [
+        {
+          "id": "SPK_CREACXP_QX",
+          "hace": "Honorario por admisión para cargos HPRED con IDPROVEEDOR <> '' (sin filtrar factura ni CXP = 0). Crea FXP/FXPD y marca HADM.CXP = 1.",
+          "parametros": "@NOADMISION, @COMPANIA, @SEDE, @USUARIO",
+          "valida": [],
+          "noValida": [
+            "No filtra CXP = 0 ni N_FACTURA: duplicaría honorarios si se activara"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO @FCXP"
+          ],
+          "efecto": "Sin invocador en PREVERSION ni en Qrystalos2 (obsoleto).",
+          "capaId": "03-alimentadores",
+          "controlId": null,
+          "estado": "leido",
+          "invocadoPor": []
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CREACXP_ASIS_UNO",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_CREACXP_ASIS_UNO.sql",
+      "metodos": [
+        {
+          "id": "SPK_CREACXP_ASIS_UNO",
+          "hace": "Honorario de un solo ítem (prestación + ítem) valorado con VW_CXPPROTOT por el proveedor del cargo; rama distinta si el cargo tiene IDCIRUGIA. Marca HPRED.CXP = 1.",
+          "parametros": "@NOPRESTACION, @NOITEM, @COMPANIA, @SEDE",
+          "valida": [
+            "Vigencias de la vista"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "VW_CXPPROTOT",
+            "SPK_GENCONSECUTIVO @FCXP"
+          ],
+          "efecto": "Sin invocador en PREVERSION ni en Qrystalos2.",
+          "capaId": "03-alimentadores",
+          "controlId": null,
+          "estado": "leido",
+          "invocadoPor": []
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_INSERT_CXP_SALUD",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_INSERT_CXP_SALUD.sql",
+      "metodos": [
+        {
+          "id": "SPK_INSERT_CXP_SALUD",
+          "hace": "Pasa a la FCXP indicada los ítems FXPD en ESTADO 'S' de la cabecera @N_PRESUP: por cada uno inserta FCXPD (ESTADO P, N_PRESUP, ITEM_PRESUP, IDCLASEIMP = LEFT(PRE.IDTIPOSER,2), CUENTA_SER = FNK_CUENTA_KMCOM(IDMODELOCONTABLE,'CXP_SALUD','DB',PREFIJO,IDAREA,CCOSTO,'P',''), CODUNG/CODPRG de la FCXP, PROCEDENCIA 'Salud'); recalcula FCXP VALOR/SALDO/VLR_*; FXPD S → E; FXP → E.",
+          "parametros": "@CNSFCXP, @N_PRESUP",
+          "valida": [],
+          "noValida": [
+            "No valida que la FCXP sea del mismo tercero que el FXP",
+            "No valida que exista la cuenta CXP_SALUD en el modelo",
+            "Deja FXP en E aunque queden ítems en P (selección parcial)"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_CUENTA_KMCOM",
+            "FNK_VALORVARIABLE('IDMODELOCONTABLE')"
+          ],
+          "efecto": "Líneas FCXPD procedencia Salud; honorario en E.",
+          "capaId": "04-unido",
+          "controlId": "paso-a-cxp",
+          "estado": "leido",
+          "invocadoPor": []
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_INSERT_CXP_SALUD_TOTAL",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_INSERT_CXP_SALUD_TOTAL.sql",
+      "metodos": [
+        {
+          "id": "SPK_INSERT_CXP_SALUD_TOTAL",
+          "hace": "Recorre FXP WHERE ESTADO = 'S' y ejecuta SPK_INSERT_CXP_SALUD para cada cabecera sobre la FCXP indicada.",
+          "parametros": "@CNSFCXP",
+          "valida": [],
+          "noValida": [
+            "Recorre FXP 'S' de todos los terceros hacia una sola FCXP (no filtra por tercero)"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_INSERT_CXP_SALUD"
+          ],
+          "efecto": "Sin invocador en PREVERSION ni en Qrystalos2.",
+          "capaId": "04-unido",
+          "controlId": "paso-a-cxp",
+          "estado": "leido",
+          "invocadoPor": []
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ANULAR_ITEM_CXP",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/SPK_ANULAR_ITEM_CXP.sql",
+      "metodos": [
+        {
+          "id": "SPK_ANULAR_ITEM_CXP",
+          "hace": "Elimina una línea FCXPD y rebaja la FCXP. Si PROCEDENCIA = 'Salud': FXPD (N_PRESUP, ITEM_PRESUP) → P y FXP → P. Compras: IMOVH.ENCXP = 0 y anticipos legalizados; Servicios: FCOM.ENCXP = 0. Recalcula impuestos con SPK_IMPUESTOS_CXP (categoría TERCATPROVEEDOR).",
+          "parametros": "@CNSFCXP, @ITEM, @COMPANIA, @SEDE",
+          "valida": [],
+          "noValida": [
+            "No valida estado de la FCXP (contabilizada / con abonos)"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_IMPUESTOS_CXP",
+            "FNK_VALORVARIABLE('TERCATPROVEEDOR')"
+          ],
+          "efecto": "Honorario de vuelta a P.",
+          "capaId": "04-unido",
+          "controlId": "paso-a-cxp",
+          "estado": "leido",
+          "invocadoPor": [
+            "SPQ_FCXP"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ANULAR_CXP",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "fragmento FXP leído en línea (PREVERSION)",
+      "metodos": [
+        {
+          "id": "SPK_ANULAR_CXP",
+          "hace": "Al anular la FCXP: FXPD vinculados (FCXPD.N_PRESUP / ITEM_PRESUP) → P; FXP → P si ya no tiene ítems fuera de P.",
+          "parametros": "@CNSFCXP, …",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Honorario de vuelta a P.",
+          "capaId": "04-unido",
+          "controlId": "paso-a-cxp",
+          "estado": "parcial"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ANULA_FACT",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "fragmento «ARREGLO DE HONORARIOS» leído en línea (PREVERSION)",
+      "metodos": [
+        {
+          "id": "SPK_ANULA_FACT",
+          "hace": "Al anular la factura de venta: si TIPOFAC = 'I' borra FXPD/FXP de la admisión con PROCEDENCIA 'SALUD'; si no, los de las admisiones de la factura. Para CE y CI borra FXPD/FXP cuya referencia esté en FTRD de la factura. Devuelve los cargos a CXP = 0 / CXPGEN = 0.",
+          "parametros": "@N_FACTURA, @NOADMISION, …",
+          "valida": [],
+          "noValida": [
+            "No filtra FXP.ESTADO: borra honorarios en E"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "FXP/FXPD eliminados.",
+          "capaId": "03-alimentadores",
+          "controlId": "anular-factura-borra",
+          "estado": "parcial"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_LIBERAR_FACT",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "fragmento FXP leído en línea (PREVERSION)",
+      "metodos": [
+        {
+          "id": "SPK_LIBERAR_FACT",
+          "hace": "Borra FXPD/FXP WHERE NOREFERENCIA = @NOADMISION AND PROCEDENCIA = @PROCEDENCIA.",
+          "parametros": "@NOADMISION, @PROCEDENCIA, …",
+          "valida": [],
+          "noValida": [
+            "No filtra FXP.ESTADO"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "FXP/FXPD eliminados.",
+          "capaId": "03-alimentadores",
+          "controlId": "anular-factura-borra",
+          "estado": "parcial"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NOTASCXC",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "fragmento FXPD leído en línea (PREVERSION)",
+      "metodos": [
+        {
+          "id": "SPK_NOTASCXC",
+          "hace": "Al aplicar nota crédito a la factura, recorre los FXPD del ítem y rebaja VALOR (hasta el unitario de la nota, repartiendo el resto), recalcula VR_TOTAL = VALOR × CANTIDAD y FXP.VR_TOTAL = SUM(VALOR).",
+          "parametros": "…",
+          "valida": [],
+          "noValida": [
+            "No distingue FXPD.ESTADO (rebaja ítems en E)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Honorario rebajado.",
+          "capaId": "03-alimentadores",
+          "controlId": "anular-factura-borra",
+          "estado": "parcial"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONF_CXP",
+      "tipo": "SPQ",
+      "modelo": "CONF_CXP",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CONF_CXP.sql",
+      "metodos": [
+        {
+          "id": "EXPORTAR_CXP_ESPERADAS",
+          "hace": "Informe «Cuentas esperadas en salud»: cabeceras FXP (con TER) y detalle FXPD según WHERE_DATA del FE.",
+          "parametros": "WHERE_DATA, PROCESO",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "rs1 Totales, rs2 Detalles → Excel.",
+          "capaId": "04-unido",
+          "controlId": "cuentas-esperadas",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PXSN",
+      "tipo": "SPQ",
+      "modelo": "PXSN",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PXSN.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR contratación base del proveedor (administradora, plan, tarifa, factor). Al insertar fija IDCONTRATO '', NIVELATENCION '', TIPOCONTRATO 'E', TIPORECOBRO 'N'.",
+          "parametros": "IDTERCERO, IDADMINISTRADORA, IDPLAN, IDTARIFA, FACTOR, PROCESO, IDTERCEROEDITE, IDADMINISTRADORAEDITE, IDPLANEDITE",
+          "valida": [
+            "Duplicado tercero + administradora + plan"
+          ],
+          "noValida": [
+            "FACTOR > 0 (lo valida el FE)",
+            "Que la administradora tenga categoría CON (lo filtra el FE)"
+          ],
+          "errores": [
+            "EL REGISTRO SE ENCUENTRA DUPLICADO",
+            "NO SE ENCONTRÓ EL REGISTRO A EDITAR"
+          ],
+          "llama": [],
+          "efecto": "Fila PXSN.",
+          "capaId": "01-configuracion",
+          "controlId": "pxsn-unico",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE PXSN por clave.",
+          "parametros": "IDTERCERO, IDADMINISTRADORA, IDPLAN",
+          "valida": [],
+          "noValida": [
+            "No borra ni valida PXS/PXSE dependientes"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila eliminada.",
+          "capaId": "01-configuracion",
+          "controlId": "pxsn-unico",
+          "estado": "leido"
+        },
+        {
+          "id": "COPIAR_CONTRATACION",
+          "hace": "Copia la contratación de otro proveedor.",
+          "parametros": "IDPROVEEDOR (destino), IDPROVEEDORCOPIA (origen)",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_COPIAPROVEEDORXS"
+          ],
+          "efecto": "PXSN/PXS/PXSE replicados.",
+          "capaId": "01-configuracion",
+          "controlId": "pxsn-unico",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PXS",
+      "tipo": "SPQ",
+      "modelo": "PXS",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PXS.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR prefijo contratado (sede, prefijo, tipo tarifa, tarifa, factor, EXCOBROPC, LIQUIDARPC, COBRARPC). Al insertar PRIORIDAD 0 y UMBRAL 0.",
+          "parametros": "IDSEDE, IDPLAN, PREFIJO, IDTERCERO, IDADMINISTRADORA, TIPOTARIFA, IDTARIFA, FACTOR, EXCOBROPC, LIQUIDARPC, COBRARPC, PROCESO",
+          "valida": [
+            "Prefijo no repetido para la configuración"
+          ],
+          "noValida": [],
+          "errores": [
+            "EL PREFIJO YA SE ENCUENTRA REGISTRADO PARA ESTA CONFIGURACIÓN."
+          ],
+          "llama": [],
+          "efecto": "Fila PXS.",
+          "capaId": "01-configuracion",
+          "controlId": "pxs-prefijo-unico",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE PXS por clave.",
+          "parametros": "IDSEDE, IDPLAN, PREFIJO, IDTERCERO, IDADMINISTRADORA",
+          "valida": [],
+          "noValida": [
+            "No borra PXSE dependientes"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila eliminada.",
+          "capaId": "01-configuracion",
+          "controlId": "pxs-prefijo-unico",
+          "estado": "leido"
+        },
+        {
+          "id": "GUARDAR_PRE",
+          "hace": "CRUD desde la pantalla de Prefijos (botón Proveedores): persiste PRIORIDAD y UMBRAL; no exige tarifa.",
+          "parametros": "IDSEDE, PREFIJO, IDPLAN, IDTERCERO, IDADMINISTRADORA, EXCOBROPC, LIQUIDARPC, COBRARPC, PRIORIDAD, UMBRAL, PROCESO, IDSEDEEDITE, PREFIJOEDITE",
+          "valida": [
+            "Sede, prefijo, plan, proveedor, administradora",
+            "PRIORIDAD >= 0"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe seleccionar la sede.",
+            "Debe indicar el prefijo.",
+            "Debe seleccionar el plan.",
+            "Debe seleccionar el proveedor (tercero).",
+            "Debe seleccionar la administradora.",
+            "La prioridad no puede ser negativa."
+          ],
+          "llama": [],
+          "efecto": "Fila PXS.",
+          "capaId": "01-configuracion",
+          "controlId": "pxs-prefijo-unico",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR_PRE",
+          "hace": "DELETE PXS desde Prefijos.",
+          "parametros": "Clave PXS",
+          "valida": [
+            "Datos completos",
+            "Existe la fila"
+          ],
+          "noValida": [],
+          "errores": [
+            "Faltan datos para eliminar el proveedor del prefijo.",
+            "No se encontró el proveedor de servicios para eliminar."
+          ],
+          "llama": [],
+          "efecto": "Fila eliminada.",
+          "capaId": "01-configuracion",
+          "controlId": "pxs-prefijo-unico",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_PXSE",
+      "tipo": "SPQ",
+      "modelo": "PXSE",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PXSE.sql",
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "hace": "INSERTAR / EDITAR excepción de servicio. Limpia IDTARIFA si Restringir/Valor y VALOR si Restringir/Tarifa.",
+          "parametros": "IDTERCERO, IDADMINISTRADORA, IDPLAN, IDSEDE, PREFIJO, IDSERVICIO, TIPORESTRICCION, IDTARIFA, FACTOR, VALOR, PROCESO, IDSERVICIOEDITE",
+          "valida": [
+            "Servicio no repetido para tercero/administradora/plan/sede"
+          ],
+          "noValida": [
+            "FACTOR / VALOR > 0 (lo valida el FE)"
+          ],
+          "errores": [
+            "LA EXCEPCIÓN DE SERVICIO YA SE ENCUENTRA REGISTRADA"
+          ],
+          "llama": [],
+          "efecto": "Fila PXSE.",
+          "capaId": "01-configuracion",
+          "controlId": "pxse-excepcion",
+          "estado": "leido"
+        },
+        {
+          "id": "ELIMINAR",
+          "hace": "DELETE PXSE por clave (incluye PREFIJO).",
+          "parametros": "IDTERCERO, IDADMINISTRADORA, IDPLAN, IDSEDE, PREFIJO, IDSERVICIO",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Fila eliminada.",
+          "capaId": "01-configuracion",
+          "controlId": "pxse-excepcion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "VW_CXPPROTOT",
+      "tipo": "VW",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/VW_CXPPROTOT.sql (+ VW_CXPPROPRE, VW_CXPPROSER, VW_CXPPROSER1)",
+      "metodos": [
+        {
+          "id": "VW_CXPPROTOT",
+          "hace": "UNION ALL de VW_CXPPROPRE (precio general PXS × SER × TARD/TARF/TARDV, excluye servicios con PXSE), VW_CXPPROSER (PXSE Tarifa) y VW_CXPPROSER1 (PXSE Valor). Columnas: IDTERCERO, IDADMINISTRADORA, PREFIJO, IDSERVICIO, DESCSERVICIO, IDTARIFA, FACTOR, IDPLAN, VALOR, VLRSERVICIO, CIRUGIA, PAQUETE, FECHAINIFD, FECHAFINFD, IDGENERICO, FECHAINI, FECHAFIN, NIVELATENCION.",
+          "parametros": "—",
+          "valida": [
+            "SER.ESTADO <> Inactivo",
+            "FACTOR > 0"
+          ],
+          "noValida": [
+            "VW_CXPPROSER1 fija FECHAINI 01/01/2002 y FECHAFIN inicio del año siguiente"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Precio del honorario por servicio: VLRSERVICIO = TARDV.VALOR si CIRUGIA, si no ROUND(TARDV.VALOR × PXS.FACTOR × TARF.FACTORDINERO) según TARF.REDONDEO (Unidad, Decena, Centena, Millar, Dos Dec., SIN).",
+          "capaId": "01-configuracion",
+          "controlId": "precio-honorario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "VW_PXS",
+      "tipo": "VW",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/VW_PXS.sql",
+      "metodos": [
+        {
+          "id": "VW_PXS",
+          "hace": "PXS + TER.RAZONSOCIAL con ROW_NUMBER. Es la lista «Id.Proveedor» del cargo (filtrada en el FE por IDADMINISTRADORA de la admisión y PREFIJO).",
+          "parametros": "—",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Lista de proveedores contratados.",
+          "capaId": "03-alimentadores",
+          "controlId": "cargo-con-proveedor",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

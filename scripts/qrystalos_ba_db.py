@@ -86,6 +86,7 @@ _RANK_ESTADO = {
     "dictamen": 2,
     "aprobado": 3,
     "enviado": 4,
+    "terminado": 5,
 }
 
 
@@ -492,21 +493,48 @@ class QrystalosBADB:
             return "en_analisis"
         return "pendiente"
 
-    def caso_tiene_correo(self, id_caso: str, id_req: str = "") -> dict:
-        """Solo evidencia real de envío (carpeta correos/ o registro). No el check del formulario."""
-        meta = {"enviado": False, "fecha": ""}
-        registro = _read_json(os.path.join(ROOT, "correos", "registro.json"), [])
+    def _indice_correos(self) -> dict:
+        """Una sola lectura de correos/registro.json por cambio de archivo."""
+        path = os.path.join(self.root, "correos", "registro.json")
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            mtime = 0.0
+        cache = getattr(self, "_correo_cache", None)
+        if cache and cache[0] == mtime:
+            return cache[1]
+        por_caso: dict[str, str] = {}
+        por_req: dict[str, str] = {}
+        registro = _read_json(path, [])
         if isinstance(registro, list):
             for row in registro:
-                if row.get("idCaso") == id_caso or (id_req and row.get("idReq") == id_req):
-                    meta["enviado"] = True
-                    meta["fecha"] = (row.get("fecha") or "")[:10]
-                    return meta
-        carpeta = os.path.join(ROOT, "correos", id_caso)
-        if os.path.isdir(carpeta):
-            meta["enviado"] = True
-            return meta
-        return meta
+                fecha = (row.get("fecha") or "")[:10]
+                if row.get("idCaso"):
+                    por_caso[str(row["idCaso"])] = fecha
+                if row.get("idReq"):
+                    por_req[str(row["idReq"])] = fecha
+        carpetas = set()
+        correos_root = os.path.join(self.root, "correos")
+        if os.path.isdir(correos_root):
+            for name in os.listdir(correos_root):
+                if name.startswith("."):
+                    continue
+                if os.path.isdir(os.path.join(correos_root, name)):
+                    carpetas.add(name)
+        idx = {"por_caso": por_caso, "por_req": por_req, "carpetas": carpetas}
+        self._correo_cache = (mtime, idx)
+        return idx
+
+    def caso_tiene_correo(self, id_caso: str, id_req: str = "") -> dict:
+        """Solo evidencia real de envío (carpeta correos/ o registro). No el check del formulario."""
+        idx = self._indice_correos()
+        if id_caso and id_caso in idx["por_caso"]:
+            return {"enviado": True, "fecha": idx["por_caso"][id_caso]}
+        if id_req and id_req in idx["por_req"]:
+            return {"enviado": True, "fecha": idx["por_req"][id_req]}
+        if id_caso and id_caso in idx["carpetas"]:
+            return {"enviado": True, "fecha": ""}
+        return {"enviado": False, "fecha": ""}
 
     def refresh_historico_for_caso(self, id_caso: str) -> None:
         solicitud = self.get_solicitud(id_caso)
@@ -672,6 +700,9 @@ class QrystalosBADB:
                 aprobado = os.path.isdir(os.path.join(self.aprobados, id_caso))
                 if not (mail["enviado"] or aprobado or id_req in forzar):
                     continue
+                correo_sol = (sol.get("correo") or {})
+                if est_prev.get("fase1Cerrada") and (not mail["enviado"] or correo_sol.get("enviado")):
+                    continue
                 est_path = os.path.join(caso_dir, "estado.json")
                 est = _read_json(est_path, {})
                 est.update({
@@ -713,25 +744,50 @@ class QrystalosBADB:
                 except Exception:
                     pass
                 tocados.append(id_req or id_caso)
+        self.aplicar_estados_cola(forzar)
+        return {"ok": True, "tocados": tocados}
+
+    def aplicar_estados_cola(self, forzar_enviados=None) -> bool:
+        """Sube el estado de cada REQ según dictamen, cierre y correo. No reescribe casos."""
+        forzar = set(forzar_enviados or [])
         cola = self.get_cola()
         cambiado = False
         for item in cola:
             req = item.get("idReqSeleccionado") or (item.get("parsed") or {}).get("idReq") or ""
-            id_caso = (item.get("parsed") or {}).get("idCaso") or ""
+            id_caso = (item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or ""
+            actual = item.get("estado") or "pendiente"
+            if actual == "terminado":
+                continue
             mail = self.caso_tiene_correo(id_caso, req)
             if req in forzar:
                 mail["enviado"] = True
-            if mail["enviado"]:
-                item["estado"] = "enviado"
-                cambiado = True
-            elif os.path.isdir(os.path.join(self.aprobados, id_caso)) and item.get("estado") in (
-                "pendiente", "en_analisis", "dictamen",
+            nuevo = None
+            # No cerrar un REQ que volvió a pendiente o está en análisis (enmienda).
+            if (mail["enviado"] or item.get("terminadoPor") == "correo_enviado") and actual in (
+                "aprobado", "enviado",
             ):
-                item["estado"] = "aprobado"
+                nuevo = "terminado"
+                if not item.get("terminadoPor"):
+                    item["terminadoPor"] = "correo_enviado"
+                if not item.get("terminadoEn"):
+                    item["terminadoEn"] = _now()
+            elif id_caso and os.path.isdir(os.path.join(self.aprobados, id_caso)) and actual in (
+                "pendiente", "en_analisis", "dictamen", "enviado",
+            ):
+                nuevo = "aprobado"
+            elif id_caso and os.path.isfile(os.path.join(self.dictamenes, f"{id_caso}.html")) and actual in (
+                "pendiente", "en_analisis",
+            ):
+                nuevo = "dictamen"
+            if not nuevo:
+                continue
+            merged = _mejor_estado(actual, nuevo)
+            if merged != actual or (nuevo == "terminado" and actual != "terminado"):
+                item["estado"] = "terminado" if nuevo == "terminado" else merged
                 cambiado = True
         if cambiado:
             self.save_cola(cola)
-        return {"ok": True, "tocados": tocados}
+        return cambiado
 
     def get_cola(self) -> list[dict]:
         with self.connect() as conn:
@@ -751,13 +807,32 @@ class QrystalosBADB:
             pass
         for item in items:
             req = item.get("idReqSeleccionado") or (item.get("parsed") or {}).get("idReq") or item.get("idReq")
-            if req:
-                merged = _mejor_estado(prev_estado.get(req), item.get("estado"))
-                if merged == "enviado":
-                    id_caso = (item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or ""
-                    if not self.caso_tiene_correo(id_caso, req).get("enviado"):
-                        merged = item.get("estado") or "pendiente"
-                item["estado"] = merged
+            if not req:
+                continue
+            prev = prev_estado.get(req)
+            reabierto = bool(item.pop("reabierto", None))
+            if reabierto and item.get("estado") == "pendiente" and prev == "terminado":
+                merged = "pendiente"
+            else:
+                merged = _mejor_estado(prev, item.get("estado"))
+            if merged in ("enviado", "terminado"):
+                id_caso = (item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or ""
+                correo = self.caso_tiene_correo(id_caso, req).get("enviado")
+                por_lista = item.get("terminadoPor") == "ausente_en_lista"
+                if correo or item.get("terminadoPor") == "correo_enviado":
+                    merged = "terminado"
+                    item["terminadoPor"] = item.get("terminadoPor") or "correo_enviado"
+                    item["terminadoEn"] = item.get("terminadoEn") or _now()
+                elif merged == "enviado":
+                    incoming = item.get("estado") or ""
+                    merged = incoming if incoming and incoming != "enviado" else (prev if prev and prev != "enviado" else "pendiente")
+                elif merged == "terminado" and not por_lista and not correo:
+                    incoming = item.get("estado") or ""
+                    if incoming != "terminado":
+                        merged = incoming or prev or "pendiente"
+                    elif prev and prev != "terminado":
+                        merged = prev
+            item["estado"] = merged
         with self.connect() as conn:
             conn.execute("DELETE FROM cola_items")
             for item in items:

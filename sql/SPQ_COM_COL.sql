@@ -1,0 +1,110 @@
+CREATE OR ALTER PROCEDURE DBO.SPQ_COM_COL
+@JSON  NVARCHAR(MAX)
+WITH
+ENCRYPTION
+AS
+DECLARE @PARAMETROS         NVARCHAR(MAX)  ,@MODELO           VARCHAR(100)    ,@METODO        VARCHAR(100)  ,@USUARIO        VARCHAR(12)
+        ,@GRUPO              VARCHAR(8)     ,@SYS_COMPUTERNAME VARCHAR(254)    ,@SEDE          VARCHAR(5)	   ,@A              INT
+        ,@IDENTITY           INT 
+        ,@PROCESO             VARCHAR(20)    ,@COM    NVARCHAR(MAX)
+                ,@COMPANIA     VARCHAR(2)
+        ,@COMPROBANTE     VARCHAR(2)
+        ,@NOMCOMPROBANTE     VARCHAR(40)
+        ,@COM_EXT     VARCHAR(20)
+        ,@HOMOLOGO     VARCHAR(20)
+BEGIN
+    SET LANGUAGE Spanish
+    SET DATEFORMAT dmy
+   
+    SELECT @A = ISJSON(@JSON)
+    IF @A = 0
+    BEGIN
+        RAISERROR('Json: Formato Erroneo',16,1)
+        RETURN
+    END
+    PRINT 'INGRESE A SPQ_COM_COL'
+    SELECT *
+    INTO #JSON
+    FROM OPENJSON (@json)
+    WITH (
+        MODELO         VARCHAR(100)     '$.MODELO',
+        METODO         VARCHAR(100)     '$.METODO',
+        USUARIO        VARCHAR(12)      '$.USUARIO',
+        PARAMETROS     NVARCHAR(MAX)     AS JSON
+    )
+   
+    SELECT @MODELO = MODELO , @METODO = METODO , @PARAMETROS = PARAMETROS , @USUARIO = USUARIO
+    FROM #JSON
+    --DEFINICION DE TABLA DE ERRORES
+    DECLARE @TBLERRORES TABLE(ERROR VARCHAR(200))
+    -- TOMA DEL GRUPO, SYS_COMPUTERNAME, SEDE   DE ACUERDO AL USUARIO
+    PRINT 'USUARIO:'+@USUARIO
+    --SELECT @GRUPO = DBO.FNK_DESCIFRAR(GRUPO) FROM USUSU WHERE USUARIO = @USUARIO
+    --SELECT @SYS_COMPUTERNAME = SYS_COMPUTERNAME FROM USUSU WHERE USUARIO = @USUARIO
+    --SELECT @SEDE = IDSEDE FROM UBEQ WHERE SYS_ComputerName = @SYS_COMPUTERNAME
+    IF COALESCE(@SEDE,'') = '' SELECT @SEDE = '01'
+    PRINT 'SEDE='+@SEDE
+    IF @METODO = 'CRUDCOM'
+    BEGIN
+        PRINT 'CRUDCOM'
+        SELECT @COM  = REGISTRO
+        FROM OPENJSON (@PARAMETROS)
+        WITH(
+            REGISTRO   NVARCHAR(MAX)     AS JSON
+        )
+      
+        SELECT @PROCESO     = JSON_VALUE(@COM ,'$.PROCESO')
+        --Leo Campos enviados y los coloco en las variables respectivas
+        SELECT @COMPANIA = JSON_VALUE(@COM , '$.COMPANIA' )
+        SELECT @COMPROBANTE = JSON_VALUE(@COM , '$.COMPROBANTE' )
+        SELECT @NOMCOMPROBANTE = JSON_VALUE(@COM , '$.NOMCOMPROBANTE' )
+        SELECT @COM_EXT = JSON_VALUE(@COM , '$.COM_EXT' )
+        SELECT @HOMOLOGO = JSON_VALUE(@COM , '$.HOMOLOGO' )
+        IF UPPER(@PROCESO) = 'INSERTAR'
+        BEGIN
+            PRINT 'INSERTAR'
+            IF EXISTS(SELECT 1 FROM COM WHERE COMPROBANTE=@COMPROBANTE AND COMPANIA=@COMPANIA)
+
+            BEGIN
+                SELECT 'KO' OK
+                SELECT ERROR = 'Ya existe un comprobante con esta compa�ia y codigo del comprobante'
+                RETURN
+            END
+            
+            BEGIN TRY
+                INSERT INTO COM(COMPANIA,COMPROBANTE,NOMCOMPROBANTE,COM_EXT,HOMOLOGO)
+                SELECT @COMPANIA,@COMPROBANTE,@NOMCOMPROBANTE,@COM_EXT,@HOMOLOGO
+            END TRY
+            BEGIN CATCH
+                INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+            END CATCH
+            IF (SELECT COUNT(*) FROM @TBLERRORES)> 0
+            BEGIN
+                SELECT 'KO' OK
+                SELECT ERROR FROM @TBLERRORES
+                RETURN
+            END
+            SELECT 'OK' OK
+            RETURN
+        END
+        IF UPPER(@PROCESO) = 'EDITAR'
+        BEGIN
+            BEGIN TRY
+                UPDATE COM SET NOMCOMPROBANTE = @NOMCOMPROBANTE,COM_EXT = @COM_EXT,HOMOLOGO = @HOMOLOGO
+                WHERE COMPANIA = @COMPANIA AND COMPROBANTE=@COMPROBANTE
+            END TRY
+            BEGIN CATCH
+                INSERT INTO @TBLERRORES(ERROR) SELECT ERROR_MESSAGE()
+            END CATCH
+            IF (SELECT COUNT(*) FROM @TBLERRORES)> 0
+            BEGIN
+                SELECT 'KO' OK
+                SELECT ERROR FROM @TBLERRORES
+                RETURN
+            END
+            SELECT 'OK' OK
+            RETURN
+        END
+        RETURN
+    END
+END

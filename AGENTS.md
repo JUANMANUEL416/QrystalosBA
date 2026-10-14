@@ -16,19 +16,21 @@ Coordinador experto en:
 
 ## Flujo por requerimiento
 
-1. Usuario elige **Analista de negocio** (REQ ya en cola) o **Solicitar requerimiento** (necesidad para el comité, con o sin aval técnico). En Analista completa el formulario (métodos documentados o SQL en `sql/`).
+1. Usuario elige **Analista de negocio** (REQ ya en cola) o **Solicitar requerimiento** (necesidad para el comité, con o sin aval técnico). En Analista completa el formulario (métodos documentados o SQL en `activo/{id-caso}/sql/`).
 2. Ubicar el proceso en `conocimiento/INDICE.json`. Si no existe, esqueleto + pendientes.
-3. Agente verifica solicitud; si hay `sql.usarDocumentacion`, usa `sps.json` y en el Chat valida si hay que releer. Si falta algo no documentado, **se detiene y lo pide**.
+3. Agente verifica solicitud; si hay `sql.usarDocumentacion`, usa `sps.json` y en el Chat valida si hay que releer. Si falta un SP no documentado: **bajar de DESAIX/SQLIX a la carpeta de ese análisis** (`activo/{id-caso}/sql/` o `solicitudes/{id}/sql/`; primero `PREVERSION`, luego última `Cerrada`; comparar ambas). Si el arreglo ya está en PREVERSION, avisar y no pedirlo. Detenerse solo si no está en PREVERSION, liberada ni `IDANT`, o si falta aclaración/cola. No mezclar scripts en `sql/`.
 4. **Paso 0:** ¿el sistema ya lo hace? Contrastar texto del REQ vs captura vs todos los caminos del control (botones, ayuda, `necesidadesYaCubiertas`). Clasificar: capacitación | defecto | hueco. No proponer desarrollo si es desconocimiento del proceso.
 5. Investiga Qrystalos2, documentación de tablas **viva** y el flujo en `conocimiento/`.
-6. Genera `dictamenes/<ID>.html`.
+6. Genera `dictamenes/<ID>.html` (sección 5.2.1 incrusta `contenido.cambioPropuestoSql` si el análisis identificó cambios SQL). En el HTML **no** figuran rutas ni comandos internos del BA (`activo/…/sql/`, `sql_refe/…`, `python scripts/sqlix_bajar_objeto.py`); la fuente SQL se cita como **IXONLINE/SQL** + nombre del objeto.
 7. Responde con resumen + ruta del archivo.
 
-Los SP **no se archivan** en la base de procesos. Se bajan a `sql/` el día que hay que documentarlos o releerlos.
+En **Analizar requerimiento**, el agente también rellena `contenido.cambioPropuestoSql` cuando el fix es SQL (fragmentos antes/después y validación).
+
+Los SP **no se archivan** en la base de procesos. En un REQ se bajan a `activo/{id-caso}/sql/` (o `solicitudes/{id}/sql/`). Documentar, sin caso, sigue usando `sql/`. Catálogo DESAIX `SQLIX`: PREVERSION primero.
 
 ## Regla principal
 
-**Detenerse y pedir** cualquier SP, script, aclaración o dato faltante. No inventar ni continuar el análisis incompleto.
+Si falta un `.sql` y hace falta el cuerpo: **DESAIX primero** (`.cursor/rules/sql-descarga-sqlix-desaix.mdc`). Comparar PREVERSION vs última liberada para no pedir un arreglo ya en la canasta. **Detenerse y pedir** aclaración, cola o el SP solo si el catálogo no lo tiene. No inventar ni continuar el análisis incompleto.
 
 ## Estructura
 

@@ -1,0 +1,127 @@
+/*
+  CEM — 01CM000861 DPE11203 · alinear CxP a entrada IMOV 0100093325.
+  Recibido: 300 MX931-1 @ PCOSTO 9486,6667 → base 2.846.000 (sin IVA).
+
+  Quita línea huérfana (5.200 sin N_PRESUP) y deja una línea = inventario.
+  Cabecera VALOR = VLR_NETO = SALDO = 2.846.000.
+
+  Pre: ESTADO N, CONTABILIZADA 0, sin comprobante, sin flete/abonos/notas.
+  Post: ejecutar VERIFICACION_FCXP_BRUTO_VS_NETO_SEP_OCT2026.sql (861 no debe listar patrón 853).
+*/
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+DECLARE @CNSFCXP varchar(20) = N'01CM000861';
+DECLARE @CNSMOV  varchar(20) = N'0100093325';
+DECLARE @CNSFCOM varchar(20) = N'0100000949';
+DECLARE @ART     varchar(20) = N'MX931-1';
+DECLARE @LOTE    varchar(20) = N'2027.09.30';
+
+DECLARE @CANT    decimal(18, 4);
+DECLARE @PCOSTO  decimal(18, 4);
+DECLARE @BASE    decimal(18, 2);
+
+SELECT
+  @CANT   = SUM(H.CANTIDAD),
+  @PCOSTO = MAX(H.PCOSTO),
+  @BASE   = CONVERT(decimal(18, 2), SUM(H.CANTIDAD * H.PCOSTO))
+FROM dbo.IMOV M
+INNER JOIN dbo.IMOVH H ON H.CNSMOV = M.CNSMOV
+WHERE M.CNSMOV = @CNSMOV
+  AND M.CNSFCOM = @CNSFCOM
+  AND M.ESTADO = 1
+  AND H.IDARTICULO = @ART;
+
+IF @CANT IS NULL OR @CANT <= 0 OR @BASE IS NULL
+BEGIN
+  THROW 55101, 'No hay entrada confirmada IMOV/IMOVH para 0100093325.', 1;
+END;
+
+IF ABS(@CANT - 300) > 0.02 OR ABS(@BASE - 2846000) > 1
+BEGIN
+  THROW 55102, 'La entrada no coincide con 300 uds / 2.846.000 esperados. Revisar antes de corregir.', 1;
+END;
+
+BEGIN TRAN;
+
+IF NOT EXISTS (
+  SELECT 1
+  FROM dbo.FCXP P
+  WHERE P.CNSFCXP = @CNSFCXP
+    AND P.NOREFERENCIA = N'DPE11203'
+    AND P.CNSFCOM = @CNSFCOM
+    AND P.ESTADO = N'N'
+    AND COALESCE(P.CONTABILIZADA, 0) = 0
+    AND COALESCE(P.NROCOMPROBANTE, N'') = N''
+    AND COALESCE(P.VLR_FLETE, 0) = 0
+    AND COALESCE(P.VLR_ABONOS, 0) = 0
+    AND COALESCE(P.VLR_NOTASDEBITO, 0) = 0
+    AND COALESCE(P.VLR_NOTASCREDITO, 0) = 0
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 55103, 'CxP 01CM000861 no cumple precondiciones (estado/comprobante/abonos).', 1;
+END;
+
+IF (SELECT COUNT(*) FROM dbo.FCXPD WHERE CNSFCXP = @CNSFCXP) <> 2
+BEGIN
+  ROLLBACK TRAN;
+  THROW 55104, 'Se esperaban 2 lineas FCXPD (200+5200). Revisar estructura actual.', 1;
+END;
+
+DELETE FROM dbo.FCXPD
+WHERE CNSFCXP = @CNSFCXP
+  AND ITEM = 2
+  AND IDSERVICIO = @ART
+  AND COALESCE(N_PRESUP, N'') = N'';
+
+UPDATE dbo.FCXPD
+SET CANTIDAD   = @CANT,
+    VALOR      = @PCOSTO,
+    VLR_IVA    = 0,
+    VLR_NETO   = @BASE,
+    VLR_DESCUENTO = 0,
+    N_PRESUP   = @CNSMOV,
+    NOLOTE     = @LOTE,
+    ITEM_PRESUP = 0
+WHERE CNSFCXP = @CNSFCXP
+  AND ITEM = 1
+  AND IDSERVICIO = @ART;
+
+UPDATE dbo.FCXP
+SET VALOR     = @BASE,
+    VLR_IVA   = 0,
+    VLR_NETO  = @BASE,
+    SALDO     = @BASE
+WHERE CNSFCXP = @CNSFCXP;
+
+IF EXISTS (
+  SELECT 1
+  FROM dbo.FCXP P
+  INNER JOIN dbo.FCXPD D ON D.CNSFCXP = P.CNSFCXP
+  WHERE P.CNSFCXP = @CNSFCXP
+  GROUP BY P.CNSFCXP, P.VALOR, P.VLR_IVA, P.VLR_NETO, P.SALDO
+  HAVING COUNT(D.ITEM) <> 1
+      OR ABS(SUM(D.CANTIDAD) - @CANT) > 0.02
+      OR ABS(SUM(D.VLR_NETO) - @BASE) > 0.01
+      OR ABS(P.VALOR - @BASE) > 0.01
+      OR ABS(P.VLR_NETO - @BASE) > 0.01
+      OR ABS(P.SALDO - @BASE) > 0.01
+      OR ABS(P.VALOR - P.VLR_NETO) > 0.01
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 55105, 'Tras el ajuste, cab/detalle o bruto=neto no cuadra. No se cambio nada.', 1;
+END;
+
+COMMIT TRAN;
+
+SELECT P.CNSFCXP, P.NOREFERENCIA,
+       CONVERT(decimal(18, 2), P.VALOR) AS VALOR,
+       CONVERT(decimal(18, 2), P.VLR_NETO) AS NETO,
+       D.ITEM, CONVERT(decimal(18, 2), D.CANTIDAD) AS CANT,
+       D.N_PRESUP, D.NOLOTE,
+       CONVERT(decimal(18, 2), D.VLR_NETO) AS NETO_LIN
+FROM dbo.FCXP P
+INNER JOIN dbo.FCXPD D ON D.CNSFCXP = P.CNSFCXP
+WHERE P.CNSFCXP = @CNSFCXP;

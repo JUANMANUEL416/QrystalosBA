@@ -1,0 +1,843 @@
+{
+  "id": "configuracion-sistemas",
+  "nombre": "Configuración · Sistemas",
+  "modulo": "CONF · Sistemas",
+  "familia": "configuracion",
+  "prioridad": 12,
+  "enRuta": true,
+  "estado": "documentado",
+  "resumen": "Submenú Sistemas del menú central Configuración: variables del sistema (solo se edita el valor), tabla genérica, grupos (seguridad, usuarios, prefijos, administradoras), usuarios (ficha, clave, equipo obligatorio, MFA), permisos especiales, ubicaciones físicas, defaults y logs. Varias opciones del árbol están en construcción (contadores, reportes con formato, noticias, procedimientos y controles, seguridad por tabla, impresoras, correcciones, objetos). Los procedimientos se asignan en Grupos → Seguridad.",
+  "actualizado": "2026-10-04T21:30:00",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (PREVERSION = 2.0.7, IDANT 2.0.6, idénticas): SPQ_USVGS_COL · ACTUALIZA_DATO (solo DATO+DESCRIPCION), SPQ_TGEN_COL · GUARDAR / ELIMINAR / OPCIONES_TGEN, SPQ_USGRU · GUARDAR / ELIMINAR, SPQ_USUSU_COL · CRUDUSUSU / REINICIAR_CLAVE_WEB, SPQ_UBEQ_COL · CRUDUBEQ. Docs: USVGS.md, TGEN.md, USUSU.md, USGRU.md, USGRUH.md, USPROH.md. PCEM no consultado.",
+  "alcanceHasta": "Solo el submenú Sistemas. El menú Configuración se habilita por grupo (MENUQ_COL · CONFIGURACION). Planes y Terceros sí tienen permisos por botón: no es este proceso. No se publican valores de variables de un cliente.",
+  "flujoResumen": "Variables y tabla genérica → grupos (permisos USGRUH) → ubicaciones físicas → usuarios (UBEQ obligatorio) → permisos especiales y defaults → consultar logs. Los procedimientos no tienen pantalla propia: se asignan en el grupo.",
+  "incluirProcesoMdEnLibro": false,
+  "menu": {
+    "ruta": "Configuración → Sistemas → Contadores · Variables del Sistema · Tabla Genérica · Reportes con Formato · Noticias · Seguridad (Grupos, Usuarios, Procedimientos y Controles, Permisos Especiales, Seguridad por Tabla) · Estaciones (Impresoras, Asignación de Impresoras, Ubicaciones Físicas) · Correcciones · Defaults · Log Auditoría · Log Auditoría Variables · Objetos · Historial de mensajes · Historial de acceso",
+    "fuente": "ConfLayout.vue arbolMenu (Sistemas) + routes.js /conf (conf.usvgs, conf.tgen, conf.grupos, conf.usuarios, conf.permesp, conf.ubeq, conf.defaults, conf.logauditoria, conf.klog, conf.historialmensajes, conf.historialacceso, conf.en_construccion). Menú por grupo: MENUQ_COL · CONFIGURACION."
+  },
+  "ventanas": [
+    {
+      "uso": "Variables del sistema",
+      "ruta": "conf.usvgs",
+      "path": "/conf/usvgs",
+      "vue": "USVGSComponent (USVGS_COL · ACTUALIZA_DATO)",
+      "entrada": "Configuración → Sistemas → Variables del Sistema"
+    },
+    {
+      "uso": "Tabla genérica",
+      "ruta": "conf.tgen",
+      "path": "/conf/tgen",
+      "vue": "TGENComponent (TGEN_COL)",
+      "entrada": "Configuración → Sistemas → Tabla Genérica"
+    },
+    {
+      "uso": "Grupos",
+      "ruta": "conf.grupos",
+      "path": "/conf/usgru",
+      "vue": "USGRUComponent (pestañas Seguridad USGRUH, Usuarios, Prefijos PREGR, Administradoras USGRUA)",
+      "entrada": "Configuración → Sistemas → Seguridad → Grupos"
+    },
+    {
+      "uso": "Usuarios",
+      "ruta": "conf.usuarios",
+      "path": "/conf/ususu",
+      "vue": "USUSUComponent (USUSU_COL + API desbloqueo/MFA)",
+      "entrada": "Configuración → Sistemas → Seguridad → Usuarios"
+    },
+    {
+      "uso": "Permisos especiales",
+      "ruta": "conf.permesp",
+      "path": "/conf/permesp",
+      "vue": "PERMESPComponent",
+      "entrada": "Configuración → Sistemas → Seguridad → Permisos Especiales"
+    },
+    {
+      "uso": "Ubicaciones físicas",
+      "ruta": "conf.ubeq",
+      "path": "/conf/ubeq",
+      "vue": "UBEQComponent (UBEQ_COL)",
+      "entrada": "Configuración → Sistemas → Estaciones → Ubicaciones Físicas"
+    },
+    {
+      "uso": "Defaults",
+      "ruta": "conf.defaults",
+      "path": "/conf/defaults",
+      "vue": "USDEFComponent",
+      "entrada": "Configuración → Sistemas → Defaults"
+    },
+    {
+      "uso": "Log auditoría",
+      "ruta": "conf.logauditoria",
+      "path": "/conf/logauditoria",
+      "vue": "USLOGComponent (USLOG / USLOGH)",
+      "entrada": "Configuración → Sistemas → Log Auditoría"
+    },
+    {
+      "uso": "Log de variables",
+      "ruta": "conf.klog",
+      "path": "/conf/klog",
+      "vue": "KLOGComponent",
+      "entrada": "Configuración → Sistemas → Log Auditoría Variables Sistema"
+    },
+    {
+      "uso": "Historial de mensajes",
+      "ruta": "conf.historialmensajes",
+      "path": "/conf/historialmensajes",
+      "vue": "KSMSL / QRY_ENVIOS",
+      "entrada": "Configuración → Sistemas → Historial de mensajes"
+    },
+    {
+      "uso": "Historial de acceso",
+      "ruta": "conf.historialacceso",
+      "path": "/conf/historialacceso",
+      "vue": "ULOGIN",
+      "entrada": "Configuración → Sistemas → Historial de acceso"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-variables",
+      "numero": 1,
+      "nombre": "Variables, tabla genérica y defaults",
+      "estado": "documentado",
+      "explicacion": "USVGS: se edita el valor (DATO) y la descripción; no se crea la variable. TGEN: listas del sistema (TABLA+CAMPO+CODIGO) y opciones libres. USDEF: valor por defecto e obligatoriedad de un campo.",
+      "controles": [
+        {
+          "id": "variables",
+          "nombre": "Editar el valor de una variable",
+          "sp": "SPQ_USVGS_COL · ACTUALIZA_DATO",
+          "regla": "Solo DATO y DESCRIPCION. El código y el tipo no se cambian aquí."
+        },
+        {
+          "id": "tabla-generica",
+          "nombre": "Fila de tabla genérica",
+          "sp": "SPQ_TGEN_COL · GUARDAR / ELIMINAR / OPCIONES_TGEN",
+          "regla": "Llave TABLA + CAMPO + CODIGO."
+        },
+        {
+          "id": "defaults",
+          "nombre": "Default de campo",
+          "sp": "SPQ_USDEF_COL · CRUDUSDEF",
+          "regla": "Valor por defecto y si el campo es obligatorio al crear."
+        }
+      ]
+    },
+    {
+      "id": "02-seguridad",
+      "numero": 2,
+      "nombre": "Grupos, usuarios y permisos",
+      "estado": "documentado",
+      "explicacion": "USGRU: código y nombre; pestañas Seguridad (USGRUH: uno a uno, masivos, clonar), Usuarios, Prefijos (PREGR), Administradoras (USGRUA). USUSU: ficha, clave, UBEQ obligatorio, plantillas si IMPRIMIRMPLXUSUARIO, lista blanca IP (TGEN WEB/IPPERMITIDA). PERMESP: excepción temporal. Procedimientos y Controles no tiene pantalla: el catálogo USPROH se asigna en el grupo.",
+      "controles": [
+        {
+          "id": "grupos",
+          "nombre": "Grupo y sus permisos",
+          "sp": "SPQ_USGRU · GUARDAR / ELIMINAR",
+          "regla": "Código único. Los procedimientos se marcan en Seguridad, no en una pantalla aparte."
+        },
+        {
+          "id": "usuarios",
+          "nombre": "Usuario",
+          "sp": "SPQ_USUSU_COL · CRUDUSUSU / REINICIAR_CLAVE_WEB",
+          "regla": "Equipo (UBEQ) obligatorio. Eliminar está oculto (inactiveFeature)."
+        },
+        {
+          "id": "permisos-especiales",
+          "nombre": "Permiso especial",
+          "sp": "SPQ_PERMESP_COL · CRUDPERMESP",
+          "regla": "Tipo + usuario + vigencia."
+        }
+      ]
+    },
+    {
+      "id": "03-estaciones-logs",
+      "numero": 3,
+      "nombre": "Estaciones y logs",
+      "estado": "documentado",
+      "explicacion": "UBEQ: equipo de la estación (sede, área, caja, bodegas). Impresoras y su asignación están en construcción. Logs de solo lectura: auditoría (USLOG), cambios de variables (KLOG), mensajes (KSMSL), accesos (ULOGIN).",
+      "controles": [
+        {
+          "id": "ubeq",
+          "nombre": "Ubicación física",
+          "sp": "SPQ_UBEQ_COL · CRUDUBEQ",
+          "regla": "El usuario no se guarda sin equipo."
+        },
+        {
+          "id": "logs",
+          "nombre": "Consultar logs",
+          "sp": "USLOG / KLOG / KSMSL · QRY_ENVIOS / ULOGIN",
+          "regla": "Solo lectura + Excel. No se editan."
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "confsis-variables",
+      "nombre": "Cambiar el valor de una variable o una fila TGEN",
+      "icono": "tune",
+      "descripcion": "El interruptor de cada módulo. No se publica el DATO de una instalación.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Buscar la variable",
+          "descripcion": "Variables del Sistema → filtrar por código o descripción. Si apunta a una tabla, el DATO es un código de esa tabla (COM, TER…).",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Variables del Sistema",
+          "tablas": ["USVGS"],
+          "sp": "AppStore.read USVGS"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Editar DATO y descripción",
+          "descripcion": "Solo esos dos campos. El código, el tipo y la observación no se cambian. Guardar (ACTUALIZA_DATO).",
+          "rol": "Administrador",
+          "pantalla": "Variables del Sistema → Editar",
+          "tablas": ["USVGS"],
+          "sp": "SPQ_USVGS_COL · ACTUALIZA_DATO"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Tabla genérica (si es una lista)",
+          "descripcion": "Tabla Genérica → filtrar por tabla y campo → Nuevo / Editar (TABLA+CAMPO+CODIGO). Opciones libres: OPCIONES_TGEN.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Tabla Genérica",
+          "tablas": ["TGEN"],
+          "sp": "SPQ_TGEN_COL · GUARDAR / OPCIONES_TGEN"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Ver quién lo cambió",
+          "descripcion": "Log Auditoría Variables Sistema (KLOG): quién, qué valor y cuándo. Solo lectura + Excel.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Log Auditoría Variables Sistema",
+          "tablas": ["KLOG"],
+          "sp": "SPQ_KLOG_COL · QRY_KLOG"
+        }
+      ]
+    },
+    {
+      "id": "confsis-grupo",
+      "nombre": "Crear un grupo y asignar permisos",
+      "icono": "groups",
+      "descripcion": "El candado del menú: qué opción ve cada grupo.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear el grupo",
+          "descripcion": "Seguridad → Grupos → Nuevo: código y nombre. Guardar.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Seguridad → Grupos",
+          "tablas": ["USGRU"],
+          "sp": "SPQ_USGRU · GUARDAR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Pestaña Seguridad",
+          "descripcion": "Permisos uno a uno, masivos, clonar de otro grupo o quitar todos (USGRUH). Aquí se asignan los procedimientos (USPROH): no hay pantalla Procedimientos y Controles.",
+          "rol": "Administrador",
+          "pantalla": "Grupos → expandir → Seguridad",
+          "tablas": ["USGRUH", "USPROH"],
+          "sp": "USGRUH"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Prefijos y administradoras",
+          "descripcion": "Pestañas Prefijos (PREGR) y Administradoras (USGRUA): qué prefijos y qué contratantes ve el grupo.",
+          "rol": "Administrador",
+          "pantalla": "Grupos → Prefijos / Administradoras",
+          "tablas": ["PREGR", "USGRUA"],
+          "sp": "—"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Usuarios del grupo",
+          "descripcion": "Pestaña Usuarios o ficha del usuario (campo Grupo). El menú Configuración se habilita con esos permisos.",
+          "rol": "Administrador",
+          "pantalla": "Grupos → Usuarios",
+          "tablas": ["USUSU"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "confsis-usuario",
+      "nombre": "Crear un usuario y su estación",
+      "icono": "person",
+      "descripcion": "Ficha, equipo obligatorio, clave y extras por variable.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la ubicación física",
+          "descripcion": "Estaciones → Ubicaciones Físicas → Nueva: equipo, sede, área, caja, bodegas. Impresoras está en construcción.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Estaciones → Ubicaciones Físicas",
+          "tablas": ["UBEQ"],
+          "sp": "SPQ_UBEQ_COL · CRUDUBEQ"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Crear el usuario",
+          "descripcion": "Usuarios → Nuevo: login, grupo, sede (PIDE_SEDEMPRESA_USU / IDSEDEPRINCIPAL), médico, cajero, equipo (UBEQ obligatorio), foto y firma. DATACLAVE al guardar.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Seguridad → Usuarios",
+          "tablas": ["USUSU"],
+          "sp": "SPQ_USUSU_COL · CRUDUSUSU"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Clave, desbloqueo y MFA",
+          "descripcion": "Reiniciar clave web. Desbloqueo y MFA por API. Lista blanca IP: TGEN WEB / IPPERMITIDA, o marcar Cualquier IP.",
+          "rol": "Administrador",
+          "pantalla": "Usuarios → fila",
+          "tablas": ["USUSU", "TGEN"],
+          "sp": "SPQ_USUSU_COL · REINICIAR_CLAVE_WEB"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Plantillas por usuario?",
+          "descripcion": "Si IMPRIMIRMPLXUSUARIO = SI aparecen las plantillas. IXCOUNTRY condiciona campos del país.",
+          "rol": "Administrador",
+          "pantalla": "Usuarios → ficha",
+          "tablas": ["USVGS"],
+          "sp": "—"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Permiso especial (opcional)",
+          "descripcion": "Permisos Especiales: tipo + usuario + vigencia. Eliminar usuario está oculto (inactiveFeature): se inactiva.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Seguridad → Permisos Especiales",
+          "tablas": ["PERMESP"],
+          "sp": "SPQ_PERMESP_COL · CRUDPERMESP"
+        }
+      ]
+    },
+    {
+      "id": "confsis-logs",
+      "nombre": "Consultar auditoría, variables, mensajes y accesos",
+      "icono": "history",
+      "descripcion": "Cuatro pantallas de solo lectura.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Log de auditoría",
+          "descripcion": "Quién hizo qué en las tablas vigiladas (USLOG / USLOGH). Filtrar y exportar a Excel.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Sistemas → Log Auditoría",
+          "tablas": ["USLOG", "USLOGH"],
+          "sp": "SPQ_USLOG_COL · QRY_USLOG"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Log de variables",
+          "descripcion": "Cambios de DATO (KLOG).",
+          "rol": "Administrador",
+          "pantalla": "Log Auditoría Variables Sistema",
+          "tablas": ["KLOG"],
+          "sp": "SPQ_KLOG_COL · QRY_KLOG"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Mensajes y accesos",
+          "descripcion": "Historial de mensajes (KSMSL / QRY_ENVIOS) e historial de acceso (ULOGIN).",
+          "rol": "Administrador",
+          "pantalla": "Historial de mensajes / Historial de acceso",
+          "tablas": ["KSMSL", "ULOGIN"],
+          "sp": "QRY_ENVIOS / QRY_ACCESOS"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "No se editan",
+          "descripcion": "Los logs no tienen Guardar. Correcciones y Estados está en construcción.",
+          "rol": "Administrador",
+          "pantalla": "—",
+          "tablas": [],
+          "sp": "—"
+        }
+      ]
+    }
+  ],
+  "estadosConfigSistemas": {
+    "titulo": "Estados y marcas de Sistemas",
+    "descripcion": "Qué significa cada valor en Configuración → Sistemas.",
+    "columnas": ["Valor", "Dónde"],
+    "filas": [
+      {
+        "codigo": "UsA",
+        "tono": "verde",
+        "etiquetas": ["USUSU.ESTADO = Activo"],
+        "significa": "Usuario vigente: puede entrar.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "UsI",
+        "tono": "gris",
+        "etiquetas": ["USUSU.ESTADO = Inactivo"],
+        "significa": "Usuario retirado. Eliminar está oculto.",
+        "queHacer": "Inactivar; no hay borrado en pantalla."
+      },
+      {
+        "codigo": "Bloq",
+        "tono": "rojo",
+        "etiquetas": ["USUSU.LOGIN_BLOQUEADO"],
+        "significa": "Bloqueado por intentos fallidos. Se desbloquea por API.",
+        "queHacer": "Desbloquear; no reenviar la clave a ciegas."
+      },
+      {
+        "codigo": "Var",
+        "tono": "azul",
+        "etiquetas": ["USVGS.IDVARIABLE"],
+        "significa": "Variable existente. Aquí solo se cambia DATO y descripción.",
+        "queHacer": "No crear variables desde esta pantalla: no hay alta."
+      },
+      {
+        "codigo": "Tgen",
+        "tono": "azul",
+        "etiquetas": ["TGEN.TABLA + CAMPO + CODIGO"],
+        "significa": "Fila de lista del sistema.",
+        "queHacer": "Filtrar por tabla y campo antes de crear."
+      },
+      {
+        "codigo": "Eq",
+        "tono": "verde",
+        "etiquetas": ["UBEQ"],
+        "significa": "Estación: sede, área, caja, bodegas.",
+        "queHacer": "Crearla antes del usuario: es obligatoria."
+      },
+      {
+        "codigo": "PeV",
+        "tono": "ambar",
+        "etiquetas": ["PERMESP vigencia"],
+        "significa": "Permiso especial temporal vigente.",
+        "queHacer": "Revisar la fecha de fin."
+      },
+      {
+        "codigo": "Const",
+        "tono": "rose",
+        "etiquetas": ["conf.en_construccion"],
+        "significa": "Opción del árbol sin pantalla.",
+        "queHacer": "Procedimientos: Grupos → Seguridad. El resto no está."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Cambiar el valor de una variable del sistema",
+      "donde": "Configuración → Sistemas → Variables del Sistema → Editar → Guardar",
+      "condicion": "La variable ya existe.",
+      "noEs": "No se crea una variable nueva desde esta pantalla."
+    },
+    {
+      "necesidad": "Ver quién cambió una variable",
+      "donde": "Configuración → Sistemas → Log Auditoría Variables Sistema",
+      "condicion": "Ninguna.",
+      "noEs": "No se edita el log."
+    },
+    {
+      "necesidad": "Agregar un código a una lista del sistema (estados, homologaciones…)",
+      "donde": "Configuración → Sistemas → Tabla Genérica → Nuevo",
+      "condicion": "TABLA + CAMPO + CODIGO no repetidos.",
+      "noEs": "No es una variable USVGS."
+    },
+    {
+      "necesidad": "Crear opciones libres de un formulario",
+      "donde": "Tabla Genérica → Opciones (OPCIONES_TGEN)",
+      "condicion": "Tabla y campo existentes.",
+      "noEs": "No cambia el DATO de una variable."
+    },
+    {
+      "necesidad": "Fijar el valor por defecto de un campo",
+      "donde": "Configuración → Sistemas → Defaults",
+      "condicion": "Campo conocido por USDEF.",
+      "noEs": "No es una variable."
+    },
+    {
+      "necesidad": "Crear un grupo de usuarios",
+      "donde": "Configuración → Sistemas → Seguridad → Grupos → Nuevo",
+      "condicion": "Código único.",
+      "noEs": "Los permisos se marcan en la pestaña Seguridad."
+    },
+    {
+      "necesidad": "Dar permiso de menú o de procedimiento a un grupo",
+      "donde": "Grupos → expandir → Seguridad (uno a uno, masivo o clonar)",
+      "condicion": "Grupo existente.",
+      "noEs": "Procedimientos y Controles del menú está en construcción."
+    },
+    {
+      "necesidad": "Restringir prefijos o administradoras de un grupo",
+      "donde": "Grupos → Prefijos / Administradoras",
+      "condicion": "Grupo existente.",
+      "noEs": "No es el contrato IPS (Generales)."
+    },
+    {
+      "necesidad": "Crear un usuario",
+      "donde": "Configuración → Sistemas → Seguridad → Usuarios → Nuevo",
+      "condicion": "Grupo y equipo (UBEQ) existentes.",
+      "noEs": "No es el funcionario de Financiero (FUSU)."
+    },
+    {
+      "necesidad": "Reiniciar la clave web",
+      "donde": "Usuarios → Reiniciar clave web",
+      "condicion": "Usuario existente.",
+      "noEs": "El desbloqueo y el MFA van por API."
+    },
+    {
+      "necesidad": "Desbloquear un usuario o quitar MFA",
+      "donde": "Usuarios → acciones de API (desbloqueo / MFA)",
+      "condicion": "Usuario bloqueado o con MFA.",
+      "noEs": "No es Reiniciar clave web."
+    },
+    {
+      "necesidad": "Asignar plantillas de impresión por usuario",
+      "donde": "Usuarios → ficha (visible si IMPRIMIRMPLXUSUARIO = SI)",
+      "condicion": "Variable encendida.",
+      "noEs": "Impresoras del menú está en construcción."
+    },
+    {
+      "necesidad": "Permitir cualquier IP o una lista blanca",
+      "donde": "Usuarios → Cualquier IP, o TGEN WEB / IPPERMITIDA",
+      "condicion": "Ninguna.",
+      "noEs": "No es un permiso de grupo."
+    },
+    {
+      "necesidad": "Dar un permiso temporal a un usuario",
+      "donde": "Configuración → Sistemas → Seguridad → Permisos Especiales",
+      "condicion": "Tipo + vigencia.",
+      "noEs": "No sustituye el permiso del grupo."
+    },
+    {
+      "necesidad": "Registrar el equipo de una estación (caja, bodegas, sede)",
+      "donde": "Configuración → Sistemas → Estaciones → Ubicaciones Físicas → Nueva",
+      "condicion": "Código de equipo único.",
+      "noEs": "Impresoras y Asignación de Impresoras están en construcción."
+    },
+    {
+      "necesidad": "Ver el rastro de auditoría",
+      "donde": "Configuración → Sistemas → Log Auditoría",
+      "condicion": "Ninguna.",
+      "noEs": "Correcciones y Estados está en construcción."
+    },
+    {
+      "necesidad": "Ver el historial de mensajes o de accesos",
+      "donde": "Historial de mensajes / Historial de acceso",
+      "condicion": "Ninguna.",
+      "noEs": "No se reenvían desde aquí."
+    },
+    {
+      "necesidad": "Crear un procedimiento o un control nuevo",
+      "donde": "No hay pantalla. El catálogo USPROH se asigna en Grupos → Seguridad",
+      "condicion": "El procedimiento ya existe en el producto.",
+      "noEs": "La opción Procedimientos y Controles está en construcción."
+    },
+    {
+      "necesidad": "Configurar contadores, noticias u objetos del sistema",
+      "donde": "Esas opciones abren la página en construcción",
+      "condicion": "Ninguna hoy.",
+      "noEs": "No hay pantalla funcional."
+    },
+    {
+      "necesidad": "Borrar un usuario",
+      "donde": "No hay botón (inactiveFeature). Se inactiva el estado.",
+      "condicion": "Ninguna.",
+      "noEs": "No se elimina la fila USUSU desde la pantalla."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Editar (Variable)",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Cambia DATO y descripción. No hay Nuevo."
+    },
+    {
+      "label": "Nuevo (TGEN)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Fila TABLA + CAMPO + CODIGO."
+    },
+    {
+      "label": "Opciones",
+      "icono": "list",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Opciones libres TGENOP."
+    },
+    {
+      "label": "Nuevo (Grupo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Grupo nuevo (código y nombre)."
+    },
+    {
+      "label": "Seguridad / Usuarios / Prefijos / Administradoras",
+      "icono": "tab",
+      "color": "primary",
+      "estilo": "tab",
+      "descripcion": "Pestañas al expandir el grupo."
+    },
+    {
+      "label": "Clonar permisos",
+      "icono": "content_copy",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Copia USGRUH de otro grupo."
+    },
+    {
+      "label": "Nuevo (Usuario)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Ficha de usuario (equipo obligatorio)."
+    },
+    {
+      "label": "Reiniciar clave web",
+      "icono": "password",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Reinicia la clave web."
+    },
+    {
+      "label": "Desbloquear / MFA",
+      "icono": "lock_open",
+      "color": "amber",
+      "estilo": "flat",
+      "descripcion": "Acciones por API."
+    },
+    {
+      "label": "Eliminar (Usuario)",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Oculto (inactiveFeature). Se inactiva."
+    },
+    {
+      "label": "Nuevo (Permiso especial)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Excepción temporal por usuario."
+    },
+    {
+      "label": "Nueva (Ubicación)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Equipo de estación (sede, caja, bodegas)."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "Logs a Excel."
+    },
+    {
+      "label": "Guardar / Cancelar",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma o cierra el formulario."
+    },
+    {
+      "label": "Limpiar filtros",
+      "icono": "filter_alt_off",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Reinicia los filtros."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Configuración (MENUQ_COL · CONFIGURACION)",
+      "accion": "Ver y abrir las opciones del submenú Sistemas",
+      "rol": "Administrador",
+      "descripcion": "El árbol es fijo; la habilitación es por grupo."
+    },
+    {
+      "codigo": "USGRUH del grupo",
+      "accion": "Qué menús y procedimientos ve el usuario",
+      "rol": "Según grupo",
+      "descripcion": "Se asigna en Grupos → Seguridad. No hay pantalla de procedimientos."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "PIDE_SEDEMPRESA_USU",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si está encendida, el usuario exige sede."
+    },
+    {
+      "nombre": "IDSEDEPRINCIPAL",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de sede",
+      "descripcion": "Sede por defecto. No publicar el valor de un cliente."
+    },
+    {
+      "nombre": "IMPRIMIRMPLXUSUARIO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Enciende las plantillas por usuario."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de país de la instalación",
+      "descripcion": "Condiciona campos del usuario y de otros módulos. No publicar el valor de un cliente."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "confsis-opciones-en-construccion",
+      "tipo": "hueco",
+      "detalle": "En construcción: Contadores Generales, Reportes con Formato, Noticias, Procedimientos y Controles, Seguridad por Tabla, Impresoras, Asignación de Impresoras, Correcciones y Estados, Objetos del Sistema.",
+      "solucionPropuesta": "Quitar del árbol o implementar. Procedimientos se asignan hoy en Grupos → Seguridad."
+    },
+    {
+      "id": "confsis-usvgs-no-crea",
+      "tipo": "decision",
+      "detalle": "Variables del Sistema no crea IDVARIABLE: solo ACTUALIZA_DATO (DATO y descripción). Una variable nueva de producto no se da de alta aquí.",
+      "solucionPropuesta": "Documentar en ayuda que el alta de variables es de producto/script, no de esta pantalla."
+    },
+    {
+      "id": "confsis-procedimientos-sin-pantalla",
+      "tipo": "hueco",
+      "detalle": "Procedimientos y Controles abre en construcción. El catálogo USPROH se asigna dentro del grupo. Quien busque «crear un procedimiento» no encuentra pantalla.",
+      "solucionPropuesta": "Apuntar la opción a Grupos → Seguridad o documentar la ruta."
+    },
+    {
+      "id": "confsis-eliminar-usuario-oculto",
+      "tipo": "fe",
+      "detalle": "Eliminar usuario está detrás de inactiveFeature. El camino soportado es inactivar.",
+      "solucionPropuesta": "Dejar visible Inactivar y quitar Eliminar, o confirmar el borrado con validación."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita configurar de sistemas?",
+      "intro": "Veinte tareas frecuentes: variables, grupos, usuarios, estaciones y logs. Varias opciones del menú están en construcción."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué configura el submenú Sistemas y qué está en construcción",
+      "imagen": "img/confsis_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa del submenú Sistemas",
+      "intro": "**Configuración → Sistemas** es el interruptor y el candado: **variables** (el valor de cada regla), **tabla genérica** (listas), **grupos y usuarios** (quién entra y qué ve), **estaciones** (el equipo) y **logs**. Varias opciones del árbol no tienen pantalla. Los procedimientos se asignan en **Grupos → Seguridad**, no en Procedimientos y Controles.",
+      "md": "## Lo que sí está y lo que no\n\n| Sí tiene pantalla | En construcción |\n|---|---|\n| Variables del Sistema, Tabla Genérica, Defaults | Contadores, Reportes con formato, Noticias |\n| Grupos, Usuarios, Permisos Especiales | Procedimientos y Controles, Seguridad por tabla |\n| Ubicaciones Físicas | Impresoras, Asignación de impresoras |\n| Logs (auditoría, variables, mensajes, accesos) | Correcciones y Estados, Objetos del sistema |\n\nEl menú Configuración se habilita por grupo. Quien entra a la opción puede editar (salvo Planes y Terceros, que sí tienen permisos por botón: otro proceso).",
+      "puntosClave": [
+        "No se crea una variable: se edita el valor.",
+        "Procedimientos = pestaña Seguridad del grupo."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa del submenú Sistemas: qué abre cada opción",
+      "intro": "Opciones funcionales y huecos. Procedimientos: IXONLINE/SQL.",
+      "md": "| Opción | Pantalla | Procedimiento · METODO | Qué administra |\n|---|---|---|---|\n| Variables del Sistema | Editar DATO | SPQ_USVGS_COL · ACTUALIZA_DATO | USVGS |\n| Tabla Genérica | Filas + opciones | SPQ_TGEN_COL · GUARDAR / ELIMINAR / OPCIONES_TGEN | TGEN, TGENOP |\n| Grupos | Cabecera + 4 pestañas | SPQ_USGRU · GUARDAR / ELIMINAR | USGRU, USGRUH, PREGR, USGRUA |\n| Usuarios | Ficha, clave, MFA | SPQ_USUSU_COL · CRUDUSUSU / REINICIAR_CLAVE_WEB | USUSU |\n| Permisos Especiales | Excepción temporal | PERMESP | PERMESP |\n| Ubicaciones Físicas | Equipo | SPQ_UBEQ_COL · CRUDUBEQ | UBEQ |\n| Defaults | Valor por defecto | USDEF | USDEF |\n| Log Auditoría | Solo lectura | USLOG / USLOGH | USLOG |\n| Log Variables | Solo lectura | KLOG | KLOG |\n| Historial mensajes / acceso | Solo lectura | KSMSL · QRY_ENVIOS / ULOGIN | KSMSL, ULOGIN |\n| Contadores, Reportes, Noticias, Procedimientos, Seguridad por tabla, Impresoras, Asignación, Correcciones, Objetos | En construcción | — | — |",
+      "puntosClave": [
+        "Docs de tablas: USVGS, TGEN, USUSU, USGRU, USGRUH, USPROH.",
+        "Eliminar usuario no se ve."
+      ]
+    },
+    {
+      "id": "flujo-seguridad",
+      "tipo": "flujo",
+      "kicker": "Flujo 1",
+      "titulo": "Crear un grupo y asignar permisos",
+      "flujoId": "confsis-grupo",
+      "imagen": "img/confsis_seguridad_sketchnote.jpg",
+      "imagenAlt": "Grupos y usuarios",
+      "intro": "El candado: grupo → Seguridad (USGRUH) → usuarios."
+    },
+    {
+      "id": "detalle-seguridad",
+      "tipo": "texto",
+      "kicker": "Seguridad",
+      "titulo": "Grupos, usuarios, clave y permiso especial",
+      "flujoId": "confsis-usuario",
+      "intro": "Ficha del usuario y por qué el equipo es obligatorio.",
+      "md": "## Grupo (USGRU)\n\nCódigo y nombre. Expandir: **Seguridad** (permisos uno a uno, masivos, clonar), **Usuarios**, **Prefijos**, **Administradoras**. Los procedimientos (USPROH) se marcan aquí.\n\n## Usuario (USUSU)\n\nLogin, grupo, sede, médico, cajero, **equipo (UBEQ) obligatorio**, foto y firma. DATACLAVE al guardar. **Reiniciar clave web**. Desbloqueo y MFA por API. Plantillas si IMPRIMIRMPLXUSUARIO = SI. Lista blanca IP (TGEN WEB / IPPERMITIDA) o Cualquier IP.\n\nEliminar está oculto: se **inactiva**.\n\n## Permiso especial (PERMESP)\n\nTipo + usuario + vigencia. No sustituye el permiso del grupo.",
+      "puntosClave": [
+        "Crear el equipo antes del usuario.",
+        "Procedimientos y Controles no tiene pantalla."
+      ]
+    },
+    {
+      "id": "usvgs-tgen",
+      "tipo": "texto",
+      "kicker": "Interruptores",
+      "titulo": "Variables del sistema y tabla genérica",
+      "flujoId": "confsis-variables",
+      "imagen": "img/confsis_usvgs_sketchnote.jpg",
+      "imagenAlt": "Variables y tabla genérica",
+      "intro": "Se edita el valor; no se crea la variable. No se publica el DATO de un cliente.",
+      "md": "## Variable (USVGS)\n\nACTUALIZA_DATO cambia **DATO** y **descripción**. El código, el tipo y la observación no se tocan. Si la variable apunta a una tabla, el DATO es un código de esa tabla.\n\n## Tabla genérica (TGEN)\n\nLlave TABLA + CAMPO + CODIGO. Filtros por tabla y campo. **Opciones libres** (TGENOP) para combos de formulario.\n\n## Rastro\n\nKLOG: quién cambió qué valor y cuándo.",
+      "puntosClave": [
+        "No hay botón Nuevo en Variables.",
+        "Cada instalación tiene su DATO: no se copia al manual."
+      ]
+    },
+    {
+      "id": "estaciones-logs",
+      "tipo": "texto",
+      "kicker": "Estaciones",
+      "titulo": "Ubicaciones físicas y logs",
+      "flujoId": "confsis-logs",
+      "intro": "El equipo de la estación y las cuatro consultas de rastro.",
+      "md": "## Ubicación (UBEQ)\n\nEquipo, sede, área, caja, bodegas. El usuario lo exige. Impresoras y su asignación están en construcción.\n\n## Logs (solo lectura + Excel)\n\n- Auditoría: USLOG / USLOGH.\n- Variables: KLOG.\n- Mensajes: KSMSL / QRY_ENVIOS.\n- Accesos: ULOGIN.\n\nCorrecciones y Estados está en construcción.",
+      "puntosClave": [
+        "Sin UBEQ no se guarda el usuario.",
+        "Los logs no se editan."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosConfigSistemas",
+      "kicker": "Semáforo",
+      "titulo": "Estados y marcas de Sistemas",
+      "intro": "Activo, inactivo, bloqueado, en construcción."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Validar en preversión (PREVERSION = 2.0.7, IDANT 2.0.6) antes de pedir desarrollo.",
+      "md": "1. **Muchas opciones en construcción** (contadores, reportes, noticias, procedimientos, seguridad por tabla, impresoras, correcciones, objetos).\n2. **USVGS no crea variables:** solo DATO y descripción.\n3. **Procedimientos sin pantalla:** se asignan en Grupos → Seguridad.\n4. **Eliminar usuario oculto** (inactiveFeature): el camino es inactivar.\n\nNo pedir de nuevo un arreglo que ya esté en la canasta abierta.",
+      "puntosClave": [
+        "Lo que el usuario reporta como «no encuentro Procedimientos» es el hueco del menú.",
+        "Validar en preversión."
+      ]
+    }
+  ]
+}

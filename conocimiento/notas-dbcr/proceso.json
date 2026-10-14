@@ -3,9 +3,9 @@
   "nombre": "Cartera · Notas débito/crédito",
   "modulo": "FNOT_COL",
   "estado": "parcial",
-  "resumen": "FNOT/FNOTD: crear NC/ND → detalle → aplicar (SPK_NOTASCXC) → DIAN/SUNAT. SPQ 14/14 + SPKs núcleo leído 2026-09-06. /admin/notasdbcr.",
-  "notaSql": "SPQ_FNOT_COL 14/14 leído + SPKs núcleo (NOTASCXC, ANULANOTA_CR, GEN/DESITEMS, APLICA_FNOT_MASIVA, NC_CONTAB_FNOT) en sql/ — fichas leído 2026-09-06.",
-  "actualizado": "2026-09-06",
+  "resumen": "FNOT/FNOTD: crear NC/ND → detalle → aplicar (SPK_NOTASCXC) → DIAN. Libro reorganizado 2026-10-03 en 12 capítulos con sketchnotes (NC vs ND, hilo común, por concepto, detalle manual, carga masiva, aplicar, anular, DIAN, imprimir/ZIP, estados, procedencia). SPQ_FNOT_COL 14/14 leído; PREVERSION = 2.0.7.",
+  "notaSql": "SPQ_FNOT_COL releído 2026-10-03 desde DESAIX: PREVERSION idéntica a la última liberada 2.0.7 (IDANT 2.0.6). 14 METODOs; sin cambios frente a la ficha de 2026-09-06. SPKs núcleo leídos 2026-09-06.",
+  "actualizado": "2026-10-03T18:30:00",
   "alcanceHasta": "Aplicar o anular nota CxC y su efecto en saldo de factura/CxC + cola DIAN. Glosas, conciliaciones y recaudos alimentan PROCEDENCIA; CxP usa otra ventana.",
   "familia": "cartera",
   "prioridad": 4,
@@ -345,5 +345,1134 @@
     }
   ],
   "flujoPasado": true,
-  "pasadaEn": "2026-09-05T23:24:24"
+  "pasadaEn": "2026-09-05T23:24:24",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "Ventana donde cartera corrige facturas ya emitidas sin tocarlas: una nota crédito baja lo que se cobra y una nota débito lo sube. Cada nota nace Abierta, se detalla (ítem por ítem o por concepto) y al aplicarse mueve la cuenta por cobrar, genera el comprobante contable y queda lista para enviarse a la DIAN.",
+    "paraQueSirve": "Registrar descuentos, glosas aceptadas, acuerdos y valores faltantes sobre facturas vigentes, dejando trazabilidad contable y electrónica. También consulta y envía a la DIAN las notas que nacen en Glosas y Conciliaciones.",
+    "proposito": "Que el saldo de cada factura en cartera refleje lo realmente cobrable, con su asiento contable y su notificación electrónica en el mismo flujo."
+  },
+  "botones": [
+    {
+      "label": "Nueva Nota",
+      "icono": "note_add",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Abre el formulario de cabecera. Exige tener elegida la Clase (NC o ND) en el filtro."
+    },
+    {
+      "label": "Subir Notas",
+      "icono": "upload",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Carga masiva con plantilla Excel (Crédito o Débito). Las notas nacen aplicadas. Oculto en Perú."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "table_view",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Descarga las notas del filtro actual con las columnas de la grilla."
+    },
+    {
+      "label": "Impresión masiva (ZIP)",
+      "icono": "folder_zip",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Genera el PDF de cada nota del filtro y los empaqueta en uno o varios ZIP (máx. 2000 por archivo). Permite elegir el nombre de cada PDF."
+    },
+    {
+      "label": "Editar Nota",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Cambia factura, concepto u observación. Solo nota Abierta y no anulada."
+    },
+    {
+      "label": "Anular Nota (abierta)",
+      "icono": "cancel",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Anula una nota sin aplicar con usuario que solicita y motivo (mínimo 10 caracteres). No notifica a la DIAN."
+    },
+    {
+      "label": "Generar Detalles",
+      "icono": "expand_more",
+      "color": "info",
+      "estilo": "outline",
+      "descripcion": "NC con «Afecta todos los servicios»: arma las líneas repartiendo el porcentaje o valor. Aparece mientras no haya detalle generado."
+    },
+    {
+      "label": "Eliminar Detalles",
+      "icono": "expand_less",
+      "color": "info",
+      "estilo": "outline",
+      "descripcion": "Borra las líneas generadas por concepto y deja el total en cero para rehacer."
+    },
+    {
+      "label": "Detalle",
+      "icono": "playlist_add",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Agrega una línea manual: ítem de la factura, cantidad, valor unitario e IVA. Solo si la nota no usa concepto."
+    },
+    {
+      "label": "Aplicar",
+      "icono": "check_circle",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Valida detalle, periodos, factura y saldo; mueve cartera, deja la nota Aplicada y contabiliza."
+    },
+    {
+      "label": "Anular Nota (aplicada)",
+      "icono": "cancel",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Reversa una nota aplicada de procedencia NOTAS o AJUSTE. Bloqueada si la DIAN ya la procesó."
+    },
+    {
+      "label": "Imprimir Nota",
+      "icono": "print",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Formato de la nota. Solo aplicadas."
+    },
+    {
+      "label": "Comprobante",
+      "icono": "print",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Imprime el comprobante contable de la nota (aplicada, no anulada y contabilizada)."
+    },
+    {
+      "label": "N_Factura",
+      "icono": "print",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Imprime la factura origen de la nota."
+    },
+    {
+      "label": "Envios y Respuestas",
+      "icono": "code",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "XML enviado y respuesta de la DIAN. Visible con estado DIAN Notificada, Con Errores o Enviada."
+    },
+    {
+      "label": "Encolar",
+      "icono": "send",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Pone la nota aplicada en la cola DIAN. Exige factura notificada o prevalidada y fecha no anterior a hoy."
+    },
+    {
+      "label": "Desencolar",
+      "icono": "logout",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Saca la nota de la cola (En Cola o Con Errores) y la deja Sin Enviar."
+    },
+    {
+      "label": "Actualizar Fecha",
+      "icono": "schedule",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Pone la fecha de hoy en la nota (y en su comprobante) para poder encolarla. Aparece cuando la fecha es anterior a hoy."
+    },
+    {
+      "label": "Enviar Sunat",
+      "icono": "cloud_upload",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Solo Perú: envía la nota aplicada a SUNAT."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "admin.notasdbcr (acceso a pantalla)",
+      "accion": "Entrar a Notas DB/CR",
+      "rol": "Analista de cartera / Facturación",
+      "descripcion": "La ventana se controla por acceso al menú Administrativo → Notas DB/CR. No hay permisos USGRUH por botón: quien entra puede crear, aplicar, anular y encolar."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDCONCEP_ANULAFTRCE",
+      "tipo": "Código de concepto",
+      "valorSugerido": "Concepto CPNT de anulación",
+      "descripcion": "NC con este concepto y procedencia FACTURA se muestra como ANULAFACT (anulación de factura por nota crédito electrónica)."
+    },
+    {
+      "nombre": "FTR_PREVALIDA_ACTIVA",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "Con SI, una nota sin factura asociada se encola a la cola de prevalidación DIAN (estado 5) en lugar de rechazarse."
+    },
+    {
+      "nombre": "FNOT_ANULA_REVERSA",
+      "tipo": "ANULA / REVERSA",
+      "valorSugerido": "REVERSA",
+      "descripcion": "Al anular una nota aplicada define si el comprobante contable se anula o se reversa. En periodo contable cerrado siempre reversa."
+    },
+    {
+      "nombre": "SOL_AUT_NDC",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "Cambia las opciones del filtro Estado (con NO aparecen además En Cartera, Autorizadas y Rechazadas). El flujo de autorización no está en el SP actual."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "País",
+      "valorSugerido": "COLOMBIA",
+      "descripcion": "Con PERU la ventana oculta Subir Notas y la DIAN, y muestra Enviar Sunat y Estado Sunat."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Hacer un descuento o rebaja parcial a una factura ya emitida",
+      "donde": "Administrativo → Notas DB/CR → filtro Clase = NC-Crédito → Nueva Nota → factura, concepto → Detalle o «Afecta todos los servicios» → Aplicar",
+      "condicion": "La factura debe estar vigente y con saldo; la nota no puede ser por el 100 %.",
+      "noEs": "No es anular la factura: eso se hace desde Facturación."
+    },
+    {
+      "necesidad": "Cobrar un valor que faltó en una factura",
+      "donde": "Notas DB/CR → Clase = ND-Débito → Nueva Nota → Detalle ítem por ítem → Aplicar",
+      "condicion": "La ND siempre se detalla a mano; no tiene la casilla de concepto.",
+      "noEs": "No es una factura nueva: es un ajuste sobre la existente."
+    },
+    {
+      "necesidad": "Anular una factura completa con nota crédito",
+      "donde": "Facturación → anular factura. En masivo: Subir Notas (Crédito) con ANULARFACT = SI",
+      "condicion": "Valor de la nota y saldo deben ser iguales al total de la factura.",
+      "noEs": "Aplicar una NC manual por el 100 % está bloqueado."
+    },
+    {
+      "necesidad": "Aplicar un porcentaje a toda la factura",
+      "donde": "Nueva Nota (NC) → casilla «Afecta Todos los Servicios» → Tipo Porcentaje o Valor → Guardar → Generar Detalles → Aplicar",
+      "condicion": "La afectación no puede superar el saldo de la factura.",
+      "noEs": "No disponible en nota débito."
+    },
+    {
+      "necesidad": "Hacer la nota sobre un servicio puntual de la factura",
+      "donde": "Fila expandida → Detalle → lupa ítem de la factura → cantidad, valor, IVA → Guardar",
+      "condicion": "Nota Abierta y sin la casilla de concepto marcada.",
+      "noEs": "Las notas de carga masiva no se detallan por servicio."
+    },
+    {
+      "necesidad": "Subir muchas notas de una vez",
+      "donde": "Subir Notas → Clase → Plantilla Excel (con VALIDACION) → Procesar → Generar Notas",
+      "condicion": "Encabezados exactos, descripción y observación con mínimo 15 caracteres, VALIDACION = OK; NC exige factura notificada en DIAN.",
+      "noEs": "Las notas quedan aplicadas y contabilizadas al generarse; no quedan Abiertas."
+    },
+    {
+      "necesidad": "Deshacer una nota que todavía no apliqué",
+      "donde": "Fila expandida → Anular Nota (nota Abierta) → usuario que solicita + motivo ≥ 10 caracteres",
+      "condicion": "Nota Abierta y no anulada.",
+      "noEs": "No hay reverso contable porque la nota nunca se aplicó; tampoco se notifica a la DIAN."
+    },
+    {
+      "necesidad": "Deshacer una nota ya aplicada",
+      "donde": "Fila expandida → Anular Nota (nota Aplicada) → usuario que solicita + razón",
+      "condicion": "Procedencia NOTAS o AJUSTE y estado DIAN Sin Enviar.",
+      "noEs": "Si la DIAN ya la procesó no se anula: cree la nota contraria."
+    },
+    {
+      "necesidad": "Enviar la nota a la DIAN",
+      "donde": "Fila expandida → Encolar",
+      "condicion": "Nota Aplicada, factura notificada (FACTE 2) o prevalidada (6), fecha de la nota no anterior a hoy.",
+      "noEs": "El envío real lo hace el proceso DIAN; aquí solo se encola."
+    },
+    {
+      "necesidad": "La DIAN rechazó la nota",
+      "donde": "Envios y Respuestas (ver motivo) → Desencolar → corregir → Encolar",
+      "condicion": "Estado DIAN Con Errores.",
+      "noEs": "Si el error es de la factura padre, se corrige en Facturación."
+    },
+    {
+      "necesidad": "Encolar una nota de días o meses anteriores",
+      "donde": "Fila expandida → Actualizar Fecha → Encolar",
+      "condicion": "Hasta 3 meses atrás, con comprobante sin errores y periodo contable abierto.",
+      "noEs": "Más de 3 meses: no se encola; anular y rehacer."
+    },
+    {
+      "necesidad": "Imprimir la nota o su comprobante contable",
+      "donde": "Fila expandida → Imprimir Nota / Comprobante / N_Factura",
+      "condicion": "Nota Aplicada; Comprobante exige Nro. Comprobante.",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Descargar en PDF todas las notas de un periodo",
+      "donde": "Filtrar → botón ZIP (Impresión masiva) → elegir nombre de archivo → Generar y descargar ZIP",
+      "condicion": "Toma exactamente lo filtrado; máximo 2000 notas por ZIP.",
+      "noEs": "No es un informe: para resúmenes use Cartera · Reportes o Exportar Excel."
+    },
+    {
+      "necesidad": "Ver las notas que vienen de glosas o conciliaciones",
+      "donde": "Filtro Procedencia = AUDITORIA o CONCILIA",
+      "condicion": "Se consultan, encolan e imprimen aquí.",
+      "noEs": "No se anulan desde esta ventana; se corrigen en Glosas o Conciliaciones."
+    },
+    {
+      "necesidad": "Hacer una nota a un proveedor",
+      "donde": "Cuentas por pagar (notas CxP)",
+      "condicion": "",
+      "noEs": "Esta ventana es solo de cuentas por cobrar (FNOT)."
+    }
+  ],
+  "estadosNota": {
+    "titulo": "Cómo leer el estado de una nota",
+    "descripcion": "La grilla combina la columna Estado (Abierta / Aplicada / Anulada), Nro. Comprobante, Estado DIAN y Procedencia. Guíese por esta tabla.",
+    "columnas": [
+      "Dónde se ve"
+    ],
+    "filas": [
+      {
+        "codigo": "AB",
+        "tono": "ambar",
+        "etiquetas": [
+          "Abierta",
+          "Columna Estado · filtro Estado = Sin Aplicar"
+        ],
+        "significa": "Creada pero no aplicada. No ha tocado cartera ni contabilidad.",
+        "queHacer": "Editar, detallar y Aplicar. Si no va: Anular Nota (motivo ≥ 10 caracteres)."
+      },
+      {
+        "codigo": "AP",
+        "tono": "verde",
+        "etiquetas": [
+          "Aplicada",
+          "Columna Estado · filtro Estado = Aplicadas"
+        ],
+        "significa": "Ya movió el saldo de la factura y tiene comprobante contable.",
+        "queHacer": "Imprimir, Encolar a la DIAN. Anular solo si procedencia NOTAS y DIAN Sin Enviar."
+      },
+      {
+        "codigo": "AN",
+        "tono": "gris",
+        "etiquetas": [
+          "Anulada",
+          "Columna Estado · filtro Estado = Anuladas"
+        ],
+        "significa": "Sin efecto. Si estaba aplicada, su comprobante fue anulado o reversado.",
+        "queHacer": "Nada. Si hace falta, cree una nota nueva."
+      },
+      {
+        "codigo": "CT",
+        "tono": "verde",
+        "etiquetas": [
+          "Contabilizada",
+          "Columna Nro. Comprobante"
+        ],
+        "significa": "El asiento de la nota existe en contabilidad con la cuenta del concepto.",
+        "queHacer": "Botón Comprobante para verlo."
+      },
+      {
+        "codigo": "D0",
+        "tono": "gris",
+        "etiquetas": [
+          "DIAN: Sin Enviar",
+          "Columna Estado DIAN · FACTE 0"
+        ],
+        "significa": "Aplicada pero aún no puesta en la cola electrónica.",
+        "queHacer": "Encolar (si la fecha es vieja, antes Actualizar Fecha)."
+      },
+      {
+        "codigo": "D1",
+        "tono": "azul",
+        "etiquetas": [
+          "DIAN: En Cola",
+          "Columna Estado DIAN · FACTE 1 o 5"
+        ],
+        "significa": "Esperando que el proceso DIAN la tome.",
+        "queHacer": "Esperar. Desencolar si hay que corregir algo antes del envío."
+      },
+      {
+        "codigo": "D4",
+        "tono": "azul",
+        "etiquetas": [
+          "DIAN: Enviada",
+          "Columna Estado DIAN · FACTE 4"
+        ],
+        "significa": "Transmitida, pendiente de respuesta.",
+        "queHacer": "Esperar la respuesta; Envíos y Respuestas muestra el XML."
+      },
+      {
+        "codigo": "D2",
+        "tono": "verde",
+        "etiquetas": [
+          "DIAN: Notificada",
+          "Columna Estado DIAN · FACTE 2"
+        ],
+        "significa": "La DIAN la aceptó. Punto de no retorno.",
+        "queHacer": "Ya no se anula desde aquí; para deshacer, emita la nota contraria."
+      },
+      {
+        "codigo": "D3",
+        "tono": "rojo",
+        "etiquetas": [
+          "DIAN: Con Errores",
+          "Columna Estado DIAN · FACTE 3"
+        ],
+        "significa": "La DIAN la rechazó.",
+        "queHacer": "Envíos y Respuestas → leer el motivo → Desencolar → corregir → Encolar."
+      },
+      {
+        "codigo": "PR",
+        "tono": "gris",
+        "etiquetas": [
+          "Procedencia",
+          "Columna Procedencia"
+        ],
+        "significa": "NOTAS (hecha aquí), AUDITORIA (glosas), CONCILIA (conciliaciones), FACTURA (ANULAFACT).",
+        "queHacer": "Solo NOTAS/AJUSTE se anulan en esta ventana; las demás se corrigen en su módulo."
+      }
+    ],
+    "nota": "El filtro Estado tiene un detalle: la opción Aplicadas no filtra (muestra todas); use Estado DIAN o Nro. Comprobante para acotar. Reportado como pendiente."
+  },
+  "textoQueEs": "Una **nota** es el documento con el que cartera corrige una factura que ya salió, sin tocar la factura. La **nota crédito (NC)** baja lo que se cobra: descuentos, glosas aceptadas, acuerdos con la EPS. La **nota débito (ND)** lo sube: valores que faltaron, intereses, ajustes a favor de la institución.\n\nToda nota recorre tres momentos: **crear** la cabecera (factura, concepto, observación), **detallar** qué líneas y por cuánto, y **aplicar**. Al aplicar, el sistema mueve el saldo de la factura en la cuenta por cobrar, genera el comprobante contable y deja la nota **Aplicada**; desde ahí se envía a la DIAN con **Encolar**.\n\nLo que **no** se hace aquí: anular una factura completa (eso es Facturación; una NC manual por el 100 % está bloqueada), hacer notas a proveedores (Cuentas por pagar) ni responder glosas o cerrar conciliaciones (esos módulos crean sus propias notas, que aquí solo se consultan, encolan e imprimen).\n\nReglas que conviene saber desde el principio: hay que elegir la **Clase** en el filtro antes de pulsar Nueva Nota; solo puede haber **una nota abierta por factura**; cada nota lleva un **concepto** del catálogo (define la cuenta contable); y la fecha de la nota debe caer en un mes **abierto** en cartera y en contabilidad.",
+  "flujos": [
+    {
+      "id": "flujo-hilo-comun",
+      "nombre": "El hilo común: crear → detallar → aplicar",
+      "icono": "route",
+      "descripcion": "Sea crédito o débito, manual o por concepto, toda nota recorre estos pasos.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir la clase y pulsar Nueva Nota",
+          "descripcion": "En el filtro elija NC-Crédito o ND-Débito. Sin clase el botón avisa «Seleccione una clase de nota». Se abre el formulario con consecutivo vacío, clase y fecha de hoy.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Elegir la factura y el concepto",
+          "descripcion": "Lupa N_Factura: catálogo de facturas con saldo (NC) o facturas/cuentas por cobrar (ND); muestra tercero, cuenta de cobro y saldo. Lupa Id.Concepto: catálogo de conceptos de nota. Escriba la observación.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "FTR",
+            "VWK_FTRNDCR",
+            "CPNT"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Guardar crea la nota Abierta",
+          "descripcion": "El sistema asigna el consecutivo, deja estado Abierta y procedencia NOTAS. Si ya existe una nota sin aplicar sobre esa factura responde «Existe una nota en proceso para esta factura».",
+          "tablas": [
+            "FNOT"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_CRUD",
+            "SPK_GENCONSECUTIVO"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Cómo se detalla?",
+          "descripcion": "Depende de la clase y de la casilla «Afecta todos los servicios».",
+          "si": "NC con la casilla marcada: Porcentaje o Valor → el sistema genera las líneas (capítulo «Nota crédito por concepto»).",
+          "no": "Sin casilla (toda ND y NC puntual): botón Detalle, ítem por ítem (capítulo «Detalle ítem por ítem»)."
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Revisar y pulsar Aplicar",
+          "descripcion": "Expanda la fila, confirme las líneas y el total frente al saldo, y pulse Aplicar.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "El sistema valida y aplica",
+          "descripcion": "Detalle, periodos abiertos, valor > 0, factura vigente y (NC) saldo suficiente. Luego mueve la cartera, deja la nota Aplicada y genera el comprobante.",
+          "tablas": [
+            "FNOT",
+            "FNOTD",
+            "FCXCD",
+            "MCP",
+            "PRI"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_APLICAR",
+            "SPK_NOTASCXC",
+            "SPK_NC_CONTAB_FNOT"
+          ]
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Nota Aplicada, lista para la DIAN",
+          "descripcion": "Aparece Imprimir Nota, Comprobante y Encolar. Si algo falló, la nota sigue Abierta con el mensaje del motivo.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    },
+    {
+      "id": "flujo-nc-concepto",
+      "nombre": "Nota crédito por concepto («Afecta todos los servicios»)",
+      "icono": "percent",
+      "descripcion": "Un porcentaje o un valor que el sistema reparte entre todas las líneas de la factura. Solo NC.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Marcar «Afecta Todos los Servicios»",
+          "descripcion": "En el formulario de la nota (clase C) marque la casilla. Aparecen Tipo (Porcentaje / Valor) y el campo Valor.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿La afectación cabe en el saldo?",
+          "descripcion": "La pantalla calcula el resultado contra el saldo de la factura.",
+          "tablas": [
+            "FNOT"
+          ],
+          "si": "Cabe: el botón Guardar sigue visible.",
+          "no": "Se pasa: aviso rojo «la afectación no puede superar el saldo de la factura» y Guardar se oculta."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Guardar genera las líneas",
+          "descripcion": "El sistema reparte el porcentaje o valor entre las líneas de la factura respetando copago y saldo de cada servicio, y marca los detalles como generados.",
+          "tablas": [
+            "FNOTD",
+            "FTRD"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_CRUD",
+            "SPK_GENITEMS_NOTACR"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Generar / Eliminar Detalles si hace falta",
+          "descripcion": "Si no se generaron, botón Generar Detalles. Para cambiar el valor: Eliminar Detalles (borra las líneas, total a cero), Editar Nota, y volver a generar.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "FNOTD"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_ADDDETA / FNOT_DELDETA",
+            "SPK_DESITEMS_NOTACR"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Aplicar como cualquier nota",
+          "descripcion": "Con los detalles generados aparece Aplicar. No hay botón Detalle manual ni Editar/Borrar línea en este modo.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    },
+    {
+      "id": "flujo-detalle-manual",
+      "nombre": "Detalle ítem por ítem",
+      "icono": "list_alt",
+      "descripcion": "Camino obligatorio en la nota débito y opcional en la crédito sin casilla de concepto.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Expandir la nota y pulsar Detalle",
+          "descripcion": "El botón está debajo de la tabla de líneas; solo con nota Abierta y sin concepto. El encabezado muestra la clase y el saldo disponible.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Buscar el ítem de la factura",
+          "descripcion": "La lupa lista los servicios o cuotas de la factura con código, descripción, cantidad y valor facturado. Elija uno.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "FTRD"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cantidad, valor unitario e IVA",
+          "descripcion": "Digite cantidad y valor unitario; si hay % IVA se calcula el Vlr. IVA; el Vlr. Total se recalcula. Agregue observación.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿El total cabe en el saldo? (solo NC)",
+          "descripcion": "En nota crédito la línea no puede superar el saldo de la factura.",
+          "si": "Cabe: Guardar visible.",
+          "no": "Se pasa: Guardar se oculta hasta ajustar. En ND no hay tope."
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Guardar la línea",
+          "descripcion": "Inserta la línea (ítem + 1) y recalcula el total de la nota. Si la factura tiene cuotas, la liga a la cuota.",
+          "tablas": [
+            "FNOTD",
+            "FNOT"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_CRUDFNOTD"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Editar o borrar mientras esté Abierta",
+          "descripcion": "Iconos Editar | Borrar al inicio de cada línea. Con al menos una línea ya puede Aplicar.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    },
+    {
+      "id": "flujo-carga-masiva",
+      "nombre": "Carga masiva: Subir Notas",
+      "icono": "upload_file",
+      "descripcion": "Clase → plantilla → diligenciar → Procesar → revisar → Generar Notas. Las notas nacen aplicadas y contabilizadas.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Subir Notas → elegir Clase → descargar plantilla",
+          "descripcion": "Elija Crédito o Débito y pulse «Plantilla Excel (con VALIDACION)». La plantilla trae la fórmula VALIDACION en las primeras filas; si necesita más, copie la celda hacia abajo.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Diligenciar con encabezados exactos",
+          "descripcion": "Crédito: N_FACTURA, IDCONCEPTO, DESCRIPCION, VALOR NOTA, OBSERVACIONES, ANULARFACT (SI/NO). Débito: N_FACTURA, IDSERVICIO, VALOR, DESCRIPCION, OBSERVACION, CCOSTO, IDAREA, PREFIJO. Descripción y observación con mínimo 15 caracteres. VALIDACION debe decir OK.",
+          "rol": "Analista de cartera"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Procesar: validación fila por fila",
+          "descripcion": "Sube en lotes de 1500 filas a una tabla temporal. El servidor revisa: factura vigente con saldo, concepto o servicio existe, valor > 0; en NC la factura debe estar notificada (FACTE 2) o prevalidada (6); con ANULARFACT = SI el valor y el saldo deben ser iguales al total de la factura.",
+          "tablas": [
+            "RPDX",
+            "FTR",
+            "VWK_CXCDIASVTO",
+            "CPNT"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · CARGAR_NOTAS_LOTE"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Revisar la vista previa",
+          "descripcion": "Filtre por N_Factura, «Con errores» y, en NC, «Anular factura». Las filas erradas muestran el motivo.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "RPDX"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Hay filas con error?",
+          "descripcion": "Al pulsar Generar Notas.",
+          "si": "Sí: aviso «solo se generarán las notas de los registros válidos, los demás serán borrados». Confirme o cancele para corregir el archivo.",
+          "no": "No: se generan todas."
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Generar Notas: crear, aplicar y contabilizar",
+          "descripcion": "Por cada fila válida crea la nota (una línea), la aplica y la contabiliza. NC con ANULARFACT = SI anula la factura en lugar de crear nota parcial. Devuelve OK/ERROR por fila y limpia la tabla temporal.",
+          "tablas": [
+            "FNOT",
+            "FNOTD",
+            "MCP"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_CREARMASIVO",
+            "SPK_APLICA_FNOT_MASIVA",
+            "SPQ_FTR_COL · ANULARFAC"
+          ]
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Log en Excel",
+          "descripcion": "Se descarga Log_notas_masivo.xlsx con el resultado por fila. Las notas aparecen en la grilla ya Aplicadas. Cancelar en la vista previa borra el lote sin crear nada.",
+          "rol": "Analista de cartera",
+          "tablas": [
+            "RPDX"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_LIMPIARPDX"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-aplicar",
+      "nombre": "Qué pasa cuando pulso Aplicar",
+      "icono": "task_alt",
+      "descripcion": "Validaciones en orden; el primer tropiezo detiene todo y la nota sigue Abierta.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "sistema",
+          "titulo": "La nota: detalle y valor",
+          "descripcion": "«Nota sin detalles, no se puede aplicar» · «El valor de la nota no puede ser menor o igual a cero». Por concepto exige detalles generados.",
+          "tablas": [
+            "FNOT",
+            "FNOTD"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_APLICAR"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Los periodos de la fecha de la nota",
+          "descripcion": "«Periodo de cartera cerrado o no existe» · «Periodo contable cerrado o no existe». Solución: abrir el mes o Editar Nota con fecha vigente.",
+          "tablas": [
+            "PRI"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "La factura",
+          "descripcion": "Debe estar en estado P y sin anulación: «Inconsistencia en la factura». NC: «No se permite aplicar una nota por el 100 % del valor de la factura, se debe anular desde Facturación».",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "El saldo (solo NC)",
+          "descripcion": "Reliquida la factura y compara: «Verifique los saldos, el saldo de la factura no cubre el valor de la nota».",
+          "tablas": [
+            "VWK_CXCDIASVTO"
+          ],
+          "sp": [
+            "SPK_RELIQUIDA_FTR"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "El efecto: todo o nada",
+          "descripcion": "Mueve el saldo de la factura en la cuenta por cobrar (baja NC / sube ND), deja la nota Aplicada con usuario y fecha y genera el comprobante con la cuenta del concepto. Si la contabilización falla, la nota no queda aplicada.",
+          "tablas": [
+            "FCXCD",
+            "FCXCDV",
+            "FNOT",
+            "MCP"
+          ],
+          "sp": [
+            "SPK_NOTASCXC",
+            "SPK_NC_CONTAB_FNOT"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Aplicada y contabilizada",
+          "descripcion": "Columnas Estado = Aplicada y Nro. Comprobante. Aparecen Imprimir Nota, Comprobante y Encolar.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    },
+    {
+      "id": "flujo-anular",
+      "nombre": "Anular una nota: abierta o aplicada",
+      "icono": "undo",
+      "descripcion": "Dos botones con el mismo nombre y reglas distintas. La DIAN marca el punto de no retorno.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿La nota ya está aplicada?",
+          "descripcion": "Mire la columna Estado.",
+          "si": "Aplicada: siga al paso 3.",
+          "no": "Abierta: paso 2."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Anular Nota (abierta)",
+          "descripcion": "Usuario que solicita y motivo de anulación (mínimo 10 caracteres). Marca la nota Anulada; no hay reverso porque nunca tocó cartera ni contabilidad. No se notifica a la DIAN.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "FNOT"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_CRUD (ANULAR)"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Procedencia NOTAS o AJUSTE y DIAN Sin Enviar?",
+          "descripcion": "El botón Anular Nota de una aplicada solo aparece con procedencia NOTAS o AJUSTE.",
+          "si": "Sí: paso 4.",
+          "no": "Otra procedencia: corrija en Glosas o Conciliaciones. Ya procesada por la DIAN: «La nota no puede ser anulada porque corresponde a una factura electrónica y ya se ha procesado»; cree la nota contraria."
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Anular Nota (aplicada)",
+          "descripcion": "Usuario que solicita y razón de anulación. Confirmar.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Reverso de cartera y contabilidad",
+          "descripcion": "Devuelve el saldo de la factura y anula o reversa el comprobante según la variable FNOT_ANULA_REVERSA y el periodo (cerrado → siempre reversa). Marca Anulada con usuario, fecha y razón.",
+          "tablas": [
+            "FNOT",
+            "FCXCD",
+            "MCP"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_ANULANOTA",
+            "SPK_ANULANOTA_CR"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Anulada con rastro",
+          "descripcion": "Filtro Estado = Anuladas. Quedan registrados quién anuló, quién solicitó, fecha y razón; en contabilidad, el comprobante anulado o el de reversión.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    },
+    {
+      "id": "flujo-dian",
+      "nombre": "Enviar la nota a la DIAN: Encolar, Desencolar y Actualizar fecha",
+      "icono": "send",
+      "descripcion": "Botones de esta ventana. El envío y la respuesta los hace el proceso DIAN (ver XML DIAN).",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿La nota puede encolarse?",
+          "descripcion": "Nota Aplicada, no anulada, estado DIAN Sin Enviar; la factura debe estar notificada (FACTE 2) o prevalidada (6).",
+          "tablas": [
+            "FNOT",
+            "FTR"
+          ],
+          "si": "Sí: paso 2.",
+          "no": "Factura sin notificar: «Factura … no se ha notificado a la DIAN». Resuelva primero la factura en Facturación / XML DIAN."
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿La fecha de la nota es anterior a hoy?",
+          "descripcion": "La pantalla no deja encolar con fecha vieja: «La fecha de la nota no puede ser menor a la fecha actual».",
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_ACTUALIZAR_FECHA"
+          ],
+          "si": "Sí: pulse Actualizar Fecha (pone hoy en la nota y en el comprobante). Si la nota tiene más de 3 meses, no se encola: anular y rehacer.",
+          "no": "No: Encolar directo."
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Encolar",
+          "descripcion": "Pone la fecha de hoy y marca En Cola (1) o cola de prevalidación (5). Si la nota es de un mes anterior (≤ 3) mueve la fecha contable del comprobante, exigiendo comprobante sin errores y periodo abierto.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "FNOT",
+            "MCP",
+            "MCPE",
+            "PRI"
+          ],
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_ENCOLAR"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "El proceso DIAN la envía",
+          "descripcion": "En Cola → Enviada → Notificada (aceptada) o Con Errores (rechazada). La columna Estado DIAN se actualiza; Envíos y Respuestas muestra XML y respuesta.",
+          "tablas": [
+            "FNOT"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Quedó Con Errores?",
+          "descripcion": "Estado DIAN = Con Errores (FACTE 3).",
+          "sp": [
+            "SPQ_FNOT_COL · FNOT_DESENCOLAR"
+          ],
+          "si": "Sí: Envíos y Respuestas → leer motivo → Desencolar (vuelve a Sin Enviar) → corregir → Encolar.",
+          "no": "Notificada: terminó. Ya no se anula desde aquí."
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Notificada",
+          "descripcion": "La nota quedó aceptada por la DIAN. Para deshacerla, emita la nota contraria.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    },
+    {
+      "id": "flujo-imprimir",
+      "nombre": "Imprimir y exportar",
+      "icono": "print",
+      "descripcion": "Nota, comprobante, factura, Excel y ZIP masivo.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Imprimir Nota / N_Factura",
+          "descripcion": "Fila expandida de una nota Aplicada: Imprimir Nota saca el formato de la nota; N_Factura imprime la factura origen.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Comprobante",
+          "descripcion": "Imprime el comprobante contable de la nota. Solo aplicada, no anulada y con Nro. Comprobante.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR",
+          "tablas": [
+            "MCP"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Exportar Excel",
+          "descripcion": "Botón verde de la barra: descarga las notas del filtro actual con las columnas de la grilla.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Impresión masiva (ZIP)",
+          "descripcion": "Botón naranja: consulta las notas del filtro, abre un diálogo con la cantidad y el modo de nombre de cada PDF (solo consecutivo · consecutivo + factura · personalizado con {CNSFNOT} {N_FACTURA} {SUFIJO} {CLASE}) y una vista previa.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Notas DB/CR"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Generar y descargar ZIP",
+          "descripcion": "Genera el PDF de cada nota (mismo formato de Imprimir Nota) y los empaqueta. Más de 2000 notas: varios ZIP seguidos. Más de 80 puede tardar minutos.",
+          "tablas": [
+            "FNOT"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Archivos descargados",
+          "descripcion": "Filtre primero: Excel y ZIP toman exactamente lo que está en la grilla.",
+          "rol": "Analista de cartera"
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Guía rápida",
+      "titulo": "¿Qué necesita hacer?",
+      "intro": "Busque su caso y siga la ruta. Si no aparece, continúe con los capítulos."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "md": "Una **nota** es el documento con el que cartera corrige una factura que ya salió, sin tocar la factura. La **nota crédito (NC)** baja lo que se cobra: descuentos, glosas aceptadas, acuerdos con la EPS. La **nota débito (ND)** lo sube: valores que faltaron, intereses, ajustes a favor de la institución.\n\nToda nota recorre tres momentos: **crear** la cabecera (factura, concepto, observación), **detallar** qué líneas y por cuánto, y **aplicar**. Al aplicar, el sistema mueve el saldo de la factura en la cuenta por cobrar, genera el comprobante contable y deja la nota **Aplicada**; desde ahí se envía a la DIAN con **Encolar**.\n\nLo que **no** se hace aquí: anular una factura completa (eso es Facturación; una NC manual por el 100 % está bloqueada), hacer notas a proveedores (Cuentas por pagar) ni responder glosas o cerrar conciliaciones (esos módulos crean sus propias notas, que aquí solo se consultan, encolan e imprimen).\n\nReglas que conviene saber desde el principio: hay que elegir la **Clase** en el filtro antes de pulsar Nueva Nota; solo puede haber **una nota abierta por factura**; cada nota lleva un **concepto** del catálogo (define la cuenta contable); y la fecha de la nota debe caer en un mes **abierto** en cartera y en contabilidad.",
+      "kicker": "Conceptos",
+      "titulo": "Qué es una nota y cuándo es crédito o débito",
+      "intro": "Antes de tocar la pantalla: qué corrige una nota, cuál clase usar y qué no se hace en esta ventana.",
+      "imagen": "img/notas_nc_vs_nd_sketchnote.jpg",
+      "imagenAlt": "Nota crédito o nota débito: ¿cuál necesito?",
+      "puntosClave": [
+        "NC baja el valor de la factura; ND lo sube.",
+        "Una NC por el 100 % está bloqueada: anule la factura desde Facturación.",
+        "Elija la Clase en el filtro antes de Nueva Nota; una sola nota abierta por factura."
+      ]
+    },
+    {
+      "id": "hilo-comun",
+      "tipo": "flujo",
+      "flujoId": "flujo-hilo-comun",
+      "kicker": "Panorama",
+      "titulo": "El hilo común: crear → detallar → aplicar",
+      "intro": "Toda nota recorre los mismos pasos. Apréndase este capítulo; los siguientes son variaciones.",
+      "imagen": "img/notas_hilo_comun_sketchnote.jpg",
+      "imagenAlt": "El hilo común de toda nota",
+      "puntosClave": [
+        "Abierta = editable; Aplicada = ya movió cartera y contabilidad.",
+        "Sin detalle no hay Aplicar.",
+        "Aplicar genera el comprobante en el mismo acto."
+      ]
+    },
+    {
+      "id": "nc-concepto",
+      "tipo": "flujo",
+      "flujoId": "flujo-nc-concepto",
+      "kicker": "Nota crédito",
+      "titulo": "Nota crédito por concepto: «Afecta todos los servicios»",
+      "intro": "Un porcentaje o un valor que el sistema reparte entre todas las líneas de la factura. Solo para NC.",
+      "imagen": "img/notas_nc_concepto_sketchnote.jpg",
+      "imagenAlt": "Nota crédito por concepto",
+      "puntosClave": [
+        "La afectación no puede superar el saldo de la factura.",
+        "Generar Detalles arma las líneas; Eliminar Detalles las borra para rehacer.",
+        "En este modo no hay Detalle manual."
+      ]
+    },
+    {
+      "id": "detalle-manual",
+      "tipo": "flujo",
+      "flujoId": "flujo-detalle-manual",
+      "kicker": "Línea por línea",
+      "titulo": "Detalle ítem por ítem",
+      "intro": "Cuando la nota es sobre un servicio puntual. Obligatorio en nota débito.",
+      "imagen": "img/notas_detalle_manual_sketchnote.jpg",
+      "imagenAlt": "Detalle ítem por ítem",
+      "puntosClave": [
+        "El ítem sale de la factura (servicio o cuota).",
+        "En NC la línea no puede superar el saldo; en ND no hay tope.",
+        "Editar | Borrar solo mientras la nota esté Abierta."
+      ]
+    },
+    {
+      "id": "carga-masiva",
+      "tipo": "flujo",
+      "flujoId": "flujo-carga-masiva",
+      "kicker": "Plantilla",
+      "titulo": "Carga masiva: Subir Notas con Excel",
+      "intro": "Para muchas notas de una vez. Las notas nacen aplicadas y contabilizadas.",
+      "imagen": "img/notas_carga_masiva_sketchnote.jpg",
+      "imagenAlt": "Carga masiva con la plantilla Excel",
+      "puntosClave": [
+        "Encabezados exactos; descripción y observación con mínimo 15 caracteres; VALIDACION = OK.",
+        "NC exige factura notificada en DIAN; ANULARFACT = SI anula la factura.",
+        "Generar Notas crea, aplica y contabiliza; Cancelar limpia el lote."
+      ]
+    },
+    {
+      "id": "aplicar",
+      "tipo": "flujo",
+      "flujoId": "flujo-aplicar",
+      "kicker": "El momento clave",
+      "titulo": "Qué pasa cuando pulso Aplicar",
+      "intro": "Las validaciones corren en orden; el primer tropiezo detiene todo y la nota sigue Abierta.",
+      "imagen": "img/notas_aplicar_sketchnote.jpg",
+      "imagenAlt": "Qué revisa el sistema al aplicar",
+      "puntosClave": [
+        "Detalle → periodos → factura → saldo (NC) → efecto.",
+        "Los mensajes KO salen del servidor: búsquelos aquí.",
+        "Si la contabilización falla, la nota no queda aplicada."
+      ]
+    },
+    {
+      "id": "anular",
+      "tipo": "flujo",
+      "flujoId": "flujo-anular",
+      "kicker": "Reversos",
+      "titulo": "Anular una nota: no es lo mismo abierta que aplicada",
+      "intro": "Dos botones con el mismo nombre y reglas distintas. La DIAN marca el punto de no retorno.",
+      "imagen": "img/notas_anular_sketchnote.jpg",
+      "imagenAlt": "Anular una nota",
+      "puntosClave": [
+        "Abierta: motivo ≥ 10 caracteres, sin reverso ni DIAN.",
+        "Aplicada: solo procedencia NOTAS/AJUSTE y DIAN Sin Enviar; reversa cartera y contabilidad.",
+        "Ya notificada: no se anula; cree la nota contraria."
+      ]
+    },
+    {
+      "id": "dian",
+      "tipo": "flujo",
+      "flujoId": "flujo-dian",
+      "kicker": "Facturación electrónica",
+      "titulo": "Enviar la nota a la DIAN: Encolar, Desencolar y Actualizar fecha",
+      "intro": "Lo que se hace desde esta ventana. El envío y la respuesta los hace el proceso DIAN.",
+      "imagen": "img/notas_dian_sketchnote.jpg",
+      "imagenAlt": "Encolar, Desencolar y Actualizar fecha",
+      "puntosClave": [
+        "Encolar exige factura notificada (2) o prevalidada (6) y fecha no anterior a hoy.",
+        "Fecha vieja: Actualizar Fecha primero; más de 3 meses no se encola.",
+        "Con Errores: Envíos y Respuestas → Desencolar → corregir → Encolar."
+      ]
+    },
+    {
+      "id": "imprimir",
+      "tipo": "flujo",
+      "flujoId": "flujo-imprimir",
+      "kicker": "Salidas",
+      "titulo": "Imprimir y exportar: nota, comprobante, Excel y ZIP",
+      "intro": "Todo lo que sale en papel o en archivo desde esta ventana.",
+      "imagen": "img/notas_imprimir_sketchnote.jpg",
+      "imagenAlt": "Imprimir y exportar",
+      "puntosClave": [
+        "Imprimir Nota y Comprobante solo en notas aplicadas.",
+        "Excel y ZIP toman exactamente lo filtrado.",
+        "ZIP: hasta 2000 notas por archivo; nombre configurable."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosNota",
+      "kicker": "Estados",
+      "titulo": "Cómo leer el estado de una nota",
+      "intro": "Estado, Nro. Comprobante, Estado DIAN y Procedencia se leen juntos.",
+      "puntosClave": [
+        "Abierta / Aplicada / Anulada es el estado de la nota; Estado DIAN es el del envío.",
+        "Notificada = punto de no retorno.",
+        "Solo procedencia NOTAS/AJUSTE se anula aquí."
+      ]
+    },
+    {
+      "id": "procedencia",
+      "tipo": "texto",
+      "md": "Las notas **NOTAS** se crean aquí (a mano o por carga masiva) y son las únicas que se anulan desde esta ventana. Las **AUDITORIA** nacen al responder glosas en Cartera · Glosas; las **CONCILIA** al cerrar un acuerdo en Cartera · Conciliaciones; ambas se consultan, encolan a la DIAN e imprimen aquí, pero se corrigen en su módulo. Las **FACTURA** son notas crédito con el concepto de anulación (variable IDCONCEP_ANULAFTRCE) y se muestran como ANULAFACT.\n\nCamino alterno: Recaudos puede subir un archivo plano de notas (5 columnas) al mismo motor; esas notas quedan con procedencia NOTAS, no exigen factura notificada ni soportan ANULARFACT.\n\nPor defecto la grilla muestra procedencia TODAS y el rango de fechas del mes en curso.",
+      "kicker": "Otros módulos",
+      "titulo": "Lo que llega de otros módulos: la columna Procedencia",
+      "intro": "Esta ventana muestra todas las notas de cartera, pero solo crea y anula las de procedencia NOTAS.",
+      "imagen": "img/notas_procedencia_sketchnote.jpg",
+      "imagenAlt": "La columna Procedencia",
+      "puntosClave": [
+        "AUDITORIA nace en Glosas; CONCILIA en Conciliaciones; FACTURA es la anulación por NC.",
+        "Recaudos puede subir un plano de notas al mismo motor.",
+        "Las notas a proveedores no están aquí (Cuentas por pagar)."
+      ]
+    }
+  ]
 }

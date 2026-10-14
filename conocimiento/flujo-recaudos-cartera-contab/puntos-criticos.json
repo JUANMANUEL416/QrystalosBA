@@ -1,0 +1,207 @@
+{
+  "flujoId": "flujo-recaudos-cartera-contab",
+  "actualizado": "2026-10-12",
+  "dimensiones": ["cartera", "tesoreria", "contabilidad"],
+  "puntos": [
+    {
+      "id": "PC-RC-01",
+      "nombre": "USVGS REC_VLRMAX_AJUSTE",
+      "dimension": ["cartera"],
+      "etapa": "config-usvgs",
+      "severidad": "alta",
+      "invariante": "Sin valor numérico no se ofrecen ingresos CAJA, BANCOS ni CXP; APLICARPAGO valida |VLRAJUSTEPESO|.",
+      "validacionSql": "usvgs_rec_vlrmax_ajuste",
+      "referencia": "SPQ_FPAG_COL INSERTAR · APLICARPAGO"
+    },
+    {
+      "id": "PC-RC-02",
+      "nombre": "Periodo PRI abierto (FECHAPAGO)",
+      "dimension": ["contabilidad"],
+      "etapa": "periodo-pri",
+      "severidad": "alta",
+      "invariante": "APLICARPAGO exige periodo de FPAG.FECHAPAGO abierto (CERRADO=0).",
+      "validacionSql": "pri_fechapago",
+      "referencia": "SPQ_FPAG_COL APLICARPAGO · PRI"
+    },
+    {
+      "id": "PC-RC-03",
+      "nombre": "Un solo recaudo abierto por usuario/tercero/INGRESO",
+      "dimension": ["cartera"],
+      "etapa": "cabecera-fpag",
+      "severidad": "media",
+      "invariante": "INSERTAR bloquea si existe FPAG CERRADO=0, ESTADO=Activo, mismo INGRESO, IDTERCERO y USUARIO.",
+      "validacionSql": "fpag_abierto_duplicado",
+      "referencia": "SPQ_FPAG_COL INSERTAR"
+    },
+    {
+      "id": "PC-RC-04",
+      "nombre": "Recibo FCJ elegible (CAJA)",
+      "dimension": ["tesoreria", "cartera"],
+      "etapa": "origen-caja",
+      "severidad": "alta",
+      "invariante": "FCJ: RECAUDO=1, CERRADA=1, ESTADO=P; par CODCAJA+CNSFACJ no en otro FPAG activo; ENPAGOS coherente.",
+      "validacionSql": "fcj_recaudo",
+      "referencia": "SPQ_FPAG_COL INSERTAR · admin.caja"
+    },
+    {
+      "id": "PC-RC-05",
+      "nombre": "Movimiento banco BMOVD elegible (BANCOS)",
+      "dimension": ["tesoreria", "cartera"],
+      "etapa": "origen-banco",
+      "severidad": "alta",
+      "invariante": "BMOVD RECAUDO=1, ENPAGOS coherente; BMOV.ESTADO=O; saldo VLRITEM−VLRLEGALIZADO > 0.",
+      "validacionSql": "bmovd_recaudo",
+      "referencia": "SPQ_FPAG_COL INSERTAR · BMOV OFIN"
+    },
+    {
+      "id": "PC-RC-06",
+      "nombre": "Doble enlace FCJ/BMOVD",
+      "dimension": ["cartera"],
+      "etapa": "origen-tesoreria",
+      "severidad": "alta",
+      "invariante": "Un recibo o línea bancaria no puede alimentar dos FPAG (ENPAGOS=1 con otro CNSFPAG).",
+      "validacionSql": "enpagos_duplicado",
+      "referencia": "FCJ · BMOVD · FPAG"
+    },
+    {
+      "id": "PC-RC-07",
+      "nombre": "Detalle FPAGD antes de aplicar",
+      "dimension": ["cartera"],
+      "etapa": "detalle-fpagd",
+      "severidad": "alta",
+      "invariante": "Sin líneas FPAGD no hay APLICARPAGO; totales VLRITEMS cuadran con suma detalle.",
+      "validacionSql": "fpagd_conteo",
+      "referencia": "SPQ_FPAG_COL APLICARPAGO"
+    },
+    {
+      "id": "PC-RC-08",
+      "nombre": "Duplicados N_FACTURA (+ CLASE)",
+      "dimension": ["cartera"],
+      "etapa": "detalle-fpagd",
+      "severidad": "alta",
+      "invariante": "Misma N_FACTURA y CLASE no puede repetirse en FPAGD ni en lote RPDX (salvo reglas DEVOLUCION).",
+      "validacionSql": "fpagd_duplicados",
+      "referencia": "SPQ_FPAG_COL ASIGNAR · APLICARPAGO"
+    },
+    {
+      "id": "PC-RC-09",
+      "nombre": "Impuestos FPAGDI / FIMPDV",
+      "dimension": ["contabilidad"],
+      "etapa": "impuestos",
+      "severidad": "alta",
+      "invariante": "Cada impuesto en detalle exige cuenta vigente FIMPDV antes de SPK_PAGOSCXC.",
+      "validacionSql": "fpagdi_fimpdv",
+      "referencia": "SPQ_FPAG_COL APLICARPAGO"
+    },
+    {
+      "id": "PC-RC-10",
+      "nombre": "Cruce CxP (INGRESO=CXP)",
+      "dimension": ["cartera", "cxp"],
+      "etapa": "cruce-cxp",
+      "severidad": "alta",
+      "invariante": "SUM(FPAGDCXP.VALORPAGO)=VLRITEMS antes de aplicar; FCXP no anulada.",
+      "validacionSql": "fpagdcxp_cuadre",
+      "referencia": "SPQ_FPAG_COL CRUD_FPAGDCXP · APLICARPAGO"
+    },
+    {
+      "id": "PC-RC-11",
+      "nombre": "Aplicar cierra recaudo",
+      "dimension": ["cartera"],
+      "etapa": "aplicar",
+      "severidad": "alta",
+      "invariante": "Tras SPK_PAGOSCXC OK: FPAG.CERRADO=1; efecto en FCXCD/FTR según INGRESO.",
+      "validacionSql": "fpag_cerrado",
+      "referencia": "SPK_PAGOSCXC"
+    },
+    {
+      "id": "PC-RC-12",
+      "nombre": "Contabilización al aplicar (CXC)",
+      "dimension": ["contabilidad"],
+      "etapa": "contab-cxc",
+      "severidad": "alta",
+      "invariante": "Salvo NOCONTABILIZA=1: CONTABILIZADO=1 y NROCOMPROBANTE; procedencia comprobante CXC.",
+      "validacionSql": "fpag_contabilizado",
+      "referencia": "SPK_NC_CONTAB_CXC vía SPK_PAGOSCXC"
+    },
+    {
+      "id": "PC-RC-13",
+      "nombre": "Comprobante MCP vs MCPE",
+      "dimension": ["contabilidad"],
+      "etapa": "contab-comprobante",
+      "severidad": "alta",
+      "invariante": "NROCOMPROBANTE en MCP confirmado (ESTADO=2) o en MCPE con ERROR en MCHE.",
+      "validacionSql": "mcp_mcpe_cxc",
+      "referencia": "Contabilidad · Reconstruir CXC"
+    },
+    {
+      "id": "PC-RC-14",
+      "nombre": "Contabilidad recibo caja origen",
+      "dimension": ["contabilidad", "tesoreria"],
+      "etapa": "contab-caja-origen",
+      "severidad": "media",
+      "invariante": "Si INGRESO=CAJA: FCJ del recibo debe estar contabilizado (CONTABILIZADA) salvo política NOCONTABILIZA en FPAG.",
+      "validacionSql": "fcj_contabilizada",
+      "referencia": "SPK_NC_CONTAB_CAJA_ING"
+    },
+    {
+      "id": "PC-RC-15",
+      "nombre": "Glosas FINDEVOL 3–6",
+      "dimension": ["cartera", "auditoria"],
+      "etapa": "glosas",
+      "severidad": "alta",
+      "invariante": "FINDEVOL define circuito: 3 manual ENT; 4/6 automático SPK_FINALIDAD_GLOSAS; 5 queda en auditoría.",
+      "validacionSql": "fglo_findevol",
+      "referencia": "SPK_FINALIDAD_GLOSAS · FGLO"
+    },
+    {
+      "id": "PC-RC-16",
+      "nombre": "Devolución FINDEVOL 0–2",
+      "dimension": ["cartera"],
+      "etapa": "devolucion",
+      "severidad": "alta",
+      "invariante": "Apply retira CxC (FCXCR); 1 anula, 2 radica; no deshacer igual que pago normal.",
+      "validacionSql": "fcxcr_findevol",
+      "referencia": "SPK_RETIRAFTR_DE_CXC · SPK_FINALIDAD_DEVOL"
+    },
+    {
+      "id": "PC-RC-17",
+      "nombre": "Desaplicar / periodo cerrado",
+      "dimension": ["contabilidad", "cartera"],
+      "etapa": "reversos",
+      "severidad": "alta",
+      "invariante": "Periodo FPAG.FECHA cerrado: CAJA/BANCOS → aval (REC_SOLICITA_AVAL) o KO; GLOSAS no desaplican clásico.",
+      "validacionSql": "pri_cerrado_desaplicar",
+      "referencia": "SPQ_FPAG_COL DESAPLICARPAGO · CONSULTA_PRI_RECAUDO"
+    },
+    {
+      "id": "PC-RC-18",
+      "nombre": "Aval contable (PREVERSION)",
+      "dimension": ["contabilidad"],
+      "etapa": "aval",
+      "severidad": "media",
+      "invariante": "AVALCONTABLE Pendiente→Avalado→RETIRO_MASIVO_CON_AVAL; FPAGD Retirada + NROCOMPROBANTE_R.",
+      "validacionSql": "aval_contable",
+      "referencia": "REQ 0100016348 · SPK_REVERSAR_RECUADO"
+    },
+    {
+      "id": "PC-RC-19",
+      "nombre": "Levantamiento de cartera",
+      "dimension": ["cartera"],
+      "etapa": "levantamiento",
+      "severidad": "media",
+      "invariante": "INGRESO=LEVANTAMIENTO: aplica sobre facturas con marca LEVANTADO en FPAGD.",
+      "validacionSql": "fpagd_levantado",
+      "referencia": "SPQ_FPAG_COL · SPK_PAGOSCXC"
+    },
+    {
+      "id": "PC-RC-20",
+      "nombre": "Facturas Retirada / glosa contestada",
+      "dimension": ["cartera"],
+      "etapa": "reversos",
+      "severidad": "alta",
+      "invariante": "DESAPLICARPAGO bloquea si FPAGD ESTADO=Retirada, FGLO CERRADA=1 o NC por descuentos.",
+      "validacionSql": "fpagd_retirada",
+      "referencia": "SPQ_FPAG_COL DESAPLICARPAGO"
+    }
+  ]
+}

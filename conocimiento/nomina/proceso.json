@@ -1,74 +1,1589 @@
 {
   "id": "nomina",
-  "nombre": "NOMINA",
+  "nombre": "Nómina · Liquidación y procesos",
   "modulo": "NOMI",
-  "estado": "parcial",
-  "resumen": "5 capas con evidencia FE/SP. Capa 2 leída (prenómina, SPQ_LIQUIDACION, DIAN). Capa 1: NEMPHIS y colilla siguen esqueleto (REQ). Capa 5: OM por NC_CONTAB_NOMINA · CONTABILIZAR (sin .sql).",
-  "notaSql": "Prenómina, liquidación, DIAN y adelanto cesantías leídos. Sin .sql hoy: SPQ_NOM_NEMPHIS, SPQ_RPT_NOMINA, SPQ_NC_CONTAB_NOMINA, NOM_NEDIA / NOM_NOVEDADES, NOM_VACACIONES.",
-  "alcanceHasta": "Capas 3-5 con evidencia (novedades, vacaciones, adelantos → prenómina; CxP/NIEPER → Tesorería; OM por CONTABILIZAR). No dictaminar 0100016359 ni 0100016378 hasta fichar esos SP.",
+  "familia": "nomina",
+  "prioridad": 31,
+  "enRuta": false,
+  "estado": "completo",
+  "resumen": "Operación del período de nómina: prenómina y recálculo (motor por concepto), novedades/particulares/manuales, retiros, primas y cesantías (programación NVAC), retención en la fuente (RETEL), libranzas (PRS/PRSD), vacaciones (NEMPV) y adelanto de cesantías (NACE), generar/cerrar/abrir (NIEPE/NIEPED), contabilizar y CxP, recobros NIEPER, nómina electrónica DIAN (NIEPEG), colillas y reportes. Libro 2026-10-04: 19 capítulos, 15 mapas (añadidos certificados/retención, auditoría de turnos, capacitaciones y reportes).",
+  "actualizado": "2026-10-04T06:30:00",
+  "notaSql": "Leídos 2026-10-03 desde IXONLINE/SQL (PREVERSION idéntica a 2.0.7; anterior 2.0.6): SPQ_NC_CONTAB_NOMINA, SPQ_NOM_NEDIA, SPQ_NOM_VACACIONES, SPQ_NOM_NEMPV, SPQ_NOM_PRESTACIONES, SPQ_NIEPER, SPQ_NOM_MANUALES, SPQ_RPT_NOMINA, SPQ_NOM_ADELANTO_CESANTIAS, SPQ_LIQUIDAR_NOMI, SPQ_CERRAR_NOMI, SPQ_ABRIR_NOMI, SPQ_PROCESO_VACACIONES, SPQ_LIQUIDACION, SPQ_NOM_PRS/PRSD, SPK_GENERA_CUOTAS, SPK_GENCXP_PRESTAMO_NOMI, SPQ_NOM_REPORTES, SPQ_PROVISIONES, SPQ_PREVENT, SPQ_NOM_NAJUST, SPQ_TRAER_PLANTILLA_NOMI, SPQ_ADDDEL_CONCEPTOS_DE_CARGOS, SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC, SPK_CALCULA_REFTE_NOMI, SPK_CALCULAR_RETIROS, FNK_VALORCONCEPTO_NEMPFD_RUN, SPQ_NOM_NEMPHIS, FNK_INFO_NEMPHIS_NEMP. DIAN (SPQ_NOM_DIAN, TK_FDIANR, SPK_GENERAR_XML_NOMINA) con fichas de 2026-09-12. Añadidos 2026-10-04 (PREVERSION = 2.0.7): SPQ_NCINGRET_COL, SPQ_CONTRATOS_NOM, SPQ_FORMATOS_NOMINA, SPQ_NSOLICERT, SPQ_TURNOS_NOMINA, SPK_RESUMEN_TURNOS, SPQ_CAP, SPQ_TALL, SPQ_EMPLEADOS_TALL, SPQ_FORMULARIO_TALLER, SPQ_CALIFICAR_RESPUESTAS_TEXTO, SPQ_TH_NEMPPRUEBA, SPQ_NDISP; SPQ_NOM_REPORTES completo.",
+  "alcanceHasta": "Desde el período abierto hasta colillas, contabilidad, CxP y DIAN. La configuración de conceptos, eventos, cargos, plantillas y períodos está en el libro Nómina · Conceptos y novedades. El pago al empleado y a terceros sigue en Cuentas por pagar / Tesorería.",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "El ciclo que convierte la configuración en un pago: se abre un período (CNSPAGO), la prenómina carga la plantilla y calcula a cada empleado, se agregan novedades (incapacidades, horas extra, licencias, retiros), conceptos particulares y manuales, se corre lo que no es mensual (primas, cesantías, vacaciones, libranzas, retefuente) y, cuando todo cuadra, se genera la liquidación (NIEPE/NIEPED), se cierra, se contabiliza, se generan las cuentas por pagar y se transmite la nómina electrónica a la DIAN. Vive en Talento humano → Procesos nómina (Prenómina · Liquidación · Envío DIAN) más pantallas satélite: Prestaciones, Vacaciones, Adelanto cesantías, Gestión de libranzas, Liquidación retefuente, Certificados, Prestación social (recobros), Colillas y Reportes.",
+    "paraQueSirve": "Que lo calculado se pueda revisar y recalcular cuantas veces haga falta antes de liquidar; que cerrar deje un registro inmodificable con cuentas contables válidas; que contabilidad, CxP y DIAN salgan del mismo dato, y que abrir reverse todo de forma controlada cuando aún no hay pagos.",
+    "proposito": "Pagar bien y a tiempo, con trazabilidad: dos tablas (lo calculado y lo liquidado), un estado por período y un camino de reversa definido."
+  },
   "ventanas": [
     {
-      "uso": "Configuraciones avanzadas nómina — pestaña Empleados → Histórico de empleado",
-      "ruta": "nom.conf",
-      "path": "/nom/conf",
-      "vue": "indexPage.vue → EmpleadosComponent.vue → HistorialComponent.vue",
-      "entrada": "RRHH → Configuraciones avanzadas nómina → Empleados → modal Histórico De Empleado. MODELO NOM_NEMPHIS (GUARDAR / ELIMINAR). Gate empleados-historico — SPQ pendiente sql/."
-    },
-    {
-      "uso": "Colillas de pago (PDF)",
+      "uso": "Procesos de nómina — Prenómina",
       "ruta": "nom.Nom_procesos",
       "path": "/nom/Nom_procesos",
-      "vue": "FmtColillasNom.js ← useNomi (RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA)",
-      "entrada": "Talento humano → Procesos nómina → colillas (prenómina o liquidación). PDF desprendible: columna CONCEPTOS DE NOMINA = NOMBRE_CONCEPTO."
+      "vue": "ProcesosPage.vue → PreNominaComponent.vue (GeneraPlantilla, RegistNovedades, NovedadesMasivo, ConceptosMasivo, RetiroNemp, QuitaMasivo)",
+      "entrada": "Menú central → Talento humano → Procesos nómina → Prenómina. Permiso MENUQ_NOMINA · Prenomina. MODELO ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA; TRAER_PLANTILLA_NOMI; NOM_NOMIE · GET_NOMIE_EMPLOYEES; NOM_NEDIA; NOM_NOVEDADES; NOM_CONCEPTOS (masivo); FRT_NEMP · RETIRAR_EMPLEADOS; NEMP · ADD_NEW_NEMP_PRENOMINA."
     },
     {
-      "uso": "Procesos de nómina — pestaña Prenómina",
+      "uso": "Procesos de nómina — Liquidación",
       "ruta": "nom.Nom_procesos",
-      "path": "/nom/Nom_procesos",
-      "vue": "ProcesosPage.vue → PreNominaComponent.vue",
-      "entrada": "Menú central → Talento humano → Procesos nómina → Prenómina. Permiso USGRUH MENUQ_NOMINA / Prenomina."
-    },
-    {
-      "uso": "Procesos de nómina — pestaña Liquidación",
-      "ruta": "nom.procesos",
       "path": "/nom/Nom_procesos",
       "vue": "ProcesosPage.vue → LiquidaNomComponent.vue",
-      "entrada": "Talento humano → Procesos nómina → Liquidación. MODELO LIQUIDACION (GENERATE_NOMINA / OPEN_NOMINA) y NC_CONTAB_NOMINA (CONTABILIZAR / GENERATE_CxP_NOM)."
+      "entrada": "Talento humano → Procesos nómina → Liquidación. Permiso MENUQ_NOMINA · Liquidacion. MODELO LIQUIDACION (GENERATE_NOMINA, OPEN_NOMINA, EXPORTAR_*) y NC_CONTAB_NOMINA (CONTABILIZAR, GENERATE_CxP_NOM, VALIDAR_CxP_NOM, RECONSTRUIR_CxP_NOM, GENERAR_CxP_ESPECIAL)."
     },
     {
-      "uso": "Procesos de nómina — envío DIAN (nómina electrónica)",
-      "ruta": "nom.procesos",
+      "uso": "Procesos de nómina — Envío DIAN",
+      "ruta": "nom.Nom_procesos",
       "path": "/nom/Nom_procesos",
       "vue": "ProcesosPage.vue → DianNominaComponent.vue",
-      "entrada": "Talento humano → Procesos nómina → Envío DIAN. MODELO NOM_DIAN. Distinto de FTR · NOTI_DIAN."
+      "entrada": "Talento humano → Procesos nómina → Envío DIAN. MODELO NOM_DIAN (GENERATE_NIEPEG, PROCESAR_NIE, PROCESAR_NIE_FILTER, PREVIEW_XML). Respuesta por FDIANR + trigger TK_FDIANR."
     },
     {
-      "uso": "Novedades del período (unidad y masivo)",
-      "ruta": "nom.procesos",
-      "path": "/nom/Nom_procesos",
-      "vue": "RegistNovedadesComponent.vue / NovedadesMasivoComponent.vue",
-      "entrada": "Prenómina → novedades. MODELO NOM_NEDIA (GUARDAR / ELIMINAR) y NOM_NOVEDADES (AGREGAR_NOVEDAD_EMPLEADOS)."
+      "uso": "Prestaciones (primas, cesantías, intereses, vacaciones)",
+      "ruta": "nom.prestaciones",
+      "path": "/nom/Prestaciones",
+      "vue": "PrestacionesNomPage.vue → PrestacionesComponent.vue → VerifEmpComponent, PreventComponent",
+      "entrada": "Talento humano → Prestaciones. MODELO NOM_PRESTACIONES (GUARDAR, ELIMINAR, CAMBIA_ESTADO, GEN_DETALLESPRESTACIONES_NOM, PREPARAR_GENPRESTACIONES, GENPRESTACIONES_NOMINA, FINALIZAR_GENPRESTACIONES) y PREVENT (GUARDAR, ELIMINAR)."
     },
     {
       "uso": "Vacaciones",
       "ruta": "nom.vacaciones",
       "path": "/nom/Vacaciones",
       "vue": "VacacionNomPage.vue → VacacionesNominaComponent.vue",
-      "entrada": "Talento humano → Vacaciones. MODELO NOM_VACACIONES · GENERA_NOVEDAD_VACACIONES (alimenta NEDIA)."
+      "entrada": "Talento humano → Vacaciones. MODELO NOM_VACACIONES (ACTUALIZA_VACACIONES, GENERA_NOVEDAD_VACACIONES, ELIMINAR/ANULAR_NOVEDAD_VACACIONES, RESTABLECER_PERIODOS) y NOM_NEMPV."
     },
     {
       "uso": "Adelanto de cesantías",
       "ruta": "nom.adelantoCesantias",
       "path": "/nom/AdelantoCesantias",
       "vue": "AdelantoCesantiasNomPage.vue → AdelantoCesantiasComponent.vue",
-      "entrada": "Talento humano → Adelanto cesantías. MODELO NOM_ADELANTO_CESANTIAS (GUARDAR / ANULAR). Consumo en retiro: SPQ_ADELANTO_CESAN."
+      "entrada": "Talento humano → Adelanto cesantías. MODELO NOM_ADELANTO_CESANTIAS (SALDO, GUARDAR, ANULAR, LISTAR, REPORTE, DETALLE). Consumo en cesantías/retiro: SPQ_ADELANTO_CESAN."
     },
     {
-      "uso": "Prestaciones sociales (pago / recobro)",
+      "uso": "Gestión de libranzas",
+      "ruta": "nom.cuotas",
+      "path": "/nom/cuotas",
+      "vue": "CuotasNomPage.vue → CuotasComponent.vue",
+      "entrada": "Nómina → Gestión de libranzas. MODELO NOM_PRS (GUARDAR, CALUCLA_CUOTAS, GENERAR_CUOTAS, ELIMINAR_CUOTAS, ENVIAR_A_CXP, MARCAR_PAGADA, HOMOLOGAR_NUMDOC) y NOM_PRSD."
+    },
+    {
+      "uso": "Manuales del período",
+      "ruta": "nom.manuales",
+      "path": "/nom/Manuales",
+      "vue": "ManualesComponent.vue",
+      "entrada": "Talento humano → Manuales. MODELO NOM_MANUALES (NPERC)."
+    },
+    {
+      "uso": "Liquidación retefuente y certificados",
+      "ruta": "nom.retel / nom.certificados",
+      "path": "/nom/Retefuente · /nom/Certificados",
+      "vue": "RETELComponent.vue · CerIngRetComponent.vue",
+      "entrada": "Talento humano → Liquidación retefuente (lectura RETEL/RETELD) y Certificados de ingresos y retenciones (NCINGRET_COL)."
+    },
+    {
+      "uso": "Prestación social — recobros a Bancos / Caja",
       "ruta": "nom.prestsociales",
       "path": "/nom/PrestacionSocial",
       "vue": "PrestSocialNomPage.vue → PrestSocialesComponent.vue",
-      "entrada": "Talento humano → Prestación social. MODELO NIEPER · PROC_PAGO (VALD_BANCOS / VALD_CAJA)."
+      "entrada": "Talento humano → Prestación social. MODELO NIEPER (PROC_PAGO, GETREF, TOTAL, VALD_BANCOS, VALD_CAJA, AUTO_EMP)."
+    },
+    {
+      "uso": "Colillas de pago y reportes",
+      "ruta": "nom.colillas / nom.reportes",
+      "path": "/nom/Colillas · /nom/Reportes",
+      "vue": "ColillasNoComponent.vue (FmtColillasNom.js) · ReportesNomComponent.vue",
+      "entrada": "Talento humano → Colillas (RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA / LISTA_PAGOS / ENVIAR_MAIL_TRABAJO_COLILLAS / EXPORTA_DATOS_COLILLAS) y Reportes (NOM_REPORTES · PAGOS_X_TERCEROS; PROVISIONES)."
+    },
+    {
+      "uso": "Certificados de ingresos y retenciones",
+      "ruta": "nom.cetificado",
+      "path": "/nom/Certificados",
+      "vue": "CertNominaPage.vue → CerIngRetComponent.vue",
+      "entrada": "Talento humano → Certificados. MODELO NCINGRET_COL (CRUD_NCINGRET, TRAE_DETALLE, RELIQUIDAR_DETA, AJUSTA_VRTOTAL, CERRAR_CERTI, TRAER_CODRET, ASINGAR_CODRET, IMPRIMIR_CERT)."
+    },
+    {
+      "uso": "Liquidación de retención en la fuente (consulta)",
+      "ruta": "nom.LiRetefte",
+      "path": "/nom/LiqReteFte",
+      "vue": "LiqRetenNominaPage.vue → RETELComponent.vue",
+      "entrada": "Talento humano → Liquidación retefuente. AppStore.read RETEL/RETELD; certificado NCINGRET_COL · IMPRIMIR_LIQRET."
+    },
+    {
+      "uso": "Certificados laborales (solicitudes del empleado)",
+      "ruta": "nom.certiLab",
+      "path": "/nom/certiLab",
+      "vue": "CertLabNomPage.vue → NominaCertLaboComponent.vue; solicitud: MainLayout → THumanoComponent → SolCertComponent",
+      "entrada": "Talento humano → Certificaciones. MODELO NSOLICERT (GUARDAR, ELIMINAR, GET_INFO_CERTIFICATE) y FORMATOS_NOMINA (CRUD_NCERT, TRAER_NCERT, TRAER_CONCEPTOS)."
+    },
+    {
+      "uso": "Contratos laborales con firma",
+      "ruta": "nom.contrato",
+      "path": "/nom/Contratos",
+      "vue": "ContratoNominaPage.vue → NomContLaboComponent.vue",
+      "entrada": "Talento humano → Contratos. MODELO CONTRATOS_NOM (GUARDAR, GET_INFO_CONTRACT, FIRMAR_CONTRATO, FIRMAR_REPRESENTANTE_LEGAL, INACTIVE_CONTRACT). Permiso BtnFirmarContGerente."
+    },
+    {
+      "uso": "Formatos de certificados y contratos",
+      "ruta": "nom.fmtCertilab",
+      "path": "/nom/Formatos",
+      "vue": "NCERTConfiPage.vue → NCERTConfiComponent, NCERTCDetaComponent, NCERTVarsConfigComponent",
+      "entrada": "Talento humano → Formatos. MODELO FORMATOS_NOMINA (CRUD_NCERTC, TRAER_CUERPO, GUARDAR_CUERPO); variables en TGEN."
+    },
+    {
+      "uso": "Auditoría de turnos → novedades",
+      "ruta": "nom.AudTur",
+      "path": "/nom/AudiTurnos",
+      "vue": "NomSegTurnosPage.vue → AudiTurnosComponent, NovedadesTurComponent",
+      "entrada": "Talento humano → Auditoría turnos. MODELO TURNOS_NOMINA (TRAER_DATOS → SPK_RESUMEN_TURNOS, TRAER_NOVEDAD, TRAER_NEVE)."
+    },
+    {
+      "uso": "Capacitaciones y talleres",
+      "ruta": "nom.cap",
+      "path": "/nom/capacitaciones",
+      "vue": "CAPPage.vue → CAPComponent, TalleresComponent, FormTallerComponent, AsignacionTallerComponent, ResultadoTallerComponen",
+      "entrada": "Talento humano → Capacitaciones. MODELO CAP, TALL, FORMULARIO_TALLER, EMPLEADOS_TALL, CALIFICAR_RESPUESTAS_TEXTO. Permisos CAPACITACIONES_WEB · GESTIONCAP / GESTIONTALL."
+    },
+    {
+      "uso": "Reportes de nómina",
+      "ruta": "nom.reportes",
+      "path": "/nom.reportes (provisiones, repAdelantoCesantias, repLiquidaciones, repPrenomina, repPreSociales, repDetallesNomina)",
+      "vue": "pages/nom/reportes/*Page.vue → components/nomina/reporte/**",
+      "entrada": "Menú Reportes nómina. MODELO NOM_REPORTES, NOM_NPER · GET_NIEPE_REPORT, LIQUIDACION · EXPORTAR_DETALLE_NOMINA, PROVISIONES, NOM_ADELANTO_CESANTIAS · REPORTE."
+    },
+    {
+      "uso": "Gastos por consumo (enlace a Inventario)",
+      "ruta": "nom.gastosxconsumo",
+      "path": "/nom/gastosxconsumo",
+      "vue": "GastosConsumoPage.vue → components/inv/GastosConsumoComponent.vue",
+      "entrada": "Talento humano → Gastos por consumo. MODELO IZSOL / IZSOLD (Inventario)."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Gestionar Prenomina",
+      "icono": "playlist_add_check",
+      "color": "primary",
+      "estilo": "push",
+      "descripcion": "Trae cargos y conceptos de la plantilla a una tabla de trabajo (RPDX) y procesa PRENOMINA empleado a empleado. SPQ_TRAER_PLANTILLA_NOMI + SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC."
+    },
+    {
+      "label": "Recalcular",
+      "icono": "refresh",
+      "color": "indigo",
+      "estilo": "push",
+      "descripcion": "Vuelve a correr PRENOMINA para el empleado o para todos: borra y recrea NEMPFD. Solo con período abierto."
+    },
+    {
+      "label": "Novedades (individual / masivo / interactivo)",
+      "icono": "event_note",
+      "color": "secondary",
+      "estilo": "push",
+      "descripcion": "Novedad NEDIA del período con evento, fechas, cantidad y forma de liquidación; masivo por archivo con validación por fila. SPQ_NOM_NEDIA · GUARDAR / SPQ_NOM_NOVEDADES · AGREGAR_NOVEDAD_EMPLEADOS."
+    },
+    {
+      "label": "Conceptos (masivo)",
+      "icono": "upload_file",
+      "color": "secondary",
+      "estilo": "push",
+      "descripcion": "Carga masiva de conceptos particulares NEMPDA (valor, tercero, vigencia). SPQ_NOM_CONCEPTOS · CARGAR_EMPLEADOS_CONCEPTOS / AGREGAR_CONCEPTOS_EMPLEADOS."
+    },
+    {
+      "label": "Retiros",
+      "icono": "person_remove",
+      "color": "negative",
+      "estilo": "push",
+      "descripcion": "Retiro masivo por archivo: valida y marca FECHARETIRO + novedad RET a todos; luego recalcula uno a uno. SPQ_FRT_NEMP · RETIRAR_EMPLEADOS."
+    },
+    {
+      "label": "Agregar (empleado al período)",
+      "icono": "person_add",
+      "color": "positive",
+      "estilo": "push",
+      "descripcion": "Mete un empleado nuevo al período y recalcula totales. SPQ_NEMP · ADD_NEW_NEMP_PRENOMINA."
+    },
+    {
+      "label": "Generar Nomina",
+      "icono": "done_all",
+      "color": "primary",
+      "estilo": "push",
+      "descripcion": "Pasa NEMPF/NEMPFD a NIEPE/NIEPED; antes valida terceros de ingresos (exporta Excel si falla). SPQ_LIQUIDACION · GENERATE_NOMINA → SPQ_LIQUIDAR_NOMI."
+    },
+    {
+      "label": "Cerrar Nomina",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "push",
+      "descripcion": "Valida detalles y cuentas KMCOM; marca CERRADO, cuotas de libranza Pagada, provisión de vacaciones. Permiso BtnCerrarNomina. GENERATE_NOMINA con PROCESO=CLOSE → SPQ_CERRAR_NOMI."
+    },
+    {
+      "label": "Abrir Nomina",
+      "icono": "lock_open",
+      "color": "warning",
+      "estilo": "push",
+      "descripcion": "Reversa: cuotas a PorPagar, borra comprobantes y CxP sin pagos, período abierto. Bloquea si PRI cerrado, órdenes de pago o notas DB/CR. Permiso BtnAbrirNomina. OPEN_NOMINA → SPQ_ABRIR_NOMI."
+    },
+    {
+      "label": "Contabilizar",
+      "icono": "account_balance",
+      "color": "teal",
+      "estilo": "push",
+      "descripcion": "Comprobante MCPE/MCHE empleado a empleado con fecha contable. Permiso BtnContabilizarNomina. SPQ_NC_CONTAB_NOMINA · CONTABILIZAR."
+    },
+    {
+      "label": "Generar CxP / Validar / Reconstruir / CxP Especiales",
+      "icono": "request_quote",
+      "color": "teal",
+      "estilo": "push",
+      "descripcion": "Cuentas por pagar por tercero con procedencia Nómina. Permisos GenerarCxp y CxpEspecial. GENERATE_CxP_NOM, VALIDAR_CxP_NOM, RECONSTRUIR_CxP_NOM, GENERAR_CxP_ESPECIAL."
+    },
+    {
+      "label": "Imprimir / Exportar (liquidación)",
+      "icono": "print",
+      "color": "grey-8",
+      "estilo": "flat",
+      "descripcion": "PDF de la liquidación; Excel, SOI, detalle de nómina, cuentas DB/CR. Permisos btnImprimirLiquidacion / btnExportarLiquidacion. SPQ_LIQUIDACION · EXPORTAR_*."
+    },
+    {
+      "label": "Nueva programación / Registrar detalle / Generar detalles",
+      "icono": "event_available",
+      "color": "primary",
+      "estilo": "push",
+      "descripcion": "Prestaciones: programación NVAC por clase y año (P/C/S); detalle NVACD con período de pago; una fila por empleado activo. SPQ_NOM_PRESTACIONES · GUARDAR / GEN_DETALLESPRESTACIONES_NOM."
+    },
+    {
+      "label": "Verificar empleados",
+      "icono": "fact_check",
+      "color": "indigo",
+      "estilo": "push",
+      "descripcion": "Marca Pagado / No pagar / Sin liquidar por empleado antes de generar. SPQ_NOM_PRESTACIONES · CAMBIA_ESTADO."
+    },
+    {
+      "label": "Generar prestaciones",
+      "icono": "calculate",
+      "color": "positive",
+      "estilo": "push",
+      "descripcion": "Tres pasos: PREPARAR (lista; exige período abierto) → GENPRESTACIONES_NOMINA por empleado → FINALIZAR (totales, estado Liquidado)."
+    },
+    {
+      "label": "Eventos de prestación (PREVENT)",
+      "icono": "remove_circle",
+      "color": "negative",
+      "estilo": "push",
+      "descripcion": "Descuento sobre lo provisionado del empleado; no mayor al provisionado. SPQ_PREVENT."
+    },
+    {
+      "label": "Actualizar / Nuevo evento / Generar novedad / Deshacer / Anular / Restablecer (vacaciones)",
+      "icono": "beach_access",
+      "color": "orange",
+      "estilo": "push",
+      "descripcion": "Períodos NEMPV y eventos NEMPVD; la novedad entra a NEDIA y recalcula. Deshacer/anular solo con período abierto. Permiso BtnRestablecerPeriodosVac. SPQ_NOM_VACACIONES."
+    },
+    {
+      "label": "Registrar / Anular adelanto",
+      "icono": "savings",
+      "color": "orange",
+      "estilo": "push",
+      "descripcion": "Adelanto NACE ≤ saldo disponible; crea manual NOM_ADEL_CESAN en período abierto. No se anula si ya se descontó. SPQ_NOM_ADELANTO_CESANTIAS."
+    },
+    {
+      "label": "Nuevo préstamo / Generar cuotas / Borrar cuotas / Enviar a CxP / Homologar",
+      "icono": "credit_score",
+      "color": "violet",
+      "estilo": "push",
+      "descripcion": "Libranza PRS con plan PRSD; regenerar desde la última pagada; CxP del desembolso; homologar contrato retirado → nuevo. Permiso Frm:PRSD · CambiaEstCuot. SPQ_NOM_PRS / SPK_GENERA_CUOTAS / SPK_GENCXP_PRESTAMO_NOMI."
+    },
+    {
+      "label": "Preparar nómina / Procesar / Vista previa XML (DIAN)",
+      "icono": "cloud_upload",
+      "color": "indigo",
+      "estilo": "push",
+      "descripcion": "NIEPEG por empleado (estado 0), encolar (1), proceso externo envía; respuesta en FDIANR. Permiso BtnPrevioXml para el XML. SPQ_NOM_DIAN."
+    },
+    {
+      "label": "Pagar recobro (Bancos / Caja) · Consignado al empleado",
+      "icono": "paid",
+      "color": "green",
+      "estilo": "push",
+      "descripcion": "NIEPER: cruza con BMOVD o FCJ marcados RNOMI; pago parcial deja saldo en renglón nuevo; contabiliza el recobro. SPQ_NIEPER · PROC_PAGO / AUTO_EMP."
+    },
+    {
+      "label": "Colillas: PDF / Enviar por correo / Exportar datos",
+      "icono": "receipt",
+      "color": "grey-8",
+      "estilo": "push",
+      "descripcion": "Desprendible por empleado (liquidación o prenómina), envío masivo por correo con registro QRY_ENVIOS, exportación. SPQ_RPT_NOMINA."
+    },
+    {
+      "label": "Nuevo Certificado / Configurar / Reliquidar / Cerrar (ingresos y retenciones)",
+      "icono": "receipt_long",
+      "color": "primary",
+      "estilo": "push",
+      "descripcion": "NCINGRET por empleado y año con una fila por código de retención; Configurar asigna CODRET a los conceptos; Reliquidar recalcula; Cerrar deja Cerrado y habilita el PDF. SPQ_NCINGRET_COL."
+    },
+    {
+      "label": "Certificado (liquidación retefuente)",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "push",
+      "descripcion": "PDF de RETEL/RETELD del período o empleado. SPQ_NCINGRET_COL · IMPRIMIR_LIQRET."
+    },
+    {
+      "label": "Nuevo (certificado laboral)",
+      "icono": "workspace_premium",
+      "color": "teal",
+      "estilo": "push",
+      "descripcion": "Desde una solicitud en Espera: formato, hasta 4 conceptos con valor, observaciones → NCERT Generado + PDF con firma del jefe de RRHH. SPQ_FORMATOS_NOMINA · CRUD_NCERT."
+    },
+    {
+      "label": "Nuevo Contrato / Gerente / Firma masiva / Descargar PDF / Inactivar",
+      "icono": "history_edu",
+      "color": "deep-purple",
+      "estilo": "push",
+      "descripcion": "Contrato NCONTLABO por empleado activo con formato; firma del representante legal (permiso BtnFirmarContGerente) por imagen o dibujo; inactivar para reemplazar. SPQ_CONTRATOS_NOM."
+    },
+    {
+      "label": "Nuevo / Editar contenido / Variables (formatos)",
+      "icono": "description",
+      "color": "teal",
+      "estilo": "push",
+      "descripcion": "Plantillas NCERTC (Contrato / Certificado) con editor web y variables agrupadas. SPQ_FORMATOS_NOMINA · CRUD_NCERTC / GUARDAR_CUERPO."
+    },
+    {
+      "label": "Traer Datos / Configurar / Imprimir (turnos)",
+      "icono": "schedule",
+      "color": "pink",
+      "estilo": "push",
+      "descripcion": "Resume turnos del mes en TURESUM/TURNOV y mapea novedades de turno a eventos NEVE. SPQ_TURNOS_NOMINA → SPK_RESUMEN_TURNOS."
+    },
+    {
+      "label": "Nuevo / Sesión / Asistencia / Exportar (capacitaciones)",
+      "icono": "school",
+      "color": "brown",
+      "estilo": "push",
+      "descripcion": "Capacitación, sesiones, convocados y asistencia; talleres con formulario, asignación y calificación. SPQ_CAP, SPQ_TALL, SPQ_FORMULARIO_TALLER, SPQ_EMPLEADOS_TALL."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "MENUQ_NOMINA · Prenomina",
+      "accion": "Abrir la pestaña Prenómina",
+      "rol": "Nómina",
+      "descripcion": "Dentro de la pestaña no hay permiso por botón: quien entra puede recalcular, cargar novedades y retirar."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · Liquidacion",
+      "accion": "Abrir la pestaña Liquidación",
+      "rol": "Nómina",
+      "descripcion": "Generar nómina, imprimir y exportar dependen de este y de btnImprimirLiquidacion / btnExportarLiquidacion."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · BtnCerrarNomina / BtnAbrirNomina",
+      "accion": "Cerrar o reabrir el período",
+      "rol": "Coordinador de nómina",
+      "descripcion": "Abrir advierte que se pierden contabilidad y CxP; el SP bloquea si hay pagos, notas o mes contable cerrado."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · BtnContabilizarNomina / GenerarCxp / CxpEspecial",
+      "accion": "Contabilizar y generar cuentas por pagar",
+      "rol": "Nómina / Contabilidad",
+      "descripcion": "Si NOMINA_AUTENVIO_CXP está activa, las CxP se generan solas tras contabilizar."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · BtnPrevioXml",
+      "accion": "Vista previa del XML DIAN",
+      "rol": "Nómina",
+      "descripcion": "Solo muestra; no envía."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · BtnRestablecerPeriodosVac",
+      "accion": "Rehacer períodos de vacaciones del empleado",
+      "rol": "Nómina",
+      "descripcion": "Borra y recrea NEMPV del empleado."
+    },
+    {
+      "codigo": "Frm:PRSD · CambiaEstCuot",
+      "accion": "Cambiar estado de una cuota de libranza",
+      "rol": "Nómina",
+      "descripcion": "Permite marcar manualmente una cuota."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · BtnNombreColilla",
+      "accion": "Alias de concepto en colilla",
+      "rol": "Nómina",
+      "descripcion": "Configurado en el libro de Conceptos; aquí solo se imprime."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · BtnFirmarContGerente",
+      "accion": "Firmar contratos como representante legal (individual o masivo)",
+      "rol": "Gerencia",
+      "descripcion": "Único permiso por botón en certificados y contratos."
+    },
+    {
+      "codigo": "CAPACITACIONES_WEB · GESTIONCAP / GESTIONTALL",
+      "accion": "Gestionar capacitaciones y talleres",
+      "rol": "Talento humano",
+      "descripcion": "Sin ellos la página solo muestra lo propio del empleado."
+    },
+    {
+      "codigo": "MENUQ_REPORTES_NOMINA · BtnConfigurarRepPreSoc",
+      "accion": "Configurar conceptos del reporte de prestaciones sociales",
+      "rol": "Nómina",
+      "descripcion": "GUARDAR_CONF_REP / ELIMINAR_CONF_REP en TGEN."
+    },
+    {
+      "codigo": "MENUQ_NOMINA · EmpleadosPerPruebaTH / ImportarEmpleadosNom",
+      "accion": "Período de prueba e importación de empleados",
+      "rol": "Talento humano",
+      "descripcion": "Pestaña Empleados (ver libro Conceptos)."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "FORMALIQRETIROS",
+      "uso": "Forma de liquidar retiros: estándar (conceptos del evento RET) u OTRASIPS (provisión directa a NIEPED).",
+      "donde": "SPK_CALCULAR_RETIROS"
+    },
+    {
+      "nombre": "AUX_TRANS_VS_INGRESO",
+      "uso": "Retira el auxilio de transporte si los ingresos superan 2 SMMLV.",
+      "donde": "Motor PRENOMINA"
+    },
+    {
+      "nombre": "NOMI_PRIMADIAS_MIN",
+      "uso": "Días laborados mínimos para pagar prima.",
+      "donde": "SPQ_NOM_PRESTACIONES"
+    },
+    {
+      "nombre": "PERIODO_PRESTA_NOM",
+      "uso": "FECHAS → toma el rango de la programación en vez del semestre fijo.",
+      "donde": "SPQ_NOM_PRESTACIONES"
+    },
+    {
+      "nombre": "IDCONCEPTO_RETEFTE / VALOR_UVT_RETEFTE",
+      "uso": "Concepto Egreso de retefuente y valor UVT del año.",
+      "donde": "SPK_CALCULA_REFTE_NOMI"
+    },
+    {
+      "nombre": "NOMICODCON_VACA",
+      "uso": "Concepto de vacaciones que genera la novedad.",
+      "donde": "SPQ_NOM_VACACIONES"
+    },
+    {
+      "nombre": "IDNOVEDADVACSIGMES / IDNOVEDADVACMESANTE / VACA_MESSIGUE_COBRO",
+      "uso": "Cómo se parte la novedad de vacaciones que cruza de mes.",
+      "donde": "SPQ_NOM_VACACIONES"
+    },
+    {
+      "nombre": "PERIODO_VACACIONES / VAC_ULTIMOS_4PER",
+      "uso": "Vigencia y cantidad de períodos de vacaciones a mostrar.",
+      "donde": "SPQ_NOM_VACACIONES"
+    },
+    {
+      "nombre": "NOM_ADEL_CESAN",
+      "uso": "Concepto Manual del adelanto de cesantías.",
+      "donde": "SPQ_NOM_ADELANTO_CESANTIAS"
+    },
+    {
+      "nombre": "NOMINATIPOCONTAB",
+      "uso": "1 = asiento normal; 3 = distribuye por centros de costo de la planta si la distribución suma 100 %.",
+      "donde": "SPQ_NC_CONTAB_NOMINA · CONTABILIZAR"
+    },
+    {
+      "nombre": "IDCON_TCOM_NOMINA / IDCON_TCOM_DEFAULT",
+      "uso": "Tipo de comprobante contable de nómina (o por sede).",
+      "donde": "SPQ_NC_CONTAB_NOMINA"
+    },
+    {
+      "nombre": "NOMINA_AUTENVIO_CXP",
+      "uso": "Genera las CxP automáticamente tras contabilizar.",
+      "donde": "LiquidaNomComponent"
+    },
+    {
+      "nombre": "ENVIARNOMI_PPTO_AUTO / PRESUP_CXP_ACTIVADO",
+      "uso": "Si presupuesto está activo, la CxP afecta rubro.",
+      "donde": "SPQ_NC_CONTAB_NOMINA · GENERATE_CxP_NOM"
+    },
+    {
+      "nombre": "USUARIOJEFERH",
+      "uso": "Usuario cuyo nombre, cargo y firma (USUSU.IDFIRMA) van en el certificado laboral.",
+      "donde": "SPQ_FORMATOS_NOMINA · CRUD_NCERT / TRAER_NCERT"
+    },
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "uso": "Tercero de la empresa que encabeza el certificado de ingresos y la liquidación de retención.",
+      "donde": "SPQ_NCINGRET_COL · IMPRIMIR_CERT / IMPRIMIR_LIQRET"
+    },
+    {
+      "nombre": "TGEN NOMINA · CERTINGRETE",
+      "uso": "Códigos de retención (casillas del certificado); cada concepto se asigna a uno (NCON.CODRET).",
+      "donde": "SPQ_NCINGRET_COL"
+    },
+    {
+      "nombre": "TGEN TSECFU · NOVEDAD (DATO1)",
+      "uso": "Mapa código de novedad de turnos → evento NEVE.",
+      "donde": "NovedadesTurComponent / SPQ_TURNOS_NOMINA · TRAER_NOVEDAD"
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Volver a calcular la nómina de un empleado después de cambiar algo",
+      "donde": "Prenómina → fila del empleado → Recalcular (o Gestionar prenómina para todos)",
+      "condicion": "Período abierto (CERRADO=0)",
+      "noEs": "No hace falta borrar el período ni volver a crear la plantilla."
+    },
+    {
+      "necesidad": "Registrar una incapacidad, licencia u horas extra",
+      "donde": "Prenómina → Novedades → Individual (evento + fechas + cantidad)",
+      "condicion": "El evento debe existir y apuntar a un concepto (libro de Conceptos)",
+      "noEs": "No se digita el valor: lo calcula el motor con el factor del evento."
+    },
+    {
+      "necesidad": "Subir muchas novedades de una vez",
+      "donde": "Prenómina → Novedades → Masivo (plantilla Excel/TXT → validar → procesar) o Interactivo",
+      "condicion": "Empleados en la plantilla de la nómina; evento y concepto activos",
+      "noEs": "No hay un import por correo ni por carpeta."
+    },
+    {
+      "necesidad": "Pagar un valor puntual a un empleado solo este mes",
+      "donde": "Talento humano → Manuales (concepto clase Manual) o Prenómina → Conceptos (particular con vigencia)",
+      "condicion": "Período abierto",
+      "noEs": "No se edita el valor directamente en la liquidación cerrada."
+    },
+    {
+      "necesidad": "Retirar a un empleado y liquidarlo",
+      "donde": "Prenómina → Novedades → evento RET (fecha, indemniza) o Retiros (masivo por archivo)",
+      "condicion": "Empleado sin retiro previo y en la plantilla",
+      "noEs": "No existe una pantalla aparte de liquidación de contrato: la hace el recálculo."
+    },
+    {
+      "necesidad": "Pagar la prima de junio / diciembre o las cesantías",
+      "donde": "Talento humano → Prestaciones → Nueva programación (clase, P/C/S, año) → Registrar detalle → Generar detalles → Verificar → Generar",
+      "condicion": "Período de pago abierto; empleados con días ≥ NOMI_PRIMADIAS_MIN",
+      "noEs": "No se calcula desde Prenómina ni con un concepto manual."
+    },
+    {
+      "necesidad": "Descontar un préstamo por nómina",
+      "donde": "Nómina → Gestión de libranzas → Nuevo préstamo (genera cuotas); el concepto clase Préstamo lo baja en el período",
+      "condicion": "Concepto clase Préstamo en la plantilla; cuota PorPagar con fecha dentro del período",
+      "noEs": "No se registra como novedad ni como manual."
+    },
+    {
+      "necesidad": "Saber cuánto se le retiene a un empleado",
+      "donde": "Talento humano → Liquidación retefuente (por año/mes) o la línea del concepto de retefuente en Prenómina",
+      "condicion": "Tercero en RETTER con ¿Nómina?; variables IDCONCEPTO_RETEFTE y VALOR_UVT_RETEFTE",
+      "noEs": "No se digita: se calcula en cada recálculo."
+    },
+    {
+      "necesidad": "Darle vacaciones a un empleado",
+      "donde": "Talento humano → Vacaciones → empleado → Nuevo evento → Generar novedad",
+      "condicion": "Período de nómina abierto; días pendientes en NEMPV",
+      "noEs": "No se registra como novedad manual del concepto de vacaciones."
+    },
+    {
+      "necesidad": "Adelantar cesantías",
+      "donde": "Talento humano → Adelanto cesantías → Registrar (valor ≤ saldo)",
+      "condicion": "Período abierto; concepto NOM_ADEL_CESAN activo",
+      "noEs": "No es una libranza."
+    },
+    {
+      "necesidad": "Corregir una nómina ya cerrada",
+      "donde": "Liquidación → Abrir nómina → corregir en Prenómina → Generar → Cerrar",
+      "condicion": "Mes contable abierto; sin órdenes de pago ni notas sobre las CxP de nómina",
+      "noEs": "No se edita NIEPED a mano; si ya hay pagos, se corrige en el siguiente período."
+    },
+    {
+      "necesidad": "Enviar la nómina electrónica",
+      "donde": "Procesos nómina → Envío DIAN → Preparar nómina → Procesar",
+      "condicion": "Período liquidado; conceptos con clasificación DIAN; empleados homologados",
+      "noEs": "No es el envío de facturas (FTR · NOTI_DIAN)."
+    },
+    {
+      "necesidad": "Entregar colillas a los empleados",
+      "donde": "Talento humano → Colillas → PDF o Enviar por correo (masivo)",
+      "condicion": "Liquidación generada (o prenómina para borrador)",
+      "noEs": "No se generan desde Liquidación → Imprimir (ese es el consolidado)."
+    },
+    {
+      "necesidad": "Registrar lo que la EPS reembolsó por una incapacidad",
+      "donde": "Talento humano → Prestación social → renglón NIEPER → Pagar con referencia de Bancos o Caja",
+      "condicion": "Movimiento BMOVD o recibo FCJ marcado Recaudo nómina del mismo tercero",
+      "noEs": "No se hace desde Bancos ni desde Cartera."
+    },
+    {
+      "necesidad": "Entregar el certificado de ingresos y retenciones del año",
+      "donde": "Talento humano → Certificados → Configurar (códigos por concepto) → Nuevo certificado → Reliquidar → Cerrar → Certificado",
+      "condicion": "Nómina del año generada (NIEPED); conceptos con CODRET asignado",
+      "noEs": "No se arma desde Liquidación retefuente (esa es la retención mensual)."
+    },
+    {
+      "necesidad": "Ver cuánto se retuvo a un empleado en un mes y por qué",
+      "donde": "Talento humano → Liquidación retefuente → filtrar por período o empleado → expandir → Certificado",
+      "condicion": "Que el empleado estuviera sujeto a retención en ese recálculo (RETTER)",
+      "noEs": "No se edita aquí; se corrige en configuración y se recalcula la prenómina."
+    },
+    {
+      "necesidad": "Darle un certificado laboral a un empleado",
+      "donde": "El empleado lo pide en su menú personal → RRHH lo genera en Talento humano → Certificaciones → Nuevo",
+      "condicion": "Solicitud en Espera; formato tipo Certificado activo; variable USUARIOJEFERH",
+      "noEs": "RRHH no crea la solicitud: la crea el empleado."
+    },
+    {
+      "necesidad": "Generar y firmar el contrato laboral",
+      "donde": "Talento humano → Contratos → Nuevo contrato → firma empleado → Gerente / Firma masiva → Descargar PDF",
+      "condicion": "Empleado activo sin contrato Activo; formato tipo Contrato con contenido; permiso BtnFirmarContGerente",
+      "noEs": "No se adjunta un PDF escaneado: el contrato se arma del formato y las firmas digitales."
+    },
+    {
+      "necesidad": "Pasar las novedades del cuadro de turnos a la nómina",
+      "donde": "Talento humano → Auditoría turnos → Traer datos → pestaña Novedades (configurar evento por código) → registrar en Prenómina → Novedades",
+      "condicion": "Turnos del mes en estado Definitivo; mapa código → evento en TGEN",
+      "noEs": "No hay botón que inserte la novedad en nómina automáticamente (hueco)."
+    },
+    {
+      "necesidad": "Programar una capacitación y controlar asistencia",
+      "donde": "Talento humano → Capacitaciones → Nuevo → Sesiones → Convocados → Asistencia",
+      "condicion": "Permiso GESTIONCAP",
+      "noEs": "No es un evento de nómina ni afecta el pago."
+    }
+  ],
+  "estados": {
+    "titulo": "Estados que marcan el ciclo",
+    "descripcion": "Un período vive en NPER; cada empleado liquidado en NIEPE; y alrededor hay estados propios de primas, libranzas, adelantos, recobros y DIAN. Esta tabla es la que hay que mirar cuando «no deja» hacer algo.",
+    "columnas": [
+      "Código",
+      "Dónde",
+      "Qué significa",
+      "Qué hacer"
+    ],
+    "filas": [
+      {
+        "codigo": "ABI",
+        "tono": "azul",
+        "etiquetas": [
+          "NPER",
+          "GENERADO=0 · CERRADO=0"
+        ],
+        "significa": "Período creado, sin liquidación generada. Se puede cargar prenómina, novedades y recalcular.",
+        "queHacer": "Trabajar en Prenómina; Generar nómina cuando cuadre."
+      },
+      {
+        "codigo": "GEN",
+        "tono": "ambar",
+        "etiquetas": [
+          "NPER",
+          "GENERADO=1 · CERRADO=0"
+        ],
+        "significa": "Liquidación NIEPE/NIEPED creada pero el período sigue abierto: se puede volver a generar.",
+        "queHacer": "Revisar totales; Cerrar nómina."
+      },
+      {
+        "codigo": "CER",
+        "tono": "verde",
+        "etiquetas": [
+          "NPER / NIEPE",
+          "CERRADO=1"
+        ],
+        "significa": "Cerrado: no se recalcula, no se agregan novedades ni vacaciones; cuotas de libranza quedaron Pagada.",
+        "queHacer": "Contabilizar, generar CxP, enviar DIAN. Para corregir: Abrir nómina."
+      },
+      {
+        "codigo": "CTB",
+        "tono": "verde",
+        "etiquetas": [
+          "NPER / NIEPE",
+          "CONTABILIZADA=1"
+        ],
+        "significa": "Comprobante contable creado (NROCOMPROBANTE en NIEPE).",
+        "queHacer": "Generar CxP si no fue automático. Abrir borra el comprobante."
+      },
+      {
+        "codigo": "LIQ",
+        "tono": "rojo",
+        "etiquetas": [
+          "NEMPFD",
+          "LIQUIDAR=No"
+        ],
+        "significa": "Línea calculada pero excluida: egresos superan el % máximo a deducir o el usuario la desmarcó.",
+        "queHacer": "Revisar % egresos; marcar Permitir deducciones o ajustar."
+      },
+      {
+        "codigo": "PRG",
+        "tono": "azul",
+        "etiquetas": [
+          "NVAC",
+          "Programada → Liquidado"
+        ],
+        "significa": "Programación de prestación creada; pasa a Liquidado al Finalizar la generación.",
+        "queHacer": "Registrar detalle → Generar detalles → Verificar → Generar."
+      },
+      {
+        "codigo": "VRF",
+        "tono": "ambar",
+        "etiquetas": [
+          "NVACD",
+          "Pagado · No pagar · Sin liquidar"
+        ],
+        "significa": "Marca por empleado antes de generar: Pagado ya se liquidó; No pagar se excluye; Sin liquidar pendiente.",
+        "queHacer": "Verificar empleados antes de Generar."
+      },
+      {
+        "codigo": "PPG",
+        "tono": "ambar",
+        "etiquetas": [
+          "PRS / PRSD",
+          "PorPagar"
+        ],
+        "significa": "Préstamo con saldo; cuota pendiente de descontar.",
+        "queHacer": "El concepto clase Préstamo la toma cuando la fecha cae en el período."
+      },
+      {
+        "codigo": "PAG",
+        "tono": "verde",
+        "etiquetas": [
+          "PRS / PRSD",
+          "Pagada"
+        ],
+        "significa": "Cuota descontada en una nómina cerrada (guarda CNSPAGO e ITEM_NIEPED) o préstamo saldado.",
+        "queHacer": "Abrir la nómina la devuelve a PorPagar."
+      },
+      {
+        "codigo": "ANU",
+        "tono": "gris",
+        "etiquetas": [
+          "PRS",
+          "Anulada · Aplazada"
+        ],
+        "significa": "Préstamo anulado o con cuotas aplazadas.",
+        "queHacer": "No descuenta. Revisar antes de homologar."
+      },
+      {
+        "codigo": "ADE",
+        "tono": "azul",
+        "etiquetas": [
+          "NACE",
+          "Registrado → EnNomina → Aplicado · Anulado"
+        ],
+        "significa": "Adelanto de cesantías: registrado, cargado como manual, aplicado al pagar cesantías/retiro.",
+        "queHacer": "Anular solo si no fue descontado; reabrir desaplica."
+      },
+      {
+        "codigo": "NUE",
+        "tono": "ambar",
+        "etiquetas": [
+          "NIEPER",
+          "Nuevo"
+        ],
+        "significa": "Recobro pendiente de pago por EPS/ARL.",
+        "queHacer": "Prestación social → Pagar con referencia Bancos/Caja."
+      },
+      {
+        "codigo": "PGD",
+        "tono": "verde",
+        "etiquetas": [
+          "NIEPER",
+          "Pagado · Consignado"
+        ],
+        "significa": "Recobro cruzado con Bancos/Caja (Pagado) o consignado directo al empleado (Consignado).",
+        "queHacer": "Nada; el saldo parcial queda en renglón Nuevo."
+      },
+      {
+        "codigo": "D0",
+        "tono": "gris",
+        "etiquetas": [
+          "NIEPEG",
+          "ESTADODIAN=0"
+        ],
+        "significa": "Documento DIAN preparado, sin enviar.",
+        "queHacer": "Procesar."
+      },
+      {
+        "codigo": "D1",
+        "tono": "ambar",
+        "etiquetas": [
+          "NIEPEG",
+          "ESTADODIAN=1"
+        ],
+        "significa": "En cola o error 500 del servicio: el externo reintenta.",
+        "queHacer": "Esperar; revisar FDIANR si no cambia."
+      },
+      {
+        "codigo": "D2",
+        "tono": "verde",
+        "etiquetas": [
+          "NIEPEG",
+          "ESTADODIAN=2"
+        ],
+        "significa": "Aceptado por la DIAN (CUNE).",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "D3",
+        "tono": "rojo",
+        "etiquetas": [
+          "NIEPEG",
+          "ESTADODIAN=3"
+        ],
+        "significa": "Rechazado.",
+        "queHacer": "Leer el motivo en FDIANR, corregir y volver a Procesar."
+      },
+      {
+        "codigo": "D4",
+        "tono": "azul",
+        "etiquetas": [
+          "NIEPEG",
+          "ESTADODIAN=4"
+        ],
+        "significa": "En consulta (ZipKey) pendiente de respuesta.",
+        "queHacer": "Esperar la consulta."
+      },
+      {
+        "codigo": "CIA",
+        "tono": "ambar",
+        "etiquetas": [
+          "NCINGRET",
+          "Abierto"
+        ],
+        "significa": "Certificado de ingresos editable: se puede reliquidar y ajustar totales.",
+        "queHacer": "Revisar valores por código y Cerrar."
+      },
+      {
+        "codigo": "CIC",
+        "tono": "verde",
+        "etiquetas": [
+          "NCINGRET",
+          "Cerrado"
+        ],
+        "significa": "Certificado cerrado; habilita el PDF. No se reabre.",
+        "queHacer": "Imprimir. Si está mal, crear uno nuevo."
+      },
+      {
+        "codigo": "SOL",
+        "tono": "ambar",
+        "etiquetas": [
+          "NSOLICERT",
+          "Espera → Generado"
+        ],
+        "significa": "Solicitud del empleado pendiente; pasa a Generado cuando RRHH crea el NCERT.",
+        "queHacer": "Certificaciones → Nuevo sobre la solicitud."
+      },
+      {
+        "codigo": "CTA",
+        "tono": "verde",
+        "etiquetas": [
+          "NCONTLABO",
+          "Activo (+ FECHA_FIRMA / FECHA_FIRMA_REPRE)"
+        ],
+        "significa": "Contrato vigente; cada firma registra fecha y usuario. Un solo Activo por empleado.",
+        "queHacer": "Firmar las partes que falten; Descargar PDF."
+      },
+      {
+        "codigo": "CTI",
+        "tono": "gris",
+        "etiquetas": [
+          "NCONTLABO",
+          "Inactivo"
+        ],
+        "significa": "Contrato reemplazado o anulado.",
+        "queHacer": "Generar uno nuevo si aplica."
+      },
+      {
+        "codigo": "TRB",
+        "tono": "ambar",
+        "etiquetas": [
+          "TSECRES",
+          "Borrador · Error · Definitivo"
+        ],
+        "significa": "Día de turno con horas pendientes (Borrador), con novedad y horas cumplidas a la vez (Error) o cuadrado (Definitivo).",
+        "queHacer": "Corregir el cuadro de turnos y volver a Traer datos."
+      },
+      {
+        "codigo": "TUA",
+        "tono": "azul",
+        "etiquetas": [
+          "TURESUM / TURNOV",
+          "Abierto"
+        ],
+        "significa": "Resumen del período recalculable; TURNOV.CNSPAGO vacío hasta llevarlo a nómina.",
+        "queHacer": "Registrar la novedad en Prenómina con el evento mapeado."
+      }
+    ],
+    "nota": "Contabilidad no cierra el mes si hay períodos con CERRADO=0. Un período con CONTABILIZADA=1 y CxP pagadas ya no se abre."
+  },
+  "flujos": [
+    {
+      "id": "flujo-prenomina",
+      "titulo": "Prenómina: cargar, calcular, ajustar",
+      "pasos": [
+        {
+          "num": "1",
+          "tipo": "accion",
+          "titulo": "Elegir nómina y período",
+          "descripcion": "Filtro por nómina, estado y año/mes; se abre el CNSPAGO y la grilla de empleados con totales en vivo.",
+          "rol": "Nómina",
+          "pantalla": "Prenómina",
+          "tablas": [
+            "NPER",
+            "NOMIE"
+          ],
+          "sp": "SPQ_NOM_NPER · GET_NPER / SPQ_NOM_NOMIE · GET_NOMIE_EMPLOYEES"
+        },
+        {
+          "num": "2",
+          "tipo": "decision",
+          "titulo": "¿Período abierto?",
+          "descripcion": "Si CERRADO=1 no se puede cargar ni recalcular.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NPER"
+          ],
+          "sp": "",
+          "si": "3",
+          "no": "Liquidación → Abrir nómina"
+        },
+        {
+          "num": "3",
+          "tipo": "accion",
+          "titulo": "Gestionar prenómina",
+          "descripcion": "Trae cargos y conceptos de la plantilla a RPDX; se pueden quitar o agregar antes de procesar.",
+          "rol": "Nómina",
+          "pantalla": "GeneraPlantillaComponent",
+          "tablas": [
+            "RPDX",
+            "NPLTCA",
+            "NPLTCO"
+          ],
+          "sp": "SPQ_TRAER_PLANTILLA_NOMI / SPQ_NOM_NPLT · GET_NPLTCA_RPDX / GET_NPLTCO_RPDX"
+        },
+        {
+          "num": "4",
+          "tipo": "sistema",
+          "titulo": "PRENOMINA por empleado",
+          "descripcion": "Borra NEMPFD/NEMPF del empleado, calcula ingresos por prioridad en NEMPFD_RUN, luego egresos, vuelca a NEMPFD, corre retiros, retefuente y totales.",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "NEMPFD_RUN",
+            "NEMPFD",
+            "NEMPF",
+            "NPER"
+          ],
+          "sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA → FNK_VALORCONCEPTO_NEMPFD_RUN, SPK_CALCULAR_RETIROS, SPK_CALCULA_REFTE_NOMI, SPK_CALCULAR_NEMPF"
+        },
+        {
+          "num": "5",
+          "tipo": "accion",
+          "titulo": "Agregar novedades, particulares, manuales, retiros",
+          "descripcion": "Individual o masivo; cada guardado dispara recálculo del empleado afectado.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NEDIA",
+            "NEMPDA",
+            "NPERC",
+            "NEMP"
+          ],
+          "sp": "SPQ_NOM_NEDIA · GUARDAR / SPQ_NOM_NOVEDADES · AGREGAR_NOVEDAD_EMPLEADOS / SPQ_NOM_CONCEPTOS · AGREGAR_CONCEPTOS_EMPLEADOS / SPQ_FRT_NEMP · RETIRAR_EMPLEADOS"
+        },
+        {
+          "num": "6",
+          "tipo": "decision",
+          "titulo": "¿Líneas con Liquidar = No o en cero?",
+          "descripcion": "Revisar columna Detalle (BASICO=0, ANTIGUEDAD, Ap.No.Conf) y % egresos vs máximo a deducir.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NEMPFD"
+          ],
+          "sp": "",
+          "si": "Corregir configuración o novedad y recalcular",
+          "no": "7"
+        },
+        {
+          "num": "7",
+          "tipo": "resultado",
+          "titulo": "Prenómina lista",
+          "descripcion": "NEMPF/NEMPFD cuadrados por empleado; totales del período. Siguiente: Liquidación → Generar nómina.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NEMPF",
+            "NEMPFD"
+          ],
+          "sp": ""
+        }
+      ]
+    },
+    {
+      "id": "flujo-primas",
+      "titulo": "Primas y cesantías: programar, verificar, generar",
+      "pasos": [
+        {
+          "num": "1",
+          "tipo": "accion",
+          "titulo": "Nueva programación (NVAC)",
+          "descripcion": "Clase (PrimaJ, PrimaD, Cesan, ICesan, Vacaciones), forma P/C/S, nómina, año, fechas, días, evento.",
+          "rol": "Nómina",
+          "pantalla": "Prestaciones",
+          "tablas": [
+            "NVAC"
+          ],
+          "sp": "SPQ_NOM_PRESTACIONES · GUARDAR"
+        },
+        {
+          "num": "2",
+          "tipo": "accion",
+          "titulo": "Registrar detalle (NVACD)",
+          "descripcion": "Período de pago (CNSPAGO) y evento de pago; el evento lleva al concepto que paga.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NVACD",
+            "NEVE"
+          ],
+          "sp": "SPQ_NOM_PRESTACIONES · GUARDAR (detalle)"
+        },
+        {
+          "num": "3",
+          "tipo": "sistema",
+          "titulo": "Generar detalles",
+          "descripcion": "Una fila por empleado activo de la nómina con días y base.",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "NVACD",
+            "NEMPHIS"
+          ],
+          "sp": "GEN_DETALLESPRESTACIONES_NOM → FNK_INFO_NEMPHIS_NEMP"
+        },
+        {
+          "num": "4",
+          "tipo": "accion",
+          "titulo": "Verificar empleados",
+          "descripcion": "Marcar Pagado / No pagar / Sin liquidar antes de generar.",
+          "rol": "Nómina",
+          "pantalla": "VerifEmpComponent",
+          "tablas": [
+            "NVACD"
+          ],
+          "sp": "CAMBIA_ESTADO"
+        },
+        {
+          "num": "5",
+          "tipo": "decision",
+          "titulo": "¿Período de pago abierto?",
+          "descripcion": "PREPARAR falla si NPER.CERRADO=1: «la Nomina Se Encuentra cerrada».",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NPER"
+          ],
+          "sp": "",
+          "si": "6",
+          "no": "Abrir nómina o cambiar el período de pago"
+        },
+        {
+          "num": "6",
+          "tipo": "sistema",
+          "titulo": "Generar por empleado",
+          "descripcion": "P: suma aportes del semestre/año no pagados de los conceptos asociados (NCONDA) y descuenta adelantos NACE. C: valor de la definición prorrateado por días. Días < NOMI_PRIMADIAS_MIN → no paga.",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "NIEPED",
+            "NEMPFD",
+            "NACE"
+          ],
+          "sp": "PREPARAR_GENPRESTACIONES → GENPRESTACIONES_NOMINA → SPQ_ADELANTO_CESAN"
+        },
+        {
+          "num": "7",
+          "tipo": "resultado",
+          "titulo": "Finalizar",
+          "descripcion": "Totales del período, provisiones marcadas pagadas, NVAC en Liquidado. El valor queda en la liquidación del CNSPAGO de pago.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NVAC",
+            "NPER",
+            "NEMPF"
+          ],
+          "sp": "FINALIZAR_GENPRESTACIONES → SPK_CALCULAR_NEMPF"
+        }
+      ]
+    },
+    {
+      "id": "flujo-libranza",
+      "titulo": "Libranza: préstamo, cuotas y descuento",
+      "pasos": [
+        {
+          "num": "1",
+          "tipo": "accion",
+          "titulo": "Nuevo préstamo (PRS)",
+          "descripcion": "Empleado, concepto clase Préstamo, financiación, valor, número de cuotas, fecha inicio, intereses.",
+          "rol": "Nómina",
+          "pantalla": "Gestión de libranzas",
+          "tablas": [
+            "PRS"
+          ],
+          "sp": "SPQ_NOM_PRS · GUARDAR"
+        },
+        {
+          "num": "2",
+          "tipo": "sistema",
+          "titulo": "Generar plan de cuotas (PRSD)",
+          "descripcion": "Cuotas PorPagar con valor, intereses y fecha de pago. Regenerar rehace desde la última pagada; Borrar elimina solo las no pagadas.",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "PRSD"
+          ],
+          "sp": "SPK_GENERA_CUOTAS"
+        },
+        {
+          "num": "3",
+          "tipo": "accion",
+          "titulo": "Enviar a CxP (opcional)",
+          "descripcion": "Cuenta por pagar del desembolso al empleado.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "FCXP",
+            "FCXPD"
+          ],
+          "sp": "SPQ_NOM_PRS · ENVIAR_A_CXP → SPK_GENCXP_PRESTAMO_NOMI"
+        },
+        {
+          "num": "4",
+          "tipo": "sistema",
+          "titulo": "Descuento en prenómina",
+          "descripcion": "El concepto con base Cuota lee la cuota PorPagar cuya fecha cae en el período y la pone como egreso (NIEPED guarda IDTRANSPRESTAMO, NUMDOCPRESTAMO, NUMCUOTA).",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "NEMPFD",
+            "NIEPED"
+          ],
+          "sp": "FNK_VALORCONCEPTO_NEMPFD_RUN (base Cuota)"
+        },
+        {
+          "num": "5",
+          "tipo": "decision",
+          "titulo": "¿Se cierra la nómina?",
+          "descripcion": "Cerrar marca las cuotas Pagada con CNSPAGO e ITEM_NIEPED y recalcula saldo/estado del préstamo.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "PRSD",
+            "PRS"
+          ],
+          "sp": "",
+          "si": "6",
+          "no": "Sigue PorPagar; si se abre la nómina vuelve a PorPagar"
+        },
+        {
+          "num": "6",
+          "tipo": "resultado",
+          "titulo": "Préstamo al día",
+          "descripcion": "VLRSALDO = préstamo − pagado; ESTADO Pagada cuando llega a 0.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "PRS"
+          ],
+          "sp": "SPQ_CERRAR_NOMI"
+        }
+      ]
+    },
+    {
+      "id": "flujo-cierre",
+      "titulo": "Generar, cerrar y abrir la nómina",
+      "pasos": [
+        {
+          "num": "1",
+          "tipo": "accion",
+          "titulo": "Generar nómina",
+          "descripcion": "Valida ingresos cuyo tercero del concepto no es el del empleado («Empleados con error de terceros» → Excel y para).",
+          "rol": "Nómina",
+          "pantalla": "Liquidación",
+          "tablas": [
+            "NEMPFD",
+            "NCOND"
+          ],
+          "sp": "SPQ_LIQUIDACION · GENERATE_NOMINA"
+        },
+        {
+          "num": "2",
+          "tipo": "sistema",
+          "titulo": "Volcar a liquidación",
+          "descripcion": "Borra y recrea NIEPE (por empleado) y NIEPED (por línea) desde NEMPF/NEMPFD; totales NPERP/NPERPD; recobros NIEPER; marca GENERADO=1.",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "NIEPE",
+            "NIEPED",
+            "NPERP",
+            "NPERPD",
+            "NIEPER",
+            "NPER"
+          ],
+          "sp": "SPQ_LIQUIDAR_NOMI → FNK_LIQUIDAR_NOMI"
+        },
+        {
+          "num": "3",
+          "tipo": "decision",
+          "titulo": "¿Cerrar? (PROCESO=CLOSE)",
+          "descripcion": "Exige detalles («NO ES POSIBLE CERRAR UNA NOMINA SIN DETALLES») y cuenta KMCOM válida en cada línea («SE DEBEN CORREGIR LOS ERRORES DE CONTABILIZACION…» → Excel).",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "NIEPED"
+          ],
+          "sp": "FNK_NC_CUENTA_KMCOM",
+          "si": "4",
+          "no": "Corregir modelo contable y repetir"
+        },
+        {
+          "num": "4",
+          "tipo": "sistema",
+          "titulo": "Cerrar",
+          "descripcion": "NPER y NIEPE CERRADO=1; cuotas PRSD Pagada; PRS saldo/estado; provisión de vacaciones del mes.",
+          "rol": "Sistema",
+          "pantalla": "",
+          "tablas": [
+            "NPER",
+            "NIEPE",
+            "PRSD",
+            "PRS",
+            "NEMPV"
+          ],
+          "sp": "SPQ_CERRAR_NOMI + SPQ_PROCESO_VACACIONES · CIERRE"
+        },
+        {
+          "num": "5",
+          "tipo": "accion",
+          "titulo": "Contabilizar y CxP",
+          "descripcion": "Comprobante empleado a empleado; CxP por tercero (automático si NOMINA_AUTENVIO_CXP).",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "MCPE",
+            "MCHE",
+            "FCXP",
+            "FCXPD"
+          ],
+          "sp": "SPQ_NC_CONTAB_NOMINA · CONTABILIZAR / GENERATE_CxP_NOM"
+        },
+        {
+          "num": "6",
+          "tipo": "decision",
+          "titulo": "¿Hay que corregir? Abrir nómina",
+          "descripcion": "Bloquea si PRI del mes cerrado, órdenes de pago (FCXPP) o notas DB/CR (FCXPDBCR) sobre CxP de nómina.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "PRI",
+            "FCXPP",
+            "FCXPDBCR"
+          ],
+          "sp": "SPQ_LIQUIDACION · OPEN_NOMINA",
+          "si": "7",
+          "no": "Corregir en el siguiente período"
+        },
+        {
+          "num": "7",
+          "tipo": "resultado",
+          "titulo": "Período reabierto",
+          "descripcion": "Cuotas a PorPagar; borra MCHE/MCPE (y MCP/MCH); borra FCXP/FCXPD sin pagos; NPER CERRADO=0, GENERADO=1, CONTABILIZADA=0; NIEPE/NIEPED sin comprobante; vacaciones revertidas.",
+          "rol": "Nómina",
+          "pantalla": "",
+          "tablas": [
+            "PRSD",
+            "MCPE",
+            "FCXP",
+            "NPER",
+            "NIEPE"
+          ],
+          "sp": "SPQ_ABRIR_NOMI + SPQ_PROCESO_VACACIONES · ABRE"
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Capítulo 1 · Guía rápida",
+      "titulo": "¿Dónde hago…? Lo que ya existe",
+      "intro": "Antes de pedir un desarrollo, revise esta lista: casi todo lo que se pide en nómina ya tiene botón y condición.",
+      "puntosClave": [
+        "Casi todo pasa por Prenómina (recalcular) y Liquidación (generar, cerrar, abrir).",
+        "Lo que no es mensual tiene pantalla propia: Prestaciones, Vacaciones, Adelanto, Libranzas.",
+        "Si «no deja», mire el capítulo de estados."
+      ]
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Capítulo 2 · Qué es",
+      "titulo": "El ciclo de un período de nómina",
+      "intro": "Dos tablas y dos momentos: lo calculado (NEMPF/NEMPFD), que se puede recalcular, y lo liquidado (NIEPE/NIEPED), que se paga y contabiliza. Entre ambas hay un botón: Generar nómina. Después vienen Cerrar, Contabilizar, CxP y DIAN; Abrir deshace de Cerrar en adelante.",
+      "imagen": "img/nomliq_que_es_sketchnote.jpg",
+      "imagenAlt": "Mapa del ciclo: preparar, especiales, liquidar y cerrar, después",
+      "md": "| Momento | Dónde | Tablas | Se puede deshacer |\n|---|---|---|---|\n| Preparar | Prenómina | NEMPF, NEMPFD, NEDIA, NEMPDA, NPERC | Sí: recalcular |\n| Especiales | Prestaciones, Vacaciones, Libranzas, Adelanto | NVAC/NVACD, NEMPV/NEMPVD, PRS/PRSD, NACE | Según estado |\n| Liquidar | Liquidación → Generar | NIEPE, NIEPED, NPERP | Sí: volver a generar |\n| Cerrar | Liquidación → Cerrar | NPER.CERRADO, PRSD Pagada | Abrir nómina |\n| Contabilizar / CxP | Liquidación | MCPE/MCHE, FCXP | Abrir nómina (si no hay pagos) |\n| DIAN | Envío DIAN | NIEPEG, FDIANR | Nota de ajuste |",
+      "puntosClave": [
+        "Ruta: Menú central → Talento humano → Procesos nómina.",
+        "Período cerrado manda: nada se recalcula ni se agrega.",
+        "Contabilidad no cierra el mes con períodos abiertos."
+      ]
+    },
+    {
+      "id": "prenomina",
+      "tipo": "flujo",
+      "kicker": "Capítulo 3 · Prenómina",
+      "titulo": "Cargar, calcular y ajustar",
+      "intro": "Todo pasa empleado a empleado. Gestionar prenómina trae la plantilla y procesa; cada novedad o cambio dispara un recálculo del empleado afectado.",
+      "imagen": "img/nomliq_prenomina_sketchnote.jpg",
+      "imagenAlt": "Prenómina: elegir período, gestionar, ajustar, leer la grilla",
+      "puntosClave": [
+        "Recalcular borra y recrea las líneas del empleado; manuales y particulares se vuelven a leer.",
+        "El motor no lanza errores: una línea en cero trae el motivo en Detalle.",
+        "No hay permiso por botón dentro de la pestaña."
+      ],
+      "flujoId": "flujo-prenomina"
+    },
+    {
+      "id": "novedades",
+      "tipo": "texto",
+      "kicker": "Capítulo 4 · Novedades",
+      "titulo": "Novedades del período, particulares y manuales",
+      "intro": "Tres formas de meter lo que la plantilla no trae: novedad de un evento (NEDIA), concepto particular con vigencia (NEMPDA) y manual del período (NPERC).",
+      "imagen": "img/nomliq_novedades_sketchnote.jpg",
+      "imagenAlt": "Novedad, masivo, particulares, manuales",
+      "md": "| Qué | Dónde | Tabla | Qué se digita | Vida |\n|---|---|---|---|---|\n| Novedad | Prenómina → Novedades → Individual | NEDIA | Evento, fechas (y horas), días u horas, factor, por pago / por fecha, prórroga, diagnóstico, recobro | El período que cubra la fecha o el actual |\n| Novedad masiva | Prenómina → Novedades → Masivo / Interactivo | RPDX → NEDIA | Archivo (contrato, documento, evento, fechas, cantidad) | Igual; lote con CNSMASIVO para quitar |\n| Particular | Prenómina → Conceptos (masivo) o Configuración → Empleados → Conceptos | NEMPDA | Concepto Particular, valor o %, tercero, financiación, desde/hasta | Mientras la vigencia cubra el período |\n| Manual | Talento humano → Manuales | NPERC | Concepto Manual, valor empleado, valor 100 %, aporte empresa | Solo ese CNSPAGO |\n\n**Reglas que sí valida el SP**: período cerrado bloquea (vacaciones y adelantos lo dicen explícito); masivo valida contrato, documento, evento, diagnóstico si el evento lo exige, fechas, empleado en plantilla y concepto activo; particular no inserta vigencias cruzadas si el concepto no se repite.\n\n**Lo que no valida**: `SPQ_NOM_NEDIA · GUARDAR` no revisa que el período esté abierto (lo hace la pantalla); eliminar un retiro limpia su liquidación con `SPK_QUITANOV_RETIROS`.",
+      "puntosClave": [
+        "Guardar una novedad recalcula al empleado.",
+        "El adelanto de cesantías se registra como manual del concepto NOM_ADEL_CESAN.",
+        "TERCERO_RECOBRO marca a quién se recobra la incapacidad (NIEPER al liquidar)."
+      ]
+    },
+    {
+      "id": "turnos",
+      "tipo": "texto",
+      "kicker": "Capítulo 5 · Turnos",
+      "titulo": "Auditoría de turnos → novedades de nómina",
+      "intro": "Talento humano → Auditoría turnos: resume el cuadro de turnos del mes (asistencial y administrativo) en horas cumplidas, pendientes y de novedad, y separa las novedades por código para llevarlas a la nómina.",
+      "imagen": "img/nomliq_turnos_sketchnote.jpg",
+      "imagenAlt": "Traer datos, turnos, novedades, hacia la nómina",
+      "md": "| Paso | Qué hace | Tablas | Regla |\n|---|---|---|---|\n| Traer datos (año, mes, usuario opcional) | `SPK_RESUMEN_TURNOS`: borra el resumen diario no Definitivo del mes, lo recrea desde los turnos TSECFU no resumidos (RESUM=0) y califica cada día | TSECFU → TSECRES | Borrador si quedan horas pendientes; Error si hay novedad y horas cumplidas el mismo día; Definitivo si cuadra |\n| Marcar | Los días Definitivos (sin otro día del mismo usuario en Borrador/Error) quedan RESUM=1 en TSECFU | TSECFU | No se vuelven a tomar en la siguiente corrida |\n| Resumen del período | Borra TURESUM Abierto del período y lo recrea por usuario: HCUMP, HPEND, HNOV | TURESUM | Lo que no esté Abierto no se toca |\n| Novedades del período | Borra TURNOV Abierto y lo recrea por usuario y código de novedad (solo días Definitivos con horas de novedad) | TURNOV | CNSPAGO queda NULL hasta pasar a nómina |\n| Configurar | Mapea cada código de novedad de turnos (TGEN TSECFU·NOVEDAD) a un evento NEVE en DATO1 | TGEN | Sin mapa no hay evento de nómina |\n\n**Hallazgo**: en PREVERSION 2.0.7 el circuito termina en TURNOV. No existe METODO que inserte NEDIA desde TURNOV ni que escriba TURNOV.CNSPAGO: la novedad debe registrarse a mano en Prenómina → Novedades con el evento mapeado. Es un hueco (candidato a REQ), no un defecto.",
+      "puntosClave": [
+        "Personal asistencial se identifica por USUSU.IDMEDICO; administrativo por USUARIO.",
+        "Imprimir: PDF del resumen por usuario.",
+        "Objetos: SPQ_TURNOS_NOMINA (TRAER_DATOS, TRAER_NOVEDAD, TRAER_NEVE), SPK_RESUMEN_TURNOS."
+      ]
+    },
+    {
+      "id": "motor",
+      "tipo": "texto",
+      "kicker": "Capítulo 6 · Motor",
+      "titulo": "Cómo se calcula un concepto (sin fórmulas)",
+      "intro": "Por cada empleado y cada concepto de la plantilla el motor pregunta ¿aplica?, calcula base × valor, respeta el orden y el tope y deja una línea con su detalle.",
+      "imagen": "img/nomliq_motor_sketchnote.jpg",
+      "imagenAlt": "¿Aplica?, base × valor, orden y tope, resultado",
+      "md": "| Pregunta | Qué revisa | Si falla |\n|---|---|---|\n| ¿Aplica el empleado? | Activo, en la nómina, básico > 0 en NEMPHIS a la fecha, ingreso antes del fin del período | Línea en cero: BASICO=0 |\n| ¿Aplica el concepto? | Vigencia NCOND, no excluido por cargo (NCARNGE) ni empleado (NEMPE), frecuencia, antigüedad, tiempo laborado | ANTIGUEDAD / FRECUENCIA en Detalle |\n| ¿Hay novedad? | Si viene de evento, NEDIA del empleado en el período | No genera línea |\n| Base | Laborado, Básico, Salario neto, Base prestaciones, Conceptos (NCONDC), Cuota (PRSD), Fórmula (NCONDF), Promedio, Tabla (NCONTDV) | Base 0 → valor 0 |\n| Horas | Horas del cargo menos novedades que restan horas; ingreso/retiro parcial prorratea | — |\n| Valor | % o fijo sobre la base × factor de la novedad; redondeo configurado; valor empresa en aportes | Valor<=0 en Detalle |\n| Orden | Ingresos por prioridad, luego egresos por prioridad; retiros; retefuente al final | — |\n| Tope | Egresos acumulados > % máximo a deducir (NOMI.MAXADEDUCIR) → Liquidar=No salvo SINDEDUC | Ap.No.Conf |",
+      "puntosClave": [
+        "Auxilio de transporte se retira si ingresos > 2 SMMLV (AUX_TRANS_VS_INGRESO).",
+        "Staging NEMPFD_RUN por sesión; el resultado final queda en NEMPFD.",
+        "Objetos: FNK_VALORCONCEPTO_NEMPFD_RUN, FNK_CALCULO_VLR_NOVEDAD_NOM, FNK_VALOR_NCONDC_RUN, FNK_VALOR_NCONDTC_RUN, FNK_CALCULO_VALORPARAMETRO_NOM."
+      ]
+    },
+    {
+      "id": "retiros",
+      "tipo": "texto",
+      "kicker": "Capítulo 7 · Retiros",
+      "titulo": "Novedad RET y liquidación final",
+      "intro": "Un retiro es una novedad con evento de retiro; la liquidación (prima proporcional, vacaciones, cesantías, intereses, indemnización) la hace el recálculo.",
+      "imagen": "img/nomliq_retiros_sketchnote.jpg",
+      "imagenAlt": "Individual, masivo, qué liquida, cuidados",
+      "md": "| Paso | Individual | Masivo |\n|---|---|---|\n| Registrar | Novedades → evento RET: fecha de retiro, ¿indemniza?, motivo | Botón Retiros: archivo documento, nombre, fecha → validar (sin retiro previo, en plantilla, fecha ≥ ingreso) → Retirar |\n| Efecto | NEMP.FECHARETIRO + NEMPHIS; novedad NEDIA RET | Una corrida marca a todos; la pantalla recalcula uno a uno |\n| Liquida | SPK_CALCULAR_RETIROS según FORMALIQRETIROS: estándar (conceptos del evento RET) u OTRASIPS (provisión directa a NIEPED) | Igual |\n| Adelantos | Cesantías pendientes de adelanto se descuentan FIFO (SPQ_ADELANTO_CESAN · APLICAR) | Igual |\n| Vacaciones | Días causados a la fecha desde NEMPV/NEMPVD (SPK_PROCESO_VACACIONES) | Igual |\n| Borrar | Quita la novedad y limpia líneas de retiro (SPK_QUITANOV_RETIROS) | — |",
+      "puntosClave": [
+        "El motor de retiros no lanza error: «SIN RETIROS EN EL MES» solo informa.",
+        "Umbrales 180/360 días y códigos de prima/vacaciones están fijos en el cálculo.",
+        "Reabrir el período desaplica los adelantos."
+      ]
+    },
+    {
+      "id": "primas",
+      "tipo": "flujo",
+      "kicker": "Capítulo 8 · Primas y cesantías",
+      "titulo": "Programar, verificar, generar",
+      "intro": "Talento humano → Prestaciones: una programación (NVAC) por clase y año, detalle por período de pago (NVACD), verificación por empleado y generación en tres pasos.",
+      "imagen": "img/nomliq_primas_sketchnote.jpg",
+      "imagenAlt": "Programación, detalle, generar, reglas",
+      "puntosClave": [
+        "P = Provisiones (suma lo provisionado); C = Conceptos (calcula con la definición); S = Base salarial.",
+        "La provisión se paga con los conceptos asociados (NCONDA) y esos se quitan del período.",
+        "PREVENT descuenta sobre lo provisionado: «EL VALOR A DESCONTAR ES MAYOR AL PROVISIONADO» si se pasa."
+      ],
+      "flujoId": "flujo-primas"
+    },
+    {
+      "id": "retefuente",
+      "tipo": "texto",
+      "kicker": "Capítulo 9 · Retefuente",
+      "titulo": "Retención en la fuente del empleado",
+      "intro": "Se calcula sola al final de cada recálculo si el empleado está sujeto; queda en RETEL/RETELD y como línea del concepto de retefuente.",
+      "imagen": "img/nomliq_retefuente_sketchnote.jpg",
+      "imagenAlt": "Requisitos, cálculo, dónde queda, certificado",
+      "md": "| Requisito | Dónde se configura |\n|---|---|\n| Tercero del empleado en RETTER con ¿Nómina? | Configuración → Reten. Fuentes → Agregar |\n| Concepto Egreso de retefuente en la plantilla | Variable IDCONCEPTO_RETEFTE + Plantillas |\n| Valor UVT del año > 0 | Variable VALOR_UVT_RETEFTE |\n| Tabla UVT con rangos (UVTMIN, UVTMAX, tarifa marginal, UVT adicional) | Configuración → Reten. Fuentes → U V T |\n| Conceptos base de ingreso y de deducción | Configuración → Reten. Fuentes → C O D I G O S (o Copiar códigos) |\n\n**Cálculo** (SPK_CALCULA_REFTE_NOMI): devengos base − aportes obligatorios y deducciones marcadas − 25 % renta exenta → base en UVT → rango RETUVT → (base − UVTMIN) × tarifa + UVT adicional → pesos. Si da cero la línea se borra.\n\n**Hallazgo**: la renta exenta del 25 % se aplica sin el tope mensual en UVT que fija la norma; no hay deducciones por dependientes, vivienda ni medicina prepagada.\n\n**Pantalla Liquidación retefuente** (Talento humano → Liquidación retefuente): filtra por período (CNSPAGO) o por empleado y lista RETEL con devengos, deducción, renta exenta, base, valor UVT, UVT liquidadas y retención; al expandir muestra RETELD (código, observación, clase Suma/Resta, valor). Botón **Certificado** imprime la liquidación (`SPQ_NCINGRET_COL · IMPRIMIR_LIQRET`: separa aportes a pensión, fondo y salud por la observación del ítem). PROCEDENCIA Nomina (NOREFERENCIA = CNSPAGO) o CXP (NOREFERENCIA = CNSFCXP). Es solo consulta: no recalcula ni edita.",
+      "puntosClave": [
+        "Consulta: Talento humano → Liquidación retefuente (RETEL/RETELD por período o empleado; botón Certificado).",
+        "Certificado anual: Talento humano → Certificados (NCINGRET): asignar código, reliquidar, ajustar total, cerrar.",
+        "También corre al generar CxP (métodos Nomina / CXP del SPK)."
+      ]
+    },
+    {
+      "id": "libranzas",
+      "tipo": "flujo",
+      "kicker": "Capítulo 10 · Libranzas",
+      "titulo": "Préstamo, plan de cuotas y descuento en nómina",
+      "intro": "Nómina → Gestión de libranzas: la cabecera PRS y el plan PRSD. La cuota baja por un concepto clase Préstamo con base Cuota; cerrar la nómina la marca Pagada y abrir la devuelve a PorPagar.",
+      "imagen": "img/nomliq_libranzas_sketchnote.jpg",
+      "imagenAlt": "Préstamo, cuotas, en nómina, otros",
+      "puntosClave": [
+        "Mensajes del SP: «El valor del prestamo no puede ser menor a lo ya descontado», «El numero de cuotas debe ser mayor a las ya pagadas», «No hay cuotas pendientes para eliminar. Las cuotas pagadas o aplicadas en nomina se conservan».",
+        "Homologar: solo de contratos retirados («Solo se homologan prestamos de contratos ratirados») hacia un contrato destino existente.",
+        "REQ 0100016450 (refinanciar): el METODO REFINANCIAR no está en PREVERSION."
+      ],
+      "flujoId": "flujo-libranza"
+    },
+    {
+      "id": "vacaciones",
+      "tipo": "texto",
+      "kicker": "Capítulo 11 · Vacaciones y adelantos",
+      "titulo": "Vacaciones y adelanto de cesantías",
+      "intro": "Dos pantallas propias que terminan en la prenómina: el evento de vacaciones genera la novedad NEDIA; el adelanto crea un manual del concepto NOM_ADEL_CESAN.",
+      "imagen": "img/nomliq_vacaciones_sketchnote.jpg",
+      "imagenAlt": "Períodos, evento, adelanto, variables",
+      "md": "| Acción | Pantalla | Qué hace | Bloqueo |\n|---|---|---|---|\n| Actualizar vacaciones | Vacaciones → empleado | Recalcula días causados a hoy (prorrateo 360) en NEMPV | — |\n| Nuevo evento | Vacaciones → Nuevo Evento | NEMPVD: fecha salida, días a pagar, disfrute, calendario (sábados/domingos/festivos), regreso, período | — |\n| Generar novedad | Vacaciones → evento | NEDIA del concepto NOMICODCON_VACA y recálculo; si cruza de mes parte en dos | «SE ENCUENTRA CERRADO, NO ES POSIBLE AGREGAR LA NOVEDAD» |\n| Deshacer / Anular | Vacaciones → evento | Devuelve los días | «…NO SERA POSIBLE DESHACER / ANULAR LA NOVEDAD» si cerrado |\n| Restablecer períodos | Vacaciones (permiso) | Rehace NEMPV del empleado | «Debe indicar el empleado…» |\n| Registrar adelanto | Adelanto cesantías | NACE Registrado + manual NPERC en período abierto; valor ≤ saldo | «Debe indicar un período de nómina abierto», «El valor del adelanto debe ser mayor a cero», «Ya existe un adelanto del mismo concepto en este período» |\n| Anular adelanto | Adelanto cesantías | NACE Anulado | «No se puede anular: el adelanto ya fue descontado en liquidación de cesantías/retiro» |",
+      "puntosClave": [
+        "Al cerrar la nómina, SPQ_PROCESO_VACACIONES · CIERRE provisiona el mes; al abrir, ABRE lo revierte.",
+        "El retiro toma los días pendientes de NEMPVD (PROCE=Retiro).",
+        "Estados NACE: Registrado → EnNomina → Aplicado · Anulado."
+      ]
+    },
+    {
+      "id": "cierre",
+      "tipo": "flujo",
+      "kicker": "Capítulo 12 · Generar, cerrar, abrir",
+      "titulo": "Generar, cerrar y abrir la nómina",
+      "intro": "Pestaña Liquidación: Generar vuelca lo calculado a NIEPE/NIEPED; Cerrar exige cuentas contables y marca el período; Abrir reversa si no hay pagos ni notas.",
+      "imagen": "img/nomliq_cierre_sketchnote.jpg",
+      "imagenAlt": "Generar, cerrar, abrir, salidas",
+      "puntosClave": [
+        "Generar se puede repetir mientras el período esté abierto.",
+        "Abrir advierte en pantalla que se pierden contabilidad y CxP.",
+        "Exportar: Excel, SOI (planilla), detalle de nómina, cuentas DB/CR."
+      ],
+      "flujoId": "flujo-cierre"
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "kicker": "Capítulo 13 · Estados",
+      "titulo": "Estados que marcan el ciclo",
+      "intro": "Cuando el sistema «no deja», la respuesta está en un estado: del período, de la línea, de la prestación, de la cuota, del adelanto, del recobro o del documento DIAN.",
+      "puntosClave": [
+        "NPER: GENERADO, CERRADO, CONTABILIZADA.",
+        "PRSD Pagada guarda CNSPAGO e ITEM_NIEPED: así se sabe en qué nómina se descontó.",
+        "NIEPEG ESTADODIAN 0-4."
+      ],
+      "datos": "estados"
+    },
+    {
+      "id": "contabilidad",
+      "tipo": "texto",
+      "kicker": "Capítulo 14 · Contabilidad y CxP",
+      "titulo": "Contabilizar, cuentas por pagar y recobros",
+      "intro": "Lo que sale de la nómina cerrada hacia Contabilidad (comprobante) y Tesorería (CxP por tercero y recobros de EPS/ARL).",
+      "imagen": "img/nomliq_contabilidad_sketchnote.jpg",
+      "imagenAlt": "Contabilizar, CxP, recobros, lo que no es",
+      "md": "| Salida | Botón / permiso | Qué crea | Reglas |\n|---|---|---|---|\n| Contabilizar | Contabilizar · BtnContabilizarNomina | MCPE/MCHE con el tipo IDCON_TCOM_NOMINA; NROCOMPROBANTE en NIEPE/NIEPED | Empleado a empleado con fecha contable; cuentas por KMCOM (concepto, DB/CR, centro, nómina); NOMINATIPOCONTAB 3 distribuye por centros si la planta suma 100 %. KO: «Periodo Contable NO Existe», «La variable IDCON_TCOM_DEFAULT está sin Definir», «NO HAY TERCERO» |\n| CxP | Generar CxP · GenerarCxp (automático con NOMINA_AUTENVIO_CXP) | FCXP/FCXPD por tercero con PROCEDENCIA Nomina y NOREFERENCIA = CNSPAGO | SPK_GENCXP_NOMINA_UNO / _PROVI; si presupuesto activo, PTRP/PTRPD por rubro |\n| Validar / Reconstruir CxP | Botones | Compara y rehace por tercero | — |\n| CxP especiales | CxP Especiales · CxpEspecial | FCXP de conceptos con tratamiento aparte (COUNT_CXPESPECIAL) | SPK_GENCXP_NOMI_ESP |\n| Recobros | Prestación social → Pagar | NIEPER Pagado con referencia BMOVD (Bancos) o FCJ (Caja) marcados RNOMI; saldo parcial en renglón Nuevo; contabiliza con SPK_NC_CONTAB_RECOBRONOMI | VALD_BANCOS / VALD_CAJA impiden pagar más que el movimiento |",
+      "puntosClave": [
+        "Pagar al empleado es Cuentas por pagar / Tesorería, no Nómina.",
+        "Abrir nómina borra el comprobante y las CxP sin pagos; con pagos no abre.",
+        "Contabilidad → Cierres exige todos los períodos del mes cerrados."
+      ]
+    },
+    {
+      "id": "dian",
+      "tipo": "texto",
+      "kicker": "Capítulo 15 · DIAN",
+      "titulo": "Nómina electrónica",
+      "intro": "Pestaña Envío DIAN: un documento NIEPEG por empleado y período. Preparar crea (0), Procesar encola (1), un proceso externo envía y la respuesta FDIANR actualiza el estado por trigger.",
+      "imagen": "img/nomliq_dian_sketchnote.jpg",
+      "imagenAlt": "Preparar, enviar, estados, requisitos",
+      "md": "| Paso | Qué hace | Objeto |\n|---|---|---|\n| Preparar nómina | NIEPEG por empleado liquidado, tipo 102 (individual) o 103 (ajuste) | SPQ_NOM_DIAN · GENERATE_NIEPEG |\n| Procesar | ESTADODIAN=1 (en cola) | PROCESAR_NIE / PROCESAR_NIE_FILTER |\n| Envío | Proceso externo arma XML, firma y transmite | SPK_GENERAR_XML_NOMINA (vista previa) |\n| Respuesta | FDIANR → trigger actualiza ESTADODIAN: 2 aceptado (CUNE), 1 error 500, 3 rechazado, 4 en consulta | TK_FDIANR |\n\n**Requisitos del XML**: clasificación DIAN en cada concepto (ID_DIAN), tipo de documento y tipo de cotizante homologados, tipo de contrato, resolución vigente, ID y PIN del software, TestSetId en pruebas.",
+      "puntosClave": [
+        "GENERATE_NIEPEG no exige NPER.CERRADO: conviene enviar solo nóminas cerradas.",
+        "Vista previa XML (BtnPrevioXml) no notifica.",
+        "No confundir con FTR · NOTI_DIAN (facturación)."
+      ]
+    },
+    {
+      "id": "colillas-reportes",
+      "tipo": "texto",
+      "kicker": "Capítulo 16 · Colillas y reportes",
+      "titulo": "Colillas, correo y los reportes de nómina",
+      "intro": "La colilla es el desprendible por empleado; sale de la liquidación (o de la prenómina como borrador). Reportes consolidan pagos por tercero, provisiones y listados.",
+      "md": "| Salida | Dónde | Objeto | Nota |\n|---|---|---|---|\n| Colilla PDF | Talento humano → Colillas | SPQ_RPT_NOMINA · COLILLAS / COLILLAS_PRENOMINA → FmtColillasNom.js | Nombre del concepto por FNK_NOM_NOMBRE_COLILLA (alias NCONCOL vigente a NPER.FECHAFIN); «NO EXISTE LIQUIDACION VIGENTE PARA EL EMPLEADO EN EL PERIODO INDICADO» si no hay NIEPE |\n| Envío por correo | Colillas → Enviar | ENVIAR_MAIL_TRABAJO_COLILLAS + REG_QRY_ENVIOS | Registra cada envío en QRY_ENVIOS |\n| Exportar datos | Colillas → Exportar | EXPORTA_DATOS_COLILLAS / LISTA_PAGOS | Excel |\n| Liquidación consolidada | Liquidación → Imprimir / Exportar | SPQ_LIQUIDACION · EXPORTAR_PDF / EXCEL / SOI / DETALLE_NOMINA / CUENTAS_DBCR | SOI = planilla de aportes |\n| Pagos por tercero | Talento humano → Reportes | SPQ_NOM_REPORTES · PAGOS_X_TERCEROS | — |\n| Provisiones | Talento humano → Reportes | SPQ_PROVISIONES · GENERA_RPDX_REPORTE / EXPORTAR_EXCEL | RPDX temporal |\n| Importar empleados | Configuración → Empleados → Importar | SPQ_RPT_NOMINA · CREA_RPDX / VALIDAR_RPDXEMP / RPDX_SUBIRNEMP | Crea TER, NEMP, NPLA, NPRFE, NOMIE, NEMPHIS |\n\n**Menú Reportes de nómina** (`/nom.reportes`, layout propio):\n\n| Página | Qué entrega | Objeto |\n|---|---|---|\n| Rep. Liquidaciones | Reporte de nómina por período (área, centro, cargo, sede), Resumen por concepto, Acumulados por empleado o detalle (VWK_NOM_ACUMULADOS), Diagnóstico de novedades (NEDIA por fecha de aplicación) | SPQ_NOM_NPER · GET_NIEPE_REPORT; SPQ_NOM_REPORTES · REPORTE_NIEPE / TOTAL_X_CONCEPTOS / ACUMULADO_X_EMPLEADOS / ACUMULADO_X_DETALLE / EXPORTAR_ACUMULADOS |\n| Rep. Prenómina | Prenómina del período y Pagos a terceros | SPQ_LIQUIDACION · GENERATE_NOMINA (solo lectura del cálculo); SPQ_NOM_REPORTES · PAGOS_X_TERCEROS |\n| Rep. Prestaciones sociales | Por tipo de prestación y mes; botón Configurar (permiso MENUQ_REPORTES_NOMINA · BtnConfigurarRepPreSoc) define qué conceptos entran por tipo | SPQ_NOM_REPORTES · REPORTE_PRESOCIAL / GUARDAR_CONF_REP / ELIMINAR_CONF_REP |\n| Detalles nómina | Detalle por centro de costo, pagos a terceros, resumen pie; columnas y conceptos configurables (TGEN) | SPQ_LIQUIDACION · EXPORTAR_DETALLE_NOMINA |\n| Provisiones | Provisiones por año (NVACD) a Excel | SPQ_PROVISIONES · EXPORTAR_EXCEL |\n| Adelanto cesantías | Adelantos por año, fechas y empleado, con estado | SPQ_NOM_ADELANTO_CESANTIAS · REPORTE |\n\n**Gastos por consumo** (ítem del menú RRHH): abre la solicitud de artículos a bodega (IZSOL/IZSOLD · GUARDAR_SOLICITUD, CONFIRMAR_SOLICITUD, DESHACER_PEDIDO). Pertenece a Inventario; aquí solo se enlaza.",
+      "puntosClave": [
+        "REQ 0100016378 (alias en colilla) ya está implementado en 2.0.7.",
+        "La colilla de prenómina es borrador: no tiene NIEPE.",
+        "SPQ_NOM_REPORTES tiene 13 métodos; los de detalle por concepto/tercero (TOTAL_DETALLADO_X_CONCEPTOS, EMPLEADO_DET_X_CONCEPTO, TERCEROS_DET_X_CONCEPTO*) alimentan la expansión del Resumen por concepto."
+      ]
+    },
+    {
+      "id": "certificados",
+      "tipo": "texto",
+      "kicker": "Capítulo 17 · Certificados",
+      "titulo": "Certificados y contratos del empleado",
+      "intro": "Cuatro documentos que salen de la nómina ya liquidada: certificado de ingresos y retenciones, liquidación de retención, certificados laborales (a partir de la solicitud del empleado) y contratos laborales con firma digital. Todos usan formatos NCERTC.",
+      "imagen": "img/nomliq_certificados_sketchnote.jpg",
+      "imagenAlt": "Ingresos y retenciones, liquidación de retención, certificados laborales, contratos",
+      "md": "| Documento | Pantalla | Pasos | Tablas | Reglas del SP |\n|---|---|---|---|---|\n| Ingresos y retenciones | Talento humano → Certificados | Configurar (asignar CODRET a cada concepto) → Nuevo certificado (empleado, año, fechas, valor UVT) → Reliquidar / Ajustar total → Cerrar → Certificado (PDF) | NCINGRET, NCINGRETD, NCON.CODRET, TGEN NOMINA·CERTINGRETE | Crea una fila por código de retención y suma NIEPED.TOTAL_NOMINA del año del empleado (por tercero) donde NCON.CODRET coincide. Solo se edita/reliquida en Abierto. KO «No se encontraron los Códigos de retencion», «Concepto no encontrado» |\n| Liquidación de retención | Talento humano → Liquidación retefuente | Filtrar por período o empleado → expandir detalle → Certificado | RETEL, RETELD | Solo lectura; IMPRIMIR_LIQRET separa aportes pensión / fondo / salud |\n| Certificado laboral | Menú personal del empleado → Solicitar certificado; RRHH: Talento humano → Certificaciones | Empleado crea NSOLICERT (Espera; dirigido a, ¿sueldo?, ¿cargo?, ¿tipo contrato?, ¿fecha ingreso?) → RRHH Nuevo: formato tipo Certificado, hasta 4 conceptos con valor, observaciones → Guardar genera NCERT (Generado) y marca la solicitud Generado → PDF con firma del jefe de RRHH | NSOLICERT, NCERT, NCERTC, USUSU.IDFIRMA, USVGS USUARIOJEFERH | «YA TIENES UN CERTIFICADO POR GENERAR» si hay solicitud en el mismo estado; JEFERH se toma de la variable, no del formulario |\n| Contrato laboral | Talento humano → Contratos | Nuevo contrato (empleado activo + formato tipo Contrato con contenido web) → firma del empleado → firma del Representante legal (Gerente o Firma masiva) → Descargar PDF → Inactivar | NCONTLABO, NCERTC, NEMP, NCARNG, NPRFED (EPS/ARL/caja) | «EL EMPLEADO YA CUENTA CON UN CONTRATO ACTIVO»; firmar exige Activo y no firmado antes; firma guardada en base64 (FIRMA_EMPLEADO_B64 / FIRMA_REPRE_B64) y archivo subido aparte |\n| Formatos | Talento humano → Formatos | Nuevo (título, código, versión, fecha, observación, ¿mostrar contratos?) → Editar contenido (editor web con variables por grupo) → Variables | NCERTC (TIPO Contrato / Certificado, FORMATOWEB, ESTADO) | GUARDAR_CUERPO exige que exista el formato con ese TIPO |",
+      "puntosClave": [
+        "Permiso específico: solo MENUQ_NOMINA · BtnFirmarContGerente (firma del representante legal).",
+        "El certificado de ingresos suma lo liquidado (NIEPED), no lo calculado: la nómina debe estar generada.",
+        "Objetos: SPQ_NCINGRET_COL, SPQ_FORMATOS_NOMINA, SPQ_NSOLICERT, SPQ_CONTRATOS_NOM."
+      ]
+    },
+    {
+      "id": "talento-humano",
+      "tipo": "texto",
+      "kicker": "Capítulo 18 · Talento humano",
+      "titulo": "Capacitaciones, talleres, período de prueba y planta",
+      "intro": "Lo que RRHH gestiona del empleado fuera del pago y que vive en el mismo menú de Nómina.",
+      "imagen": "img/nomliq_capacitaciones_sketchnote.jpg",
+      "imagenAlt": "Capacitaciones, talleres, período de prueba, distribución de planta",
+      "md": "| Módulo | Pantalla / permiso | Qué hace | Tablas | Objeto |\n|---|---|---|---|---|\n| Capacitaciones | Talento humano → Capacitaciones · CAPACITACIONES_WEB · GESTIONCAP | Capacitación con sesiones (fecha, horas, instructor, grupo), convocados por sesión, asistencia, soportes adjuntos, exportar cronograma y detalle | CAP, CAPD, CAPASI, DOCS | SPQ_CAP (GUARDAR, SESION, GET_SESION, GET_CONVOCADOS_X_SESION, ASISTENCIA, GET_SOPORTES, ELIMINAR_SOPORTE, ELIMINAR, EXPORTA_CRONO_CAP, EXPORTA_CAPD). KO «LA CAPACITACION YA EXISTE», «YA EXISTE UNA SESION CON ESTE ID» |\n| Talleres y formularios | Capacitaciones → Talleres · GESTIONTALL | Taller con formulario (preguntas de opción o texto libre), asignación a empleados, respuestas desde el menú personal, calificación manual de texto, resultados | TALL, TPREGUNTAS, TOPCIONES, TASIGNACION, TRESULTADOS | SPQ_TALL, SPQ_FORMULARIO_TALLER, SPQ_EMPLEADOS_TALL (EMPEADOS_ASIGNAR_TALLER, EMPLEADOS_EVALUAR, GUARDAR_EMPLEADOS_ASIS_CAP), SPQ_CALIFICAR_RESPUESTAS_TEXTO |\n| Período de prueba | Configuración → Empleados → Emp. P. Prueba · EmpleadosPerPruebaTH | Lista empleados con fecha fin de período de prueba, valida y envía notificación por correo | NEMP, QRY_ENVIOS | SPQ_TH_NEMPPRUEBA (VALIDAR_NOTIFICACIONES, VER_NOTINEMPPRUEBA, ACTUALIZA_NOIF) |\n| Distribución de planta | Configuración → Empleados → Ver distribución de planta | Porcentaje de la planta del empleado por área / centro de costo; lo usa Contabilizar con NOMINATIPOCONTAB = 3 si suma 100 % | NDISP | SPQ_NDISP (GUARDAR, GET_DISTRIBUCION, ELIMINAR). KO «LA PLANTA YA CUENTA CON UNA DISTRIBUCION PARA EL AREA» |\n| Importar empleados | Talento humano → Crear empleados (misma pestaña Empleados) · ImportarEmpleadosNom | Carga por archivo con validación por fila | RPDX → NEMP y satélites | SPQ_RPT_NOMINA · CREA_RPDX / VALIDAR_RPDXEMP / RPDX_SUBIRNEMP |",
+      "puntosClave": [
+        "Menú personal del empleado (cajón Talento humano en MainLayout): solicitar certificado, responder talleres, ver capacitaciones.",
+        "Gastos por consumo enlaza a Inventario (IZSOL); no es nómina.",
+        "El detalle de la pestaña Empleados está en el libro Nómina · Conceptos y novedades."
+      ]
+    },
+    {
+      "id": "pendientes",
+      "tipo": "texto",
+      "kicker": "Capítulo 19 · Pendientes y hallazgos",
+      "titulo": "Lo que falta y lo que se encontró",
+      "intro": "Lectura 2026-10-03 desde IXONLINE/SQL (PREVERSION = 2.0.7).",
+      "md": "**Hallazgos**\n\n- REQ 0100016359 (área y centro de costo en NEMPHIS) y REQ 0100016378 (alias en colilla): ya implementados en 2.0.7; validar en preversión antes de dictaminar.\n- Retefuente: renta exenta 25 % sin tope mensual UVT; sin deducciones por dependientes/vivienda/prepagada.\n- `SPQ_NOM_NEDIA · GUARDAR` y `SPQ_NOM_PRSD · ELIMINAR` no validan período cerrado ni cuota ya descontada (lo hace la pantalla o nadie).\n- `SPQ_NOM_DIAN · GENERATE_NIEPEG` no exige período cerrado.\n- Umbrales de retiro (180/360 días) y códigos de concepto fijos en SPK_CALCULAR_RETIROS.\n- Ningún SP valida USGRUH por acción: el permiso vive en los botones Vue.\n\n- Auditoría de turnos: no hay METODO que pase TURNOV a NEDIA ni que escriba TURNOV.CNSPAGO (hueco; registro manual en Prenómina).\n- NCINGRET: suma lo liquidado por tercero del empleado (todos sus contratos del año); sin certificado no se puede regenerar si está Cerrado.\n- NCONTLABO: la firma se guarda en base64 dentro de la tabla; el PDF se arma en el FE.\n\n**Sin ficha**\n\n- SPK_NC_CONTAB_RECOBRONOMI, SPK_GENCXP_NOMINA_UNO / _PROVI / NOMI_ESP, SPK_QUITANOV_RETIROS, SPK_AJUSTE_SALARIO_NEMP.\n- SPQ_NOM_NEMPV (CRUD de períodos de vacaciones).\n- REFINANCIAR de libranzas (REQ 0100016450) no existe en PREVERSION.\n\n**Añadido 2026-10-04**: certificados (NCINGRET, NCERT/NSOLICERT, NCONTLABO, NCERTC), liquidación de retención (RETEL), auditoría de turnos, capacitaciones/talleres, período de prueba, distribución de planta y las seis páginas de reportes. 13 objetos más fichados.",
+      "puntosClave": [
+        "Los cuerpos de SP no se archivan: se bajan de IXONLINE/SQL cuando un REQ lo exige.",
+        "Configuración de conceptos y eventos: libro Nómina · Conceptos y novedades."
+      ]
     }
   ],
   "capas": [
@@ -76,13 +1591,14 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "esqueleto",
-      "explicacion": "Período NPER abierto, conceptos/cargos parametrizados, empleados activos, permisos de pantalla. Gate de este REQ: histórico de empleado (NEMPHIS).",
+      "estado": "leido",
+      "explicacion": "Período NPER abierto, conceptos/cargos parametrizados, empleados activos con histórico NEMPHIS, permisos de pantalla. El detalle de catálogos está en el libro Nómina · Conceptos y novedades; aquí quedan los dos controles que los REQ han tocado.",
       "tablasClave": [
         "NPER",
         "NEMP",
         "NEMPHIS",
         "NCON",
+        "NCONCOL",
         "AFU",
         "CEN"
       ],
@@ -90,67 +1606,50 @@
         {
           "id": "empleados-historico",
           "nombre": "Histórico de empleado (NEMPHIS)",
-          "explicacion": "REQ 0100016359. RRHH → Configuraciones avanzadas nómina → Empleados → modal Histórico De Empleado. Crear/editar/eliminar ítems NEMPHIS (área funcional IDAREA, centro de costo CCOSTO). Consumido en prenómina por FNK_INFO_NEMPHIS_NEMP según FECHAMOV. Esqueleto: FE visto; SPQ_NOM_NEMPHIS no leído.",
-          "invariante": "NEMPHIS.IDAREA debe ser código válido en AFU; NEMPHIS.CCOSTO coherente con CEN (mismo IDAREA, activo). Un recálculo PRENOMINA en período abierto debe tomar el snapshot vigente por FECHAMOV. No inventar columnas ni comportamiento de GUARDAR hasta leer el .sql.",
+          "explicacion": "REQ 0100016359. RRHH → Configuraciones avanzadas → Empleados → Histórico. Ítems NEMPHIS por FECHAMOV con cargo, básico, horas, IDAREA, CCOSTO, planta, estado. Consumido por FNK_INFO_NEMPHIS_NEMP (mayor FECHAMOV ≤ fecha). Leído 2026-10-03: GUARDAR ya escribe IDAREA y CCOSTO; el FE muestra selector de centro (CEN).",
+          "invariante": "El motor toma el ítem vigente por FECHAMOV; sin ítem a la fecha → BASICO=0. GUARDAR no valida FK AFU/CEN ni sincroniza NEMP maestro. ELIMINAR no revisa si hay nóminas que usaron el ítem.",
           "sps": [
             {
               "nombre": "SPQ_NOM_NEMPHIS",
               "metodo": "GUARDAR",
-              "rol": "Persiste alta/edición de ítem NEMPHIS. Sin ficha — bajar SPQ_NOM_NEMPHIS.sql a sql/ y documentar en sps.json."
+              "rol": "INSERTAR/EDITAR con TRY_CONVERT de fechas; escribe IDAREA y CCOSTO. Ficha leída."
             },
             {
               "nombre": "SPQ_NOM_NEMPHIS",
               "metodo": "ELIMINAR",
-              "rol": "Borra ítem de histórico. Sin ficha — misma entrega .sql."
-            }
-          ],
-          "feSinSql": [
-            {
-              "nombre": "NOM_NEMPHIS",
-              "metodo": "GUARDAR",
-              "rol": "HistorialComponent.vue — onSaveNEMPHIS. IDAREA es q-input texto; CCOSTO no está en formulario ni en ColumnasVisibles del read."
+              "rol": "DELETE ítem. Ficha leída."
             },
             {
-              "nombre": "NOM_NEMPHIS",
-              "metodo": "ELIMINAR",
-              "rol": "HistorialComponent.vue — onDeleteNEMPHIS."
+              "nombre": "FNK_INFO_NEMPHIS_NEMP",
+              "metodo": "(función)",
+              "rol": "Fila vigente a la fecha. Ficha leída."
             }
           ],
+          "feSinSql": [],
           "pendiente": [
-            "Bajar SPQ_NOM_NEMPHIS.sql a sql/ y fichar GUARDAR / ELIMINAR (hace, valida, noValida, errores, llama, efecto)",
-            "Confirmar si GUARDAR escribe CCOSTO e IDAREA y si valida FK AFU / coherencia CEN",
-            "Confirmar si GUARDAR sincroniza NEMP maestro o solo NEMPHIS",
-            "Documentar FNK_INFO_NEMPHIS_NEMP (consume IDAREA/CCOSTO por FECHAMOV) — referenciado en PRENOMINA, sin ficha propia",
-            "No dictaminar el REQ 0100016359 hasta cerrar este gate"
+            "REQ 0100016359 ya implementado en 2.0.7: validar en preversión antes de dictaminar."
           ]
         },
         {
           "id": "colilla-nombres",
           "nombre": "Nombres en colilla (Manual / Particular)",
-          "explicacion": "REQ 0100016378. Solo impresión del desprendible: alias de nombre por concepto Manual/Particular con fecha de aplicación. No toca prenómina, liquidación, DIAN ni NEMPHIS. FE: FmtColillasNom.js pinta NOMBRE_CONCEPTO del dataset RPT_NOMINA.",
-          "invariante": "NCON.DESCRIPCION y valores liquidados no cambian. En el PDF, Manual/Particular usan el alias vigente a NPER.FECHAFIN; sin alias se mantiene el nombre actual. Otras clases iguales que hoy.",
+          "explicacion": "REQ 0100016378. Alias por concepto Manual/Particular con fecha de aplicación (NCONCOL). La colilla resuelve NOMBRE_CONCEPTO con FNK_NOM_NOMBRE_COLILLA a NPER.FECHAFIN. Leído 2026-10-03: implementado (botón Nombre en colilla, permiso BtnNombreColilla).",
+          "invariante": "NCON.DESCRIPCION y valores no cambian; sin alias se imprime el nombre actual.",
           "sps": [
             {
-              "nombre": "SPQ_RPT_NOMINA",
-              "metodo": "COLILLAS",
-              "rol": "Dataset de la colilla (liquidación). Resolver NOMBRE_CONCEPTO. No leído — bajar SPQ_RPT_NOMINA.sql."
+              "nombre": "SPQ_NOM_NCONCOL",
+              "metodo": "GUARDAR / ELIMINAR / GET_NCONCOL",
+              "rol": "CRUD de alias por vigencia. Ficha en libro Conceptos."
             },
             {
               "nombre": "SPQ_RPT_NOMINA",
-              "metodo": "COLILLAS_PRENOMINA",
-              "rol": "Mismo dataset desde prenómina. No leído."
-            }
-          ],
-          "feSinSql": [
-            {
-              "nombre": "RPT_NOMINA",
               "metodo": "COLILLAS / COLILLAS_PRENOMINA",
-              "rol": "useNomi → FmtColillasNom.js. Columna CONCEPTOS DE NOMINA."
+              "rol": "Dataset de colilla con FNK_NOM_NOMBRE_COLILLA. Ficha leída."
             }
           ],
+          "feSinSql": [],
           "pendiente": [
-            "Bajar SPQ_RPT_NOMINA.sql y fichar cómo arma hoy NOMBRE_CONCEPTO",
-            "Confirmar SP de CRUD de alias (¿NOM_CONCEPTOS o SPQ nuevo?)"
+            "REQ 0100016378 ya implementado en 2.0.7: validar en preversión."
           ]
         }
       ]
@@ -159,82 +1658,245 @@
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio",
-      "estado": "parcial",
-      "explicacion": "Prenómina (documentada), liquidación definitiva del CNSPAGO (SPQ_LIQUIDACION) y transmisión nómina electrónica a la DIAN (NOM_DIAN + TK_FDIANR).",
+      "estado": "leido",
+      "explicacion": "Prenómina (motor por empleado), liquidación definitiva del CNSPAGO (GENERATE_NOMINA → SPQ_LIQUIDAR_NOMI; CLOSE → SPQ_CERRAR_NOMI; OPEN → SPQ_ABRIR_NOMI), prestaciones (NVAC), retefuente (RETEL) y transmisión DIAN.",
       "tablasClave": [
         "NPER",
         "NEMPF",
         "NEMPFD",
         "NEMPFD_RUN",
-        "NEVED",
-        "RPDX"
+        "NIEPE",
+        "NIEPED",
+        "NVAC",
+        "NVACD",
+        "RETEL",
+        "RPDX",
+        "NCINGRET",
+        "NCINGRETD",
+        "NCERT",
+        "NSOLICERT",
+        "NCONTLABO",
+        "NCERTC"
       ],
       "controles": [
         {
           "id": "prenomina",
           "nombre": "Prenómina",
-          "explicacion": "Talento humano → Procesos nómina → Prenómina. Flujo: elegir CNSPAGO → PRENOMINA (purge, plantilla NPLTCO, motor FNK_VALORCONCEPTO_NEMPFD_RUN en NEMPFD_RUN, volcado NEMPFD, SPK_CALCULAR_RETIROS, SPK_CALCULA_REFTE_NOMI, SPK_CALCULAR_NEMPF) → retiros RETIRAR_EMPLEADOS (batch) → recálculo FE empleado a empleado. Cadena completa en PROCESO.md.",
-          "invariante": "Valores en NEMPFD; staging NEMPFD_RUN por sesión. Motor: bases NCONDC/NCONDTC, novedades NEDIA, parámetros NPARV, override retiro FNK_VALOR_CONCEP_RETIRO_RUN. Retiro masivo una llamada; recálculo posterior no es batch.",
+          "explicacion": "Procesos nómina → Prenómina. Elegir CNSPAGO → Gestionar prenómina (plantilla a RPDX) → PRENOMINA por empleado (purge, motor FNK_VALORCONCEPTO_NEMPFD_RUN en NEMPFD_RUN, volcado NEMPFD, SPK_CALCULAR_RETIROS, SPK_CALCULA_REFTE_NOMI, SPK_CALCULAR_NEMPF) → ajustes (novedades, particulares, retiros) con recálculo unitario.",
+          "invariante": "Valores en NEMPFD; staging NEMPFD_RUN por sesión. Período cerrado: nada corre. El motor no lanza error: deja Detalle. Retiro masivo una llamada; recálculo posterior uno a uno.",
+          "ventanasFe": "/nom/Nom_procesos · PreNominaComponent",
           "sps": [
             {
               "nombre": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
               "metodo": "PRENOMINA",
-              "rol": "Recálculo unitario por NUMDOC: purge NEMPFD/NEMPF → staging NEMPFD_RUN (FNK_VALORCONCEPTO_NEMPFD_RUN) → NEMPFD; retiros SPK_CALCULAR_RETIROS; retefuente SPK_CALCULA_REFTE_NOMI; totales SPK_CALCULAR_NEMPF + NPER. Ficha leída en sps.json."
+              "rol": "Recálculo unitario. Ficha leída."
             },
             {
-              "nombre": "FRT_NEMP",
-              "metodo": "RETIRAR_EMPLEADOS",
-              "rol": "Retiro masivo (SPQ_FRT_NEMP): staging RPDX → NEMP.FECHARETIRO + NEDIA RET; FE recalcula PRENOMINA empleado a empleado. Ficha leída en sps.json."
-            }
-          ],
-          "feSinSql": [
-            {
-              "nombre": "ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
-              "metodo": "PRENOMINA",
-              "rol": "Orquestación FE: AddConXCar / processEmploye / closeRemoMassiveNEMP en PreNominaComponent.vue."
+              "nombre": "SPQ_TRAER_PLANTILLA_NOMI",
+              "metodo": "(plantilla → RPDX)",
+              "rol": "Carga de cargos/conceptos para Gestionar prenómina. Leído."
             },
             {
-              "nombre": "FRT_NEMP",
+              "nombre": "SPQ_FRT_NEMP",
               "metodo": "RETIRAR_EMPLEADOS",
-              "rol": "RetiroNempComponent.vue — modal retiros masivos."
-            }
-          ]
-        },
-        {
-          "id": "liquidacion",
-          "nombre": "Liquidación de nómina",
-          "explicacion": "Talento humano → Liquidación (`LiquidaNomComponent`). Generar/cerrar: MODELO `LIQUIDACION` · `GENERATE_NOMINA` (cerrar manda PROCESO=CLOSE). Reabrir: `OPEN_NOMINA`. Contab/CxP van por `NC_CONTAB_NOMINA`. Invariante cruzada: contabilidad rechaza cierre de mes si NPER.CERRADO=0.",
-          "invariante": "GENERATE_NOMINA primero valida terceros de ingresos. Cerrar (PROCESO=CLOSE) exige NIEPE y cuentas KMCOM; el CERRADO lo escribe SPQ_CERRAR_NOMI, no este SPQ. Abrir bloquea si PRI cerrado o hay pagos/notas en CxP de nómina.",
-          "sps": [
+              "rol": "Retiro masivo. Ficha leída."
+            },
             {
-              "nombre": "SPQ_LIQUIDACION",
-              "metodo": "GENERATE_NOMINA / OPEN_NOMINA",
-              "rol": "Fichas leídas 2026-09-12. sql/SPQ_LIQUIDACION.sql."
+              "nombre": "SPQ_NEMP",
+              "metodo": "ADD_NEW_NEMP_PRENOMINA",
+              "rol": "Agregar empleado al período. Listado."
             }
           ],
           "feSinSql": [],
           "pendiente": []
         },
         {
-          "id": "envio-dian",
-          "nombre": "Envío DIAN — nómina electrónica",
-          "explicacion": "Talento humano → pantalla DIAN nómina (`DianNominaComponent`). Se generan NIEPEG (SPQ_NOM_DIAN · GENERATE_NIEPEG), se encolan (PROCESAR_NIE) y un proceso externo envía a la DIAN; la respuesta queda en FDIANR y el trigger TK_FDIANR actualiza NIEPEG.ESTADODIAN. No es FTR·NOTI_DIAN.",
-          "invariante": "PROCESAR_NIE solo pone ESTADODIAN=1. El proceso externo inserta FDIANR; TK_FDIANR cierra (2 OK, 1 error 500, 3 rechazado, 4 en consulta). GENERATE_NIEPEG no exige NPER.CERRADO. PREVIEW_XML arma el XML con SPK_GENERAR_XML_NOMINA y no notifica.",
+          "id": "liquidacion",
+          "nombre": "Liquidación de nómina (generar / cerrar / abrir)",
+          "explicacion": "LiquidaNomComponent. GENERATE_NOMINA valida terceros de ingresos y llama SPQ_LIQUIDAR_NOMI (NIEPE/NIEPED/NPERP/NIEPER, GENERADO=1). Con PROCESO=CLOSE exige detalles y cuentas KMCOM y llama SPQ_CERRAR_NOMI (CERRADO=1, PRSD Pagada, PRS saldo) + SPQ_PROCESO_VACACIONES CIERRE. OPEN_NOMINA bloquea si PRI cerrado, FCXPP o FCXPDBCR y llama SPQ_ABRIR_NOMI (PRSD PorPagar, borra MCHE/MCPE/MCP/MCH, FCXP sin pagos, NPER CERRADO=0 CONTABILIZADA=0) + ABRE.",
+          "invariante": "El CERRADO lo escribe SPQ_CERRAR_NOMI. Abrir no procede con órdenes de pago o notas. Generar se repite mientras el período esté abierto.",
+          "ventanasFe": "/nom/Nom_procesos · LiquidaNomComponent",
           "sps": [
             {
-              "nombre": "TK_FDIANR",
-              "metodo": "SendNominaSync / SendBillAsync (TIPO=NE)",
-              "rol": "Ficha leída. sql/TK_FDIANR.sql."
+              "nombre": "SPQ_LIQUIDACION",
+              "metodo": "GENERATE_NOMINA / OPEN_NOMINA / EXPORTAR_*",
+              "rol": "Orquestador. Ficha leída."
             },
+            {
+              "nombre": "SPQ_LIQUIDAR_NOMI",
+              "metodo": "(procedimiento)",
+              "rol": "Volcado a NIEPE/NIEPED. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_CERRAR_NOMI",
+              "metodo": "(procedimiento)",
+              "rol": "CERRADO=1; cuotas Pagada. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_ABRIR_NOMI",
+              "metodo": "(procedimiento)",
+              "rol": "Reversa contable/CxP/cuotas. Ficha leída."
+            },
+            {
+              "nombre": "SPQ_PROCESO_VACACIONES",
+              "metodo": "CIERRE / ABRE",
+              "rol": "Provisión de vacaciones. Leído."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        },
+        {
+          "id": "prestaciones",
+          "nombre": "Primas, cesantías e intereses (NVAC / NVACD)",
+          "explicacion": "Talento humano → Prestaciones. Programación por clase (PrimaJ, PrimaD, Cesan, ICesan, Vacaciones) y forma P/C/S; detalle por CNSPAGO de pago; verificación Pagado/No pagar/Sin liquidar; generación PREPARAR → GENPRESTACIONES_NOMINA por empleado → FINALIZAR. Eventos PREVENT descuentan sobre lo provisionado.",
+          "invariante": "PREPARAR exige período de pago abierto. P suma aportes no pagados de conceptos asociados (NCONDA) y descuenta NACE; C prorratea la definición por días; días < NOMI_PRIMADIAS_MIN no paga. PREVENT no supera lo provisionado.",
+          "ventanasFe": "/nom/Prestaciones · PrestacionesComponent",
+          "sps": [
+            {
+              "nombre": "SPQ_NOM_PRESTACIONES",
+              "metodo": "GUARDAR / ELIMINAR / CAMBIA_ESTADO / GEN_DETALLESPRESTACIONES_NOM / PREPARAR_GENPRESTACIONES / GENPRESTACIONES_NOMINA / FINALIZAR_GENPRESTACIONES / GET_TOTAL_APORTES",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPQ_PREVENT",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPQ_ADELANTO_CESAN",
+              "metodo": "APLICAR / DESAPLICAR",
+              "rol": "Leído."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        },
+        {
+          "id": "retefuente",
+          "nombre": "Retención en la fuente (RETEL)",
+          "explicacion": "SPK_CALCULA_REFTE_NOMI corre al final de PRENOMINA y en CxP: devengos − deducciones − 25 % exenta → UVT → RETUVT → RETEL/RETELD y línea del concepto IDCONCEPTO_RETEFTE. Consulta en Liquidación retefuente; certificado anual en Certificados.",
+          "invariante": "Requiere RETTER (¿Nómina?), VALOR_UVT_RETEFTE > 0, concepto en plantilla. Renta exenta sin tope UVT.",
+          "ventanasFe": "/nom/Retefuente · /nom/Certificados",
+          "sps": [
+            {
+              "nombre": "SPK_CALCULA_REFTE_NOMI",
+              "metodo": "Nomina / CXP",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPQ_NCINGRET_COL",
+              "metodo": "IMPRIMIR_LIQRET",
+              "rol": "PDF de la liquidación de retención (RETEL + RETELD; aportes pensión/fondo/salud). Ficha leída 2026-10-04; el resto del SP en el control certificados."
+            }
+          ],
+          "feSinSql": [
+            {
+              "nombre": "RETEL",
+              "metodo": "(lectura)",
+              "rol": "RETELComponent: AppStore.read RETEL/RETELD (solo lectura). Certificado → SPQ_NCINGRET_COL · IMPRIMIR_LIQRET."
+            }
+          ],
+          "pendiente": []
+        },
+        {
+          "id": "envio-dian",
+          "nombre": "Envío DIAN — nómina electrónica",
+          "explicacion": "DianNominaComponent. GENERATE_NIEPEG crea NIEPEG (estado 0), PROCESAR_NIE encola (1); proceso externo envía; FDIANR + TK_FDIANR cierran (2 OK, 1 error 500, 3 rechazado, 4 consulta). PREVIEW_XML no notifica.",
+          "invariante": "GENERATE_NIEPEG no exige NPER.CERRADO. No es FTR · NOTI_DIAN.",
+          "ventanasFe": "/nom/Nom_procesos · DianNominaComponent",
+          "sps": [
             {
               "nombre": "SPQ_NOM_DIAN",
               "metodo": "GENERATE_NIEPEG / PROCESAR_NIE / PROCESAR_NIE_FILTER / PREVIEW_XML",
-              "rol": "Fichas leídas. sql/SPQ_NOM_DIAN.sql."
+              "rol": "Fichas leídas 2026-09-12."
+            },
+            {
+              "nombre": "TK_FDIANR",
+              "metodo": "SendNominaSync / SendBillAsync (TIPO=NE)",
+              "rol": "Ficha leída."
             },
             {
               "nombre": "SPK_GENERAR_XML_NOMINA",
               "metodo": "(procedimiento)",
-              "rol": "Ficha leída 2026-09-12. Vista previa XML; no notifica."
+              "rol": "Ficha leída."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        },
+        {
+          "id": "certificados",
+          "nombre": "Certificados y contratos (NCINGRET, NCERT, NCONTLABO, NCERTC)",
+          "explicacion": "Certificados: CRUD_NCINGRET crea NCINGRET + una fila NCINGRETD por código TGEN NOMINA·CERTINGRETE y suma NIEPED.TOTAL_NOMINA del año por CODRET (tercero del empleado); RELIQUIDAR_DETA recalcula; AJUSTA_VRTOTAL edita; CERRAR_CERTI → Cerrado; IMPRIMIR_CERT / IMPRIMIR_LIQRET arman el PDF. Certificaciones: NSOLICERT (empleado) → CRUD_NCERT (RRHH) genera NCERT y marca la solicitud. Contratos: GUARDAR (un Activo por empleado), FIRMAR_CONTRATO / FIRMAR_REPRESENTANTE_LEGAL (base64), INACTIVE_CONTRACT. Formatos: CRUD_NCERTC / GUARDAR_CUERPO.",
+          "invariante": "El certificado de ingresos suma lo liquidado, no lo calculado. Solo se edita en Abierto; Cerrado no se reabre. Un contrato Activo por empleado; no se firma dos veces la misma parte. JEFERH sale de USUARIOJEFERH.",
+          "ventanasFe": "/nom/Certificados · /nom/LiqReteFte · /nom/certiLab · /nom/Contratos · /nom/Formatos",
+          "sps": [
+            {
+              "nombre": "SPQ_NCINGRET_COL",
+              "metodo": "CRUD_NCINGRET / TRAE_DETALLE / RELIQUIDAR_DETA / AJUSTA_VRTOTAL / CERRAR_CERTI / IMPRIMIR_CERT / IMPRIMIR_LIQRET / TRAER_CODRET / ASINGAR_CODRET",
+              "rol": "Ficha leída 2026-10-04."
+            },
+            {
+              "nombre": "SPQ_FORMATOS_NOMINA",
+              "metodo": "CRUD_NCERTC / TRAER_CUERPO / GUARDAR_CUERPO / TRAER_CONCEPTOS / CRUD_NCERT / TRAER_NCERT",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPQ_NSOLICERT",
+              "metodo": "GUARDAR / ELIMINAR / GET_INFO_CERTIFICATE",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPQ_CONTRATOS_NOM",
+              "metodo": "GUARDAR / GET_INFO_CONTRACT / FIRMAR_CONTRATO / FIRMAR_REPRESENTANTE_LEGAL / INACTIVE_CONTRACT",
+              "rol": "Ficha leída."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        },
+        {
+          "id": "talento-humano",
+          "nombre": "Capacitaciones, talleres y período de prueba",
+          "explicacion": "CAP/CAPD/CAPASI con sesiones, convocados, asistencia y soportes; talleres TALL con formularios (TPREGUNTAS/TOPCIONES), asignación TASIGNACION, respuestas y calificación TRESULTADOS; período de prueba notifica por QRY_ENVIOS; distribución de planta NDISP para contabilizar distribuido.",
+          "invariante": "No afecta el pago. Una capacitación / sesión por ID; una distribución por área en NDISP.",
+          "ventanasFe": "/nom/capacitaciones · Configuración → Empleados",
+          "sps": [
+            {
+              "nombre": "SPQ_CAP",
+              "metodo": "GUARDAR / SESION / GET_SESION / GET_CONVOCADOS_X_SESION / ASISTENCIA / GET_SOPORTES / ELIMINAR_SOPORTE / ELIMINAR / EXPORTA_CRONO_CAP / EXPORTA_CAPD",
+              "rol": "Ficha leída (listado)."
+            },
+            {
+              "nombre": "SPQ_TALL",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_FORMULARIO_TALLER",
+              "metodo": "GUARDAR / GET_FORMULARIO / GET_FORMULARIO_DETALLE / GET_RESPUESTAS_EMPLEADO / ELIMINA_FORMULARIO",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_EMPLEADOS_TALL",
+              "metodo": "EMPEADOS_ASIGNAR_TALLER / EMPLEADOS_EVALUAR / GUARDAR_EMPLEADOS_ASIS_CAP",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_CALIFICAR_RESPUESTAS_TEXTO",
+              "metodo": "GUARDAR_CALIFICACION / GET_RESPUESTAS_TEXTO",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_TH_NEMPPRUEBA",
+              "metodo": "VALIDAR_NOTIFICACIONES / VER_NOTINEMPPRUEBA / ACTUALIZA_NOIF",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPQ_NDISP",
+              "metodo": "GUARDAR / GET_DISTRIBUCION / ELIMINAR",
+              "rol": "Leído."
             }
           ],
           "feSinSql": [],
@@ -246,84 +1908,160 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega y completa",
-      "estado": "parcial",
-      "explicacion": "La prenómina come plantilla NPLTCO, histórico NEMPHIS, novedades NEDIA, manuales y (en retiro) vacaciones NEMPV + adelantos NACE. No se afirma que contratos o prestaciones GENPRESTACIONES alimenten NEMPFD: no hay .sql de esos MODELO.",
+      "estado": "leido",
+      "explicacion": "La prenómina come plantilla NPLTCO, histórico NEMPHIS, novedades NEDIA, particulares NEMPDA, manuales NPERC, cuotas PRSD, vacaciones NEMPV/NEMPVD y adelantos NACE.",
       "tablasClave": [
         "NEDIA",
         "NEVE",
         "NEVED",
+        "NEMPDA",
+        "NPERC",
         "NEMPV",
         "NEMPVD",
         "NACE",
-        "NPLTCO"
+        "PRS",
+        "PRSD",
+        "NPLTCO",
+        "TSECFU",
+        "TSECRES",
+        "TURESUM",
+        "TURNOV"
       ],
       "controles": [
         {
           "id": "nedia-novedades",
-          "nombre": "Novedades del período (NEDIA)",
-          "explicacion": "Desde Prenómina: unidad NOM_NEDIA · GUARDAR / ELIMINAR; masivo NOM_NOVEDADES · AGREGAR_NOVEDAD_EMPLEADOS (staging RPDX). El motor suma esas filas con FNK_CALCULO_VLR_NOVEDAD_NOM (leído). RET masivo ya está en capa 2 (FRT_NEMP).",
-          "invariante": "Sin NEDIA del concepto no hay valor de novedad. TIPOLIQ (PorPago / PorFecha / PorFechas) decide qué filas entran al CNSPAGO. No inventar validaciones de GUARDAR hasta leer el .sql.",
-          "ventanasFe": "/nom/Nom_procesos · RegistNovedades / NovedadesMasivo",
+          "nombre": "Novedades del período (NEDIA), particulares y manuales",
+          "explicacion": "Individual NOM_NEDIA · GUARDAR/ELIMINAR (TERCERO_RECOBRO, NEMPE_HIST); masivo NOM_NOVEDADES · CARGAR → VALIDAR → AGREGAR_NOVEDAD_EMPLEADOS (RPDX, CNSMASIVO); particulares NOM_CONCEPTOS · AGREGAR_CONCEPTOS_EMPLEADOS; manuales NOM_MANUALES (NPERC). El motor suma NEDIA con FNK_CALCULO_VLR_NOVEDAD_NOM.",
+          "invariante": "Sin NEDIA del concepto no hay valor de novedad. TIPOLIQ decide qué filas entran. GUARDAR de NEDIA no valida período cerrado (lo hace la pantalla). Eliminar RET limpia con SPK_QUITANOV_RETIROS.",
+          "ventanasFe": "/nom/Nom_procesos · RegistNovedades / NovedadesMasivo / ConceptosMasivo · /nom/Manuales",
           "sps": [
+            {
+              "nombre": "SPQ_NOM_NEDIA",
+              "metodo": "GUARDAR / ELIMINAR / TERCERO_RECOBRO / OBTENER_DIA / NEMPE_HIST",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPQ_NOM_NOVEDADES",
+              "metodo": "CARGAR_EMPLEADOS_NOVEDAD / AGREGAR_NOVEDAD_EMPLEADOS",
+              "rol": "Ficha leída (libro Conceptos)."
+            },
+            {
+              "nombre": "SPQ_NOM_MANUALES",
+              "metodo": "GUARDAR / ELIMINAR",
+              "rol": "Ficha leída."
+            },
             {
               "nombre": "FNK_CALCULO_VLR_NOVEDAD_NOM",
               "metodo": "CALCULO_VLR_NOVEDAD",
-              "rol": "Leído. Agrega horas×FACTOR de NEDIA ligadas al concepto."
+              "rol": "Leído."
             }
           ],
-          "feSinSql": [
-            {
-              "nombre": "NOM_NEDIA",
-              "metodo": "GUARDAR / ELIMINAR",
-              "rol": "RegistNovedadesComponent. Sin .sql hoy."
-            },
-            {
-              "nombre": "NOM_NOVEDADES",
-              "metodo": "AGREGAR_NOVEDAD_EMPLEADOS",
-              "rol": "Masivo. Sin .sql hoy."
-            }
-          ]
+          "feSinSql": [],
+          "pendiente": []
         },
         {
           "id": "vacaciones-alimenta",
           "nombre": "Vacaciones → NEDIA / NEMPV",
-          "explicacion": "Pantalla /nom/Vacaciones (NOM_VACACIONES · GENERA_NOVEDAD_VACACIONES) crea la novedad que prenómina calcula. En retiro/cierre, SPK_PROCESO_VACACIONES (leído) actualiza NEMPV/NEMPVD; SPQ_LIQUIDACION CLOSE llama SPQ_PROCESO_VACACIONES CIERRE.",
-          "invariante": "Días de vacaciones del retiro salen de NEMPVD (PROCE=Retiro), no se inventan en prenómina. El CRUD NOM_VACACIONES no está leído.",
+          "explicacion": "/nom/Vacaciones: ACTUALIZA_VACACIONES recalcula causado; NEMPVD por evento; GENERA_NOVEDAD_VACACIONES crea NEDIA (NOMICODCON_VACA) y recalcula con SPQ_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC; si cruza de mes parte en dos (IDNOVEDADVACSIGMES/MESANTE). ELIMINAR/ANULAR solo con período abierto. RESTABLECER_PERIODOS rehace NEMPV.",
+          "invariante": "Días del retiro salen de NEMPVD (PROCE=Retiro). Cerrar provisiona el mes (CIERRE); abrir revierte (ABRE).",
           "ventanasFe": "/nom/Vacaciones · VacacionesNominaComponent",
           "sps": [
             {
+              "nombre": "SPQ_NOM_VACACIONES",
+              "metodo": "ACTUALIZA_VACACIONES / AJUSTE_DIASVACA / GENERA_NOVEDAD_VACACIONES / ELIMINAR_NOVEDAD_VACACIONES / ANULAR_NOVEDAD_VACACIONES / VALIDAR_PERIODOS / RESTABLECER_PERIODOS",
+              "rol": "Ficha leída."
+            },
+            {
               "nombre": "SPK_PROCESO_VACACIONES",
               "metodo": "ACTUALIZA / CIERRE / ABRE",
-              "rol": "Leído. Consumido en retiros y en liquidar/abrir."
+              "rol": "Leído."
             }
           ],
-          "feSinSql": [
-            {
-              "nombre": "NOM_VACACIONES",
-              "metodo": "GENERA_NOVEDAD_VACACIONES",
-              "rol": "VacacionesNominaComponent. Sin .sql hoy."
-            }
-          ]
+          "feSinSql": [],
+          "pendiente": []
         },
         {
           "id": "adelanto-cesantias",
           "nombre": "Adelanto de cesantías (NACE)",
-          "explicacion": "Se registra en /nom/AdelantoCesantias (NOM_ADELANTO_CESANTIAS · GUARDAR). En retiro OTRASIPS, SPQ_ADELANTO_CESAN · APLICAR (leído) cruza NACE pendientes del tercero contra el monto a cubrir (FIFO).",
-          "invariante": "Sin NACE pendiente no hay descuento de adelanto. DESAPLICAR revierte al reabrir/anular el CNSPAGO.",
+          "explicacion": "/nom/AdelantoCesantias: SALDO (disponible), GUARDAR (NACE Registrado + manual NPERC del concepto NOM_ADEL_CESAN en período abierto), ANULAR (no si ya descontado). Consumo: SPQ_ADELANTO_CESAN · APLICAR en cesantías/retiro (FIFO); DESAPLICAR al reabrir.",
+          "invariante": "Valor ≤ saldo; un adelanto por concepto y período; «No se puede anular: el adelanto ya fue descontado…».",
           "ventanasFe": "/nom/AdelantoCesantias",
           "sps": [
             {
+              "nombre": "SPQ_NOM_ADELANTO_CESANTIAS",
+              "metodo": "SALDO / GUARDAR / ANULAR / LISTAR / REPORTE / DETALLE",
+              "rol": "Ficha leída."
+            },
+            {
               "nombre": "SPQ_ADELANTO_CESAN",
-              "metodo": "APLICAR / DESAPLICAR",
-              "rol": "Leído. Lo llama SPK_CALCULAR_RETIROS rama OTRASIPS."
+              "metodo": "APLICAR / DESAPLICAR / DESAPLICAR_UNICO",
+              "rol": "Leído."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": []
+        },
+        {
+          "id": "gestion-libranzas",
+          "nombre": "Gestión de libranzas (PRS / PRSD)",
+          "explicacion": "REQ 0100016450. /nom/cuotas. GUARDAR (alta genera cuotas con SPK_GENERA_CUOTAS; edición valida saldo y cuotas pagadas), CALUCLA_CUOTAS, GENERAR_CUOTAS (desde la última pagada), ELIMINAR_CUOTAS (solo no pagadas), ENVIAR_A_CXP (SPK_GENCXP_PRESTAMO_NOMI), MARCAR_PAGADA, HOMOLOGAR_NUMDOC (contrato retirado → nuevo). Descuento por concepto base Cuota; Cerrar → Pagada; Abrir → PorPagar.",
+          "invariante": "Cuota descontada (CNSPAGO/ITEM_NIEPED) no debe borrarse ni regenerarse; PRSD · ELIMINAR no lo valida. REFINANCIAR no existe en PREVERSION.",
+          "ventanasFe": "/nom/cuotas · CuotasComponent",
+          "sps": [
+            {
+              "nombre": "SPQ_NOM_PRS",
+              "metodo": "GUARDAR / CALUCLA_CUOTAS / GENERAR_CUOTAS / ELIMINAR_CUOTAS / ENVIAR_A_CXP / MARCAR_PAGADA / ELIMINAR / HOMOLOGAR_NUMDOC",
+              "rol": "Ficha leída (parcial)."
+            },
+            {
+              "nombre": "SPQ_NOM_PRSD",
+              "metodo": "GUARDAR / ELIMINAR / OBTENER_VLRCUOTA",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPK_GENERA_CUOTAS",
+              "metodo": "GENERA_CUOTAS",
+              "rol": "Leído."
+            },
+            {
+              "nombre": "SPK_GENCXP_PRESTAMO_NOMI",
+              "metodo": "(procedimiento)",
+              "rol": "CxP del desembolso. Leído."
             }
           ],
           "feSinSql": [
             {
-              "nombre": "NOM_ADELANTO_CESANTIAS",
-              "metodo": "GUARDAR / ANULAR",
-              "rol": "AdelantoCesantiasComponent. Sin .sql del alta."
+              "nombre": "NOM_PRS",
+              "metodo": "REFINANCIAR",
+              "rol": "Nuevo en REQ — no está en PREVERSION."
             }
+          ],
+          "pendiente": [
+            "Diseñar METODO REFINANCIAR en SPQ_NOM_PRS",
+            "Bloquear DELETE/regeneración si PRSD.CNSPAGO o ITEM_NIEPED informados"
+          ]
+        },
+        {
+          "id": "turnos-novedades",
+          "nombre": "Auditoría de turnos → novedades (TURESUM / TURNOV)",
+          "explicacion": "TRAER_DATOS ejecuta SPK_RESUMEN_TURNOS (año, mes, usuario opcional): TSECFU no resumidos → TSECRES diario (Borrador / Error / Definitivo), marca RESUM=1 los Definitivos, recrea TURESUM y TURNOV Abiertos del período. Configurar mapea código de novedad de turno → NEVE en TGEN.DATO1.",
+          "invariante": "Solo días Definitivos aportan novedades. Lo cerrado no se recalcula. No existe paso automático TURNOV → NEDIA (TURNOV.CNSPAGO nunca se escribe en 2.0.7).",
+          "ventanasFe": "/nom/AudiTurnos · AudiTurnosComponent / NovedadesTurComponent",
+          "sps": [
+            {
+              "nombre": "SPQ_TURNOS_NOMINA",
+              "metodo": "TRAER_DATOS / TRAER_NOVEDAD / TRAER_NEVE",
+              "rol": "Ficha leída."
+            },
+            {
+              "nombre": "SPK_RESUMEN_TURNOS",
+              "metodo": "(procedimiento @ANO, @MES, @IDUSUARIO)",
+              "rol": "Ficha leída."
+            }
+          ],
+          "feSinSql": [],
+          "pendiente": [
+            "Hueco: METODO que inserte NEDIA desde TURNOV con el evento mapeado y escriba TURNOV.CNSPAGO (candidato a REQ)."
           ]
         }
       ]
@@ -332,12 +2070,16 @@
       "id": "04-unido",
       "numero": 4,
       "nombre": "Subproceso unido",
-      "estado": "parcial",
-      "explicacion": "Nómina se une a CxP (cuentas de nómina), Tesorería (pago NIEPER bancos/caja) y al proceso externo DIAN (ya en capa 2). No hay pantalla de archivo plano bancario de salarios en el FE revisado: el pago al empleado sale por CxP de procedencia Nómina.",
+      "estado": "leido",
+      "explicacion": "Nómina se une a CxP (cuentas de nómina por tercero), Tesorería (recobros NIEPER contra Bancos/Caja) y al proceso externo DIAN. El pago al empleado sale por CxP de procedencia Nómina.",
       "tablasClave": [
         "FCXP",
+        "FCXPD",
         "FCXPP",
+        "FCXPDBCR",
         "NIEPER",
+        "BMOVD",
+        "FCJ",
         "NIEPEG",
         "FDIANR"
       ],
@@ -345,37 +2087,42 @@
         {
           "id": "cxp-nomina",
           "nombre": "Liquidación → CxP de nómina",
-          "explicacion": "En LiquidaNomComponent, tras CONTABILIZAR, si USVGS NOMINA_AUTENVIO_CXP está activa llama GENERATE_CxP_NOM; si no, el usuario genera a mano. También GENERAR_CxP_ESPECIAL, VALIDAR_CxP_NOM y RECONSTRUIR_CxP_NOM. A partir de FCXP el circuito es Cuentas por pagar / Tesorería. Abrir nómina bloquea si hay FCXPP o notas sobre esas CxP (SPQ_LIQUIDACION · OPEN_NOMINA, leído).",
-          "invariante": "OPEN_NOMINA no abre con órdenes de pago o notas activas. El .sql de NC_CONTAB_NOMINA no está hoy: no afirmar columnas ni OM de la CxP.",
+          "explicacion": "Tras CONTABILIZAR, si NOMINA_AUTENVIO_CXP está activa el FE llama GENERATE_CxP_NOM; si no, botón Generar CxP. También VALIDAR_CxP_NOM, RECONSTRUIR_CxP_NOM y GENERAR_CxP_ESPECIAL. Crea FCXP/FCXPD por tercero con PROCEDENCIA Nomina y NOREFERENCIA = CNSPAGO; con presupuesto activo afecta PTRP/PTRPD.",
+          "invariante": "OPEN_NOMINA no abre con FCXPP o FCXPDBCR activas. SPQ_ABRIR_NOMI borra solo FCXP sin pagos ni notas.",
           "ventanasFe": "/nom/Nom_procesos · LiquidaNomComponent (botones CxP)",
           "sps": [
             {
+              "nombre": "SPQ_NC_CONTAB_NOMINA",
+              "metodo": "GENERATE_CxP_NOM / VALIDAR_CxP_NOM / RECONSTRUIR_CxP_NOM / GENERAR_CxP_ESPECIAL",
+              "rol": "Ficha leída. Llama SPK_GENCXP_NOMINA_UNO / _PROVI / NOMI_ESP, SPK_CALCULOVALORESCXP, SPK_ENTREGA_CXP_PTTO."
+            },
+            {
               "nombre": "SPQ_LIQUIDACION",
               "metodo": "OPEN_NOMINA",
-              "rol": "Leído. Bloquea si hay FCXPP / FCXPDBCR de nómina."
+              "rol": "Bloqueos por pagos/notas. Leído."
             }
           ],
-          "feSinSql": [
-            {
-              "nombre": "NC_CONTAB_NOMINA",
-              "metodo": "GENERATE_CxP_NOM / VALIDAR_CxP_NOM / RECONSTRUIR_CxP_NOM / GENERAR_CxP_ESPECIAL",
-              "rol": "LiquidaNomComponent. Sin .sql hoy."
-            }
+          "feSinSql": [],
+          "pendiente": [
+            "Fichar SPK_GENCXP_NOMINA_UNO / _PROVI / NOMI_ESP si un REQ toca la CxP."
           ]
         },
         {
           "id": "nieper-bancos-caja",
-          "nombre": "Prestaciones / recobros → Bancos o Caja",
-          "explicacion": "/nom/PrestacionSocial: NIEPER · PROC_PAGO. Si PROCE=Bancos valida VALD_BANCOS; si no, VALD_CAJA. AUTO_EMP marca consignado al empleado. Sigue Tesorería · Bancos o Caja, no un archivo de dispersión propio.",
-          "invariante": "VLRPAGO no puede superar el faltante. Sin REFERENCIA no corre la validación de banco/caja.",
+          "nombre": "Recobros (NIEPER) → Bancos o Caja",
+          "explicacion": "/nom/PrestacionSocial. GETREF lista BMOVD (RNOMI=1, saldo, BMOV abierto) o FCJ (RNOMI=1, cerrada, estado P) del tercero. PROC_PAGO marca NIEPER Pagado, legaliza el movimiento (BMOVD.VLRLEGALIZADO/ENPAGOS o FCJ.VLRLEGALIZADO/ENTREGADO), deja saldo parcial en renglón Nuevo y contabiliza con SPK_NC_CONTAB_RECOBRONOMI. AUTO_EMP marca Consignado al empleado.",
+          "invariante": "VALD_BANCOS / VALD_CAJA devuelven 1 si el pago supera el movimiento. Sin REFERENCIA no se legaliza nada.",
           "ventanasFe": "/nom/PrestacionSocial · PrestSocialesComponent",
-          "sps": [],
-          "feSinSql": [
+          "sps": [
             {
-              "nombre": "NIEPER",
-              "metodo": "PROC_PAGO / VALD_BANCOS / VALD_CAJA / AUTO_EMP",
-              "rol": "PrestSocialesComponent. Sin .sql hoy."
+              "nombre": "SPQ_NIEPER",
+              "metodo": "PROC_PAGO / GETREF / TOTAL / VALD_BANCOS / VALD_CAJA / AUTO_EMP",
+              "rol": "Ficha leída."
             }
+          ],
+          "feSinSql": [],
+          "pendiente": [
+            "Fichar SPK_NC_CONTAB_RECOBRONOMI."
           ]
         }
       ]
@@ -384,37 +2131,39 @@
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "parcial",
-      "explicacion": "El asiento de nómina lo dispara el FE empleado a empleado: NC_CONTAB_NOMINA · CONTABILIZAR (CNSPAGO + FECHACONTABLE). Cerrar el período exige que FNK_NC_CUENTA_KMCOM no devuelva '%NO%' (SPQ_LIQUIDACION, leído). Abrir bloquea si el PRI del mes está cerrado. No se afirma tabla MCP ni job: el SPQ de CONTABILIZAR no está en sql/.",
+      "estado": "leido",
+      "explicacion": "CONTABILIZAR crea el comprobante MCPE/MCHE empleado a empleado (tipo IDCON_TCOM_NOMINA o por sede; NOMINATIPOCONTAB 1 normal / 3 distribuido por centros) y marca NROCOMPROBANTE en NIEPE/NIEPED y CONTABILIZADA en NPER. Cerrar ya validó KMCOM. Abrir borra el comprobante; bloquea si PRI cerrado.",
       "tablasClave": [
         "NIEPE",
         "NIEPED",
-        "PRI"
+        "MCPE",
+        "MCHE",
+        "PRI",
+        "KMCOM"
       ],
       "controles": [
         {
           "id": "om-nomina",
           "nombre": "Contabilizar nómina (CONTABILIZAR)",
-          "explicacion": "LiquidaNomComponent lista empleados (NOM_NOMIE) y llama CONTABILIZAR uno a uno; espera fila OK. Cerrar (PROCESO=CLOSE) ya validó cuentas KMCOM. Invariante cruzada con Contabilidad: no se cierra el mes si NPER.CERRADO=0.",
-          "invariante": "Sin NIEPED con cuenta KMCOM válida no se cierra. CONTABILIZAR no está leído: no inventar OM, tercero ni centro de costo.",
+          "explicacion": "LiquidaNomComponent lista empleados y llama CONTABILIZAR uno a uno con FECHACONTABLE; el primero crea el comprobante y los demás suman líneas. Cuentas por FNK_NC_CUENTA_KMCOM (concepto, DB/CR, centro, nómina); revisa con SPK_NC_REVISAMCPE y pasa a NIIF con SPK_PASA_MCP_MCPNIIF.",
+          "invariante": "KO: «Periodo Contable NO Existe», «La variable de Sistemas IDCON_TCOM_DEFAULT está sin Definir», «NO HAY TERCERO». Contabilidad no cierra el mes si NPER.CERRADO=0.",
           "ventanasFe": "/nom/Nom_procesos · LiquidaNomComponent · Contabilizar",
           "sps": [
             {
+              "nombre": "SPQ_NC_CONTAB_NOMINA",
+              "metodo": "CONTABILIZAR",
+              "rol": "Ficha leída."
+            },
+            {
               "nombre": "SPQ_LIQUIDACION",
               "metodo": "GENERATE_NOMINA (CLOSE) / OPEN_NOMINA",
-              "rol": "Leído. Valida KMCOM al cerrar; PRI al abrir."
+              "rol": "Valida KMCOM al cerrar; PRI al abrir. Leído."
             }
           ],
-          "feSinSql": [
-            {
-              "nombre": "NC_CONTAB_NOMINA",
-              "metodo": "CONTABILIZAR",
-              "rol": "LiquidaNomComponent · accountNOMISequential. Sin .sql hoy."
-            }
-          ]
+          "feSinSql": [],
+          "pendiente": []
         }
       ]
     }
-  ],
-  "actualizado": "2026-09-12T21:40:00"
+  ]
 }

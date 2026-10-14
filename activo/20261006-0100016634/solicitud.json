@@ -1,0 +1,201 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-06T20:13:20.108Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016634",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261006-0100016634",
+    "idReq": "0100016634",
+    "fecha": "2026-10-06",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": "/asis/admisiones · HADMAsistencialComp (Facturas) y homologar flujo ENT"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "ROMARIO ARIZA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/ASOCAB221",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Incluir opción para trasladar facturas a admisiones\n\nSe solicita la inclusión de una opción que permita trasladar facturas desde otros módulos hacia el módulo de admisiones en el software Krystalos.\n\n DETALLE: Se solicita que desde facturación se pueda trasladar facturas al departamento de admisiones, y que este quede funcionando como lo hacía la versión de escritorio.\n\nDicha funcionalidad no fue trasladada o homologada desde la versión anterior a la actual.\n\ncontexto, lo que se esta pidiendo es que se pueda llamar ese mismo proceso de crear los envios de factura al area de auditoria, pero desde la ventana de admisiones",
+    "criteriosAceptacion": "Desde Asistencial → Admisiones, con una admisión abierta o recién facturada, el usuario con permiso puede iniciar un envío de facturas hacia Auditoría (mismo circuito ENT que Administrativo → Facturación → Traslados Facturas → Enviar a Auditoría) sin salir a Facturación.\nLas facturas elegibles de esa admisión (listadas hoy en la vista Facturas / GET_HADMF) se pueden marcar, asignar al ENT, cerrar la entrega e imprimir el acta; el registro aparece en Envío de facturas con destino Auditoría.\nEn Auditoría → Recepción de factura, el envío se recibe con RECIBIR_AUDIFACTU y FTR queda en departamento de auditoría (IDFDEPAUDITORIA), igual que un envío creado desde Facturación.\nSi la factura no cumple estado (P, contabilizada, INDCARTERA=0, IDDEP en facturación, sin CXC), el sistema muestra el mismo mensaje de rechazo que ENTComponent y no deja cerrar el envío.\nPermisos: se respeta ENT_ENVIAR_AUDITORIA (ADMINQ_FACTURAS) o control equivalente expuesto en admisiones; sin permiso no se muestra la acción.\nNo se confunde con la pestaña Traslados de admisiones (traslado de paciente/cama, HNAT · TRASLADAR).",
+    "alcance": "Frontend Qrystalos2: ventana de admisiones (HADMAsistencialComp / HADMFComponent o componente reutilizado ENTComponent en modo admisión con filtro por NOADMISION y N_FACTURA).\nAPI existente MODELO ENT_COL (CRUD_ENT, MARCAR_ITEM, ASIGNAR_FACT, CERRAR_ENT, IMPRIMIR_ENT, VALIDO_USUARIO) y FTR_HADM_COL · GET_HADMF para listar facturas de la admisión.\nPermisos USGRUH: reutilizar ENT_ENVIAR_AUDITORIA y/o FACT_TRASLADAR; definir en implementación si admisiones consulta permiso de facturación o se crea control MENUQ_ADMISIONES.\nDocumentación de ayuda breve en la nueva acción (equivalente a HelpManualTrasladosFacturas, solo paso envío a auditoría).",
+    "restricciones": "No es reimplementar cartera, CREARCXC_ENT, DEVFACT ni recepción en auditoría (ya existen).\nNo modifica contabilidad ni DIAN/RIPS.\nNo sustituye Facturación → Traslados Facturas para usuarios que prefieren ese menú.\nFuera de alcance: envío a Cartera desde admisiones salvo que el comité lo pida explícitamente (solo se pide auditoría en el contexto del REQ).\nNo cambiar el traslado clínico de paciente (HNAT).",
+    "analisis": "Paso 0 — ¿Ya existe? El texto inicial del ticket habla de «trasladar hacia admisiones», pero la captura y el párrafo de contexto del mismo REQ apuntan al control **Envío de facturas → Enviar a Auditoría** (ENT/ENTD), hoy solo en Administrativo → Facturación → pestaña Traslados Facturas (permiso FACT_TRASLADAR, ENTComponent). Ese camino **sí está homologado** en web (botones Enviar a Cartera / Enviar a Auditoría, tabla con Dep. Entrega Facturación → Dep. Recibe Auditoría, coherente con la imagen del caso).\nEn admisiones, el ítem lateral **Traslados** es otro proceso (HNAT, METODO TRASLADAR — cama/paciente). La vista **Facturas** (HADMFComponent) solo lista e imprime vía FTR_HADM_COL · GET_HADMF; **no** invoca ENT_COL. Clasificación: **hueco de homologación UX** (escritorio permitía el envío desde admisiones; web concentra ENT en Facturación), no capacitación del menú administrativo ni defecto del ENT ya desplegado en Facturación.\nBackend: SPQ_ENT_COL documentado (19/19 leído en conocimiento/facturacion/sps.json). ASIGNAR_FACT exige FTR en IDFDEPFACTURACION, estado P, contabilizada, sin cartera — coherente con facturas generadas desde admisiones vía SPK_FACTURA_ASIS si quedan en ese departamento. CRUD_ENT acepta ENT_ENTREGA explícito en SQL; la UI Quasar hoy deja el default IDFDEPFACTURACION.\nRiesgo a validar en ASOCAMAICAO: si alguna FTR de admisión queda con IDDEP distinto a IDFDEPFACTURACION, MARCAR_ITEM/ASIGNAR_FACT no la incluirán hasta ajuste SQL (Parcial). El formulario traía proceso recaudos/SPQ_FPAG_COL por error; no aplica a este REQ.",
+    "opciones": [
+      {
+        "titulo": "Reutilizar ENTComponent embebido en admisiones",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Flujo guiado en HADMFComponent (botón por factura)",
+        "descripcion": ""
+      }
+    ],
+    "recomendacion": "Opción A preferida: extender ENTComponent (o composable useEntregaFacturas) con modo admisión — filtro GET_HADMF / CondicionAdicional por NOADMISION, acción «Enviar a Auditoría» visible junto a Imprimir en Facturas, permiso ENT_ENVIAR_AUDITORIA. SQL IXONLINE: **sin cambio obligatorio** si prueba en cliente confirma IDDEP facturación; solo si falla inclusión, ampliar criterio de elegibilidad en SPQ_ENT_COL · ASIGNAR_FACT/MARCAR (origen admisiones) con variable USVGS acordada — validar en preversión antes de codificar.\nImpacto: FE Sí, API Sí (endpoints actuales), SQL Parcial (contingente). Contabilidad: No.",
+    "cambioPropuestoSimple": "Hoy, después de facturar en admisiones, el usuario debe ir a Administrativo → Facturación → Traslados Facturas para armar el envío a Auditoría. Se propone hacer ese mismo envío desde la admisión: elegir las facturas de la admisión, crear el acta ENT hacia Auditoría, cerrarla e imprimirla, sin cambiar cómo auditoría recibe el lote.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "ENT de facturas a auditoría mueve FTR.IDDEP operativo; no genera MCP/MCPE/CON ni modifica comprobantes de la factura. Afecta contabilidad: No.",
+        "validadoEn": "2026-10-06T20:15:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En ASOCAMAICAO: facturar una admisión de prueba, confirmar en Buscar factura que FTR.IDDEP = departamento de facturación (USVGS IDFDEPFACTURACION) y que desde Facturación → Traslados el envío a Auditoría funciona para esa N_FACTURA. Si ya funciona solo desde Facturación, el desarrollo es UI en HADM; si ASIGNAR_FACT excluye la factura, capturar IDDEP y escalar a ajuste SQL antes de implementar."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Trasp._Fact._adm._png.png",
+        "ruta": "activo/20261006-0100016634/imagenes/Trasp._Fact._adm._png.png",
+        "subidaEn": "2026-10-06T14:36:10",
+        "url": "/api/caso/20261006-0100016634/imagen/Trasp._Fact._adm._png.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "Desde Asistencial → Admisiones, con una admisión abierta o recién facturada, el usuario con permiso puede iniciar un envío de facturas hacia Auditoría (mismo circuito ENT que Administrativo → Facturación → Traslados Facturas → Enviar a Auditoría) sin salir a Facturación.\nLas facturas elegibles de esa admisión (listadas hoy en la vista Facturas / GET_HADMF) se pueden marcar, asignar al ENT, cerrar la entrega e imprimir el acta; el registro aparece en Envío de facturas con destino Auditoría.\nEn Auditoría → Recepción de factura, el envío se recibe con RECIBIR_AUDIFACTU y FTR queda en departamento de auditoría (IDFDEPAUDITORIA), igual que un envío creado desde Facturación.\nSi la factura no cumple estado (P, contabilizada, INDCARTERA=0, IDDEP en facturación, sin CXC), el sistema muestra el mismo mensaje de rechazo que ENTComponent y no deja cerrar el envío.\nPermisos: se respeta ENT_ENVIAR_AUDITORIA (ADMINQ_FACTURAS) o control equivalente expuesto en admisiones; sin permiso no se muestra la acción.\nNo se confunde con la pestaña Traslados de admisiones (traslado de paciente/cama, HNAT · TRASLADAR).",
+      "originalesEn": "2026-10-06T20:12:39.732Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "Desde Asistencial → Admisiones, con una admisión abierta o recién facturada, el usuario con permiso puede iniciar un envío de facturas hacia Auditoría (mismo circuito ENT que Administrativo → Facturación → Traslados Facturas → Enviar a Auditoría) sin salir a Facturación.\nLas facturas elegibles de esa admisión (listadas hoy en la vista Facturas / GET_HADMF) se pueden marcar, asignar al ENT, cerrar la entrega e imprimir el acta; el registro aparece en Envío de facturas con destino Auditoría.\nEn Auditoría → Recepción de factura, el envío se recibe con RECIBIR_AUDIFACTU y FTR queda en departamento de auditoría (IDFDEPAUDITORIA), igual que un envío creado desde Facturación.\nSi la factura no cumple estado (P, contabilizada, INDCARTERA=0, IDDEP en facturación, sin CXC), el sistema muestra el mismo mensaje de rechazo que ENTComponent y no deja cerrar el envío.\nPermisos: se respeta ENT_ENVIAR_AUDITORIA (ADMINQ_FACTURAS) o control equivalente expuesto en admisiones; sin permiso no se muestra la acción.\nNo se confunde con la pestaña Traslados de admisiones (traslado de paciente/cama, HNAT · TRASLADAR).",
+      "trasAnalisisEn": "2026-10-06T20:12:46.284Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con facturacion/proceso.json (flujo-envio-recepcion), auditoria-factura, Qrystalos2 FTRComponent+ENTComponent y HADMAsistencialComp (Traslados≠ENT; Facturas solo GET_HADMF). Proceso SQL corregido a facturacion/SPQ_ENT_COL. Sin dictamen HTML en este turno. SQL cuerpo no requerido: fichas leido; cambio SQL solo contingente tras validar IDDEP en cliente.",
+      "fecha": "2026-10-06T20:15:00.000Z",
+      "estado": "listo",
+      "sps": []
+    },
+    "diagramaFlujo": null,
+    "mockups": [],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261006-0100016634\\sql\\",
+    "carpetaRelativa": "activo/20261006-0100016634/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016634\\",
+    "archivosEsperados": [
+      "no se requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_HADM_COL",
+        "metodo": "GET_HADMF",
+        "estado": "leido",
+        "hace": "Datos cabecera facturación HADM (FTR/HADMF staging).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "VALIDO_USUARIO",
+        "estado": "leido",
+        "hace": "Valida usuario puede operar traslados (permiso/depto).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "CRUD_ENT",
+        "estado": "leido",
+        "hace": "Crea/edita ENT: GENCONSECUTIVO @ENT; PROCESO FACTURAS/DEVFACT/AUDITORIA; ENT_ENTREGA/ENT_RECIBE.",
+        "llama": [
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "MARCAR_ITEM",
+        "estado": "leido",
+        "hace": "Toggle FTR.MARCA en traslado; guarda MOTIVO en RAZONANULACION.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "ASIGNAR_FACT",
+        "estado": "leido",
+        "hace": "INSERT ENTD desde FTR marcadas (FACTURAS/DEVFACT/AUDITORIA según PROCESO).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "CERRAR_ENT",
+        "estado": "leido",
+        "hace": "Alterna ENT.CERRADO si entrega ESTADO=0 y tiene ENTD.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "IMPRIMIR_ENT",
+        "estado": "leido",
+        "hace": "Recordsets acta traslado ENT+ENTD.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_ENT_COL",
+        "metodo": "RECIBIR_AUDIFACTU",
+        "estado": "leido",
+        "hace": "Recibe envío en auditoría: FTR→IDFDEPAUDITORIA, INDCARTERA=0.",
+        "llama": []
+      }
+    ],
+    "notas": "Retirados SPQ_FPAG_COL (recaudos) — no participan en envío ENT. Releer SPQ_ENT_COL en carpeta del caso solo si validarAntes muestra IDDEP distinto o regla ASIGNAR_FACT distinta en PREVERSION.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261006-0100016634.html",
+    "aprobados": "aprobados/20261006-0100016634/",
+    "imagenes": "aprobados/20261006-0100016634/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-06",
+    "ultimoEnvio": "2026-10-06T15:31:18",
+    "reenvios": 0,
+    "destinatario": "romario.ariza@ixcolombia.com",
+    "via": "smtp"
+  }
+}

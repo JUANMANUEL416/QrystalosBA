@@ -29,10 +29,10 @@ Actúa como **coordinador de desarrollo experto en Qrystalos** (frontend Quasar/
 2. **Proceso:** leer `conocimiento/INDICE.json`. Ubicar el módulo en la base de procesos. Si no existe, crear esqueleto (5 capas) y pendientes — no inventar el flujo. Dictaminar solo el control de este REQ.
 3. Si existe **`activo/{id-caso}/`**, leer `INSTRUCCION-AGENTE.md`, `solicitud.json` y `chat.json` — prioridad sobre prompt pegado.
 4. Cada turno, además: `conocimiento/tarea.json` (si `abierta`) y `conocimiento/chat.json` (Documentar). Responder ahí autor `agente`.
-5. Verificar que exista **HTML en `cola/`**. SQL: o bien **métodos documentados** en `solicitud.json` → `sql.usarDocumentacion` + `sql.metodosDocumentados`, o bien **scripts en `sql/`** (nombres del formulario).
+5. Verificar que exista **HTML en `cola/`**. SQL: o bien **métodos documentados** en `solicitud.json` → `sql.usarDocumentacion` + `sql.metodosDocumentados`, o bien **scripts en `activo/{id-caso}/sql/`** (solo este análisis; no la carpeta compartida `sql/`).
 6. **Leer `cola/*.html` del disco** para extraer requerimiento — no pedir transcripción manual.
-7. Si falta cola, aclaración, o (sin documentados) falta SQL: **DETENER y pedirla**. Si hay métodos documentados, **no** detenerse por `sql/` vacío: el Chat del caso decide si hay que releer el .sql de hoy.
-8. Investigar en código, fichas `conocimiento/{proceso}/sps.json`, SQL en carpeta fija si aplica, HTML cola, **flujo en `conocimiento/`**, y documentación de tablas (viva, no copiada).
+7. Si falta cola o aclaración: **DETENER y pedirla**. Si (sin documentados) falta el `.sql` en `activo/{id-caso}/sql/`: **bajarlo de DESAIX/SQLIX** (`sql-descarga-sqlix-desaix.mdc`) — primero `PREVERSION`, luego la última `Cerrada`; comparar integridad. Detenerse solo si no está en PREVERSION, liberada ni `IDANT`. Si hay métodos documentados, **no** detenerse por la carpeta del caso vacía: el Chat del caso decide si hay que releer el .sql de hoy. No guarde el cuerpo en `sql/` compartida.
+8. Investigar en código, fichas `conocimiento/{proceso}/sps.json`, SQL en `activo/{id-caso}/sql/` si aplica, HTML cola, **flujo en `conocimiento/`**, y documentación de tablas (viva, no copiada).
 9. Generar HTML en `dictamenes/<ID>.html`. Resumir propuesta en `activo/{id-caso}/chat.json`.
 10. Al cerrar fase 1: copiar a `aprobados/<ID>/`.
 11. Responder en español: resumen + ruta del HTML. Pedir capturas a `aprobados/<ID>/imagenes/` si refuerzan el dictamen.
@@ -40,12 +40,13 @@ Actúa como **coordinador de desarrollo experto en Qrystalos** (frontend Quasar/
 ## Base de procesos (`conocimiento/`)
 
 - Se guarda **solo el flujo y la explicación** (capas, controles, invariantes, nombre/rol del SP). **Vocabulario:** en Chat, dictámenes y pantalla se dice **control** (no «gate»). Un control es el paso del proceso —pantalla, botón o confirmación— donde algo debe cumplirse para seguir. El JSON usa `controles` (fichas antiguas: `gates`).
+- **Sin datos de un cliente en el manual.** El libro (`capitulosLibro`, flujos, semáforos, `capas`/`controles`, ventanas, variables, `resumen` del INDICE, sketchnotes y `PROCESO.md`) sirve a todas las instituciones: **no** lleva volúmenes ni conteos medidos («107 mil movimientos», «68 bodegas», «39 conteos»), ni «en pruebas» / «copia CEM» / PCEM, ni el valor configurado de una variable presentado como hecho («la variable es VE»). Se dice qué hace la variable y, si ayuda, «código habitual». Los datos medidos solo pueden quedar en campos internos (`notaSql`, `hallazgos[].detalle`, `menu.fuente`, `sps.json → cola`, `pendientes.json`), nunca en texto que pinte el libro.
 - Catálogo `{proceso}/sps.json`: **SP → METODO** (`hace`, `valida`, `noValida`, `errores`, `llama`, `efecto`). Se llena al leer el `.sql` de hoy (Documentar).
-- En un **REQ**, si el coordinador seleccionó METODOs ya documentados, use esas fichas. **No** exija bajar el cuerpo a `sql/` de entrada. En el Chat del caso deje el veredicto: ¿hace falta el .sql de hoy? (`leido` y alcance cubierto → no; `listado`/`no_leido`/`parcial` o alcance nuevo → sí).
-- **No** se archivan cuerpos de SP: se actualizan a diario. Cuando haya que releer o documentar uno nuevo, bajarlos a `sql/` y pasarlos en Documentar.
+- En un **REQ**, si el coordinador seleccionó METODOs ya documentados, use esas fichas. **No** exija bajar el cuerpo a `activo/{id-caso}/sql/` de entrada. En el Chat del caso deje el veredicto: ¿hace falta el .sql de hoy? (`leido` y alcance cubierto → no; `listado`/`no_leido`/`parcial` o alcance nuevo → sí).
+- **No** se archivan cuerpos de SP: se actualizan a diario. Cuando haya que releer uno de un REQ, bajarlo a `activo/{id-caso}/sql/`. Documentar (sin caso) sigue usando `sql/`.
 - Qrystalos2 y `qrystalos.documentacion` se consultan **vivos** en cada análisis.
 - Si faltan SP o se crea un proceso: filas en `conocimiento/pendientes.json` (visibles en la app → Documentar).
-- Tras leer un SP: ficha de cada METODO en `sps.json`; el control en `proceso.json` solo si cambia el flujo. No pegar el script. No escriba «gate» al coordinador ni al desarrollador.
+- Tras leer un SP: ficha de cada METODO en `sps.json`; el control en `proceso.json` solo si cambia el flujo. No pegar el script. No escriba «gate» al coordinador ni al desarrollador. Si el SP usa una tabla o vista que no está en `conocimiento/diccionario/indice.json`, incorporarla (`VWK` = vista). Si ningún proceso la explica, pedir la etiqueta en el Chat; no inventarla. Ver `diccionario-tablas-sp.mdc`.
 - Menú central: Analista de negocio | Consultas | Documentar.
 
 ## Regla de oro: detenerse y pedir
@@ -53,7 +54,7 @@ Actúa como **coordinador de desarrollo experto en Qrystalos** (frontend Quasar/
 **Siempre que falte algo para documentar bien el requerimiento, PARAR y pedirlo al coordinador.**
 
 Pedir explícitamente (lista concreta) cuando falte:
-- Scripts `.sql` **solo si** el METODO no está documentado, está `listado`/`no_leido`/`parcial`, o el Chat del caso concluyó que hay que releer (los SP cambian a diario)
+- Scripts `.sql` **solo si** el METODO no está documentado, está `listado`/`no_leido`/`parcial` o hay que releer, **y** el flujo DESAIX (`sql-descarga-sqlix-desaix.mdc`) no halló el objeto en `PREVERSION`, última `Cerrada` ni `IDANT`. Primero PREVERSION, luego liberada; comparar ambas. Si el arreglo ya está en PREVERSION, avisar y no pedirlo.
 - Aclaración funcional (alcance, criterios de aceptación ambiguos)
 - Ruta de `qrystalos.server` si el cambio toca API
 - Datos del formulario aval asesor incompletos (proyecto, módulo, ID REQ)
@@ -73,9 +74,9 @@ Analista: pestañas **Cola de trabajo** | **Nuevo / Editar caso** | **Chat** | *
 
 ### Flujo Fase 1 (sin copiar prompt)
 
-1. Complete el formulario. Paso SQL: **traer métodos documentados** y marcar los del REQ, **o** confirmar `.sql` en `sql/`.
-2. Pulse **Activar análisis (Fase 1)** → crea `activo/{id-caso}/` en disco.
-3. El agente **lee del disco** (`INSTRUCCION-AGENTE.md`, `solicitud.json`, `cola/`, `conocimiento/` y `sql/` si aplica) — **no esperar prompt pegado**.
+1. Complete el formulario. Paso SQL: **traer métodos documentados** y marcar los del REQ, **o** confirmar `.sql` en `activo/{id-caso}/sql/`.
+2. Pulse **Activar análisis (Fase 1)** → crea `activo/{id-caso}/` (y `activo/{id-caso}/sql/`) en disco.
+3. El agente **lee del disco** (`INSTRUCCION-AGENTE.md`, `solicitud.json`, `cola/`, `conocimiento/` y `activo/{id-caso}/sql/` si aplica) — **no esperar prompt pegado**.
 4. Primera vez: el agente analiza, genera `dictamenes/{id-caso}.html` y resume la propuesta en `activo/{id-caso}/chat.json` (autor: agente).
 5. Coordinador abre pestaña **Chat**, lee la propuesta, escribe su opinión.
 6. En turnos siguientes el agente **relee `chat.json`** (el coordinador no vuelve a pegar el texto en Cursor).
@@ -87,13 +88,13 @@ Analista: pestañas **Cola de trabajo** | **Nuevo / Editar caso** | **Chat** | *
 3. Pulse **Abrir** → pre-llena el formulario
 4. El agente **lee el HTML del disco** — no hace falta pegar todo en el chat
 
-### SQL — documentados o carpeta fija
-En el paso 4: botón **Traer métodos de este REQ** (lee `conocimiento/{proceso}/sps.json` y **filtra** por el requerimiento/análisis/brecha: no lista prenómina, retiros ni DIAN si el cambio es solo impresión). Marque solo esos METODO. «Ver todos los del módulo» es opcional. Si marca «Usar estos métodos…», no exige `sql/`. El **Chat del caso** valida si hay que bajar el .sql de hoy. **Nunca** copie el catálogo entero a `sql.metodosDocumentados`.
+### SQL — documentados o carpeta del caso
+En el paso 4: botón **Traer métodos de este REQ** (lee `conocimiento/{proceso}/sps.json` y **filtra** por el requerimiento/análisis/brecha: no lista prenómina, retiros ni DIAN si el cambio es solo impresión). Marque solo esos METODO. «Ver todos los del módulo» es opcional. Si marca «Usar estos métodos…», no exige la carpeta del caso. El **Chat del caso** valida si hay que bajar el .sql de hoy. **Nunca** copie el catálogo entero a `sql.metodosDocumentados`.
 
-Si el método no está documentado (o el Chat lo pide): coloque scripts en **`sql/`** (carpeta fija) y marque la confirmación.
+Si el método no está documentado (o el Chat lo pide): bajar de DESAIX a **`activo/{id-caso}/sql/`** (PREVERSION primero; `python scripts/sqlix_bajar_objeto.py --caso {id-caso} NOMBRE`) o, si el catálogo no lo tiene, pedirlo al coordinador. No lo deje en `sql/`.
 
 ### SQL referencia (caso cerrado)
-Al aprobar el dictamen, el coordinador archiva con **Archivar SQL en sql_refe/** → `sql_refe/{ID-REQ}/`. La carpeta `sql/` queda limpia para el siguiente caso.
+Al aprobar el dictamen, el coordinador archiva con **Archivar SQL** → mueve `activo/{id-caso}/sql/` a `sql_refe/{ID-REQ}/`. No toca la carpeta compartida `sql/` ni los scripts de otro caso.
 
 ### Análisis — dictado
 Paso 3: botón **Dictar análisis** (Chrome/Edge, micrófono).
@@ -103,7 +104,7 @@ Paso 3: botón **Dictar análisis** (Chrome/Edge, micrófono).
 - Documentos aprobados: `aprobados/{id-caso}/`
 - Imágenes si el agente las pide: `aprobados/{id-caso}/imagenes/`
 
-El botón **Activar análisis** requiere: campos completos + (métodos documentados seleccionados **o** SQL confirmado en carpeta fija). "Copiar prompt" queda opcional (legacy).
+El botón **Activar análisis** requiere: campos completos + (métodos documentados seleccionados **o** SQL confirmado en la carpeta del caso). "Copiar prompt" queda opcional (legacy).
 
 ## Caso activo en disco
 
@@ -152,9 +153,11 @@ Si cambia el dictamen HTML: explique los cambios en `chat.json` (autor: `agente`
 
 - **NO** editar, commitear ni implementar en Qrystalos2, qrystalos.server ni BD.
 - **NO** inventar estructuras de tablas/SPs sin evidencia; marcar incertidumbre explícitamente.
-- **NO** iniciar dictamen sin SQL en `sql/` **salvo** que `solicitud.json` → `sql.usarDocumentacion` sea true con `sql.metodosDocumentados` (entonces use `sps.json` y el Chat decide si hay que releer).
-- **SÍ** detenerse y pedir al coordinador cualquier artefacto o dato faltante antes de continuar.
+- **NO** iniciar dictamen sin SQL en `activo/{id-caso}/sql/` **salvo** que `solicitud.json` → `sql.usarDocumentacion` sea true con `sql.metodosDocumentados` (entonces use `sps.json` y el Chat decide si hay que releer). Si falta el `.sql` y hay que releer: bajarlo de DESAIX a esa carpeta (PREVERSION → liberada → comparar) antes de pedirlo.
+- **SÍ** detenerse y pedir al coordinador cualquier artefacto o dato faltante **después** de agotar DESAIX/SQLIX cuando el faltante es un SP.
 - **NO** incluir en el dictamen la sección «Fuentes consultadas» ni listados de rutas de archivos.
+- **Dictamen = documento para el desarrollador / cliente.** Prohibido en el HTML de `dictamenes/` y `aprobados/`: rutas internas de Qrystalos BA (`activo/{id}/sql/`, `sql_refe/…`, `conocimiento/…`, `cola/…`, `mockups/…`), comandos de oficina (`python scripts/sqlix_bajar_objeto.py …`, DESAIX/SQLIX como instrucción operativa) y paths de disco del BA. Eso queda solo en Chat / `solicitud.json` / trabajo del agente.
+- **Fuente SQL en el dictamen:** citar **IXONLINE/SQL** (y el nombre del objeto: `SPQ_*` / `SPK_*` · METODO). Si hace falta distinguir canasta: «PREVERSION» o «última liberada» — nunca `sql_refe/{REQ}/…`.
 - **SÍ** declarar explícitamente si no hay cambio de BD.
 - Referencia de spec interna: `Qrystalos2/sql/FOR-DES-XX-*.md` (formato similar al dictamen).
 
@@ -162,9 +165,13 @@ Si cambia el dictamen HTML: explique los cambios en `chat.json` (autor: `agente`
 
 - Copiar estructura de `plantillas/dictamen.html`.
 - Reemplazar placeholders `{{...}}` con contenido real del análisis.
+- Al volcar análisis / `cambioPropuestoSql` al HTML: **reescribir** menciones a `sql_refe/`, `activo/…/sql/` o scripts de BA como **IXONLINE/SQL** + nombre del objeto. No pegar el texto interno del formulario sin depurar.
 - **Sección 4.5 — Diagrama de flujo:** si hay diagrama (`solicitud.contenido.diagramaFlujo` o `activo/{id}/diagramas/`), **incrustarlo en el dictamen** (mapa visible en 4.5, no solo un enlace). El botón **Generar diagrama** lo adjunta solo. Copia suelta en `dictamenes/{id}-flujo.html` y, al cerrar fase 1, en `aprobados/{id-caso}/diagramas/`. Si no hay diagrama, texto indicando que no se generó.
+- **Mockup UX:** `Generar mockups` y cualquier ajuste del agente pintan la **ventana propuesta** (`cambioPropuestoSimple`, criterios, recomendación), no la captura del problema ni un control de otro REQ. `imagenes/` es solo referencia «Hoy». Complete el análisis antes de generar.
 - **Sección 4.6 — Normativa adjunta:** placeholder `{{NORMATIVA_ADJUNTOS}}`. Si hay `solicitud.contenido.archivosAnalisis`, leer cada extracto en `activo/{id-caso}/archivos/*.extracto.txt`, contrastar con FE/SP y citar apartes (artículo/numeral/campo). Copiar originales a `aprobados/{id-caso}/archivos/` al cerrar fase 1. Si no hay archivo, indicar que no se adjuntó.
 - **Sección 5 — Cambios propuestos:** incluir siempre **5.0 En palabras simples (negocio)** antes del detalle técnico (5.1 FE, 5.2 SQL, 5.3 backend). Mismo tono que el requerimiento: qué ocurre hoy y qué se propone, sin SP ni rutas. Usar `solicitud.contenido.cambioPropuestoSimple` si el coordinador lo completó en el formulario.
+- **Sección 5.2 — SQL:** además del texto en `{{CAMBIOS_SQL}}`, si `solicitud.contenido.cambioPropuestoSql` trae fragmentos, incrustarlos en `{{CAMBIOS_SQL_CODIGO}}` como subsección **5.2.1 Fragmentos SQL (especificación)** con uno o más `<pre class="sql-spec">` (escapar HTML). Avisar que es especificación, no ejecutar desde BA. Si el campo está vacío, omitir 5.2.1 o indicar que no se adjuntaron fragmentos.
+- **Análisis del REQ (Analizar requerimiento):** cuando el agente identifique cambios SQL (impacto Sí/Parcial), debe **escribir** `solicitud.contenido.cambioPropuestoSql` con el diff o los bloques clave (antes/después, validación). En el formulario/Chat puede anotar origen interno (`sql_refe/`, carpeta del caso, DESAIX); **en el dictamen HTML** la fuente se publica solo como **IXONLINE/SQL** + objeto.
 - ID sugerido: fecha + slug corto (ej. `20260829-visor-medico-mad`).
 - Estado inicial: `Propuesto`.
 - CSS embebido, sin dependencias externas, imprimible (Ctrl+P → PDF).
@@ -178,8 +185,8 @@ No saltar al dictamen completo de entrada. Orden acordado con el coordinador:
 | 0 | **Ubicar proceso** — `conocimiento/INDICE.json`; esqueleto + pendientes si no existe | Agente |
 | 1 | **Ventana** — pantalla(s), componente Vue, ruta/menú | Juntos — coordinador confirma |
 | 2 | **Proceso** — flujo usuario paso a paso | Juntos |
-| 3 | **Backend** — ver abajo (FE → SPQ → METODO → SPK) | Agente: si el METODO ya está en `sps.json` y el formulario lo seleccionó, usar la ficha. Si no, pedir `SPQ_*.sql` en `sql/` |
-| 4 | **SPKs anidados** — los que salgan al leer los SPQ + los del negocio | Juntos (ir añadiendo a `sql/`) |
+| 3 | **Backend** — ver abajo (FE → SPQ → METODO → SPK) | Agente: si el METODO ya está en `sps.json` y el formulario lo seleccionó, usar la ficha. Si no, pedir `SPQ_*.sql` en `activo/{id-caso}/sql/` |
+| 4 | **SPKs anidados** — los que salgan al leer los SPQ + los del negocio | Juntos (ir añadiendo a `activo/{id-caso}/sql/`) |
 | 5 | **Análisis rápido** — contexto sin profundidad | Agente |
 | 6 | **Sugerencia coordinador** | Coordinador (Chat) |
 | 7 | **Dictamen completo** — HTML en `dictamenes/` | Agente |
@@ -192,16 +199,16 @@ Resumir cada paso en `activo/{id-caso}/chat.json` antes de pasar al siguiente.
 1. **Frontend:** listar cada `AppStore.json` con `{ MODELO, METODO, PARAMETROS }` del flujo (paso 2).
 2. **Convención servidor:** el `MODELO` del JSON es el nombre lógico del procedimiento (ej. `HADMCOL`); en SQL Server el backend invoca **`SPQ_<MODELO>`** (ej. `SPQ_HADMCOL`).
 3. Si `solicitud.sql.usarDocumentacion` y el METODO está en `sps.json`: **usar la ficha**; no pedir el script de entrada. En el Chat del caso, veredicto de releer (ver regla de base de procesos).
-   Si el METODO no está documentado: **pedir** el script **`SPQ_<MODELO>.sql`** — el coordinador lo coloca en **`sql/`**.
+   Si el METODO no está documentado: **bajar** `SPQ_<MODELO>.sql` desde DESAIX/SQLIX a **`activo/{id-caso}/sql/`** (`python scripts/sqlix_bajar_objeto.py --caso {id-caso} NOMBRE`; PREVERSION primero; comparar vs liberada). Pedir al coordinador solo si no está en PREVERSION, liberada ni `IDANT`.
 4. **Leer el `.sql` de hoy** solo cuando haya que documentar o releer (no copiar el cuerpo a `conocimiento/`). Localizar el `METODO` y anotar en `sps.json`:
  - `hace`, `valida`, `noValida`, `errores` (textos KO), `llama` (`EXEC SPK_*` / `SPQ_*` / `SP_*`), `efecto`.
-5. **SPKs/SPs anidados:** si el METODO documentado ya lista `llama[]` y el alcance no sale de ahí, no exigir esos scripts. Si falta ficha o hay que releer y no está en `sql/`, **detenerse y pedirlo**.
+5. **SPKs/SPs anidados:** si el METODO documentado ya lista `llama[]` y el alcance no sale de ahí, no exigir esos scripts. Si falta ficha o hay que releer y no está en `activo/{id-caso}/sql/`, bajarlo de DESAIX a esa misma carpeta (mismo orden PREVERSION → liberada → `IDANT`). Detenerse solo si no aparece.
 6. **Tabla de trazabilidad** (obligatoria antes del paso 5):
 
-| Paso proc. | Vue | MODELO | METODO (JSON) | Fuente (sps.json / sql/) | SPK/SP invocados dentro |
-|------------|-----|--------|---------------|--------------------------|-------------------------|
+| Paso proc. | Vue | MODELO | METODO (JSON) | Fuente (sps.json / activo/{id}/sql/) | SPK/SP invocados dentro |
+|------------|-----|--------|---------------|----------------------------------------|-------------------------|
 
-Marcar filas con ☐ hasta que la ficha esté `leido` o el SPQ esté en `sql/` y leído.
+Marcar filas con ☐ hasta que la ficha esté `leido` o el SPQ esté en `activo/{id-caso}/sql/` y leído.
 
 ## Desarrolladores y «finalizar»
 

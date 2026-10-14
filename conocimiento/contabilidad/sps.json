@@ -1,7 +1,7 @@
 {
   "procesoId": "contabilidad",
-  "actualizado": "2026-09-06T16:30:00",
-  "nota": "Cola contabilidad cerrada 2026-09-06. SPQ_CONF_CONTABLE 11/11 + SPQ_PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído sql/. Hueco FE: CREA_PAR/ELIMINA_PAR no están en SPQ_CONF_CONTABLE export.",
+  "actualizado": "2026-10-04T18:00:00",
+  "nota": "Cola contabilidad cerrada 2026-09-06. SPQ_CONF_CONTABLE 11/11 + SPQ_PARN 2/2 + CUE_COL 3/3 + KMCOM_COL 5/5 + PRI 3/3 leído sql/. Hueco FE: CREA_PAR/ELIMINA_PAR no están en SPQ_CONF_CONTABLE export. | 2026-10-04 libro: leídos SPK del ciclo (REVISAR_COMPROBANTE, SUMA_DBCR, NC_CONFIRMAR_CONTAB, PASA_A_MCPE, NC_REVISAMCPE, NC_BALANCEO_CENTAVOS, DIAG_MCPE_ERRORES), liquidación (SPQ_CONTA_LIQIMP, SPK_GEN_CXP_LIQIMP, VWK_LIQ_IMP), FOLIAR_LB, MOV_ACTIVOS, TER_EQUIV_EFECTIVO, EXOFMT, cierre (CIERRA/ABRE_PERIODOCONTABLE, CIERRE_FISCAL, FNK_REVISION_ANTES_CIERRE_PERIODO), correcciones (HOMOLOGA_TERCERO/CUENTA, NC_CONTAB_CASTIGO_CARTERA, REVERSAR_MCP). Generadores NC_CONTAB_FTR/FNOT/CXC/CAJA_ING/BMOV solo resumen (variables, errores, EXEC). Menú real en USPROH (dato de instalación).",
   "sps": [
     {
       "nombre": "SPQ_MCP_COL",
@@ -822,7 +822,7 @@
         },
         {
           "id": "VALIDAR_INTEGRIDAD_PERIODO",
-          "hace": "FNK_REVISION_ANTES_CIERRE_PERIODO; opcional EXCLUIR_CIERRE_FISCAL; traslado costos.",
+          "hace": "Lista pendientes con FNK_REVISION_ANTES_CIERRE_PERIODO (caja, inventario confirmado, CxP, nómina, bancos, recaudos, radicación, conciliaciones, notas, cierres de cartera y CxP, activos si CONTAB_ACTFIJO=SI). Cuerpo de la función leído 2026-09-27: PREVERSION idéntica a 2.0.5. La rama de notas FNOT compara YEAR(F_NOTA) con el mes, así que no lista las notas del periodo.",
           "valida": [
             "ANO/MES"
           ],
@@ -1309,37 +1309,148 @@
       "nombre": "SPK_NC_CONFIRMAR_CONTAB",
       "tipo": "SPK",
       "modelo": "",
-      "estado": "listado",
-      "fuente": "sql/SPK_NC_CONFIRMAR_CONTAB.sql",
-      "cola": "TAREA CONTABILIZAR/DESCONTABILIZAR: SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR; valida ESTADO=1, PRI, ANULADO.",
-      "metodos": []
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Contabilizar / descontabilizar un MCP. Lo llaman MCP_COL · CONFIRMAR_MASIVO / DESCONFIRMAR_MASIVO y SPK_NC_REVISAMCPE.",
+      "metodos": [
+        {
+          "id": "TAREA=CONTABILIZAR",
+          "hace": "Periodo abierto y no anulado → SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR → exige MCP.ESTADO=1 y terceros existentes → MCH.ESTADO=2, MCP.ESTADO=2, MARCA=0.",
+          "valida": [
+            "PRI.CERRADO=0",
+            "MCP.ANULADO<>1",
+            "ESTADO=1 tras revisar",
+            "Todos los terceros en TER"
+          ],
+          "noValida": [
+            "Permisos",
+            "Fecha contable vs periodo"
+          ],
+          "errores": [
+            "El Periodo Contable esta Cerrado.",
+            "El Comprobante %s se encuentra Anulado.",
+            "El Comprobante %s no está preparado para su Contabilización.",
+            "El Comprobante %s contiene Terceros no configurados en la tabla de Terceros."
+          ],
+          "llama": [
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "MCP/MCH a estado 2.",
+          "capaId": "02-operacion",
+          "controlId": "confirmar-comprobante",
+          "estado": "leido"
+        },
+        {
+          "id": "TAREA=DESCONTABILIZAR",
+          "hace": "Exige ESTADO=2 → MCP.ESTADO=1, MCH.ESTADO=1, MARCA=0.",
+          "valida": [
+            "PRI.CERRADO=0",
+            "ESTADO=2"
+          ],
+          "noValida": [],
+          "errores": [
+            "El Comprobante %s no está preparado para su Descontabilización."
+          ],
+          "llama": [],
+          "efecto": "MCP/MCH a estado 1.",
+          "capaId": "02-operacion",
+          "controlId": "confirmar-comprobante",
+          "estado": "leido"
+        }
+      ]
     },
     {
       "nombre": "SPK_PASA_A_MCPE",
       "tipo": "SPK",
       "modelo": "",
-      "estado": "listado",
-      "fuente": "sql/SPK_PASA_A_MCPE.sql",
-      "cola": "Copia MCP→MCPE, MCH→MCHE; borra MCP/MCH y MCPNIIF si aplica.",
-      "metodos": []
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Enviar a cambios: MCP/MCH → MCPE/MCHE.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Copia MCP→MCPE (ESTADO 0, CLASECAMBIO 2) y MCH→MCHE (ESTADO 0); borra MCH y MCP; borra MCHNIIF/MCPNIIF ligados.",
+          "valida": [],
+          "noValida": [
+            "Periodo",
+            "Procedencia MANUAL (lo valida el FE/SPQ)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Comprobante sale de contabilidad y aparece en Errados marcado 'Enviado a cambios'.",
+          "capaId": "02-operacion",
+          "controlId": "enviar-mcpe",
+          "estado": "leido"
+        }
+      ]
     },
     {
       "nombre": "SPK_REVISAR_COMPROBANTE",
       "tipo": "SPK",
       "modelo": "",
-      "estado": "listado",
-      "fuente": "sql/SPK_REVISAR_COMPROBANTE.sql",
-      "cola": "Valida CUE tipo Detalle, TER, VALOR>0; crea TER desde AFI si falta.",
-      "metodos": []
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Revisión línea a línea de MCH antes de confirmar. Crea terceros desde AFI.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Si MCP anulado → MCP/MCH ESTADO=0 y sale. Crea TER desde AFI (SPK_INSERT_TERDEAFI, categoría TERCATAFILIADO) para IDTERCERO de MCH que no existen. Fija MCH.ESTADO 0/1 y ERROR por línea; si hay líneas 0 reescribe DETALLE con ERROR/PROCEDENCIA/PROCESO/CCOSTO/IDAREA/PREFIJO/REF1-3/DETALLE; si ninguna línea queda en 0 pone MCP.ESTADO=1.",
+          "valida": [
+            "Cuenta existe en CUE (compañía)",
+            "CUE.TIPO = Detalle",
+            "VALOR <> 0",
+            "VALOR >= 0",
+            "Tercero existe si IDTERCERO <> ''"
+          ],
+          "noValida": [
+            "Centro de costo",
+            "Periodo",
+            "Cuadre DB/CR (eso es SPK_SUMA_DBCR)"
+          ],
+          "errores": [
+            "La Cuenta NO Existe.",
+            "La Cuenta NO es de Detalle.",
+            "El valor del Registro es cero (0).",
+            "El valor del Registro es menor que cero.",
+            "El Tercero NO Existe."
+          ],
+          "llama": [
+            "SPK_INSERT_TERDEAFI"
+          ],
+          "efecto": "MCH.ESTADO/ERROR/DETALLE; MCP.ESTADO=1 si todo OK; TER nuevos.",
+          "capaId": "02-operacion",
+          "controlId": "confirmar-comprobante",
+          "estado": "leido"
+        }
+      ]
     },
     {
       "nombre": "SPK_SUMA_DBCR",
       "tipo": "SPK",
       "modelo": "",
-      "estado": "listado",
-      "fuente": "sql/SPK_SUMA_DBCR.sql",
-      "cola": "Suma DB/CR; MCP.ESTADO 0/1/2 según cuadre y ESTADO líneas.",
-      "metodos": []
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Totales y estado del MCP a partir de MCH.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "UPDATE MCP TOTALDEBITO/TOTALCREDITO y ESTADO: 2 si DB>0, DB=CR y todas las líneas en 2; 1 si DB=CR y todas en 1; si no 0.",
+          "valida": [
+            "DB = CR",
+            "Líneas homogéneas en estado"
+          ],
+          "noValida": [
+            "Nada más"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "MCP.TOTALDEBITO, TOTALCREDITO, ESTADO.",
+          "capaId": "02-operacion",
+          "controlId": "confirmar-comprobante",
+          "estado": "leido"
+        }
+      ]
     },
     {
       "nombre": "SPK_CONTAB_MASIVA",
@@ -2166,9 +2277,17 @@
         {
           "id": "CRUD_SEDES",
           "hace": "PROCESO Nueva/Editar tabla SED (datos sede, logos, FHIR, bodegas).",
-          "valida": ["IDSEDE único en alta", "SED existe en edición"],
-          "noValida": ["NIT duplicado entre sedes"],
-          "errores": ["posible error de Duplicidad, el Id.Sede ya existe", "Sede No encontrada. Verifique e intente de nuevo"],
+          "valida": [
+            "IDSEDE único en alta",
+            "SED existe en edición"
+          ],
+          "noValida": [
+            "NIT duplicado entre sedes"
+          ],
+          "errores": [
+            "posible error de Duplicidad, el Id.Sede ya existe",
+            "Sede No encontrada. Verifique e intente de nuevo"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE SED",
           "capaId": "01-configuracion",
@@ -2178,9 +2297,15 @@
         {
           "id": "CRUD_SEDUNG",
           "hace": "PROCESO Nuevo/Editar SEDUNG (IDSEDE+CODUNG+CCOSTO, ESTADO).",
-          "valida": ["Clave compuesta única en alta", "Registro existe en edición"],
+          "valida": [
+            "Clave compuesta única en alta",
+            "Registro existe en edición"
+          ],
           "noValida": [],
-          "errores": ["ya Existe un Registro con estos datos", "Datos no encontrados, no se puede Actualizar"],
+          "errores": [
+            "ya Existe un Registro con estos datos",
+            "Datos no encontrados, no se puede Actualizar"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE SEDUNG",
           "capaId": "01-configuracion",
@@ -2190,9 +2315,15 @@
         {
           "id": "CRUD_AFU",
           "hace": "PROCESO Nueva/Editar área funcional AFU (CONTABLE, PRESTACION, AMBITO, CE).",
-          "valida": ["IDAREA único en alta", "AFU existe en edición"],
+          "valida": [
+            "IDAREA único en alta",
+            "AFU existe en edición"
+          ],
           "noValida": [],
-          "errores": ["Ya existe un Area Funcional con este Codigo", "Area Funcional, no Encontrada"],
+          "errores": [
+            "Ya existe un Area Funcional con este Codigo",
+            "Area Funcional, no Encontrada"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE AFU",
           "capaId": "01-configuracion",
@@ -2202,9 +2333,18 @@
         {
           "id": "CRUD_CCOSTO",
           "hace": "PROCESO Nuevo/Editar centro de costo CEN; exige IDAREA en AFU.",
-          "valida": ["IDAREA obligatorio y en AFU", "CCOSTO único en alta", "Homólogo activo si Inactivo"],
+          "valida": [
+            "IDAREA obligatorio y en AFU",
+            "CCOSTO único en alta",
+            "Homólogo activo si Inactivo"
+          ],
           "noValida": [],
-          "errores": ["Debe seleccionar un Área Funcional", "El Área Funcional no existe", "Ya Existe un Centro de Costo con este Codigo", "El centro de costo Homologo no existe o no esta activo"],
+          "errores": [
+            "Debe seleccionar un Área Funcional",
+            "El Área Funcional no existe",
+            "Ya Existe un Centro de Costo con este Codigo",
+            "El centro de costo Homologo no existe o no esta activo"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE CEN",
           "capaId": "01-configuracion",
@@ -2214,9 +2354,14 @@
         {
           "id": "CRUD_HARE",
           "hace": "PROCESO Nuevo/Editar grupo de área HARE.",
-          "valida": ["IDAREA único en alta"],
+          "valida": [
+            "IDAREA único en alta"
+          ],
           "noValida": [],
-          "errores": ["Grupo de Area ya Existe", "No se encontro grupo de Area"],
+          "errores": [
+            "Grupo de Area ya Existe",
+            "No se encontro grupo de Area"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE HARE",
           "capaId": "01-configuracion",
@@ -2226,9 +2371,14 @@
         {
           "id": "CRUD_KUNG",
           "hace": "PROCESO Nuevo/Editar unidad de negocio KUNG (CODUNG, LOGO).",
-          "valida": ["CODUNG único en alta"],
+          "valida": [
+            "CODUNG único en alta"
+          ],
           "noValida": [],
-          "errores": ["Unidad de Negocio ya Existe", "Unidad de Negocio no Encontrada"],
+          "errores": [
+            "Unidad de Negocio ya Existe",
+            "Unidad de Negocio no Encontrada"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE KUNG",
           "capaId": "01-configuracion",
@@ -2238,7 +2388,9 @@
         {
           "id": "FDIS_TRAESUMA",
           "hace": "Suma VALOR de FDISD por CODDISTRIBUCION.",
-          "valida": ["CODDISTRIBUCION"],
+          "valida": [
+            "CODDISTRIBUCION"
+          ],
           "noValida": [],
           "errores": [],
           "llama": [],
@@ -2250,9 +2402,15 @@
         {
           "id": "FDIS_CRUD",
           "hace": "PROCESO Nuevo/Editar/Borrar cabecera FDIS (CLASE fija FCXP).",
-          "valida": ["CODDISTRIBUCION único", "Sin FDISD al borrar"],
+          "valida": [
+            "CODDISTRIBUCION único",
+            "Sin FDISD al borrar"
+          ],
           "noValida": [],
-          "errores": ["Ya Existe una Distribución de Costo", "Existen Distribuciones detalles asociados"],
+          "errores": [
+            "Ya Existe una Distribución de Costo",
+            "Existen Distribuciones detalles asociados"
+          ],
           "llama": [],
           "efecto": "CRUD FDIS + retorna CODDISTRIBUCION",
           "capaId": "01-configuracion",
@@ -2262,9 +2420,17 @@
         {
           "id": "FDISD_CRUD",
           "hace": "PROCESO Nuevo/Editar/Borrar detalle FDISD (CCOSTO+IDAREA+CUENTA+VALOR).",
-          "valida": ["FDIS existe", "CEN con CCOSTO+IDAREA", "CUE TIPO Detalle"],
+          "valida": [
+            "FDIS existe",
+            "CEN con CCOSTO+IDAREA",
+            "CUE TIPO Detalle"
+          ],
           "noValida": [],
-          "errores": ["El código de Distribución no existe", "Centro de Costo no existe en el Maestro", "Cuenta contable no valida"],
+          "errores": [
+            "El código de Distribución no existe",
+            "Centro de Costo no existe en el Maestro",
+            "Cuenta contable no valida"
+          ],
           "llama": [],
           "efecto": "CRUD FDISD + OK VALOR suma",
           "capaId": "01-configuracion",
@@ -2274,9 +2440,15 @@
         {
           "id": "ASIGNA_COM",
           "hace": "Asigna comprobante COM a variable USVGS (IDVARIABLE → DATO=COMPROBANTE).",
-          "valida": ["IDVARIABLE en USVGS", "COMPROBANTE en COM"],
+          "valida": [
+            "IDVARIABLE en USVGS",
+            "COMPROBANTE en COM"
+          ],
           "noValida": [],
-          "errores": ["No se Encontro la Variable en la tabla Maestra", "No se encontro el Comprobante en la tabla Maestra"],
+          "errores": [
+            "No se Encontro la Variable en la tabla Maestra",
+            "No se encontro el Comprobante en la tabla Maestra"
+          ],
           "llama": [],
           "efecto": "UPDATE USVGS.DATO",
           "capaId": "01-configuracion",
@@ -2286,9 +2458,16 @@
         {
           "id": "EDITA_PAR",
           "hace": "Update PAR WHERE COMPANIA='01': CTA_CAJ_REC_NOLEG, MESDECIERRE, CIERRECOSTOS, CIERREIMP, MCUEORDEN_GLOSAS.",
-          "valida": ["CTA_CAJ_REC_NOLEG existe en CUE TIPO Detalle"],
-          "noValida": ["No usa COMPANIA del JSON (fijo '01')", "No persiste MCUEORDEN_CXC/CXP/INGRESOS/EGRESOS del FE ParamsContables"],
-          "errores": ["La cuenta Ingresada no es detella, no se puede continuar"],
+          "valida": [
+            "CTA_CAJ_REC_NOLEG existe en CUE TIPO Detalle"
+          ],
+          "noValida": [
+            "No usa COMPANIA del JSON (fijo '01')",
+            "No persiste MCUEORDEN_CXC/CXP/INGRESOS/EGRESOS del FE ParamsContables"
+          ],
+          "errores": [
+            "La cuenta Ingresada no es detella, no se puede continuar"
+          ],
           "llama": [],
           "efecto": "UPDATE PAR",
           "capaId": "01-configuracion",
@@ -2308,9 +2487,18 @@
         {
           "id": "CRUD_PARN",
           "hace": "PROCESO INSERTAR_PARN | EDITAR_PARN | ELIMINAR_PARN sobre PARN (PARAMETRO, FECHA, DATO).",
-          "valida": ["PARAMETRO único en INSERT", "PARAMETRO existe en EDIT/DELETE", "Sin PARNI hijos al ELIMINAR"],
+          "valida": [
+            "PARAMETRO único en INSERT",
+            "PARAMETRO existe en EDIT/DELETE",
+            "Sin PARNI hijos al ELIMINAR"
+          ],
           "noValida": [],
-          "errores": ["El parámetro … ya existe", "No se encontró el registro para actualizar", "No se puede eliminar el parámetro porque tiene intervalos asociados", "Proceso no reconocido en CRUD_PARN"],
+          "errores": [
+            "El parámetro … ya existe",
+            "No se encontró el registro para actualizar",
+            "No se puede eliminar el parámetro porque tiene intervalos asociados",
+            "Proceso no reconocido en CRUD_PARN"
+          ],
           "llama": [],
           "efecto": "CRUD PARN; INSERT retorna PARN_ID",
           "capaId": "01-configuracion",
@@ -2320,9 +2508,19 @@
         {
           "id": "CRUD_PARNI",
           "hace": "PROCESO INSERTAR_PARNI | EDITAR_PARNI | ELIMINAR_PARNI sobre PARNI (INICIAL, FINAL, FECHA, DATO).",
-          "valida": ["PARAMETRO padre en PARN", "INICIAL ≤ FINAL", "DATO único por PARAMETRO (excluye registro actual en EDIT)", "PARNI_ID en EDIT/DELETE"],
+          "valida": [
+            "PARAMETRO padre en PARN",
+            "INICIAL ≤ FINAL",
+            "DATO único por PARAMETRO (excluye registro actual en EDIT)",
+            "PARNI_ID en EDIT/DELETE"
+          ],
           "noValida": [],
-          "errores": ["El parámetro … no existe", "El valor inicial no puede ser mayor que el valor final", "Ya existe un intervalo con el mismo valor de DATO", "No se especificó el ID del intervalo"],
+          "errores": [
+            "El parámetro … no existe",
+            "El valor inicial no puede ser mayor que el valor final",
+            "Ya existe un intervalo con el mismo valor de DATO",
+            "No se especificó el ID del intervalo"
+          ],
           "llama": [],
           "efecto": "CRUD PARNI; INSERT retorna PARNI_ID",
           "capaId": "01-configuracion",
@@ -2342,9 +2540,18 @@
         {
           "id": "CRUDCUE",
           "hace": "PROCESO INSERTAR/EDITAR cuenta CUE (~40 campos contables, tesorería, NIIF, exógena).",
-          "valida": ["CUENTA única en INSERT"],
-          "noValida": ["ELIMINAR no existe", "CUENTA_SUMA coherente al insertar", "Referencias CUE padre/homóloga"],
-          "errores": ["LA CUENTA YA EXISTE", "ERROR_MESSAGE() del CATCH"],
+          "valida": [
+            "CUENTA única en INSERT"
+          ],
+          "noValida": [
+            "ELIMINAR no existe",
+            "CUENTA_SUMA coherente al insertar",
+            "Referencias CUE padre/homóloga"
+          ],
+          "errores": [
+            "LA CUENTA YA EXISTE",
+            "ERROR_MESSAGE() del CATCH"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE CUE; INSERT devuelve @IDENTITY como CNS. RUBRO se fuerza = CUENTA en INSERT/EDIT.",
           "capaId": "01-configuracion",
@@ -2354,9 +2561,22 @@
         {
           "id": "VALIDARCUENTAS",
           "hace": "Auditoría estructural del plan: CUENTA_SUMA jerárquica, padres tipo Suma, longitud par, NIVEL vs dígitos.",
-          "valida": ["LEFT(CUENTA,LEN-2)=CUENTA_SUMA", "CUENTA_SUMA ∈ CUE TIPO Suma", "LEN(CUENTA) par", "NIVEL vs longitud"],
-          "noValida": ["Cuentas huérfanas sin uso", "Estado Activo/Inactivo"],
-          "errores": ["Cuenta de suma inválida…", "debe estar asociada a cuenta tipo Suma", "longitud debe ser par", "nivel No es Valido"],
+          "valida": [
+            "LEFT(CUENTA,LEN-2)=CUENTA_SUMA",
+            "CUENTA_SUMA ∈ CUE TIPO Suma",
+            "LEN(CUENTA) par",
+            "NIVEL vs longitud"
+          ],
+          "noValida": [
+            "Cuentas huérfanas sin uso",
+            "Estado Activo/Inactivo"
+          ],
+          "errores": [
+            "Cuenta de suma inválida…",
+            "debe estar asociada a cuenta tipo Suma",
+            "longitud debe ser par",
+            "nivel No es Valido"
+          ],
           "llama": [],
           "efecto": "OK ERROR=0/1 + recordset @CUEERROR si hay fallos.",
           "capaId": "01-configuracion",
@@ -2412,9 +2632,21 @@
         {
           "id": "CRUD_KMCOM",
           "hace": "PROCESO Nuevo/Editar/Borrar filas KMCOM (DB y CR) por módulo, CC, prefijo/concepto según IDTIPOCONT.",
-          "valida": ["CEN CCOSTO+IDAREA", "CUE Detalle DB/CR (excepciones VENTAS/NOMINA/CXP_*)", "PREFIJO según tipo: PRE, CPCJ, ITAR, FCTSER, IACTT, SER, ITMO, NCON…"],
-          "noValida": ["Duplicados exactos en Nuevo (insert condicional)", "Borrar referencias en MCP"],
-          "errores": ["Centro de Costo no Valido", "Cuenta contable Debito/Credito No Valida", "Prefijo/Concepto/Tipo no Valido", "ERROR_MESSAGE()"],
+          "valida": [
+            "CEN CCOSTO+IDAREA",
+            "CUE Detalle DB/CR (excepciones VENTAS/NOMINA/CXP_*)",
+            "PREFIJO según tipo: PRE, CPCJ, ITAR, FCTSER, IACTT, SER, ITMO, NCON…"
+          ],
+          "noValida": [
+            "Duplicados exactos en Nuevo (insert condicional)",
+            "Borrar referencias en MCP"
+          ],
+          "errores": [
+            "Centro de Costo no Valido",
+            "Cuenta contable Debito/Credito No Valida",
+            "Prefijo/Concepto/Tipo no Valido",
+            "ERROR_MESSAGE()"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE/DELETE KMCOM por TIPO DB/CR; VENTAS actualiza IPS/PGP/CAPITA en CR.",
           "capaId": "01-configuracion",
@@ -2424,9 +2656,17 @@
         {
           "id": "CRUD_KMCOMS",
           "hace": "PROCESO Nuevo/Editar/Borrar excepciones por servicio (KMCOMS) para VENTAS u otros con IDSERVICIO.",
-          "valida": ["CUE Detalle (salvo Borrar)", "SER activo si VENTAS", "Par DB+CR único por IDSERVICIO"],
+          "valida": [
+            "CUE Detalle (salvo Borrar)",
+            "SER activo si VENTAS",
+            "Par DB+CR único por IDSERVICIO"
+          ],
           "noValida": [],
-          "errores": ["La cuenta contable no es valida", "El Servicio no existe o esta Inactivo", "Ya existe un registro con esta Exepción"],
+          "errores": [
+            "La cuenta contable no es valida",
+            "El Servicio no existe o esta Inactivo",
+            "Ya existe un registro con esta Exepción"
+          ],
           "llama": [],
           "efecto": "CRUD KMCOMS pares DB/CR por IDSERVICIO.",
           "capaId": "01-configuracion",
@@ -2436,7 +2676,9 @@
         {
           "id": "VALIDA_CODNOMI",
           "hace": "Si concepto NCON es Egreso sin VALOR_EMPRESA, sugiere cuenta CR de nómina (IDCONPSALARIO); si no, TIPO Ingreso.",
-          "valida": ["CODCONCEPTO en NCON/NCOND"],
+          "valida": [
+            "CODCONCEPTO en NCON/NCOND"
+          ],
           "noValida": [],
           "errores": [],
           "llama": [],
@@ -2458,9 +2700,21 @@
         {
           "id": "CRUDPRI",
           "hace": "PROCESO INSERTAR/EDITAR periodo PRI (COMPANIA fija 01): fechas, flags SI/SINIIF, CERRADO_* iniciales. EDITAR persiste CERRADO_INV desde el JSON.",
-          "valida": ["ANO+MES único en INSERT", "Solo un periodo SI=1", "Solo un periodo SINIIF=1"],
-          "noValida": ["CERRADO contable general en INSERT (inicia 0)", "Solapamiento fechas", "Pendientes IMOV antes de marcar CERRADO_INV=1"],
-          "errores": ["Periodo insertado ya existe", "Ya existe un periodo de saldos iniciales", "ERROR_MESSAGE()"],
+          "valida": [
+            "ANO+MES único en INSERT",
+            "Solo un periodo SI=1",
+            "Solo un periodo SINIIF=1"
+          ],
+          "noValida": [
+            "CERRADO contable general en INSERT (inicia 0)",
+            "Solapamiento fechas",
+            "Pendientes IMOV antes de marcar CERRADO_INV=1"
+          ],
+          "errores": [
+            "Periodo insertado ya existe",
+            "Ya existe un periodo de saldos iniciales",
+            "ERROR_MESSAGE()"
+          ],
           "llama": [],
           "efecto": "INSERT/UPDATE PRI por ANOMES.",
           "capaId": "01-configuracion",
@@ -2470,10 +2724,25 @@
         {
           "id": "CERRAR_FACTURA",
           "hace": "Cierra subperiodo FACTURA o CARTERA vía SPK_CIERRA_CARTERA según PROCEDENCIA.",
-          "valida": ["PRI.CERRADO=0", "CERRADO_FAC/CARTERA=0 según PROCEDENCIA", "Sin MCPE errados CXC/FACTURA/NOTDBCR…"],
-          "noValida": ["CERRADO_INV", "PROCEDENCIA INV", "Pendientes IMOV"],
-          "errores": ["Periodo Cerrado…", "No se Encontro el Periodo…", "Existen comprobantes con Error…", "ERROR_MESSAGE()"],
-          "llama": ["SPK_CIERRA_CARTERA"],
+          "valida": [
+            "PRI.CERRADO=0",
+            "CERRADO_FAC/CARTERA=0 según PROCEDENCIA",
+            "Sin MCPE errados CXC/FACTURA/NOTDBCR…"
+          ],
+          "noValida": [
+            "CERRADO_INV",
+            "PROCEDENCIA INV",
+            "Pendientes IMOV"
+          ],
+          "errores": [
+            "Periodo Cerrado…",
+            "No se Encontro el Periodo…",
+            "Existen comprobantes con Error…",
+            "ERROR_MESSAGE()"
+          ],
+          "llama": [
+            "SPK_CIERRA_CARTERA"
+          ],
           "efecto": "Cierre cartera/factura del mes.",
           "capaId": "01-configuracion",
           "gateId": "periodo-abierto",
@@ -2482,13 +2751,853 @@
         {
           "id": "ABRIR_FACTURA",
           "hace": "Reabre subperiodo FACTURA, CARTERA o CXP (UPDATE flags; CARTERA borra FCARTH y bloquea si ≥25 días post cierre).",
-          "valida": ["Subperiodo estaba cerrado", "PROCEDENCIA FACTURA/CARTERA/CXP", "CARTERA: máx 25 días desde fin de mes"],
-          "noValida": ["CERRADO_INV", "PROCEDENCIA INV"],
-          "errores": ["El periodo no está cerrado", "No se encontró el periodo…", "ya no es posible la apertura de la cartera", "Procedencia no válida"],
+          "valida": [
+            "Subperiodo estaba cerrado",
+            "PROCEDENCIA FACTURA/CARTERA/CXP",
+            "CARTERA: máx 25 días desde fin de mes"
+          ],
+          "noValida": [
+            "CERRADO_INV",
+            "PROCEDENCIA INV"
+          ],
+          "errores": [
+            "El periodo no está cerrado",
+            "No se encontró el periodo…",
+            "ya no es posible la apertura de la cartera",
+            "Procedencia no válida"
+          ],
           "llama": [],
           "efecto": "UPDATE PRI CERRADO_FAC/CARTERA/CXP=0; DELETE FCARTH si CARTERA.",
           "capaId": "01-configuracion",
           "gateId": "periodo-abierto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_REVISAMCPE",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "El motor del flujo invertido: revisa MCPE/MCHE, marca el documento origen y traslada a MCP/MCH.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "No NIIF: si existe MCP mismo número → si datos iguales lo reemplaza, si distintos RAISERROR y borra MCPE/MCHE. Periodo cerrado → error. SPK_NC_SUMA_DBCR; diferencia <2 → SPK_NC_BALANCEO_CENTAVOS. Resuelve terceros (AFI→TER, NIT existente→reemplaza; si no, RAISERROR). SPK_NC_REVISAR_COMPROBANTE + SUMA. ESTADO 0 → documento origen CONTABILIZADA=2 (FTR, FNOT, FPAG, IMOV, FCJ+BMOV, NIEPE/D, FCXP, FCXPDBCR, BMOV, FCONCI, FGLO, FCXC, ANT). ESTADO OK → TRAN: INSERT MCP/MCH desde MCPE/MCHE, verifica conteo y cabecera, documento origen CONTABILIZADA=1 + NROCOMPROBANTE, DELETE MCPE/MCHE, SPK_NC_CONFIRMAR_CONTAB CONTABILIZAR, FACTURA → SPK_INGRESA_SALDOS_FTR. NIIF → SPK_PASA_MCP_MCPNIIF.",
+          "valida": [
+            "PRI.CERRADO",
+            "Duplicado en MCP",
+            "Cuadre con tolerancia 2,00",
+            "Terceros",
+            "Líneas (cuenta detalle, valor, tercero)",
+            "Conteo MCH = MCHE y cabecera igual"
+          ],
+          "noValida": [
+            "Rama 'NOTAS' nunca entra (procedencia real NOTDBCR)"
+          ],
+          "errores": [
+            "Periodo Contable Cerrado.",
+            "Ya existe un Comprobante en Contabilidad con este Mismo Número.",
+            "No se contabiliza el comprobante … Tercero no existe en AFI ni en TER: …",
+            "El comprobante en MCPE no tiene movimientos en MCHE.",
+            "No existe el comprobante en MCPE.",
+            "Ya existe el comprobante en MCP; verifique contabilidad antes de reconstruir.",
+            "No se confirmó el traslado a contabilidad (MCP/MCH). El comprobante permanece en MCPE.",
+            "El encabezado en MCP no coincide con MCPE.",
+            "No se actualizó la nota FNOT; verifique CNSFNOT y CLASE."
+          ],
+          "llama": [
+            "SPK_NC_SUMA_DBCR",
+            "SPK_NC_BALANCEO_CENTAVOS",
+            "SPK_INSERT_TERDEAFI",
+            "SPK_NC_REVISAR_COMPROBANTE",
+            "SPK_NC_CONFIRMAR_CONTAB",
+            "SPK_INGRESA_SALDOS_FTR",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "MCPE/MCHE → MCP/MCH confirmado + documento origen marcado; o permanece en MCPE con origen CONTABILIZADA=2.",
+          "capaId": "02-operacion",
+          "controlId": "mcpe-flujo-invertido",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_BALANCEO_CENTAVOS",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Ajuste de centavos en MCHE.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Diferencia TOTALDEBITO-TOTALCREDITO entre -2 y 2 → suma la diferencia a la primera línea DB (si negativa) o CR (si positiva) y vuelve a sumar.",
+          "valida": [
+            "|diferencia| < 2,00"
+          ],
+          "noValida": [
+            "No deja rastro en DETALLE"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_NC_SUMA_DBCR"
+          ],
+          "efecto": "MCHE.VALOR de una línea; MCPE totales.",
+          "capaId": "02-operacion",
+          "controlId": "mcpe-flujo-invertido",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_DIAG_MCPE_ERRORES",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Diagnóstico de MCPE con códigos y severidad (lo llama MCPE_COL · DIAGNOSTICAR_ERRORES).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Por comprobante o por periodo/procedencia (TOP ≤ 2000) devuelve COD_ERROR, SEVERIDAD, NROASIENTO, CUENTA, DESCRIPCION, SUGERENCIA.",
+          "valida": [
+            "SIN_LINEAS_MCHE",
+            "DESCUADRE_DB_CR",
+            "DESCUADRE_MCHE",
+            "DESCUADRE_MCPE_MCHE",
+            "SIN_CREDITOS",
+            "SIN_DEBITOS",
+            "PERIODO_NO_EXISTE",
+            "PERIODO_CERRADO",
+            "CUENTA_NO_EXISTE",
+            "CUENTA_VACIA",
+            "CXC_IMPUESTOS_SIN_REF",
+            "KMCOM_NO_DEFINIDO",
+            "FIMPDV_NO_DEFINIDO",
+            "CUENTA_NO_DEFINIDA",
+            "CUENTA_INACTIVA",
+            "MCHE_ERROR",
+            "TERCERO_REQUERIDO",
+            "TERCERO_NO_EXISTE",
+            "TERCERO_INACTIVO",
+            "CCOSTO_REQUERIDO",
+            "INV_SIN_IMOV",
+            "INV_IMOV_COMPARTE_FCXPD",
+            "INV_IMOV_ARTICULO_OTRA_NOTA",
+            "INV_IMOV_SUMA_VS_NOTA",
+            "IVA_SIN_VIGENCIA_FIMPDV",
+            "CAJA_PENDIENTE_PASE_MCP",
+            "CXC_RECAUDO_SIN_MCP",
+            "CXC_FPAGDI_SIN_FIMPDV",
+            "ESTADO_ERRADO_SIN_DETALLE"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-operacion",
+          "controlId": "mcpe-reconstruir",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CONTA_LIQIMP",
+      "tipo": "SPQ",
+      "modelo": "CONTA_LIQIMP",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Liquidación de impuestos: generar CxP.",
+      "metodos": [
+        {
+          "id": "GEN_CXP_LIQIMP",
+          "hace": "Lee ANO, MES, CUENTAINI, CUENTAFINAL, IDTERCERO, F_CERTIFICADO, COMPANIA (01), IDSEDE (UBEQ o 01) y EXEC SPK_GEN_CXP_LIQIMP; devuelve OK, CNSFCXP, ANO, MES.",
+          "valida": [
+            "ANO y MES"
+          ],
+          "noValida": [
+            "Permiso (lo valida el FE con ACT_CXP_LIQUIIMP)"
+          ],
+          "errores": [
+            "Año y mes del periodo son obligatorios."
+          ],
+          "llama": [
+            "SPK_GEN_CXP_LIQIMP"
+          ],
+          "efecto": "CxP de liquidación.",
+          "capaId": "02-operacion",
+          "controlId": "liquidacion-impuestos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GEN_CXP_LIQIMP",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Crea la CxP a la DIAN con los impuestos del periodo.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Toma MCH de MCP ESTADO=2 no anulados, CUE.IMPUESTO=1, BASE_IMP<>0, LIQUI_IMP=0, rango de cuentas, tercero opcional, excluye asumidos (FCXPI según LIQIMPASUMIDO). Agrupa por cuenta/impuesto/clase con signo NTZ. INSERT FCXP (tercero DIAN, NOREF LIQIMPmmaaaa, procedencia Servicios, MARCACONT=1, CONTABILIZADA=1, NROCOMPROBANTE = comprobante de referencia, TIPOCXP IDTIPOCXP_DEFAULT, F_VENCE día 1) + FCXPD por cuenta; UPDATE MCH LIQUI_IMP=1, CNSFCXP (trigger TK_MCH_MOVIMIENTOS deshabilitado); SPK_CALCULOVALORESCXP; PRI.CERRADO_IMP=1.",
+          "valida": [
+            "Cuenta inicial y final",
+            "IDTERCERO_DIAN existe en TER",
+            "PRI existe",
+            "CERRADO_IMP=0",
+            "Hay movimientos pendientes",
+            "Comprobante de referencia confirmado",
+            "Total > 0"
+          ],
+          "noValida": [
+            "Que el rango de cuentas cubra todo el periodo antes de marcar CERRADO_IMP"
+          ],
+          "errores": [
+            "Debe indicar cuenta inicial y cuenta final.",
+            "Variable de sistema IDTERCERO_DIAN no configurada o tercero DIAN inexistente en TER.",
+            "No existe periodo contable PRI para el año y mes indicados,o esta cerrado",
+            "El periodo ya fue cerrado para liquidación de impuestos (CERRADO_IMP=1).",
+            "No hay movimientos pendientes de liquidación para el periodo y filtros indicados.",
+            "No se encontró comprobante contable de referencia para la CxP de liquidación.",
+            "El total a liquidar del periodo es cero o negativo."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_CALCULOVALORESCXP"
+          ],
+          "efecto": "FCXP/FCXPD nuevos; MCH.LIQUI_IMP; PRI.CERRADO_IMP.",
+          "capaId": "02-operacion",
+          "controlId": "liquidacion-impuestos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "VWK_LIQ_IMP",
+      "tipo": "VISTA",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Vista de la consulta de liquidación (sobre VWK_LIQ_IMP_1).",
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Agrupa VWK_LIQ_IMP_1 por ANO, MES, IDTERCERO, RAZONSOCIAL, CUENTA, NOMCUENTA: BASE, DEBITOS, CREDITOS, VALOR según NTZ.TIPO, MAX(NROASIENTO), MAX(CNSFCXP). HAVING VALOR>0 comentado (2023-03-31).",
+          "valida": [
+            "MCP.ESTADO=2 y no anulado",
+            "CUE.IMPUESTO=1",
+            "BASE_IMP<>0",
+            "Excluye asumidos FCXPI"
+          ],
+          "noValida": [
+            "LIQUI_IMP (muestra liquidados y no)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "02-operacion",
+          "controlId": "liquidacion-impuestos",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FOLIAR_LB",
+      "tipo": "SPQ",
+      "modelo": "FOLIAR_LB",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Consecutivos de libros oficiales (USCXS).",
+      "metodos": [
+        {
+          "id": "CRUD_USCXS",
+          "hace": "INSERT/UPDATE USCXS por PREFIJO+COMPANIA+IDSEDE+BODEGA: CONSECUTIVO y descripción.",
+          "valida": [
+            "Prefijo"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "USCXS.",
+          "capaId": "01-configuracion",
+          "controlId": "foliar-libros",
+          "estado": "leido"
+        },
+        {
+          "id": "INICIALIZAR_LIBROS",
+          "hace": "Crea los registros USCXS de los seis libros (@KFOL_LBGR, LBPR, LDIA, LEST, LINV, LMAY) si no existen. No lo usa el FE.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "USCXS.",
+          "capaId": "01-configuracion",
+          "controlId": "foliar-libros",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_MOV_ACTIVOS",
+      "tipo": "SPQ",
+      "modelo": "MOV_ACTIVOS",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Pestaña Mov. Activo de Otros Módulos.",
+      "metodos": [
+        {
+          "id": "LISTA",
+          "hace": "Movimientos de activos (IACTH) del año-mes con estado contable.",
+          "valida": [
+            "ANO y MES",
+            "Usuario con compañía"
+          ],
+          "noValida": [],
+          "errores": [
+            "Año y mes contable son requeridos",
+            "Usuario no encontrado o sin compañía asignada"
+          ],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "03-alimentadores",
+          "controlId": "proc-activos-mov",
+          "estado": "leido"
+        },
+        {
+          "id": "CONTABILIZAR",
+          "hace": "Delegación a SPQ_CONTABILIDAD (no lo usa el FE: la pestaña envía con ENV_CONTA_OTROS_MODULS · ACTIVOS_MOV).",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Error al contabilizar movimientos: "
+          ],
+          "llama": [
+            "SPQ_CONTABILIDAD"
+          ],
+          "efecto": "",
+          "capaId": "03-alimentadores",
+          "controlId": "proc-activos-mov",
+          "estado": "leido"
+        },
+        {
+          "id": "RESUMEN",
+          "hace": "Totales de la lista.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Error al obtener resumen: "
+          ],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "03-alimentadores",
+          "controlId": "proc-activos-mov",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TER_EQUIV_EFECTIVO",
+      "tipo": "SPQ",
+      "modelo": "TER_EQUIV_EFECTIVO",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Niif: terceros equivalentes de efectivo.",
+      "metodos": [
+        {
+          "id": "LISTAR_TERCEROS",
+          "hace": "Lista TER con la marca de equivalente de efectivo.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "01-configuracion",
+          "controlId": "parametros-niif-parn",
+          "estado": "leido"
+        },
+        {
+          "id": "ACTUALIZAR_TERCERO",
+          "hace": "UPDATE TER marca por IDTERCERO + NIT.",
+          "valida": [
+            "IDTERCERO y NIT coinciden"
+          ],
+          "noValida": [],
+          "errores": [
+            "No se pudo actualizar el registro. Verifique que el ID Tercero y NIT sean correctos."
+          ],
+          "llama": [],
+          "efecto": "TER.",
+          "capaId": "01-configuracion",
+          "controlId": "parametros-niif-parn",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_EXOFMT",
+      "tipo": "SPQ",
+      "modelo": "EXOFMT",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Configuración de exógena: formatos, conceptos, reglas.",
+      "metodos": [
+        {
+          "id": "CRUDEXOFMT",
+          "hace": "PROCESO INSERTAR/EDITAR/ELIMINAR sobre EXOFMT (formato), EXOFMTD (concepto) y EXOFMTDD (regla por campo) según TABLA.",
+          "valida": [
+            "IDFORMATO único",
+            "CODCONCEPTO único por formato",
+            "CAMPO/valores únicos por concepto",
+            "No eliminar formato con conceptos ni concepto con reglas"
+          ],
+          "noValida": [],
+          "errores": [
+            "Ya existe un registro con ese IDFORMATO",
+            "Ya existe un concepto con ese CODCONCEPTO para ese formato",
+            "Ya existe una regla con ese CAMPO para ese concepto y formato",
+            "No se puede eliminar el formato porque tiene conceptos asociados",
+            "No se puede eliminar el concepto porque tiene reglas asociadas",
+            "No se encontró el registro para actualizar"
+          ],
+          "llama": [],
+          "efecto": "EXOFMT/EXOFMTD/EXOFMTDD.",
+          "capaId": "01-configuracion",
+          "controlId": "conf-exogena",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIERRA_PERIODOCONTABLE",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Cierre del periodo (lo llama CONTABILIDAD_2 · EJECUTAR_CIERRE_PERIODO).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Un solo PRI.SI=1; si el periodo es SI → SPK_CIERRE_SALDOS_INICIALES; si no → SPK_CIERRE_MES_CONTABLE (calcula SALDOMES/SALDOMESTER y CERRADO=1).",
+          "valida": [
+            "Un solo periodo de saldos iniciales"
+          ],
+          "noValida": [
+            "Integridad (la hace el SPQ antes)"
+          ],
+          "errores": [
+            "MAS DE UN PERIODO DEFINIDO COMO DE SALDOS INICIALES"
+          ],
+          "llama": [
+            "SPK_CIERRE_SALDOS_INICIALES",
+            "SPK_CIERRE_MES_CONTABLE"
+          ],
+          "efecto": "PRI.CERRADO=1; saldos.",
+          "capaId": "01-configuracion",
+          "controlId": "periodo-abierto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_ABRE_PERIODOCONTABLE",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Apertura del periodo.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Valida SI, posteriores cerrados y que esté cerrado; DELETE SALDOMES y SALDOMESTER del mes; UPDATE PRI CERRADO=0 (compañía 01).",
+          "valida": [
+            "No es SI",
+            "Sin posteriores cerrados",
+            "Está cerrado"
+          ],
+          "noValida": [],
+          "errores": [
+            "MAS DE UN PERIODO DEFINIDO COMO DE SALDOS INICIALES",
+            "PERIODO ESTA DEFINIDO COMO DE SALDOS INICIALES",
+            "EXISTEN PERIODOS POSTERIORES CERRADOS",
+            "PERIODO ABIERTO"
+          ],
+          "llama": [],
+          "efecto": "PRI.CERRADO=0; saldos del mes borrados.",
+          "capaId": "01-configuracion",
+          "controlId": "periodo-abierto",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_REVISION_ANTES_CIERRE_PERIODO",
+      "tipo": "FNK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Lista de integridad antes del cierre (MODULO, REFERENCIA, ERROR).",
+      "metodos": [
+        {
+          "id": "(función)",
+          "hace": "Lista de integridad. Inventario: IMOV confirmado, SECONTABILIZA=1, CONTABILIZADA=0, FECHACONF del mes (la grilla usa FECHAMOV). CxP pendiente por F_FACTURAREF, o por FECHA si IDCON_FCONTABLE_CXP=Radicacion. Notas de CxP: avisa duplicada por cantidad de filas FCXPDBCR y por más de un comprobante agrupando solo REFERENCIA1; el duplicado real exige también REFERENCIA2 y ANULADO distinto de 1. El aviso de notas pendientes y el de recaudos están repetidos. NOTASDB-CR compara YEAR(F_NOTA) con el mes.",
+          "valida": [
+            "Pendientes por módulo",
+            "Inventario por fecha de confirmación",
+            "Cierre previo de cartera y de CxP"
+          ],
+          "noValida": [
+            "Notas de factura del mes (YEAR comparado con el mes)",
+            "Que dos notas con ítem distinto sean duplicado",
+            "Que un comprobante anulado cuente como vigente"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "01-configuracion",
+          "controlId": "revision-antes-cierre",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CIERRE_FISCAL",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Cálculo del cierre fiscal (CONTABILIDAD · CIERRE_FISCAL ACCION=PROCESAR).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Exige PAR.MESDECIERRE = mes, un solo SI, no SI, periodo abierto, sin MCP <> 2, sin MCPE, anterior cerrado. Genealógico de cuentas (FNK_GENEALOGICO_CUE) y recalcula SDCUEFIS/SDCUEFI del periodo.",
+          "valida": [
+            "Mes de cierre",
+            "Comprobantes confirmados",
+            "MCPE vacío",
+            "Anterior cerrado"
+          ],
+          "noValida": [],
+          "errores": [
+            "ESTE PERIODO NO ES DE CIERRE FISCAL",
+            "PERIODO CERRADO ",
+            "FALTAN COMPROBANTES POR CONFIRMAR ",
+            "COMPROBANTES ERRADOS (MCPE) ",
+            "PERIODO ANTERIOR NO ESTA CERRADO."
+          ],
+          "llama": [],
+          "efecto": "SDCUEFIS / SDCUEFI.",
+          "capaId": "05-contabilidad",
+          "controlId": "cierre-fiscal",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_GEN_COMP_CIERRE_FISCAL",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Comprobante de cierre (ACCION=GENERAR_COMPROBANTE). Solo listado: cancela cuentas de resultado contra el resultado del ejercicio con el comprobante elegido.",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Genera MCP/MCH de cierre a partir de SDCUEFIS. Lectura pendiente de detalle.",
+          "valida": [],
+          "noValida": [],
+          "errores": [
+            "Proceso de Generación de Comprobante ya realizado (lo valida el SPQ)"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "MCP/MCH de cierre.",
+          "capaId": "05-contabilidad",
+          "controlId": "cierre-fiscal",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_HOMOLOGA_TERCERO",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Reclasificar terceros (CONTABILIDAD · RECLASIFICAR_TERCEROS_PROCESAR).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Si SALDOMESTERFAC tiene saldo del tercero en el periodo: MCP MANUAL tipo IDCON_TCOM_HOTERCUE en el mes siguiente, 'RECLASIFICACION DE TERCEROS'; MCH reversa saldo del tercero actual y lo lleva al nuevo (proceso RECLA_TER); SPK_REVISAR_COMPROBANTE + SPK_SUMA_DBCR. UPDATE tercero en FTR, FCXP, FPAG, FCJ, FCXC, PTRECO, PTRP, MCH, MCHE.",
+          "valida": [
+            "Saldo en el periodo cerrado"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "Comprobante de homologación + documentos con tercero nuevo.",
+          "capaId": "02-operacion",
+          "controlId": "correcciones",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_HOMOLOGA_CUENTA",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Reclasificar cuentas (CONTABILIDAD · RECLASIFICAR_CUENTAS_PROCESAR).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Comprobante IDCON_TCOM_HOTERCUE que traslada el saldo de la cuenta actual a la nueva (opcional por tercero); actualiza MCH/MCHE; revisa y suma.",
+          "valida": [
+            "Cuentas distintas y de detalle (SPQ)"
+          ],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR"
+          ],
+          "efecto": "Comprobante de homologación.",
+          "capaId": "02-operacion",
+          "controlId": "correcciones",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CASTIGO_CARTERA",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Castigo / difícil cobro (CONTABILIDAD · CASTIGO_CARTERA_PROCESAR).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Con las FCXCDV marcadas (MARCA=1, EQUIMARCA=equipo): comprobante IDCON_TCOM_CASTICART (castigo, cuenta KCDE CXC_CASTIGO_CARTERA) o IDCON_TCOM_CXC_DIFIC (difícil cobro, TTEC.CUEDIFCOB) vía MCPE → SPK_NC_REVISAMCPE; UPDATE FCXCDV.",
+          "valida": [
+            "Periodo existe y abierto"
+          ],
+          "noValida": [],
+          "errores": [
+            "Período Contable Cerrado",
+            "Período Contable No Existe"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_REVISAR_COMPROBANTE",
+            "SPK_SUMA_DBCR",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "Comprobante de castigo; FCXCDV.",
+          "capaId": "02-operacion",
+          "controlId": "correcciones",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_REVERSAR_MCP",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "leido",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Reversión de comprobantes de caja y notas (lo invocan los módulos y MCPE_COL · RECONSTRUIR).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Según PROCEDENCIA (REVCAJAING, REVCAJAEGR, REVNOTDBCR…) crea el comprobante contrario con IDCON_TCOM_REV* y marca el origen; si el periodo del original está abierto en caja, anula el MCP original.",
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_CONTAB_INV",
+            "SPK_NC_REVISAMCPE"
+          ],
+          "efecto": "MCP de reversión.",
+          "capaId": "02-operacion",
+          "controlId": "correcciones",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_FTR",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Generador de facturas (FACTURA). Variables PYG_*, CONTAB_IMP_FTR, CONTAB_FTR_POSTDIAN, IDCON_TCOM_FTR…; llama SPK_ADMIN_CXC_CONTAB, SPK_DIST_COPA_UNIFICA, SPK_NC_CONTAB_CAJA_ING/INV, SPK_NC_REVISAMCPE. Leído en resumen (errores: periodo inexistente/cerrado, duplicidad).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Arma MCPE/MCHE del documento con KMCOM y variables; genera consecutivo; SPK_NC_REVISAMCPE.",
+          "valida": [
+            "Periodo existe y abierto",
+            "Documento no contabilizado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable no existe",
+            "Periodo contable cerrado",
+            "Ya contabilizado / duplicidad"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "MCPE/MCHE → MCP/MCH.",
+          "capaId": "03-alimentadores",
+          "controlId": "desde-modulos-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_FNOT",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Generador de notas DB/CR (NOTDBCR). Variables IDCON_TCOM_NOTDBCR, IDCUENTANOTAS, GLOSASNOTS…; llama SPK_NC_CONTAB_INV, SPK_NC_REVISAMCPE. Leído en resumen (errores: periodo inexistente/cerrado, duplicidad).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Arma MCPE/MCHE del documento con KMCOM y variables; genera consecutivo; SPK_NC_REVISAMCPE.",
+          "valida": [
+            "Periodo existe y abierto",
+            "Documento no contabilizado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable no existe",
+            "Periodo contable cerrado",
+            "Ya contabilizado / duplicidad"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "MCPE/MCHE → MCP/MCH.",
+          "capaId": "03-alimentadores",
+          "controlId": "desde-modulos-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CXC",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Generador de recaudos (CXC). Variables IDCON_TCOM_CXC, CONTABCXC, CTADTOFINANCIERO, CUE_IMP_RECAUDOS…; llama SPK_NC_CONTAB_CXC_VLREXTRA, SPK_NC_REVISAMCPE. Leído en resumen (errores: periodo inexistente/cerrado, duplicidad).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Arma MCPE/MCHE del documento con KMCOM y variables; genera consecutivo; SPK_NC_REVISAMCPE.",
+          "valida": [
+            "Periodo existe y abierto",
+            "Documento no contabilizado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable no existe",
+            "Periodo contable cerrado",
+            "Ya contabilizado / duplicidad"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "MCPE/MCHE → MCP/MCH.",
+          "capaId": "03-alimentadores",
+          "controlId": "desde-modulos-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_CAJA_ING",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Generador de ingresos de caja (CAJA). Variables IDCJ*, IDCON_TCOM_ICAJ, IDTERCEROCAJACOM…; llama SPK_ADMIN_CXP_CONTAB, SPK_NC_REVISAMCPE. Leído en resumen (errores: periodo inexistente/cerrado, duplicidad).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Arma MCPE/MCHE del documento con KMCOM y variables; genera consecutivo; SPK_NC_REVISAMCPE.",
+          "valida": [
+            "Periodo existe y abierto",
+            "Documento no contabilizado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable no existe",
+            "Periodo contable cerrado",
+            "Ya contabilizado / duplicidad"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "MCPE/MCHE → MCP/MCH.",
+          "capaId": "03-alimentadores",
+          "controlId": "desde-modulos-om",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_NC_CONTAB_BMOV",
+      "tipo": "SPK",
+      "modelo": "",
+      "estado": "parcial",
+      "fuente": "sql/ (DESAIX PREVERSION = 2.0.7, IDANT 2.0.6, idénticas)",
+      "nota": "Generador de movimientos bancarios (BMOV). Variables IDCON_TCOM_DEFAULT, COMPROBMULTISEDE; llama SPK_NC_REVISAMCPE. Leído en resumen (errores: periodo inexistente/cerrado, duplicidad).",
+      "metodos": [
+        {
+          "id": "(cuerpo)",
+          "hace": "Arma MCPE/MCHE del documento con KMCOM y variables; genera consecutivo; SPK_NC_REVISAMCPE.",
+          "valida": [
+            "Periodo existe y abierto",
+            "Documento no contabilizado"
+          ],
+          "noValida": [],
+          "errores": [
+            "Periodo contable no existe",
+            "Periodo contable cerrado",
+            "Ya contabilizado / duplicidad"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO",
+            "SPK_NC_REVISAMCPE",
+            "SPK_PASA_MCP_MCPNIIF"
+          ],
+          "efecto": "MCPE/MCHE → MCP/MCH.",
+          "capaId": "03-alimentadores",
+          "controlId": "desde-modulos-om",
           "estado": "leido"
         }
       ]

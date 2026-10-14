@@ -1,0 +1,238 @@
+{
+  "procedencia": "ANTICIPOS",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo CNSANT/CNSFCOM — MCP ANTICIPOS REF1/2.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_ANTICIPO.sql",
+  "documentoOrigen": {
+    "tabla": "ANT",
+    "claves": [
+      "CNSANT",
+      "CNSFCOM"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSANT",
+      "REFERENCIA2": "CNSFCOM"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_ANTICIPO",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-ant"
+      ]
+    },
+    {
+      "id": "N3-contab-ant",
+      "orden": 3,
+      "sp": "SPK_NC_CONTAB_ANTICIPO",
+      "requiresDocumento": [
+        {
+          "id": "anticipo-ref",
+          "desc": "FCXP anticipo o TANT; orden pago si egreso caja",
+          "obligatorio": true,
+          "validacionSql": "ANT + FCOM + TANT",
+          "checkMotor": "doc-ant-*"
+        },
+        {
+          "id": "tercero-debito",
+          "desc": "CRUCETER=1 → tercero CxP en débito; si no TANT/FCXP",
+          "obligatorio": true,
+          "validacionSql": "CRUCETER + FCXP CONTABILIZADA",
+          "checkMotor": "doc-ant-tercero"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tant",
+          "tabla": "TANT",
+          "campos": [
+            "CUEDEBITO",
+            "CUECREDITO"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "cruceter",
+          "usvgs": "CRUCETER",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-ant",
+          "usvgs": "IDCON_TCOM_ANTICIPO",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-legalizar-ant"
+      ],
+      "puntosCriticos": [
+        "PC-ANT-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_ANTICIPO.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "IDCON_TCOM_ANTI",
+          "IDMODELOCONTABLE"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe",
+          "Periodo Contable Cerrado"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante anticipo (ANTICIPOS)"
+    },
+    {
+      "id": "N2-legalizar-ant",
+      "orden": 2,
+      "desc": "Legalización anticipo compras",
+      "llamaAnterior": [
+        "N1-crear-ant"
+      ],
+      "nombre": "Legalizar / contabilizar anticipo",
+      "sp": [
+        "SPK_GEN_PROCESO_ANTICIPO",
+        "SPK_ANTICIPO_LEG_CXP"
+      ],
+      "metodoUi": "CxP anticipos → legalizar; Reconstruir ANTICIPOS",
+      "requiresDocumento": [
+        {
+          "id": "tant-o-fcxp",
+          "desc": "Tipo TANT o FCXP anticipo ligada",
+          "obligatorio": true
+        },
+        {
+          "id": "cxp-si-cruceter",
+          "desc": "CRUCETER=1 usa tercero CxP en débito",
+          "obligatorio": "según USVGS"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tant-cuentas",
+          "tabla": "TANT",
+          "campos": [
+            "CUEDEBITO",
+            "CUECREDITO"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "cruceter",
+          "usvgs": "CRUCETER",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_NC_CONTAB_ANTICIPO",
+      "puntosCriticos": [
+        "PC-ANT-01"
+      ]
+    },
+    {
+      "id": "N1-crear-ant",
+      "orden": 1,
+      "sp": "SPK_GEN_PROCESO_ANTICIPO",
+      "llamaAnterior": [
+        "N0-config-ant"
+      ],
+      "nombre": "Crear anticipo / egreso caja",
+      "metodoUi": "Enviar a caja → FCXP Anticipos + orden pago",
+      "requiresDocumento": [
+        {
+          "id": "orden-pago",
+          "desc": "FCXPPM + egreso caja pendiente si aplica",
+          "obligatorio": "flujo caja"
+        }
+      ]
+    },
+    {
+      "id": "N0-config-ant",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "tant",
+          "tabla": "TANT",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "IDCON_TCOM_ANTICIPO",
+            "CODCAJANTICIPOS",
+            "CRUCETER"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración anticipos"
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "ANTICIPOS",
+    "tablaOrigen": "ANT"
+  },
+  "nota": "Legalización caja menor usa SPK_CONTAB_FLEG (grafo legalizacion.json)",
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/anticipos.json",
+    "procesoHermano": "cxp-fcxp",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-anticipos.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

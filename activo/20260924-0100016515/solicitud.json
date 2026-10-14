@@ -1,0 +1,148 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-24T19:36:32.043Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016515",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260924-0100016515",
+    "idReq": "0100016515",
+    "fecha": "2026-09-24",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "CLINICA MEDICAL",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "HPRE · CATALOGO DE CARGO",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "YOXIMAR PADRINO",
+    "desarrollador": "JUAN LLAMAS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/MDICAL817",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "HPRE · CATALOGO DE CARGO",
+    "requerimiento": "se requiere ajustar la visual de la pantalla de cargls ademas de la validacin de que si esta pedido a inventario no deja trasladar prestaciones\n \nNo deja reorganizar las cuentas",
+    "criteriosAceptacion": "1) Pestaña Cargos (HPREComponent): filtros en panel colapsable, barra de acciones y detalle expandido legibles; refresco sin bloqueos perceptibles en admisiones con muchas prestaciones (misma admisión de la captura como referencia).\n2) Con HPRE.PEDIDOINV=1 (pedido a inventario activo), no se puede trasladar ítems ni ejecutar traslado masivo entre responsables SOAT; mensaje alineado con Cargos: «Prestación con pedido a inventario: primero deshaga el pedido».\n3) Reorganizar distribución SOAT («cuentas» Aseguradora/ADRES/EPS) finaliza con OK o muestra el error SQL/negocio concreto; si falla por regla de inventario (REQ 6468 / USVGS SOATVALSINPEDIRINV), el mensaje debe indicar prestaciones sin pedir, no un fallo genérico.\n4) Regresión: pedir/deshacer inventario, editar/eliminar con reglas PEDIDOINV en Cargos no SOAT, y topes SOAT sin cambio de comportamiento fuera de este alcance.",
+    "alcance": "Incluye: HPREComponent.vue (pestaña Cargos en admisión asistencial — captura esta.png), catálogo/carrito de servicios y carga HPRE+HPRED; HPRESOATComponent.vue y ServiciosPrefijoComponent.vue (traslado ítem, traslado masivo, botón Reorganizar); SPQ_DISTRIHPRED_SOAT (MOVER_ITEM_PARCIAL, MOVER_MASIVO, REORGANIZAR_TODO) y coherencia con SPQ_HPRE PEDIR_INV. Excluye: cotizaciones (HPREComponentCoti), facturación masiva FTR, inventario farmacia (IZSOL/IMOV), otros módulos.",
+    "restricciones": "Rama feature/MDICAL817. No alterar MCUE/CON. Validación inventario en SOAT debe convivir con variable SOATVALSINPEDIRINV (REQ 0100016468) si ya está en preversión: no duplicar mensajes contradictorios. Mantener permisos USGRUH/catálogo de cargos existentes. SQL solo en PREVERSION tras comparar con última liberada.",
+    "analisis": "Paso 0 — ¿Ya existe?: No es capacitación. La captura corresponde a la pestaña Cargos (HPREComponent), no a configuración de prefijos PRE.\n\nControles y caminos:\n• Cargos (no SOAT): filtros colapsables, totales, tabla HPRE con detalle expandido (Agregar uno/varios, Pedir inventario / Deshacer pedido). Ya bloquea edición/borrado/agregar detalle si HPRE.PEDIDOINV=1 (reglaBaseHpre / MENSAJE_PEDIDO_INV_BLOQUEADO). No hay botón «Trasladar» aquí.\n• Cargos SOAT: Trasladar ítem (MOVER_ITEM_PARCIAL), Trasladar masivo (MOVER_MASIVO), Reorganizar (REORGANIZAR_TODO — reparte entre «cuentas» responsables). onMoverItemHPRED llama validarAjusteHpredSoat, que solo mira HPRED.PEDIDOINV en la fila; el pedido real deja HPRE.PEDIDOINV=1 vía SPK_PEDIDOINVQX y muchas filas traen HPRED.PEDIDOINV=0 → hueco/defecto: aún se puede trasladar. Traslado masivo no filtra por pedido inventario.\n• Performance/visual (tipo Performance): cada página de HPRE trae el detalle HPRED en subconsulta FOR JSON PATH; con muchas líneas la UI se siente pesada — coherente con ajuste visual/rendimiento en la misma pantalla de la captura.\n\n«No deja reorganizar las cuentas»: defecto en control Reorganizar SOAT. Causas probables a validar en test: (a) KO por SOATVALSINPEDIRINV con ESDEINV sin pedir; (b) error de reglas ADRES/EPS en MOVER/REORGANIZAR; (c) loading/respuesta mal interpretada en FE. validarAntes.aplica=true.\n\nClasificación: mejora UX/performance en Cargos + defecto validación traslado con pedido inventario + defecto reorganizar SOAT.\n\nTrazabilidad: Cargos read AppStore.read Tabla HPRE; pedir inv AppStore.json HPRE·HPRE·PEDIR_INV; SOAT AppStore.json DISTRIHPRED_SOAT·REORGANIZAR_TODO / MOVER_*.",
+    "opciones": [],
+    "recomendacion": "Paquete único en MDICAL817: (1) FE HPRE — pulir layout/performance (paginación, evitar render masivo del detalle, habilitar acciones de barra visibles en captura); (2) FE HPRESOAT — extender validación de pedido inventario a traslado ítem y masivo usando HPRE.PEDIDOINV (y HPRED si aplica), deshabilitar acciones con tooltip; (3) SQL SPQ_DISTRIHPRED_SOAT — validación server-side en MOVER_ITEM_PARCIAL y MOVER_MASIVO (y revisar REORGANIZAR_TODO si el KO actual es ambiguo); (4) reproducir Reorganizar en la admisión del incidente y corregir la causa concreta (mensaje FE + fix SQL si aplica). Releer PREVERSION de SPQ_DISTRIHPRED_SOAT antes de codificar (sql_refe/0100016305 es referencia histórica).",
+    "cambioPropuestoSimple": "Mejorar la pantalla de Cargos para que sea más clara y rápida con muchas prestaciones; impedir trasladar cargos entre cuentas SOAT cuando la prestación ya fue pedida a inventario (igual que en Cargos); y corregir por qué «Reorganizar» no termina bien la distribución entre aseguradora, ADRES y EPS.",
+    "cambioPropuestoSql": "## SPQ_DISTRIHPRED_SOAT · MOVER_ITEM_PARCIAL (después de leer HPRE/HPRED del ítem, antes de mover)\n\n-- Validación pedido inventario (cabecera HPRE; opcional HPRED)\nIF EXISTS (\n  SELECT 1\n  FROM HPRED D\n  INNER JOIN HPRE H ON H.NOPRESTACION = D.NOPRESTACION\n  WHERE D.NOPRESTACION = @NOPRESTACION AND D.NOITEM = @NOITEM\n    AND (COALESCE(H.PEDIDOINV,0) = 1 OR COALESCE(D.PEDIDOINV,0) = 1)\n)\nBEGIN\n  SELECT 'KO' OK\n  SELECT ERROR = N'Prestación con pedido a inventario: primero deshaga el pedido'\n  RETURN\nEND\n\n## SPQ_DISTRIHPRED_SOAT · MOVER_MASIVO (antes del cursor/UPDATE masivo)\n\nIF EXISTS (\n  SELECT 1\n  FROM HPRED D\n  INNER JOIN HPRE H ON H.NOPRESTACION = D.NOPRESTACION\n  WHERE H.NOADMISION = @NOADMISION\n    AND COALESCE(D.FACTURADA,0) = 0\n    AND COALESCE(D.NOCOBRABLE,0) = 0\n    AND D.GFACSOAT = @GFACSOAT_ORIGEN\n    AND (filtros fecha/prefijo/usuario según parámetros del METODO)\n    AND (COALESCE(H.PEDIDOINV,0) = 1 OR COALESCE(D.PEDIDOINV,0) = 1)\n)\nBEGIN\n  SELECT 'KO' OK\n  SELECT ERROR = N'Prestación con pedido a inventario: primero deshaga el pedido'\n  RETURN\nEND\n\n## Consulta de validación (preversión / soporte)\n\nSELECT H.NOPRESTACION, H.PREFIJO, H.PEDIDOINV, H.ESDEINV, COUNT(*) AS items\nFROM HPRE H\nINNER JOIN HPRED D ON D.NOPRESTACION = H.NOPRESTACION\nWHERE H.NOADMISION = @NOADMISION\n  AND COALESCE(H.PEDIDOINV,0) = 1\nGROUP BY H.NOPRESTACION, H.PREFIJO, H.PEDIDOINV, H.ESDEINV;\n\nFuente especificación: sql_refe/0100016305/SPQ_DISTRIHPRED_SOAT.sql — confirmar línea exacta en PREVERSION antes de merge.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Ajustes en cargos hospitalarios (HPRE/HPRED) y distribución SOAT; no generan ni modifican comprobantes MCPE ni saldos de cuentas MCUE.",
+        "validadoEn": "2026-09-24T17:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En la admisión del incidente (captura esta.png): (1) Reproducir Reorganizar en pestaña Cargos SOAT y registrar mensaje exacto (red, notify o consola red). (2) Con una prestación MEDICAMENTOS ya pedida a inventario, intentar Trasladar ítem y Trasladar masivo y confirmar si hoy permite el movimiento. (3) Verificar valor USVGS SOATVALSINPEDIRINV si Reorganizar devuelve KO por inventario pendiente."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "esta.png",
+        "ruta": "activo/20260924-0100016515/imagenes/esta.png",
+        "subidaEn": "2026-09-24T12:13:26",
+        "url": "/api/caso/20260924-0100016515/imagen/esta.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Pestaña Cargos (HPREComponent): filtros en panel colapsable, barra de acciones y detalle expandido legibles; refresco sin bloqueos perceptibles en admisiones con muchas prestaciones (misma admisión de la captura como referencia).\n2) Con HPRE.PEDIDOINV=1 (pedido a inventario activo), no se puede trasladar ítems ni ejecutar traslado masivo entre responsables SOAT; mensaje alineado con Cargos: «Prestación con pedido a inventario: primero deshaga el pedido».\n3) Reorganizar distribución SOAT («cuentas» Aseguradora/ADRES/EPS) finaliza con OK o muestra el error SQL/negocio concreto; si falla por regla de inventario (REQ 6468 / USVGS SOATVALSINPEDIRINV), el mensaje debe indicar prestaciones sin pedir, no un fallo genérico.\n4) Regresión: pedir/deshacer inventario, editar/eliminar con reglas PEDIDOINV en Cargos no SOAT, y topes SOAT sin cambio de comportamiento fuera de este alcance.",
+      "originalesEn": "2026-09-24T19:35:45.835Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Pestaña Cargos (HPREComponent): filtros en panel colapsable, barra de acciones y detalle expandido legibles; refresco sin bloqueos perceptibles en admisiones con muchas prestaciones (misma admisión de la captura como referencia).\n2) Con HPRE.PEDIDOINV=1 (pedido a inventario activo), no se puede trasladar ítems ni ejecutar traslado masivo entre responsables SOAT; mensaje alineado con Cargos: «Prestación con pedido a inventario: primero deshaga el pedido».\n3) Reorganizar distribución SOAT («cuentas» Aseguradora/ADRES/EPS) finaliza con OK o muestra el error SQL/negocio concreto; si falla por regla de inventario (REQ 6468 / USVGS SOATVALSINPEDIRINV), el mensaje debe indicar prestaciones sin pedir, no un fallo genérico.\n4) Regresión: pedir/deshacer inventario, editar/eliminar con reglas PEDIDOINV en Cargos no SOAT, y topes SOAT sin cambio de comportamiento fuera de este alcance.",
+      "trasAnalisisEn": "2026-09-24T19:35:46.484Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo. SPQ_DISTRIHPRED_SOAT (MOVER_ITEM_PARCIAL, MOVER_MASIVO, REORGANIZAR_TODO) no están fichados en conocimiento/hpre/sps.json; usar sql_refe/0100016305 como referencia y bajar PREVERSION a activo/20260924-0100016515/sql/ al cerrar dictamen si el desarrollador no tiene el cuerpo vigente.",
+      "fecha": "2026-09-24T17:30:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_DISTRIHPRED_SOAT"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260924-0100016515/diagramas/flujo.html",
+      "subidaEn": "2026-09-24T14:35:55",
+      "url": "/api/caso/20260924-0100016515/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "hpre",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260924-0100016515-flujo.html"
+    },
+    "mockups": [
+      "activo/20260924-0100016515/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20260924-0100016515\\sql\\",
+    "carpetaRelativa": "activo/20260924-0100016515/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016515\\",
+    "archivosEsperados": [
+      "no requere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "hpre",
+    "catalogo": "conocimiento/hpre/sps.json",
+    "metodosDocumentados": [],
+    "notas": "METODOs DISTRIHPRED_SOAT pendientes de ficha leido; fragmentos SQL en contenido.cambioPropuestoSql.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260924-0100016515.html",
+    "aprobados": "aprobados/20260924-0100016515/",
+    "imagenes": "aprobados/20260924-0100016515/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-24",
+    "ultimoEnvio": "2026-09-24T14:39:43",
+    "reenvios": 0,
+    "destinatario": "juan.llamas@ixcolombia.com",
+    "via": "smtp"
+  }
+}

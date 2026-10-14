@@ -1,0 +1,177 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-19T17:40:18.320Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016459",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260919-0100016459",
+    "idReq": "0100016459",
+    "fecha": "2026-09-17",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ART MEDICA S.A.S",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "hotfix/ARTMED1196",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Novedad QR Factura DIan\n\nSe solicita que la direccion de la sede no quede montada en el Qr de la factura ya que esto impide la lectura correcta del QR para validacion en la Dian. \nLa Direccion y resto de campos deben de hacer salto de linea si en algun momento la informacion que contengan puede sobreponerse en el Qr de la factura. \n DETALLE: Se solicita que en la impresión no se monte la dirección de la sede en el QR de la factura, ya que esto impide la lectura correcta del código para la validación en la DIAN.",
+    "criteriosAceptacion": "1) En impresión/PDF de factura electrónica notificada (FACTE=2), el QR DIAN (CODQR) queda libre de superposición con texto del encabezado del emisor (dirección de sede/propietario, teléfonos, ciudad o correo cuando aplique).\n2) La línea «Direccion: …» del bloque emisor usa salto de línea automático cuando el texto excede el ancho disponible antes del área reservada al QR (aprox. x < 165 mm en A4 con QR en x≈170–177).\n3) Tras partir la dirección (y, si aplica, otros campos del mismo bloque), el recuadro «FACTURA ELECTRÓNICA DE VENTA» y el bloque cliente/CUFE no se montan con el encabezado ampliado (ajustar y o altura del bloque).\n4) El contenido escaneado del QR sigue siendo el devuelto por FNK_QRCODE vía DATOSFTR (sin acortar ni alterar el payload DIAN).\n5) Prueba con la factura de referencia (captura QTU9496 / sede con dirección larga Tunja) y al menos un formato hermano 03GS* si comparte el mismo patrón de encabezado.\n6) Si existía PDF cacheado con layout viejo (GET_FTR_BASE64), tras el fix la reimpresión o LIBERAR_PDF regenera PDF legible.",
+    "alcance": "Proceso facturacion · control **Ver / imprimir factura** (FTRComponent.vue y otros que llaman ImprimeFormatoFtr). Frontend: `src/boot/FmtFtr/RptFtr.js` y formato asignado a ART MEDICA (evidencia de layout: **03GSART**, rama `hotfix/ARTMED1196`; rama AUTPG con QR en 170,15 y dirección en una sola línea). Ajuste de maquetación jsPDF en encabezado emisor; reutilizar el criterio de `wrapTextByWidthCem` ya usado en fmt03GSCEM para textos largos. Backend: solo verificación de DATOSFTR (CODQR + COALESCE(SED.DIRECCION,TER.DIRECCION)); **sin** cambio funcional en cola DIAN (dian-xml) ni en SPK_GENERAR_XML_DIAN.",
+    "restricciones": "Hotfix cliente ART MEDICA; no acortar dirección en maestra SED/TER como solución definitiva. No mover el QR fuera de la zona DIAN sin validar anexo de representación gráfica. Impacto SQL esperado **ninguno** salvo auditoría de FNK_QRCODE. Regresión: otros IDFORMATO con QR arriba a la derecha (03GS, 03GSCEM, 03GSMED, fmt03GSU/GSV) si comparten el mismo anti-patrón.",
+    "analisis": "**1) REQ vs cola:** IX 0100016459 pide corrección de **representación gráfica** (PDF impreso): la dirección de la sede se superpone al QR y el lector DIAN falla. No pide reencolar XML ni cambiar CUFE.\n\n**2) Conocimiento / código:** Impresión → `ImprimeFormatoFtr` (`RptFtr.js`) → `FTR_IMPRESION · DATOSFTR` (datos + CODQR) → switch por `ftrtitu.IDFORMATO`. Con `FACTSEDE=SI` o `DATOSPROPIETARIO=SEDE`, recordset 3 trae `COALESCE(SED.DIRECCION,TER.DIRECCION)` (referencia `sql_refe/0100016362/SPQ_FTR_IMPRESION.sql`). CODQR = `FNK_QRCODE(N_FACTURA)` — el defecto es **posición de texto**, no el string del QR.\n\n**Paso 0 — ¿Ya existe?** No es capacitación: no hay botón para «partir dirección»; acortar la sede en configuración es workaround. No es hueco de funcionalidad nueva: el QR y la impresión ya existen. **Clasificación: defecto de layout** en formatos FmtFtr.\n\n**Caminos del control:** (a) Facturación → Facturas → Ver/imprimir / PDF (`onPrintDocument` → `ImprimeFormatoFtr`); (b) reimpresión desde caja/autorizaciones/cvirtual (misma boot); (c) PDF servido desde `GET_FTR_BASE64` si ya fue guardado con `ADD_PDF_FTR` (ESTDIAN=2) — puede mostrar layout antiguo hasta regenerar; (d) cola DIAN / TREA_XML — **no** corrige el PDF jsPDF. Captura `qr_factura.png`: dirección larga resaltada invadiendo QR; layout coincide con **fmt03GSART** procedencia AUTPG.\n\n**Causa:** `doc.text('Direccion: '+ dpr.DIRECCION)` en una sola línea con QR fijo en (170–177, 10–18) mm sin reservar ancho máximo ni incrementar `y` por líneas extra (p. ej. fmt03GSART.js ~160; patrón similar en fmt03GSCEM FINANCIERO y familia 03GS*).",
+    "opciones": [
+      {
+        "titulo": "A — Partir texto emisor (recomendada)",
+        "descripcion": "En el formato del cliente (03GSART) y, si aplica, helper compartido: envolver DIRECCION (y teléfono/ciudad/email del mismo bloque si pueden invadir el QR) con wrap por ancho hasta xQR−margen; recalcular y antes del recuadro de número de factura."
+      },
+      {
+        "titulo": "B — Solo bajar QR o mover encabezado",
+        "descripcion": "Desplazar QR o bloque texto verticalmente. Más rápido pero riesgo de choque con CUFE/recuadro; usar solo si A no alcanza en una página."
+      },
+      {
+        "titulo": "C — Acortar dirección en SQL",
+        "descripcion": "Rechazada: altera representación legal del emisor y no cumple el REQ de salto de línea."
+      }
+    ],
+    "recomendacion": "Opción A en **fmt03GSART.js** (confirmar IDFORMATO en PPT/USVGS del cliente). Reutilizar o extraer `wrapTextByWidthCem` (fmt03GSCEM) para el bloque emisor con `maxWidth ≈ 165 − x`. Aplicar el mismo criterio en `addtitulofact` del mismo archivo y revisar hermanos 03GS/03GSCEM si ART los usa en otras procedencias. Tras desplegar, probar escaneo DIAN del QR en PDF nuevo; si el cliente ve PDF viejo, usar reimpresión o `LIBERAR_PDF` + `ADD_PDF_FTR`. No tocar SPQ_FTR_IMPRESION salvo que auditoría muestre CODQR incorrecto (no evidenciado).",
+    "cambioPropuestoSimple": "Al imprimir la factura, la dirección (y otros datos del emisor junto al QR) pasan a varias líneas para no tapar el código QR; el QR sigue siendo el mismo de la DIAN y se puede escanear con normalidad.",
+    "impactoFe": "Sí",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contenido.contabilidad.afecta=false. Ajuste de layout PDF FTR; no crea ni modifica MCP/MCH/MCPE ni asientos.",
+        "validadoEn": "2026-09-19T17:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Reimprimir en test/copia la factura del caso (o una FV con SED.DIRECCION larga y FACTE=2) con IDFORMATO 03GSART; confirmar superposición actual y que el QR escaneado abre validación DIAN cuando no hay texto encima. Si GET_FTR_BASE64 devuelve PDF antiguo, contrastar tras LIBERAR_PDF/reimpresión."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "qr_factura.png",
+        "ruta": "activo/20260919-0100016459/imagenes/qr_factura.png",
+        "subidaEn": "2026-09-19T12:24:41",
+        "url": "/api/caso/20260919-0100016459/imagen/qr_factura.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En impresión/PDF de factura electrónica notificada (FACTE=2), el QR DIAN (CODQR) queda libre de superposición con texto del encabezado del emisor (dirección de sede/propietario, teléfonos, ciudad o correo cuando aplique).\n2) La línea «Direccion: …» del bloque emisor usa salto de línea automático cuando el texto excede el ancho disponible antes del área reservada al QR (aprox. x < 165 mm en A4 con QR en x≈170–177).\n3) Tras partir la dirección (y, si aplica, otros campos del mismo bloque), el recuadro «FACTURA ELECTRÓNICA DE VENTA» y el bloque cliente/CUFE no se montan con el encabezado ampliado (ajustar y o altura del bloque).\n4) El contenido escaneado del QR sigue siendo el devuelto por FNK_QRCODE vía DATOSFTR (sin acortar ni alterar el payload DIAN).\n5) Prueba con la factura de referencia (captura QTU9496 / sede con dirección larga Tunja) y al menos un formato hermano 03GS* si comparte el mismo patrón de encabezado.\n6) Si existía PDF cacheado con layout viejo (GET_FTR_BASE64), tras el fix la reimpresión o LIBERAR_PDF regenera PDF legible.",
+      "originalesEn": "2026-09-19T17:38:47.095Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En impresión/PDF de factura electrónica notificada (FACTE=2), el QR DIAN (CODQR) queda libre de superposición con texto del encabezado del emisor (dirección de sede/propietario, teléfonos, ciudad o correo cuando aplique).\n2) La línea «Direccion: …» del bloque emisor usa salto de línea automático cuando el texto excede el ancho disponible antes del área reservada al QR (aprox. x < 165 mm en A4 con QR en x≈170–177).\n3) Tras partir la dirección (y, si aplica, otros campos del mismo bloque), el recuadro «FACTURA ELECTRÓNICA DE VENTA» y el bloque cliente/CUFE no se montan con el encabezado ampliado (ajustar y o altura del bloque).\n4) El contenido escaneado del QR sigue siendo el devuelto por FNK_QRCODE vía DATOSFTR (sin acortar ni alterar el payload DIAN).\n5) Prueba con la factura de referencia (captura QTU9496 / sede con dirección larga Tunja) y al menos un formato hermano 03GS* si comparte el mismo patrón de encabezado.\n6) Si existía PDF cacheado con layout viejo (GET_FTR_BASE64), tras el fix la reimpresión o LIBERAR_PDF regenera PDF legible.",
+      "trasAnalisisEn": "2026-09-19T17:38:54.975Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (sin dictamen HTML). Confirmar en cliente IDFORMATO exacto (esperado 03GSART) y variable FACTSEDE/DATOSPROPIETARIO. FTR_IMPRESION · DATOSFTR no tiene ficha leída en facturacion/sps.json; referencia sql_refe/0100016362 suficiente para alcance FE.",
+      "fecha": "2026-09-19T17:30:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_FTR_IMPRESION · DATOSFTR · sql_refe/0100016362 · no ficha leido · datos impresión + CODQR; sin cambio previsto",
+        "SPQ_FTR_COL · ADD_PDF_FTR · leido · regenerar PDF cache post-fix si ESTDIAN=2",
+        "SPQ_FTR_COL · LIBERAR_PDF · leido · forzar nueva generación jsPDF si aplica"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260919-0100016459/diagramas/flujo.html",
+      "subidaEn": "2026-09-19T12:39:53",
+      "url": "/api/caso/20260919-0100016459/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260919-0100016459-flujo.html"
+    },
+    "mockups": [
+      "activo/20260919-0100016459/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016459\\",
+    "archivosEsperados": [
+      "SPQ_FTR_IMPRESION.sql",
+      "FNK_QRCODE.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "ADD_PDF_FTR",
+        "estado": "leido",
+        "hace": "Adjunta/registra PDF en factura (binario o ruta según FE).",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "LIBERAR_PDF",
+        "estado": "leido",
+        "hace": "Libera flag PDF pendiente / regenera impresión.",
+        "llama": []
+      }
+    ],
+    "notas": "DATOSFTR (SPQ_FTR_IMPRESION) participa en el flujo pero no está fichado en sps.json; cuerpo de referencia en sql_refe/0100016362. No se pide sql/ para este fix salvo auditoría de FNK_QRCODE.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260919-0100016459.html",
+    "aprobados": "aprobados/20260919-0100016459/",
+    "imagenes": "aprobados/20260919-0100016459/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-19",
+    "ultimoEnvio": "2026-09-19T12:43:15",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

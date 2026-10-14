@@ -1,0 +1,180 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-13T18:00:12.712Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016704",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261013-0100016704",
+    "idReq": "0100016704",
+    "fecha": "2026-10-13",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CARTERA · Cartera",
+    "rutaPantalla": "Operativo: Administrativo → Cartera → Recaudos (FPAG, Ingreso BANCOS). Informe (captura web): Administrativo → Consultas y Reportes → Recaudos bancos."
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/ASOCAB226",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CARTERA · Cartera",
+    "requerimiento": "necesitamos que se incorpore una funcionalidad clave que ya tiene la versión de escritorio pero que aún no está disponible en la versión web. Específicamente requerimos la integración de los siguientes botones en la pantalla de pagos/bancos:\n1. \"Legalizar Saldo\": Para realizar el proceso de legalización correspondiente.   \n2. \"Comprobante Contable\" (Comprobante Contable Ajuste): El cual debe permitir imprimir el comprobante una vez el saldo haya sido legalizado.   \nAdjunto la imagen de referencia de la versión de escritorio donde se señalan con flechas rojas los botones requeridos. \nQuedo atento a su confirmación para incluir esto en el backlog o desarrollo. DETALLE: Se solicita que se traiga la funcionalidad que se tenía de legalizar un saldo pendiente de legalizar en cartera. Esto se debe a que en la plataforma web no se cuenta con esta funcionalidad y el software anterior sí lo tenía.\n\nAdicionalmente, es importante tener en cuenta que esta legalización genera una causación contable, la cual se puede visualizar una vez se confirme la legalización.\n\ncontexto: se requiere el proceso de legalizacon de saldo pendientes por recuado en bancos",
+    "criteriosAceptacion": "1) Desde la web, el usuario puede legalizar un renglón bancario con saldo pendiente (VLRITEM − VLRLEGALIZADO − VLRAJPESO > 0), movimiento confirmado (BMOV.ESTADO = O) y marca de recaudo, con el mismo resultado contable que en escritorio.\n2) Tras legalizar, puede imprimir el comprobante de ajuste asociado al renglón (equivalente a «Comprobante Contable Ajuste» cuando aplique NROCOMPROBANTE en el origen bancario) o el comprobante del recaudo (FPAG) según el camino ejecutado.\n3) La grilla operativa muestra las mismas columnas clave que el informe y el escritorio: valor, legalizado, ajuste y ajuste al peso, más saldo por legalizar.\n4) Si el renglón ya está en un recaudo abierto (ENPAGOS = 1), el sistema guía a Cartera · Recaudos para continuar allí, sin duplicar el amarre.\n5) Permisos USGRUH alineados al control (equivalente a Recaudos / pagos CXC).\n6) Prueba en test: consignación con recaudo confirmada, legalización parcial y cierre del saldo restante; comprobante visible en Contabilidad.",
+    "alcance": "Incluye: pantalla operativa web equivalente a «Pagos en Bancos» del escritorio (legalizar saldo + imprimir comprobante de ajuste) o extensión del informe «Recaudos en bancos» con acciones sobre VWK_PAGOS_BCO; integración con FPAG_COL (recaudo Ingreso BANCOS) y contabilización CXC existente; deep-link opcional desde el informe hacia Recaudos con banco/cuenta/ítem/renglón precargados.\nProcesos de negocio: recaudos (legalización), bancos (BMOV/BMOVD origen), reportes-cartera (consulta actual).",
+    "restricciones": "Fuera de alcance: crear o confirmar movimientos en Tesorería · Bancos; conciliación bancaria; legalización de caja menor (FLEG) o anticipos CxP; cambiar reglas de REC_VLRMAX_AJUSTE.\nNo reemplazar Cartera · Recaudos: sigue siendo el control maestro para crear recaudo, asignar facturas y Aplicar Pago.\nEl informe «Recaudos en bancos» puede seguir existiendo como solo lectura si la operación vive en pantalla dedicada.",
+    "analisis": "Paso 0 — ¿Ya existe?\n• Texto del REQ pide botones «Legalizar Saldo» y «Comprobante Contable Ajuste» en pagos/bancos. La captura web (Consultas y Reportes → Recaudos bancos) es solo consulta y exportación Excel sobre VWK_PAGOS_BCO; no tiene botones de legalización. La referencia de escritorio («Pagos en Bancos», pestañas Por Banco / Por Tercero) es una ventana operativa con la misma familia de columnas (Valor, Vlr Legalizado, Vlr Ajuste, Vlr Aj al Peso) más las acciones señaladas.\n• Caminos en Qrystalos2 hoy:\n  – Cartera → Recaudos (FPAGComponent): Nuevo → Ingreso BANCOS → elige renglón con RECAUDO=1, BMOV confirmado, ENPAGOS=0 y saldo por legalizar → INSERTAR → asignar facturas → Aplicar Pago → botones Pago y Comprobante (NROCOMPROBANTE FPAG). Documentado en conocimiento/recaudos (necesidadesYaCubiertas).\n  – Consultas y Reportes → Recaudos en bancos (RecaudosEnBancosComponent): filtros y grilla read-only; libro reportes-cartera indica que los pendientes se legalizan en Cartera · Recaudos.\n  – Tesorería → Bancos: confirma movimiento y marca recaudo; no legaliza cartera.\nClasificación: **capacitación parcial + hueco de producto**. La legalización completa contra facturas **ya existe** en Recaudos; **no existe** la réplica web de la ventana operativa del escritorio con legalización directa desde la grilla de pagos en banco ni la impresión del «Comprobante Contable Ajuste» atada a esa acción (vista VWK_PAGOS_BCO expone BMOVD.NROCOMPROBANTE / VLRAJUSTE / VLRAJPESO, campos que el informe muestra pero no opera).\nCausa según KB: migración incompleta Clarion → Vue; el informe cubrió la consulta pero no se portó el módulo «Pagos en Bancos».\nBackend conocido (fichas leídas): SPQ_FPAG_COL · INSERTAR, TRAE_PAGO, APLICARPAGO; SPK_PAGOSCXC actualiza BMOVD.VLRLEGALIZADO/ENPAGOS al aplicar; SPK_NC_CONTAB_CXC genera MCP del recaudo (incluye VLRAJUSTEPESO). El METODO/SP exacto del botón «Legalizar Saldo» del escritorio **no** figura en SPQ_FPAG_COL documentado ni en Qrystalos2 — hay que identificarlo en IXONLINE/SQL (Clarion) antes de dictaminar SQL nuevo.\nContabilidad: sí aplica (procedencia CXC vía recaudo). Corregido respecto al aval previo del formulario (era de otro tema).",
+    "opciones": [],
+    "recomendacion": "1) **Corto plazo (capacitación):** Orientar al cliente: legalizar consignaciones en **Administrativo → Cartera → Recaudos** (Ingreso BANCOS), no en Consultas y Reportes. Para pendientes, filtrar el informe en Estado = Pendientes y abrir Recaudos con el mismo tercero/movimiento.\n2) **Desarrollo recomendado (hueco):** Portar la ventana operativa «Pagos en Bancos»: grilla sobre VWK_PAGOS_BCO (o misma consulta del informe) + selección de fila + **Legalizar saldo** (invocar el mismo backend que Clarion, una vez identificado en DESAIX; si es equivalente a un nuevo recaudo/aplicación del saldo restante, reutilizar FPAG_COL sin duplicar reglas) + **Comprobante contable ajuste** (PDF vía composable MCP sobre NROCOMPROBANTE del renglón o del FPAG según el flujo).\n3) **UX mínima alternativa:** En RecaudosEnBancos, botón «Legalizar en Recaudos» que abra FPAG en modo nuevo con BANCO/SUCURSAL/CTA_BCO/ITEM/RENGLON del renglón seleccionado (reduce clics; no sustituye Comprobante Ajuste si el escritorio usa otro SP).\nPriorizar opción 2 si el cliente exige paridad 1:1 con escritorio. Validar en test con consignación parcialmente legalizada (como en bancos.jpeg).",
+    "cambioPropuestoSimple": "Hoy en web solo pueden **consultar** los pagos en banco (informe Recaudos bancos). Para **legalizar** deben entrar a **Cartera → Recaudos**, crear un recaudo tipo Bancos, ligar la consignación, aplicar a facturas y ahí ver el comprobante contable. Se propone traer a la web la **misma pantalla de trabajo** que tenían en escritorio: elegir la fila del banco, pulsar **Legalizar saldo** y después **Comprobante contable ajuste**, sin depender solo del informe de consulta.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": true,
+      "comoAfecta": "Al legalizar un recaudo BANCOS aplicado, SPK_NC_CONTAB_CXC (procedencia CXC, REFERENCIA1 = CNSFPAG) genera o actualiza MCP/MCH; el ajuste al peso (FPAG.VLRAJUSTEPESO) puede generar líneas CXC_AJ_AFAVOR / CXC_AJ_ENCONTRA según KMCOM. El comprobante de ajuste del renglón bancario, si el escritorio usa BMOVD.NROCOMPROBANTE distinto del FPAG, debe trazarse al identificar el SP Clarion.",
+      "desarrollo": "Reutilizar contabilización existente del recaudo (APLICARPAGO → SPK_PAGOSCXC → SPK_NC_CONTAB_CXC). Si «Legalizar saldo» del escritorio contabiliza solo el residual/ajuste sin pasar por FPAG completo, validar procedencia y generator en IXONLINE antes de proponer SP nuevo; no inventar asiento.",
+      "validacion": {
+        "estado": "ok",
+        "texto": "Coherente con conocimiento/recaudos y flujo-recaudos-cartera-contab: recaudo cerrado deja FPAG.NROCOMPROBANTE y actualiza BMOVD.VLRLEGALIZADO vía SPK_PAGOSCXC. El formulario tenía afecta=false por arrastre de otro REQ; este ticket sí declara causación contable.",
+        "validadoEn": "2026-10-13T17:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de codificar: (1) Confirmar en test si el cliente puede cerrar el saldo con un segundo recaudo BANCOS en Cartera · Recaudos (ENPAGOS=0 con saldo restante). (2) Identificar en IXONLINE/SQL el procedimiento/METODO que ejecuta «Legalizar Saldo» en el módulo Clarion Pagos en Bancos — no está expuesto en Qrystalos2 ni en las fichas actuales de SPQ_FPAG_COL."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-10-08_142439.png",
+        "ruta": "activo/20261013-0100016704/imagenes/Captura_de_pantalla_2026-10-08_142439.png",
+        "subidaEn": "2026-10-13T12:31:50",
+        "url": "/api/caso/20261013-0100016704/imagen/Captura_de_pantalla_2026-10-08_142439.png"
+      },
+      {
+        "nombre": "bancos.jpeg",
+        "ruta": "activo/20261013-0100016704/imagenes/bancos.jpeg",
+        "subidaEn": "2026-10-13T12:31:50",
+        "url": "/api/caso/20261013-0100016704/imagen/bancos.jpeg"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Desde la web, el usuario puede legalizar un renglón bancario con saldo pendiente (VLRITEM − VLRLEGALIZADO − VLRAJPESO > 0), movimiento confirmado (BMOV.ESTADO = O) y marca de recaudo, con el mismo resultado contable que en escritorio.\n2) Tras legalizar, puede imprimir el comprobante de ajuste asociado al renglón (equivalente a «Comprobante Contable Ajuste» cuando aplique NROCOMPROBANTE en el origen bancario) o el comprobante del recaudo (FPAG) según el camino ejecutado.\n3) La grilla operativa muestra las mismas columnas clave que el informe y el escritorio: valor, legalizado, ajuste y ajuste al peso, más saldo por legalizar.\n4) Si el renglón ya está en un recaudo abierto (ENPAGOS = 1), el sistema guía a Cartera · Recaudos para continuar allí, sin duplicar el amarre.\n5) Permisos USGRUH alineados al control (equivalente a Recaudos / pagos CXC).\n6) Prueba en test: consignación con recaudo confirmada, legalización parcial y cierre del saldo restante; comprobante visible en Contabilidad.",
+      "originalesEn": "2026-10-13T17:59:28.888Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Desde la web, el usuario puede legalizar un renglón bancario con saldo pendiente (VLRITEM − VLRLEGALIZADO − VLRAJPESO > 0), movimiento confirmado (BMOV.ESTADO = O) y marca de recaudo, con el mismo resultado contable que en escritorio.\n2) Tras legalizar, puede imprimir el comprobante de ajuste asociado al renglón (equivalente a «Comprobante Contable Ajuste» cuando aplique NROCOMPROBANTE en el origen bancario) o el comprobante del recaudo (FPAG) según el camino ejecutado.\n3) La grilla operativa muestra las mismas columnas clave que el informe y el escritorio: valor, legalizado, ajuste y ajuste al peso, más saldo por legalizar.\n4) Si el renglón ya está en un recaudo abierto (ENPAGOS = 1), el sistema guía a Cartera · Recaudos para continuar allí, sin duplicar el amarre.\n5) Permisos USGRUH alineados al control (equivalente a Recaudos / pagos CXC).\n6) Prueba en test: consignación con recaudo confirmada, legalización parcial y cierre del saldo restante; comprobante visible en Contabilidad.",
+      "trasAnalisisEn": "2026-10-13T17:59:32.601Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (Paso 0: capacitación parcial + hueco UI). Pendiente identificar SP/METODO del botón «Legalizar Saldo» del escritorio en IXONLINE/SQL; fichas SPQ_FPAG_COL cubren el flujo Recaudos estándar.",
+      "fecha": "2026-10-13T17:45:00.000Z",
+      "estado": "listo",
+      "sps": "Localizar objeto Clarion «Pagos en Bancos» → SP/METODO en DESAIX (no listado en sps.json del caso)."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261013-0100016704/diagramas/flujo.html",
+      "subidaEn": "2026-10-13T13:00:00",
+      "url": "/api/caso/20261013-0100016704/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "recaudos",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261013-0100016704-flujo.html"
+    },
+    "mockups": [
+      "activo/20261013-0100016704/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": "Mockup pendiente: ventana operativa propuesta (grilla VWK_PAGOS_BCO + Legalizar saldo + Comprobante ajuste), no la captura del informe ni del problema."
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261013-0100016704\\sql\\",
+    "carpetaRelativa": "activo/20261013-0100016704/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016704\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "recaudos",
+    "catalogo": "conocimiento/recaudos/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "TRAE_PAGO",
+        "estado": "leido",
+        "hace": "Trae datos de recibo caja o movimiento banco según INGRESO.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "INSERTAR",
+        "estado": "leido",
+        "hace": "Crea FPAG (CERRADO=0, ESTADO=Activo), CNSRPDX staging; marca ENPAGOS en FCJ (CAJA) o BMOVD (BANCOS).",
+        "llama": [
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_FPAG_COL",
+        "metodo": "APLICARPAGO",
+        "estado": "leido",
+        "hace": "Gate apply: PRI abierto, detalle FPAGD, duplicados, ajuste REC_VLRMAX_AJUSTE, FPAGDI/FIMPDV; SPK_PAGOSCXC; si GLOSAS+FINDEVOL 4/5/6 → SPK_FINALIDAD_GLOSAS.",
+        "llama": [
+          "SPK_PRI",
+          "SPK_PAGOSCXC",
+          "SPK_FINALIDAD_GLOSAS"
+        ]
+      }
+    ],
+    "notas": "SPK_PAGOSCXC referenciado en sps.json; cuerpo en sql_refe/xsql (no en carpeta del caso). METODO escritorio «Legalizar Saldo» pendiente DESAIX.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261013-0100016704.html",
+    "aprobados": "aprobados/20261013-0100016704/",
+    "imagenes": "aprobados/20261013-0100016704/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-13",
+    "ultimoEnvio": "2026-10-13T13:26:06",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

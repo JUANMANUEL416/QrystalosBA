@@ -5,23 +5,23 @@
   "familia": "tesoreria",
   "prioridad": 20,
   "enRuta": false,
-  "estado": "parcial",
-  "resumen": "BCT→BMOV/BMOVD (PROCEDENCIA BANCOS). Confirmar→SPK_OK_BMOV (saldo BCT + SPK_NC_CONTAB_BMOV). Recaudos legaliza BMOVD. CONCBMOV/OM cruzan BMOV vs MCP (PROCEDENCIA BMOV). Distinto de FCONCI glosa.",
-  "actualizado": "2026-09-06T09:17:00",
-  "notaSql": "SPQ_BMOV 17/17 + config RUTA-CONFIG paso 2: BCO 6/6, BCTC 16/16, OFIN_COL leído 2026-09-06.",
+  "estado": "completo",
+  "resumen": "Cuenta BCT → movimientos BMOV/BMOVD → confirmar (saldo + asiento). Recaudos legaliza renglones; conciliación bancaria BCTC con auxiliar mensual BCTSM; conciliación contable CONCBMOV; auxiliar de bancos (MCH). Libro reorganizado 2026-10-03: 14 capítulos, 10 mapas.",
+  "actualizado": "2026-10-03T22:30:00",
+  "notaSql": "IXONLINE/SQL releído 2026-10-03 (PREVERSION = 2.0.7): SPQ_BMOV 19 METODO, SPQ_BCTC 18 METODO (incluye GENERAR/LISTAR_AUXILIAR_MES → SPK_UPSERT_BCTSM), SPQ_BCTD, SPQ_BANCOS_AUXILIAR, SPK_OK_BMOV, SPK_DESOK_BMOV, SPK_CAMBIA_BCT_PCJ_CAJA.",
   "alcanceHasta": "Operación tesorería + enlace cartera/caja + conciliación contable bancaria + OM contabilidad. No incluye configuración contable de cuentas CUE ni conciliación glosa FCONCI.",
   "ventanas": [
     {
       "uso": "Cuentas bancarias y movimientos",
-      "ruta": "admin.Cuentas",
+      "ruta": "admin.cuentas",
       "path": "/admin/Cuentas",
       "vue": "CuentasPage.vue → BCTComponent → BMOVComponent",
-      "entrada": "Administrativo → Tesorería → Cuentas. Grilla BCT; pestaña movimientos BMOV/BMOVD por cuenta."
+      "entrada": "Administrativo → Tesorería → Cuentas. Tarjetas de cuentas BCT (filtro Estado/Banco). Al tocar una: Editar, Consignaciones, Imprimir, Reliquidar, Conciliación, Documentos, Cuotas TC (tarjeta) y el libro de movimientos BMOV/BMOVD."
     },
     {
       "uso": "Configuración maestro bancos",
-      "ruta": "conf.financiero.bancos",
-      "path": "/conf/financiero/Bancos",
+      "ruta": "conf.bancos",
+      "path": "/conf/bancos",
       "vue": "BancosPage.vue",
       "entrada": "Configuración → Financiero → Bancos (catálogo entidades)."
     },
@@ -59,7 +59,7 @@
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "Orden config: (1) BCO+BSU entidades/sucursales conf.bancos → (2) BCT cuentas admin.Cuentas → (3) OFIN operaciones conf.ofin → (4) PRI periodo abierto. FPA alimenta detalle BMOVD.",
       "tablasClave": [
         "BCO",
@@ -125,7 +125,7 @@
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio (movimientos)",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "Por cuenta: crear BMOV (ESTADO P) → líneas BMOVD (tercero, valor, forma pago, RECAUDO) → confirmar CONFIRMARBMOV → ESTADO O vía SPK_OK_BMOV. Reversos: DESCONFIRMABMOV (bloqueado si BMOVD.ENPAGOS=1). Anular: ANULARBMOV.",
       "tablasClave": [
         "BMOV",
@@ -135,7 +135,7 @@
         {
           "id": "crud-movimiento",
           "nombre": "Alta/edición movimiento y detalle",
-          "explicacion": "GUARDABMOV/ACTUALIZABMOV cabecera; GUARDABMOVD/ACTUALIZABMOVD/ELIMINABMOVD renglones. VLROPERACION = SUM(BMOVD.VLRITEM).",
+          "explicacion": "GUARDABMOV/ACTUALIZABMOV cabecera (PROCEDENCIA BANCOS); GUARDABMOVD/ACTUALIZABMOVD/ELIMINABMOVD renglones; VLROPERACION = SUM(VLRITEM). FE: lápiz/✓ solo si ESTADO ∉ {O, A}; Anular solo PROCEDENCIA BANCOS y ESTADO P (ANULARBMOV pide RAZONANULACION y llama SPK_CONTAB_BMOV). ACTUALIZA_TERCERO (Cambiar tercero) exige BANCOS + O + CONTABILIZADA 1 → SPK_MCP_ACT_TER. CAMBIAR_CUENTA_BANCARIA (Cambiar cuenta) solo PROCEDENCIA CAJA + O + USGRUH CAMBIAR_CTA_BMOV_CAJA → SPK_CAMBIA_BCT_PCJ_CAJA. REPORTE_LISTADO_MOVIMIENTOS (una cuenta) y REPORTE_LISTADO_MOVIMIENTOS_MULTI (varias, botón Reportes bancarios).",
           "invariante": "Solo ESTADO P edita. PRI abierto en FECHAOK.",
           "sps": [
             {
@@ -147,13 +147,23 @@
               "nombre": "SPQ_BMOV",
               "metodo": "GUARDABMOVD / ACTUALIZABMOVD / ELIMINABMOVD",
               "rol": "Detalle BMOVD."
+            },
+            {
+              "nombre": "SPQ_BMOV",
+              "metodo": "ACTUALIZA_TERCERO / CAMBIAR_CUENTA_BANCARIA",
+              "rol": "Correcciones sobre confirmados."
+            },
+            {
+              "nombre": "SPQ_BMOV",
+              "metodo": "REPORTE_LISTADO_MOVIMIENTOS / REPORTE_LISTADO_MOVIMIENTOS_MULTI",
+              "rol": "Listados PDF/Excel."
             }
           ]
         },
         {
           "id": "confirmar-movimiento",
           "nombre": "Confirmar movimiento bancario",
-          "explicacion": "CONFIRMARBMOV → SPK_OK_BMOV: valida PRI, ESTADO O, recalcula saldo BCT (SPK_RECALCULO_BANCOS). Si PROCEDENCIA BANCOS/CONTAB → SPK_NC_CONTAB_BMOV (asiento). Traslados OFIN duplican movimiento en cuenta destino.",
+          "explicacion": "CONFIRMARBMOV → SPK_OK_BMOV: ya confirmado → KO; PRI existe y abierto (FECHAOK o FECHAOPERACION); ESTADO O; SPK_RECALCULO_BANCOS; si PROCEDENCIA BANCOS/CONTAB y COUNT(BMOVD) > 0 → SPK_NC_CONTAB_BMOV; si OFIN.TRASLADO = 1 clona BMOV+BMOVD en la cuenta destino. FE exige ≥ 1 renglón antes de llamar. DESCONFIRMAVAL bloquea ENPAGOS = 1 y pregunta si PRI cerrado; DESCONFIRMABMOV: si hay MCPE las borra (y nada más — ver pendiente); si no, MCP ESTADO 2 → reverso (PRI cerrado, SPK_REVERSAR_MCP_BANCO) o ESTADO 1; SPK_DESOK_BMOV (anula FCXP no contabilizada, MCP anulado, BMOV P, saldo) y limpia NROCOMPROBANTE/CONTABILIZADA.",
           "invariante": "DESCONFIRMAVAL bloquea si BMOVD.ENPAGOS=1. Ya confirmado → KO.",
           "sps": [
             {
@@ -165,6 +175,11 @@
               "nombre": "SPK_OK_BMOV",
               "metodo": "CONFIRMAR",
               "rol": "Motor: ESTADO O + recálculo + contabilidad condicional."
+            },
+            {
+              "nombre": "SPK_DESOK_BMOV",
+              "metodo": "(anidado)",
+              "rol": "Motor de desconfirmación: BMOV P, MCP anulado, saldo."
             }
           ]
         },
@@ -184,23 +199,33 @@
         {
           "id": "conciliacion-bctc",
           "nombre": "Conciliación bancaria (BCTC)",
-          "explicacion": "REQ 0100016329. Tesorería → Cuentas → BCTCComponent. GUARDACONCILIACION abre BCTC (SALDOB/SALDOCONT); BCTCD es el detalle; CIERRACONCILIACION solo marca ESTADO=Cerrada. No persiste foto mensual SI/DB/CR/SF. IMPRIMIR_CONCILIACION entrega cabecera + totales por operación + BCTCD. Distinto de /cont/auxBancos (MCP vs BMOV).",
-          "invariante": "Una conciliación cerrada no se reedita. El auxiliar de saldos por mes no existe: hay que generarlo al cerrar (o consultar BCTC del mes).",
+          "explicacion": "REQ 0100016329 implementado en 2.0.7: Tesorería → Cuentas → Conciliación (BCTCComponent). GUARDACONCILIACION abre BCTC (FECHACON, SALDOB extracto, SALDOCONT libros); BCTCD partidas con concepto TGEN GENERAL/BCTC, clase DB/CR. CIERRACONCILIACION marca Cerrada y EXEC SPK_UPSERT_BCTSM: graba BCTSM (ANO/MES de FECHACON; SI = SF mes anterior; DB/CR = BMOV ESTADO O por OFIN.TIPO y FECHAOK; SF) con aviso si |SF − SALDOCONT| > 0,01. GENERAR_AUXILIAR_MES regenera; LISTAR_AUXILIAR_MES lista. IMPRIMIR_CONCILIACION = acta. Distinto de /cont/auxBancos (MCH) y de CONCBMOV (BMOV vs MCP).",
+          "invariante": "Cerrada no se reedita ni reabre. El auxiliar mensual existe solo para meses con conciliación cerrada; el saldo inicial se arrastra del mes anterior en BCTSM.",
           "sps": [
             {
               "nombre": "SPQ_BCTC",
+              "metodo": "GUARDACONCILIACION / ACTUALIZACONCILIACION / GUARDABCTCD / ACTUALIZABCTCD",
+              "rol": "Acta y partidas."
+            },
+            {
+              "nombre": "SPQ_BCTC",
               "metodo": "CIERRACONCILIACION",
-              "rol": "Cierra BCTC. Candidato a grabar foto SI/DB/CR/SF."
+              "rol": "Cierra y graba foto mensual (SPK_UPSERT_BCTSM)."
+            },
+            {
+              "nombre": "SPQ_BCTC",
+              "metodo": "GENERAR_AUXILIAR_MES / LISTAR_AUXILIAR_MES",
+              "rol": "Auxiliar de saldos por mes BCTSM."
+            },
+            {
+              "nombre": "SPK_UPSERT_BCTSM",
+              "metodo": "(anidado)",
+              "rol": "Calcula SI/DB/CR/SF y upsert BCTSM."
             },
             {
               "nombre": "SPQ_BCTC",
               "metodo": "IMPRIMIR_CONCILIACION",
-              "rol": "Impresión actual; no es el auxiliar mensual."
-            },
-            {
-              "nombre": "SPQ_BCTC",
-              "metodo": "GETCONCILIACIONES / GETBCTCD",
-              "rol": "Listar cabecera y detalle."
+              "rol": "PDF del acta."
             }
           ]
         }
@@ -210,7 +235,7 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega y completa",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "Recaudos legaliza consignaciones (BMOVD.RECAUDO=1). Caja actualiza saldo BCT vía SPK_ACTUALIZA_SALDO_BANCO (PCJ→BCT, no BMOV). ADRES: DISTRUYE_ADRES reparte consignación.",
       "tablasClave": [
         "FPAG",
@@ -222,8 +247,8 @@
         {
           "id": "desde-recaudos",
           "nombre": "Recaudo cartera (consignación)",
-          "explicacion": "FPAG INGRESO=BANCOS enlaza BMOVD; INSERTAR marca ENPAGOS; APLICARPAGO legaliza VLRLEGALIZADO en BMOVD y BMOV.",
-          "invariante": "Línea BMOVD no puede estar en dos recaudos abiertos.",
+          "explicacion": "En Recaudos, ingreso BANCOS lista BMOVD del tercero con RECAUDO=1 (copiado de OFIN al armar el movimiento), ENPAGOS=0, BMOV confirmado (ESTADO=O) y saldo por legalizar > 0. INSERTAR marca ENPAGOS=1. APLICARPAGO legaliza VLRLEGALIZADO.",
+          "invariante": "Una línea ya enlazada a un recaudo no vuelve a salir en la búsqueda.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -269,7 +294,7 @@
       "id": "04-unido",
       "numero": 4,
       "nombre": "Subproceso unido (conciliación contable)",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "CONCBMOVComponent (/cont/conciContables): periodo PRI + cuenta BCT. Lista BMOV PROCEDENCIA=BANCOS del mes. Cruza con MCP/MCPE (PROCEDENCIA BMOV) por NROCOMPROBANTE, REFERENCIA1=ITEM o NOREFERENCIA=NODOCUMENTO. Semáforo CONTABILIZADA 0/1/2; filtro valor BMOV vs MCP.TOTALDEBITO (±0,01). Re-envío: ENV_CONTA_OTROS_MODULS ITEMS. OMBancos: mismo patrón sin cruce detallado.",
       "tablasClave": [
         "BMOV",
@@ -298,7 +323,7 @@
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "Al confirmar (PROCEDENCIA BANCOS/CONTAB): SPK_OK_BMOV → SPK_NC_CONTAB_BMOV genera MCP (NROCOMPROBANTE). BMOV.CONTABILIZADA: 0 pendiente · 1 enviado · 2 errores. OM Bancos y CONCBMOV re-envían vía ENV_CONTA_OTROS_MODULS (PROCEDENCIA BMOV). SPK_CONTAB_MASIVA también itera BMOV MARCACONT=1.",
       "tablasClave": [
         "BMOV",
@@ -334,5 +359,982 @@
     }
   ],
   "flujoPasado": true,
-  "pasadaEn": "2026-09-06T06:42:00"
+  "pasadaEn": "2026-09-06T06:42:00",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "El libro de cada cuenta bancaria de la IPS. Cada cuenta (banco + sucursal + número) tiene movimientos: una cabecera con fecha, operación y valor, y renglones por tercero. Mientras el movimiento está Pendiente se edita; al Confirmar suma al saldo, genera el comprobante contable y, si la operación es Recaudo, deja los renglones listos para que Cartera los legalice. Alrededor del libro están la conciliación bancaria (acta de corte y auxiliar de saldos por mes), el control de chequeras y las cuotas de tarjeta de crédito.",
+    "paraQueSirve": "Saber cuánto hay en cada cuenta y por qué; registrar consignaciones de las EPS para que Cartera las aplique a facturas; conciliar el extracto del banco con los libros; y garantizar que cada movimiento confirmado tenga su asiento en contabilidad.",
+    "proposito": "Que tesorería, cartera y contabilidad lean el mismo saldo bancario: lo que entró, lo que salió, lo que ya se legalizó en cartera y lo que ya está en el extracto del banco."
+  },
+  "botones": [
+    {
+      "label": "Nueva Cuenta",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Alta de cuenta bancaria BCT: banco, sucursal, tipo, número, fecha apertura, cuenta contable, formatos. SPQ_BCTC · GUARDARBCT."
+    },
+    {
+      "label": "Reportes bancarios",
+      "icono": "fa-solid fa-file-invoice",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Listado de movimientos de varias cuentas por rango de fechas; PDF y Excel. SPQ_BMOV · REPORTE_LISTADO_MOVIMIENTOS_MULTI."
+    },
+    {
+      "label": "Editar",
+      "icono": "fa-regular fa-pen-to-square",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Edita la cuenta seleccionada (no cambia el saldo). SPQ_BCTC · ACTUALIZABCT."
+    },
+    {
+      "label": "Consignaciones",
+      "icono": "fa-solid fa-file-invoice",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Informe de consignaciones por tercero: Todas / Legalizadas / No legalizadas; PDF o Excel. SPQ_BCTC · REPORTE_CONSIGNACIONES."
+    },
+    {
+      "label": "Imprimir",
+      "icono": "fa-solid fa-print",
+      "color": "info",
+      "estilo": "outline",
+      "descripcion": "Listado de movimientos de la cuenta con los filtros del libro. SPQ_BMOV · REPORTE_LISTADO_MOVIMIENTOS."
+    },
+    {
+      "label": "Reliquidar",
+      "icono": "fa-solid fa-rotate",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Recalcula el saldo de la cuenta: débitos confirmados − créditos confirmados. SPQ_BCTC · RELIQUIDAR → SPK_RECALCULO_BANCOS."
+    },
+    {
+      "label": "Conciliación",
+      "icono": "account_balance",
+      "color": "deep-purple",
+      "estilo": "outline",
+      "descripcion": "Conciliación bancaria de la cuenta: actas BCTC por fecha de corte, partidas BCTCD y auxiliar de saldos por mes."
+    },
+    {
+      "label": "Documentos",
+      "icono": "description",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Control de chequeras y documentos (BCTD/BCTDD): generar, entregar, anular, liberar."
+    },
+    {
+      "label": "Cuotas TC",
+      "icono": "fa-solid fa-credit-card",
+      "color": "orange",
+      "estilo": "outline",
+      "descripcion": "Solo tarjeta de crédito: cuotas por mes, cuentas contables y Generar CxP del mes. SPQ_BMOV · GENCXPBCTTAR."
+    },
+    {
+      "label": "Nuevo (movimiento)",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "push",
+      "descripcion": "Crea la cabecera del movimiento con procedencia BANCOS y estado P. SPQ_BMOV · GUARDABMOV."
+    },
+    {
+      "label": "Nuevo (renglón)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "push",
+      "descripcion": "Agrega un renglón BMOVD: forma de pago, documento, valor, tercero, recaudo/nómina. SPQ_BMOV · GUARDABMOVD."
+    },
+    {
+      "label": "Confirmar (✓)",
+      "icono": "fa-solid fa-circle-check",
+      "color": "positive",
+      "estilo": "flat",
+      "descripcion": "Exige al menos un renglón y mes abierto. Estado O, recalcula saldo, genera comprobante si procedencia BANCOS/CONTAB, clona traslados. SPQ_BMOV · CONFIRMARBMOV → SPK_OK_BMOV."
+    },
+    {
+      "label": "Desconfirmar (↺)",
+      "icono": "fa-solid fa-rotate-left",
+      "color": "warning",
+      "estilo": "flat",
+      "descripcion": "Solo procedencia BANCOS y estado O. Bloquea si un renglón tiene ENPAGOS=1. Reversa comprobante y vuelve a P. SPQ_BMOV · DESCONFIRMAVAL + DESCONFIRMABMOV → SPK_DESOK_BMOV."
+    },
+    {
+      "label": "Anular (⊘)",
+      "icono": "fa-solid fa-ban",
+      "color": "negative",
+      "estilo": "flat",
+      "descripcion": "Solo procedencia BANCOS y estado P. Pide razón de anulación. SPQ_BMOV · ANULARBMOV."
+    },
+    {
+      "label": "Editar (lápiz)",
+      "icono": "fa-regular fa-pen-to-square",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Edita cabecera o renglón mientras el estado sea P. SPQ_BMOV · ACTUALIZABMOV / ACTUALIZABMOVD / ELIMINABMOVD."
+    },
+    {
+      "label": "Comprobante",
+      "icono": "receipt_long",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Abre el comprobante contable del movimiento confirmado (NROCOMPROBANTE)."
+    },
+    {
+      "label": "Generar Cxp",
+      "icono": "fa-solid fa-file-invoice-dollar",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Convierte el movimiento confirmado con Genera CxP en una cuenta por pagar FCXP (una sola vez). SPQ_BMOV · GENCXPBMOV → SPK_GENCXP_MOVIN_BANCO."
+    },
+    {
+      "label": "Cambiar tercero",
+      "icono": "fa-solid fa-user-pen",
+      "color": "secondary",
+      "estilo": "flat",
+      "descripcion": "En un renglón de movimiento BANCOS confirmado y contabilizado: cambia tercero/documento/cuenta y corrige el comprobante. SPQ_BMOV · ACTUALIZA_TERCERO → SPK_MCP_ACT_TER."
+    },
+    {
+      "label": "Cambiar cuenta",
+      "icono": "swap_horiz",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Solo procedencia CAJA, estado O y permiso CAMBIAR_CTA_BMOV_CAJA: mueve el movimiento del recibo a otra cuenta y regenera el comprobante. SPQ_BMOV · CAMBIAR_CUENTA_BANCARIA → SPK_CAMBIA_BCT_PCJ_CAJA."
+    },
+    {
+      "label": "Nueva conciliación",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Abre acta BCTC: fecha de corte, saldo exacto (extracto), saldo en libros, observación. SPQ_BCTC · GUARDACONCILIACION."
+    },
+    {
+      "label": "Operaciones",
+      "icono": "fa-solid fa-list-check",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Catálogo de conceptos de partida de la conciliación (TGEN GENERAL/BCTC). SPQ_BCTC · GUARDAOPERACION / ELIMINAOPERACION."
+    },
+    {
+      "label": "Cerrar conciliación (candado)",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "flat",
+      "descripcion": "Estado Cerrada y graba la foto del mes (SI, DB, CR, SF) en BCTSM; avisa si SF ≠ saldo en libros. SPQ_BCTC · CIERRACONCILIACION → SPK_UPSERT_BCTSM."
+    },
+    {
+      "label": "Generar / Regenerar auxiliar del mes",
+      "icono": "sync",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Recalcula la foto mensual de una conciliación cerrada. SPQ_BCTC · GENERAR_AUXILIAR_MES → SPK_UPSERT_BCTSM."
+    },
+    {
+      "label": "Ver movimientos del mes",
+      "icono": "fa-solid fa-list",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Filtra el libro de la cuenta al año/mes del auxiliar."
+    },
+    {
+      "label": "Imprimir conciliación",
+      "icono": "print",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "PDF del acta cerrada: cabecera, totales por operación y partidas. SPQ_BCTC · IMPRIMIR_CONCILIACION."
+    },
+    {
+      "label": "Generar Documentos",
+      "icono": "fa-solid fa-gears",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Crea los documentos (cheques) de la chequera según N° inicial/final. SPQ_BCTD · GENDOCUMENTOS."
+    },
+    {
+      "label": "Entregar / Anular / Liberar documento",
+      "icono": "fa-solid fa-money-check",
+      "color": "secondary",
+      "estilo": "flat",
+      "descripcion": "Cambia el estado de un cheque de la chequera. SPQ_BCTD · ENTREGARBCTDD / ANULARBCTDD / LIBERARBCTDD."
+    },
+    {
+      "label": "Enviar a Contabilidad (OM Bancos)",
+      "icono": "send",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Contabilidad → Otros módulos → Bancos: envía movimientos confirmados pendientes. SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS (PROCEDENCIA BMOV)."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "admin.cuentas (acceso a pantalla)",
+      "accion": "Entrar a Administrativo → Tesorería → Cuentas",
+      "rol": "Tesorería",
+      "descripcion": "Ruta /admin/Cuentas. Da acceso a todas las acciones de la cuenta y del libro; no hay USGRUH por botón."
+    },
+    {
+      "codigo": "MENUQ_ADMINISTRATIVO · CAMBIAR_CTA_BMOV_CAJA",
+      "accion": "Cambiar cuenta de un movimiento de Caja",
+      "rol": "Tesorería (supervisor)",
+      "descripcion": "Único control USGRUH del módulo. Sin él no aparece el botón Cambiar cuenta."
+    },
+    {
+      "codigo": "conf.bancos / conf.ofin (acceso a pantalla)",
+      "accion": "Catálogos Bancos y Operaciones financieras",
+      "rol": "Configuración",
+      "descripcion": "Configuración → Financiero. La ayuda del módulo indica que no hay permisos adicionales."
+    },
+    {
+      "codigo": "cont.conciContables / cont.auxBancos / cont (acceso a pantalla)",
+      "accion": "Conciliación contable, Auxiliar de bancos, Otros módulos → Bancos",
+      "rol": "Contabilidad",
+      "descripcion": "Lado contable del proceso."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "TERCATBANCO",
+      "tipo": "USVGS",
+      "valorSugerido": "Categoría de tercero «Banco»",
+      "descripcion": "Filtra la categoría de tercero que se ofrece al crear un banco en Configuración → Bancos."
+    },
+    {
+      "nombre": "SOLICITA_RECA_NOMINA",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si es SI, la operación financiera muestra la casilla «Recaudo a Nómina» (RNOMI) y los renglones heredan la marca Nómina."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "USVGS",
+      "valorSugerido": "COLOMBIA / PERU",
+      "descripcion": "En PERU la cuenta pide CCI, tipo (Operativa/Recaudadora/Detracción) y sede; habilita Distribuye ADRES."
+    },
+    {
+      "nombre": "TGEN General · TIPOCUENTABCT",
+      "tipo": "Catálogo",
+      "valorSugerido": "Código TC = tarjeta de crédito",
+      "descripcion": "Tipos de cuenta. El código TC activa cupo disponible y la ventana Cuotas TC."
+    },
+    {
+      "nombre": "TGEN GENERAL · BCTC",
+      "tipo": "Catálogo",
+      "valorSugerido": "Conceptos de partida",
+      "descripcion": "Operaciones de la conciliación bancaria (botón Operaciones). Sin conceptos no se pueden registrar partidas."
+    },
+    {
+      "nombre": "PRI (periodo contable)",
+      "tipo": "Contabilidad",
+      "valorSugerido": "Mes abierto",
+      "descripcion": "Guardar, confirmar y contabilizar exigen que el mes de la fecha exista y no esté cerrado. Desconfirmar en mes cerrado genera reverso."
+    },
+    {
+      "nombre": "OFIN (operación financiera)",
+      "tipo": "Catálogo",
+      "valorSugerido": "Una por tipo de entrada/salida",
+      "descripcion": "TIPO DB/CR, cuenta contable, comprobante y banderas RECAUDO / GENCXP / MCCOSTO / RNOMI / TRASLADO (+ cuenta destino)."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Registrar una consignación de una EPS",
+      "donde": "Tesorería → Cuentas → cuenta → Nuevo → operación con «Recaudo?» → renglón con el tercero → Confirmar",
+      "condicion": "Mes abierto; al menos un renglón",
+      "noEs": "No se registra en Cartera · Recaudos: allí solo se legaliza lo ya confirmado aquí"
+    },
+    {
+      "necesidad": "Que la consignación aparezca en Recaudos para aplicarla",
+      "donde": "Movimiento confirmado (Ok) + operación Recaudo + renglón sin ENPAGOS y con saldo por legalizar",
+      "condicion": "Si no sale: revisar operación, estado y si ya tiene recaudo enlazado",
+      "noEs": "No se desconfirma para «refrescar»; si ya está en pagos no se puede"
+    },
+    {
+      "necesidad": "Saber cuánto hay en una cuenta",
+      "donde": "Tesorería → Cuentas → tarjeta (saldo). Si no cuadra: Reliquidar",
+      "condicion": "Solo suman los movimientos confirmados",
+      "noEs": "El saldo contable está en Contabilidad → Auxiliar de bancos"
+    },
+    {
+      "necesidad": "Ver los movimientos de un mes",
+      "donde": "Libro de la cuenta → fecha inicial / final (abre en hoy) → filtros Estado, Tipo, Procedencia, Tercero",
+      "condicion": "Ampliar el rango de fechas",
+      "noEs": "—"
+    },
+    {
+      "necesidad": "Corregir el tercero de una consignación ya confirmada",
+      "donde": "Expandir movimiento → renglón → Cambiar tercero",
+      "condicion": "Procedencia Bancos, confirmado y contabilizado",
+      "noEs": "Si cambia el valor hay que desconfirmar, editar y confirmar"
+    },
+    {
+      "necesidad": "Deshacer un movimiento confirmado",
+      "donde": "↺ Desconfirmar en la fila",
+      "condicion": "Procedencia Bancos; ningún renglón en Recaudos (ENPAGOS); si generó CxP contabilizada no deja",
+      "noEs": "Anular solo aplica a Pendiente"
+    },
+    {
+      "necesidad": "El recibo de caja se consignó en la cuenta equivocada",
+      "donde": "Movimiento procedencia Caja → Cambiar cuenta",
+      "condicion": "Permiso CAMBIAR_CTA_BMOV_CAJA; estado O",
+      "noEs": "No se edita ni desconfirma aquí: nació en Caja"
+    },
+    {
+      "necesidad": "Pasar dinero de una cuenta a otra",
+      "donde": "Operación financiera con «Es de Traslado?» y cuenta destino → movimiento → Confirmar crea el espejo",
+      "condicion": "Operación configurada con cuenta bancaria destino",
+      "noEs": "No se digitan dos movimientos a mano"
+    },
+    {
+      "necesidad": "Pagar la comisión del banco / gasto bancario",
+      "donde": "Operación CR con cuenta contable de gasto → movimiento → Confirmar genera el asiento",
+      "condicion": "Operación con cuenta de detalle",
+      "noEs": "No es una CxP"
+    },
+    {
+      "necesidad": "Convertir un pago bancario en cuenta por pagar",
+      "donde": "Movimiento con «Genera Cxp» confirmado → botón Generar Cxp",
+      "condicion": "Una sola vez por movimiento",
+      "noEs": "El pago a proveedor normal se hace desde CxP"
+    },
+    {
+      "necesidad": "Conciliar el extracto del banco con los libros",
+      "donde": "Cuenta → Conciliación → Nueva conciliación (corte, saldo extracto, saldo libros) → partidas → Cerrar",
+      "condicion": "Conceptos de partida en Operaciones",
+      "noEs": "No es Contabilidad → Conciliaciones contables (eso cruza BMOV vs asiento)"
+    },
+    {
+      "necesidad": "Auxiliar de saldos por mes de la cuenta (SI, DB, CR, SF)",
+      "donde": "Cuenta → Conciliación → panel Auxiliar de saldos por mes → Generar auxiliar del mes",
+      "condicion": "Conciliación cerrada ese mes; cerrar la graba automáticamente (2.0.7)",
+      "noEs": "No es el Auxiliar de bancos contable"
+    },
+    {
+      "necesidad": "Verificar que cada movimiento tenga comprobante contable",
+      "donde": "Contabilidad → Conciliaciones contables → Bancos (periodo + cuenta) → semáforo Contabilizada",
+      "condicion": "Movimientos procedencia Bancos confirmados",
+      "noEs": "—"
+    },
+    {
+      "necesidad": "Enviar a contabilidad movimientos pendientes",
+      "donde": "Contabilidad → Otros módulos → Bancos → marcar → Enviar; o Conciliaciones contables → Contabilizar seleccionados",
+      "condicion": "Estado O y Contabilizada 0",
+      "noEs": "Con errores (2) se usa Reconstruir"
+    },
+    {
+      "necesidad": "Marcar qué asientos ya aparecieron en el extracto",
+      "donde": "Contabilidad → Auxiliar de bancos → cuenta contable + periodo/fechas → marcar → Salvar",
+      "condicion": "Fecha de conciliación por defecto = fecha final",
+      "noEs": "No es la conciliación bancaria de Tesorería"
+    },
+    {
+      "necesidad": "Controlar la chequera y los cheques entregados",
+      "donde": "Cuenta → Documentos → Nuevo (chequera) → Generar Documentos → Entregar / Anular / Liberar",
+      "condicion": "Editar chequera solo antes de generar",
+      "noEs": "El cheque al proveedor se gira desde CxP"
+    },
+    {
+      "necesidad": "Pagar la tarjeta de crédito del mes",
+      "donde": "Cuenta tipo TC → Cuotas TC → Generar CxP del mes",
+      "condicion": "Cuentas contables de la tarjeta configuradas",
+      "noEs": "—"
+    },
+    {
+      "necesidad": "Informe de consignaciones por tercero (legalizadas o no)",
+      "donde": "Cuenta → Consignaciones → tercero o Todos → tipo → fechas → PDF o Excel",
+      "condicion": "—",
+      "noEs": "También Cartera → Consultas y Reportes → Recaudos en bancos"
+    },
+    {
+      "necesidad": "Listado de movimientos de varias cuentas",
+      "donde": "Cuentas → Reportes bancarios → fechas → cuentas → Consultar → PDF / Excel",
+      "condicion": "Al menos una cuenta",
+      "noEs": "—"
+    }
+  ],
+  "estadosBmov": {
+    "titulo": "Estados, procedencias y marcas de un movimiento",
+    "descripcion": "Lo que dice cada etiqueta en el libro de la cuenta y qué puede hacer con el movimiento en ese estado.",
+    "columnas": [
+      "Se ve así en",
+      "Qué significa",
+      "Qué hacer"
+    ],
+    "filas": [
+      {
+        "codigo": "P",
+        "tono": "ambar",
+        "etiquetas": [
+          "Pendiente",
+          "Estado = Pendientes"
+        ],
+        "significa": "Movimiento digitado y sin confirmar. No suma al saldo ni tiene comprobante.",
+        "queHacer": "Editar cabecera y renglones, agregar renglones, Confirmar o Anular."
+      },
+      {
+        "codigo": "O",
+        "tono": "verde",
+        "etiquetas": [
+          "Ok",
+          "Estado = Ok"
+        ],
+        "significa": "Confirmado: suma al saldo, tiene comprobante (si procedencia Bancos/Contab) y sus renglones Recaudo están disponibles en Cartera.",
+        "queHacer": "Ver Comprobante, Generar Cxp, Cambiar tercero. Para cambiar valores: Desconfirmar."
+      },
+      {
+        "codigo": "A",
+        "tono": "gris",
+        "etiquetas": [
+          "Anulado",
+          "Estado = Anulados"
+        ],
+        "significa": "Anulado desde Pendiente con razón registrada. No cuenta para nada.",
+        "queHacer": "Solo consulta. Si hacía falta, registre uno nuevo."
+      },
+      {
+        "codigo": "BAN",
+        "tono": "azul",
+        "etiquetas": [
+          "Procedencia Banco",
+          "BANCOS"
+        ],
+        "significa": "Digitado en Tesorería → Cuentas. Es el único que se edita, confirma, desconfirma y anula aquí.",
+        "queHacer": "Todo el ciclo desde esta pantalla."
+      },
+      {
+        "codigo": "CAJ",
+        "tono": "azul",
+        "etiquetas": [
+          "Procedencia Caja",
+          "CAJA"
+        ],
+        "significa": "Nació en un recibo de caja consignado a esta cuenta. Trae caja y consecutivo del recibo.",
+        "queHacer": "No se edita ni desconfirma aquí. Solo Cambiar cuenta (con permiso) si fue a la cuenta equivocada."
+      },
+      {
+        "codigo": "CON",
+        "tono": "azul",
+        "etiquetas": [
+          "Procedencia Contabilidad",
+          "CONTAB"
+        ],
+        "significa": "Lo creó contabilidad desde un comprobante. Al confirmar también genera asiento.",
+        "queHacer": "Se corrige desde contabilidad."
+      },
+      {
+        "codigo": "RC",
+        "tono": "verde",
+        "etiquetas": [
+          "Recaudo = SI",
+          "Recaudo de Cartera"
+        ],
+        "significa": "El renglón hereda «Recaudo» de la operación: es una consignación de un cliente/EPS que Cartera debe legalizar.",
+        "queHacer": "Confirmar y luego aplicarlo en Cartera · Recaudos (Ingreso = Bancos)."
+      },
+      {
+        "codigo": "EP",
+        "tono": "rojo",
+        "etiquetas": [
+          "ENPAGOS",
+          "Ya en pagos en cartera"
+        ],
+        "significa": "El renglón ya está enlazado a un recaudo. El movimiento no se puede desconfirmar ni distribuir.",
+        "queHacer": "Si hay que deshacer, primero desaplicar/eliminar el recaudo en Cartera."
+      },
+      {
+        "codigo": "NM",
+        "tono": "gris",
+        "etiquetas": [
+          "Nómina = SI",
+          "Recaudo de Nómina"
+        ],
+        "significa": "El renglón corresponde a un recaudo de nómina (variable SOLICITA_RECA_NOMINA).",
+        "queHacer": "Se gestiona desde Nómina."
+      },
+      {
+        "codigo": "CX",
+        "tono": "ambar",
+        "etiquetas": [
+          "Genera Cxp",
+          "GENCXP"
+        ],
+        "significa": "El movimiento puede convertirse en cuenta por pagar.",
+        "queHacer": "Confirmado → Generar Cxp (una vez). Si la CxP ya se contabilizó, no se desconfirma."
+      },
+      {
+        "codigo": "TR",
+        "tono": "azul",
+        "etiquetas": [
+          "Operación de traslado",
+          "TRASLADO"
+        ],
+        "significa": "La operación mueve dinero a otra cuenta bancaria configurada en OFIN.",
+        "queHacer": "Confirmar crea el movimiento espejo en la cuenta destino y recalcula ambos saldos."
+      },
+      {
+        "codigo": "C0",
+        "tono": "ambar",
+        "etiquetas": [
+          "Contabilizada 0",
+          "Pendiente de contabilizar"
+        ],
+        "significa": "Confirmado pero sin comprobante (falló o no aplicaba).",
+        "queHacer": "Contabilidad → Otros módulos → Bancos → Enviar."
+      },
+      {
+        "codigo": "C2",
+        "tono": "rojo",
+        "etiquetas": [
+          "Contabilizada 2",
+          "Con errores"
+        ],
+        "significa": "El comprobante quedó en MCPE (errores): cuenta no de detalle, periodo, etc.",
+        "queHacer": "Contabilidad → Conciliaciones contables → Bancos → Reconstruir."
+      }
+    ],
+    "nota": "El código de estado es BMOV.ESTADO (P/O/A). Procedencia y marcas son columnas de la fila y del renglón; Contabilizada se ve en Contabilidad."
+  },
+  "flujos": [
+    {
+      "id": "flujo-movimiento",
+      "titulo": "Registrar y confirmar un movimiento bancario",
+      "descripcion": "Desde la tarjeta de la cuenta hasta el movimiento confirmado con saldo y comprobante.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir la cuenta",
+          "descripcion": "Administrativo → Tesorería → Cuentas → tocar la tarjeta. Se abre el libro filtrado a hoy.",
+          "rol": "Tesorería",
+          "pantalla": "CuentasPage → BCTComponent",
+          "tablas": [
+            "BCT"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo movimiento",
+          "descripcion": "Fecha, fecha contable, Seleccionar operación (trae DB/CR, cuenta contable, Recaudo/Nómina/Centro de costo), descripción, Genera Cxp.",
+          "rol": "Tesorería",
+          "pantalla": "BMOVComponent · Nuevo",
+          "tablas": [
+            "BMOV",
+            "OFIN",
+            "PRI"
+          ],
+          "sp": "SPQ_BMOV · GUARDABMOV"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Mes abierto?",
+          "descripcion": "El mes de la fecha debe existir y no estar cerrado en PRI.",
+          "si": "Queda en estado P con su ítem",
+          "no": "«No existe periodo contable» / «Periodo contable cerrado»"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Agregar renglones",
+          "descripcion": "Nuevo en el detalle: forma de pago (si cheque, banco del documento), valor, No. documento, tercero (tercero contable), centro de costo si la operación lo pide. El total se recalcula.",
+          "rol": "Tesorería",
+          "pantalla": "BMOVComponent · detalle",
+          "tablas": [
+            "BMOVD",
+            "FPA",
+            "TER"
+          ],
+          "sp": "SPQ_BMOV · GUARDABMOVD / TERCONTABLE"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Confirmar (✓)",
+          "descripcion": "Requiere al menos un renglón. Envía NROCOMPROBANTE si el FE lo tiene.",
+          "rol": "Tesorería",
+          "pantalla": "BMOVComponent",
+          "sp": "SPQ_BMOV · CONFIRMARBMOV → SPK_OK_BMOV"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Estado O + saldo",
+          "descripcion": "Valida que no esté ya confirmado y el periodo; ESTADO O; SPK_RECALCULO_BANCOS actualiza BCT.SALDO (tarjeta crédito: cupo + DB − CR).",
+          "tablas": [
+            "BMOV",
+            "BCT"
+          ],
+          "sp": "SPK_OK_BMOV → SPK_RECALCULO_BANCOS"
+        },
+        {
+          "num": 7,
+          "tipo": "decision",
+          "titulo": "¿Procedencia Bancos o Contab y hay renglones?",
+          "descripcion": "Solo entonces genera el comprobante contable.",
+          "si": "SPK_NC_CONTAB_BMOV: DB cuenta BCT / CR cuenta OFIN o tercero contable; CONTABILIZADA 1",
+          "no": "Sin asiento (procedencia Caja ya contabilizó en el recibo)"
+        },
+        {
+          "num": 8,
+          "tipo": "decision",
+          "titulo": "¿Operación de traslado?",
+          "descripcion": "OFIN.TRASLADO = 1 con cuenta destino distinta.",
+          "si": "Clona BMOV + BMOVD en la cuenta destino y recalcula su saldo",
+          "no": "Fin"
+        },
+        {
+          "num": 9,
+          "tipo": "resultado",
+          "titulo": "Movimiento confirmado",
+          "descripcion": "Suma al saldo, tiene comprobante y sus renglones Recaudo ya se ven en Cartera · Recaudos. Botones: Comprobante, Generar Cxp, Cambiar tercero, Desconfirmar."
+        }
+      ]
+    },
+    {
+      "id": "flujo-legalizar",
+      "titulo": "De la consignación al recaudo legalizado",
+      "descripcion": "Cómo un renglón Recaudo de Bancos termina aplicado a facturas en Cartera.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Consignación confirmada",
+          "descripcion": "Movimiento con operación Recaudo, un renglón por EPS que consignó, confirmado (O).",
+          "rol": "Tesorería",
+          "pantalla": "BMOVComponent",
+          "tablas": [
+            "BMOV",
+            "BMOVD"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Cartera busca la consignación",
+          "descripcion": "Recaudos → Nuevo → Ingreso = Bancos → tercero. Lista renglones con RECAUDO=1, ENPAGOS=0, BMOV.ESTADO=O y saldo por legalizar > 0.",
+          "rol": "Cartera",
+          "pantalla": "FPAGComponent",
+          "sp": "SPQ_FPAG_COL · TRAE_PAGO"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Enlace",
+          "descripcion": "Al crear el recaudo el renglón queda ENPAGOS = 1 y guarda banco/sucursal/cuenta/ítem/renglón.",
+          "tablas": [
+            "FPAG",
+            "BMOVD"
+          ],
+          "sp": "SPQ_FPAG_COL · INSERTAR"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Aplicar a facturas",
+          "descripcion": "Cartera reparte el valor entre facturas y aplica.",
+          "rol": "Cartera",
+          "sp": "SPQ_FPAG_COL · APLICARPAGO → SPK_PAGOSCXC BANCOS"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Legalizado",
+          "descripcion": "BMOVD.VLRLEGALIZADO suma lo aplicado; en el informe Consignaciones pasa de «No legalizada» a «Legalizada».",
+          "tablas": [
+            "BMOVD"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿Hay que deshacer?",
+          "descripcion": "Mientras el renglón tenga ENPAGOS, Bancos no desconfirma.",
+          "si": "Primero desaplicar / eliminar el recaudo en Cartera; luego Desconfirmar aquí",
+          "no": "Fin"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Consignación legalizada",
+          "descripcion": "El dinero está en el banco (Tesorería) y aplicado a facturas (Cartera). Consultas: Consignaciones (cuenta) y Recaudos en bancos (Cartera)."
+        }
+      ]
+    },
+    {
+      "id": "flujo-conciliacion",
+      "titulo": "Conciliación bancaria de la cuenta y auxiliar del mes",
+      "descripcion": "Acta de corte contra el extracto, partidas y cierre con foto mensual.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir la conciliación",
+          "descripcion": "Cuenta → Conciliación → Nueva conciliación: fecha de corte, saldo exacto (extracto), saldo en libros, observación. La diferencia se calcula.",
+          "rol": "Tesorería",
+          "pantalla": "BCTCComponent",
+          "tablas": [
+            "BCTC"
+          ],
+          "sp": "SPQ_BCTC · GUARDACONCILIACION"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Registrar partidas",
+          "descripcion": "Nuevo en el detalle: fecha, concepto (Operaciones), beneficiario, valor, clase DB/CR, detalle. Editable mientras esté Abierta.",
+          "rol": "Tesorería",
+          "tablas": [
+            "BCTCD",
+            "TGEN"
+          ],
+          "sp": "SPQ_BCTC · GUARDABCTCD / ACTUALIZABCTCD"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿La diferencia queda explicada?",
+          "descripcion": "Partidas = saldo banco − saldo libros. Lo que falte en el sistema se registra como movimiento, no como partida.",
+          "si": "Cerrar",
+          "no": "Registrar movimientos faltantes en el libro y actualizar saldo en libros"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Cerrar (candado)",
+          "descripcion": "No existe → KO; ya cerrada → KO.",
+          "rol": "Tesorería",
+          "sp": "SPQ_BCTC · CIERRACONCILIACION"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Foto del mes",
+          "descripcion": "ESTADO Cerrada; año/mes de la fecha de corte; SPK_UPSERT_BCTSM calcula SI (SF mes anterior) + DB − CR = SF con BMOV confirmados por FECHAOK y guarda BCTSM. Si |SF − saldo libros| > 0,01 devuelve aviso.",
+          "tablas": [
+            "BCTC",
+            "BCTSM",
+            "BMOV",
+            "OFIN"
+          ],
+          "sp": "SPK_UPSERT_BCTSM"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Revisar el auxiliar",
+          "descripcion": "Panel Auxiliar de saldos por mes: año/mes, semáforo de cruce, Regenerar si cambió algo, Ver movimientos del mes.",
+          "rol": "Tesorería",
+          "sp": "SPQ_BCTC · LISTAR_AUXILIAR_MES / GENERAR_AUXILIAR_MES"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Mes conciliado",
+          "descripcion": "Acta cerrada imprimible (IMPRIMIR_CONCILIACION) y fila BCTSM del mes. Siguiente mes arranca con este SF como saldo inicial."
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Antes de pedir desarrollo",
+      "titulo": "¿Ya existe? Guía rápida de necesidades",
+      "intro": "La mayoría de las solicitudes sobre bancos ya tienen camino: una operación mal configurada, un movimiento sin confirmar o un filtro de fechas. Busque aquí su necesidad antes de abrir un requerimiento.",
+      "puntosClave": [
+        "Si la consignación no aparece en Recaudos, casi siempre falta confirmar o la operación no tiene «Recaudo?».",
+        "Los movimientos de Caja se corrigen en Caja; aquí solo Cambiar cuenta con permiso.",
+        "Hay tres «conciliaciones»: bancaria (Tesorería), contable (Contabilidad) y auxiliar de bancos (Contabilidad)."
+      ]
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Capítulo 1",
+      "titulo": "Qué es Tesorería · Bancos y qué no es",
+      "intro": "El libro de cada cuenta bancaria: lo que entra, lo que sale, cuánto queda, y cómo eso llega a cartera y contabilidad.",
+      "imagen": "img/bancos_que_es_sketchnote.jpg",
+      "imagenAlt": "Mapa: cuenta, movimiento, lo que sale al confirmar y lo que no es Bancos",
+      "md": "La **cuenta bancaria** (BCT) es una cuenta real de la IPS: banco + sucursal + número, con tipo (ahorros, corriente, tarjeta de crédito), cuenta contable y saldo. Vive en **Administrativo → Tesorería → Cuentas** como una tarjeta; al tocarla se abre su libro.\n\nEl **movimiento** (BMOV) tiene una cabecera —fecha, operación financiera, descripción, valor— y **renglones** (BMOVD), uno por tercero: forma de pago, documento, valor, tercero. El total de la cabecera es la suma de los renglones.\n\nLa **operación financiera** (OFIN) manda: dice si es débito o crédito, qué cuenta contable toca y si es recaudo de cartera, recaudo de nómina, traslado entre cuentas o si genera cuenta por pagar.\n\n**Al confirmar** el movimiento pasa a Ok: suma al saldo de la cuenta, genera el comprobante contable (si nació en Bancos o Contabilidad), clona el espejo si es traslado y deja los renglones Recaudo disponibles para Cartera.\n\n**No es:** Caja (los recibos llegan con procedencia Caja y se confirman allá), pagar proveedores (eso es Cuentas por Pagar; aquí solo se ve el movimiento), conciliar glosas con la EPS (Administrativo → Concilia) ni el libro contable de la cuenta (Contabilidad → Auxiliar de bancos).",
+      "puntosClave": [
+        "Solo los movimientos confirmados (Ok) suman al saldo y generan comprobante.",
+        "La procedencia dice de dónde vino: BANCOS, CAJA o CONTAB. Cada una se corrige en su origen.",
+        "Guardar y confirmar exigen que el mes de la fecha esté abierto en el periodo contable."
+      ]
+    },
+    {
+      "id": "configuracion",
+      "tipo": "texto",
+      "kicker": "Capítulo 2",
+      "titulo": "Antes de registrar: banco, sucursal, cuenta y operación",
+      "intro": "Cuatro catálogos en orden. Sin el anterior no existe el siguiente.",
+      "imagen": "img/bancos_config_sketchnote.jpg",
+      "imagenAlt": "Mapa de configuración: banco y sucursal, cuenta bancaria, operación financiera, periodo y formas de pago",
+      "md": "**1. Banco y sucursal** — Configuración → Financiero → Bancos. El banco lleva código, descripción, código ACH y tercero (el tercero no se repite entre bancos; la variable TERCATBANCO filtra la categoría). Cada banco tiene sucursales con código, nombre, dirección, teléfonos y contacto. Un banco con sucursales no se elimina.\n\n**2. Cuenta bancaria** — Tesorería → Cuentas → Nueva Cuenta. Obligatorios: banco, sucursal, tipo de cuenta (catálogo TIPOCUENTABCT), número de 6 a 40 caracteres, fecha de apertura y **cuenta contable** (activa, de detalle, clase 1). Además: formato de pago (01 Krystalos sin cheque, 02 Minerva, 03 Banco de Bogotá, 04 Bancolombia), tamaño de cheque, tipo de archivo plano (Bogotá, Colpatria, Bancolombia), ID formato, SIMEV, riesgo, calificadora, moneda, gravamen y estado bancario. Si el tipo es **TC** (tarjeta de crédito) se pide el cupo disponible.\n\n**3. Operación financiera** — Configuración → Financiero → Operaciones financieras. ID, descripción, **tipo DB o CR**, comprobante y cuenta contable de contrapartida, y las banderas: *Recaudo?* (alimenta Cartera), *Genera CXP*, *Pide centro de costo*, *Recaudo a nómina* (solo si SOLICITA_RECA_NOMINA = SI) y *Es de traslado?* con la cuenta bancaria destino. El botón de eliminar está oculto en pantalla.\n\n**4. Periodo y formas de pago** — El mes de la fecha del movimiento debe existir y estar abierto (PRI). Las formas de pago de los renglones vienen del catálogo FPA de Caja. Para la conciliación bancaria existe un catálogo propio de conceptos de partida (botón Operaciones).",
+      "puntosClave": [
+        "Orden: Banco → Sucursal → Cuenta → Operación; después, periodo abierto.",
+        "La cuenta contable de la tarjeta BCT es la que recibe el asiento automático.",
+        "Cuenta con movimientos no se elimina; el saldo nunca se edita a mano."
+      ]
+    },
+    {
+      "id": "pantalla-cuentas",
+      "tipo": "texto",
+      "kicker": "Capítulo 3",
+      "titulo": "La pantalla Cuentas: tarjetas y acciones por cuenta",
+      "intro": "Toque una tarjeta y aparecen la barra de acciones y el libro de movimientos de esa cuenta.",
+      "imagen": "img/bancos_cuentas_sketchnote.jpg",
+      "imagenAlt": "Mapa de la pantalla Cuentas: filtros, acciones de la cuenta, ventanas y el libro",
+      "md": "| Zona | Qué hay | Para qué |\n|---|---|---|\n| Arriba | Nueva Cuenta · filtro Estado (Activa/Inactiva) · filtro Banco · **Reportes bancarios** | Crear cuentas y listar movimientos de varias cuentas por fechas (PDF/Excel) |\n| Barra de la cuenta | **Editar** · **Consignaciones** · **Imprimir** · **Reliquidar** · **Conciliación** · **Documentos** · **Cuotas TC** (solo tarjeta) | Acciones sobre la cuenta seleccionada |\n| Tarjeta de crédito | Chip «Tarjeta de Crédito», valor del cupo y disponible | Las TC trabajan con cupo: disponible = cupo + pagos − consumos |\n| El libro | Filtros fecha inicial/final (hoy), Estado, Tipo DB/CR, Procedencia, Tercero · **Nuevo** · **Generar Cxp** | Movimientos de la cuenta |\n| Fila del movimiento | lápiz Editar · ✓ Confirmar · ⊘ Anular · ↺ Desconfirmar · expandir | Ciclo de vida del movimiento |\n| Movimiento expandido | **Comprobante** · **Nuevo** renglón · **Imprimir** · **Cambiar cuenta** (Caja, con permiso) · renglones con Editar / Eliminar / **Cambiar tercero** | Detalle y correcciones |\n\nEl libro abre filtrado a la fecha de hoy: si no ve un movimiento, amplíe el rango. Al seleccionar una tarjeta las demás se ocultan; «Ver todas las cuentas» regresa a la grilla.",
+      "puntosClave": [
+        "Entrar a la pantalla es el único permiso; los botones no tienen control propio salvo Cambiar cuenta.",
+        "Reliquidar recalcula el saldo; no corrige movimientos.",
+        "Consignaciones e Imprimir son informes de la cuenta; Reportes bancarios cruza varias cuentas."
+      ]
+    },
+    {
+      "id": "flujo-movimiento",
+      "tipo": "flujo",
+      "kicker": "Capítulo 4",
+      "titulo": "Registrar un movimiento: cabecera, renglones, confirmar",
+      "flujoId": "flujo-movimiento",
+      "intro": "Tres pasos. Hasta confirmar no suma al saldo ni toca contabilidad.",
+      "imagen": "img/bancos_movimiento_sketchnote.jpg",
+      "imagenAlt": "Mapa del registro de un movimiento: cabecera, renglones, confirmar, después",
+      "puntosClave": [
+        "Solo Pendiente se edita; el total es la suma de los renglones.",
+        "Confirmar exige al menos un renglón y mes abierto.",
+        "Un renglón por tercero: así cada consignación se legaliza aparte en Cartera."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "kicker": "Capítulo 5",
+      "titulo": "Cómo leer el libro: estados, procedencias y marcas",
+      "datos": "estadosBmov",
+      "intro": "Cada etiqueta del libro dice en qué situación está el movimiento y qué puede hacer con él.",
+      "puntosClave": [
+        "P se edita, O cuenta, A no existe.",
+        "Procedencia BANCOS es la única que se gestiona aquí de principio a fin.",
+        "ENPAGOS en un renglón bloquea desconfirmar: primero deshacer en Cartera."
+      ]
+    },
+    {
+      "id": "corregir",
+      "tipo": "texto",
+      "kicker": "Capítulo 6",
+      "titulo": "Corregir: desconfirmar, anular, cambiar tercero, cambiar cuenta",
+      "intro": "Cada corrección tiene su condición. Si el renglón ya está en Recaudos, primero deshacer allá.",
+      "imagen": "img/bancos_corregir_sketchnote.jpg",
+      "imagenAlt": "Mapa de correcciones: desconfirmar, anular, cambiar tercero, cambiar cuenta",
+      "md": "**Desconfirmar (↺)** — Solo procedencia Bancos y estado Ok. Primero valida: si algún renglón tiene ENPAGOS = 1 responde «Este recaudo ya se encuentra en pagos en cartera… no se puede desaplicar»; si el mes del movimiento está cerrado pregunta, porque no podrá volver a confirmar en esa fecha. Luego reversa el comprobante (lo anula si el mes está abierto, genera reverso si está cerrado, lo borra de errores si estaba en MCPE), vuelve el movimiento a Pendiente, quita el número de comprobante y recalcula el saldo. Si generó una CxP que ya se contabilizó, no desconfirma.\n\n**Anular (⊘)** — Solo procedencia Bancos y estado Pendiente. Pide razón de anulación y guarda usuario, equipo y fecha. Un confirmado no se anula: se desconfirma primero.\n\n**Cambiar tercero** — En un renglón de movimiento Bancos confirmado y contabilizado. Actualiza tercero, documento y cuenta del renglón y corrige el tercero en el comprobante contable. No cambia valores ni fecha.\n\n**Cambiar cuenta** — Solo procedencia Caja, estado Ok y permiso CAMBIAR_CTA_BMOV_CAJA. Anula el movimiento en la cuenta actual, lo crea y confirma en la cuenta destino, actualiza el recibo de caja (PCJ/FCJ), regenera y confirma el comprobante y deja rastro en el log de usuario.\n\n> **Observación 2.0.7:** cuando el comprobante del movimiento está en errores (MCPE), Desconfirmar borra esas filas pero no vuelve el movimiento a Pendiente ni recalcula el saldo. Se registró como pendiente para confirmar con el desarrollador.",
+      "puntosClave": [
+        "Primero Cartera: un renglón legalizado no se desconfirma.",
+        "Caja se corrige en Caja; aquí solo Cambiar cuenta con permiso.",
+        "Reliquidar no corrige movimientos: vuelve a sumar los confirmados."
+      ]
+    },
+    {
+      "id": "flujo-legalizar",
+      "tipo": "flujo",
+      "kicker": "Capítulo 7",
+      "titulo": "Consignaciones y Recaudos de cartera: legalizar",
+      "flujoId": "flujo-legalizar",
+      "intro": "Un renglón marcado Recaudo espera a que Cartera lo aplique a facturas. Hasta entonces está «por legalizar».",
+      "imagen": "img/bancos_recaudos_sketchnote.jpg",
+      "imagenAlt": "Mapa: consignación, en Recaudos, seguimiento, casos",
+      "puntosClave": [
+        "Bancos registra el dinero; Cartera dice a qué facturas corresponde.",
+        "Si no aparece en Recaudos: ¿operación con Recaudo? ¿confirmado? ¿ya tiene ENPAGOS? ¿saldo por legalizar?",
+        "Informe Consignaciones: Todas / Legalizadas / No legalizadas por tercero."
+      ]
+    },
+    {
+      "id": "flujo-conciliacion",
+      "tipo": "flujo",
+      "kicker": "Capítulo 8",
+      "titulo": "Conciliación bancaria: acta de corte y auxiliar del mes",
+      "flujoId": "flujo-conciliacion",
+      "intro": "Compare el extracto del banco con los libros, registre las partidas que explican la diferencia y cierre. Desde 2.0.7 cerrar graba la foto mensual.",
+      "imagen": "img/bancos_conciliacion_sketchnote.jpg",
+      "imagenAlt": "Mapa de la conciliación bancaria: abrir, partidas, cerrar, auxiliar por mes",
+      "puntosClave": [
+        "Cerrar graba SI + DB − CR = SF del mes (BCTSM) y avisa si difiere del saldo en libros.",
+        "El saldo inicial sale del mes anterior: genere los meses en orden.",
+        "Las partidas explican la diferencia, no mueven saldo."
+      ]
+    },
+    {
+      "id": "tres-conciliaciones",
+      "tipo": "texto",
+      "kicker": "Capítulo 9",
+      "titulo": "Tres «conciliaciones», tres preguntas distintas",
+      "intro": "No son la misma pantalla. Elija por la pregunta que quiere responder.",
+      "imagen": "img/bancos_tres_conci_sketchnote.jpg",
+      "imagenAlt": "Mapa comparativo: conciliación bancaria, conciliación contable de bancos, auxiliar de bancos y conciliación de cartera",
+      "md": "| | Conciliación bancaria | Conciliación contable de bancos | Auxiliar de bancos |\n|---|---|---|---|\n| Dónde | Tesorería → Cuentas → Conciliación | Contabilidad → Conciliaciones contables → Bancos | Contabilidad → Auxiliar de bancos |\n| Pregunta | ¿Por qué el extracto no da igual que mis libros a una fecha? | ¿Todo movimiento confirmado tiene comprobante y por el mismo valor? | ¿Qué asientos de la cuenta ya aparecieron en el extracto? |\n| Compara | Saldo del banco vs saldo en libros; partidas | BMOV procedencia Bancos del periodo vs MCP/MCPE procedencia BMOV (±0,01) | Movimientos contables (MCH) de la cuenta por periodo o fechas |\n| Produce | Acta cerrada, PDF, auxiliar mensual BCTSM | Semáforo Contabilizada 0/1/2, Contabilizar seleccionados, Reconstruir, Excel | Marcas CONCILIADO / FECHACONCILIACION guardadas en contabilidad, resumen, PDF, Excel |\n| Quién | Tesorería | Contabilidad | Contabilidad |\n\n**Conciliación de cartera** (Administrativo → Concilia) no tiene relación: es el acuerdo con la EPS sobre facturas con saldo. Ver *Cartera · Conciliaciones*.\n\nOrden sugerido al cerrar el mes: 1) conciliación contable, para que todo movimiento tenga asiento; 2) auxiliar de bancos, para marcar lo que ya pasó por el banco; 3) acta bancaria, para cerrar el mes y grabar la foto.",
+      "puntosClave": [
+        "En BMOV la procedencia de la fila es BANCOS/CAJA/CONTAB; en el comprobante contable siempre es BMOV.",
+        "El auxiliar de bancos trabaja sobre asientos (MCH), no sobre movimientos de tesorería.",
+        "El auxiliar de saldos por mes (BCTSM) vive en la conciliación bancaria de la cuenta."
+      ]
+    },
+    {
+      "id": "contabilidad",
+      "tipo": "texto",
+      "kicker": "Capítulo 10",
+      "titulo": "Cómo llega un movimiento a contabilidad",
+      "intro": "Al confirmar nace el comprobante. Si falla, Otros módulos o la conciliación contable lo reenvían.",
+      "imagen": "img/bancos_contabilidad_sketchnote.jpg",
+      "imagenAlt": "Mapa contable: al confirmar, semáforo, Otros módulos → Bancos, desconfirmar",
+      "md": "**Al confirmar** (procedencia Bancos o Contab y al menos un renglón) el sistema genera el comprobante: débito o crédito a la cuenta contable de la tarjeta BCT contra la cuenta de la operación financiera (o la cuenta del tercero contable del renglón). El movimiento guarda el número de comprobante y queda **Contabilizada = 1**. Si el mes está cerrado no confirma.\n\n**Semáforo Contabilizada:** 0 pendiente (confirmado sin comprobante), 1 enviado, 2 con errores (quedó en MCPE: cuenta no de detalle, periodo, etc.).\n\n**Otros módulos → Bancos** (Contabilidad): filtra año, mes, estado contabilizada y cuenta; solo movimientos confirmados. Marcar → Enviar a contabilidad usa el envío estándar con procedencia BMOV e ítems.\n\n**Conciliaciones contables → Bancos:** periodo + cuenta bancaria; semáforo por fila; «Contabilizar seleccionados» para los 0 y **Reconstruir** para los 2. Export Excel de conciliados y no conciliados.\n\n**Desconfirmar y contabilidad:** mes abierto → el comprobante se anula y el movimiento queda sin número; mes cerrado → se genera comprobante de reverso; si estaba en errores → se elimina de MCPE.\n\nEl cierre contable masivo también recorre los movimientos marcados y los contabiliza si faltan.",
+      "puntosClave": [
+        "Para buscar el asiento: procedencia BMOV y referencia = ítem del movimiento.",
+        "Cuenta mayor en la operación → comprobante en errores (2).",
+        "Procedencia Caja no genera asiento aquí: ya lo hizo el recibo."
+      ]
+    },
+    {
+      "id": "documentos",
+      "tipo": "texto",
+      "kicker": "Capítulo 11",
+      "titulo": "Chequeras, documentos y cuotas de tarjeta de crédito",
+      "intro": "Dos ventanas auxiliares de la cuenta: Control de documentos y Cuotas TC.",
+      "imagen": "img/bancos_documentos_sketchnote.jpg",
+      "imagenAlt": "Mapa: chequera, documento, cuotas TC, reportes",
+      "md": "**Control de documentos (Documentos)** — Nuevo crea la chequera: número, forma de pago, cantidad de documentos, N° inicial y final, generación automática, cheques aleatorios. **Generar Documentos** crea cada cheque; después la chequera ya no se edita. Cada documento tiene consecutivo, número, fecha, valor, beneficiario, posfechado y código Alfabanco, y se puede **Entregar** (enlaza recibo o comprobante de egreso), **Anular** (dañado o perdido; no admite cambiar Alfabanco) o **Liberar** (vuelve a disponible). El estado se filtra en la grilla.\n\n**Cuotas TC** — Solo en cuentas tipo tarjeta de crédito. Por año y mes muestra cuotas pendientes y canceladas (cantidad y valor), interés, seguros, impuestos y cuota de manejo. **Cuentas Contables** define dónde se contabiliza cada concepto de la tarjeta (catálogo FCTSER). **Generar CxP del Mes** crea la cuenta por pagar para pagar la tarjeta desde Cuentas por Pagar.",
+      "puntosClave": [
+        "El cheque al proveedor se gira desde Cuentas por Pagar; aquí se controla el talonario.",
+        "Tarjeta de crédito: disponible = cupo + pagos − consumos.",
+        "Editar chequera solo antes de generar documentos."
+      ]
+    },
+    {
+      "id": "reportes",
+      "tipo": "texto",
+      "kicker": "Capítulo 12",
+      "titulo": "Reportes de bancos",
+      "intro": "Lo que se puede imprimir o exportar desde Tesorería y desde Contabilidad.",
+      "md": "| Reporte | Dónde | Filtros | Salida |\n|---|---|---|---|\n| Listado de movimientos de la cuenta | Barra de la cuenta → Imprimir | Los del libro: fechas, estado, tipo, procedencia, tercero | PDF |\n| Listado de movimientos multi-cuenta | Cuentas → Reportes bancarios | Fecha inicial/final, una o varias cuentas | Grilla, PDF por cuenta con totales, Excel |\n| Consignaciones en banco | Barra de la cuenta → Consignaciones | Tercero o Todos; Todas / Legalizadas / No legalizadas; fechas | PDF por tercero (consignado, legalizado, por legalizar), Excel |\n| Conciliación bancaria | Conciliación → fila cerrada → Imprimir | Acta | PDF: cabecera, totales por operación, partidas |\n| Auxiliar de saldos por mes | Conciliación → panel inferior | Año, mes | Grilla SI/DB/CR/SF con semáforo (PDF y Excel ocultos en 2.0.7) |\n| Recaudos en bancos | Cartera → Consultas y Reportes | Estado pendiente/legalizado | Grilla |\n| Conciliación contable de bancos | Contabilidad → Conciliaciones contables | Periodo, cuenta, estado contabilizada | Excel conciliados / no conciliados |\n| Auxiliar de bancos | Contabilidad → Auxiliar de bancos | Cuenta contable, periodo o fechas, tercero, comprobante, conciliación | PDF, Excel, resumen conciliados vs no conciliados |",
+      "puntosClave": [
+        "Imprimir respeta los filtros del libro; si no sale un movimiento, revise las fechas.",
+        "Reportes bancarios es el único que cruza varias cuentas.",
+        "El PDF y Excel del auxiliar de saldos por mes están ocultos en 2.0.7."
+      ]
+    },
+    {
+      "id": "configuracion-pendientes",
+      "tipo": "texto",
+      "kicker": "Capítulo 13",
+      "titulo": "Configuración, permisos y pendientes conocidos",
+      "intro": "Lo que hay que tener listo y lo que se detectó al releer el código en 2.0.7.",
+      "md": "**Permisos:** entrar a Tesorería → Cuentas es el único control de la pantalla; dentro no hay permiso por botón (crear, confirmar, desconfirmar, anular, reliquidar quedan abiertos a quien entra). La excepción es **Cambiar cuenta**, que exige MENUQ_ADMINISTRATIVO · CAMBIAR_CTA_BMOV_CAJA.\n\n**Variables y catálogos:** TERCATBANCO, SOLICITA_RECA_NOMINA, IXCOUNTRY, TIPOCUENTABCT (código TC), conceptos BCTC, periodo PRI abierto y las operaciones financieras OFIN con sus banderas.\n\n**Pendientes conocidos (2.0.7):**\n\n- Desconfirmar con comprobante en errores (MCPE) borra las filas de error pero no regresa el movimiento a Pendiente ni recalcula saldo. Confirmar con el desarrollador.\n- Eliminar una operación financiera no revisa movimientos que la usen (el botón está oculto en pantalla).\n- Al editar una cuenta, si no existe responde con el mensaje de «ya hay un registro…» (mensaje incorrecto).\n- Confirmar/desconfirmar/anular sin permiso por acción: decidir si se restringe con USGRUH.\n- El PDF y el Excel del auxiliar de saldos por mes están ocultos (`v-if=\"false\"`).\n- Tablas BCT, BMOV, BMOVD, BCTC, BCTCD, BCTSM, BCTD, BCTDD, BCTTAR sin ficha en la documentación de tablas.",
+      "puntosClave": [
+        "Sin operación financiera bien configurada no hay asiento correcto.",
+        "El permiso es de pantalla, no de botón.",
+        "El saldo de la tarjeta BCT se recalcula; nunca se edita."
+      ]
+    }
+  ]
 }

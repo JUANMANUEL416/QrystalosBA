@@ -1,0 +1,76 @@
+{
+  "mensajes": [
+    {
+      "id": "20260915162537373765",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis). Hay normativa/archivos en activo/20260915-0100016418/archivos/ (Ejemplo_Pagos_A_terceros.pdf). Lea el .extracto.txt, compare con lo que genera el sistema y cite apartes en el dictamen (sección 4.6).",
+      "fecha": "2026-09-15T16:25:37"
+    },
+    {
+      "id": "20260915162537399954w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-09-15T16:25:37"
+    },
+    {
+      "id": "20260915163112637612",
+      "autor": "coordinador",
+      "texto": "puedes revisar el fuente de nomina en clarion C:\\DEV11.1\\KrystalosCol_2024.04",
+      "fecha": "2026-09-15T16:31:12"
+    },
+    {
+      "id": "20260915163112657476w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-15T16:31:12"
+    },
+    {
+      "id": "20260915164344712078",
+      "autor": "coordinador",
+      "texto": "arma el documento para validarlo",
+      "fecha": "2026-09-15T16:43:44"
+    },
+    {
+      "id": "20260915164344734226w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-09-15T16:43:44"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-09-15T16:50:06"
+    },
+    {
+      "id": "correo-cierre-20260915-0100016418",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a brayan.ortega@ixcolombia.com.",
+      "fecha": "2026-09-15T16:50:30"
+    },
+    {
+      "id": "20260915214000agente",
+      "autor": "agente",
+      "texto": "## Análisis REQ 0100016418 — Pagos a terceros (sin dictamen HTML)\n\n### Problema\nEl cliente necesita imprimir el **pago por terceros** con el **tercero beneficiario** (ej. funeraria) como encabezado y, debajo, **cada empleado** al que se le aplicó la deducción. Soporte reporta error de **consolidación y presentación** en el «reporte de liquidación de terceros».\n\n### Paso 0 — ¿Ya existe?\n**Defecto** (no capacitación, no módulo nuevo). La funcionalidad ya está en Qrystalos2:\n- **Control principal:** Talento humano → **Reportes** → **Rep. Prenomina** → pestaña **Pagos A Terceros** (`/repPrenomina`, `repPagosTercerosComponent.vue`). Grilla por tercero → expandir empleados → **IMPRIMIR**.\n- El nombre «liquidación de terceros» del REQ **no** es el gate **Liquidación** que cierra el período (`LiquidaNomComponent`, `LIQUIDACION`·`GENERATE_NOMINA`), sino el **PDF** de este reporte.\n- **Control secundario:** Rep. **Detalles nómina** → pestaña **Pagos a terceros** (Excel/PDF propios).\n\n### Causa (según KB + FE)\nEn el control **principal**, la grilla `onRequest` ya agrupa por **`NIEPED.IDTERCERO_PRF`** (tercero que recibe el pago). El botón imprimir llama **`NOM_REPORTES` · `PAGOS_X_TERCEROS`** y `usePagosXTercerosPrint.js` pinta el JSON **`DETALLE`** por tercero — ahí es lo más probable el desajuste beneficiario↔empleados.\nEn el control **secundario**, la consulta `read` une `TER` al **`NEMP.TERCEROID`** y exige `NEMP.TERCEROID = NIEPED.IDTERCERO_PRF`, lo que **mezcla** tercero del empleado con beneficiario; la agrupación y el PDF heredan ese error.\n\n`SPQ_NOM_REPORTES` / `PAGOS_X_TERCEROS` **no** está en `conocimiento/nomina/sps.json` ni en `sql/` hoy: hay que bajarlo de DESAIX (PREVERSION) para cerrar la línea SQL exacta en el dictamen.\n\n**Contabilidad:** no aplica (solo reporte sobre NIEPED; sin nuevos asientos).\n\n**Formato esperado:** `activo/20260915-0100016418/archivos/Ejemplo_Pagos_A_terceros.pdf` (sin extracto de texto; validar visualmente en prueba).\n\n### Solución propuesta\n1. **Corregir `PAGOS_X_TERCEROS`** para un registro por beneficiario (`IDTERCERO_PRF`) y `DETALLE` con empleados/conceptos/valores alineados a la grilla y al PDF ejemplo.\n2. **Alinear** `repDetallesNominaComponent` + `useDetallePagosTercerosPrint` (join al tercero beneficiario, columnas de empleado, agrupación por beneficiario).\n3. Revisar en FE solo si el ejemplo exige columnas que el composable no pinta.\n\n**Validar antes:** mismo `CNSPAGO` en test — si la grilla expande bien y el PDF no, el fix es el METODO SQL; contrastar con el PDF ejemplo.\n\n### Criterios / alcance / restricciones\nQuedaron en `solicitud.contenido` (criteriosAceptacion, alcance, restricciones, recomendacion, validarAntes).\n\n### SP · METODO · estado · rol en el fix\n| SP | METODO | Estado | Rol |\n|----|--------|--------|-----|\n| SPQ_NOM_REPORTES | PAGOS_X_TERCEROS | no_leido | Dataset JSON para impresión principal |\n| SPQ_LIQUIDACION | GENERATE_NOMINA | leido (KB) | Solo si período abierto al elegir NPER en el reporte; no es el núcleo del REQ |\n| — (AppStore.read) | — | FE | Grilla principal (referencia correcta de agrupación) |\n| — (AppStore.read) | — | FE | Grilla secundaria Detalles nómina (consulta a corregir) |\n\n**Siguiente paso Fase 1:** bajar `SPQ_NOM_REPORTES.sql`, fichar `PAGOS_X_TERCEROS` y, si confirman pantalla, dictamen HTML. No generé dictamen en este turno.",
+      "fecha": "2026-09-15T21:40:00"
+    },
+    {
+      "id": "20260915214500agente",
+      "autor": "agente",
+      "texto": "## Respuesta: fuente Clarion (KrystalosCol_2024.04)\n\nRevisé `C:\\DEV11.1\\KrystalosCol_2024.04` (módulo **Knom** / **Knm0–Knm2**). El REQ no pide replicar Clarion al pie de la letra, pero ahí está la **regla de negocio** que el web debería respetar.\n\n### Dónde estaba en escritorio\n| Origen | Ventana / botón | Reporte Clarion |\n|--------|------------------|-----------------|\n| **Prenómina** | `Brw:InEg_PorEmpleado` (`Knm0069.clw`) → **Pagos a Terceros** | `Rpt:ImpNomina_TER` (`Knm0070.clw`) — título *«REPORTE DE NOMINA - PAGOS A OTROS TERCEROS»* |\n| **Reportes nómina** | `Knm1022.clw` → **Pagos A Terceros** | `Rpt:Nomi_Terceros` (`Knm1040.clw`) — título *«DETALLE PAGOS A TERCEROS»* (mismo texto que el PDF web `useDetallePagosTercerosPrint.js`) |\n| **Liquidación** (otro menú) | Procesos → Reportes liquidación → **Resumen x Tercero** (`Knom001` → `win:ResumenxTercero`, `Knm2032`) | Reportes `Rpt:Liq_Nomi_TER_*` — también filtran `NIEPED.IDTERCERO_PRF`; **no** es el mismo botón de prenómina, pero confirma el campo parafiscal |\n\n### Lógica legacy que debe conservarse (evidencia)\n1. **Agrupación por beneficiario:** `BREAK(NIEPED:IDTERCERO_PRF)` en `Knm0070`; encabezado con `TER:NIT` + `NIEPED:RAZONSOCIAL_PRF`.\n2. **Detalle empleado:** `NIEPE:NOMBRE_EMPLEADO`, documento del empleado (`A_TER:NIT` / `NUMDOC`), concepto y valor `NIEPED.VALOR + NIEPED.VALOR_APORTES`.\n3. **Orden:** `IDTERCERO_PRF`, luego `NUMDOC` (`Knm0070`); en el detalle extendido `CODPRF`, `IDTERCERO_PRF`, `CODCONCEPTO`, `NUMDOC` (`Knm1040`).\n4. **Filtro clave en `Rpt:Nomi_Terceros`:** `A.IDTERCERO_PRF <> A.NUMDOC` (excluye líneas donde el “tercero parafiscal” es el mismo identificador que el empleado).\n5. **Antes de imprimir desde prenómina con período abierto:** Clarion ejecutaba `SPK_LIQUIDAR_NOMI` si `NPER.CERRADO=0` (`Knm0069` / `Knm1022`) — en Qrystalos2 el equivalente es `LIQUIDACION`·`GENERATE_NOMINA` al elegir NPER en `repPagosTercerosComponent`.\n\n### Cruce con Qrystalos2 (sin implementar)\n- **Rep. Prenomina → IMPRIMIR** (`NOM_REPORTES`·`PAGOS_X_TERCEROS` + `usePagosXTercerosPrint`): debe reproducir la estructura de **`Rpt:ImpNomina_TER`** (tercero PRF → empleados).\n- **Rep. Detalles nómina → PDF** (`useDetallePagosTercerosPrint`, título *DETALLE PAGOS A TERCEROS*): debe alinearse a **`Rpt:Nomi_Terceros`**; hoy la consulta `read` usa `NEMP.TERCEROID` en lugar de **`NIEPED.IDTERCERO_PRF`** — eso **no** coincide con Clarion ni con la grilla correcta de Rep. Prenomina.\n\n### Conclusión para desarrollo\nEl defecto no es “falta de módulo”, sino **consolidación agrupada por `IDTERCERO_PRF` + detalle por empleado**. El SP `PAGOS_X_TERCEROS` (aún sin leer en `sql/`) y el FE del control secundario deben tomar **`Knm0070` / `Knm1040`** como referencia funcional junto al PDF ejemplo del caso.\n\n**Siguiente paso:** bajar `SPQ_NOM_REPORTES.sql` (PREVERSION) y contrastar `PAGOS_X_TERCEROS` con los filtros/joins de `Knm0070` (break por PRF, empleado en detalle). Cuando confirme, armamos dictamen HTML.\n\nDejé nota en `solicitud.contenido.analisis` / `recomendacion` con este ancla Clarion.",
+      "fecha": "2026-09-15T21:45:00"
+    },
+    {
+      "id": "20260915215000agente",
+      "autor": "agente",
+      "texto": "Tiene razón: con DESAIX no debía pedirle el `.sql`. Lo bajé yo.\n\n**DESAIX / SQLIX.** Última `Cerrada` = **2.0.0** (09-sep, `IDANT` 1.8.32). `PREVERSION` está `Abierta` (11-sep).\n`SPQ_NOM_REPORTES`: PREVERSION = 2.0.0 = 1.8.32 (mismo hash, 21752). **El arreglo no está en la canasta.** Guardé PREVERSION en `sql/SPQ_NOM_REPORTES.sql`.\n\n**`PAGOS_X_TERCEROS` vs `Knm0070`.**\n\n| | Clarion `Knm0070` | PREVERSION |\n|--|--|--|\n| Cabecera | `BREAK(IDTERCERO_PRF)` + NIT/razón del PRF | Una fila `TER` por `DISTINCT IDTERCERO_PRF` |\n| Filtros | `INFO=No`, `TIPO=Egreso`, `CLASE<>Provision`, `CNSPAGO` | Igual |\n| Detalle empleado | `NIEPE.NOMBRE_EMPLEADO` + NIT del empleado (`A_TER`) | `TER.NIT` / `RAZONSOCIAL` vía **`NEMP.TERCEROID`** |\n| Orden | `IDTERCERO_PRF`, `NUMDOC` | Cabecera por NIT/razón; JSON **sin** `ORDER BY NUMDOC` |\n| Join empleado | `NIEPE`→`NEMP`→`TER` solo para el NIT | `INNER JOIN TER` por TERCEROID: si falta, **se cae el empleado** |\n\nLa agrupación por beneficiario **ya está**. El defecto es el detalle: pinta al tercero del empleado, no al empleado de `NIEPE` (como Clarion y el PDF ejemplo).\n\nLa grilla cabecera sí usa `TER = IDTERCERO_PRF`. El expandido vuelve a `TER = TERCEROID`.\n\nFichado `PAGOS_X_TERCEROS`. Criterios/alcance/`validarAntes` en el formulario.\n\nSi confirma, armo el dictamen HTML.",
+      "fecha": "2026-09-15T21:50:00"
+    },
+    {
+      "id": "20260915215500agente",
+      "autor": "agente",
+      "texto": "## Dictamen listo para validación (REQ 0100016418)\n\nAtendí su mensaje **«arma el documento para validarlo»**.\n\n**Documento:** [dictamenes/20260915-0100016418.html](dictamenes/20260915-0100016418.html)\n\n**Resumen para revisión:**\n- **Tipo:** defecto en reporte existente (Rep. Prenomina → Pagos A Terceros), no módulo nuevo.\n- **Causa confirmada** en `sql/SPQ_NOM_REPORTES.sql` · `PAGOS_X_TERCEROS` (PREVERSION): la cabecera agrupa por `IDTERCERO_PRF` bien; el JSON `DETALLE` usa `TER.RAZONSOCIAL` del **tercero del empleado** en vez de **`NIEPE.NOMBRE_EMPLEADO`** (referencia Clarion `Knm0070`).\n- **Propuesta:** ajustar subconsulta FOR JSON (+ orden por `NUMDOC`, LEFT JOIN empleado, opcional `IDTERCERO_PRF <> NUMDOC`); alinear pestaña secundaria Detalles nómina si aplica.\n- **Contabilidad:** No.\n- **Validar antes:** incluido en dictamen — comparar PDF vs `Ejemplo_Pagos_A_terceros.pdf` en test.\n- **PREVERSION:** el arreglo **aún no está** en canasta (mismo cuerpo que 2.0.0 liberada).\n\nActualicé `solicitud.contenido` (criterios, alcance, análisis, `validarAntes`, `sql.procesoId=nomina`, `PAGOS_X_TERCEROS` marcado leído).\n\nRevise el HTML en la app (Ctrl+P → PDF si lo prefiere). Si está de acuerdo, **Cerrar fase 1** o indique ajustes en este Chat.",
+      "fecha": "2026-09-15T21:55:00"
+    }
+  ]
+}

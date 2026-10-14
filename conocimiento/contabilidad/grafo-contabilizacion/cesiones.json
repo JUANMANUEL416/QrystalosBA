@@ -1,0 +1,211 @@
+{
+  "procedencia": "CESIONES",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo CNSCES — FCES, FCESCXP/FCESCXC, MCP CESIONES.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_CONTAB_FCES.sql",
+  "documentoOrigen": {
+    "tabla": "FCES",
+    "claves": [
+      "CNSFCES"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFCES"
+    }
+  },
+  "generador": "SPK_CONTAB_FCES",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-fces"
+      ]
+    },
+    {
+      "id": "N3-contab-fces",
+      "orden": 3,
+      "sp": "SPK_CONTAB_FCES",
+      "requiresDocumento": [
+        {
+          "id": "fces",
+          "desc": "FCES con FTR y/o FCXCD cedidos; saldo suficiente",
+          "obligatorio": true,
+          "validacionSql": "FCES CNSCES + FCESCXP/FCESCXC",
+          "checkMotor": "doc-fces-*"
+        },
+        {
+          "id": "cesionario",
+          "tabla": "TER",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-ces",
+          "usvgs": "IDCON_TCOM_CESION",
+          "obligatorio": true
+        },
+        {
+          "id": "idmodelo",
+          "usvgs": "IDMODELOCONTABLE",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-cesion"
+      ],
+      "puntosCriticos": [
+        "PC-FCES-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_CONTAB_FCES.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "IDCON_TCOM_DEFAULT",
+          "IDCON_TCOM_FCES"
+        ],
+        "validacionesKo": [
+          "PERIODO CERRADO",
+          "Periodo Contable NO Existe"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante cesión (CESIONES)"
+    },
+    {
+      "id": "N2-cesion",
+      "orden": 2,
+      "desc": "Traslado cartera entre terceros",
+      "llamaAnterior": [
+        "N1-preparar-cesion"
+      ],
+      "nombre": "Registrar cesión efectiva",
+      "sp": "SPQ_FCES*",
+      "metodoUi": "Cesiones cartera/CxP → confirmar",
+      "requiresDocumento": [
+        {
+          "id": "fces-doc",
+          "desc": "FCES con FTR y/o FCXCD cesionables",
+          "obligatorio": true
+        },
+        {
+          "id": "saldo",
+          "desc": "Saldo factura/CxP >= valor cesión",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom",
+          "usvgs": "IDCON_TCOM_CESION",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_CONTAB_FCES",
+      "puntosCriticos": [
+        "PC-FCES-01"
+      ]
+    },
+    {
+      "id": "N1-preparar-cesion",
+      "orden": 1,
+      "nombre": "Seleccionar documentos a ceder",
+      "requiresDocumento": [
+        {
+          "id": "cesionario",
+          "tabla": "TER",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-ces"
+      ]
+    },
+    {
+      "id": "N0-config-ces",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec-ter",
+          "tablas": [
+            "TTEC",
+            "TER"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "IDCON_TCOM_CESION",
+            "IDMODELOCONTABLE"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración cesiones"
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "CESIONES",
+    "tablaOrigen": "FCES"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/cesiones.json",
+    "procesoHermano": null,
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-cesiones.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

@@ -1019,6 +1019,12 @@ def load_sps(proceso_id: str) -> dict:
     return data
 
 
+def save_sps(proceso_id: str, data: dict) -> None:
+    data["procesoId"] = proceso_id
+    data["actualizado"] = _now()
+    _write_json(sps_json_path(proceso_id), data)
+
+
 def load_proceso(proceso_id: str) -> dict | None:
     path = proceso_json_path(proceso_id)
     if not os.path.isfile(path):
@@ -1101,6 +1107,25 @@ def sync_pendientes_con_sql() -> list[str]:
     return cerrados
 
 
+_COLA_FICHAR = {
+    "documentacion",
+    "ficha",
+    "doc",
+    "sp",
+    "gate",
+    "flujo",
+    "proceso_nuevo",
+    "config",
+}
+
+
+def _pendiente_por_fichar(item: dict) -> bool:
+    estado = item.get("estado") or ""
+    if estado in ("completado", "cerrado", "hecho"):
+        return False
+    return (item.get("tipo") or "") in _COLA_FICHAR
+
+
 def resumen(canal: str = "documentar", proceso_id: str = "") -> dict:
     sync_pendientes_con_sql()
     canal = _norm_canal(canal)
@@ -1126,7 +1151,7 @@ def resumen(canal: str = "documentar", proceso_id: str = "") -> dict:
         items = [i for i in items if (i.get("procesoId") or "") == pid]
     indice = load_indice()
     pendientes = load_pendientes()
-    abiertos = [i for i in pendientes.get("items", []) if i.get("estado") != "completado"]
+    abiertos = [i for i in pendientes.get("items", []) if _pendiente_por_fichar(i)]
     return {
         "ok": True,
         "indice": indice,

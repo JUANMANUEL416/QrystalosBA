@@ -1,0 +1,226 @@
+{
+  "procedencia": "REVERSOS",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo NRO_REV + traza flujo-reversos-contab (ORIG: resuelve por REFERENCIA3).",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_REVERSAR_MCP.sql",
+  "documentoOrigen": {
+    "tabla": "MCP origen",
+    "referenciasMcp": {
+      "REFERENCIA3": "NROCOMPROBANTE original",
+      "PROCEDENCIA": "REV*"
+    }
+  },
+  "generador": "SPK_REVERSAR_MCP",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-reversar"
+      ]
+    },
+    {
+      "id": "N3-reversar",
+      "orden": 3,
+      "sp": "SPK_REVERSAR_MCP",
+      "metodoUi": [
+        "MCPE_COL · RECONSTRUIR",
+        "Módulos caja/notas reversión"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "mcp-origen",
+          "desc": "MCP confirmado; REFERENCIA3 = NROCOMPROBANTE origen",
+          "obligatorio": true,
+          "validacionSql": "MCPE reversión REFERENCIA3",
+          "checkMotor": "doc-rev-*"
+        },
+        {
+          "id": "mch-lineas",
+          "desc": "Líneas origen para espejo o anulación",
+          "obligatorio": true,
+          "validacionSql": "MCHE cuadre reversión",
+          "checkMotor": "doc-mch-cuadre"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-rev",
+          "usvgs": [
+            "IDCON_TCOM_REVCAJAIN",
+            "IDCON_TCOM_REVCAJAEG",
+            "IDCON_TCOMREVNOTDBCR",
+            "IDCON_TCOM_REVFTR"
+          ],
+          "obligatorio": "según PROCEDENCIA REV*"
+        },
+        {
+          "id": "pri-caja",
+          "tabla": "PRI",
+          "desc": "Periodo caja abierto si anula FCJ origen",
+          "obligatorio": "REVCAJA*"
+        }
+      ],
+      "llamaAnterior": [
+        "N2-solicitud-rev"
+      ],
+      "puntosCriticos": [
+        "PC-REV-01"
+      ],
+      "llamaAnidado": [
+        "SPK_NC_CONTAB_INV",
+        "SPK_NC_REVISAMCPE"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_REVERSAR_MCP.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "CONTAB_GASTOVEN_UNI",
+          "IDCON_REVDOC_AANTING",
+          "IDCON_TCOMREVNOTDBCR",
+          "IDCON_TCOM_DEFAULT",
+          "IDCON_TCOM_NOTDBCR",
+          "IDCON_TCOM_REVCAJAEG",
+          "IDCON_TCOM_REVCAJAIN",
+          "IDCON_TCOM_REVFTR"
+        ],
+        "validacionesKo": []
+      },
+      "nombre": "Reversar / anular comprobante origen",
+      "postGenerador": {
+        "nota": "Reversa genera MCP espejo; revisión según rama"
+      }
+    },
+    {
+      "id": "N2-solicitud-rev",
+      "orden": 2,
+      "desc": "Usuario solicita reverso desde módulo",
+      "llamaAnterior": [
+        "N1-comprobante-ok"
+      ],
+      "nombre": "Solicitar reverso desde módulo",
+      "sp": [
+        "REVCAJAING / REVCAJAEGR",
+        "REVNOTDBCR",
+        "SPQ_MCP_COL anulaciones"
+      ],
+      "metodoUi": "Caja, notas, MCPE según procedencia REV*",
+      "requiresDocumento": [
+        {
+          "id": "mcp-origen-ref3",
+          "desc": "REFERENCIA3 apunta a NROCOMPROBANTE origen",
+          "obligatorio": true
+        },
+        {
+          "id": "periodo-caja",
+          "desc": "Periodo caja abierto si anula FCJ origen",
+          "obligatorio": "REVCAJA*"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-rev",
+          "usvgs": [
+            "IDCON_TCOM_REVCAJAIN",
+            "IDCON_TCOM_REVCAJAEG",
+            "IDCON_TCOMREVNOTDBCR"
+          ],
+          "obligatorio": "según PROCEDENCIA"
+        }
+      ],
+      "efecto": "EXEC SPK_REVERSAR_MCP; puede anular MCP origen",
+      "puntosCriticos": [
+        "PC-REV-01",
+        "PC-REV-02"
+      ]
+    },
+    {
+      "id": "N1-comprobante-ok",
+      "orden": 1,
+      "desc": "Comprobante original ESTADO=2 confirmado",
+      "llamaAnterior": [
+        "N0-config-rev"
+      ],
+      "nombre": "Comprobante origen confirmado",
+      "requiresDocumento": [
+        {
+          "id": "mcp-estado-2",
+          "desc": "MCP.ESTADO=2 (confirmado) salvo rama MCPE",
+          "obligatorio": true
+        },
+        {
+          "id": "documento-origen",
+          "desc": "FCJ/FPAG/FNOT/IMOV según PROCEDENCIA origen",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-rev",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "desc": "Periodos abiertos donde aplica anulación origen",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-rev",
+          "usvgs": [
+            "IDCON_TCOM_REVFTR",
+            "IDCON_TCOMREVNOTDBCR"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración reversos"
+    }
+  ],
+  "enlacesGrafo": {
+    "caja": "caja.json",
+    "notdbcr": "notdbcr.json",
+    "factura": "factura.json"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/reversos.json",
+    "procesoHermano": "varios",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-reversos.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

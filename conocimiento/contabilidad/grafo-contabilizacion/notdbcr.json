@@ -1,0 +1,303 @@
+{
+  "procedencia": "NOTDBCR",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "catalogo",
+    "nota": "Validación global en Auditoría BA; cruce documento pendiente salvo CNSFPAG.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_FNOT.sql; conocimiento/notas-dbcr/sps.json",
+  "documentoOrigen": {
+    "tabla": "FNOT",
+    "claves": [
+      "CNSFNOT",
+      "CLASE"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFNOT",
+      "REFERENCIA2": "CLASE"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_FNOT",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-fnot"
+      ]
+    },
+    {
+      "id": "N3-contab-fnot",
+      "orden": 3,
+      "sp": "SPK_NC_CONTAB_FNOT",
+      "metodoUi": [
+        "SPQ_FNOT* · aplicar nota",
+        "SPQ_CONTABILIDAD_3 · Notas DB/CR"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fnot-aplicada",
+          "desc": "FNOT CERRADA=1; KO: NOTA YA CONTABILIZADA",
+          "obligatorio": true,
+          "validacionSql": "FNOT CERRADA=1, ESTADO<>A, FNOTD",
+          "checkMotor": "doc-fnot-*"
+        },
+        {
+          "id": "fnot-unica-mcp",
+          "desc": "KO: CONSECUTIVO DE NOTA YA APARECE EN UN COMPROBANTE",
+          "obligatorio": true,
+          "validacionSql": "MCP NOTDBCR REFERENCIA1/2",
+          "checkMotor": "doc-fnot-mcp-dup"
+        },
+        {
+          "id": "cpnt-cuenta",
+          "tabla": "CPNT",
+          "desc": "Concepto → cuenta; ramas TTEC / conciliación",
+          "obligatorio": true,
+          "validacionSql": "CPNT.CUENTA por IDCONCEPTO",
+          "checkMotor": "doc-fnot-cpnt"
+        },
+        {
+          "id": "castigo-skip",
+          "desc": "Cartera castigada: puede marcar sin MCP",
+          "obligatorio": false
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-f-nota",
+          "tabla": "PRI",
+          "desc": "KO: Período contable no Existe (mes F_NOTA)",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-not",
+          "usvgs": [
+            "IDCON_TCOM_NOTDBCR",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "idcuentanotas",
+          "usvgs": "IDCUENTANOTAS",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec-fnot",
+          "usvgs": [
+            "CTA_CR_FNOT_DE_TTEC",
+            "IDCOPNOTACONCI",
+            "MAN_CTAS_DE_MORA"
+          ],
+          "obligatorio": "según concepto"
+        }
+      ],
+      "llamaAnterior": [
+        "N2-aplicar-nota"
+      ],
+      "puntosCriticos": [
+        "PC-FNOT-01",
+        "PC-FNOT-02"
+      ],
+      "llamaAnidado": [
+        "SPK_NC_CONTAB_INV",
+        "SPK_REVISAR_COMPROBANTE"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_FNOT.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "CONTABCXC",
+          "CONTAB_GASTOVEN_UNI",
+          "CTA_CR_FNOT_DE_CPNT",
+          "CTA_CR_FNOT_DE_TTEC",
+          "CTA_FGLO_1441_SUPERI",
+          "CTA_FGLO_360_a_720",
+          "CTA_FGLO_721_a_1440",
+          "CUE_DBCR_ARS",
+          "GLOSASNOTS",
+          "IDCONNOTAS_CREDITO",
+          "IDCON_REVDOC_AANTING",
+          "IDCON_TCOM_NOTDBCR",
+          "IDCOPNOTACONCI",
+          "IDCUENTANOTAS",
+          "IDMODELOCONTABLE",
+          "IDTIPOCXP_DEFAULT",
+          "IDTIPOMOVDEV_CLIENTE",
+          "MAN_CTAS_DE_MORA",
+          "NOTACREDITOAUD_CR"
+        ],
+        "validacionesKo": [
+          "NOTA YA CONTABILIZADA.",
+          "CONSECUTIVO DE NOTA YA APARECE EN UN COMPROBANTE",
+          "Per?odo contable no Existe",
+          "NO EXISTE CONFIGURACION CONTABLE PARA CONCILIACIONES"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante nota factura (NOTDBCR)"
+    },
+    {
+      "id": "N2-aplicar-nota",
+      "orden": 2,
+      "sp": "SPK_NOTASCXC",
+      "metodoUi": "SPQ_FNOT_COL · FNOT_APLICAR",
+      "requiresDocumento": [
+        {
+          "id": "fnot-cerrada-pendiente",
+          "desc": "FNOT ESTADO=O, CERRADA=0, FNOTD con valor",
+          "obligatorio": true
+        },
+        {
+          "id": "saldo-factura",
+          "desc": "VWK_CXCDIASVTO / saldo FCXCD para NC",
+          "obligatorio": true
+        },
+        {
+          "id": "ftr-vigente",
+          "desc": "FTR referenciada no anulada",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "Mueve FCXCD/FCXCDV; FNOT.CERRADA=1; EXEC SPK_NC_CONTAB_FNOT (salvo rama LIBERAHADM reversa MCP)",
+      "llamaAnterior": [
+        "N1-crear-fnot"
+      ],
+      "nombre": "Aplicar nota a cartera",
+      "requiresConfig": [
+        {
+          "id": "pri-cxc",
+          "desc": "PRI cartera y contable abiertos (mes F_NOTA)",
+          "obligatorio": true
+        },
+        {
+          "id": "cpnt-cuenta",
+          "tabla": "CPNT",
+          "desc": "Concepto nota → cuenta contable",
+          "obligatorio": true
+        }
+      ],
+      "puntosCriticos": [
+        "PC-FNOT-01"
+      ]
+    },
+    {
+      "id": "N1-crear-fnot",
+      "orden": 1,
+      "sp": "SPQ_FNOT_COL",
+      "llamaAnterior": [
+        "N0-config-notas"
+      ],
+      "nombre": "Crear y detallar nota",
+      "metodos": [
+        "FNOT_CRUD",
+        "FNOT_ADDDETA / FNOT_CRUDFNOTD",
+        "SPK_GENITEMS_NOTACR"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "una-nota-abierta",
+          "desc": "Una sola FNOT abierta por factura",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "fnt-tipo",
+          "tabla": "FNT",
+          "desc": "Tipo nota NC/ND",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-notas",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "cpnt",
+          "tabla": "CPNT",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-not",
+          "usvgs": [
+            "IDCON_TCOM_NOTDBCR",
+            "IDCUENTANOTAS",
+            "FNOT_ANULA_REVERSA",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración notas y cartera",
+      "pantallas": [
+        "/conf/cpnt",
+        "/conf/fnt",
+        "TTEC / KMCOM cartera"
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "NOTDBCR",
+    "tablaOrigen": "FNOT"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/notdbcr.json",
+    "procesoHermano": "notas-dbcr",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-notdbcr.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

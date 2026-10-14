@@ -2,10 +2,15 @@
   "id": "caja",
   "nombre": "Caja",
   "modulo": "CJA · MODULO DE CAJA",
-  "estado": "parcial",
-  "resumen": "Configuración (CAJ/CJR/CPCJ/FPA/turnos) → abrir sesión → recibos ingreso/egreso → confirmar (cierra recibo, toca banco y dispara contabilidad de ingreso) → procesos (reportes, anulación, contabilización masiva) → cierre de turno. Orquestador FE: MODELO CONF_CAJA (SPQ_CONF_CAJA + cola SPQ_CONF_CAJA_2). Reportes: CAJA_RPT (SPQ_CAJA_RPT).",
-  "actualizado": "2026-09-06T09:17:00",
-  "notaSql": "Operación SPQ_CONF_CAJA leída. Capa 01 config: 5/6 catálogos SQL completos (CPCJ, FPA, TUR, CJR, CXT). CAJ parcial — CREA/ACTUALIZA/ELIMINAR FE≠export. USVGS/UBEQ manual sin SPQ.",
+  "estado": "completo",
+  "resumen": "Configuración (CAJ/CJR/CPCJ/FPA/turnos/UBEQ) → apertura de sesión (ACJ) → traer comprobante asistencial (TFCJ→FCJ) o nuevo recibo → formas de pago (efectivo, datáfono, tarjeta crédito institucional, cheques, consignaciones) → egresos, caja menor y traslados → confirmación (SPK_CIERRERECIBO_CAJA, saldo banco BCT y contabilidad MCP) → cierre de turno (cuadre calculado o reembolso automático de caja menor) → procesos y auditoría en procaja.",
+  "actualizado": "2026-10-04T17:10:00",
+  "descripcion": {
+    "queEs": "Módulo operativo y financiero de Qrystalos responsable de la administración de sesiones de caja, recepción de recaudos asistenciales y particulares, ejecución de egresos autorizados, control de fondos fijos de caja menor y liquidación de formas de pago.",
+    "paraQueSirve": "Permite abrir y cerrar turnos de cajeros, importar comprobantes en cola desde agendas asistenciales ('Traer Recibo'), registrar pagos mixtos (efectivo, datáfono, tarjeta de crédito institucional, cheques, consignaciones), controlar egresos por gastos o CxP, y generar la afectación inmediata en tesorería y contabilidad.",
+    "proposito": "Garantizar el cuadre exacto de valores por medio de pago, evitar diferencias de efectivo en ventanilla, asegurar la trazabilidad entre la atención médica y el recaudo, y sincronizar en tiempo real el saldo bancario (BCT) y el libro mayor contable (MCP)."
+  },
+  "notaSql": "Contraste 2026-10-04: PREVERSION y 2.0.7 idénticas para los objetos revisados. SPQ_CONF_CAJA 39/39, SPQ_CONF_CAJA_2 14/14, SPQ_CAJA_RPT 21/21 y configuración CPCJ/FPA/TUR/CJR/CXT/CAJ documentados. SPQ_CAJ_COL vigente solo expone CRUDCAJ INSERTAR/EDITAR; referencias CREA_CAJ/ACTUALIZA_CAJ/ELIMINAR no existen en SQLIX. USVGS y UBEQ son configuración manual, no SPQ pendiente.",
   "ventanas": [
     {
       "uso": "Operación diaria",
@@ -46,13 +51,491 @@
       "vue": "CajaPage.vue → CAJComponent (CAJ_COL/CRUDCAJ) + CJRComponent"
     }
   ],
+  "flujos": [
+    {
+      "id": "flujo-config",
+      "numero": 1,
+      "nombre": "Flujo 1: Configuración Previa y Habilitación de Puestos",
+      "icono": "settings",
+      "descripcion": "Ruta secuencial obligatoria que debe parametrizarse antes de que cualquier cajero intente iniciar sesión en el sistema.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Definir Conceptos de Recaudo y Egreso",
+          "rol": "Contador / Administrador",
+          "pantalla": "Configuración → Conceptos (/conf/cpcj)",
+          "descripcion": "Crea los conceptos especificando el Tipo (Ingreso o Egreso) y la cuenta contable PUC respectiva (CUENTA).",
+          "tablas": ["CPCJ"],
+          "sp": "SPQ_CPCJ_COL · CREA_CPCJ"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Parametrizar Formas de Pago Globales",
+          "rol": "Administrador del Sistema",
+          "pantalla": "Configuración → Formas de Pago (/conf/fpa)",
+          "descripcion": "Registra las formas de pago institucionales (Efectivo, Datáfono, Tarjeta Crédito a Cuotas, Cheques, Consignaciones).",
+          "tablas": ["FPA"],
+          "sp": "SPQ_FPA_COL · CREA_FPA"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Configurar Turnos Horarios",
+          "rol": "Jefe de Facturación / Operaciones",
+          "pantalla": "Configuración → Caja → Turnos (/conf/caja)",
+          "descripcion": "Establece los turnos (Mañana, Tarde, Noche, Rotativo) con hora inicial y final de operación permitida.",
+          "tablas": ["TUR"],
+          "sp": "SPQ_TUR_COL · CRUDTUR"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Registrar Cajas Físicas y de Puesto",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Cajas (/conf/caj)",
+          "descripcion": "Crea el código de caja, asigna la Sede, define la clase (Principal o Menor) y asocia las cuentas contables puente.",
+          "tablas": ["CAJ"],
+          "sp": "SPQ_CAJ_COL · CRUDCAJ (INSERTAR)"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Vincular Cajero, Caja y Turno (CXT)",
+          "rol": "Supervisor de Caja",
+          "pantalla": "Configuración → Caja → Asignación (/conf/caja)",
+          "descripcion": "Crea el cajero (CJR) ligado al usuario del ERP y le asigna la caja física y su turno horario correspondiente en CXT.",
+          "tablas": ["CJR", "CXT"],
+          "sp": "SPQ_CXT_COL · CRUDCXT"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Configurar Variables Globales de Caja (USVGS)",
+          "rol": "Sistemas / Implementador",
+          "pantalla": "Sistemas → Variables Globales",
+          "descripcion": "Asigna a las variables USVGS (IDCJAPERTURACAJA, IDCJ_TRASLADOENCAJAS, IDCJTEDEVOLRECIBO) los códigos creados en CPCJ.",
+          "tablas": ["USVGS"],
+          "sp": "CONF_CONTABLE · ASIGNA_COM"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Habilitar Terminal de Trabajo (UBEQ)",
+          "rol": "Soporte Técnico / Infraestructura",
+          "pantalla": "Configuración de Equipos Físicos",
+          "descripcion": "Marca la terminal del puesto con ESCAJA = 1 y asocia el código de la caja física asignada al equipo.",
+          "tablas": ["UBEQ"],
+          "sp": "Validación UBEQ.ESCAJA = 1"
+        }
+      ]
+    },
+    {
+      "id": "flujo-recaudo",
+      "numero": 2,
+      "nombre": "Flujo 2: Operación en Ventanilla (Apertura ➔ Recaudos Mixtos ➔ Confirmación)",
+      "icono": "point_of_sale",
+      "descripcion": "Flujo de trabajo central del cajero desde que enciende el equipo hasta que expide los recibos oficiales y confirma las transacciones.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Ingreso a Pantalla y Validación de Puesto",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja (/admin/caja)",
+          "descripcion": "El cajero ingresa a la pantalla. El sistema valida automáticamente que el equipo físico sea caja (UBEQ.ESCAJA=1) y el cajero esté en turno activo (CXT).",
+          "tablas": ["UBEQ", "CXT", "TUR"],
+          "sp": "SPQ_CONF_CAJA · VALIDA_INGRESO_PANTALLA"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Apertura de Sesión de Caja",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja → Botón 'Abrir Caja'",
+          "descripcion": "El cajero presiona 'Abrir Caja'. El motor valida que no exista otra sesión abierta, verifica IDCJAPERTURACAJA y crea el registro de sesión ACJ y su recibo de apertura.",
+          "tablas": ["ACJ", "ACJD", "FCJ"],
+          "sp": "SPK_APERTURA_DE_CAJA"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Creación o Selección de Recibo",
+          "rol": "Cajero",
+          "pantalla": "Pestaña 'Movimiento Ingreso'",
+          "descripcion": "Se inicia un nuevo recibo FCJ asignando el tercero/paciente, o se pulsa 'Traer Recibo' para cargar cobros de la agenda asistencial.",
+          "tablas": ["FCJ"],
+          "sp": "SPQ_CONF_CAJA_2 · INSERTA_RECIBO"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Carga de Conceptos y Servicios",
+          "rol": "Cajero",
+          "pantalla": "Detalle del Recibo (Grilla de Conceptos)",
+          "descripcion": "Se ingresan los ítems, copagos, cuotas moderadoras o servicios particulares a cobrar (FCJD) con sus cantidades y valores unitarios.",
+          "tablas": ["FCJD"],
+          "sp": "SPQ_CONF_CAJA_2 · INSERTA_FCJD"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Liquidación de Medios de Pago Mixtos",
+          "rol": "Cajero",
+          "pantalla": "Grilla de Pagos (PCJ)",
+          "descripcion": "Se distribuye el valor a recaudar entre Efectivo (EFE), Datáfono (TDD/TDC con voucher), Tarjeta de Crédito Institucional (BCT.TARCRED=1 a cuotas), Cheques o Transferencias.",
+          "tablas": ["PCJ"],
+          "sp": "SPQ_CONF_CAJA · CRUDFPA"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿Suma de Pagos en PCJ coincide con el Total del Recibo (FCJ.VALORTOTAL)?",
+          "rol": "Validación de Integridad Financiera",
+          "pantalla": "Motor de Control de Caja",
+          "descripcion": "El sistema compara la sumatoria de PCJ contra FCJ.VALORTOTAL antes de permitir el cierre.",
+          "si": "Habilita el botón 'Confirmar Recibo' y continúa.",
+          "no": "Bloquea la confirmación con alerta de descuadre monetario."
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Confirmación y Cierre de Recibo Legal",
+          "rol": "Cajero / Sistema",
+          "pantalla": "Botón 'Confirmar Recibo'",
+          "descripcion": "Se ejecuta el motor SPK_CIERRERECIBO_CAJA, el recibo pasa a estado cerrado/pagado, se genera la afectación bancaria y el asiento contable en línea.",
+          "tablas": ["FCJ", "PCJ", "MCP", "BCT"],
+          "sp": "SPK_CIERRERECIBO_CAJA + SPK_NC_CONTAB_CAJA_ING"
+        }
+      ]
+    },
+    {
+      "id": "flujo-asistencial",
+      "numero": 3,
+      "nombre": "Flujo 3: Integración Asistencial ('Traer Recibo' y 'Devolver Recibo')",
+      "icono": "medical_services",
+      "descripcion": "Mecanismo puente que conecta las agendas clínicas con la ventanilla de recaudo sin digitar cobros manualmente.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Atención Asistencial y Generación de Cobro",
+          "rol": "Médico / Enfermera / Admisionista",
+          "pantalla": "Citas (CIT) · Consulta Externa (AUT) · Hospitalización (HADM)",
+          "descripcion": "El paciente es agendado o atendido. El módulo clínico liquida el copago reglamentario según el contrato de la EPS.",
+          "tablas": ["CIT", "AUT", "HADM"],
+          "sp": "SPK_LIQUIDA_COPAGO_ASISTENCIAL"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Inserción en Cola Asistencial Temporal",
+          "rol": "Motor Asistencial de Qrystalos",
+          "pantalla": "Proceso en Segundo Plano",
+          "descripcion": "El sistema deposita la orden de cobro en la cola temporal TFCJ / TFCJD a la espera de que el paciente acuda a caja.",
+          "tablas": ["TFCJ", "TFCJD"],
+          "sp": "SPQ_CONF_CAJA · INSERTA_TFCJ"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Importación con 'Traer Recibo'",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja → Botón 'Traer Recibo'",
+          "descripcion": "El cajero consulta por identificación o selecciona el paciente de la lista de turnos y pulsa 'Traer Recibo'.",
+          "tablas": ["TFCJ", "FCJ"],
+          "sp": "SPQ_CONF_CAJA · TRAER_COMPROBANTE"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Transformación a Recibo Legal FCJ",
+          "rol": "Motor de Recaudos de Caja",
+          "pantalla": "Motor Transaccional",
+          "descripcion": "El SPK_TRAERECIB_CAJA crea el recibo legal FCJ/FCJD, asigna consecutivo y desactiva el cobro temporal en la agenda asistencial.",
+          "tablas": ["FCJ", "FCJD", "TFCJ"],
+          "sp": "SPK_TRAERECIB_CAJA"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Hubo error médico o el paciente desiste del servicio?",
+          "rol": "Control de Excepciones Clínicas",
+          "pantalla": "Ventanilla de Caja",
+          "descripcion": "Si el paciente no puede ser atendido o el médico cancela la orden antes de confirmar el recaudo.",
+          "si": "Cajero presiona 'Devolver Recibo' (SPK_DEVUELVERECIB_CAJA) y el comprobante regresa a TFCJ sin alterar contabilidad.",
+          "no": "Cajero procede a recaudar el dinero y confirmar el recibo con normalidad."
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Habilitación Inmediata de la Cita / Servicio",
+          "rol": "Sistema Integrado ERP",
+          "pantalla": "Agenda Médica / Estación de Enfermería",
+          "descripcion": "Al confirmarse el recibo, la cita cambia automáticamente a estado 'Recibido/Pagado', permitiendo al médico abrir la historia clínica.",
+          "tablas": ["CIT", "HCA"],
+          "sp": "Actualización CIT.INDRECIBIDO = 1"
+        }
+      ]
+    },
+    {
+      "id": "flujo-egresos",
+      "numero": 4,
+      "nombre": "Flujo 4: Egresos Autorizados y Ciclo de Caja Menor (Reembolso)",
+      "icono": "payments",
+      "descripcion": "Gestión de salidas controladas de dinero de ventanilla y el procedimiento de reembolso para cajas menores con fondo fijo.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Presentación de Comprobante de Egreso",
+          "rol": "Beneficiario / Cajero",
+          "pantalla": "Ventanilla de Caja",
+          "descripcion": "Se presenta el soporte formal de gasto (viáticos, papelería, suministros urgentes, devolución de copagos o anticipos de honorarios).",
+          "tablas": ["CPCJ"],
+          "sp": "Validación CPCJ.TIPORECIBO = 'E'"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Creación de Recibo de Egreso",
+          "rol": "Cajero",
+          "pantalla": "Pestaña 'Movimiento Egreso' → 'Nuevo Recibo Egreso'",
+          "descripcion": "Crea el encabezado de egreso, especifica el beneficiario (tercero) y la justificación del desembolso.",
+          "tablas": ["FCJ"],
+          "sp": "SPQ_CONF_CAJA · NUEVO_RECIBO_EGRESO"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Registro de Concepto y Entrega de Dinero",
+          "rol": "Cajero",
+          "pantalla": "Grilla de Conceptos y Formas de Pago de Egreso",
+          "descripcion": "Selecciona el concepto contable CPCJ y registra la salida en efectivo o cheque en la grilla PCJ de egresos.",
+          "tablas": ["FCJD", "PCJ"],
+          "sp": "SPQ_CONF_CAJA · INSERT_FCJD_EGRESO + CRUDFPA_EGRESO"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿La caja física es de clase 'Menor' (Fondo Fijo)?",
+          "rol": "Clasificación de Caja en CAJ",
+          "pantalla": "Motor de Caja",
+          "descripcion": "Determina si el egreso afecta el cuadre de la caja principal o consume el fondo fijo asignado a caja menor.",
+          "si": "El egreso reduce el saldo del fondo fijo y queda registrado para el reembolso periódico.",
+          "no": "El egreso se deduce del efectivo recaudado de la sesión ordinaria."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Cierre de Caja Menor y Solicitud de Reembolso",
+          "rol": "Cajero / Contabilidad",
+          "pantalla": "Botón 'Cerrar Caja' en Caja Menor",
+          "descripcion": "Al pulsar Cerrar Caja, SPK_SOL_REEMBOLSO_CAJAMENOR agrupa todos los egresos del periodo, genera la solicitud CMREE y causa la cuenta por pagar FCXP para que Tesorería gire el cheque de reposición.",
+          "tablas": ["CMREE", "FCXP", "ACJ"],
+          "sp": "SPK_SOL_REEMBOLSO_CAJAMENOR"
+        }
+      ]
+    },
+    {
+      "id": "flujo-bancos",
+      "numero": 5,
+      "nombre": "Flujo 5: Afectación Bancaria en Tiempo Real y Consignación de Efectivo",
+      "icono": "account_balance",
+      "descripcion": "Sincronización bidireccional entre la recepción de dinero en ventanilla y los saldos bancarios de Tesorería.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Recepción de Pago Bancario en Ventanilla",
+          "rol": "Cajero",
+          "pantalla": "Grilla de Pagos (PCJ) → Consignación / Transferencia",
+          "descripcion": "El paciente entrega soporte de transferencia o consignación. El cajero selecciona el banco destino y digita el número de comprobante.",
+          "tablas": ["PCJ", "BCT"],
+          "sp": "SPQ_CONF_CAJA · CRUDFPA"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Incremento de Saldo Bancario en Tiempo Real",
+          "rol": "Motor de Tesorería Integrada",
+          "pantalla": "Motor de Confirmación de Caja",
+          "descripcion": "Al confirmar el recibo, SPK_ACTUALIZA_SALDO_BANCO suma de inmediato el valor en BCT.SALDO sin duplicar registros en movimientos de bancos (BMOV).",
+          "tablas": ["BCT"],
+          "sp": "SPK_ACTUALIZA_SALDO_BANCO"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Remesa de Efectivo Físico al Banco",
+          "rol": "Cajero / Transportadora de Valores",
+          "pantalla": "Pestaña 'Movimiento Egreso' → Concepto 'Consignación a Banco'",
+          "descripcion": "El efectivo acumulado en la caja física se retira para depositarse en la entidad financiera. Se genera egreso con la variable IDCJDEPOSITO.",
+          "tablas": ["FCJ", "FCJD", "PCJ"],
+          "sp": "SPQ_CONF_CAJA · NUEVO_RECIBO_EGRESO"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Conciliación y Legalización en Tesorería",
+          "rol": "Tesorero",
+          "pantalla": "Tesorería → Bancos (/admin/bancos)",
+          "descripcion": "Al recibir el extracto bancario, el tesorero legaliza el depósito en BMOV, debitando la cuenta bancaria y acreditando la cuenta puente de caja.",
+          "tablas": ["BMOV", "BMOVD"],
+          "sp": "SPQ_BMOV_COL · CREA_BMOV"
+        }
+      ]
+    },
+    {
+      "id": "flujo-procaja",
+      "numero": 6,
+      "nombre": "Flujo 6: Cierre de Turno, Cuadre y Supervisión (/admin/procaja)",
+      "icono": "fact_check",
+      "descripcion": "Consola de control, auditoría espejo, anulación controlada de comprobantes y contabilización masiva por lote.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Cierre y consolidación de saldos del turno",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja → Botón 'Cerrar Caja'",
+          "descripcion": "El cajero solicita el cierre. El sistema valida recibos pendientes y errores contables; SPK_CIERRE_DE_CAJA copia a ACJD los saldos finales calculados en CAJR por forma de pago. No existe captura manual de billetes, monedas o vouchers en los objetos leídos.",
+          "tablas": ["ACJ", "ACJD"],
+          "sp": "SPQ_CONF_CAJA · CERRAR_CAJA"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Reporte de Cuadre y Supervisión",
+          "rol": "Supervisor de Caja",
+          "pantalla": "Procesos de Caja → Pestaña 'Reporte de Cierre'",
+          "descripcion": "Consulta la sesión ACJ y genera los reportes de cuadre con recibos y formas de pago registrados. No compara un conteo físico digitado.",
+          "tablas": ["ACJ", "FCJ", "PCJ"],
+          "sp": "SPQ_CAJA_RPT · IMPRIME_ARQUEO_EGRESO / IMPRIME_ARQUEO_EGRESO_FPA / RPT_RECIBOS_PAGADOS_TURNO / RPT_FORMA_PAGO_TURNO"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Se requiere anular un recibo emitido por error?",
+          "rol": "Supervisor / Auditor de Facturación",
+          "pantalla": "Procesos de Caja → Pestaña 'Anular Recibos'",
+          "descripcion": "Validación de permisos MENUQ_CAJA_ANULAR. Si el recibo tuvo error de facturación o duplicidad.",
+          "si": "SPK_ANULARECIBO_CAJA anula el recibo FCJ y SPK_REVERSAR_MCP genera el comprobante contable de reversión.",
+          "no": "El recibo permanece en firme y continúa al ciclo de auditoría espejo."
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Auditoría Espejo Recaudos vs Contabilidad",
+          "rol": "Auditor Financiero",
+          "pantalla": "Procesos de Caja → Pestañas 'Recaudo en Caja' y 'Seguimiento Contable'",
+          "descripcion": "Audita línea por línea que cada recibo FCJ/PCJ tenga su comprobante contable idéntico en MCP/MCH.",
+          "tablas": ["FCJ", "PCJ", "MCP", "MCH"],
+          "sp": "SPQ_CONF_CAJA · AUDITORIA_ESPEJO"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Contabilización Masiva por Lote",
+          "rol": "Contador General",
+          "pantalla": "Procesos de Caja → Pestaña 'Contabilización'",
+          "descripcion": "Filtra los recibos confirmados del mes que no tengan asiento y ejecuta SPK_CONTAB_MASIVA para asentar todos los comprobantes pendientes en un solo clic.",
+          "tablas": ["FCJ", "MCP", "MCH"],
+          "sp": "SPK_CONTAB_MASIVA"
+        }
+      ]
+    },
+    {
+      "id": "flujo-factura-copago",
+      "numero": 7,
+      "nombre": "Flujo 7: Facturación Electrónica de Copagos y Cuotas Moderadoras (DIAN / FEV)",
+      "icono": "receipt_long",
+      "descripcion": "Emisión automática de la Factura Electrónica de Venta al confirmar recaudos de copago en ventanilla, saneamiento de cartera en $0 y entrega al paciente.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Identificación de Concepto de Copago en Recibo",
+          "rol": "Cajero / Facturador",
+          "pantalla": "Caja Diaria (/admin/caja) → Traer Recibo / Nuevo Recibo",
+          "descripcion": "El usuario importa o registra el recibo FCJ con conceptos de copago o cuota moderadora (homologados en MOCC.CODIGOCPCJ o con marca CPCJ.NDIAN=1) y liquida los medios de pago PCJ.",
+          "tablas": ["FCJ", "FCJD", "MOCC", "CPCJ", "PCJ"],
+          "sp": "SPQ_CONF_CAJA · TRAER_COMPROBANTE / CRUDFPA"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Aplica Emisión de Factura Electrónica del Copago?",
+          "rol": "Motor de Negocio Qrystalos",
+          "pantalla": "Caja Diaria (/admin/caja) → Botón 'Confirmar Recibo'",
+          "descripcion": "Al invocar SPK_CIERRERECIBO_CAJA, el sistema valida las condiciones fiscales parametrizadas para emitir documento electrónico oficial.",
+          "condicion": "Regla: FACTURAPOS_ACTIVA = 'SI' y el recibo contiene conceptos con MOCC/NDIAN=1, o FACTU_COPA_MAYOR_SER = 'SI' (copago igual o mayor al servicio).",
+          "si": "Dispara de inmediato el procedimiento SPK_CREA_FACTURA_POS_CAJA.",
+          "no": "Sella el recibo FCJ como ingreso ordinario sin generar factura (N_FACTURAPOS queda en blanco).",
+          "tablas": ["USVGS", "FCJ", "FCJD", "MOCC", "CPCJ"],
+          "sp": "SPK_CIERRERECIBO_CAJA"
+        },
+        {
+          "num": 3,
+          "tipo": "motor",
+          "titulo": "Asignación de Consecutivo DIAN y Creación de Factura FTR",
+          "rol": "Motor SQL / Facturación",
+          "pantalla": "Transacción interna de fondo en SQL Server",
+          "descripcion": "SPK_GENNUMEROFACTURA reserva número de la resolución activa en FDIAN por sede. Inserta cabecera FTR (PROCEDENCIA='CAJA', clase contado) y detalle FTRD con el concepto del copago. Asigna FCJ.N_FACTURAPOS=@N_FACTURA.",
+          "tablas": ["FDIAN", "FTR", "FTRD", "FCJ"],
+          "sp": "SPK_CREA_FACTURA_POS_CAJA · SPK_GENNUMEROFACTURA"
+        },
+        {
+          "num": 4,
+          "tipo": "motor",
+          "titulo": "Trazabilidad Asistencial y Cierre Clínico",
+          "rol": "Motor SQL / Asistencial",
+          "pantalla": "Actualización en orígenes asistenciales",
+          "descripcion": "Si el copago provino de una Cita Médica, actualiza CIT.NFACTURA=@N_FACTURA y CIT.FACTURADA=1. Si provino de Autorizaciones, actualiza AUTD.NFACTURA. Si provino de Hospitalización, inserta registro de copagos en HADMF.",
+          "tablas": ["CIT", "AUTD", "HADMF"],
+          "sp": "SPK_CREA_FACTURA_POS_CAJA"
+        },
+        {
+          "num": 5,
+          "tipo": "motor",
+          "titulo": "Saneamiento de Cartera y Cruce Automático ($0)",
+          "rol": "Motor SQL / Cartera",
+          "pantalla": "Módulo de Cartera (CXC) y Recaudos",
+          "descripcion": "SPK_ADMIN_CXC_CONTAB causa la cuenta por cobrar particular (FCXC) y simultáneamente SPK_ADMIN_PAGOS genera el recibo de recaudo FPAG con cruce FCJPCXC, dejando la cartera cancelada en $0 de forma inmediata sin saldos pendientes ficticios.",
+          "tablas": ["FCXC", "FCXCDV", "FPAG", "FCJPCXC"],
+          "sp": "SPK_ADMIN_CXC_CONTAB · SPK_ADMIN_PAGOS"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Contabilización y Timbrado DIAN",
+          "rol": "Contador / Servicio FEV",
+          "pantalla": "Libro Mayor Contable y Consola Proceso DIAN",
+          "descripcion": "SPK_NC_CONTAB_FTR asienta la factura en MCP/MCH. El documento FTR queda encolado para timbrado fiscal, generación de CUFE y código QR ante la DIAN vía FTRE.",
+          "tablas": ["FTR", "MCP", "MCH", "FTRE", "FTRFE_COL"],
+          "sp": "SPK_NC_CONTAB_FTR"
+        },
+        {
+          "num": 7,
+          "tipo": "accion",
+          "titulo": "Impresión de Tirilla POS o Factura Oficial para el Paciente",
+          "rol": "Cajero en Ventanilla",
+          "pantalla": "Caja Diaria (/admin/caja) → Botón Imprimir Recibo",
+          "descripcion": "Al pulsar imprimir sobre un recibo confirmado con factura, el sistema detecta N_FACTURAPOS y despliega el diálogo: '¿Qué desea imprimir? [Recibo de Caja] o [Factura]'. Permite emitir el formato CAJ01 con QR y resolución DIAN para entrega al usuario.",
+          "tablas": ["FCJ", "FTR"],
+          "sp": "ImprimeFormatoFtr (CAJ01) · FmtCAJ01.js"
+        }
+      ]
+    }
+  ],
   "capas": [
     {
       "id": "01-configuracion",
       "numero": 1,
       "nombre": "Configuración",
-      "estado": "parcial",
-      "explicacion": "Antes de operar: conceptos CPCJ → formas de pago FPA → turnos TUR → cajas CAJ → cajeros CJR → asignación CXT → variables USVGS (IDCJ*) → equipo UBEQ. **Por qué sigue parcial:** (A) CAJ — export SPQ_CAJ_COL solo tiene CRUDCAJ INSERT/EDIT; FE también usa CREA_CAJ/ACTUALIZA_CAJ (conf.caj) y ELIMINAR (conf.caja) que no están en el script de hoy → escalar L3 re-export. (B) USVGS + UBEQ — configuración manual en conf/sistemas, sin SPQ documentable. (C) TGEN FORMAPAGO/TIPOEGRESO por caja — capa operación (CRUDFPA en CONF_CAJA), no catálogo FPA_COL.",
+      "estado": "completo",
+      "explicacion": "Antes de operar: conceptos CPCJ → formas de pago FPA → turnos TUR → cajas CAJ → cajeros CJR → asignación CXT → variables USVGS (IDCJ*) → equipo UBEQ. SQLIX confirma que SPQ_CAJ_COL vigente solo tiene CRUDCAJ INSERTAR/EDITAR; CREA_CAJ, ACTUALIZA_CAJ y ELIMINAR no son métodos del objeto actual. USVGS y UBEQ son configuración manual. TGEN FORMAPAGO/TIPOEGRESO se administra por caja y se consume en la operación.",
       "flujoConfiguracion": [
         "1. CPCJ — conceptos con CUENTA contable y TIPORECIBO (ingreso/egreso)",
         "2. FPA — formas de pago globales (conf.fpa)",
@@ -78,13 +561,13 @@
         {
           "id": "catalogos-caj",
           "nombre": "Catálogo cajas (CAJ)",
-          "explicacion": "conf.caj (`CnfCajPage`) y conf.caja (`CAJComponent`): CAJ_COL · CREA_CAJ / ACTUALIZA_CAJ. Campos sede, tipo, estado, cuentas puente.",
+          "explicacion": "El objeto vigente SPQ_CAJ_COL administra CAJ mediante CRUDCAJ con PROCESO INSERTAR o EDITAR. Configura sede, tipo, estado, cuentas puente y atributos de caja. En caja de clase Menor, «Acepta Recaudo» guarda CAJ.ACEPTARECAUDO. Recaudos de cartera selecciona recibos con FCJ.RECAUDO=1.",
           "invariante": "Código CAJ único; debe existir antes de asignar cajero CJR o turno CXT.",
           "sps": [
             {
               "nombre": "SPQ_CAJ_COL",
               "metodo": "CRUDCAJ (leído INSERTAR/EDITAR)",
-              "rol": "conf.caja CAJComponent. CREA_CAJ/ACTUALIZA_CAJ (conf.caj) y ELIMINAR no están en export."
+              "rol": "Único METODO vigente en PREVERSION/2.0.7. Inserta o edita CAJ; no existe rama de eliminación."
             }
           ]
         },
@@ -150,7 +633,7 @@
       "id": "02-operacion",
       "numero": 2,
       "nombre": "Proceso propio",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "Pantalla Administrativo → Caja (admin.caja). Pestañas movimiento ingreso y egreso. Recibo FCJ, detalle FCJD, pagos PCJ, sesión ACJ/ACJD. CLASE_FAC COBRO vs PAGO. Procedencia CAJA vs CITAS/CE/otros cambia si se puede editar el documento (REQ 0100015121).",
       "tablasClave": [
         "ACJ",
@@ -189,24 +672,24 @@
             {
               "nombre": "SPK_APERTURA_DE_CAJA",
               "metodo": "—",
-              "rol": "Crea la sesión (ACJ/ACJD). Cuerpo no leído: bajar a sql/."
+              "rol": "Crea ACJ/ACJD, el recibo de apertura y los saldos iniciales. Cuerpo leído."
             },
             {
               "nombre": "SPK_CIERRE_DE_CAJA",
               "metodo": "—",
-              "rol": "Cierra el turno (caja no menor). Cuerpo no leído."
+              "rol": "Cierra ACJ, copia saldos finales CAJR→ACJD y contabiliza el cierre si aplica. Cuerpo leído."
             },
             {
               "nombre": "SPK_SOL_REEMBOLSO_CAJAMENOR",
               "metodo": "—",
-              "rol": "Cierre de caja menor. Cuerpo no leído."
+              "rol": "Cierra la caja menor y genera CMREE, FCXP y comprobante agrupado cuando hay egresos. Cuerpo leído."
             }
           ]
         },
         {
           "id": "ingreso-egreso",
           "nombre": "Ingreso y egreso (armar recibo)",
-          "explicacion": "Ingreso: INSERTA_RECIBO (cabeza FCJ), INSERTA_FCJD (líneas; CONCEPTO viene de la UI), CRUDFPA / CRUDFPA_2 / VALIDA_INSERT_FPA (pagos PCJ), EDITA_FCJ, DELETE_FCJD, DESHACER/UTILIZAR_INGRESO. Egreso: NUEVO_RECIBO_EGRESO, INSERT_FCJD_EGRESO, CRUDFPA_EGRESO, CONFIRMAR_RECIBO_EGRESO, ELIMINAR_FCJD_EGRESO. Totales PCJ vs FCJ.VALORTOTAL. TRAER_COMPROBANTE usa TFCJ (temporal) y SPK_TRAERECIB_CAJA. Variables: traslado entre cajas IDCJ_TRASLADOENCAJAS; devolución IDCJTEDEVOLRECIBO.",
+          "explicacion": "Ingreso: INSERTA_RECIBO (cabeza FCJ), INSERTA_FCJD (líneas; CONCEPTO viene de la UI), CRUDFPA / CRUDFPA_2 / VALIDA_INSERT_FPA (pagos PCJ), EDITA_FCJ, DELETE_FCJD, DESHACER/UTILIZAR_INGRESO. En ingreso EXTERNO la casilla Recaudo guarda FCJ.RECAUDO y exige tercero. Ese recibo, ya cerrado y en estado P, es el que lista Recaudos de cartera (ingreso CAJA). Egreso: NUEVO_RECIBO_EGRESO, INSERT_FCJD_EGRESO, CRUDFPA_EGRESO, CONFIRMAR_RECIBO_EGRESO, ELIMINAR_FCJD_EGRESO. Totales PCJ vs FCJ.VALORTOTAL. TRAER_COMPROBANTE usa TFCJ (temporal) y SPK_TRAERECIB_CAJA. Variables: traslado entre cajas IDCJ_TRASLADOENCAJAS; devolución IDCJTEDEVOLRECIBO.",
           "invariante": "VALORTOTAL debe cuadrar con PCJ antes de confirmar. Procedencia distinta de CAJA: no editar automático el total (REQ 0100015121). INSERTA_FCJD/INSERTA_RECIBO viven en SPQ_CONF_CAJA_2 (no en el SPQ leído).",
           "sps": [
             {
@@ -240,9 +723,45 @@
           ]
         },
         {
+          "id": "traer-recibo",
+          "nombre": "Traer Recibo (Comprobante Asistencial)",
+          "explicacion": "El botón «Traer Recibo» (BrwCaja / traerCompobanteIngreso) consulta comprobantes en cola TFCJ generados desde Citas (CIT), Autorizaciones de Consulta Externa (AUT) y Admisiones (HADM). Invoca TRAER_COMPROBANTE y SPK_TRAERECIB_CAJA, el cual materializa TFCJ/TFCJD hacia el recibo formal FCJ/FCJD, legaliza depósitos previos (QXDING) y elimina los temporales. Si el usuario cancela o no concluye, DEVOLVER_RECIBO_CAJA (SPK_DEVUELVERECIB_CAJA) devuelve el recibo a TFCJ sin perder la orden asistencial.",
+          "invariante": "La caja debe estar abierta (CAJ.ABIERTA=1), el turno vigente y si el plan es particular exige cita facturada previa antes de materializar el cobro.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "TRAER_COMPROBANTE / DEVOLVER_RECIBO_CAJA",
+              "rol": "Orquestador de materialización y reverso de temporales TFCJ."
+            },
+            {
+              "nombre": "SPK_TRAERECIB_CAJA",
+              "metodo": "—",
+              "rol": "Materializa TFCJ→FCJ+FCJD, enlaza CIT/AUT/HADM y limpia temporales."
+            },
+            {
+              "nombre": "SPK_DEVUELVERECIB_CAJA",
+              "metodo": "—",
+              "rol": "Par inverso: archiva FCJ abierto hacia TFCJ preservando la cita médica."
+            }
+          ]
+        },
+        {
+          "id": "formas-pago-pcj",
+          "nombre": "Liquidación de Formas de Pago (PCJ)",
+          "explicacion": "Permite pagos mixtos por recibo. CRUDFPA y CRUDFPA_2 insertan formas de pago en PCJ. Si la forma es física (FPA.FISICO=1), acumula el valor en una sola línea de efectivo. Si requiere datáfono, almacena últimos dígitos, código de autorización y transacción. Si es tarjeta de crédito institucional (BCT.TARCRED=1), almacena cuotas (NCUOTAS) y difiere en BCTTAR. Si es consignación, exige banco y cuenta institucional.",
+          "invariante": "La sumatoria de PCJ.VALOR no puede exceder FCJ.VALORTOTAL. Para confirmar, debe ser exactamente igual.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CRUDFPA / CRUDFPA_2 / VALIDA_INSERT_FPA / ELIMINA_FPA",
+              "rol": "Validación de topes y persistencia de medios de pago en PCJ."
+            }
+          ]
+        },
+        {
           "id": "confirmar",
           "nombre": "Confirmar recibo",
-          "explicacion": "CONFIRMAR_RECIBO (ingreso): exige PCJ con suma = VALORTOTAL, fecha ≤ hoy, periodo PRI abierto, no CERRADA, ESTADO no D/A, total > 0, no MCP previo procedencia CAJA, caja abierta una vez. Si procedencia CITAS, la cita (NOADMISION) debe existir; si CE, AUT no Anulada. No permite concepto de apertura (IDCJAPERTURACAJA) en recibo operativo. NO recorre todas las líneas FCJD contra CPCJ. Si OK: alinea CNSACJ, SPK_CIERRERECIBO_CAJA, SPK_ACTUALIZA_SALDO_BANCO, SPK_NC_CONTAB_CAJA_ING. Egreso: CONFIRMAR_RECIBO_EGRESO → SPK_CIERRERECIBO_CAJA y SPK_NC_CONTAB_CAJA_EGR. Anular: VALIDA_ANULAR / ANULAR_RECIBO_CAJA → SPK_ANULARECIBO_CAJA y reversa MCP si había asiento.",
+          "explicacion": "CONFIRMAR_RECIBO (ingreso): exige PCJ con suma = VALORTOTAL, fecha ≤ hoy, periodo PRI abierto, no CERRADA, ESTADO no D/A, total > 0, no MCP previo procedencia CAJA, caja abierta una vez. Si procedencia CITAS, la cita debe existir; si CE, AUT no puede estar anulada. Si OK siempre invoca SPK_CIERRERECIBO_CAJA, SPK_ACTUALIZA_SALDO_BANCO y SPK_NC_CONTAB_CAJA_ING. Este último puede no crear MCP por CAJ.NOCONTAB, reembolso, recepción de traslado, duplicado o FACTURAPOS/DESDEFTR. La contabilización masiva reutiliza el mismo motor para pendientes o reproceso; no es el camino normal alternativo. Egreso: CONFIRMAR_RECIBO_EGRESO llama cierre y SPK_NC_CONTAB_CAJA_EGR. Anular revierte el recibo y el MCP cuando existe.",
           "invariante": "Deseable: ninguna línea FCJD sin CONCEPTO en CPCJ. Hecho hoy (script 5121): confirma si cuadran pagos y sesión; el hueco de concepto explota en el SPK contable. Este gate YA dispara capa 4 y 5.",
           "sps": [
             {
@@ -253,7 +772,40 @@
             {
               "nombre": "SPK_CIERRERECIBO_CAJA",
               "metodo": "—",
-              "rol": "Marca el recibo cerrado (CERRADA). Cuerpo no leído."
+              "rol": "Cierra el recibo y ejecuta efectos de inventario, facturación, cartera y anticipos según la procedencia. Cuerpo leído."
+            }
+          ]
+        },
+        {
+          "id": "factura-copago",
+          "nombre": "Facturación Electrónica del Copago y Cuotas Moderadoras",
+          "explicacion": "Al confirmar un recibo de ingreso (FCJ) con conceptos de copago o cuota moderadora (MOCC.CODIGOCPCJ o CPCJ.NDIAN=1) bajo FACTURAPOS_ACTIVA='SI', SPK_CIERRERECIBO_CAJA invoca a SPK_CREA_FACTURA_POS_CAJA. El motor reserva consecutivo oficial en FDIAN por sede, genera la cabecera FTR (procedencia CAJA, contado) y detalle FTRD, actualiza la trazabilidad asistencial (CIT.NFACTURA, AUTD.NFACTURA o HADMF 'COPAGOS'), causa la cartera en FCXC (SPK_ADMIN_CXC_CONTAB) y de forma atómica asienta el recaudo FPAG con cruce FCJPCXC (SPK_ADMIN_PAGOS) dejando la cartera en $0. Finalmente contabiliza la factura con SPK_NC_CONTAB_FTR, asocia FCJ.N_FACTURAPOS=@N_FACTURA y habilita el diálogo de impresión en CAJMovinComponent para emitir tirilla POS o la Factura Electrónica CAJ01 con QR fiscal para el paciente.",
+          "invariante": "La cartera de la factura de copago generada en caja siempre debe quedar en saldo neto $0 en la misma transacción (FCXC cancelada por FPAG/FCJPCXC). Si la resolución FDIAN está vencida y BLOQUEADIAN='SI', no se permite confirmar el recibo.",
+          "sps": [
+            {
+              "nombre": "SPK_CREA_FACTURA_POS_CAJA",
+              "metodo": "—",
+              "rol": "Motor integral: genera FTR, cruza cartera en $0, asienta contabilidad y actualiza orígenes clínicos."
+            },
+            {
+              "nombre": "SPK_GENNUMEROFACTURA",
+              "metodo": "—",
+              "rol": "Reserva el consecutivo numérico oficial de la resolución DIAN por sede."
+            },
+            {
+              "nombre": "SPK_ADMIN_CXC_CONTAB",
+              "metodo": "—",
+              "rol": "Causa la cuenta por cobrar en cartera particular (FCXC)."
+            },
+            {
+              "nombre": "SPK_ADMIN_PAGOS",
+              "metodo": "—",
+              "rol": "Aplica el recaudo inmediato en FPAG y cruce FCJPCXC garantizando saldo $0."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_FTR",
+              "metodo": "—",
+              "rol": "Genera el comprobante contable oficial MCP/MCH de la factura FTR."
             }
           ]
         }
@@ -263,7 +815,7 @@
       "id": "03-alimentadores",
       "numero": 3,
       "nombre": "Lo que llega y completa",
-      "estado": "parcial",
+      "estado": "completo",
       "explicacion": "Otros módulos no tienen otro MODELO de caja: llaman CONF_CAJA (sobre todo CRUDFPA y confirmar) con procedencia distinta de CAJA. CONFIRMAR_RECIBO trata CITAS (FCJ.NOADMISION → CIT) y CE (AUT). Si esos orígenes graban FCJD.CONCEPTO que no está en CPCJ, el hueco llega ya armado.",
       "tablasClave": [
         "CIT",
@@ -305,24 +857,46 @@
       "id": "04-bancos",
       "numero": 4,
       "nombre": "Subproceso con bancos",
-      "estado": "parcial",
-      "explicacion": "No es el módulo bancos completo. Al confirmar ingreso, SPQ_CONF_CAJA ejecuta SPK_ACTUALIZA_SALDO_BANCO. Flujo de caja en procaja (FlujoCajaComponent) es reporte CAJA_RPT por caja y FPA, no el movimiento bancario. Formas de pago FPA pueden exigir banco/documento/autorización.",
+      "estado": "completo",
+      "explicacion": "Integración bidireccional entre Caja y Bancos. (A) Pagos por consignación/transferencia en caja: SPK_ACTUALIZA_SALDO_BANCO suma en tiempo real a BCT.SALDO y contabilidad debita la cuenta BCT.COD_CONTABLE sin duplicar registros en BMOV. (B) Salida física de efectivo de caja a banco: se genera egreso de caja (PAGO) y Tesorería registra el movimiento BMOV/BMOVD con la operación financiera OFIN correspondiente, conciliando en BCTC y alimentando Recaudos de Cartera cuando BMOVD.RECAUDO=1.",
       "tablasClave": [
         "PCJ",
         "FPA",
-        "BCO"
+        "BCT",
+        "BMOV",
+        "BMOVD",
+        "BCTC",
+        "OFIN"
       ],
       "controles": [
         {
           "id": "saldo-banco-al-confirmar",
-          "nombre": "Actualizar saldo banco al confirmar",
-          "explicacion": "Va en cadena de CONFIRMAR_RECIBO, no en una pantalla de bancos. Si el SPK falla, el usuario ve error de confirmar/contabilidad.",
-          "invariante": "Un confirmado de ingreso deja rastro bancario vía ese SPK. Cuerpo no leído: no afirmar cuentas ni tablas internas.",
+          "nombre": "Actualizar saldo banco al confirmar ingreso",
+          "explicacion": "Al confirmar un recibo de ingreso con formas de pago bancarias (consignación, transferencia), SPK_ACTUALIZA_SALDO_BANCO actualiza el saldo de la cuenta institucional BCT (SALDO = SALDO + VALOR). La contabilidad debita la cuenta contable bancaria BCT.COD_CONTABLE.",
+          "invariante": "La cuenta BCT debe existir, estar activa y pertenecer a una entidad bancaria válida en BCO/BSU.",
           "sps": [
             {
               "nombre": "SPK_ACTUALIZA_SALDO_BANCO",
               "metodo": "—",
-              "rol": "Llamado tras SPK_CIERRERECIBO_CAJA en CONFIRMAR_RECIBO. Bajar script para el puente exacto."
+              "rol": "Llamado tras SPK_CIERRERECIBO_CAJA en CONFIRMAR_RECIBO. Suma PCJ al saldo de la cuenta BCT."
+            }
+          ]
+        },
+        {
+          "id": "consignacion-efectivo-a-banco",
+          "nombre": "Consignación de efectivo de caja a banco",
+          "explicacion": "Cuando el dinero en efectivo de la caja física se traslada al banco: (1) En Caja se genera recibo de Egreso (PAGO) tipo consignación, restando del efectivo físico y acreditando caja 1105. (2) En Tesorería (/admin/Cuentas) se registra BMOV/BMOVD debitando la cuenta bancaria. Si el dinero corresponde a recaudo de clientes, se marca BMOVD.RECAUDO=1 para que Cartera lo legalice.",
+          "invariante": "El egreso de caja no debe superar el saldo físico disponible. El movimiento bancario debe confirmarse vía SPK_OK_BMOV.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CONFIRMAR_RECIBO_EGRESO",
+              "rol": "Egreso de efectivo por concepto de consignación a banco."
+            },
+            {
+              "nombre": "SPK_OK_BMOV",
+              "metodo": "CONFIRMAR",
+              "rol": "Confirmación del movimiento bancario en Tesorería y conciliación BCTC."
             }
           ]
         }
@@ -332,49 +906,61 @@
       "id": "05-contabilidad",
       "numero": 5,
       "nombre": "Envío a contabilidad",
-      "estado": "parcial",
-      "explicacion": "Dos caminos: (A) al confirmar, SPK_NC_CONTAB_CAJA_ING (ingreso) o SPK_NC_CONTAB_CAJA_EGR / SPK_CONTAB_CAJA_ING en anulación. (B) masivo en Procesos de caja → Contabilización: ENVIAR_RECIBOS_CONTABILIDAD marca FCJ.MARCACONT y SPK_CONTAB_MASIVA procedencia CAJA. Periodo PRI debe estar abierto. MCP.PROCEDENCIA=CAJA con REFERENCIA2=CODCAJA y REFERENCIA1=CNSFACJ. CRUDFPA usa CPCJ.CUENTA: si el concepto no está, el asiento sale mal o truena.",
+      "estado": "completo",
+      "explicacion": "Tres vías de generación contable: (A) Al confirmar recibo individual: SPK_NC_CONTAB_CAJA_ING (ingreso) o SPK_NC_CONTAB_CAJA_EGR (egreso) generan de inmediato el comprobante MCP/MCH con procedencia CAJA. (B) Al cerrar caja menor: SPK_SOL_REEMBOLSO_CAJAMENOR genera la solicitud CMREE, la cuenta por pagar FCXP y el comprobante MCPE/MCHE agrupado procedencia CAJAMENOR. (C) Contabilización masiva periódica desde admin.procaja mediante ENVIAR_RECIBOS_CONTABILIDAD y SPK_CONTAB_MASIVA.",
       "tablasClave": [
         "MCP",
-        "MCUE",
+        "MCH",
+        "MCPE",
+        "MCHE",
         "PRI",
         "FCJ",
-        "CPCJ"
+        "CPCJ",
+        "FCXP",
+        "CMREE"
       ],
       "controles": [
         {
           "id": "contabilizar-al-confirmar",
-          "nombre": "Contabilizar al confirmar",
-          "explicacion": "No espera a la pestaña Contabilización. El SPK de NC/contab de caja corre dentro de CONFIRMAR_RECIBO. Anular puede SPK_REVERSAR_MCP y recontabilizar.",
-          "invariante": "Si FCJD.CONCEPTO no tiene fila/cuenta en CPCJ, el fallo aparece aquí aunque el recibo ya pasó el candado de confirmar.",
+          "nombre": "Contabilizar al confirmar (en línea)",
+          "explicacion": "Disparado dentro de CONFIRMAR_RECIBO y CONFIRMAR_RECIBO_EGRESO. Valida periodo contable PRI abierto, cruza cada concepto FCJD con CPCJ.CUENTA y genera el comprobante MCP/MCH estatus confirmado. Si el recibo se anula, se revierte con SPK_REVERSAR_MCP.",
+          "invariante": "Todos los conceptos FCJD deben tener CUENTA contable válida en CPCJ y el periodo contable PRI debe estar abierto.",
           "sps": [
             {
               "nombre": "SPK_NC_CONTAB_CAJA_ING",
               "metodo": "—",
-              "rol": "Asiento de ingreso al confirmar. Cuerpo no leído."
+              "rol": "Asiento de ingreso al confirmar."
             },
             {
               "nombre": "SPK_NC_CONTAB_CAJA_EGR",
               "metodo": "—",
-              "rol": "Asiento de egreso al confirmar egreso. Cuerpo no leído."
-            },
-            {
-              "nombre": "SPK_CONTAB_CAJA_ING",
-              "metodo": "—",
-              "rol": "Usado en rama de anulación/reverso. Cuerpo no leído."
+              "rol": "Asiento de egreso al confirmar egreso."
             },
             {
               "nombre": "SPK_REVERSAR_MCP",
               "metodo": "—",
-              "rol": "Reversa comprobante al anular recibo ya contabilizado."
+              "rol": "Reverso o anulación del comprobante contable al anular recibo."
+            }
+          ]
+        },
+        {
+          "id": "reembolso-caja-menor-mcp",
+          "nombre": "Asiento de reembolso de caja menor",
+          "explicacion": "Al ejecutar CERRAR_CAJA sobre una caja de clase 'Menor', SPK_SOL_REEMBOLSO_CAJAMENOR agrupa todos los egresos del turno, genera la solicitud CMREE y la cuenta por pagar FCXP a favor del responsable, produciendo el comprobante MCPE/MCHE con procedencia CAJAMENOR para reponer el fondo fijo.",
+          "invariante": "La caja menor debe tener parametrizados FOFI, CUENTACXP_CM, COMPROBANTE_CM y RESPONSABLE válido.",
+          "sps": [
+            {
+              "nombre": "SPK_SOL_REEMBOLSO_CAJAMENOR",
+              "metodo": "—",
+              "rol": "Generación de solicitud de reembolso, cuenta por pagar y asiento contable de caja menor."
             }
           ]
         },
         {
           "id": "contabilizar-masivo",
           "nombre": "Contabilización masiva (procaja)",
-          "explicacion": "admin.procaja pestaña Contabilización (ContabilizacionComponent). Periodo año/mes, lista enviados/no enviados, clase COBRO/PAGO. METODO ENVIAR_RECIBOS_CONTABILIDAD: PRI abierto, MARCACONT=1, SPK_CONTAB_MASIVA … 'CAJA'.",
-          "invariante": "Periodo cerrado → KO. No es el primer policía del concepto; asume recibos ya confirmados.",
+          "explicacion": "En admin.procaja pestaña Contabilización: permite filtrar recibos confirmados del mes/año que no se hayan contabilizado en línea, marcarlos (FCJ.MARCACONT=1) y disparar SPK_CONTAB_MASIVA con procedencia 'CAJA'.",
+          "invariante": "Periodo PRI debe estar abierto; ignora recibos ya contabilizados (CONTABILIZADA=1).",
           "sps": [
             {
               "nombre": "SPQ_CONF_CAJA",
@@ -384,11 +970,415 @@
             {
               "nombre": "SPK_CONTAB_MASIVA",
               "metodo": "—",
-              "rol": "Genera asientos por lote procedencia CAJA. Cuerpo no leído."
+              "rol": "Genera asientos contables por lote para recibos de caja."
             }
           ]
         }
       ]
+    }
+  ],
+  "botones": [
+    {
+      "label": "Abrir Caja / Turno",
+      "icono": "lock_open",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Inicia la sesión de trabajo del cajero (ACJ), validando turno CXT, estación UBEQ y cargando saldos iniciales."
+    },
+    {
+      "label": "Nuevo Recibo",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Registra un nuevo ingreso directo en efectivo, tarjeta o transferencia por copago, cuota moderadora o particular."
+    },
+    {
+      "label": "Traer Recibo",
+      "icono": "download",
+      "color": "teal-10",
+      "estilo": "outline",
+      "descripcion": "Importa a la caja el comprobante temporal (TFCJ/TFCJD) generado desde Citas (CIT), Autorizaciones (AUT) o Admisiones (HADM)."
+    },
+    {
+      "label": "Confirmar Recibo",
+      "icono": "check",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Sella el recibo (CERRADA=1), valida cuadre de formas de pago PCJ, actualiza saldos en bancos y dispara asiento contable."
+    },
+    {
+      "label": "Mov. Egreso",
+      "icono": "arrow_upward",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Registra una salida de dinero por gastos menores, reembolso, anticipos a proveedores (CXP) o traslado de efectivo."
+    },
+    {
+      "label": "Editar Registro",
+      "icono": "edit",
+      "color": "blue",
+      "estilo": "outline",
+      "descripcion": "Permite modificar cabecera, terceros o conceptos de recibos de ingreso o egreso no confirmados."
+    },
+    {
+      "label": "Desechar / Utilizar",
+      "icono": "delete_sweep",
+      "color": "red-8",
+      "estilo": "outline",
+      "descripcion": "Pasa un recibo abierto no utilizado a estado Desechado (D) o reactiva uno desechado para su aprovechamiento."
+    },
+    {
+      "label": "Devolver Recibo",
+      "icono": "undo",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Devuelve un comprobante abierto a la cola de espera asistencial (TFCJ) o gestiona devolución formal de fondos."
+    },
+    {
+      "label": "Anular Recibo",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Anula un recibo confirmado restituyendo citas médicas, revirtiendo afectaciones de cartera y anulando el comprobante contable."
+    },
+    {
+      "label": "Recibo Caja (PDF)",
+      "icono": "picture_as_pdf",
+      "color": "blue-8",
+      "estilo": "outline",
+      "descripcion": "Genera la tirilla POS o formato carta con los 7 recordsets del recibo para entrega oficial al paciente o usuario."
+    },
+    {
+      "label": "Comp. Contable",
+      "icono": "receipt_long",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Visualiza e imprime el comprobante contable generado en MCP/MCH correspondiente al movimiento de caja."
+    },
+    {
+      "label": "Cerrar Caja / Turno",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Valida recibos pendientes y errores contables, consolida en ACJD los saldos calculados por forma de pago y sella la sesión ACJ o dispara el reembolso de caja menor."
+    },
+    {
+      "label": "Reporte de Caja",
+      "icono": "assessment",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Consulta consolidados y cuadre del turno por formas de pago, flujo de caja y cobros no recaudados."
+    },
+    {
+      "label": "Procesos de Caja",
+      "icono": "fa-solid fa-chalkboard-user",
+      "color": "deep-purple",
+      "estilo": "unelevated",
+      "descripcion": "Acceso a la consola administrativa (/admin/procaja) con 12 pestañas de auditoría, reimpresión, anulación masiva, seguimiento contable y auxiliares."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "MENUQ_CAJA",
+      "accion": "Acceso a Módulo y Procesos de Caja",
+      "rol": "Cajero / Admisiones / Tesorería",
+      "descripcion": "Habilita la visualización del menú de caja y acceso a la consola de procesos y reportes."
+    },
+    {
+      "codigo": "BrwCaja / traerCompobanteIngreso",
+      "accion": "Traer Recibo Asistencial",
+      "rol": "Cajero",
+      "descripcion": "Autoriza invocar y materializar comprobantes temporales TFCJ generados en Citas, Consulta Externa o Hospitalización."
+    },
+    {
+      "codigo": "BrwCaja / crearReciboIngreso",
+      "accion": "Nuevo Recibo de Ingreso",
+      "rol": "Cajero",
+      "descripcion": "Permite registrar recibos directos de cobro a pacientes o clientes."
+    },
+    {
+      "codigo": "BrwCaja / btn_confirmar",
+      "accion": "Confirmar Recibo de Ingreso",
+      "rol": "Cajero",
+      "descripcion": "Habilita el botón de confirmación formal que sella el cobro, actualiza banco y contabiliza."
+    },
+    {
+      "codigo": "BrwCaja / editarIngreso",
+      "accion": "Editar Recibo de Ingreso",
+      "rol": "Cajero",
+      "descripcion": "Permite modificar datos del recibo de ingreso mientras se encuentre no confirmado."
+    },
+    {
+      "codigo": "BrwCaja / btn_eliminar",
+      "accion": "Anular Recibo de Ingreso",
+      "rol": "Supervisor de Caja / Coordinación",
+      "descripcion": "Permite anular recibos confirmados desde la bandeja de movimientos diarios."
+    },
+    {
+      "codigo": "BrwCaja / devolverIngreso",
+      "accion": "Devolver Recibo",
+      "rol": "Cajero / Supervisor",
+      "descripcion": "Autoriza regresar el recibo a cola temporal o procesar devolución de dinero."
+    },
+    {
+      "codigo": "BrwCaja / archivarIngreso",
+      "accion": "Archivar Recibos",
+      "rol": "Cajero",
+      "descripcion": "Permite archivar recibos confirmados o desechados para despejar la bandeja de trabajo diario."
+    },
+    {
+      "codigo": "BrwCaja / reciboCajaIngreso",
+      "accion": "Imprimir Recibo PDF",
+      "rol": "Cajero",
+      "descripcion": "Autoriza la emisión física en tirilla o PDF del recibo de caja."
+    },
+    {
+      "codigo": "BrwCaja / anular_tfcj",
+      "accion": "Anular Comprobante Temporal",
+      "rol": "Cajero / Supervisor",
+      "descripcion": "Permite anular un comprobante temporal en cola TFCJ con registro en auditoría."
+    },
+    {
+      "codigo": "BrwCaja / eliminar_fpa_ingreso",
+      "accion": "Eliminar Forma de Pago en Ingreso",
+      "rol": "Cajero",
+      "descripcion": "Permite borrar una línea de medio de pago PCJ de un recibo no confirmado."
+    },
+    {
+      "codigo": "BrwCajaEgresos / crearDocumentoEgreso",
+      "accion": "Crear Documento de Egreso",
+      "rol": "Cajero / Tesorería",
+      "descripcion": "Permite expedir salidas de dinero para gastos menores, anticipos a proveedores o traslados."
+    },
+    {
+      "codigo": "BrwCajaEgresos / confirmarEgreso",
+      "accion": "Confirmar Egreso",
+      "rol": "Cajero / Supervisor",
+      "descripcion": "Autoriza sellar el egreso, descontar del saldo físico de caja y disparar el asiento contable de pago."
+    },
+    {
+      "codigo": "BrwCajaEgresos / editarRegistroEgreso",
+      "accion": "Editar Registro de Egreso",
+      "rol": "Cajero",
+      "descripcion": "Permite modificar fecha, tercero o conceptos en egresos abiertos o anticipos CXP."
+    },
+    {
+      "codigo": "BrwCajaEgresos / Anular",
+      "accion": "Anular Egreso",
+      "rol": "Supervisor de Caja",
+      "descripcion": "Permite anular salidas de dinero confirmadas revirtiendo saldos y comprobantes contables."
+    },
+    {
+      "codigo": "BrwCajaEgresos / compContableEgreso",
+      "accion": "Imprimir Comprobante Contable",
+      "rol": "Cajero / Contador",
+      "descripcion": "Permite visualizar el soporte de contabilidad asociado al egreso."
+    },
+    {
+      "codigo": "FCJ:Ficha",
+      "accion": "Edición de Fecha y Hora en Ingreso",
+      "rol": "Administrador / Supervisor",
+      "descripcion": "Controla permisos para modificar fecha y hora del recibo de ingreso."
+    },
+    {
+      "codigo": "FCJ_Egreso:Ficha",
+      "accion": "Edición de Fecha y Hora en Egreso",
+      "rol": "Administrador / Supervisor",
+      "descripcion": "Controla permisos para modificar fecha y hora del recibo de egreso."
+    },
+    {
+      "codigo": "MENUQ_CAJA / recaudoPorFecha",
+      "accion": "Recaudo por Fecha (ProCaja)",
+      "rol": "Supervisor / Auditor",
+      "descripcion": "Permite consultar y generar reportes de recaudo filtrados por fecha, caja, forma de pago y tercero."
+    },
+    {
+      "codigo": "MENUQ_CAJA / reporteDeCierre",
+      "accion": "Reportes de Cierre (ProCaja)",
+      "rol": "Supervisor / Cajero Principal",
+      "descripcion": "Permite generar el cuadre de la sesión por CNSACJ, recibos y formas de pago registradas."
+    },
+    {
+      "codigo": "MENUQ_CAJA / reimpresion",
+      "accion": "Reimpresión de Recibos (ProCaja)",
+      "rol": "Cajero / Supervisor / Atención al Usuario",
+      "descripcion": "Permite buscar e imprimir recibos históricos FCJ en tirilla POS o formato carta."
+    },
+    {
+      "codigo": "MENUQ_CAJA / recaudoEnCaja",
+      "accion": "Monitor de Recaudos en Caja (ProCaja)",
+      "rol": "Tesorero / Supervisor",
+      "descripcion": "Visualiza en tiempo real los saldos vivos en poder de cada cajero (CAJR) clasificados por medio de pago."
+    },
+    {
+      "codigo": "MENUQ_CAJA / anularRecibosM",
+      "accion": "Anular Recibos Confirmados (ProCaja)",
+      "rol": "Auditor / Supervisor de Caja",
+      "descripcion": "Permite anular formalmente recibos FCJ ya confirmados, revirtiendo atenciones médicas, bancos y contabilidad."
+    },
+    {
+      "codigo": "MENUQ_CAJA / cobrosNORecaudados",
+      "accion": "Cobros NO Recaudados (ProCaja)",
+      "rol": "Coordinador de Facturación / Caja",
+      "descripcion": "Monitorea pacientes con atenciones generadas en Citas o Consulta Externa que quedaron en cola TFCJ sin pagar."
+    },
+    {
+      "codigo": "MENUQ_CAJA / anular_recibo",
+      "accion": "Anular en Cobros NO Recaudados (ProCaja)",
+      "rol": "Supervisor de Caja",
+      "descripcion": "Autoriza descartar o anular atenciones asistenciales desistidas en la cola temporal TFCJ."
+    },
+    {
+      "codigo": "MENUQ_CAJA / recibosAnulados",
+      "accion": "Histórico de Recibos Anulados (ProCaja)",
+      "rol": "Auditoría Interna",
+      "descripcion": "Permite auditar el histórico de recibos cancelados con fecha, caja, usuario y motivo de anulación."
+    },
+    {
+      "codigo": "MENUQ_CAJA / flujoCaja",
+      "accion": "Flujo de Caja (ProCaja)",
+      "rol": "Dirección Financiera / Tesorería",
+      "descripcion": "Genera el reporte financiero de entradas y salidas de efectivo para análisis de liquidez periódica."
+    },
+    {
+      "codigo": "MENUQ_CAJA / contabilizacion",
+      "accion": "Contabilización Masiva (ProCaja)",
+      "rol": "Contador General",
+      "descripcion": "Ejecuta el envío por lote a contabilidad de todos los recibos confirmados pendientes de comprobante MCP."
+    },
+    {
+      "codigo": "MENUQ_CAJA / seguimientoContable",
+      "accion": "Seguimiento Contable (ProCaja)",
+      "rol": "Contador / Auditor",
+      "descripcion": "Permite la auditoría en espejo comparando el recibo operativo (FCJ/PCJ) contra el comprobante contable (MCP/MCH)."
+    },
+    {
+      "codigo": "MENUQ_CAJA / auxiliarDeCaja",
+      "accion": "Auxiliar de Caja (ProCaja)",
+      "rol": "Contador General",
+      "descripcion": "Genera el libro auxiliar contable de caja con saldos iniciales, débitos, créditos y saldos finales en RPDX2."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDCJAPERTURACAJA",
+      "tipo": "Código CPCJ",
+      "valorSugerido": "CAP01",
+      "descripcion": "Concepto de caja asignado para el recibo automático de apertura de turno en caja principal/auxiliar."
+    },
+    {
+      "nombre": "IDCJAPERTURACJMENOR",
+      "tipo": "Código CPCJ",
+      "valorSugerido": "CAPCM01",
+      "descripcion": "Concepto de caja asignado para el recibo automático de apertura en cajas menores."
+    },
+    {
+      "nombre": "IDCJ_TRASLADOENCAJAS",
+      "tipo": "Código CPCJ",
+      "valorSugerido": "TRAS01",
+      "descripcion": "Concepto de caja utilizado para salidas y entradas por traslados de fondos entre cajas activas."
+    },
+    {
+      "nombre": "IDCJTEDEVOLRECIBO",
+      "tipo": "Código CPCJ",
+      "valorSugerido": "DEV01",
+      "descripcion": "Concepto utilizado en egresos para devoluciones de copagos o pagos no utilizados por el usuario."
+    },
+    {
+      "nombre": "IDCJDEPOSITO",
+      "tipo": "Código CPCJ",
+      "valorSugerido": "DEP01",
+      "descripcion": "Concepto de caja para capturar depósitos asistenciales previos a cirugías o internación."
+    },
+    {
+      "nombre": "IDCJTECXP",
+      "tipo": "Código CJTE",
+      "valorSugerido": "CXP",
+      "descripcion": "Tipo de egreso configurado para pagos de anticipos o abonos a cuentas por pagar de proveedores."
+    },
+    {
+      "nombre": "IDCJTECXP_AJUSTE",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Indica si se permiten conceptos adicionales de ajuste en egresos que cancelan documentos de cuentas por pagar."
+    },
+    {
+      "nombre": "IDCJTECXP_EDITAR",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Autoriza la edición de fecha y conceptos en egresos asociados a cuentas por pagar y órdenes de compra."
+    },
+    {
+      "nombre": "CAJCONCEPTNOANULABLE",
+      "tipo": "Lista de Códigos CPCJ",
+      "valorSugerido": "CONCEPTO_NO_ANUL",
+      "descripcion": "Lista de conceptos de caja protegidos que el sistema impide anular directamente desde ventanilla."
+    },
+    {
+      "nombre": "MAN_CIERRE_CONT_CAJA",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Si es SI, genera comprobante contable automático al cerrar el turno de caja general."
+    },
+    {
+      "nombre": "CAJ_ACEPTARECAUDO",
+      "tipo": "Booleano (1 / 0)",
+      "valorSugerido": "1",
+      "descripcion": "Habilita la caja para que los recibos con marca Recaudo puedan ser seleccionados en Cartera."
+    },
+    {
+      "nombre": "REC_VLRMAX_AJUSTE",
+      "tipo": "Numérico (Valor)",
+      "valorSugerido": "100",
+      "descripcion": "Tolerancia máxima permitida en pesos para diferencias por redondeo al liquidar recibos."
+    },
+    {
+      "nombre": "MOBSERVADEVOLCOPAGO",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Exige digitar una justificación detallada obligatoria al devolver o anular un copago al paciente."
+    },
+    {
+      "nombre": "FACTURAPOS_ACTIVA",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Habilita la emisión automática de Factura Electrónica de Venta (FEV / FPOS) para los copagos y cuotas moderadoras al confirmar el recibo FCJ."
+    },
+    {
+      "nombre": "FACTU_COPA_MAYOR_SER",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Fuerza la facturación a particular si el valor del copago recaudado en ventanilla es igual o mayor al valor del servicio prestado."
+    },
+    {
+      "nombre": "IDFORMATOFTR_CAJA",
+      "tipo": "Formato de Factura",
+      "valorSugerido": "CAJ01",
+      "descripcion": "Identificador del formato de tirilla o media carta con QR y CUFE utilizado al imprimir la factura electrónica desde Caja."
+    },
+    {
+      "nombre": "IDPLANPART",
+      "tipo": "Código Plan (PLN)",
+      "valorSugerido": "PART",
+      "descripcion": "Plan tarifario particular asignado por defecto a la factura electrónica del copago emitida a nombre del usuario."
+    },
+    {
+      "nombre": "IDTERCEROPARTICULAR",
+      "tipo": "Código Tercero (TER)",
+      "valorSugerido": "PARTICULAR",
+      "descripcion": "Tercero particular institucional asignado para clasificar la emisión fiscal de la factura de copago."
+    },
+    {
+      "nombre": "IDTERCONTABLEPART",
+      "tipo": "Código Tipo Tercero (TTEC)",
+      "valorSugerido": "PART",
+      "descripcion": "Tipo de tercero contable que determina la cuenta PUC de cuentas por cobrar particular para asentar la factura de copago."
+    },
+    {
+      "nombre": "UVT_MAX_FACTURAPOS",
+      "tipo": "Numérico (UVT)",
+      "valorSugerido": "5",
+      "descripcion": "Tope máximo en UVT para emitir documento POS; superado este tope, el sistema genera obligatoriamente Factura Electrónica directa FTR."
     }
   ],
   "flujoPasado": true,

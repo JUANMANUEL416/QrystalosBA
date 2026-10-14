@@ -1,0 +1,260 @@
+{
+  "procedencia": "RAD CXC",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Motor: CNSCXC + traza flujo-rad-cxc-contab.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_CONTAB_RADICACXC.sql, SPK_CONTAB_RADICACXC_1.sql",
+  "documentoOrigen": {
+    "tabla": "FCXC",
+    "claves": [
+      "CNSCXC"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSCXC"
+    }
+  },
+  "generadores": [
+    "SPK_CONTAB_RADICACXC",
+    "SPK_CONTAB_RADICACXC_1"
+  ],
+  "variantesGenerador": [
+    {
+      "id": "rad-cero",
+      "generador": "SPK_CONTAB_RADICACXC",
+      "condicion": "Radicación sin pagos/notas/glosas"
+    },
+    {
+      "id": "rad-con-mov",
+      "generador": "SPK_CONTAB_RADICACXC_1",
+      "condicion": "Cuenta de cobro con abonos, notas o glosas"
+    }
+  ],
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-rad"
+      ]
+    },
+    {
+      "id": "N3-contab-rad",
+      "orden": 3,
+      "sp": [
+        "SPK_CONTAB_RADICACXC",
+        "SPK_CONTAB_RADICACXC_1"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcxc-radicada",
+          "desc": "FCXC/FCXCD; cuenta de cobro REFERENCIA1",
+          "obligatorio": true,
+          "validacionSql": "FCXC INDRECIBIDO + FCXCD",
+          "checkMotor": "doc-fcxc-*"
+        },
+        {
+          "id": "ftr-factura-mcp",
+          "desc": "FTR con MCP FACTURA confirmado antes de traslado",
+          "obligatorio": true,
+          "validacionSql": "MCP PROCEDENCIA FACTURA por N_FACTURA",
+          "checkMotor": "doc-fcxc-ftr-mcp"
+        },
+        {
+          "id": "rama-generador",
+          "desc": "Sin abonos: SPK_CONTAB_RADICACXC; con pagos/notas/glosas: SPK_CONTAB_RADICACXC_1",
+          "obligatorio": true,
+          "validacionSql": "FPAGD/FNOT en facturas FCXCD",
+          "checkMotor": "traza-rad-generador"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-rad",
+          "usvgs": "IDCON_TCOM_RADICA",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "campos": [
+            "CUENTARAD",
+            "CUENTACG"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "desc": "KO: Periodo cerrado detiene radicación",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-radicar"
+      ],
+      "puntosCriticos": [
+        "PC-RAD-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_CONTAB_RADICACXC.sql",
+          "SPK_CONTAB_RADICACXC_1.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "IDCON_TCOM_RADICA",
+          "IDMODELOCONTABLE"
+        ],
+        "validacionesKo": [
+          "EL PERIODO CONTABLE NO EXISTEN",
+          "EL PERIODO ACTUAL CERRADO"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante radicación CxC"
+    },
+    {
+      "id": "N2-radicar",
+      "orden": 2,
+      "desc": "Radicación EPS / cuenta de cobro cerrada",
+      "llamaAnterior": [
+        "N1-facturas-rad"
+      ],
+      "nombre": "Cerrar radicación cuenta de cobro",
+      "sp": [
+        "SPQ_FCXC* · radicación",
+        "Cierre radicación EPS"
+      ],
+      "metodoUi": "Facturación / cartera → radicar FCXC",
+      "requiresDocumento": [
+        {
+          "id": "fcxc-cerrada",
+          "desc": "Radicación en estado que permite contabilizar",
+          "obligatorio": true
+        },
+        {
+          "id": "movimientos-cuenta",
+          "desc": "Pagos/notas/glosas determinan SPK_CONTAB_RADICACXC vs _1",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-cerrado",
+          "desc": "PRI.CERRADO=0 mes radicación",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-rad",
+          "usvgs": "IDCON_TCOM_RADICA",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "Reconstruir elige generador; REFERENCIA1 = cuenta cobro / CNSCXC",
+      "puntosCriticos": [
+        "PC-RAD-01",
+        "PC-RAD-02"
+      ]
+    },
+    {
+      "id": "N1-facturas-rad",
+      "orden": 1,
+      "desc": "FTR en FCXCD",
+      "llamaAnterior": [
+        "N0-config-rad"
+      ],
+      "nombre": "Facturas en cuenta de cobro",
+      "requiresDocumento": [
+        {
+          "id": "ftr-mcp-factura",
+          "desc": "FTR con MCP FACTURA confirmado (traslado a CUENTARAD)",
+          "obligatorio": true
+        },
+        {
+          "id": "fcxcd",
+          "desc": "Detalle FCXCD por factura en la radicación",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "ttec-rad",
+          "tabla": "TTEC",
+          "campos": [
+            "CUENTARAD",
+            "CUENTACG"
+          ],
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-rad",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración radicación"
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "RAD CXC",
+    "tablaOrigen": "FCXC"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/rad.json",
+    "procesoHermano": "radicaciones",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-rad-cxc.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

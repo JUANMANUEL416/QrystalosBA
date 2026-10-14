@@ -1,0 +1,155 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-02T20:40:48.784Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100015997",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261001-0100015997",
+    "idReq": "0100015997",
+    "fecha": "2026-08-05",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Maicao",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CMAICA138",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "Error al registrar CUV en validación externa\n\nEl usuario reporta que al intentar registrar el CUV en la validación externa, se presenta un error que impide el registro tanto del CUV como de la respuesta en el sistema Krystalos.\n\n1. Acceder al módulo de validación externa.\n2. Intentar registrar un CUV.\n3. Observar el mensaje de error que aparece. DETALLE: Error al registrar CUV en validación externa\n\nEl usuario reporta que al intentar registrar el CUV en la validación externa, se presenta un error que impide el registro tanto del CUV como de la respuesta en el sistema Krystalos.\n\ncontexto. cuando se realiza la validacion externa del ministero el txt que genera ese sistema, no es compatible con el qrystalos, se debe identificar y hacer el ajuste para que lo tome el ssitema de la manera correcta",
+    "criteriosAceptacion": "1) En Facturación → Envíos y respuestas (Validaciones FEV-RIPS), control «Validación externa»: con los mismos archivos que exporta el portal del ministerio/SISPRO (.txt o .json de envío y respuesta) para la factura de prueba FEV327665 / CNS 0101223197, al pulsar Registrar no aparece el error «JSON text is not properly formatted…» y el flujo termina con mensaje de éxito.\n2) Tras registrar, GET_DATOS muestra CUV de 96 caracteres hex en FTR/FTRJSON (y JSON_RESPUESTA persistido); la factura queda usable para descarga de paquete FEV-RIPS y radicación posterior.\n3) Si la respuesta externa trae solo el CUV (texto plano o JSON no estándar pero con CodigoUnicoValidacion identificable), el sistema lo normaliza al contrato SISPRO antes de SET_DATOS (ResultState + CodigoUnicoValidacion).\n4) Si el JSON de envío del ministerio incluye tokens no válidos para SQL Server (p. ej. NULL/NaN sin comillas, basura antes del «{»), el front los corrige o rechaza con mensaje claro antes de llamar al servidor.\n5) Regresión: validación en línea («Validar ahora» / cola SISPRO) y «Subir JSON y Validar» siguen guardando CUV como hoy; no se altera generación RIPS (FTR_COL · RIPS_JSON).",
+    "alcance": "Frontend: ValidacionesFEVRipsComponent.vue (diálogo Validación externa, guardarValidacionExterna, parseJsonDesdeTexto) y composable reutilizable para parseo/normalización de archivos externos (envío + respuesta). Backend SQL: solo si tras la sanitización FE aún falla OPENJSON en SPQ_RIPS · SET_DATOS — ajuste de extracción de JSON_ENVIO/JSON_RESPUESTA y mensaje de error legible. Proceso: rips-json, control enviar-cuv. Fuera de alcance: cambiar reglas de negocio SISPRO, radicar CXC, notificación DIAN, regeneración masiva de JSON RIPS.",
+    "restricciones": "Rama bugfix/CMAICA138. No tocar contabilidad (MCUE/CON/MCPE). Mantener contrato AppStore.json MODELO RIPS, METODO SET_DATOS/GET_DATOS. El envío externo debe seguir teniendo estructura rips (o usuarios envuelto) y numFactura/numNota coherente con el documento abierto, salvo excepción capitada ya existente. Desarrollo debe reproducir con archivos reales del ministerio (adjuntar a archivos/ del caso si aún no están).",
+    "analisis": "REQ 0100015997 (Clínica Maicao): al registrar CUV por «Validación externa» falla el guardado de CUV y respuesta. La captura validacion_externa.png muestra el modal Envíos y respuestas (FEV327665, CNS 0101223197) y el diálogo global «Aviso Importante» con error de SQL Server: «JSON text is not properly formatted. Unexpected character 'N' is found at position 72709» — típico de JSON inválido para OPENJSON/JSON_VALUE (tokens NaN, NULL sin comillas, texto previo al objeto, etc.) en un payload grande (~72k).\n\nPaso 0 — ¿Ya existe? No es capacitación ni hueco funcional. El control «Validación externa» ya está documentado en conocimiento/rips-json (control enviar-cuv): carga JSON de envío + respuesta (.json o .txt con JSON) y persiste vía MODELO RIPS · SET_DATOS. Caminos vecinos en la misma pantalla: Validar ahora (SISPRO en línea), Subir JSON y Validar, Generar/Editar JSON, cola FEVRIPS — no sustituyen registrar un CUV obtenido fuera de la app con el par de archivos del ministerio.\n\nCausa probable (KB + código Qrystalos2): guardarValidacionExterna usa parseJsonDesdeTexto → JSON.parse estricto y luego SET_DATOS; el SP (ficha SET_DATOS leída) hace OPENJSON(@PARAMETROS) WITH (JSON_ENVIO/JSON_RESPUESTA AS JSON). El contexto del REQ indica que el .txt del ministerio no es 100% compatible con ese pipeline. Posición 72709 sugiere que el archivo de envío (RIPS grande) es el que rompe la validación JSON de SQL Server aunque el usuario lo haya seleccionado como .txt/.json exportado del validador externo.\n\nClasificación: defecto de interoperabilidad (formato archivo externo ↔ parser/persistencia Qrystalos). Impacto contable: no (solo FTRJSON/FTR.CUV/FRADICA_RIPS).",
+    "opciones": [
+      {
+        "titulo": "Normalizar en frontend antes de SET_DATOS (recomendada)",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Relajar OPENJSON en SPQ_RIPS · SET_DATOS",
+        "descripcion": ""
+      }
+    ],
+    "recomendacion": "Opción A + B ligera: implementar parseTextoJsonFevRipsExterno (composable fevrips) usado por guardarValidacionExterna — BOM, recorte, extracción del objeto JSON principal, reemplazo de NULL/NaN/undefined no estándar, respuesta solo-CUV → objeto respuestaSisproDesdeCuvLocal; luego JSON.stringify y SET_DATOS con ISVALIDACUV según reglas actuales. Validar en preversión con archivos del caso Maicao. Si persiste error SQL, ajustar SET_DATOS para leer JSON_ENVIO/JSON_RESPUESTA como NVARCHAR, validar ISJSON() y devolver ERROR legible antes del CATCH genérico.",
+    "cambioPropuestoSimple": "Hoy, cuando el usuario valida en el portal del ministerio y trae los archivos .txt/.json a «Validación externa», Qrystalos no logra interpretar bien ese contenido y el servidor rechaza el guardado; por eso no queda el CUV ni la respuesta en la factura. Se propone enseñar al sistema a «limpiar y entender» esos archivos del ministerio (igual que ya entiende la respuesta directa de SISPRO) y recién ahí guardar el CUV en la factura, sin cambiar el resto del proceso de facturación electrónica en salud.",
+    "cambioPropuestoSql": "-- Especificación (IXONLINE/SQL · SPQ_RIPS · METODO SET_DATOS). Aplicar solo si tras sanitización FE sigue fallando OPENJSON.\n-- BEFORE (patrón actual en SET_DATOS):\n-- FROM OPENJSON(@PARAMETROS) WITH (\n--   JSON_RESPUESTA NVARCHAR(MAX) AS JSON,\n--   JSON_ENVIO     NVARCHAR(MAX) AS JSON,\n--   ISVALIDACUV BIT\n-- )\n-- AFTER (extracción sin AS JSON + validación explícita):\n-- FROM OPENJSON(@PARAMETROS) WITH (\n--   JSON_RESPUESTA NVARCHAR(MAX),\n--   JSON_ENVIO     NVARCHAR(MAX),\n--   ISVALIDACUV BIT\n-- )\n-- IF @JsonSolicitud IS NOT NULL AND ISJSON(@JsonSolicitud) = 0\n-- BEGIN\n--   INSERT INTO @TBLERRORES(ERROR) SELECT N'JSON de envío no válido para SQL Server. Revise exportación del ministerio o use Validar ahora.';\n--   GOTO SalidaSetDatos;\n-- END\n-- IF @JsonRespuesta IS NOT NULL AND ISJSON(@JsonRespuesta) = 0\n-- BEGIN\n--   INSERT INTO @TBLERRORES(ERROR) SELECT N'JSON de respuesta no válido. Debe incluir CodigoUnicoValidacion en JSON estándar.';\n--   GOTO SalidaSetDatos;\n-- END\n-- (Resto de UPDATE FTR/FTRJSON sin cambiar reglas de ResultState / ISVALIDACUV.)\n-- Validación post-fix:\n-- SELECT CUV, LEN(JSON_RESPUESTA), ISJSON(JSON_ENVIO) FROM FTRJSON WHERE CNSFCT = '0101223197';",
+    "impactoFe": "Sí",
+    "impactoApi": "No",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Registro de CUV/FRADICA_RIPS y JSON en FTRJSON vía SET_DATOS. No genera ni modifica comprobantes MCUE/CON/MCPE ni ENVIA_CONTAB. Afecta contabilidad: No.",
+        "validadoEn": "2026-10-02T20:45:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de codificar: reproducir en test con los archivos .txt/.json reales del ministerio para FEV327665 (CNS 0101223197). Si tras normalización FE el CUV ya persiste en una build reciente de bugfix/CMAICA138, cerrar como corregido; si no, aplicar la solución propuesta."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "validacion_externa.png",
+        "ruta": "activo/20261001-0100015997/imagenes/validacion_externa.png",
+        "subidaEn": "2026-10-02T15:35:19",
+        "url": "/api/caso/20261001-0100015997/imagen/validacion_externa.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Facturación → Envíos y respuestas (Validaciones FEV-RIPS), control «Validación externa»: con los mismos archivos que exporta el portal del ministerio/SISPRO (.txt o .json de envío y respuesta) para la factura de prueba FEV327665 / CNS 0101223197, al pulsar Registrar no aparece el error «JSON text is not properly formatted…» y el flujo termina con mensaje de éxito.\n2) Tras registrar, GET_DATOS muestra CUV de 96 caracteres hex en FTR/FTRJSON (y JSON_RESPUESTA persistido); la factura queda usable para descarga de paquete FEV-RIPS y radicación posterior.\n3) Si la respuesta externa trae solo el CUV (texto plano o JSON no estándar pero con CodigoUnicoValidacion identificable), el sistema lo normaliza al contrato SISPRO antes de SET_DATOS (ResultState + CodigoUnicoValidacion).\n4) Si el JSON de envío del ministerio incluye tokens no válidos para SQL Server (p. ej. NULL/NaN sin comillas, basura antes del «{»), el front los corrige o rechaza con mensaje claro antes de llamar al servidor.\n5) Regresión: validación en línea («Validar ahora» / cola SISPRO) y «Subir JSON y Validar» siguen guardando CUV como hoy; no se altera generación RIPS (FTR_COL · RIPS_JSON).",
+      "originalesEn": "2026-10-02T20:39:25.128Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Facturación → Envíos y respuestas (Validaciones FEV-RIPS), control «Validación externa»: con los mismos archivos que exporta el portal del ministerio/SISPRO (.txt o .json de envío y respuesta) para la factura de prueba FEV327665 / CNS 0101223197, al pulsar Registrar no aparece el error «JSON text is not properly formatted…» y el flujo termina con mensaje de éxito.\n2) Tras registrar, GET_DATOS muestra CUV de 96 caracteres hex en FTR/FTRJSON (y JSON_RESPUESTA persistido); la factura queda usable para descarga de paquete FEV-RIPS y radicación posterior.\n3) Si la respuesta externa trae solo el CUV (texto plano o JSON no estándar pero con CodigoUnicoValidacion identificable), el sistema lo normaliza al contrato SISPRO antes de SET_DATOS (ResultState + CodigoUnicoValidacion).\n4) Si el JSON de envío del ministerio incluye tokens no válidos para SQL Server (p. ej. NULL/NaN sin comillas, basura antes del «{»), el front los corrige o rechaza con mensaje claro antes de llamar al servidor.\n5) Regresión: validación en línea («Validar ahora» / cola SISPRO) y «Subir JSON y Validar» siguen guardando CUV como hoy; no se altera generación RIPS (FTR_COL · RIPS_JSON).",
+      "trasAnalisisEn": "2026-10-02T20:39:34.295Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (defecto interoperabilidad TXT/JSON ministerio ↔ Validación externa). SET_DATOS/GET_DATOS fichados en conocimiento/rips-json/sps.json (leido); no fue necesario bajar SPQ_RIPS al caso salvo para implementar el ajuste opcional OPENJSON. Falta adjuntar en archivos/ del caso una muestra anonimizada del par envío+respuesta del ministerio para pruebas de regresión.",
+      "fecha": "2026-10-02T20:45:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_RIPS · SET_DATOS (leido, persistencia CUV) · GET_DATOS (leido, refresco pantalla). SPQ_FTR_COL / SPK_* fuera del fix."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261001-0100015997/diagramas/flujo.html",
+      "subidaEn": "2026-10-02T15:39:59",
+      "url": "/api/caso/20261001-0100015997/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "rips-json",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261001-0100015997-flujo.html"
+    },
+    "mockups": [
+      "activo/20261001-0100015997/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261001-0100015997\\sql\\",
+    "carpetaRelativa": "activo/20261001-0100015997/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100015997\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "rips-json",
+    "catalogo": "conocimiento/rips-json/sps.json",
+    "metodosDocumentados": [],
+    "notas": "Si se implementa cambio OPENJSON en SET_DATOS, bajar SPQ_RIPS PREVERSION a activo/20261001-0100015997/sql/ antes del dictamen.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261001-0100015997.html",
+    "aprobados": "aprobados/20261001-0100015997/",
+    "imagenes": "aprobados/20261001-0100015997/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-02",
+    "ultimoEnvio": "2026-10-02T15:45:53",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}

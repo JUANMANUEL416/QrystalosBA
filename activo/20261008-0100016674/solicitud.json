@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-09T01:46:59.362Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016674",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261008-0100016674",
+    "idReq": "0100016674",
+    "fecha": "2026-10-08",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Clinica Maicao",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CONTABILIDAD · Contabilidad",
+    "rutaPantalla": "/cont/otrmodul — pestaña Recaudos (CXC)"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/CMAICA199",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": ""
+  },
+  "contenido": {
+    "titulo": "CONTABILIDAD · Contabilidad",
+    "requerimiento": "sE SOLICITA QUE EL MODULO DE OTROS MODULOS EN CONTABILIDAD EL SISTEMA BUSQUE LOS MOVIMEINTOS DE CARTERA POR FECHA Y NO POR FECHA PAGO. YA UQE FECHA PAGO ES LA FECHA OCN LA QUE SE GENERO LA ENTRADA DEL DINERO EN EL BANCO. PERO LA LEGALIZACION DE LA CARTERA SE HACE POR EL CAMPO FECHA. DETALLE: El ingeniero menciona un error en la búsqueda de la información contable. Sin embargo, no proporciona detalles específicos sobre el tipo de error o cómo se relaciona con la solicitud del cliente. Es importante aclarar que la solicitud del cliente se refiere a modificar el módulo de contabilidad para que busque los movimientos de cartera por fecha en lugar de por fecha de pago. Esto implica que se debe ajustar la funcionalidad del sistema para cumplir con la legalización de la cartera según el campo de fecha.\n\nPor lo tanto, se requiere una revisión más detallada del error mencionado y su relación con la solicitud del cliente. Esto ayudará a abordar adecuadamente el requerimiento y a ofrecer una solución efectiva.\n\n Por qué soporte pidió pasar esta solicitud a requerimiento.\n\nEl ingeniero menciona un error en la búsqueda de la información contable. Sin embargo, no proporciona detalles específicos sobre el tipo de error o cómo se relaciona con la solicitud del cliente. Es importante aclarar que la solicitud del cliente se refiere a modificar el módulo de contabilidad para que busque los movimientos de cartera por fecha en lugar de por fecha de pago. Esto implica que se debe ajustar la funcionalidad del sistema para cumplir con la legalización de la cartera según el campo de fecha.\n\nPor lo tanto, se requiere una revisión más detallada del error mencionado y su relación con la solicitud del cliente. Esto ayudará a abordar adecuadamente el requerimiento y a ofrecer una solución efectiva.",
+    "criteriosAceptacion": "1) En Contable → Otros módulos → Recaudos (CXC), al elegir año/mes contable y pulsar Consultar, la grilla incluye recaudos FPAG cuya fecha de legalización (FPAG.FECHA) cae en ese periodo, aunque FPAG.FECHAPAGO sea de otro mes.\n2) Un recaudo con FECHA en marzo 2020 y FECHAPAGO en abril 2020 aparece al consultar marzo 2020 (caso de la captura: consecutivo visible si existe y cumple CERRADO/contabilizado según filtro).\n3) Marcar y Contabilizar sigue funcionando: los ítems listados coinciden con lo que valida SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS (PROCEDENCIA CXC), que ya filtra por YEAR/MONTH(FPAG.FECHA).\n4) La columna informativa de fecha de ingreso bancario (FECHAPAGO) sigue visible; el periodo contable de la consulta no depende de FECHAPAGO.\n5) Sin regresión en búsqueda por consecutivo/tercero dentro del periodo por FECHA.",
+    "alcance": "Frontend: OMRecaudosComponent.vue (filtro AppStore.read sobre FPAG, orden por defecto y etiquetas de columnas si se ajustan). Proceso contabilidad · control Otros módulos → Recaudos (CXC).",
+    "restricciones": "No cambiar la lógica SQL de contabilización masiva ni SPK_NC_CONTAB_CXC (ya usan FPAG.FECHA). No modificar módulo operativo de Recaudos/Cartera ni conciliaciones CONCCXC en este REQ salvo que QA detecte el mismo criterio erróneo allí. No ejecutar scripts desde BA.",
+    "analisis": "Paso 0 — ¿Ya existe?: No es capacitación ni hueco de módulo. La pantalla existe (ruta /cont/otrmodul, pestaña Recaudos). Clasificación: defecto por inconsistencia de criterio de fecha.\n\nREQ vs captura: El texto pide legalizar/contabilizar cartera por FECHA (legalización); la captura muestra marzo 2020, filtro Todos, búsqueda 0100057345 y mensaje «Sin resultados para el período seleccionado». Eso encaja con un recaudo cuya legalización está en marzo pero cuyo FECHAPAGO cae en otro mes.\n\nCaminos del control: Año/mes contable + Contabilizado (Todos/0/1) + Consultar → grilla vía AppStore.read; Buscar (consecutivo/tercero); Marcar/Desmarcar; Contabilizar → CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS; clic fila → DETALLE_OM_CXC.\n\nCausa (KB + código): En OMRecaudosComponent.vue el CondicionAdicional usa YEAR/MONTH(FPAG.FECHAPAGO). En cambio SPQ_CONTABILIDAD_3 (rama CXC de ENV_CONTA_OTROS_MODULS), FNK_REVISION_ANTES_CIERRE_PERIODO (recaudos pendientes) y el proceso de recaudos (desaplicar/aval, periodo PRI) usan FPAG.FECHA como fecha de legalización. El usuario ve vacía la grilla del mes correcto de cartera pero el backend contabilizaría por FECHA si los ítems llegaran marcados.\n\nSolución: Ajustar solo el FE para filtrar y ordenar el listado por FPAG.FECHA; mantener FECHAPAGO visible como referencia bancaria. Sin cambio SQL.",
+    "opciones": [],
+    "recomendacion": "Desarrollo acotado en Qrystalos2 (rama bugfix/CMAICA199): corregir OMRecaudosComponent.vue. Opcional UX: renombrar columna principal del periodo a «Fecha legalización» (FPAG.FECHA) y dejar «Fecha pago» (FECHAPAGO) como segunda columna. Prioridad baja pero impacto operativo claro en cierre contable de cartera. Validar en preversión con al menos un FPAG donde MONTH(FECHA) ≠ MONTH(FECHAPAGO).",
+    "cambioPropuestoSimple": "Hoy, en Otros módulos → Recaudos, el sistema arma el mes contable con la fecha en que el dinero entró al banco (fecha pago). Cartera y contabilidad trabajan el mes según la fecha de legalización del recaudo. Se propone que la consulta del mes use esa fecha de legalización, igual que cuando se marca y contabiliza, para que aparezcan los recaudos del periodo que el área financiera está cerrando.",
+    "cambioPropuestoSql": "",
+    "impactoFe": "Sí",
+    "impactoApi": "No",
+    "impactoSql": "No",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "El fix es criterio de consulta en FE (read FPAG); no altera asientos MCP/MCH, MCPE ni generadores SPK_NC_CONTAB_CXC al contabilizar.",
+        "validadoEn": "2026-10-09T01:55:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En ambiente de prueba, localizar un FPAG CERRADO con MONTH(FECHA)=3/2020 y MONTH(FECHAPAGO) distinto; confirmar que hoy no sale en marzo en Otros módulos → Recaudos y que tras el cambio sí aparece y contabiliza sin error."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "74130b68-24a4-4340-b3ba-44c00a132c97.jpg",
+        "ruta": "activo/20261008-0100016674/imagenes/74130b68-24a4-4340-b3ba-44c00a132c97.jpg",
+        "subidaEn": "2026-10-08T20:43:06",
+        "url": "/api/caso/20261008-0100016674/imagen/74130b68-24a4-4340-b3ba-44c00a132c97.jpg"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Contable → Otros módulos → Recaudos (CXC), al elegir año/mes contable y pulsar Consultar, la grilla incluye recaudos FPAG cuya fecha de legalización (FPAG.FECHA) cae en ese periodo, aunque FPAG.FECHAPAGO sea de otro mes.\n2) Un recaudo con FECHA en marzo 2020 y FECHAPAGO en abril 2020 aparece al consultar marzo 2020 (caso de la captura: consecutivo visible si existe y cumple CERRADO/contabilizado según filtro).\n3) Marcar y Contabilizar sigue funcionando: los ítems listados coinciden con lo que valida SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS (PROCEDENCIA CXC), que ya filtra por YEAR/MONTH(FPAG.FECHA).\n4) La columna informativa de fecha de ingreso bancario (FECHAPAGO) sigue visible; el periodo contable de la consulta no depende de FECHAPAGO.\n5) Sin regresión en búsqueda por consecutivo/tercero dentro del periodo por FECHA.",
+      "originalesEn": "2026-10-09T01:46:22.754Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Contable → Otros módulos → Recaudos (CXC), al elegir año/mes contable y pulsar Consultar, la grilla incluye recaudos FPAG cuya fecha de legalización (FPAG.FECHA) cae en ese periodo, aunque FPAG.FECHAPAGO sea de otro mes.\n2) Un recaudo con FECHA en marzo 2020 y FECHAPAGO en abril 2020 aparece al consultar marzo 2020 (caso de la captura: consecutivo visible si existe y cumple CERRADO/contabilizado según filtro).\n3) Marcar y Contabilizar sigue funcionando: los ítems listados coinciden con lo que valida SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS (PROCEDENCIA CXC), que ya filtra por YEAR/MONTH(FPAG.FECHA).\n4) La columna informativa de fecha de ingreso bancario (FECHAPAGO) sigue visible; el periodo contable de la consulta no depende de FECHAPAGO.\n5) Sin regresión en búsqueda por consecutivo/tercero dentro del periodo por FECHA.",
+      "trasAnalisisEn": "2026-10-09T01:46:28.809Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: defecto FE (filtro FECHAPAGO vs FECHA). Fichas SPQ_CONTABILIDAD_3 leídas en conocimiento/contabilidad/sps.json; cuerpo ENV_CONTA CXC confirmado en sql/SPQ_CONTABILIDAD_3.sql. No se requiere bajar SQL al caso.",
+      "fecha": "2026-10-09T01:55:00.000Z",
+      "estado": "listo",
+      "sps": []
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261008-0100016674/diagramas/flujo.html",
+      "subidaEn": "2026-10-08T20:46:46",
+      "url": "/api/caso/20261008-0100016674/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "contabilidad",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261008-0100016674-flujo.html"
+    },
+    "mockups": [
+      "activo/20261008-0100016674/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261008-0100016674\\sql\\",
+    "carpetaRelativa": "activo/20261008-0100016674/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016674\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "contabilidad",
+    "catalogo": "conocimiento/contabilidad/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_CONTABILIDAD_3",
+        "metodo": "ENV_CONTA_OTROS_MODULS",
+        "estado": "leido",
+        "hace": "Marca ITEMS (MARCACONT) y ejecuta SPK_CONTAB_MASIVA por PROCEDENCIA (CAJA, CXC, CXP, FACTURA, GLOSAS, INV, HPRE…).",
+        "llama": [
+          "SPK_CONTAB_MASIVA"
+        ]
+      },
+      {
+        "sp": "SPQ_CONTABILIDAD_3",
+        "metodo": "DETALLE_OM_CXC",
+        "estado": "leido",
+        "hace": "Lista recaudos FPAG pendientes contabilizar periodo.",
+        "llama": []
+      }
+    ],
+    "notas": "Listado OM usa AppStore.read (no METODO SQL). Fix solo CondicionAdicional en OMRecaudosComponent.vue.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261008-0100016674.html",
+    "aprobados": "aprobados/20261008-0100016674/",
+    "imagenes": "aprobados/20261008-0100016674/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-08",
+    "ultimoEnvio": "2026-10-08T20:52:51",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

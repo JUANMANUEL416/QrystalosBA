@@ -1,0 +1,171 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-06T14:38:56.688Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016635",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261006-0100016635",
+    "idReq": "0100016635",
+    "fecha": "2026-10-06",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "ASOCABILIDOS IPSI",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CXC · Cuentas Por Cobrar",
+    "rutaPantalla": "/admin/CuentasxCobrar"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/ASOCAB222",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CXC · Cuentas Por Cobrar",
+    "requerimiento": "Incluir opción para descargar todo el detalle en formato XML\n\nSe solicita la implementación de una opción que permita a los usuarios descargar todo el detalle de la información en su formato XML desde el sistema Krystalos. en el modulo cuenta por cobrar\n\n DETALLE: Al intentar descargar los FEVRIPS de una cuenta de cobro, se presentan diferentes casos.\n\n1. Muestra error en la descarga.\n2. No descarga nada porque pide cambio de carpeta.\n3. De una CXC de 100 o de 5 facturas, solo puede descargar 1 o 2, como máximo 4 FEVRIPS.\n\nLo que se quiere es que, si la CXC tiene 100 facturas, se arroje el FEVRIPS de las 100 facturas asociadas. En caso de algún error, se debe indicar el error para subsanarlo y poder descargar las 100 facturas en su totalidad.",
+    "criteriosAceptacion": "1) En Cuentas por cobrar, cuenta abierta con N facturas en detalle (p. ej. 100), botón «Descargar FEV-RIPS»: se descarga el paquete de todas las facturas con CUV válido en uno o pocos ZIP (hasta 500 facturas por archivo, como FEV/NC/NA-RIPS Masivo), sin depender de múltiples descargas automáticas del navegador.\n2) Si el usuario cancela la selección de carpeta del navegador, la descarga continúa por descarga directa de un único ZIP (o lote), sin quedar en cero archivos.\n3) Al terminar, mensaje claro: cuántas facturas exportadas, cuántas omitidas; listado de omitidas con motivo (sin CUV, sin FTRJSON, JSON inválido, error PDF/XML).\n4) El ZIP incluye, por factura validada, al menos JSON RIPS, respuesta/CUV y XML DIAN (AttachedDocument), según opciones elegidas; opción explícita «solo XML» o paquete integral alineada con masivo.\n5) Factura sin CUV ministerio no se incluye en el ZIP pero aparece en el informe de errores con acción sugerida (validar en FEV/NC/NA-RIPS Masivo o Envíos y Respuestas).\n6) CXC de prueba ASOCABILIDOS (captura 14 ítems): reproducir antes/después; no regresión en glosas (SopFevRips procedencia RESP_GLOSAS).",
+    "alcance": "Frontend: `SopFevRipsComponent.vue` (diálogo abierto desde `FCXCAComponent` → «Descargar FEV-RIPS») y, si conviene, extracción/reuso del flujo ya implementado en `FEVRIPSMasivoComponent.vue` (ZIP maestro, límite por lote, diálogo de progreso, `_errores_fevrips.txt`).\nBackend JSON existente: `FCXC_COL · TRAER_CXC_VALIDADOS` (listado) y `RIPS · GET_DATOS_XML` / `GET_DATOS_XML_ATTACHEDDOCUMENT` / configuración export (`GET_CONFIG_EXPORT_RIPS`) por factura.\nSQL opcional: ampliar `TRAER_CXC_VALIDADOS` con tercer recordset de facturas omitidas y motivo (sin releer todo SPQ si la ficha alcanza para el dictamen).\nFuera: generar CUV en Ministerio, radicar CXC, cambios DIAN/FACTE, módulo Perú SUNAT.",
+    "restricciones": "Solo facturas de la CXC seleccionada (`CNSCXC`). Exportación condicionada a CUV y `FTRJSON` persistido (misma regla que hoy en SQL).\nNo sustituir el camino masivo administrativo (FEV/NC/NA-RIPS Masivo); se corrige el control en cartera.\nRespetar USVGS `FEVRIPS_CUV_TXT`, `FEVRIPS_VALESTR_JSON` y nomenclatura PPT.\nPerformance: cuentas muy grandes pueden requerir varios ZIP de hasta 500 documentos; el usuario debe ver progreso y errores parciales, no fallo silencioso.",
+    "analisis": "**REQ vs pantalla:** El título habla de «XML», pero la captura y el detalle apuntan al control **Descargar FEV-RIPS** en el detalle de **Cuentas por cobrar** (`/admin/CuentasxCobrar`, `FCXCAComponent`): grilla con ícono FEVRIPS por fila y botón inferior «Descargar FEV-RIPS». No es un hueco de funcionalidad nueva.\n\n**Paso 0 — ¿Ya existe?** Clasificación: **defecto de confiabilidad/UX** en descarga masiva desde CXC (posible **capacitación complementaria** para facturas aún sin CUV). Caminos del control:\n| Camino | Dónde | Qué hace |\n|--------|--------|----------|\n| Descargar FEV-RIPS (lote CXC) | Detalle cuenta → botón morado | Abre `SopFevRipsComponent`; cuenta validadas vs erradas; botón Descargar |\n| FEVRIPS por factura | Columna XML → Envíos y Respuestas | Paquete individual (`ValidacionesFEVRipsComponent`) |\n| Masivo por cuenta | Admin → FEV/NC/NA-RIPS Masivo | Marcar por CXC → Descargar (flujo **ya mejorado**) |\n| Glosas | CXC Glosas → Descargar FEV-RIPS | Mismo componente con `procedencia=RESP_GLOSAS` |\n\n**Causa técnica (Qrystalos2 develop):** `SopFevRipsComponent.onExportar` genera **un ZIP por factura** y dispara **varias descargas** seguidas (`<a download>`) o escritura en carpeta vía `showDirectoryPicker`. Los navegadores suelen **bloquear** descargas múltiples (síntoma: solo 1–4 archivos de 100). Si el usuario cancela el picker de carpeta, el flujo mezja avisos y a veces percibe «no descarga nada». Errores por factura (JSON inválido, PDF, XML) se acumulan en notificaciones pero **no** hay informe consolidado ni ZIP único.\n\nEn contraste, `FEVRIPSMasivoComponent` ya arma **masterZip** con subcarpetas por factura, trocea en lotes de 500, incluye `_errores_fevrips.txt` y diálogo de progreso.\n\n**Backend:** `FCXC_COL · TRAER_CXC_VALIDADOS` (referencia sql_refe) devuelve conteos y solo facturas con `FTR.CUV` no vacío unidas a `FTRJSON`. Las demás cuentan como ERRADOS sin detalle por factura — el usuario no sabe cuáles de las 100 faltan ni por qué.\n\n**Contabilidad:** No aplica (solo lectura/exportación de archivos).\n\n**Validar antes:** En ASOCABILIDOS, CXC de la captura (14 facturas), ejecutar Descargar FEV-RIPS y contrastar con el mismo lote desde FEV/NC/NA-RIPS Masivo.",
+    "opciones": [],
+    "recomendacion": "**Viabilidad alta.** Priorizar alinear `SopFevRipsComponent` con el patrón de descarga de `FEVRIPSMasivoComponent` (idealmente composable compartido `useFevRipsExportMasivo` para no duplicar mantenimiento). SQL en segundo orden: tercer recordset en `TRAER_CXC_VALIDADOS` para listar omitidas en pantalla antes de exportar.\n\nImpacto: **FE Sí**, **API Parcial** (mismos METODOs; posible extensión de respuesta JSON), **SQL Parcial** (mejora diagnóstico, no obligatoria para el ZIP único).\n\nCapacitación: facturas sin CUV no entrarán al ZIP hasta validarse en Ministerio — documentar en ayuda CXC, no es bug de descarga.",
+    "cambioPropuestoSimple": "Hoy, al descargar FEV-RIPS desde la cuenta de cobro, el sistema intenta bajar muchos archivos sueltos y el navegador suele cortar la descarga; además no explica qué facturas faltan. Se propone que, igual que en FEV-RIPS Masivo, genere uno o pocos ZIP con todas las facturas validadas de la cuenta, un resumen de errores por factura omitida y opción clara de incluir el XML, sin obligar a elegir carpeta para que funcione.",
+    "cambioPropuestoSql": "Objeto: IXONLINE/SQL · SPQ_FCXC_COL · METODO TRAER_CXC_VALIDADOS (PREVERSION / referencia archivada).\n\nOpcional — tercer recordset «omitidas» y motivo (FE muestra grilla antes de Descargar):\n\n-- AFTER segundo SELECT (facturas validadas), añadir:\nSELECT FCXCD.N_FACTURA,\n       CASE\n         WHEN J.CNSFCT IS NULL THEN N'Sin FTRJSON: generar/validar RIPS antes de descargar'\n         WHEN COALESCE(NULLIF(LTRIM(RTRIM(FTR.CUV)), N''), NULLIF(LTRIM(RTRIM(J.CUV)), N'')) IS NULL THEN N'Sin CUV del Ministerio'\n         WHEN COALESCE(J.JSON_ENVIO, N'') IN (N'', N'{}') THEN N'JSON_ENVIO vacío en FTRJSON'\n         ELSE N'No cumple criterio de exportación'\n       END AS MOTIVO\nFROM FCXCD\nINNER JOIN FTR ON FCXCD.N_FACTURA = FTR.N_FACTURA\nLEFT JOIN FTRJSON J ON FTR.CNSFCT = J.CNSFCT\nWHERE FCXCD.CNSCXC = @CNSCXC\n  AND (\n        J.CNSFCT IS NULL\n     OR COALESCE(NULLIF(LTRIM(RTRIM(FTR.CUV)), N''), NULLIF(LTRIM(RTRIM(J.CUV)), N'')) IS NULL\n     OR COALESCE(J.JSON_ENVIO, N'') IN (N'', N'{}')\n      );\n\nValidación:\nSELECT FCXCD.CNSCXC, COUNT(*) AS total,\n       SUM(CASE WHEN COALESCE(FTR.CUV,N'')<>N'' AND J.CNSFCT IS NOT NULL THEN 1 ELSE 0 END) AS exportables\nFROM FCXCD\nINNER JOIN FTR ON FCXCD.N_FACTURA=FTR.N_FACTURA\nLEFT JOIN FTRJSON J ON FTR.CNSFCT=J.CNSFCT\nWHERE FCXCD.CNSCXC = @CNSCXC\nGROUP BY FCXCD.CNSCXC;",
+    "impactoFe": "Sí",
+    "impactoApi": "Parcial",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Exportación FEV-RIPS desde CXC; no genera asientos ni altera MCPE/MCP/MCH.",
+        "validadoEn": "2026-10-06T14:35:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En ASOCABILIDOS (rama bugfix/ASOCAB222), abrir la misma CXC de la captura (14 facturas), usar Descargar FEV-RIPS y anotar cuántos ZIP dispara el navegador y cuántas facturas incluye. Repetir el mismo conjunto desde FEV/NC/NA-RIPS Masivo (Validados + Descargar). Si masivo entrega el lote completo y CXC no, confirma defecto FE sin necesidad de cambio SQL previo."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Detalle_FEV_RIPS.png",
+        "ruta": "activo/20261006-0100016635/imagenes/Detalle_FEV_RIPS.png",
+        "subidaEn": "2026-10-06T09:30:12",
+        "url": "/api/caso/20261006-0100016635/imagen/Detalle_FEV_RIPS.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En Cuentas por cobrar, cuenta abierta con N facturas en detalle (p. ej. 100), botón «Descargar FEV-RIPS»: se descarga el paquete de todas las facturas con CUV válido en uno o pocos ZIP (hasta 500 facturas por archivo, como FEV/NC/NA-RIPS Masivo), sin depender de múltiples descargas automáticas del navegador.\n2) Si el usuario cancela la selección de carpeta del navegador, la descarga continúa por descarga directa de un único ZIP (o lote), sin quedar en cero archivos.\n3) Al terminar, mensaje claro: cuántas facturas exportadas, cuántas omitidas; listado de omitidas con motivo (sin CUV, sin FTRJSON, JSON inválido, error PDF/XML).\n4) El ZIP incluye, por factura validada, al menos JSON RIPS, respuesta/CUV y XML DIAN (AttachedDocument), según opciones elegidas; opción explícita «solo XML» o paquete integral alineada con masivo.\n5) Factura sin CUV ministerio no se incluye en el ZIP pero aparece en el informe de errores con acción sugerida (validar en FEV/NC/NA-RIPS Masivo o Envíos y Respuestas).\n6) CXC de prueba ASOCABILIDOS (captura 14 ítems): reproducir antes/después; no regresión en glosas (SopFevRips procedencia RESP_GLOSAS).",
+      "originalesEn": "2026-10-06T14:36:44.320Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Cuentas por cobrar, cuenta abierta con N facturas en detalle (p. ej. 100), botón «Descargar FEV-RIPS»: se descarga el paquete de todas las facturas con CUV válido en uno o pocos ZIP (hasta 500 facturas por archivo, como FEV/NC/NA-RIPS Masivo), sin depender de múltiples descargas automáticas del navegador.\n2) Si el usuario cancela la selección de carpeta del navegador, la descarga continúa por descarga directa de un único ZIP (o lote), sin quedar en cero archivos.\n3) Al terminar, mensaje claro: cuántas facturas exportadas, cuántas omitidas; listado de omitidas con motivo (sin CUV, sin FTRJSON, JSON inválido, error PDF/XML).\n4) El ZIP incluye, por factura validada, al menos JSON RIPS, respuesta/CUV y XML DIAN (AttachedDocument), según opciones elegidas; opción explícita «solo XML» o paquete integral alineada con masivo.\n5) Factura sin CUV ministerio no se incluye en el ZIP pero aparece en el informe de errores con acción sugerida (validar en FEV/NC/NA-RIPS Masivo o Envíos y Respuestas).\n6) CXC de prueba ASOCABILIDOS (captura 14 ítems): reproducir antes/después; no regresión en glosas (SopFevRips procedencia RESP_GLOSAS).",
+      "trasAnalisisEn": "2026-10-06T14:36:46.480Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con conocimiento/rips-json (necesidadesYaCubiertas descarga masiva en FEV/NC/NA-RIPS Masivo), facturacion/sps.json (FCXC_COL) y Qrystalos2: FCXCAComponent + SopFevRipsComponent vs FEVRIPSMasivoComponent. Línea exacta TRAER_CXC_VALIDADOS tomada de sql_refe/xsql/SPQ_FCXC_COL.sql (ficha catalogada incompleta: no describe recordsets FEV-RIPS). Clasificación: defecto FE; no hueco de módulo. SQL opcional para diagnóstico.",
+      "fecha": "2026-10-06T14:35:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_FCXC_COL·TRAER_CXC_VALIDADOS (leido ficha / cuerpo sql_refe); SPQ_RIPS·GET_DATOS_XML, GET_DATOS_XML_ATTACHEDDOCUMENT, GET_CONFIG_EXPORT_RIPS (leido rips-json/sps.json). No bajado a activo/20261006-0100016635/sql/ — alcance cubierto por fichas + referencia."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261006-0100016635/diagramas/flujo.html",
+      "subidaEn": "2026-10-06T09:38:07",
+      "url": "/api/caso/20261006-0100016635/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "rips-json",
+      "aviso": null,
+      "dictamenIncrustado": true,
+      "sidecar": "dictamenes/20261006-0100016635-flujo.html"
+    },
+    "mockups": [
+      "activo/20261006-0100016635/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261006-0100016635\\sql\\",
+    "carpetaRelativa": "activo/20261006-0100016635/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016635\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "rips-json",
+    "catalogo": "conocimiento/rips-json/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_RIPS",
+        "metodo": "GET_DATOS_XML",
+        "estado": "leido",
+        "hace": "XML_Base64 FEV desde FDIANR (SendBillSync) para paquete ZIP. Si USVGS FTRE_XML_DESCENLINEA=SI, quita espacios y saltos entre <cbc:Description> y <![CDATA[.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_RIPS",
+        "metodo": "GET_DATOS_XML_ATTACHEDDOCUMENT",
+        "estado": "leido",
+        "hace": "AttachedDocument DIAN vía FNK_AttachedDocument; parche NUMERO_CONTRATO (PPT/CNT) y tipo usuario subs 04/05. FV y NC/ND. Si USVGS FTRE_XML_DESCENLINEA=SI, quita espacios y saltos entre <cbc:Description> y <![CDATA[.",
+        "llama": [
+          "FNK_AttachedDocument",
+          "FNK_VALORVARIABLE SINTAGXMLVERSION"
+        ]
+      },
+      {
+        "sp": "SPQ_RIPS",
+        "metodo": "GET_CONFIG_EXPORT_RIPS",
+        "estado": "leido",
+        "hace": "Nomenclatura export ZIP: PPT.RIPS_NOMBRE_* , CUVTXT, NIT, prefijo/num factura, CUV. FV o NC/ND vía FNOT.",
+        "llama": []
+      }
+    ],
+    "notas": "procesoId rips-json = motor exportación; FCXC_COL vive en facturacion/sps.json. Fix principal FE SopFevRipsComponent.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261006-0100016635.html",
+    "aprobados": "aprobados/20261006-0100016635/",
+    "imagenes": "aprobados/20261006-0100016635/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-06",
+    "ultimoEnvio": "2026-10-06T09:41:09",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

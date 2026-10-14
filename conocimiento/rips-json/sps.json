@@ -1,7 +1,7 @@
 {
   "procesoId": "rips-json",
-  "actualizado": "2026-09-12T22:10:00",
-  "nota": "Catálogo RIPS JSON / FEVRIPS copiado de facturacion/sps.json (2026-09-12). Árbol cerrado. No incluye armar FTR ni DIAN.",
+  "actualizado": "2026-10-03T16:40:00",
+  "nota": "Catálogo RIPS JSON / FEVRIPS. Árbol cerrado 2026-09-12; contraste 2026-10-03 con IXONLINE/SQL PREVERSION = 2.0.7 (idéntico a la liberada). Releídos: despachador, SPQ_RIPS SET_DATOS/GET_DATOS_XML, FTR_IND, FTR_MAS. No incluye armar FTR ni DIAN.",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
@@ -59,7 +59,7 @@
       "tipo": "SPQ",
       "modelo": "RIPS",
       "estado": "leido",
-      "fuente": "sql/SPQ_RIPS.sql",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
       "cola": "10/10 METODOs leído 2026-09-06. Orquestador MODELO RIPS.",
       "metodos": [
         {
@@ -83,37 +83,40 @@
           "id": "SET_DATOS",
           "estado": "leido",
           "gateId": "enviar-cuv",
-          "hace": "Persiste respuesta SISPRO: CUV + FRADICA_RIPS en FTR/FNOT/FGLO y FTRJSON/FNOTJSON. ISVALIDACUV=1 solo actualiza CUV ya validado. KO: guarda JSON_RESPUESTA en FTR_MAS_LOG (FEVRIPS).",
+          "hace": "Persiste respuesta SISPRO: CUV + FRADICA_RIPS en FTR/FNOT/FGLO y FTRJSON/FNOTJSON solo si ResultState = 'true' (se lee como texto; antes un BIT podía tomar 'false' como 1). ISVALIDACUV=1 solo actualiza CUV ya validado y también exige 'true'. Si no es 'true': guarda JSON_RESPUESTA en FTR_MAS_LOG (FEVRIPS).",
           "valida": [
-            "ResultState=1 para éxito",
+            "ResultState = 'true' (texto, $.ResultState o $.errores.resultState)",
             "TIPODOC FV/NC/ND/NA"
           ],
           "errores": [
             "KO + fila ERROR si excepción SQL"
           ],
           "efecto": "FTR.CUV, FTR.FRADICA_RIPS; FNOT/FGLO en NC/ND/NA; limpia FTR_MAS_LOG FEVRIPS",
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "releido": "2026-10-03 · PREVERSION 2.0.7"
         },
         {
           "id": "GET_DATOS_XML",
           "estado": "leido",
           "gateId": "enviar-cuv",
-          "hace": "XML_Base64 FEV desde FDIANR (SendBillSync) para paquete ZIP.",
+          "hace": "XML_Base64 FEV desde FDIANR (SendBillSync) para paquete ZIP. Si USVGS FTRE_XML_DESCENLINEA=SI, quita espacios y saltos entre <cbc:Description> y <![CDATA[.",
           "valida": [
             "CNSDOC + TIPODOC"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "releido": "2026-10-03 · PREVERSION 2.0.7"
         },
         {
           "id": "GET_DATOS_XML_ATTACHEDDOCUMENT",
           "estado": "leido",
           "gateId": "enviar-cuv",
-          "hace": "AttachedDocument DIAN vía FNK_AttachedDocument; parche NUMERO_CONTRATO (PPT/CNT) y tipo usuario subs 04/05. FV y NC/ND.",
+          "hace": "AttachedDocument DIAN vía FNK_AttachedDocument; parche NUMERO_CONTRATO (PPT/CNT) y tipo usuario subs 04/05. FV y NC/ND. Si USVGS FTRE_XML_DESCENLINEA=SI, quita espacios y saltos entre <cbc:Description> y <![CDATA[.",
           "llama": [
             "FNK_AttachedDocument",
             "FNK_VALORVARIABLE SINTAGXMLVERSION"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "releido": "2026-10-03 · PREVERSION 2.0.7"
         },
         {
           "id": "MARCAFAC",
@@ -266,7 +269,7 @@
       "nombre": "SPK_GENERAR_RIPS_JSON",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "sql_refe/xsql/SPK_GENERAR_RIPS_JSON.sql (Qrystalos2/sql copia viva; no está en sql/ hoy)",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
       "llamadoDesde": [
         "FTR_COL · RIPS_JSON",
         "FTR_COL · EJECUTAR_RIPS_JSON_ASYNC",
@@ -296,7 +299,7 @@
         "FACTURA + CAPITADA=1 + TIPOCAP<4 → SPK_RIPS_JSON_FTR_CAPI",
         "FACTURA + (CAPITADA=1 o 0) + TIPOCAP=4 → SPK_RIPS_JSON_FTR_CAPMASI",
         "FACTURA + TIPOFAC=M + PROCEDENCIA=AUTPG → SPK_RIPS_JSON_FTR_AUTPG (@N_FACTURA, XML base64)",
-        "FACTURA + TIPOFAC=M + IDPLAN IN (NEDXC,NEDXS) → SPK_RIPS_JSON_FTR_CITPAQ",
+        "FACTURA + TIPOFAC=M + IDPLAN IN (NEDXC,NEDXS,NCDXPS,NSDXPS) → SPK_RIPS_JSON_FTR_CITPAQ",
         "FACTURA + TIPOFAC=M (resto) → SPK_RIPS_JSON_FTR_MAS",
         "FACTURA + evento (TIPOFAC≠M, no capita) → SPK_RIPS_JSON_FTR_IND",
         "AJUSTE + CAPITADA=1 + PPT.PGP=1 → SPK_RIPS_JSON_AJUSTE_PGP (@CNSFACT) y RETURN",
@@ -322,14 +325,15 @@
         "SPK_RIPS_JSON_NDBCR_IND"
       ],
       "efecto": "OUTPUT RIPSJSON + XML; persiste JSON_ENVIO en FTRJSON/FNOTJSON si GENERAR=SI y hay JSON.",
-      "cola": "Árbol RIPS JSON cerrado 2026-09-12. Todas las hojas + FNK_RECIENNACIDOS leídas."
+      "cola": "Árbol RIPS JSON cerrado 2026-09-12. Todas las hojas + FNK_RECIENNACIDOS leídas.",
+      "releido": "2026-10-03 · PREVERSION 2.0.7"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_IND",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "sql/SPK_RIPS_JSON_FTR_IND(1).sql",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
+      "actualizado": "2026-10-03T16:40:00",
       "gateId": "rips-fev",
       "hace": "Arma el sobre {rips, xmlFevFile} de factura evento. Nodos: usuario + consultas, procedimientos, urgencias, hospitalizacion, medicamentos, otrosServicios, recienNacidos (FNK_RIPS_JSON_RECIENNACIDOS). Procedencias FTR/HADM/CIT/AUT (SALUD, CI, CE, ONCO, AUT).",
       "valida": [
@@ -357,19 +361,32 @@
         "tipoDoc médico default: MED.TIPO_ID de EPI_MEDICODEFAULT o CC"
       ],
       "llama": [
-        "FNK_VALORVARIABLE",
-        "FNK_RIPS_JSON_RECIENNACIDOS",
         "FNK_AttachedDocument",
+        "FNK_RIPS_JSON_RECIENNACIDOS",
+        "FNK_VALORVARIABLE",
+        "FNK_VALORVARIABLE (RIPS_CODSISPRO)",
         "SPK_GUARDAR_ARCHIVO (solo si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO = {rips, xmlFevFile}. No persiste (lo hace SPK_PERSISTIR_RIPSJSON_ENVIO)."
+      "efecto": "OUTPUT @PLANO = {rips, xmlFevFile}. No persiste (lo hace SPK_PERSISTIR_RIPSJSON_ENVIO).",
+      "cambiosRecientes": [
+        "SR20260922-001: paquete se detecta por <Value schemeName=\"salud_modalidad_pago.gc\" schemeID=\"01|02|03\"> en el AttachedDocument; modalidad 04 (evento) → @PAQUETE=0.",
+        "SR20260922-001: lógica de valores invertida: con @PAQUETE=1 los valores de servicio van en 0; filtro HPRED.PAQUETE IN (0,2,3) si paquete, =0 si no; FTRD.PAQUETE=2 se incluye en paquete.",
+        "SR20260922-001: numAutorizacion limpia con A-Z0-9 (sin guion).",
+        "20260915: USVGS RIPS_CODSISPRO=SI → codTecnologiaSalud/codProcedimiento usa SER.CODSISPRO si está lleno; si no, CODCUPS.",
+        "20260916: idMIPRES usa AUT.IDMIPRESS y, si vacío, FTR.IDMIPRESS (otros servicios y medicamentos).",
+        "Medicamentos: IZSOL.CLASE incluye TRANS_CE.",
+        "Hospitalización >24 h: usa COALESCE(FECHAALTAMED, fin de atención).",
+        "tipoOS=05 con cantidad>1 se reporta de a una unidad (valor y copago prorrateados).",
+        "Observación: en PREVERSION los acentos del cuerpo aparecen como '?' (p. ej. RAISERROR 'No se encontr? la factura UBL'). Verificar fuera de sqlcmd."
+      ],
+      "releido": "2026-10-03 · PREVERSION 2.0.7"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_MAS",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "sql/SPK_RIPS_JSON_FTR_MAS.sql",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
+      "actualizado": "2026-10-03T16:40:00",
       "gateId": "rips-fev",
       "hace": "JSON masiva TIPOFAC=M (no AUTPG / no paquete CIT). Usuarios y servicios desde FTRD + CIT/AUT/HADM. conceptoRecaudo arranca 05.",
       "valida": [
@@ -383,7 +400,14 @@
         "FNK_VALORVARIABLE",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. No persiste.",
+      "cambiosRecientes": [
+        "SR20260922-001: nodo correcto salud_modalidad_pago.gc (antes salud_modalidades_pago.gc, no aplicaba). Modalidad 01-03 o FTR.PAQUETE=1 → ruta paquete: valores en 0 e incluye servicios aunque VLR_SERVICI=0; no cuadra SUM(vrServicio) vs VALORSERVICIOS.",
+        "SR20260922-001: autorización limpia sin guiones ni prefijos.",
+        "20260915: RIPS_CODSISPRO=SI prioriza SER.CODSISPRO.",
+        "idMIPRES: AUT.IDMIPRESS o FTR.IDMIPRESS."
+      ],
+      "releido": "2026-10-03 · PREVERSION 2.0.7"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_CAPI",
@@ -482,7 +506,7 @@
       "fuente": "sql/SPK_RIPS_JSON_FTR_CITPAQ.sql",
       "actualizado": "2026-09-12T21:55:00",
       "gateId": "rips-fev",
-      "hace": "JSON masiva de citas paquete: TIPOFAC=M + PAQUETE=1 + PROCEDENCIA=CI (planes NEDXC/NEDXS en el despachador).",
+      "hace": "JSON masiva de citas paquete: TIPOFAC=M + PAQUETE=1 + PROCEDENCIA=CI (planes NEDXC, NEDXS, NCDXPS y NSDXPS en el despachador desde 2.0.7).",
       "valida": [
         "Existe FTRD",
         "PAQUETE=1, PROCEDENCIA=CI, TIPOFAC=M",

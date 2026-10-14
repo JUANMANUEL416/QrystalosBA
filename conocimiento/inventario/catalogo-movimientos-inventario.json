@@ -1,0 +1,331 @@
+{
+  "procesoId": "inventario",
+  "actualizado": "2026-09-19",
+  "ticketsCambio": "../inventario/TICKETS-CAMBIOS-PENDIENTES.md",
+  "documento": "MOVIMIENTOS-INVENTARIO.md",
+  "usvgsDoc": "../flujo-compras-inv-cxp-caja/USVGS-INVENTARIO.md",
+  "vocabulario": {
+    "control": "Paso donde debe cumplirse una regla (confirmación, KMCOM, periodo).",
+    "familiaNorm": "Clasificación estable para análisis contable y REQ (independiente del nombre ITMO en cliente).",
+    "seContabilizaEfectivo": "ITMO.SECONTABILIZA=1 AND IBOD.NOCONTABILIZA=0 (SPK_NC_CONTAB_INV)."
+  },
+  "invariantesContables": [
+    {
+      "id": "INV-C01",
+      "texto": "SECONTABILIZA efectivo = ITMO.SECONTABILIZA × ¬IBOD.NOCONTABILIZA; OM INV usa SPK_NC_CONTAB_INV con KMCOM IDTIPOCONT=MOV_INVENTARIO (FNK_NC_CUENTA_KMCOM usa IMOV.IDTIPOMOV como prefijo)."
+    },
+    {
+      "id": "INV-C02",
+      "texto": "Entrada compra confirmada puede auto-crear FCXP + SPK_INSERT_CXP_INV (cabecera CXP_COMPRAS en KMCOM); contabilización MCP aparte vía OM o CONTABIMOV_JOB."
+    },
+    {
+      "id": "INV-C03",
+      "texto": "IDINVDEVPROVEEDOR: SPK_NC_CONTAB_INV sale sin MCP (devolución se contabiliza desde nota CxP)."
+    },
+    {
+      "id": "INV-C04",
+      "texto": "Ventas IDINVMOVVENTAFACTURA / IDINVENTA_PARTICULAR / IDTIPOMOVDEV_CLIENTE: con CONTAB_GASTOVEN_UNI=SI puede diferir costo INV al comprobante FACTURA unificado."
+    },
+    {
+      "id": "INV-C05",
+      "texto": "Traslado IDTS→IDTE: salida no transfiere costo contable completo hasta confirmar entrada destino; par ITRA/IMOV origen+destino."
+    },
+    {
+      "id": "INV-C06",
+      "texto": "SPK_CONFIRMARSALIDAS valida KMCOM MOV_INVENTARIO con IDMODELOCONT='01' hardcodeado en PREVERSION — contrastar con USVGS IDMODELOCONTABLE. Ticket desarrollo: INV-TCK-01."
+    },
+    {
+      "id": "INV-C07",
+      "texto": "Venta retail GUARDA_VENTA: triple capa contable — (1) costo INV vía SPK_NC_CONTAB_INV en confirmar salida si aplica, (2) ingreso FTR vía SPK_NC_CONTAB_FTR, (3) recaudo SPK_NC_CONTAB_CAJA_ING. CONTAB_GASTOVEN_UNI unifica costo venta en comprobante FACTURA."
+    },
+    {
+      "id": "INV-C08",
+      "texto": "IMPORTAR_ARTICULOS (IMOV_3) altera IMOVH/ISAL sin confirmar: contabilidad e IEXI solo cambian tras CONFIRMA_SALIDA; no usar en movimiento Pick&Pack en packing (ESTADO_PICKPACK 1/3)."
+    }
+  ],
+  "familias": [
+    {
+      "id": "entrada_compra",
+      "nombre": "Entrada por orden de compra",
+      "usvgs": ["IDINVMOV_COMPRAS"],
+      "itmoEsperado": { "tipo": "Credito", "compras": true },
+      "origen": ["FCOM confirmada → ITRA", "recepción masiva", "SPK_INSERTENTTRANSITO"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa",
+      "cxp": { "autoFcxp": true, "sp": "SPK_INSERT_CXP_INV", "kmcom": ["CXP_COMPRAS"] },
+      "contabilidad": {
+        "omInv": true,
+        "kmcomProceso": ["MOV_INVENTARIO", "CXP_COMPRAS"],
+        "variables": ["VALID_CCOSTO_CXP", "CONTAB_INV_IVA_ITAR", "REDONDEO_COMPRAS_CXP", "IDMODELOCONTABLE"],
+        "notas": "VALID_CCOSTO_CXP valida KMCOM antes de subir existencias. Factura obligatoria en confirmación."
+      },
+      "cufeRadian": {
+        "columna": "IMOV.CUFE",
+        "metodosImov3": [
+          "SINCRONIZAR_CUFE_RADIAN",
+          "ACTUALIZAR_CUFE",
+          "PLANTILLA_CUFE",
+          "CARGAR_CUFE_MASIVO"
+        ],
+        "spk": "SPK_SINCRONIZAR_CUFE_RADIAN",
+        "notas": "Cruce FRADIAN por N_FACTURA+NIT; excluye TIPO_DOC_COMPRA=R. CxP Radian es proceso hermano cxp-fcxp."
+      },
+      "procesoHermano": "flujo-compras-inv-cxp-caja"
+    },
+    {
+      "id": "entrada_remision",
+      "nombre": "Entrada por remisión proveedor",
+      "usvgs": ["IDINVMOV_REMISION_EN"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["FCOM / FCXP cambio tipo doc", "tránsito compra"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa",
+      "cxp": { "autoFcxp": "según flujo compra/remisión", "kmcom": ["CXP_COMPRAS"] },
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO", "CXP_COMPRAS"] }
+    },
+    {
+      "id": "entrada_prestamo",
+      "nombre": "Entrada préstamo proveedor",
+      "usvgs": ["IDINVMOV_PRESTAMOS"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["FCOM IDTIPOSER=Presta", "SPK_INSERT_ITRA_REQ"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa",
+      "contabilidad": {
+        "omInv": true,
+        "kmcomProceso": ["MOV_INVENTARIO"],
+        "notas": "SPK_NC_CONTAB_INV: tercero en MCP puede ser IMOV.IDTERCERO (prestamo) vs FCOM."
+      }
+    },
+    {
+      "id": "entrada_si",
+      "nombre": "Entrada alterna (SI / cliente)",
+      "usvgs": ["IDINVMOV_SI"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["tránsito SPK_INSERTENTTRANSITO"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa",
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"] }
+    },
+    {
+      "id": "salida_traslado",
+      "nombre": "Salida traslado entre bodegas",
+      "usvgs": ["IDTS"],
+      "itmoEsperado": { "tipo": "Debito", "estransito": true },
+      "origen": ["IMOV manual inv.ges", "IMOV_3 TRASLADAR"],
+      "confirmacion": { "metodo": "CONFIRMA_SALIDA", "sp": "SPK_CONFIRMARSALIDAS" },
+      "iexi": "decrementa origen",
+      "contabilidad": {
+        "omInv": true,
+        "kmcomProceso": ["MOV_INVENTARIO"],
+        "notas": "ESTRANSITO=1; entrada destino usa familia entrada_traslado (IDTE)."
+      }
+    },
+    {
+      "id": "entrada_traslado",
+      "nombre": "Entrada traslado (recepción destino)",
+      "usvgs": ["IDTE"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["ON_ACEPTA_TRANSITO → SPK_INSERTENTTRANSITO"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa destino",
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"] }
+    },
+    {
+      "id": "entrada_propia_paciente",
+      "nombre": "Producción propia / paciente (custodia)",
+      "usvgs": ["IDINVTPROPIA"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["IMOV manual", "IZSOL custodia"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa",
+      "requisitos": ["CNSTRAN obligatorio salvo excepciones", "PCOSTO puede ser 0"],
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"] }
+    },
+    {
+      "id": "salida_dispensacion",
+      "nombre": "Salida dispensación / solicitud",
+      "usvgs": ["IDINVMOV_DISPEN"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["IZSOL AGREGAR→PROCESAR→CONF_MOVIMIENTO", "SPK_CONFIRMASAL_CM"],
+      "confirmacion": { "metodo": "CONF_MOVIMIENTO", "sp": "SPK_CONFIRMASAL_CM" },
+      "iexi": "decrementa IDXB/IART (no pasa por SPK_CONFIRMARSALIDAS / ISAL→IEXI mismo camino inv.ges)",
+      "contabilidad": {
+        "omInv": true,
+        "kmcomProceso": ["MOV_INVENTARIO"],
+        "notas": "SPK_CONFIRMASAL_CM no valida KMCOM antes de confirmar (a diferencia de SPK_CONFIRMARSALIDAS). Perú SENFER: HPREP. CONTABIMOV_JOB / SPK_NC_CONTAB_INV al final."
+      }
+    },
+    {
+      "id": "salida_cirugia",
+      "nombre": "Salida cirugía / paquete QX",
+      "usvgs": ["INVE_CIRU_TIPO_MOV"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["SPQ_IZSOL cirugía"],
+      "confirmacion": { "metodo": "CONFIRMA_SALIDA", "sp": "SPK_CONFIRMARSALIDAS" },
+      "iexi": "decrementa",
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"] }
+    },
+    {
+      "id": "salida_venta_retail",
+      "nombre": "Salida venta al público (retail)",
+      "usvgs": ["IDINVMOV_VENTAS"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["SPQ_VENTAFAR GUARDA_VENTA"],
+      "confirmacion": { "metodo": "confirmación venta + caja", "sp": "SPQ_VENTAFAR" },
+      "iexi": "decrementa",
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"], "procesoHermano": "caja" }
+    },
+    {
+      "id": "salida_venta_facturable",
+      "nombre": "Salida venta facturable (GENFACTURA)",
+      "usvgs": ["IDINVMOVVENTAFACTURA"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["VENTAFAR", "IMOV manual GENFACTURA=1"],
+      "confirmacion": { "metodo": "CONFIRMA_SALIDA", "sp": "SPK_CONFIRMARSALIDAS" },
+      "iexi": "decrementa",
+      "contabilidad": {
+        "omInv": true,
+        "kmcomProceso": ["MOV_INVENTARIO"],
+        "notas": "IMOV_VENTA.FACTMASIVO_INV → FTR; CONTAB_GASTOVEN_UNI acopla costo a comprobante FACTURA."
+      },
+      "procesoHermano": "facturacion"
+    },
+    {
+      "id": "venta_particular",
+      "nombre": "Venta particular (tipo alterno facturación)",
+      "usvgs": ["IDINVENTA_PARTICULAR"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["IMOV_4 / IMOV venta"],
+      "confirmacion": { "metodo": "CONFIRMA_SALIDA", "sp": "SPK_CONFIRMARSALIDAS" },
+      "contabilidad": { "omInv": true, "notas": "Misma rama venta unificada que IDINVMOVVENTAFACTURA en SPK_NC_CONTAB_INV." }
+    },
+    {
+      "id": "salida_pickpack",
+      "nombre": "Salida vía Pick & Pack (tipos en IDMOVPICKPACK)",
+      "usvgs": ["IDMOVPICKPACK", "PVENTA_MOV_SAL", "PVENTA_AUTO_TARIFA"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["SPQ_IMOV_4 CREAR_ORDEN_PICKING", "inv pickpack UI MODELO IMOV_4"],
+      "confirmacion": {
+        "metodo": "CONFIRMA_SALIDA",
+        "sp": "SPK_CONFIRMARSALIDAS",
+        "precondicion": "IMOV.ES_PICKPACK=1 y ESTADO_PICKPACK=3 (FINALIZAR_PACKING)"
+      },
+      "iexi": "decrementa en CONFIRMA_SALIDA (reserva previa solo en ISAL)",
+      "contabilidad": {
+        "omInv": true,
+        "kmcomProceso": ["MOV_INVENTARIO"],
+        "notas": "Misma OM que salida manual; picking no contabiliza."
+      }
+    },
+    {
+      "id": "devolucion_cliente",
+      "nombre": "Devolución a cliente (entrada)",
+      "usvgs": ["IDTIPOMOVDEV_CLIENTE"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["post-venta GESVENTA / notas"],
+      "contabilidad": { "omInv": true, "notas": "Rama CONTAB_GASTOVEN_UNI / devolución venta." }
+    },
+    {
+      "id": "devolucion_proveedor",
+      "nombre": "Devolución a proveedor (salida)",
+      "usvgs": ["IDINVDEVPROVEEDOR"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["nota CxP / devolución compra"],
+      "contabilidad": {
+        "omInv": false,
+        "notas": "SPK_NC_CONTAB_INV pone SECONTABILIZA=0 y RETURN; contabilidad desde nota devolución CxP."
+      }
+    },
+    {
+      "id": "entrada_devolucion_interna",
+      "nombre": "Entrada por devolución interna",
+      "usvgs": ["IDINVMOV_DEVOLUCION"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["SPQ_IZSOL_2 PROCESAR_DEVOLUCION"],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa",
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"] }
+    },
+    {
+      "id": "devolucion_ce_cx",
+      "nombre": "Devoluciones CE / Cx / HTX / predev",
+      "usvgs": ["IDINVMOVDEVCX", "IDINVMOVHTXDEV", "IDINVMOVPREDEV"],
+      "itmoEsperado": { "tipo": "mixto" },
+      "origen": ["SPQ_IZSOL_2"],
+      "contabilidad": { "omInv": true, "notas": "Revisar par entrada/salida en devolución dispensación." }
+    },
+    {
+      "id": "traslado_activos",
+      "nombre": "Traslado activos fijos",
+      "usvgs": ["IDINVTRASLACTIVOS"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["SPQ_IMOV traslado AF"],
+      "contabilidad": { "omInv": true, "notas": "Puede exigir entrada compra previa (devolución AF)." }
+    },
+    {
+      "id": "salida_tfsa",
+      "nombre": "Salida TFSA (cliente)",
+      "usvgs": ["IDINVTFSA"],
+      "itmoEsperado": { "tipo": "Debito" },
+      "origen": ["SPQ_IMOV"],
+      "contabilidad": { "omInv": true }
+    },
+    {
+      "id": "salida_misma_entrada",
+      "nombre": "Salida misma entrada (ajuste)",
+      "usvgs": ["IDINVSAL_MISMAENT"],
+      "origen": ["SPQ_IMOV"],
+      "contabilidad": { "omInv": true }
+    },
+    {
+      "id": "anulacion_salida_farmacia",
+      "nombre": "Anulación salida farmacia",
+      "usvgs": ["FAR_MOVANULASALIDA"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["SPK_CONFIRMARENTRADAS anulación"],
+      "contabilidad": { "omInv": true, "variables": ["IMOV_ANUL_GEN_NOTA", "IDCONCEP_ANULAFTRCE"] }
+    },
+    {
+      "id": "entrada_optica",
+      "nombre": "Entrada óptica / obsequios",
+      "usvgs": ["IDINVENTXOBSEQUIOS"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": ["SPK_INSERTENTTRANSITO"],
+      "contabilidad": { "omInv": true }
+    },
+    {
+      "id": "dev_traslado_bodega",
+      "nombre": "Devolución traslado bodega",
+      "usvgs": ["IDTIMOVDEV_TRASLBOD", "INV_APRU_DEVTRA"],
+      "itmoEsperado": { "tipo": "Credito" },
+      "origen": [
+        "SPQ_IMOV_3 ITRAH_REGRESAR → SPK_REINTGRA_TRASLADO_INV (INV_APRU_DEVTRA=NO)",
+        "SPQ_ITRADEV ACEPTAR → SPK_REINTGRA_TRASLADO_INV (INV_APRU_DEVTRA=SI)"
+      ],
+      "confirmacion": { "metodo": "CONF_ENTRADA", "sp": "SPK_CONFIRMARENTRADAS" },
+      "iexi": "incrementa bodega origen",
+      "contabilidad": { "omInv": true, "kmcomProceso": ["MOV_INVENTARIO"] }
+    },
+    {
+      "id": "itmo_sin_usvgs",
+      "nombre": "Tipos solo en ITMO (sin USVGS dedicada)",
+      "usvgs": [],
+      "itmoEsperado": { "nota": "Usuario elige IDTIPOMOV en inv.ges; SECONTABILIZA por fila ITMO." },
+      "origen": ["CRUD_IMOV / CRUD_IMOV_SAL manual"],
+      "confirmacion": { "metodo": "CONF_ENTRADA | CONFIRMA_SALIDA", "sp": "SPK_CONFIRMARENTRADAS | SPK_CONFIRMARSALIDAS" },
+      "contabilidad": {
+        "omInv": "según ITMO.SECONTABILIZA",
+        "kmcomProceso": ["MOV_INVENTARIO"],
+        "notas": "ASI_VAL_CCAF_CARGOS=SI exige KMCOM al crear IMOV contabilizable."
+      }
+    }
+  ],
+  "matrizConfirmacion": [
+    { "sentido": "Entrada", "estadoPrevio": "IMOV.ESTADO=0", "control": "CONF_ENTRADA", "modelo": "IZSOL", "spk": "SPK_CONFIRMARENTRADAS", "estadoFinal": "1" },
+    { "sentido": "Salida", "estadoPrevio": "IMOV.ESTADO=0", "control": "ISAL + CONFIRMA_ENTREGA", "modelo": "IMOV", "spk": "SPK_CONFIRMARSALIDAS", "estadoFinal": "1" },
+    { "sentido": "Salida dispensación", "estadoPrevio": "IMOV.ESTADO=0", "control": "CONF_MOVIMIENTO", "modelo": "IZSOL", "spk": "SPK_CONFIRMASAL_CM", "estadoFinal": "1" },
+    { "sentido": "Tránsito entrada", "estadoPrevio": "ITRA pendiente", "control": "ON_ACEPTA_TRANSITO", "modelo": "IZSOL", "spk": "SPK_INSERTENTTRANSITO", "estadoFinal": "IMOV entrada 0" }
+  ],
+  "consultaItmoCliente": "SELECT IDTIPOMOV, DESCRIPCION, TIPO, COMPRAS, SECONTABILIZA, ESACTIVO, MPROVEEDOR FROM dbo.ITMO WITH (NOLOCK) ORDER BY TIPO, IDTIPOMOV;"
+}

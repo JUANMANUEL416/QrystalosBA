@@ -2,33 +2,829 @@
   "id": "json-peru",
   "nombre": "Facturación · JSON Perú / SUNAT",
   "modulo": "JSON_PERU",
+  "familia": "facturacion",
   "estado": "parcial",
-  "resumen": "Factura electrónica Perú: ENVIA_CONTAB → JSON MiFact (FACTEP). Liberar consulta GetEstatusInvoice. Rama INTER_SAP: Interfax/SAP (EPrefactura). Notas: FNOT_ENVIARSUNAT o INTERFAX_FNOT.",
-  "actualizado": "2026-09-12T22:45:00",
-  "notaSql": "SPK JSON leídos en sql_refe. SPQ_FTR_PERU, SPK_CONSULTA_DOCUMENTO_ELECTRONICA, SPK_JSON_FTR_PERU_INTERFAX y SPK_JSON_FTR_PERU_INTERFAX_FNOT leídos sql/ 2026-09-12.",
-  "alcanceHasta": "JSON enviado a API MiFact + FACTEP + FTRE/FTRAPILOG. No es DIAN Colombia ni CUV RIPS.",
+  "resumen": "Comprobante electrónico Perú: Notificar Sunat (MiFact) o Notificar Sunat SAP (INTER_SAP), estados Est.Sunat, Corregir / Quitar Error, notas, boletas por correo. Contraste 2026-10-03 con Qrystalos2 + IXONLINE/SQL PREVERSION=2.0.7. No es DIAN ni RIPS.",
+  "actualizado": "2026-10-03T18:10:00",
+  "notaSql": "SPK JSON MiFact, SPQ_FTR_PERU, consulta, Interfax y notas contrastados con PREVERSION = 2.0.7 (idéntico a la liberada). Interfax cambió desde la copia del 14-sep (pago Izipay: última transacción AUTHORISED).",
+  "alcanceHasta": "JSON enviado a MiFact o SAP + FACTEP + FTRE/FTRAPILOG. No es DIAN Colombia ni CUV RIPS.",
   "hermanoDe": "facturacion",
-  "ventanas": [
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "Es el envío del comprobante electrónico de Perú (boleta, factura y notas crédito o débito) a la SUNAT. Al cerrar la factura, Qrystalos la contabiliza, arma el JSON y lo envía al proveedor electrónico (MiFact o, en algunas instituciones, SAP por Interfax), que lo presenta a la SUNAT y devuelve el estado.",
+    "paraQueSirve": "Para emitir el comprobante con validez ante la SUNAT, saber en qué estado está, corregir los rechazos, abrir la representación impresa y enviar la boleta por correo al paciente.",
+    "proposito": "Que ninguna boleta o factura se entregue sin estar aceptada por la SUNAT (estado OK). No existe una cola como en Colombia: el envío sale al cerrar la factura."
+  },
+  "necesidadesYaCubiertas": [
     {
-      "uso": "Facturación Perú",
-      "ruta": "admin.facturacionPe",
-      "path": "/admin/facturacionPe",
-      "vue": "FacturacionPePage.vue · FTRPeComponent.vue",
-      "entrada": "Administrativo → Facturación Perú. Enviar a contabilidad dispara el JSON SUNAT. Columna Est.Sunat = FACTEP."
+      "necesidad": "Enviar una factura o boleta a la SUNAT",
+      "donde": "Administrativo → Facturación PE → pestaña Facturas → abrir el detalle → Cerrar Factura / Notificar Sunat",
+      "condicion": "Factura activa (estado P), no anulada por nota crédito, con Est.Sunat Sin Notificar, valor mayor que cero y con detalle. Si aún no está contabilizada, el botón dice Cerrar Factura; si ya lo está, Notificar Sunat. Los dos hacen lo mismo: contabilizan y envían.",
+      "metodo": "FTR_COL · ENVIA_CONTAB → SPK_GENERA_JSON_PERU_FACTURA / FTR_INTEGRA",
+      "noEs": "Encolar Dian: es de Colombia y no aparece en Perú."
     },
     {
-      "uso": "Notas DB/CR · enviar SUNAT",
+      "necesidad": "Saber si la SUNAT aceptó el comprobante",
+      "donde": "Facturación PE → pestaña Facturas → columna Est.Sunat (o filtro Estado Sunat)",
+      "condicion": "OK (verde) es aceptado. Sin Notificar (amarillo) aún no sale. Rechazado, Rechazado-api o Error Valida necesitan corrección.",
+      "metodo": "FTR.FACTEP",
+      "noEs": ""
+    },
+    {
+      "necesidad": "La factura quedó Rechazado-api",
+      "donde": "Detalle de la factura → Quitar Error → corregir → Notificar Sunat",
+      "condicion": "El proveedor no recibió el envío (respuesta vacía o error de estructura). El motivo aparece en rojo en el detalle. Quitar Error la deja Sin Notificar.",
+      "metodo": "FTR_PERU · QUITAR_ERROR_API",
+      "noEs": ""
+    },
+    {
+      "necesidad": "La factura quedó Rechazado o Error Valida",
+      "donde": "Detalle de la factura → Corregir → corregir la factura → Notificar Sunat",
+      "condicion": "Corregir primero pregunta a MiFact el estado real: si ya estaba aceptada, queda OK y no hay que reenviar. Si no, la deja Sin Notificar para volver a enviarla.",
+      "metodo": "FTR_PERU · LIBERAR_SUNAT → SPK_CONSULTA_DOCUMENTO_ELECTRONICA",
+      "noEs": "Notificar Sunat SAP: si su proveedor es MiFact, no lo use aunque aparezca."
+    },
+    {
+      "necesidad": "Pulsé Notificar Sunat y sigue Sin Notificar",
+      "donde": "Detalle de la factura → revisar Est.Sunat y el mensaje en rojo",
+      "condicion": "El envío se omite sin aviso si la factura no tiene valor afecto ni inafecto, o si faltan el token o la dirección del proveedor (variables). Escale a soporte con el número de factura.",
+      "metodo": "SPK_GENERA_JSON_PERU_FACTURA (RETURN silencioso)",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Ver o imprimir la representación del comprobante",
+      "donde": "Facturación PE → icono Imprimir de la fila",
+      "condicion": "Si la SUNAT ya la aceptó, abre la representación del proveedor (MiFact) en otra pestaña; si no, genera el PDF de Qrystalos. Ojo: imprimir o descargar una factura sin cerrar la envía a contabilidad y a la SUNAT.",
+      "metodo": "FTR.LINKFACTURA",
+      "noEs": "No hay descarga de XML ni de CDR en esta pantalla."
+    },
+    {
+      "necesidad": "Enviar una nota crédito o débito a la SUNAT",
+      "donde": "Administrativo → Notas Debito - Credito → seleccionar la nota → Enviar Sunat",
+      "condicion": "Nota confirmada, con estado distinto de OK y variable ENVIA_NOTAS_ACEPTA en SI. La observación de la nota debe tener al menos 7 caracteres.",
+      "metodo": "FNOT_COL · FNOT_ENVIARSUNAT → SPK_GENERA_JSON_PERU_NOTADBCR",
+      "noEs": "Encolar / Envios y Respuestas de esa pantalla: son de la DIAN de Colombia."
+    },
+    {
+      "necesidad": "Reenviar la boleta por correo al paciente",
+      "donde": "Administrativo → Pasarela Pagos → pestaña Notificación de Boletas",
+      "condicion": "Las boletas aceptadas se envían solas cada pocos minutos. En esa pestaña se ven las pendientes y se puede activar el envío o cancelar el de una boleta.",
+      "metodo": "FTR_PERU · NOTIFICA_BOLETAS / MARCA_ENVIO",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Enviar a la SUNAT por SAP (proveedor INTER_SAP)",
+      "donde": "Detalle de la factura → Cerrar Factura → Notificar Sunat SAP",
+      "condicion": "Solo si la variable PROVEEDOR_FACTUELECT es INTER_SAP. Una factura de garante sin remesa no se envía.",
+      "metodo": "FTR_PERU · ENVIAR_FACTURA_SAP → SPK_JSON_FTR_PERU_INTERFAX",
+      "noEs": ""
+    },
+    {
+      "necesidad": "¿Sale boleta o factura?",
+      "donde": "Facturación PE → filtro Todas / Boleta / Factura",
+      "condicion": "Boleta (03) cuando la factura es de persona natural (TIPOFIN = N, resolución BOLE). Factura (01) en los demás casos (resolución FTR).",
+      "metodo": "FTR.TIPOFIN + FDIAN.PROCEDENCIA",
+      "noEs": ""
+    }
+  ],
+  "ventanas": [
+    {
+      "uso": "Facturación PE",
+      "ruta": "admin.facturacionPe",
+      "path": "/admin/facturacionPe",
+      "vue": "FacturacionPePage.vue → FTRPeComponent.vue",
+      "entrada": "Administrativo → Facturación PE → pestaña Facturas → detalle de la factura. Cerrar Factura / Notificar Sunat, Corregir, Quitar Error, Imprimir."
+    },
+    {
+      "uso": "Notas débito y crédito",
       "ruta": "admin.notasdbcr",
       "path": "/admin/notasdbcr",
       "vue": "NotasDBCRComponent.vue",
-      "entrada": "Tras aplicar la nota: FNOT_ENVIARSUNAT (IXCOUNTRY=PERU)."
+      "entrada": "Administrativo → Notas Debito - Credito. Enviar Sunat (IXCOUNTRY = PERU)."
     },
     {
-      "uso": "Calificación PHD (alimenta, no es el JSON)",
-      "ruta": "admin.facturacionPe",
-      "path": "/admin/facturacionPe",
-      "vue": "PHDCalificacionComponent.vue",
-      "entrada": "Precios/presupuesto (HPREP, FNQ_VAL_SERTOT_PERU). No envía SUNAT."
+      "uso": "Correo de boletas",
+      "ruta": "admin.pasaizipay",
+      "path": "/admin/Pasarelaizipay",
+      "vue": "PasarelasComponent.vue → FTREnviaBolComponent.vue",
+      "entrada": "Administrativo → Pasarela Pagos → pestaña Notificación de Boletas."
+    },
+    {
+      "uso": "Resolución (series)",
+      "ruta": "conf.fdian",
+      "path": "/conf/fdian",
+      "vue": "FDIANComponent.vue",
+      "entrada": "Configuración → Financiero → Resolución DIAN (en Perú: series FTR, BOLE, NCB, NCF, NDB, NDF)."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Guía rápida",
+      "titulo": "¿Qué necesita hacer?"
+    },
+    {
+      "id": "panorama-sunat",
+      "tipo": "flujo",
+      "flujoId": "flujo-panorama-sunat",
+      "kicker": "Panorama",
+      "titulo": "Cómo viaja el comprobante a la SUNAT"
+    },
+    {
+      "id": "tipos-comprobante",
+      "tipo": "semaforo",
+      "datos": "tiposComprobante",
+      "kicker": "Tipos",
+      "titulo": "Boleta, factura y notas"
+    },
+    {
+      "id": "estados-sunat",
+      "tipo": "semaforo",
+      "datos": "estadosSunat",
+      "kicker": "Estados",
+      "titulo": "Estado Sunat: qué significa cada uno"
+    },
+    {
+      "id": "enviar-mifact",
+      "tipo": "flujo",
+      "flujoId": "flujo-enviar-mifact",
+      "kicker": "Una factura",
+      "titulo": "Enviar una factura o boleta"
+    },
+    {
+      "id": "rechazos-sunat",
+      "tipo": "flujo",
+      "flujoId": "flujo-rechazos-sunat",
+      "kicker": "Errores",
+      "titulo": "Rechazos: Corregir y Quitar Error"
+    },
+    {
+      "id": "notas-sunat",
+      "tipo": "flujo",
+      "flujoId": "flujo-notas-sunat",
+      "kicker": "Notas",
+      "titulo": "Notas crédito y débito"
+    },
+    {
+      "id": "boletas-correo",
+      "tipo": "flujo",
+      "flujoId": "flujo-boletas-correo",
+      "kicker": "Entrega",
+      "titulo": "Imprimir y enviar la boleta por correo"
+    },
+    {
+      "id": "inter-sap",
+      "tipo": "flujo",
+      "flujoId": "flujo-inter-sap",
+      "kicker": "Proveedor SAP",
+      "titulo": "Instituciones con SAP (INTER_SAP)"
+    },
+    {
+      "id": "configuracion-peru",
+      "tipo": "flujo",
+      "flujoId": "flujo-configuracion-peru",
+      "kicker": "Configuración",
+      "titulo": "Antes de empezar: series, token y pruebas"
+    }
+  ],
+  "tiposComprobante": {
+    "titulo": "Qrystalos decide el tipo solo",
+    "descripcion": "El tipo de comprobante sale de la factura y de su serie. El usuario no lo elige al enviar.",
+    "columnas": [
+      "Comprobante",
+      "Serie (resolución)"
+    ],
+    "filas": [
+      {
+        "codigo": "03",
+        "tono": "azul",
+        "etiquetas": [
+          "Boleta",
+          "BOLE"
+        ],
+        "significa": "Venta a persona natural (TIPOFIN = N).",
+        "queHacer": "Debe existir una resolución con procedencia BOLE."
+      },
+      {
+        "codigo": "01",
+        "tono": "verde",
+        "etiquetas": [
+          "Factura",
+          "FTR"
+        ],
+        "significa": "Cualquier otra venta (empresa o garante).",
+        "queHacer": "Debe existir una resolución con procedencia FTR."
+      },
+      {
+        "codigo": "07",
+        "tono": "ambar",
+        "etiquetas": [
+          "Nota de crédito",
+          "NCB / NCF"
+        ],
+        "significa": "Nota clase C. NCB si la factura original es boleta, NCF si es factura.",
+        "queHacer": "Registre las dos series."
+      },
+      {
+        "codigo": "08",
+        "tono": "ambar",
+        "etiquetas": [
+          "Nota de débito",
+          "NDB / NDF"
+        ],
+        "significa": "Nota clase D. NDB sobre boleta, NDF sobre factura.",
+        "queHacer": "Registre las dos series."
+      }
+    ],
+    "nota": "Moneda siempre PEN. Las series se registran en Configuración → Financiero → Resolución DIAN, la misma pantalla de Colombia."
+  },
+  "estadosSunat": {
+    "titulo": "Un código, dos nombres",
+    "descripcion": "La columna Est.Sunat y el filtro Estado Sunat nombran distinto el mismo estado. 101 y 102 se ven como OK en la columna.",
+    "columnas": [
+      "Columna Est.Sunat",
+      "Filtro Estado Sunat"
+    ],
+    "filas": [
+      {
+        "codigo": "—",
+        "tono": "ambar",
+        "etiquetas": [
+          "Sin Notificar",
+          "Pendiente"
+        ],
+        "significa": "Todavía no se ha enviado, o se liberó para reenviar.",
+        "queHacer": "Cerrar Factura / Notificar Sunat."
+      },
+      {
+        "codigo": "101",
+        "tono": "azul",
+        "etiquetas": [
+          "OK",
+          "En Proceso"
+        ],
+        "significa": "El proveedor la recibió y la SUNAT la está procesando.",
+        "queHacer": "Espere. Si tarda, Corregir consulta el estado real."
+      },
+      {
+        "codigo": "102",
+        "tono": "verde",
+        "etiquetas": [
+          "OK",
+          "Aceptado"
+        ],
+        "significa": "Aceptada por la SUNAT.",
+        "queHacer": "Imprimir abre la representación; la boleta se envía por correo."
+      },
+      {
+        "codigo": "103",
+        "tono": "ambar",
+        "etiquetas": [
+          "Error Valida",
+          "(no está en el filtro)"
+        ],
+        "significa": "El proveedor la registró con un error de validación.",
+        "queHacer": "Corregir → revisar → Notificar Sunat."
+      },
+      {
+        "codigo": "104",
+        "tono": "rojo",
+        "etiquetas": [
+          "Rechazado",
+          "Rechazado Sunat"
+        ],
+        "significa": "La SUNAT o el proveedor la rechazó. El motivo sale en rojo en el detalle.",
+        "queHacer": "Corregir → corregir los datos → Notificar Sunat."
+      },
+      {
+        "codigo": "104A",
+        "tono": "rojo",
+        "etiquetas": [
+          "Rechazado-api",
+          "Rechazado API"
+        ],
+        "significa": "El envío no llegó bien al proveedor (respuesta vacía o estructura).",
+        "queHacer": "Quitar Error → corregir → Notificar Sunat."
+      },
+      {
+        "codigo": "105",
+        "tono": "gris",
+        "etiquetas": [
+          "Anulada",
+          "Anulado"
+        ],
+        "significa": "Comprobante anulado.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "108",
+        "tono": "gris",
+        "etiquetas": [
+          "Baja",
+          "Solicitud Baja"
+        ],
+        "significa": "Se pidió la baja del comprobante.",
+        "queHacer": "Nada."
+      }
+    ],
+    "nota": "En Notas Debito - Credito el estado se ve crudo: OK, ERROR o vacío. El filtro Pendiente de esa pantalla no trae las notas pendientes: búsquelas con el filtro Todos."
+  },
+  "flujos": [
+    {
+      "id": "flujo-panorama-sunat",
+      "nombre": "Del cierre de la factura a la SUNAT",
+      "descripcion": "En Perú no hay cola: el envío sale al cerrar la factura.",
+      "icono": "public",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Cerrar la factura",
+          "descripcion": "Cerrar Factura o Notificar Sunat en el detalle. Imprimir o descargar una factura sin cerrar también la cierra.",
+          "rol": "Facturación",
+          "pantalla": "Facturación PE"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Contabilizar y armar el JSON",
+          "descripcion": "Qrystalos contabiliza y arma el JSON con el tipo de comprobante (boleta 03 o factura 01), el cliente, los valores afectos e inafectos y el detalle.",
+          "sp": "FTR_COL · ENVIA_CONTAB",
+          "tablas": [
+            "FTR",
+            "FTRD",
+            "FDIAN"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Enviar al proveedor",
+          "descripcion": "MiFact (o SAP si la institución usa INTER_SAP) recibe el JSON y lo presenta a la SUNAT.",
+          "sp": "SPK_GENERA_JSON_PERU_FACTURA / FTR_INTEGRA",
+          "tablas": [
+            "FTRAPILOG"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Qué respondió?",
+          "descripcion": "La respuesta queda en la columna Est.Sunat.",
+          "si": "OK: se guarda el enlace a la representación impresa.",
+          "no": "Rechazado, Rechazado-api o Error Valida: corregir y volver a enviar.",
+          "tablas": [
+            "FTR",
+            "FTRE"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Comprobante aceptado",
+          "descripcion": "Imprimir abre la representación del proveedor y la boleta sale por correo al paciente."
+        }
+      ]
+    },
+    {
+      "id": "flujo-enviar-mifact",
+      "nombre": "Enviar una factura o boleta",
+      "descripcion": "Desde el detalle de la factura en Facturación PE.",
+      "icono": "send",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir la factura",
+          "descripcion": "Administrativo → Facturación PE → pestaña Facturas → buscar y abrir el detalle. Debe estar activa (P), no anulada por nota crédito y con Est.Sunat Sin Notificar.",
+          "rol": "Facturación",
+          "pantalla": "Facturación PE"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Qué botón aparece?",
+          "descripcion": "Si la factura aún no está contabilizada: Cerrar Factura. Si ya lo está: Notificar Sunat.",
+          "si": "Los dos hacen lo mismo: pulse el que vea.",
+          "no": "Si no aparece ninguno, revise que esté Sin Notificar y no anulada."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Qrystalos la envía",
+          "descripcion": "Mensaje «Registro Enviando a Contabilidad». Si la factura no tiene valor o está anulada: «Factura Sin Valor o Anulada, No se Puede Enviar»; sin líneas: «Factura Sin Detalles, No se Puede Enviar».",
+          "sp": "FTR_COL · ENVIA_CONTAB",
+          "tablas": [
+            "FTR",
+            "FTRD"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Cambió el Est.Sunat?",
+          "descripcion": "Revise la columna Est.Sunat al refrescar.",
+          "si": "OK, Rechazado o Rechazado-api: siga según el estado.",
+          "no": "Si sigue Sin Notificar, el envío se omitió sin aviso (valor cero, token o dirección del proveedor). Escale a soporte."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Aceptada",
+          "descripcion": "Est.Sunat OK. El icono Imprimir abre la representación de MiFact."
+        }
+      ]
+    },
+    {
+      "id": "flujo-rechazos-sunat",
+      "nombre": "Rechazos: Corregir y Quitar Error",
+      "descripcion": "Cada rechazo tiene su botón. El motivo aparece en rojo en el detalle de la factura.",
+      "icono": "report",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Leer el motivo",
+          "descripcion": "Abra el detalle: el texto en rojo es la respuesta del proveedor o de la SUNAT.",
+          "pantalla": "Detalle de factura"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Es Rechazado-api?",
+          "descripcion": "El envío no llegó bien al proveedor.",
+          "si": "Pulse Quitar Error: «Se ha retirado el error del api, Corriga y vuelva a enviar». Queda Sin Notificar.",
+          "no": "Siga al paso 3.",
+          "sp": "FTR_PERU · QUITAR_ERROR_API"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Es Rechazado o Error Valida?",
+          "descripcion": "Pulse Corregir. Qrystalos consulta a MiFact el estado real antes de liberar.",
+          "si": "Si MiFact ya la tenía aceptada, queda OK: no la reenvíe.",
+          "no": "Si no, queda Sin Notificar: «Factura Liberada Correctamente».",
+          "sp": "FTR_PERU · LIBERAR_SUNAT → SPK_CONSULTA_DOCUMENTO_ELECTRONICA"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Corregir y reenviar",
+          "descripcion": "Corrija los datos (cliente, valores, detalle) y pulse Notificar Sunat."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Aceptada",
+          "descripcion": "Ojo: con estado Rechazado puede aparecer el botón Notificar Sunat SAP aunque su proveedor sea MiFact. No lo use; use Corregir."
+        }
+      ]
+    },
+    {
+      "id": "flujo-notas-sunat",
+      "nombre": "Notas crédito y débito",
+      "descripcion": "La nota se envía con su propio botón en Notas Debito - Credito.",
+      "icono": "remove_circle_outline",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Seleccionar la nota",
+          "descripcion": "Administrativo → Notas Debito - Credito → seleccione la nota. Debe estar confirmada.",
+          "pantalla": "Notas Debito - Credito"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Aparece Enviar Sunat?",
+          "descripcion": "Aparece si la nota está confirmada y su estado no es OK.",
+          "si": "Pulse Enviar Sunat («Enviando Nota DB-CR a Sunat..»).",
+          "no": "Si ya está OK, no hay que reenviarla."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Qrystalos arma la nota",
+          "descripcion": "Tipo 07 (crédito) o 08 (débito), serie según la factura original (boleta o factura). Necesita ENVIA_NOTAS_ACEPTA = SI y observación de al menos 7 caracteres.",
+          "sp": "FNOT_COL · FNOT_ENVIARSUNAT → SPK_GENERA_JSON_PERU_NOTADBCR",
+          "tablas": [
+            "FNOT",
+            "FNOTD"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Salió error?",
+          "descripcion": "Mensajes: «Nota No esta Pendiente de Enviar» o «Error al Procesar la Nota: …».",
+          "si": "Corrija y vuelva a pulsar Enviar Sunat.",
+          "no": "La pantalla solo se refresca: revise el estado de la nota."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Nota enviada",
+          "descripcion": "No use Encolar, Desencolar ni Envios y Respuestas en Perú: son de la DIAN de Colombia."
+        }
+      ]
+    },
+    {
+      "id": "flujo-boletas-correo",
+      "nombre": "Imprimir y enviar la boleta por correo",
+      "descripcion": "La boleta aceptada se envía sola por correo; aquí se ve cómo revisarla.",
+      "icono": "mail",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Imprimir o ver",
+          "descripcion": "Facturación PE → icono Imprimir de la fila. Si está aceptada abre la representación del proveedor; si no, el PDF de Qrystalos.",
+          "pantalla": "Facturación PE"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿La factura está cerrada?",
+          "descripcion": "Imprimir o descargar una factura financiera sin cerrar muestra «Advertencia al imprimir la Factura o Descargarla se Enviara a Contabilidad y no Permitira Cambios».",
+          "si": "Solo Ver no la cierra.",
+          "no": "Imprimir la cierra y la envía a la SUNAT."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Envío automático de correos",
+          "descripcion": "Cada pocos minutos Qrystalos toma las boletas aceptadas pendientes de correo, genera el PDF y lo envía al paciente.",
+          "rol": "Sistema",
+          "sp": "FTR_PERU · NOTIFICA_BOLETAS / MARCA_ENVIO",
+          "tablas": [
+            "FTRE"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Revisar pendientes",
+          "descripcion": "Administrativo → Pasarela Pagos → pestaña Notificación de Boletas («Boletas Pendientes de Enviar»). Ahí se activa el envío o se cancela el de una boleta («Cancelar Envio Boleta»).",
+          "pantalla": "Pasarela Pagos"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Correo enviado",
+          "descripcion": "En una base que no es la de producción, el envío de correos se omite."
+        }
+      ]
+    },
+    {
+      "id": "flujo-inter-sap",
+      "nombre": "Instituciones con SAP (INTER_SAP)",
+      "descripcion": "Si la variable PROVEEDOR_FACTUELECT es INTER_SAP, el comprobante sale por SAP y no por MiFact.",
+      "icono": "hub",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Cerrar la factura",
+          "descripcion": "Detalle → Cerrar Factura (contabiliza).",
+          "pantalla": "Facturación PE",
+          "sp": "FTR_COL · ENVIA_CONTAB"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Notificar Sunat SAP",
+          "descripcion": "Con la factura contabilizada y Sin Notificar o Rechazado, pulse Notificar Sunat SAP («Enviando Factura a SAP...»).",
+          "sp": "FTR_PERU · ENVIAR_FACTURA_SAP → SPK_JSON_FTR_PERU_INTERFAX"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿SAP la aceptó?",
+          "descripcion": "Una factura de garante sin remesa no se envía. Con valor cero queda Rechazado-api.",
+          "si": "Queda en estado 102 (OK). El número SUNAT se ve en la columna Comprobante SUNAT.",
+          "no": "Queda Rechazado (104): corrija y vuelva a pulsar Notificar Sunat SAP.",
+          "tablas": [
+            "FTR",
+            "FTRAPILOG"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Comprobante emitido",
+          "descripcion": "Las notas de estas instituciones salen desde Cartera, no desde Enviar Sunat."
+        }
+      ]
+    },
+    {
+      "id": "flujo-configuracion-peru",
+      "nombre": "Antes de empezar",
+      "descripcion": "Lo que debe estar listo para que los envíos salgan.",
+      "icono": "settings",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Series",
+          "descripcion": "Configuración → Financiero → Resolución DIAN: una serie por tipo (FTR, BOLE, NCB, NCF, NDB, NDF).",
+          "pantalla": "Resolución DIAN",
+          "tablas": [
+            "FDIAN"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "País y proveedor",
+          "descripcion": "Variables IXCOUNTRY = PERU y PROVEEDOR_FACTUELECT (MIFACT o INTER_SAP).",
+          "tablas": [
+            "USVGS"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Es la base de producción?",
+          "descripcion": "Qrystalos compara el nombre de la base con la variable BDATA_PRODUCCION.",
+          "si": "Usa URLFACT_ELE_PRODJSON, el token TOKEN_FACTU_ELE_PERU y el RUC real.",
+          "no": "Usa URLFACT_ELE_PRUEJSON y un RUC de prueba: nada llega a la SUNAT real."
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Token y dirección completos?",
+          "descripcion": "Si el token tiene menos de 20 caracteres o la dirección menos de 30, Qrystalos no envía y no avisa.",
+          "si": "Listo para enviar.",
+          "no": "Complete las variables."
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Configuración lista",
+          "descripcion": "Emisor: IDTERCEROINSTALADO. Nombre comercial: NOMBRE_COMERCIAL. Notas: ENVIA_NOTAS_ACEPTA = SI."
+        }
+      ]
+    }
+  ],
+  "botones": [
+    {
+      "label": "Cerrar Factura",
+      "icono": "task_alt",
+      "color": "teal",
+      "estilo": "unelevated",
+      "descripcion": "Detalle de factura sin contabilizar, Sin Notificar. Contabiliza y envía a la SUNAT."
+    },
+    {
+      "label": "Notificar Sunat",
+      "icono": "send",
+      "color": "teal",
+      "estilo": "unelevated",
+      "descripcion": "Detalle de factura ya contabilizada, Sin Notificar. Envía a la SUNAT por MiFact."
+    },
+    {
+      "label": "Corregir",
+      "icono": "build",
+      "color": "blue",
+      "estilo": "outline",
+      "descripcion": "Detalle con Est.Sunat distinto de OK. Consulta el estado real en MiFact y, si no fue aceptada, la deja Sin Notificar. Sin permiso propio."
+    },
+    {
+      "label": "Quitar Error",
+      "icono": "healing",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Detalle con Rechazado-api. La deja Sin Notificar para reenviarla."
+    },
+    {
+      "label": "Notificar Sunat SAP",
+      "icono": "hub",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Solo instituciones INTER_SAP. Envía el comprobante a SAP."
+    },
+    {
+      "label": "Imprimir",
+      "icono": "print",
+      "color": "blue",
+      "estilo": "outline",
+      "descripcion": "Icono de la fila. Abre la representación del proveedor si ya fue aceptada; si no, el PDF de Qrystalos."
+    },
+    {
+      "label": "Anular",
+      "icono": "cancel",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Detalle con Est.Sunat OK. Anula la factura."
+    },
+    {
+      "label": "Enviar Sunat",
+      "icono": "cloud_upload",
+      "color": "indigo-10",
+      "estilo": "outline",
+      "descripcion": "Notas Debito - Credito. Nota confirmada con estado distinto de OK."
+    },
+    {
+      "label": "Imprmir Nota",
+      "icono": "print",
+      "color": "brown",
+      "estilo": "outline",
+      "descripcion": "Notas Debito - Credito. PDF de la nota (así aparece escrito en pantalla)."
+    },
+    {
+      "label": "Notificación de Boletas",
+      "icono": "mail",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Pestaña de Pasarela Pagos. Boletas pendientes de correo; activar envío o cancelar uno."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Facturación PE",
+      "accion": "Entrar a Facturación PE",
+      "rol": "Facturación",
+      "descripcion": "Pantalla del procedimiento ADMINQ_FACTURAS. Cada pestaña de facturar tiene su control (FACT_MAD, FACT_PHD, FACTPE_GARANTE…)."
+    },
+    {
+      "codigo": "(sin permiso)",
+      "accion": "Cerrar Factura, Notificar Sunat, Corregir, Quitar Error, Notificar Sunat SAP, Enviar Sunat",
+      "rol": "Cualquiera con acceso a la pantalla",
+      "descripcion": "Ningún control USGRUH protege los botones de envío a la SUNAT."
+    },
+    {
+      "codigo": "FACT_ANULAR",
+      "accion": "Anular",
+      "rol": "Facturación",
+      "descripcion": "Existe en el catálogo pero el botón Anular de Perú no lo revisa (está comentado)."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "Texto",
+      "valorSugerido": "PERU",
+      "descripcion": "Activa la pantalla y los botones de Perú."
+    },
+    {
+      "nombre": "PROVEEDOR_FACTUELECT",
+      "tipo": "Texto",
+      "valorSugerido": "MIFACT",
+      "descripcion": "MIFACT (Notificar Sunat) o INTER_SAP (Notificar Sunat SAP)."
+    },
+    {
+      "nombre": "BDATA_PRODUCCION",
+      "tipo": "Texto",
+      "valorSugerido": "Nombre de la base de producción",
+      "descripcion": "Si la base actual no se llama así, todo va al ambiente de pruebas y no se envían correos de boletas."
+    },
+    {
+      "nombre": "URLFACT_ELE_PRODJSON",
+      "tipo": "Texto (URL)",
+      "valorSugerido": "URL SendInvoice de MiFact",
+      "descripcion": "Dirección del proveedor en producción. Menos de 30 caracteres: no envía."
+    },
+    {
+      "nombre": "URLFACT_ELE_PRUEJSON",
+      "tipo": "Texto (URL)",
+      "valorSugerido": "URL de pruebas de MiFact",
+      "descripcion": "Dirección de pruebas."
+    },
+    {
+      "nombre": "TOKEN_FACTU_ELE_PERU",
+      "tipo": "Texto",
+      "valorSugerido": "Token entregado por MiFact",
+      "descripcion": "Menos de 20 caracteres: no envía."
+    },
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "tipo": "Texto",
+      "valorSugerido": "Tercero de la institución",
+      "descripcion": "Datos del emisor (RUC, razón social, dirección)."
+    },
+    {
+      "nombre": "NOMBRE_COMERCIAL",
+      "tipo": "Texto",
+      "valorSugerido": "Nombre comercial",
+      "descripcion": "Nombre comercial del emisor. Las facturas TIPOFIN = C usan la razón social en su lugar."
+    },
+    {
+      "nombre": "ENVIA_NOTAS_ACEPTA",
+      "tipo": "SI / NO",
+      "valorSugerido": "SI",
+      "descripcion": "Sin SI, Enviar Sunat de notas no arma el JSON."
+    },
+    {
+      "nombre": "FTRPE_IMPRSINIGV",
+      "tipo": "SI / NO",
+      "valorSugerido": "Según la institución",
+      "descripcion": "Muestra la columna I.G.V. y totales sin IGV."
+    },
+    {
+      "nombre": "FTR_NOTI_BOLETA_AUTO",
+      "tipo": "SI / NO",
+      "valorSugerido": "SI",
+      "descripcion": "Arranca el envío automático de correos de boletas desde la agenda."
     }
   ],
   "capas": [
@@ -66,7 +862,7 @@
       "numero": 2,
       "nombre": "Proceso propio",
       "estado": "parcial",
-      "explicacion": "Contabilizar en Perú genera y envía el JSON (no hay cola FACTE). MiFact: ENVIA_CONTAB + Liberar (consulta GetEstatusInvoice). INTER_SAP: ENVIAR_FACTURA_SAP → Interfax (otro JSON).",
+      "explicacion": "Cerrar la factura (ENVIA_CONTAB) contabiliza y envía el JSON; no hay cola FACTE. MiFact: TIPOFIN=C y FACTEP≠102 → SPK_GENERA_JSON_PERU_FTR_INTEGRA; resto → SPK_GENERA_JSON_PERU_FACTURA (uno u otro, no ambos). Corregir (LIBERAR_SUNAT) consulta GetEstatusInvoice. INTER_SAP: ENVIAR_FACTURA_SAP → Interfax.",
       "tablasClave": [
         "FTR",
         "FNOT",
@@ -77,8 +873,8 @@
         {
           "id": "enviar-sunat-ftr",
           "nombre": "Enviar factura a SUNAT (JSON)",
-          "explicacion": "FE: EnviarContabilidad → FTR_COL · ENVIA_CONTAB → SPK_GENERA_JSON_PERU_*. Si ya hay FTRE, RETURN. Liberar: consulta MiFact (GetEstatusInvoice) y pone FACTEP=NULL solo si tras la consulta no quedó 101/102; puede INSERT FTRE si MiFact ya tenía el documento. INTER_SAP: SPK_JSON_FTR_PERU_INTERFAX (EPrefactura → CIPERU). Garante sin remesa no envía. Valor 0 → 104A. OK Interfax → FACTEP=102; error → 104.",
-          "invariante": "TIPOFIN=N → 03 boleta; si no → 01. MiFact: FTRE bloquea reenvío. Liberar no borra FTRE. INTER_SAP no usa TOKEN_FACTU_ELE_PERU.",
+          "explicacion": "FE: Cerrar Factura / Notificar Sunat → FTR_COL · ENVIA_CONTAB. En Perú no aplica el control «ya contabilizado» (vuelve a ejecutar SPK_NC_CONTAB_FTR) y elige INTEGRA (TIPOFIN=C, FACTEP≠102) o FACTURA. Si ya hay FTRE, RETURN. Silencioso si valor ≤0, token <20 o URL <30. Corregir: LIBERAR_SUNAT. Quitar Error: QUITAR_ERROR_API (104A). INTER_SAP: Notificar Sunat SAP → SPK_JSON_FTR_PERU_INTERFAX (garante sin remesa no envía; valor 0 → 104A; OK → 102; error → 104).",
+          "invariante": "TIPOFIN=N → 03 boleta; si no → 01. MiFact: FTRE bloquea reenvío. Corregir no borra FTRE. Imprimir una factura financiera sin cerrar dispara ENVIA_CONTAB. Ningún permiso USGRUH protege los botones SUNAT.",
           "ventanasFe": "/admin/facturacionPe · FTRPeComponent",
           "sps": [
             {
@@ -136,6 +932,14 @@
               "rol": "Leído sql/. Nota Interfax."
             }
           ]
+        },
+        {
+          "id": "estados-sunat-dos-nombres",
+          "nombre": "Estado Sunat con dos nombres",
+          "explicacion": "Columna Est.Sunat: vacío=Sin Notificar, 103=Error Valida, 104=Rechazado, 104A=Rechazado-api, 105=Anulada, 108=Baja, resto (101/102)=OK. Filtro: Pendiente, En Proceso, Aceptado, Rechazado Sunat, Rechazado API, Anulado, Solicitud Baja (sin 103).",
+          "invariante": "Capacitar por código. 101 se ve OK pero aún está en proceso.",
+          "ventanasFe": "Facturación PE",
+          "sps": []
         }
       ]
     },

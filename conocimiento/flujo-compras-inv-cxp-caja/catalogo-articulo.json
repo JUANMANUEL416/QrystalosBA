@@ -1,0 +1,103 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "proposito": "Requisitos desde ITAR + IART + SER hasta que el flujo compras→inventario→CxP→contabilidad no falle por configuración.",
+  "variablesUsvgs": "USVGS-INVENTARIO.md",
+  "pantallas": {
+    "itar": { "path": "/conf/inv", "vue": "ITAR (tipo artículo)", "tabla": "ITAR" },
+    "iart": { "path": "/conf/inv", "vue": "IARTComponent", "modelo": "IART", "metodos": ["GUARDAR", "VALIDA_SERVICIO", "CRUDSERVICIO vía SER"] },
+    "listaPrecio": { "path": "/inv/listprecio", "modelo": "ILPRE", "nota": "Opcional si compra vía cotización" }
+  },
+  "capas": [
+    {
+      "id": "capa-tipo-itar",
+      "nombre": "Tipo de artículo (ITAR)",
+      "impactoSiFalta": "Bloqueo al crear IART, loteo, vencimiento, IVA o cuentas.",
+      "camposClave": [
+        { "campo": "IDITAR / DESCRIPCION / ESACTIVO", "obligatorio": true, "efecto": "Clasifica todo el artículo." },
+        { "campo": "PRECNS + MCNS", "obligatorio": "si consecutivo automático", "efecto": "SPQ_IART GUARDAR genera IDARTICULO; sin PRECNS → KO." },
+        { "campo": "MLOTEO", "obligatorio": "política loteo", "efecto": "1=no UI loteo (SPK_INSERT_ITRA_REQ INICIAL=1); 0=lotear en IZSOL_TRANSITO (según MPRINCIPAL)." },
+        { "campo": "MFECHAVENCIMIENTO", "obligatorio": "medicamentos/vencibles", "efecto": "CONF_ENTRADA KO si falta fecha en IMOVH." },
+        { "campo": "MIVA + IDIMPUESTO + IDCLASE (ITAR)", "obligatorio": "gravados", "efecto": "Base IVA IMOVH/FCXPD; FNK_PIVA_IART; CONTAB_INV_IVA_ITAR." },
+        { "campo": "MPRINCIPAL", "obligatorio": "variantes fabricante", "efecto": "ON_PROCESAR tránsito: hijos mismo IDSERVICIO en OC." },
+        { "campo": "MSTOCK", "obligatorio": "si afecta existencias", "efecto": "Artículos sin stock no deben usarse en movimientos." },
+        { "campo": "PREFIJO", "obligatorio": "si CREARSER", "efecto": "VALIDA_SERVICIO arma SER (medicamentos POS/NOPOS)." }
+      ],
+      "puntosCriticos": ["PC-00a", "PC-00b"]
+    },
+    {
+      "id": "capa-articulo-iart",
+      "nombre": "Artículo (IART)",
+      "impactoSiFalta": "OC, tránsito, entrada, CxP o facturación rechazan la línea.",
+      "camposClave": [
+        { "campo": "IDARTICULO + DESCRIPCION + IDITAR", "obligatorio": true, "efecto": "FK en FCOMD, ITRAH, IMOVH." },
+        { "campo": "ESTADO = Activo", "obligatorio": true, "efecto": "Inactivo: listas ILPRE y movimientos pueden bloquear." },
+        { "campo": "IDSERVICIO", "obligatorio": "casi siempre", "efecto": "Enlace SER/KMCOM; DEINVNODESER sin SER → VALIDA_SERVICIO CREARSER=1." },
+        { "campo": "IDIMPUESTO + IDCLASE_IMP + MIVA (IART)", "obligatorio": "si IMPUESTO_OBL=SI", "efecto": "Impuesto en compra y CxP." },
+        { "campo": "PRINCIPAL", "obligatorio": "según política", "efecto": "1=principal; 0=fabricante/hijo en tránsito OC." },
+        { "campo": "REGINVIMA / CODCUM", "obligatorio": "regulados", "efecto": "Trazabilidad y cotización." },
+        { "campo": "UNID_VENTA", "obligatorio": "cotización/unidad", "efecto": "ICTZD y recepción coherente." },
+        { "campo": "Campos M* exigidos por ITAR", "obligatorio": "según ITAR", "efecto": "GUARDAR y formulario FE validan MPAC, MFFA, etc." }
+      ],
+      "puntosCriticos": ["PC-00c", "PC-00d", "PC-01"]
+    },
+    {
+      "id": "capa-servicio-ser",
+      "nombre": "Servicio (SER) vinculado",
+      "impactoSiFalta": "Sin SER no hay prefijo contable KMCOM ni facturación.",
+      "camposClave": [
+        { "campo": "SER.IDSERVICIO = IART.IDSERVICIO o CREARSER", "obligatorio": true, "efecto": "FE llama SER.CRUDSERVICIO tras GUARDAR." },
+        { "campo": "SER.PREFIJO", "obligatorio": "contabilidad", "efecto": "FNK_NC_CUENTA_KMCOM / FNK_CUENTA_KMCOM en INV y CXP_COMPRAS." },
+        { "campo": "SER.ESTADO", "obligatorio": true, "efecto": "CAMBIO_ART_ESTADO sincroniza con IART." }
+      ],
+      "puntosCriticos": ["PC-01", "PC-00e"]
+    },
+    {
+      "id": "capa-kmcom-plan",
+      "nombre": "KMCOM / plan de cuentas",
+      "impactoSiFalta": "CONF_ENTRADA, CONTABILIZAR_FCXP o SPK_NC_CONTAB_INV fallan.",
+      "camposClave": [
+        { "campo": "KMCOM CXP_COMPRAS (DB/CR)", "obligatorio": "compras + VALID_CCOSTO_CXP=SI", "efecto": "CONF_ENTRADA valida CCOSTO+ITAR." },
+        { "campo": "KMCOM MOV_INVENTARIO / prefijo SER", "obligatorio": "contab INV", "efecto": "SPK_NC_CONTAB_INV." },
+        { "campo": "CUE detalle + CUENTAGRAV si gravado", "obligatorio": "IVA CxP", "efecto": "SPK_INSERT_CXP_INV homologación." }
+      ],
+      "puntosCriticos": ["PC-01", "PC-05", "PC-07"]
+    },
+    {
+      "id": "capa-lista-cotizacion",
+      "nombre": "Lista de precios (opcional)",
+      "impactoSiFalta": "Cotización → OC sin precio o GENERAR_OC KO por mínimo.",
+      "camposClave": [
+        { "campo": "ILPRE vigente por proveedor", "obligatorio": "cotización", "efecto": "ICTZD precios; VLR_MIN_ACEPT." },
+        { "campo": "ILPRED.IDSERVICIO = IDARTICULO", "obligatorio": "cotización", "efecto": "GENERAR_OC FCOMD." }
+      ],
+      "puntosCriticos": ["PC-00f"]
+    }
+  ],
+  "variablesUsvgs": [
+    "DEINVNODESER",
+    "IMPUESTO_OBL",
+    "IDSEDEPRINCIPAL",
+    "NRO_ESPACIOS_ITARCNS",
+    "PREFIJOMEDICAMENTOS",
+    "PREFIJOMEDNOPOS",
+    "IDMEDPOSRIPS",
+    "IDMEDNOPOSRIPS",
+    "VALID_CCOSTO_CXP",
+    "CUENTA_IVA_CXP",
+    "CONTAB_INV_IVA_ITAR",
+    "IDINVDIASPARAVENCER",
+    "IDINVMOV_COMPRAS",
+    "CAMBIO_ART_ESTADO"
+  ],
+  "sps": ["SPQ_IART", "SPQ_ILPRE"],
+  "siguienteCapa": "catalogo-bodega-tipo-mov.json",
+  "matrizImpacto": [
+    { "etapaFlujo": "cotizacion", "requiere": ["IART activo", "ILPRE/ICTZD", "IVA en ICTZD"] },
+    { "etapaFlujo": "fcom", "requiere": ["IART en FCOMD", "TIENEIVA/IDIMPUESTO en línea"] },
+    { "etapaFlujo": "loteo_transito", "requiere": ["ITAR.MLOTEO", "NOLOTE", "fechas vencimiento"] },
+    { "etapaFlujo": "imov_entrada", "requiere": ["PCOSTO>0", "vencimiento", "KMCOM si VALID_CCOSTO_CXP"] },
+    { "etapaFlujo": "cxp_detalle", "requiere": ["IDIMPUESTO coherente", "SER.PREFIJO", "CUENTAGRAV"] },
+    { "etapaFlujo": "contab_inv", "requiere": ["ITMO.SECONTABILIZA", "IBOD.NOCONTABILIZA", "KMCOM INV"] }
+  ]
+}

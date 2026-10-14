@@ -3,9 +3,9 @@
   "nombre": "Facturación",
   "modulo": "FTR",
   "estado": "parcial",
-  "resumen": "Desde armar la factura hasta radicar la cuenta de cobro ante el pagador. Administrativo → Facturación (facturas, masiva, evento, hospitalización, programa, DIAN, empaque, traslados) → Cuentas por cobrar (cerrar y radicar). No es el menú Radicaciones (/rad).",
-  "actualizado": "2026-09-06T18:50:00",
-  "notaSql": "Flujo leído en pantallas y manuales de Qrystalos2 y en documentación de tablas. No se archivó cuerpo de SP. Para un REQ hay que bajar el .sql de hoy a sql/ y pasarlo en Documentar.",
+  "resumen": "Desde cada origen de factura hasta DIAN, Ministerio/SISPRO y radicación ante el pagador. Procedencias FTR confirmadas: FINANCIERO, SALUD, CI, CE, AUTPG y CAJA; INVENTARIO nace en su módulo. CIT/AUT/HADM son además procedencias de cargos y no deben confundirse con la procedencia final de FTR.",
+  "actualizado": "2026-10-03T13:45:00-05:00",
+  "notaSql": "Confirmado el 2026-10-03 en Qrystalos2, documentación viva e IXONLINE/SQL. PREVERSION y última liberada 2.0.7 son idénticas para SPQ_FTR_COL, SPQ_FTR_MASIVA_COL, SPQ_FTR_HADM_COL, SPQ_AUTPG, SPK_FACTURA_ASIS, SPK_CREA_FACTURA_POS_CAJA, SPK_FACTURA_AUTPG, SPK_FACTURACI_EVENTO_PAQ, SPQ_FACTURACE_ESCMA y SPK_FACTURACE_N. IDANT consultada: 2.0.6.",
   "alcanceHasta": "Radicar la cuenta de cobro (Cuentas por cobrar → Radicar CXC). Glosas, recaudo y el menú /rad quedan fuera de este proceso.",
   "necesidadesYaCubiertas": [
     {
@@ -70,6 +70,764 @@
       "ruta": "admin.BuscarFact",
       "path": "/admin/BuscaFact",
       "vue": "BusquedaftrPage.vue"
+    }
+  ],
+  "incluirProcesoMdEnLibro": false,
+  "capitulosLibro": [
+    {
+      "id": "mapa-procedencias",
+      "tipo": "mapa-procedencias",
+      "kicker": "Mapa mental",
+      "titulo": "Procedencias: de dónde viene cada factura"
+    },
+    {
+      "id": "factura-financiera",
+      "tipo": "factura-financiera",
+      "kicker": "Factura manual, cápita y PGP",
+      "titulo": "Factura financiera: cápita, PGP y TIPOCAP=4"
+    },
+    {
+      "id": "acciones-factura",
+      "tipo": "flujo",
+      "flujoId": "flujo-acciones-ftr",
+      "kicker": "Operación de la factura",
+      "titulo": "Acciones disponibles sobre una factura"
+    },
+    {
+      "id": "envio-dian",
+      "tipo": "envio-dian",
+      "flujoId": "flujo-dian-fev",
+      "kicker": "Documento electrónico",
+      "titulo": "Envío y respuesta de la DIAN"
+    },
+    {
+      "id": "validacion-ministerio",
+      "tipo": "validacion-ministerio",
+      "flujoId": "flujo-ministerio-rips",
+      "kicker": "RIPS y SISPRO",
+      "titulo": "Validación ante Ministerio y obtención del CUV"
+    },
+    {
+      "id": "traslados-recepcion",
+      "tipo": "envio-recepcion",
+      "flujoId": "flujo-envio-recepcion",
+      "kicker": "Traslados de facturas",
+      "titulo": "Envío y recepción de facturas"
+    },
+    {
+      "id": "informes-facturacion",
+      "tipo": "flujo",
+      "flujoId": "flujo-informes-facturacion",
+      "kicker": "Consulta y exportación",
+      "titulo": "Informes de facturación"
+    },
+    {
+      "id": "empaque-radicacion",
+      "tipo": "radicacion-cartera",
+      "flujoId": "flujo-empaque-radicacion",
+      "kicker": "Entrega al pagador",
+      "titulo": "Empaque, cuenta de cobro y radicación"
+    },
+    {
+      "id": "contabilidad-factura",
+      "tipo": "flujo",
+      "flujoId": "flujo-contabilidad-ftr",
+      "kicker": "Integración financiera",
+      "titulo": "Contabilización de factura y cuenta"
+    }
+  ],
+  "procedenciasLibro": [
+    {
+      "origen": "Creación manual",
+      "nombre": "Factura financiera, cápita o PGP",
+      "codigoOrigen": "Facturas",
+      "procedenciaFtr": "FINANCIERO",
+      "descripcion": "El usuario crea cabecera y líneas. Cápita/PGP agrega la relación de servicios FTRDC.",
+      "ventana": "Facturas · FACT_FACTURAR",
+      "icono": "edit_note"
+    },
+    {
+      "origen": "Admisión",
+      "nombre": "Urgencias, hospitalización o domiciliaria",
+      "codigoOrigen": "HADM",
+      "procedenciaFtr": "SALUD",
+      "descripcion": "Toma cargos HPRE/HPRED de una admisión y puede facturar alta completa o corte.",
+      "ventana": "Fact. Urg-Hospi-Domi · FACT_HOSPIURG",
+      "icono": "local_hospital"
+    },
+    {
+      "origen": "Citas y eventos",
+      "nombre": "Factura individual, masiva o paquete",
+      "codigoOrigen": "CIT",
+      "procedenciaFtr": "CI",
+      "descripcion": "Parte de citas marcadas; el paquete por evento agrupa afiliados y genera una línea de paquete.",
+      "ventana": "Facturación Evento / Masiva",
+      "icono": "event"
+    },
+    {
+      "origen": "Autorizaciones",
+      "nombre": "Órdenes de consulta externa",
+      "codigoOrigen": "AUT",
+      "procedenciaFtr": "CE",
+      "descripcion": "Factura AUT/AUTD seleccionadas. AUT identifica el origen; CE identifica la factura resultante.",
+      "ventana": "Facturación Masiva · Autorizaciones",
+      "icono": "fact_check"
+    },
+    {
+      "origen": "Programas",
+      "nombre": "Autorizaciones periódicas AUTPG",
+      "codigoOrigen": "AUTPG",
+      "procedenciaFtr": "AUTPG",
+      "descripcion": "Agrupa pacientes por periodo, sede y máximo de afiliados; crea paquete y relación FTRDC.",
+      "ventana": "Facturación Programa · FACT_AUTPG",
+      "icono": "groups"
+    },
+    {
+      "origen": "Medicamentos NOPOS",
+      "nombre": "Aplicación y autorización con MIPRES",
+      "codigoOrigen": "APLIMF/AUT",
+      "procedenciaFtr": "CE",
+      "descripcion": "Marca medicamentos no POS, genera autorización cuando se requiere y factura por el circuito CE.",
+      "ventana": "Facturación NOPOS · FACT_NO_POS",
+      "icono": "medication"
+    },
+    {
+      "origen": "Caja",
+      "nombre": "Copago o recibo de contado",
+      "codigoOrigen": "FCJ",
+      "procedenciaFtr": "CAJA",
+      "descripcion": "La factura POS se crea al confirmar el recibo; no se genera desde Nueva Factura.",
+      "ventana": "Caja; consulta posterior en Facturación",
+      "icono": "point_of_sale"
+    },
+    {
+      "origen": "Inventario",
+      "nombre": "Venta o movimiento facturable",
+      "codigoOrigen": "INV/IMOV",
+      "procedenciaFtr": "INVENTARIO",
+      "descripcion": "Nace en el módulo Inventario y continúa en Facturación para consulta, DIAN e impresión.",
+      "ventana": "Inventario",
+      "icono": "inventory_2"
+    }
+  ],
+  "facturaFinancieraLibro": {
+    "introduccion": "Nueva Factura siempre crea una cabecera FTR con procedencia FINANCIERO. El plan seleccionado determina si se trabaja por evento, cápita o PGP; la modalidad cambia los campos, la relación de prestaciones y la generación posterior de RIPS.",
+    "modalidades": [
+      {
+        "clase": "evento",
+        "icono": "description",
+        "codigo": "CAPITADA=0",
+        "nombre": "Financiera por evento",
+        "descripcion": "El usuario crea la cabecera y agrega líneas FTRD manualmente: servicio, cantidad, valor, centro de costo e impuestos.",
+        "regla": "No usa relación capitada FTRDC."
+      },
+      {
+        "clase": "capita",
+        "icono": "groups",
+        "codigo": "CAPITADA=1 · PPT.PGP=0",
+        "nombre": "Cápita",
+        "descripcion": "El contrato define una secuencia de factura Inicial, Periodo, Final o Masiva. Las prestaciones cubiertas se relacionan con los pacientes atendidos.",
+        "regla": "TIPOCAP 1 no exige relación; TIPOCAP 2, 3 y 4 sí usan FTRDC."
+      },
+      {
+        "clase": "pgp",
+        "icono": "account_tree",
+        "codigo": "CAPITADA=1 · PPT.PGP=1",
+        "nombre": "PGP",
+        "descripcion": "Factura un valor global prospectivo por período. Conserva líneas financieras FTRD y las prestaciones asistenciales relacionadas en FTRDC.",
+        "regla": "Sin FTRDC no debe enviarse a contabilidad ni a DIAN."
+      }
+    ],
+    "ripsExternos": "Permite incorporar JSON RIPS producidos fuera de Qrystalos para prestaciones incluidas en la factura. La pantalla valida el período, pacientes activos, tipos de usuario y fechas; persiste los pacientes y servicios válidos en FTRDJSON. No es la respuesta del Ministerio ni registra por sí sola un CUV.",
+    "tipocap4": "TIPOCAP=4 identifica la factura de capitación masiva: una factura financiera de contrato que reúne múltiples pacientes y prestaciones sin pertenecer al ciclo Inicial, Periodo o Final. Su finalidad es producir un RIPS consolidado mediante SPK_RIPS_JSON_FTR_CAPMASI.",
+    "tiposCapita": [
+      {
+        "valor": "1",
+        "nombre": "Inicial",
+        "uso": "Inicio del contrato",
+        "clase": "cola"
+      },
+      {
+        "valor": "2",
+        "nombre": "Periodo",
+        "uso": "Corte intermedio",
+        "clase": "proceso"
+      },
+      {
+        "valor": "3",
+        "nombre": "Final",
+        "uso": "Cierre del ciclo",
+        "clase": "ok"
+      },
+      {
+        "valor": "4",
+        "nombre": "Masiva",
+        "uso": "Consolidado del contrato",
+        "clase": "error"
+      }
+    ]
+  },
+  "radicacionCarteraLibro": {
+    "aclaracionDocumental": "En la pantalla el botón se llama Adjuntar. Abre la gestión DOCXTPO de la cuenta de cobro: Nuevo, Subir varios, Ver, Descargar, Descargar todos y Eliminar según permiso. Es el control usado para incorporar documentos escaneados o archivos digitales.",
+    "estados": [
+      {
+        "id": "abierta",
+        "nombre": "Cuenta abierta",
+        "condicion": "CERRADA=0 · INDRECIBIDO=0",
+        "acciones": [
+          "Agregar Facturas",
+          "Borrar Marcadas",
+          "Cerrar CxC",
+          "Imprimir",
+          "Adjuntar"
+        ]
+      },
+      {
+        "id": "cerrada",
+        "nombre": "Cerrada por enviar",
+        "condicion": "CERRADA=1 · INDRECIBIDO=0",
+        "acciones": [
+          "Abrir CxC",
+          "Imprimir",
+          "F_ENVIO si está configurado",
+          "Radicar CXC",
+          "Adjuntar"
+        ]
+      },
+      {
+        "id": "radicada",
+        "nombre": "Cuenta radicada",
+        "condicion": "INDRECIBIDO=1",
+        "acciones": [
+          "Importar Radicados",
+          "Asignar o editar radicado por factura",
+          "Adjuntar",
+          "Contabilizar",
+          "Imprimir comprobante",
+          "Descargar FE / PDF FE / FEV-RIPS"
+        ]
+      }
+    ]
+  },
+  "flujos": [
+    {
+      "id": "flujo-procedencias-ftr",
+      "nombre": "Procedencias y creación de la factura",
+      "descripcion": "La pantalla y el motor cambian según el origen. La procedencia del cargo no siempre coincide con FTR.PROCEDENCIA.",
+      "icono": "receipt_long",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Identificar el origen",
+          "descripcion": "Manual/cápita/PGP, hospitalización, cita/evento, autorización, programa, caja o inventario.",
+          "rol": "Facturador",
+          "pantalla": "Administrativo → Facturación",
+          "si": "Usar la pestaña y permiso propios del origen.",
+          "no": "No crear una factura FINANCIERO para reemplazar un origen clínico.",
+          "tablas": [
+            "FTR",
+            "CIT",
+            "AUT",
+            "HADM",
+            "AUTPG",
+            "FCJ"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Crear cabecera y detalle",
+          "descripcion": "El motor genera FTR/FTRD y, cuando aplica cápita o programa, FTRDC. CIT se convierte normalmente en CI; AUT en CE; HADM en SALUD.",
+          "rol": "Qrystalos",
+          "sp": "FTR_COL · FTR_MASIVA_COL · FTR_HADM_COL · AUTPG",
+          "tablas": [
+            "FTR",
+            "FTRD",
+            "FTRDC"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "resultado",
+          "titulo": "Factura lista para acciones posteriores",
+          "descripcion": "La factura queda con número, procedencia, pagador, plan, sede y detalle. Desde aquí se controla edición, liberación, anulación, contabilidad, DIAN y RIPS.",
+          "rol": "Facturación",
+          "tablas": [
+            "FTR"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-dian-fev",
+      "nombre": "Envío de factura electrónica a DIAN",
+      "descripcion": "CUFE y estado DIAN pertenecen al circuito FEV; no son el CUV del Ministerio ni el radicado de cartera.",
+      "icono": "send",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Validar factura y resolución",
+          "descripcion": "La factura debe tener detalle; cápita/PGP requiere FTRDC y la sede debe disponer de resolución/certificado vigente.",
+          "si": "Encolar la factura.",
+          "no": "Corregir factura, sede, resolución o certificado.",
+          "sp": "FTR_COL · VALIDADIAN2",
+          "tablas": [
+            "FTR",
+            "FTRD",
+            "FTRDC",
+            "FDIAN"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Encolar la factura electrónica",
+          "descripcion": "Encolar DIAN (detalle) o Encolar (pestaña Proceso DIAN) dejan la factura En Cola para el servicio facturador electrónico.",
+          "sp": "FTR_COL · NOTI_DIAN / ENCOLAR_ITEM / ENCOLAR_MASIVO",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Generar, firmar y transmitir el XML",
+          "descripcion": "El servicio facturador electrónico toma la cola, construye el XML UBL, aplica la firma digital y lo transmite a la DIAN.",
+          "tablas": [
+            "FTR",
+            "FTRE"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Interpretar la respuesta de la DIAN",
+          "descripcion": "La DIAN verifica estructura, firma, resolución, numeración, identificación e impuestos del documento electrónico.",
+          "si": "Aceptar la factura y devolver su identificación electrónica.",
+          "no": "Registrar errores para corregir y volver a encolar.",
+          "tablas": [
+            "FTR",
+            "FTRE"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Registrar CUFE y factura notificada",
+          "descripcion": "La respuesta aceptada deja FACTE=2 y CUFE/XML disponibles en FTRE. Esto no genera CUV ni radica la cuenta ante el pagador.",
+          "tablas": [
+            "FTR",
+            "FTRE"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-ministerio-rips",
+      "nombre": "Validación RIPS ante Ministerio/SISPRO",
+      "descripcion": "El JSON RIPS usa la factura ya validada por DIAN y obtiene un CUV independiente del CUFE.",
+      "icono": "health_and_safety",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Comprobar precondiciones FEV-RIPS",
+          "descripcion": "FACTE=2, datos clínicos completos y, para marca masiva, factura contabilizada, CUV vacío y procedencia distinta de CAJA.",
+          "si": "Generar o reutilizar el JSON.",
+          "no": "Corregir factura, atención, afiliado u homologaciones.",
+          "tablas": [
+            "FTR",
+            "AFI",
+            "HADM",
+            "CIT",
+            "AUT"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Generar y persistir JSON RIPS",
+          "descripcion": "El despachador selecciona la hoja según cápita, PGP, masiva, AUTPG, paquete o evento y persiste el envío.",
+          "sp": "FTR_COL · RIPS_JSON → SPK_GENERAR_RIPS_JSON",
+          "tablas": [
+            "FTRJSON",
+            "FNOTJSON"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Armar y transmitir el paquete FEV-RIPS",
+          "descripcion": "Qrystalos reúne la factura electrónica validada por DIAN con el JSON RIPS, obtiene el JWT y transmite el paquete al validador SISPRO. La ruta de envío cambia según la modalidad contractual.",
+          "tablas": [
+            "FTR",
+            "FTRJSON"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Interpretar la respuesta del Ministerio",
+          "descripcion": "SISPRO valida estructura, identidad, datos clínicos, códigos y coherencia entre la factura electrónica y los RIPS.",
+          "si": "La respuesta aprobada contiene el CUV.",
+          "no": "Conservar las inconsistencias, corregir el origen y volver a encolar.",
+          "tablas": [
+            "FTRJSON",
+            "FEVRIPS_COLA"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Registrar CUV y cerrar la validación",
+          "descripcion": "SPQ_RIPS/FEVRIPS registra el CUV y la fecha de validación. El paquete queda validado ante el Ministerio, pero todavía no significa que la CXC esté radicada ante el pagador.",
+          "sp": "RIPS · SET_DATOS",
+          "tablas": [
+            "FTR",
+            "FTRJSON"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-acciones-ftr",
+      "nombre": "Acciones disponibles sobre una factura",
+      "descripcion": "Los botones dependen de procedencia, estado, DIAN, contabilidad, cartera y permisos del usuario.",
+      "icono": "touch_app",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Consultar detalle, imprimir y descargar anexos",
+          "descripcion": "Son las acciones de consulta más amplias. Imprimir una FINANCIERO sin contabilizar puede pedir contabilización según configuración.",
+          "rol": "Facturador",
+          "pantalla": "Pestaña Facturas",
+          "tablas": [
+            "FTR",
+            "FTRD"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "Editar cabecera o líneas",
+          "descripcion": "Solo la factura FINANCIERO se edita manualmente cuando está pendiente, sin notificar y sin contabilizar.",
+          "si": "Editar con CREARFTR/CRUDFTRD.",
+          "no": "Corregir desde el origen o usar Liberar/Anular según el estado.",
+          "sp": "FTR_COL · CREARFTR / CRUDFTRD",
+          "tablas": [
+            "FTR",
+            "FTRD"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Liberar cargos",
+          "descripcion": "Devuelve los servicios al origen para refacturar. No procede si la factura ya está en cartera/CxC o tiene estados electrónicos incompatibles.",
+          "si": "LIBERARFAC marca la factura liberada y desfactura el origen.",
+          "no": "Revisar traslado, cuenta, DIAN o notas antes de intervenir.",
+          "sp": "FTR_COL · LIBERARFAC",
+          "tablas": [
+            "FTR",
+            "HADM",
+            "CIT",
+            "AUT"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Anular o emitir nota crédito",
+          "descripcion": "Antes de DIAN puede anular; después de validación electrónica el circuito puede exigir nota crédito y consistencia contable.",
+          "si": "ANULARFAC ejecuta la rama correspondiente.",
+          "no": "Resolver cartera, contabilidad o documentos asociados.",
+          "sp": "FTR_COL · ANULARFAC",
+          "tablas": [
+            "FTR",
+            "FNOT"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Continuar a contabilidad, DIAN o traslado",
+          "descripcion": "Una factura consistente queda disponible para los procesos posteriores, cada uno documentado en su propio capítulo.",
+          "tablas": [
+            "FTR"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-envio-recepcion",
+      "nombre": "Envío y recepción de facturas",
+      "descripcion": "Traslados ENT mueve facturas entre Facturación, Auditoría y Cartera. No es el envío electrónico a DIAN.",
+      "icono": "move_to_inbox",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear una entrega",
+          "descripcion": "Elegir proceso FACTURAS, AUDITORIA o DEVFACT y la dependencia destino. Solo puede existir una entrega abierta equivalente por usuario/sede.",
+          "rol": "Facturación",
+          "pantalla": "Traslados Facturas",
+          "sp": "ENT_COL · CRUD_ENT",
+          "tablas": [
+            "ENT"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Marcar y asignar facturas",
+          "descripcion": "Marcar una, varias o todas; ASIGNAR_FACT crea el detalle ENTD. Antes de cerrar todavía se pueden retirar líneas.",
+          "sp": "ENT_COL · MARCAR_ITEM / MARCAR_TODAS / ASIGNAR_FACT",
+          "tablas": [
+            "FTR",
+            "ENTD"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Cerrar la entrega",
+          "descripcion": "La entrega debe contener detalle y no haber sido recibida.",
+          "si": "CERRAR_ENT deja el envío listo para recepción e impresión.",
+          "no": "Agregar facturas o corregir el contenido.",
+          "sp": "ENT_COL · CERRAR_ENT",
+          "tablas": [
+            "ENT",
+            "ENTD"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Recibir según destino",
+          "descripcion": "Cartera usa PROCESAR_ENVIO; Auditoría usa RECIBIR_AUDIFACTU; DEVFACT devuelve la factura a Facturación.",
+          "si": "Actualiza dependencia y estado de cada FTR.",
+          "no": "La entrega permanece pendiente de recepción.",
+          "sp": "ENT_COL · PROCESAR_ENVIO / RECIBIR_AUDIFACTU",
+          "tablas": [
+            "FTR",
+            "ENT",
+            "ENTD"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Factura ubicada en Cartera o Auditoría",
+          "descripcion": "En cartera queda INDCARTERA=1. Alternativamente CREARCXC_ENT recibe y crea FCXC/FCXCD en el mismo paso.",
+          "sp": "ENT_COL · CREARCXC_ENT",
+          "tablas": [
+            "FTR",
+            "FCXC",
+            "FCXCD"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-informes-facturacion",
+      "nombre": "Informes de facturación",
+      "descripcion": "Todos son consultas de solo lectura y descargan Excel desde la pestaña Informes.",
+      "icono": "query_stats",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Definir filtros comunes",
+          "descripcion": "Rango de fechas, sede, procedencia y particulares. Procedencia ofrece Asistencial, Órdenes CE, Citas, Financieras, Caja e Inventario.",
+          "rol": "Analista",
+          "pantalla": "Informes",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Informes por pagador",
+          "descripcion": "Tercero, tipo de tercero contable y plan. Con plan seleccionado entrega detalle factura a factura; sin plan agrupa por tercero y plan.",
+          "sp": "FTR_RPT_COL · GENERAR_RPT",
+          "tablas": [
+            "FTR",
+            "TER",
+            "PPT"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Informes por responsable y estructura",
+          "descripcion": "Usuario facturador, área funcional y prefijo permiten revisar productividad y distribución operativa.",
+          "sp": "FTR_RPT_COL · GENERAR_RPT",
+          "tablas": [
+            "FTR",
+            "FTRD"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Informes por servicio",
+          "descripcion": "Servicio y procedimiento/cirugía detallan cantidades, valores y prestaciones facturadas.",
+          "sp": "FTR_RPT_COL · GENERAR_RPT",
+          "tablas": [
+            "FTRD",
+            "SER"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Informes de control",
+          "descripcion": "Anuladas, Notas Crédito y General. El General incorpora información de la cuenta de cobro y estado de recepción cuando existe.",
+          "sp": "FTR_RPT_COL · GENERAR_RPT",
+          "tablas": [
+            "FTR",
+            "FNOT",
+            "FCXC"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Descargar Excel",
+          "descripcion": "El frontend convierte el result set en la hoja Datos. En Perú también está disponible Registro Ventas.",
+          "tablas": [
+            "FTR",
+            "FTRD"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-empaque-radicacion",
+      "nombre": "Empaque, cuenta de cobro y radicación",
+      "descripcion": "Este circuito prepara soportes y formaliza el cobro ante el pagador; no debe confundirse con DIAN o CUV.",
+      "icono": "inventory",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Empaquetar soportes",
+          "descripcion": "Empaqueta reúne historia clínica y anexos configurados por pagador en PDF/ZIP.",
+          "rol": "Facturación",
+          "pantalla": "Administrativo → Empaqueta",
+          "sp": "DOCXEMPQ · GET_ANEXOS",
+          "tablas": [
+            "FTR_SOPORTES"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Armar cuenta de cobro",
+          "descripcion": "Agrupa facturas del mismo pagador mediante traslado ENT, Cuentas por cobrar o saldos iniciales.",
+          "sp": "FCXC_COL · CRUD_FCXC / ASIGNAR_FACT",
+          "tablas": [
+            "FCXC",
+            "FCXCD",
+            "FTR"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Cerrar y revisar la cuenta",
+          "descripcion": "Confirmar facturas, valores, soportes y datos de entrega antes de radicar.",
+          "si": "Continuar con fecha y número de radicado.",
+          "no": "Corregir la cuenta o los anexos.",
+          "tablas": [
+            "FCXC",
+            "FCXCD"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Radicar ante el pagador",
+          "descripcion": "RADICA_FCXC registra recepción y SPK_ENTREGA_CXC crea los vencimientos FCXCDV.",
+          "sp": "FCXC_COL · RADICA_FCXC",
+          "tablas": [
+            "FCXC",
+            "FCXCD",
+            "FCXCDV"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Cuenta formalmente radicada",
+          "descripcion": "Desde aquí existe obligación de cartera y vencimientos. Importar Radicados actualiza después el número por factura en una CXC ya recibida.",
+          "tablas": [
+            "FCXC",
+            "FCXCDV"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-contabilidad-ftr",
+      "nombre": "Contabilización de factura y cuenta",
+      "descripcion": "Factura y cuenta de cobro tienen controles contables diferentes.",
+      "icono": "account_balance",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Validar factura lista",
+          "descripcion": "Debe tener detalle y no estar contabilizada. Cápita/PGP requiere FTRDC.",
+          "si": "Ejecutar ENVIA_CONTAB.",
+          "no": "Completar o corregir la factura.",
+          "tablas": [
+            "FTR",
+            "FTRD",
+            "FTRDC"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "Aplicar orden DIAN/contabilidad",
+          "descripcion": "Si CONTAB_FTR_POSTDIAN=SI, primero se exige FACTE=2; en la configuración contraria la factura se contabiliza antes de encolar.",
+          "si": "Continuar en el orden configurado.",
+          "no": "Esperar respuesta DIAN o resolver el error contable.",
+          "sp": "FTR_COL · ENVIA_CONTAB",
+          "tablas": [
+            "FTR",
+            "MCP"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Generar movimiento de la factura",
+          "descripcion": "SPK_NC_CONTAB_FTR crea la afectación y devuelve el comprobante; algunos flujos masivos usan la cola FTRCO.",
+          "sp": "SPK_NC_CONTAB_FTR",
+          "tablas": [
+            "FTR",
+            "FTRCO",
+            "MCP"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Contabilizar la cuenta por separado",
+          "descripcion": "Después de radicar, CONTAB_FCXC corresponde a la cuenta de cobro. Radicar y contabilizar no son la misma acción.",
+          "sp": "FCXC_COL · CONTAB_FCXC",
+          "tablas": [
+            "FCXC",
+            "MCP"
+          ]
+        }
+      ]
     }
   ],
   "capas": [
@@ -142,6 +900,40 @@
       ],
       "controles": [
         {
+          "id": "procedencias-ftr",
+          "nombre": "Mapa confirmado de procedencias FTR",
+          "explicacion": "La procedencia de la cabecera identifica cómo nació la factura: FINANCIERO = manual/cápita/PGP; SALUD = admisión hospitalaria; CI = citas/evento; CE = autorizaciones, incluida NOPOS; AUTPG = programa; CAJA = factura POS de copago/recibo. INVENTARIO nace fuera de esta pantalla y luego comparte DIAN/consulta. En las grillas de origen aparecen CIT, AUT, HADM, ONCO, APLIM e INV: son procedencias de cargos o filtros y no siempre el valor final de FTR.",
+          "invariante": "No diagnosticar ni liberar por el código del cargo: primero leer FTR.PROCEDENCIA. Conversiones confirmadas: HADM→SALUD, CIT/evento→CI, AUT/NOPOS→CE. AUTPG y CAJA conservan su código.",
+          "ventanasFe": "/admin/facturacion · tabs Facturas, Facturación Masiva, Evento, NOPOS, Programa y Urg-Hospi-Domi",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_COL",
+              "metodo": "CREARFTR",
+              "rol": "Crea FTR PROCEDENCIA=FINANCIERO."
+            },
+            {
+              "nombre": "SPK_FACTURA_ASIS",
+              "metodo": "(SP)",
+              "rol": "Crea FTR PROCEDENCIA=SALUD desde HADM."
+            },
+            {
+              "nombre": "SPK_FACTURACE_N / SPQ_FACTURACE_ESCMA",
+              "metodo": "(SP)",
+              "rol": "Crea CI desde citas y CE desde autorizaciones/unificadas; NOPOS llama SPK_FACTURACE_N con @PROC=CE."
+            },
+            {
+              "nombre": "SPK_FACTURA_AUTPG / SPK_FACTURACI_EVENTO_PAQ",
+              "metodo": "(SP)",
+              "rol": "Crea AUTPG y CI paquete, respectivamente."
+            },
+            {
+              "nombre": "SPK_CREA_FACTURA_POS_CAJA",
+              "metodo": "(SP)",
+              "rol": "Crea FTR PROCEDENCIA=CAJA para copagos y recibos."
+            }
+          ]
+        },
+        {
           "id": "armar-factura",
           "nombre": "Armar y confirmar la factura",
           "explicacion": "Pestaña Facturas: una a una (paciente, ítems, copago). Masiva: muchos servicios a la vez (permiso FACT_MASIVA). Evento: citas. Programa: autorizaciones de programa. Urg-Hospi-Domi: hospitalización/urgencias/domiciliaria. Pendientes por facturar: lo que aún no tiene factura. Tras confirmar, la factura queda con número y valor.",
@@ -167,7 +959,7 @@
         {
           "id": "factura-financiera",
           "nombre": "Factura financiera (manual · pestaña Facturas)",
-          "explicacion": "Factura creada **a mano** en Administrativo → Facturación → pestaña **Facturas** (`FTRComponent.vue`). Permiso **ADMINQ_FACTURAS · FACT_FACTURAR**. El FE **siempre** envía `PROCEDENCIA=FINANCIERO` al guardar (`ejecutarGuardadoFTR`). **No** es factura desde CE/AUT/CIT/masiva/hospitalización — esas llegan con otra procedencia. Flujo: **Nueva Factura** → modal cabecera (tercero, plan/contrato, sede con FDIAN, observación ≥15 chars Col, opcional capita/PGP) → **FTR_COL · CREARFTR** → abre detalle **FtrDetalles** → líneas **CRUDFTRD** (servicio, cantidad, valor, IVA CALCIMP_FTRD) → si capita/PGP: relación **ADDFTRDC** (gate capita-pgp). Cierre: imprimir puede disparar contab si CONTABILIZADA=0 · **ENVIA_CONTAB** · **NOTI_DIAN** · **FTRFE_COL · VALIDAFTR** previo envío FE.",
+          "explicacion": "Factura creada **a mano** en Administrativo → Facturación → pestaña **Facturas** (`FTRComponent.vue`). Permiso **ADMINQ_FACTURAS · FACT_FACTURAR**. El FE **siempre** envía `PROCEDENCIA=FINANCIERO` al guardar (`ejecutarGuardadoFTR`). **No** es factura desde CE/AUT/CIT/masiva/hospitalización — esas llegan con otra procedencia. El plan clasifica el documento: evento (`CAPITADA=0`), cápita (`CAPITADA=1`, `PPT.PGP=0`) o PGP (`CAPITADA=1`, `PPT.PGP=1`). Flujo: **Nueva Factura** → modal cabecera (tercero, plan/contrato, sede con FDIAN, observación ≥15 chars Col, opcional cápita/PGP) → **FTR_COL · CREARFTR** → abre detalle **FtrDetalles** → líneas **CRUDFTRD** (servicio, cantidad, valor, IVA CALCIMP_FTRD) → si cápita/PGP: relación **ADDFTRDC** (control capita-pgp). `TIPOCAP=4` significa **capitación masiva**: no usa la secuencia Inicial/Periodo/Final, exige relación FTRDC y dirige el RIPS a SPK_RIPS_JSON_FTR_CAPMASI. Cierre: imprimir puede disparar contab si CONTABILIZADA=0 · **ENVIA_CONTAB** · **NOTI_DIAN** · **FTRFE_COL · VALIDAFTR** previo envío FE.",
           "invariante": "PROCEDENCIA=FINANCIERO (SP INSERT + FE). Edición solo si ESTADO=P, ESTDIAN=Sin Notificar, CONTABILIZADA=0. Sin FTRD no contabiliza ni encola DIAN.",
           "ventanasFe": "/admin/facturacion · tab Facturas · FTRComponent · permiso FACT_FACTURAR",
           "sps": [
@@ -195,6 +987,11 @@
               "nombre": "SPK_TOTALFACTURFIN",
               "metodo": "(SP leído 18:26)",
               "rol": "Recálculo totales financiero/capita; COPAPROPIO + moderadora."
+            },
+            {
+              "nombre": "SPQ_SUBIR_AUTCOL",
+              "metodo": "SUBIR_JSON_EXTERNO / APROBAR_JSON / BORRAR_JSON / TOTALES_JSON",
+              "rol": "RIPS externos: valida y persiste pacientes/servicios en FTRDJSON para su integración posterior al JSON RIPS."
             }
           ]
         },
@@ -254,8 +1051,8 @@
         {
           "id": "facturacion-masiva-aut",
           "nombre": "Facturación Masiva · pestaña Autorizaciones (AUT)",
-          "explicacion": "Dentro de **Facturación Masiva** (`FTRMComponent`, tab `Autorizaciones`). **Distinto de Facturación Programa (AUTPG).** Grilla **VWK_AUT_FTR** (tabla **AUT** + detalle **AUTD**). Permiso **FACT_MASIVA**. Flujo: filtrar tercero/plan/fechas → marcar filas (**MARCAAUT_FTR** ACCION 1/2 lote, 3 individual) → **CONTEOFTRMARCADAS** → **FACTURAR_MASI** PROCEDENCIA=AUT → FTR. Aux: **MARCANOCOBRABLE** (FTR_COL), **NOCOBRAR_AUTD**, **ASIGNAR_NROAUT**, detalle expand AUTD.",
-          "invariante": "AUT.ESTADO≠Anulada. VALORTOTAL>0 y FACTURABLE=1 para marcar. CNSFACT=@USUARIO en marca. No confundir con AUTPG (programas mensuales).",
+          "explicacion": "Dentro de **Facturación Masiva** (`FTRMComponent`, tab `Autorizaciones`). **Distinto de Facturación Programa (AUTPG).** La grilla trabaja con origen **AUT** (AUT/AUTD), pero el motor crea la cabecera **FTR.PROCEDENCIA=CE**. Flujo: filtrar tercero/plan/fechas → marcar filas (**MARCAAUT_FTR**) → **CONTEOFTRMARCADAS** → **FACTURAR_MASI** → **SPQ_FACTURACE_ESCMA/SPK_FACTURACE_N**.",
+          "invariante": "AUT identifica el origen; CE identifica la factura resultante. AUT.ESTADO≠Anulada, VALORTOTAL>0 y FACTURABLE=1 para marcar. No confundir CE con AUTPG.",
           "ventanasFe": "/admin/facturacion · FacturaMasiva → tab Autorizaciones · permiso FACT_MASIVA",
           "sps": [
             {
@@ -271,9 +1068,61 @@
           ]
         },
         {
+          "id": "urg-hosp-factura",
+          "nombre": "Fact. Urg-Hospi-Domi · admisión HADM",
+          "explicacion": "Pestaña **Fact. Urg-Hospi-Domi** (`FTRAComponent`, permiso FACT_HOSPIURG). PREPARAR_HADM valida alta, contrato y cargos; FACTHADM_ITEM/FACTHADM_TODO/FACTHADM_ITEMCORTE llaman SPK_FACTURA_ASIS. El origen es HADM, pero la cabecera queda **FTR.PROCEDENCIA=SALUD**.",
+          "invariante": "La admisión debe ser facturable, clase A y estar cerrada para factura final; cápita o PFACTURARIND=0 no se factura individualmente. Debe existir PRI abierto y HPRED pendiente.",
+          "ventanasFe": "/admin/facturacion · tab Fact. Urg-Hospi-Domi · permiso FACT_HOSPIURG",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_HADM_COL",
+              "metodo": "PREPARAR_HADM / FACTHADM_ITEM / FACTHADM_TODO / PREPARAR_HADMCORTE / FACTHADM_ITEMCORTE",
+              "rol": "Prepara RPDX y orquesta la factura."
+            },
+            {
+              "nombre": "SPK_FACTURA_ASIS",
+              "metodo": "(SP)",
+              "rol": "Inserta FTR PROCEDENCIA=SALUD y sus FTRD."
+            }
+          ]
+        },
+        {
+          "id": "facturacion-nopos",
+          "nombre": "Facturación NOPOS · aplicaciones de medicamentos",
+          "explicacion": "Pestaña **Facturación NOPOS** (`FTRNoPosComponent`, permiso FACT_NO_POS). Marca APLIMF no POS, puede generar AUT/AUTD con MIPRES y finalmente FACTURAR_NOPOS_APLIM llama SPK_FACTURACE_N con **@PROC=CE**. La factura resultante pertenece al circuito de autorizaciones CE y conserva NOPOS/IDMIPRESS.",
+          "invariante": "Requiere ítems APLIMF POS=0 pendientes, tercero/plan, sede, PRI abierto y autorización no anulada con valor mayor que cero. NOPOS no es una procedencia final separada.",
+          "ventanasFe": "/admin/facturacion · tab Facturación NOPOS · permiso FACT_NO_POS",
+          "sps": [
+            {
+              "nombre": "SPQ_FTR_MASIVA_COL",
+              "metodo": "MARCA_APLIMF / GEN_AUT_NOPOS_APLIMF / FACTURAR_NOPOS_APLIM",
+              "rol": "Marca, crea autorización y factura."
+            },
+            {
+              "nombre": "SPK_FACTURACE_N",
+              "metodo": "(SP)",
+              "rol": "Inserta FTR PROCEDENCIA=CE con banderas NOPOS/MIPRES."
+            }
+          ]
+        },
+        {
+          "id": "factura-caja",
+          "nombre": "Factura POS originada en Caja",
+          "explicacion": "Caja genera factura de contado para copagos de cita, autorización CE o recibos mediante SPK_CREA_FACTURA_POS_CAJA. Aunque el recibo se origine en CITAS/CE/SALUD, la cabecera queda **FTR.PROCEDENCIA=CAJA** y NOREFERENCIA identifica caja+recibo.",
+          "invariante": "La factura CAJA no se crea desde Nueva Factura. FEV-RIPS masivo la excluye; sí puede participar en factura electrónica DIAN según configuración.",
+          "ventanasFe": "Módulo Caja; en Facturación solo consulta, impresión, DIAN y trazabilidad",
+          "sps": [
+            {
+              "nombre": "SPK_CREA_FACTURA_POS_CAJA",
+              "metodo": "(SP)",
+              "rol": "Inserta FTR/FTRD PROCEDENCIA=CAJA y actualiza FCJ.N_FACTURAPOS/RECAUDO."
+            }
+          ]
+        },
+        {
           "id": "capita-pgp",
           "nombre": "Capita, PGP y relación de servicios (FTRDC)",
-          "explicacion": "Viene del plan pagador (PPT): PGPEVE=1 contrato capitado, PGPEVE=2 PGP; si no, factura por evento. Capita exige TIPOCAP (1 Inicial → 2 Periodo → 3 Final) validado en CREARFTR contra facturas previas del mismo tercero/plan. PGP usa la misma bandera CAPITADA=1 pero sin secuencia Inicial/Periodo/Final en pantalla (capipgpeve=2). Relación FTRDC: cargos marcados desde VWK_CARGOS_HADMAUTCIT (ADDFTRDC / ADDFTRDC_MARCA); copago propio (COPAPROPIO) recalcula vía SPK_TOTALFACTURFIN. Sin FTRDC no encola DIAN ni contabiliza capita/PGP.",
+          "explicacion": "Viene del plan pagador (PPT): cápita = `CAPITADA=1` con `PPT.PGP=0`; PGP = `CAPITADA=1` con `PPT.PGP=1`; si no, factura financiera por evento. Cápita exige TIPOCAP: 1 Inicial, 2 Periodo, 3 Final o 4 Masiva. CREARFTR valida la secuencia Inicial → Periodo → Final, pero `TIPOCAP=4` queda fuera de esa secuencia y se usa para consolidación masiva del contrato. En FEV/RIPS usa el endpoint estándar y `SPK_RIPS_JSON_FTR_CAPMASI`. PGP comparte la relación asistencial pero se identifica por `PPT.PGP=1` y usa su propio generador; TIPOCAP=4 no convierte por sí solo una factura en PGP. Relación FTRDC: cargos marcados desde VWK_CARGOS_HADMAUTCIT (ADDFTRDC / ADDFTRDC_MARCA); copago propio (COPAPROPIO) recalcula vía SPK_TOTALFACTURFIN. TIPOCAP 1 no requiere relación; para Periodo, Final, Masiva y PGP, sin FTRDC no se debe encolar DIAN ni contabilizar.",
           "invariante": "Capita/PGP no es un menú aparte: es variante de FTR en pestaña Facturas (y marcas masivas en evento/masiva). ANULARFAC deriva a SPK_ANULA_FACT_CAPITADA si aplica.",
           "sps": [
             {
@@ -300,6 +1149,30 @@
               "nombre": "SPK_ANULA_FACT_CAPITADA",
               "metodo": "(SP leído 18:35 sql/)",
               "rol": "ANULARFAC rama FINANCIERO+CAPITADA=1; DELETE FTRDC; NC si periodo cerrado."
+            }
+          ]
+        },
+        {
+          "id": "rips-externos-financiera",
+          "nombre": "RIPS externos en factura financiera",
+          "explicacion": "En el detalle de una factura financiera capitada/PGP, el botón **Relación JSON** abre `SubirJsonExterComponent`. Recibe uno o varios JSON RIPS de prestadores externos, limita los servicios al período `F_INICIAL`–`F_FINAL`, fusiona usuarios repetidos por documento, omite pacientes inactivos y permite crear en AFI al paciente inexistente con datos básicos del JSON. Los registros válidos quedan en FTRDJSON; `SPK_RIPS_JSON_FTR_PGP` y motores masivos los integran al JSON consolidado según la modalidad. Cuando la factura está liberada o DIAN notificada, la pantalla queda en modo consulta.",
+          "invariante": "Cargar RIPS externos no envía a SISPRO ni genera CUV. Solo prepara información clínica externa ligada a la factura. Debe respetar el período, el régimen del contrato y la identidad del paciente.",
+          "ventanasFe": "/admin/facturacion · Facturas → detalle → Relación JSON · SubirJsonExterComponent",
+          "sps": [
+            {
+              "nombre": "SPQ_SUBIR_AUTCOL",
+              "metodo": "SUBIR_JSON_EXTERNO",
+              "rol": "Valida régimen/tipo de usuario, identificación y afiliado; persiste JSON_AFI/JSON_SER en FTRDJSON."
+            },
+            {
+              "nombre": "SPQ_SUBIR_AUTCOL",
+              "metodo": "APROBAR_JSON / BORRAR_JSON / TOTALES_JSON",
+              "rol": "Aprobación manual, depuración y resumen por archivo externo."
+            },
+            {
+              "nombre": "SPK_RIPS_JSON_FTR_PGP / SPK_RIPS_JSON_FTR_MAS",
+              "metodo": "(SP)",
+              "rol": "Consume FTRDJSON para integrar prestaciones externas al JSON RIPS final cuando la rama corresponde."
             }
           ]
         },
@@ -539,7 +1412,7 @@
         {
           "id": "rips-fev",
           "nombre": "FEVRIPS (RIPS + FEV + CUV ministerio)",
-          "explicacion": "Circuito **normativo salud** (SISPRO/ministerio): JSON RIPS + factura DIAN + **CUV**. Distinto de encolar DIAN y de radicar CXC. **Detalle, Chat y FAQ:** proceso hermano `rips-json`. Precondición: FACTE=2. Entrada FE: FTR_COL · RIPS_JSON (síncrono) o INICIAR_RIPS_JSON_JOB (si FNK_RIPS_JSON_USAR_ASYNC / CONFIG_GENE_FEV) → EJECUTAR_RIPS_JSON_ASYNC. Motor: SPK_GENERAR_RIPS_JSON despacha un SPK_RIPS_JSON_* según CAPITADA+TIPOCAP+TIPOFAC+PROCEDENCIA+PPT.PGP; persiste con SPK_PERSISTIR_RIPSJSON_ENVIO. Luego MODELO RIPS (CUV), cola FEVRIPS_COLA opcional, ZIP.",
+          "explicacion": "Circuito **normativo salud** (SISPRO/ministerio): JSON RIPS + factura DIAN + **CUV**. Distinto de encolar DIAN y de radicar CXC. **Detalle, Chat y FAQ:** proceso hermano `rips-json`. Precondición: FACTE=2. Entrada FE: FTR_COL · RIPS_JSON (síncrono) o INICIAR_RIPS_JSON_JOB (si la función FNK_RIPS_JSON_USAR_ASYNC, que lee la variable CONFIG_GENE_FEV, devuelve 1) → EJECUTAR_RIPS_JSON_ASYNC. Motor: SPK_GENERAR_RIPS_JSON despacha un SPK_RIPS_JSON_* según CAPITADA+TIPOCAP+TIPOFAC+PROCEDENCIA+PPT.PGP; persiste con SPK_PERSISTIR_RIPSJSON_ENVIO. Luego MODELO RIPS (CUV), cola FEVRIPS_COLA opcional, ZIP.",
           "invariante": "CUV validado **no** significa cuenta radicada (FCXC). Precondición motor: FACTE=2. Marca masiva exige FACTE=2, contabilizada, CUV vacío, no caja. Cola microservicio solo si FEVRIPS_MODO=MICROSERVICIO; TOMAR_MANUAL evita CUV duplicado. ESTADO 5 (validación) no reintenta solo — ENCOLAR tras corrección. JWT SISPRO en TRANSIENT (JWT_RIPS).",
           "ventanasFe": "/admin/FEVRIPSMasivo · Facturación → Proceso DIAN (Paquete FEVRIPS) · Validaciones FEVRIPS · Glosas SopFevRips",
           "sps": [
@@ -602,6 +1475,183 @@
           ]
         }
       ]
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nueva Factura",
+      "icono": "receipt_long",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Crea una factura manual FINANCIERO. Evento, programa, hospitalización, NOPOS, caja e inventario usan sus propios controles."
+    },
+    {
+      "label": "Encolar DIAN",
+      "icono": "send",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Encola la factura para su transmisión electrónica formal y validación previa ante la DIAN."
+    },
+    {
+      "label": "Liberar",
+      "icono": "lock_open",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Libera los cargos y atenciones asistenciales de la factura para permitir su refacturación sin perder servicios."
+    },
+    {
+      "label": "Anular / NC",
+      "icono": "block",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Anula la factura en el sistema o emite una Nota Crédito electrónica si ya fue validada ante la DIAN."
+    },
+    {
+      "label": "Imprimir",
+      "icono": "print",
+      "color": "blue",
+      "estilo": "outline",
+      "descripcion": "Genera la representación gráfica oficial de la factura electrónica en formato PDF institucional."
+    },
+    {
+      "label": "Anexo Detallado",
+      "icono": "description",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Descarga e imprime el anexo clínico-administrativo con el desglose de procedimientos y medicamentos."
+    },
+    {
+      "label": "Generar RIPS",
+      "icono": "code",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Genera y valida la estructura JSON de RIPS según la Resolución 2275 para reporte a MinSalud."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "file_download",
+      "color": "green-7",
+      "estilo": "outline",
+      "descripcion": "Descarga la sábana completa de facturación con desglose de ítems, impuestos y valores a Excel."
+    },
+    {
+      "label": "Log Factura",
+      "icono": "history",
+      "color": "blue-grey",
+      "estilo": "outline",
+      "descripcion": "Muestra la bitácora completa de auditoría: quién facturó, fechas de envío DIAN y cambios de estado."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "FACT_FACTURAR",
+      "accion": "Nueva Factura",
+      "rol": "Facturador / Asistente",
+      "descripcion": "Habilita la creación y liquidación de nuevas facturas en el sistema."
+    },
+    {
+      "codigo": "FACT_ANULAR",
+      "accion": "Anular / Nota Crédito",
+      "rol": "Coordinador de Facturación",
+      "descripcion": "Autoriza la anulación de facturas y la expedición de notas crédito ante la DIAN."
+    },
+    {
+      "codigo": "FACT_LIBERAR",
+      "accion": "Liberar Factura",
+      "rol": "Supervisor de Facturación",
+      "descripcion": "Permite desvincular prestaciones de una factura en borrador para correcciones."
+    },
+    {
+      "codigo": "NOTIDIAN",
+      "accion": "Encolar / Notificar DIAN",
+      "rol": "Facturador / Administrador",
+      "descripcion": "Habilita la pestaña Proceso DIAN; el frontend guarda internamente el resultado en permisos.notidian."
+    },
+    {
+      "codigo": "FACT_MASIVA",
+      "accion": "Facturación Masiva",
+      "rol": "Coordinador de Cartera / Facturación",
+      "descripcion": "Permite liquidar lotes masivos de atenciones por contrato o régimen capitado."
+    },
+    {
+      "codigo": "CXC_RADICAR",
+      "accion": "Radicar Cuenta (CxC)",
+      "rol": "Analista de Cartera",
+      "descripcion": "Autoriza el cierre del paquete y la asignación del número de radicado ante el pagador."
+    },
+    {
+      "codigo": "TAB_SEND_FTR",
+      "accion": "Auditoría de Eventos",
+      "rol": "Auditor / Soporte",
+      "descripcion": "Habilita la pestaña Log Facturas. LogFacturas es el nombre interno usado por el componente, no el control USGRUH consultado."
+    },
+    {
+      "codigo": "FACT_HOSPIURG",
+      "accion": "Fact. Urg-Hospi-Domi",
+      "rol": "Facturador asistencial",
+      "descripcion": "Habilita la facturación desde admisiones HADM."
+    },
+    {
+      "codigo": "FACT_CIT_EVENTO",
+      "accion": "Facturación Evento",
+      "rol": "Facturador",
+      "descripcion": "Habilita el control de citas/eventos y paquetes CI."
+    },
+    {
+      "codigo": "FACT_AUTPG",
+      "accion": "Facturación Programa",
+      "rol": "Facturador de programas",
+      "descripcion": "Habilita AUTPG; la variable USA_AUTPG no oculta por sí sola la pestaña."
+    },
+    {
+      "codigo": "FACT_NO_POS",
+      "accion": "Facturación NOPOS",
+      "rol": "Facturador",
+      "descripcion": "Habilita el circuito APLIMF → AUT → FTR CE."
+    },
+    {
+      "codigo": "FACT_TRASLADAR",
+      "accion": "Traslados Facturas",
+      "rol": "Facturación / Cartera",
+      "descripcion": "Habilita ENT y el envío de facturas hacia cartera o auditoría."
+    },
+    {
+      "codigo": "FACT_INFORMES",
+      "accion": "Informes",
+      "rol": "Analista",
+      "descripcion": "Habilita los informes agregados y de detalle."
+    },
+    {
+      "codigo": "RPT_PENDIENTE",
+      "accion": "Pendientes por facturar",
+      "rol": "Auditor",
+      "descripcion": "Se consulta bajo MENUQ_AUDITORIA, aunque la pestaña se muestre dentro de Facturación."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "DIANCERTIFICADO",
+      "tipo": "Texto (Ruta / Alias)",
+      "valorSugerido": "CERT_PROD_2026",
+      "descripcion": "Identificador o ruta del certificado digital para la firma criptográfica del XML de factura."
+    },
+    {
+      "nombre": "DIASNOTIFICACERT",
+      "tipo": "Numérico (Días)",
+      "valorSugerido": "30",
+      "descripcion": "Días de antelación para mostrar la alerta en pantalla antes del vencimiento de la firma electrónica."
+    },
+    {
+      "nombre": "CONFIG_GENE_FEV",
+      "tipo": "JSON",
+      "valorSugerido": "{\"procedenciasSinAsync\":[\"SALUD\",\"CI\",\"CE\",\"AUTPG\",\"FINANCIERO\",\"INVENTARIO\"],\"valorMinimoAsync\":0}",
+      "descripcion": "Decide si el JSON RIPS se genera en segundo plano (job) o al instante. Lo lee la función FNK_RIPS_JSON_USAR_ASYNC (no es una variable). Se edita en Validaciones FEVRIPS → Conf. async. Detalle en el proceso hermano RIPS JSON / FEVRIPS."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "Texto (Código País)",
+      "valorSugerido": "COL / PER",
+      "descripcion": "Configura el entorno de facturación electrónica: DIAN/RIPS para Colombia o SUNAT para Perú."
     }
   ],
   "flujoPasado": true,

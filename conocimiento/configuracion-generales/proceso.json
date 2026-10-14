@@ -1,0 +1,829 @@
+{
+  "id": "configuracion-generales",
+  "nombre": "Configuración · Generales (Planes y Terceros)",
+  "modulo": "CONF · Generales",
+  "familia": "configuracion",
+  "prioridad": 13,
+  "enRuta": true,
+  "estado": "documentado",
+  "resumen": "Alcance de este libro: Planes, Contratos IPS, Categorías y Terceros del submenú Generales. Cadena CAT → TER+TEXCA → PPT → CNT → PLN/CPPAF. El resto de Generales (servicios, tarifas, ayudas diagnósticas, sedes, médicos, geografía…) queda para otro proceso. Tipos de Terceros del menú Contable (TTEC) son cuentas de cartera, no este catálogo.",
+  "actualizado": "2026-10-04T21:30:00",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (PREVERSION = 2.0.7, IDANT 2.0.6). SPQ_CONF_PLANES: PREVERSION DISTINTA de la liberada — validar en preversión, no pedir el cambio a ciegas. SPQ_CONF_CPPAF (GUARDAR, ELIMINAR, SUBIR_PLANO, TRAER_AREAS, QUITAR_SERVICIOS), SPQ_CNT (GUARDAR_CNT, ELIMINAR, ACTIVAR, SUSPENDER, FINALIZAR), SPQ_TER_COL (GUARDAR, STATE, EXPORTA_TER, GET_TEXCA_TER, INCA_OPTION), SPQ_TEXCA. SPQ_CONF_CAT no está en SQLIX (ni PREVERSION, ni 2.0.7, ni 2.0.6). Permisos MENUQ_PLANES (BTN_*) y TERCEROS_WEB. PCEM no consultado.",
+  "alcanceHasta": "Solo Planes, Contratos IPS, Categorías y Terceros. Servicios, tarifas, ADX, sedes, médicos y el resto de Generales son otro proceso. TTEC (Contable → Tipos de Terceros) no es CAT.",
+  "flujoResumen": "Categoría (CAT) → tercero y sus categorías (TER+TEXCA; CON abre PPT) → contrato IPS (CNT, plan filtrado por PPT) → plan y servicios (PLN/CPPAF/PLNU).",
+  "incluirProcesoMdEnLibro": false,
+  "menu": {
+    "ruta": "Configuración → Generales → Planes · Contratos IPS · Terceros (Categorías, Terceros)",
+    "fuente": "ConfLayout.vue arbolMenu (Generales) + routes.js /conf (conf.planes, conf.cnt, conf.categorias, conf.terceros). Menú por grupo: MENUQ_COL · CONFIGURACION. Botones de Planes: MENUQ_PLANES. Botones de Terceros: TERCEROS_WEB."
+  },
+  "ventanas": [
+    {
+      "uso": "Planes",
+      "ruta": "conf.planes",
+      "path": "/conf/pla",
+      "vue": "PLAComponent (PLN + CPPAF + PLNU · CONF_PLANES / CONF_CPPAF)",
+      "entrada": "Configuración → Generales → Planes"
+    },
+    {
+      "uso": "Contratos IPS",
+      "ruta": "conf.cnt",
+      "path": "/conf/cnt",
+      "vue": "CNTComponent (CNT + CNTD)",
+      "entrada": "Configuración → Generales → Contratos IPS"
+    },
+    {
+      "uso": "Categorías",
+      "ruta": "conf.categorias",
+      "path": "/conf/categ",
+      "vue": "CATComponent (CONF_CAT — objeto no está en SQLIX)",
+      "entrada": "Configuración → Generales → Terceros → Categorías"
+    },
+    {
+      "uso": "Terceros",
+      "ruta": "conf.terceros",
+      "path": "/conf/ter",
+      "vue": "TERComponent (TER_COL + TEXCA + terExcel.js; pestañas Generales / RL / TH / Adicional)",
+      "entrada": "Configuración → Generales → Terceros → Terceros"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-terceros",
+      "numero": 1,
+      "nombre": "Categorías y terceros",
+      "estado": "documentado",
+      "explicacion": "CAT: maestro (CON contratante, PRO proveedor, OFI oficina…). TER: ficha (NIT, razón o nombres, fiscal, RL, talento humano). TEXCA: un tercero puede tener varias categorías. CON abre PPT y el combo de Contratos IPS. PRO exige condición de pago e impuestos. Permisos TERCEROS_WEB por botón.",
+      "controles": [
+        {
+          "id": "maestro-cat",
+          "nombre": "Categoría de tercero",
+          "sp": "SPQ_CONF_CAT (no está en SQLIX)",
+          "regla": "Código y descripción. Sin ficha leída: el objeto no aparece en el catálogo."
+        },
+        {
+          "id": "tercero",
+          "nombre": "Ficha de tercero",
+          "sp": "SPQ_TER_COL · GUARDAR / STATE / EXPORTA_TER / INCA_OPTION",
+          "regla": "NIT único. INCA_OPTION exige tabla de contingencias."
+        },
+        {
+          "id": "categorias-ter",
+          "nombre": "Categorías del tercero",
+          "sp": "SPQ_TEXCA · GUARDAR / ELIMINAR · TER_COL · GET_TEXCA_TER",
+          "regla": "Sin categoría CON el tercero no aparece como contratante."
+        }
+      ]
+    },
+    {
+      "id": "02-contratos",
+      "numero": 2,
+      "nombre": "Contratos IPS",
+      "estado": "documentado",
+      "explicacion": "CNT: tercero CON + plan que esté en PPT de ese tercero + vigencia + tipo + valor + tarifa. CNTD: tope por prefijo/grupo. Editar solo Inactivo. Activar / Suspender / Finalizar. Variable TERCATCONTRATANTE.",
+      "controles": [
+        {
+          "id": "contrato",
+          "nombre": "Cabecera y detalle del contrato",
+          "sp": "SPQ_CNT · GUARDAR_CNT / ELIMINAR",
+          "regla": "Plan filtrado por PPT. Editar solo Inactivo."
+        },
+        {
+          "id": "contrato-estado",
+          "nombre": "Activar, suspender, finalizar",
+          "sp": "SPQ_CNT · ACTIVAR / SUSPENDER / FINALIZAR",
+          "regla": "El estado decide si se puede editar la cabecera."
+        }
+      ]
+    },
+    {
+      "id": "03-planes",
+      "numero": 3,
+      "nombre": "Planes y servicios del plan",
+      "estado": "documentado",
+      "explicacion": "PLN: código ≤ 6, régimen, tipo de sistema, cobertura (debe coincidir), carné, paquete, crónico. CPPAF: servicios por área (cobra origen o contratante). Masivo: prefijo, plano, quitar por área, varios planes. Copiar contrato / copiar idéntica. PLNU: unidades de atención. Permisos MENUQ_PLANES (BTN_*). SPQ_CONF_PLANES en PREVERSION distinta de la liberada.",
+      "controles": [
+        {
+          "id": "plan-guardar",
+          "nombre": "Crear / editar el plan",
+          "sp": "SPQ_CONF_PLANES · GUARDAR / GET_PLN",
+          "regla": "Código ≤ 6. Cobertura alineada al tipo de sistema."
+        },
+        {
+          "id": "plan-servicios",
+          "nombre": "Servicios del plan",
+          "sp": "SPQ_CONF_CPPAF · GUARDAR / ELIMINAR / SUBIR_PLANO / TRAER_AREAS / QUITAR_SERVICIOS · CONF_PLANES · GET_SER / AGR_PEFIJO / MULT_PLN_SER_PEFIJO / EXPORTAR_SERVICIOS",
+          "regla": "Si cobra el contratante: tercero CON y plan CA."
+        },
+        {
+          "id": "plan-copiar",
+          "nombre": "Copiar servicios entre planes",
+          "sp": "SPQ_CONF_PLANES · COPIA_CONTRATO / COPIA_IDENT_CONTRATO",
+          "regla": "Copiar idéntica exige permiso propio."
+        },
+        {
+          "id": "plan-unidades",
+          "nombre": "Unidades de atención",
+          "sp": "SPQ_CONF_PLANES · CRUDPLNU",
+          "regla": "Dónde se presta el plan."
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "confgen-cadena",
+      "nombre": "La cadena: categoría → tercero → contrato → plan",
+      "icono": "account_tree",
+      "descripcion": "El orden que hay que respetar para que el contratante y el plan aparezcan en admisión y facturación.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la categoría",
+          "descripcion": "Terceros → Categorías → Nueva: código y descripción (CON, PRO, OFI…). El procedimiento CONF_CAT no está en el catálogo SQL: la pantalla existe; el cuerpo no se pudo leer.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Terceros → Categorías",
+          "tablas": ["CAT"],
+          "sp": "SPQ_CONF_CAT (ausente en SQLIX)"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Crear el tercero y asignarle CON",
+          "descripcion": "Terceros → Nuevo (o Excel). Pestañas Generales, RL, TH, Adicional. Luego categorías: CON abre contrataciones (PPT). PRO pide condición de pago e impuestos.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Terceros → Terceros",
+          "tablas": ["TER", "TEXCA"],
+          "sp": "SPQ_TER_COL · GUARDAR · SPQ_TEXCA · GUARDAR"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Plan de la administradora (PPT)",
+          "descripcion": "En la ficha del tercero CON se cargan los planes que esa administradora contrata (PPT). El combo de Contratos IPS solo muestra esos planes.",
+          "rol": "Administrador",
+          "pantalla": "Terceros → contrataciones / PPT",
+          "tablas": ["PPT"],
+          "sp": "—"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Contrato IPS",
+          "descripcion": "Contratos IPS → Nuevo: tercero CON, plan (filtrado por PPT), vigencia, tipo, valor, tarifa. Detalle: tope por prefijo. Activar cuando esté listo. Editar solo Inactivo.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Contratos IPS",
+          "tablas": ["CNT", "CNTD"],
+          "sp": "SPQ_CNT · GUARDAR_CNT / ACTIVAR"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Plan y servicios",
+          "descripcion": "Planes → crear el plan y cargar servicios (área, quién cobra). Sin servicios el plan no liquida. Copiar desde otro plan si hay permiso.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Planes",
+          "tablas": ["PLN", "CPPAF"],
+          "sp": "SPQ_CONF_PLANES · GUARDAR · SPQ_CONF_CPPAF · GUARDAR"
+        }
+      ]
+    },
+    {
+      "id": "confgen-plan",
+      "nombre": "Crear un plan, cargar servicios y copiar",
+      "icono": "medical_information",
+      "descripcion": "Permisos MENUQ_PLANES. SPQ_CONF_PLANES en preversión ya difiere de la liberada.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear el plan",
+          "descripcion": "Planes → Nuevo: Id (≤6), nombre, estado, tipo de sistema, aseguramiento, régimen, cobertura (debe coincidir con el tipo), carné, paquete + servicio, crónico. Guardar (permiso BTN_*).",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Planes",
+          "tablas": ["PLN"],
+          "sp": "SPQ_CONF_PLANES · GUARDAR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Servicios uno a uno o masivo",
+          "descripcion": "Fila: área + servicio + cobra origen/contratante (si contratante: tercero CON y plan CA). Masivo: importar, subir plano, agregar prefijo, quitar por área, varios planes.",
+          "rol": "Administrador",
+          "pantalla": "Planes → servicios",
+          "tablas": ["CPPAF"],
+          "sp": "SPQ_CONF_CPPAF · GUARDAR / SUBIR_PLANO / QUITAR_SERVICIOS · CONF_PLANES · AGR_PEFIJO / MULT_PLN_SER_PEFIJO"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Copiar de otro plan?",
+          "descripcion": "Copiar contrato: lleva servicios (parcial). Copiar idéntica: réplica completa, permiso propio.",
+          "rol": "Administrador",
+          "pantalla": "Planes → Copiar",
+          "tablas": ["CPPAF"],
+          "sp": "SPQ_CONF_PLANES · COPIA_CONTRATO / COPIA_IDENT_CONTRATO"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Unidades de atención",
+          "descripcion": "PLNU: dónde se presta el plan (roles / sedes). Exportar servicios saca el listado.",
+          "rol": "Administrador",
+          "pantalla": "Planes → unidades",
+          "tablas": ["PLNU"],
+          "sp": "SPQ_CONF_PLANES · CRUDPLNU / EXPORTAR_SERVICIOS"
+        }
+      ]
+    },
+    {
+      "id": "confgen-tercero",
+      "nombre": "Alta de tercero, Excel y categorías",
+      "icono": "badge",
+      "descripcion": "Permisos TERCEROS_WEB por botón.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Alta o Excel",
+          "descripcion": "Nuevo: régimen, naturaleza, NIT+DV, nombres o razón social, contacto, fiscal, actividad. Excel: fila a fila; NIT duplicado en archivo o en base se rechaza.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Terceros → Terceros",
+          "tablas": ["TER"],
+          "sp": "SPQ_TER_COL · GUARDAR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Pestañas RL, TH y Adicional",
+          "descripcion": "Representante legal, talento humano y datos adicionales (bancos, etc.).",
+          "rol": "Administrador",
+          "pantalla": "Terceros → pestañas",
+          "tablas": ["TER"],
+          "sp": "SPQ_TER_COL · GUARDAR"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Asignar categorías",
+          "descripcion": "Una o varias del maestro CAT. CON abre PPT y Contratos IPS. PRO exige condición de pago (contado / crédito 30-60-90) e impuestos.",
+          "rol": "Administrador",
+          "pantalla": "Terceros → categorías",
+          "tablas": ["TEXCA"],
+          "sp": "SPQ_TEXCA · GUARDAR"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Acciones de la fila (permiso por botón)",
+          "descripcion": "Editar / Inactivar (EDITAR_TERCERO, INACTIVAR_TERCERO). Documentos, rete salario, límite de citas, contingencias (INCA_OPTION exige tabla; solo si la variable lo enciende).",
+          "rol": "Administrador",
+          "pantalla": "Terceros → fila",
+          "tablas": ["TER"],
+          "sp": "SPQ_TER_COL · STATE / INCA_OPTION"
+        }
+      ]
+    },
+    {
+      "id": "confgen-contrato",
+      "nombre": "Contrato IPS: crear, activar y no editar lo activo",
+      "icono": "handshake",
+      "descripcion": "El plan del combo es el de PPT, no todos los PLN.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo contrato",
+          "descripcion": "Tercero con categoría CON (TERCATCONTRATANTE), plan en PPT, vigencia, tipo, valor, tarifa. Nace Inactivo.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Generales → Contratos IPS",
+          "tablas": ["CNT"],
+          "sp": "SPQ_CNT · GUARDAR_CNT"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Detalle (topes)",
+          "descripcion": "CNTD: tope por prefijo o grupo de servicios.",
+          "rol": "Administrador",
+          "pantalla": "Contratos IPS → detalle",
+          "tablas": ["CNTD"],
+          "sp": "SPQ_CNTD · GUARDAR_CNTD"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Activar, suspender o finalizar?",
+          "descripcion": "Activar cuando la vigencia y el plan están listos. Suspender pausa. Finalizar cierra. Editar la cabecera solo en Inactivo.",
+          "rol": "Administrador",
+          "pantalla": "Contratos IPS → fila",
+          "tablas": ["CNT"],
+          "sp": "SPQ_CNT · ACTIVAR / SUSPENDER / FINALIZAR"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Usar en admisión y facturación",
+          "descripcion": "El contrato activo + el plan con servicios es lo que ve el módulo asistencial. TTEC (Contable) no interviene aquí.",
+          "rol": "Administrador",
+          "pantalla": "—",
+          "tablas": ["CNT", "PLN"],
+          "sp": "—"
+        }
+      ]
+    }
+  ],
+  "estadosConfigGenerales": {
+    "titulo": "Estados y marcas de planes, contratos y terceros",
+    "descripcion": "Qué significa cada valor en Configuración → Generales (este alcance).",
+    "columnas": ["Valor", "Dónde"],
+    "filas": [
+      {
+        "codigo": "TerA",
+        "tono": "verde",
+        "etiquetas": ["TER.ESTADO = Activo"],
+        "significa": "Tercero vigente.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "TerI",
+        "tono": "gris",
+        "etiquetas": ["TER.ESTADO = Inactivo"],
+        "significa": "Tercero retirado (STATE / INACTIVAR_TERCERO).",
+        "queHacer": "Permiso de inactivar."
+      },
+      {
+        "codigo": "CON",
+        "tono": "verde",
+        "etiquetas": ["TEXCA categoría CON"],
+        "significa": "Contratante: abre PPT y el combo de Contratos IPS.",
+        "queHacer": "Sin CON no aparece como contratante."
+      },
+      {
+        "codigo": "PRO",
+        "tono": "azul",
+        "etiquetas": ["TEXCA categoría PRO"],
+        "significa": "Proveedor: exige condición de pago e impuestos.",
+        "queHacer": "Completar crédito / contado."
+      },
+      {
+        "codigo": "CntI",
+        "tono": "ambar",
+        "etiquetas": ["CNT.ESTADO = Inactivo"],
+        "significa": "Contrato editable. Es el único estado que permite GUARDAR_CNT de edición.",
+        "queHacer": "Activar cuando esté listo."
+      },
+      {
+        "codigo": "CntA",
+        "tono": "verde",
+        "etiquetas": ["CNT.ESTADO = Activo"],
+        "significa": "Contrato vigente. No se edita la cabecera.",
+        "queHacer": "Suspender o finalizar; no editar."
+      },
+      {
+        "codigo": "CntS",
+        "tono": "ambar",
+        "etiquetas": ["CNT.ESTADO = Suspendido"],
+        "significa": "Pausado. Se puede finalizar.",
+        "queHacer": "Reactivar o finalizar."
+      },
+      {
+        "codigo": "CntF",
+        "tono": "gris",
+        "etiquetas": ["CNT.ESTADO = Finalizado"],
+        "significa": "Cerrado.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "PlnA",
+        "tono": "verde",
+        "etiquetas": ["PLN.ESTADO = Activo"],
+        "significa": "Plan usable en PPT y contrato.",
+        "queHacer": "Cargar servicios (CPPAF)."
+      },
+      {
+        "codigo": "Cob",
+        "tono": "azul",
+        "etiquetas": ["PLN cobertura vs tipo de sistema"],
+        "significa": "La cobertura debe coincidir con el tipo de sistema.",
+        "queHacer": "El guardado lo rechaza si no calzan."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear una categoría de tercero (contratante, proveedor…)",
+      "donde": "Configuración → Generales → Terceros → Categorías → Nueva",
+      "condicion": "Código único.",
+      "noEs": "No es Tipos de Terceros del menú Contable (TTEC: cuentas de cartera)."
+    },
+    {
+      "necesidad": "Crear un tercero",
+      "donde": "Configuración → Generales → Terceros → Terceros → Nuevo → Guardar",
+      "condicion": "NIT no repetido. Permiso TERCEROS_WEB.",
+      "noEs": "No es el usuario de Sistemas."
+    },
+    {
+      "necesidad": "Cargar terceros desde Excel",
+      "donde": "Terceros → Excel (terExcel.js) → procesar",
+      "condicion": "NIT único en archivo y en base.",
+      "noEs": "No es todo-o-nada: va fila a fila."
+    },
+    {
+      "necesidad": "Asignar categoría CON para poder contratar",
+      "donde": "Terceros → categorías → CON",
+      "condicion": "Categoría CON en el maestro. Variable TERCATCONTRATANTE.",
+      "noEs": "Sin CON no aparece en Contratos IPS."
+    },
+    {
+      "necesidad": "Asignar categoría PRO con condición de pago",
+      "donde": "Terceros → categorías → PRO + contado/crédito e impuestos",
+      "condicion": "Categoría PRO.",
+      "noEs": "No abre contratos IPS."
+    },
+    {
+      "necesidad": "Inactivar un tercero",
+      "donde": "Terceros → fila → Inactivar (INACTIVAR_TERCERO)",
+      "condicion": "Permiso de inactivar.",
+      "noEs": "No borra la ficha."
+    },
+    {
+      "necesidad": "Exportar terceros a Excel",
+      "donde": "Terceros → Exportar (EXPORTA_TER)",
+      "condicion": "Permiso de consulta.",
+      "noEs": "No es la plantilla de importación."
+    },
+    {
+      "necesidad": "Registrar contingencias / incapacidades del tercero",
+      "donde": "Terceros → contingencias (INCA_OPTION)",
+      "condicion": "Variable encendida y tabla de apoyo existente.",
+      "noEs": "Si falta la tabla el método falla (ver hallazgos)."
+    },
+    {
+      "necesidad": "Crear un plan",
+      "donde": "Configuración → Generales → Planes → Nuevo → Guardar",
+      "condicion": "Código ≤ 6; cobertura = tipo de sistema. Permiso MENUQ_PLANES / BTN_*.",
+      "noEs": "No carga servicios: eso es el siguiente paso."
+    },
+    {
+      "necesidad": "Cargar servicios del plan uno a uno",
+      "donde": "Planes → servicios → área + servicio + quién cobra",
+      "condicion": "Si cobra el contratante: tercero CON y plan CA.",
+      "noEs": "No es el catálogo de Servicios (otro proceso de Generales)."
+    },
+    {
+      "necesidad": "Cargar servicios por prefijo o plano",
+      "donde": "Planes → agregar prefijo / subir plano / varios planes",
+      "condicion": "Prefijo existente; formato del plano.",
+      "noEs": "Quitar servicios es otro botón (por área)."
+    },
+    {
+      "necesidad": "Copiar los servicios de un plan a otro",
+      "donde": "Planes → Copiar contrato (parcial) o Copiar idéntica (completa)",
+      "condicion": "Copiar idéntica exige permiso propio.",
+      "noEs": "No copia el contrato IPS (CNT)."
+    },
+    {
+      "necesidad": "Definir dónde se presta el plan",
+      "donde": "Planes → unidades de atención (PLNU)",
+      "condicion": "Plan existente.",
+      "noEs": "No es la sede de Contable."
+    },
+    {
+      "necesidad": "Exportar los servicios del plan",
+      "donde": "Planes → Exportar servicios",
+      "condicion": "Plan con CPPAF.",
+      "noEs": "No es el plano de importación."
+    },
+    {
+      "necesidad": "Crear un contrato IPS",
+      "donde": "Configuración → Generales → Contratos IPS → Nuevo",
+      "condicion": "Tercero CON y plan en PPT.",
+      "noEs": "El combo de planes no lista todos los PLN: solo PPT."
+    },
+    {
+      "necesidad": "Poner tope por prefijo en el contrato",
+      "donde": "Contratos IPS → detalle (CNTD)",
+      "condicion": "Contrato existente.",
+      "noEs": "No es el servicio del plan (CPPAF)."
+    },
+    {
+      "necesidad": "Activar, suspender o finalizar el contrato",
+      "donde": "Contratos IPS → fila → Activar / Suspender / Finalizar",
+      "condicion": "Editar cabecera solo si está Inactivo.",
+      "noEs": "Activar no se hace guardando el formulario."
+    },
+    {
+      "necesidad": "Configurar servicios, tarifas o ayudas diagnósticas",
+      "donde": "Otras ramas de Generales (fuera de este libro)",
+      "condicion": "Otro proceso.",
+      "noEs": "Este alcance es solo Planes, Contratos, Categorías y Terceros."
+    },
+    {
+      "necesidad": "Cuentas de cartera por tipo de cliente (EPS, particular…)",
+      "donde": "Configuración → Contable → Tipos de Terceros (TTEC)",
+      "condicion": "Cuentas Detalle.",
+      "noEs": "No es Categorías (CAT) ni el tercero (TER)."
+    },
+    {
+      "necesidad": "Ver el plan en admisión o facturación",
+      "donde": "Módulos asistencial / facturación, con contrato activo y servicios cargados",
+      "condicion": "Cadena CAT→TER CON→PPT→CNT activo→PLN/CPPAF.",
+      "noEs": "Crear el plan no basta: falta contrato y servicios."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nuevo (Plan)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Plan nuevo. Permiso BTN_* de MENUQ_PLANES."
+    },
+    {
+      "label": "Guardar (Plan)",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "CONF_PLANES · GUARDAR."
+    },
+    {
+      "label": "Agregar prefijo / Subir plano",
+      "icono": "upload",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Carga masiva de servicios (AGR_PEFIJO, SUBIR_PLANO, MULT_PLN_SER_PEFIJO)."
+    },
+    {
+      "label": "Quitar servicios",
+      "icono": "remove_circle",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "QUITAR_SERVICIOS por área o filtro."
+    },
+    {
+      "label": "Copiar contrato",
+      "icono": "content_copy",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Copia parcial de servicios. Permiso BTN_*."
+    },
+    {
+      "label": "Copiar idéntica",
+      "icono": "copy_all",
+      "color": "secondary",
+      "estilo": "solid",
+      "descripcion": "Réplica completa. Permiso propio."
+    },
+    {
+      "label": "Exportar servicios",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "EXPORTAR_SERVICIOS."
+    },
+    {
+      "label": "Nuevo (Contrato IPS)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Cabecera CNT (tercero CON + plan PPT)."
+    },
+    {
+      "label": "Activar / Suspender / Finalizar",
+      "icono": "play_circle",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Cambia el estado del contrato. Editar solo Inactivo."
+    },
+    {
+      "label": "Nueva (Categoría)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Maestro CAT. CONF_CAT no está en SQLIX."
+    },
+    {
+      "label": "Nuevo (Tercero)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Ficha TER. Permiso TERCEROS_WEB."
+    },
+    {
+      "label": "Excel (importar / exportar)",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "terExcel.js e EXPORTA_TER."
+    },
+    {
+      "label": "Editar / Inactivar (Tercero)",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "EDITAR_TERCERO / INACTIVAR_TERCERO."
+    },
+    {
+      "label": "Categorías del tercero",
+      "icono": "label",
+      "color": "secondary",
+      "estilo": "tab",
+      "descripcion": "TEXCA: CON, PRO, OFI…"
+    },
+    {
+      "label": "Generales / RL / TH / Adicional",
+      "icono": "tab",
+      "color": "primary",
+      "estilo": "tab",
+      "descripcion": "Pestañas de la ficha."
+    },
+    {
+      "label": "Contingencias",
+      "icono": "healing",
+      "color": "amber",
+      "estilo": "flat",
+      "descripcion": "INCA_OPTION; exige tabla y variable."
+    },
+    {
+      "label": "Documentos / Rete salario / Límite de citas",
+      "icono": "more_horiz",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Cada una con su control TERCEROS_WEB."
+    },
+    {
+      "label": "Guardar / Cancelar",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma o cierra el formulario."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Configuración (MENUQ_COL · CONFIGURACION)",
+      "accion": "Ver Planes, Contratos IPS y Terceros",
+      "rol": "Administrador",
+      "descripcion": "Habilita la opción del árbol."
+    },
+    {
+      "codigo": "MENUQ_PLANES (BTN_*)",
+      "accion": "Guardar, copiar, exportar, masivos de Planes",
+      "rol": "Quien tenga el botón",
+      "descripcion": "A diferencia del resto de Configuración, Planes sí pide permiso por botón."
+    },
+    {
+      "codigo": "TERCEROS_WEB",
+      "accion": "Editar, inactivar, documentos, rete, límite de citas, contingencias",
+      "rol": "Quien tenga el control",
+      "descripcion": "Cada acción de la fila tiene su IDCONTROL."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "TERCATCONTRATANTE",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de categoría CON",
+      "descripcion": "Categoría que convierte al tercero en contratante (PPT y Contratos IPS). No publicar el valor de un cliente."
+    },
+    {
+      "nombre": "Variable de contingencias (INCA)",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Enciende contingencias en la ficha. INCA_OPTION exige además la tabla de apoyo."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "confgen-conf-cat-ausente-sqlix",
+      "tipo": "sql",
+      "detalle": "SPQ_CONF_CAT no está en SQLIX: ni PREVERSION, ni la última liberada 2.0.7, ni IDANT 2.0.6. La pantalla Categorías llama MODELO CONF_CAT y no hay cuerpo para ficha leída.",
+      "solucionPropuesta": "Localizar el objeto (otro nombre o fuera de SQLIX) o documentar que el maestro CAT se mantiene por otro camino. No inventar METODOs."
+    },
+    {
+      "id": "confgen-conf-planes-pre-distinta",
+      "tipo": "sql",
+      "detalle": "SPQ_CONF_PLANES en PREVERSION es distinta de la última liberada. Hay cambio en la canasta abierta. Validar en preversión; no pedir de nuevo el arreglo a ciegas ni dictaminar sobre la liberada.",
+      "solucionPropuesta": "Probar el flujo de plan (guardar, copiar, masivos) en preversión. Si el error del ticket ya no se reproduce, no hay desarrollo."
+    },
+    {
+      "id": "confgen-inca-option-exige-tabla",
+      "tipo": "sql",
+      "detalle": "TER_COL · INCA_OPTION exige una tabla de contingencias. Si no está, el botón falla aunque la variable esté encendida.",
+      "solucionPropuesta": "Validar que la tabla exista en la instalación o ocultar el botón cuando falte."
+    },
+    {
+      "id": "confgen-tercatcontratante",
+      "tipo": "decision",
+      "detalle": "Sin categoría CON (variable TERCATCONTRATANTE) el tercero no aparece como contratante del contrato IPS. El usuario cree que «falta el tercero» y está en otra categoría.",
+      "solucionPropuesta": "Ayuda en Contratos IPS: «solo terceros con categoría contratante»."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: planes, contratos y terceros",
+      "intro": "Veinte tareas de este alcance. Servicios, tarifas y ADX no están aquí. TTEC (Contable) tampoco."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Planes, contratos y terceros: quién paga y con qué plan",
+      "imagen": "img/confgen_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa Planes · Contratos · Terceros",
+      "intro": "Este libro cubre **cuatro opciones** de Configuración → Generales: **Categorías**, **Terceros**, **Contratos IPS** y **Planes**. El resto del submenú (servicios, tarifas, ayudas diagnósticas, sedes, médicos…) es otro proceso. **Tipos de Terceros** del menú Contable (TTEC) son cuentas de cartera, no este catálogo.",
+      "md": "## La cadena\n\n**CAT → TER + TEXCA → PPT → CNT → PLN / CPPAF**\n\n| Eslabón | Qué es | Si falta |\n|---|---|---|\n| Categoría CON | El tercero puede contratar | No aparece en Contratos IPS |\n| PPT | Planes que esa administradora maneja | El combo del contrato sale vacío |\n| Contrato activo | Vigencia y tarifa | Admisión/facturación no lo ve |\n| Servicios del plan | Qué se cubre y quién cobra | El plan no liquida |\n\nPlanes y Terceros **sí tienen permisos por botón** (MENUQ_PLANES, TERCEROS_WEB).",
+      "puntosClave": [
+        "El orden no es opcional: sin CON no hay contrato.",
+        "TTEC no es CAT."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa: Planes, Contratos IPS, Categorías y Terceros",
+      "intro": "Las cuatro pantallas de este alcance y el procedimiento (IXONLINE/SQL).",
+      "md": "| Opción | Pantalla | Procedimiento · METODO | Qué administra |\n|---|---|---|---|\n| Planes | PLN + servicios + unidades | SPQ_CONF_PLANES · GUARDAR, GET_PLN, GET_SER, MULT_PLN_SER_PEFIJO, AGR_PEFIJO, COPIA_CONTRATO, COPIA_IDENT_CONTRATO, CRUDPLNU, EXPORTAR_SERVICIOS · SPQ_CONF_CPPAF · GUARDAR, ELIMINAR, SUBIR_PLANO, TRAER_AREAS, QUITAR_SERVICIOS | PLN, CPPAF, PLNU |\n| Contratos IPS | Cabecera + detalle + estados | SPQ_CNT · GUARDAR_CNT, ELIMINAR, ACTIVAR, SUSPENDER, FINALIZAR | CNT, CNTD |\n| Categorías | Maestro CAT | SPQ_CONF_CAT (no está en SQLIX) | CAT |\n| Terceros | Ficha + Excel + categorías | SPQ_TER_COL · GUARDAR, STATE, EXPORTA_TER, GET_TEXCA_TER, INCA_OPTION · SPQ_TEXCA · GUARDAR / ELIMINAR | TER, TEXCA |\n\n## Fuera de este libro\n\nServicios (prefijos, jerarquías, plantillas), Tarifas, Sedes, Ayudas Diagnósticas, Odontología, Especialidades, Médicos, Geografía, Programas, Reportes, Otros.",
+      "puntosClave": [
+        "CONF_PLANES: validar en preversión (PRE ≠ liberada).",
+        "CONF_CAT: sin cuerpo en el catálogo."
+      ]
+    },
+    {
+      "id": "flujo-cadena",
+      "tipo": "flujo",
+      "kicker": "Flujo 1",
+      "titulo": "La cadena: categoría → tercero → contrato → plan",
+      "flujoId": "confgen-cadena",
+      "intro": "Cinco eslabones. Si uno falta, el siguiente combo sale vacío."
+    },
+    {
+      "id": "detalle-planes",
+      "tipo": "texto",
+      "kicker": "Planes",
+      "titulo": "El plan: crear, cargar servicios y copiar",
+      "flujoId": "confgen-plan",
+      "imagen": "img/confgen_planes_sketchnote.jpg",
+      "imagenAlt": "Planes y permisos MENUQ_PLANES",
+      "intro": "Código ≤ 6, cobertura alineada al tipo de sistema, servicios por área y dos botones de copiar.",
+      "md": "## Crear (CONF_PLANES · GUARDAR)\n\nId (≤6), nombre, estado, tipo de sistema, aseguramiento, régimen, **cobertura (debe coincidir con el tipo)**, carné, paquete + servicio, crónico. Permiso BTN_*.\n\n## Servicios (CPPAF)\n\nÁrea + servicio + cobra origen o contratante (si contratante: tercero CON y plan CA). Masivo: prefijo, plano, quitar por área, varios planes. Exportar servicios.\n\n## Copiar\n\n**Copiar contrato:** parcial. **Copiar idéntica:** completa, permiso propio.\n\n## Unidades (PLNU)\n\nDónde se presta.\n\nPREVERSION de SPQ_CONF_PLANES **ya difiere** de la liberada: validar ahí antes de pedir un arreglo.",
+      "puntosClave": [
+        "Sin servicios el plan no liquida.",
+        "No pedir de nuevo un cambio que ya esté en preversión."
+      ]
+    },
+    {
+      "id": "detalle-terceros",
+      "tipo": "texto",
+      "kicker": "Terceros",
+      "titulo": "El tercero: ficha, Excel y lo que abre cada categoría",
+      "flujoId": "confgen-tercero",
+      "imagen": "img/confgen_terceros_sketchnote.jpg",
+      "imagenAlt": "Terceros y permisos TERCEROS_WEB",
+      "intro": "NIT único, pestañas Generales/RL/TH/Adicional, y CON frente a PRO.",
+      "md": "## Alta y Excel\n\nRégimen, naturaleza, NIT+DV, nombres o razón social, contacto, fiscal, actividad. Excel fila a fila; NIT duplicado se rechaza.\n\n## Categorías (TEXCA)\n\n- **CON:** abre PPT y Contratos IPS (TERCATCONTRATANTE).\n- **PRO:** condición de pago e impuestos.\n- Otras (OFI…): según el módulo.\n\n## Botones de la fila\n\nEditar / Inactivar con permiso. Documentos, rete salario, límite de citas, contingencias (INCA_OPTION exige tabla).\n\n**TTEC** (Contable) no es este maestro.",
+      "puntosClave": [
+        "Sin CON el contrato no encuentra al tercero.",
+        "Cada botón de la fila tiene su permiso."
+      ]
+    },
+    {
+      "id": "detalle-contratos",
+      "tipo": "texto",
+      "kicker": "Contratos",
+      "titulo": "Contrato IPS: plan de PPT y estados",
+      "flujoId": "confgen-contrato",
+      "intro": "Editar solo Inactivo. Activar / Suspender / Finalizar son acciones aparte.",
+      "md": "## Cabecera\n\nTercero CON + plan **filtrado por PPT** + vigencia + tipo + valor + tarifa. Nace Inactivo.\n\n## Detalle\n\nTope por prefijo o grupo (CNTD).\n\n## Estados\n\nActivar, Suspender, Finalizar. **Editar solo Inactivo.** Si el combo de planes está vacío, falta PPT en el tercero, no el plan en PLN.",
+      "puntosClave": [
+        "El plan del contrato no es cualquier PLN: es el de PPT.",
+        "No editar un contrato activo: suspender o finalizar."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosConfigGenerales",
+      "kicker": "Semáforo",
+      "titulo": "Estados de terceros, contratos y planes",
+      "intro": "CON/PRO, Inactivo editable, contrato activo y cobertura del plan."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "CONF_PLANES ya cambió en preversión. CONF_CAT no está en el catálogo. Validar antes de pedir desarrollo.",
+      "md": "1. **SPQ_CONF_CAT no está en SQLIX** (PREVERSION, 2.0.7 ni IDANT 2.0.6). La pantalla Categorías existe; no hay cuerpo para ficha leída.\n2. **SPQ_CONF_PLANES PREVERSION distinta de la liberada.** Validar en preversión. No pedir el cambio a ciegas ni dictaminar sobre la liberada.\n3. **INCA_OPTION exige tabla.** Si no está, el botón de contingencias falla.\n4. **TERCATCONTRATANTE.** Sin categoría CON el tercero no es contratante: el usuario cree que falta el tercero.\n\nNo publicar valores de variables de un cliente. No pedir de nuevo un arreglo que ya esté en la canasta abierta.",
+      "puntosClave": [
+        "Primero probar Planes en preversión.",
+        "No inventar METODOs de CONF_CAT."
+      ]
+    }
+  ]
+}

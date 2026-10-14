@@ -1,0 +1,76 @@
+/*
+  KHCODAZZI. Quitar de errados los reversos de saldos iniciales.
+
+  El origen 0125800000041325 es manual, de octubre 2024, sin líneas y en cero.
+  SPK_REVERSAR_MCP arma la cabecera y copia las líneas. Sin líneas, la cabecera
+  del reverso queda en cero. No se reconstruye: reconstruir repite la cabecera vacía.
+  No se toca el comprobante de libros.
+
+  Vista previa: @APLICAR = 0. Para borrar, cambiar a 1 y ejecutar una sola vez.
+*/
+SET NOCOUNT ON;
+
+DECLARE @APLICAR bit = 0;
+
+IF OBJECT_ID('tempdb..#BORRAR') IS NOT NULL DROP TABLE #BORRAR;
+
+SELECT e.COMPANIA, e.NROCOMPROBANTE
+INTO #BORRAR
+FROM MCPE e
+WHERE COALESCE(e.ANULADO, 0) = 0
+  AND e.PROCEDENCIA = 'REVNOTDBCR'
+  AND e.REFERENCIA3 = '0125800000041325'
+  AND e.OBSERVACION LIKE 'REVERSION: SALDOS INICIALES%'
+  AND e.ANO = '2026'
+  AND CONVERT(int, e.MES) = 8
+  AND COALESCE(e.TOTALDEBITO, 0) = 0
+  AND COALESCE(e.TOTALCREDITO, 0) = 0
+  AND NOT EXISTS (
+        SELECT 1
+        FROM MCHE d
+        WHERE d.NROCOMPROBANTE = e.NROCOMPROBANTE
+      )
+  AND NOT EXISTS (
+        SELECT 1
+        FROM MCP l
+        WHERE l.COMPANIA = e.COMPANIA
+          AND l.NROCOMPROBANTE = e.NROCOMPROBANTE
+      );
+
+SELECT COUNT(*) AS CABECERAS_A_QUITAR FROM #BORRAR;
+
+SELECT b.COMPANIA, b.NROCOMPROBANTE, e.REFERENCIA1, e.REFERENCIA3, e.OBSERVACION
+FROM #BORRAR b
+INNER JOIN MCPE e
+  ON e.COMPANIA = b.COMPANIA
+ AND e.NROCOMPROBANTE = b.NROCOMPROBANTE
+ORDER BY b.NROCOMPROBANTE;
+
+IF @APLICAR = 0
+BEGIN
+  PRINT 'Vista previa. No se borró nada. Para borrar, cambie @APLICAR a 1.';
+  RETURN;
+END
+
+BEGIN TRAN;
+
+DELETE d
+FROM MCHE d
+INNER JOIN #BORRAR b
+  ON b.COMPANIA = d.COMPANIA
+ AND b.NROCOMPROBANTE = d.NROCOMPROBANTE;
+
+DELETE e
+FROM MCPE e
+INNER JOIN #BORRAR b
+  ON b.COMPANIA = e.COMPANIA
+ AND b.NROCOMPROBANTE = e.NROCOMPROBANTE
+WHERE NOT EXISTS (
+      SELECT 1
+      FROM MCHE d
+      WHERE d.NROCOMPROBANTE = e.NROCOMPROBANTE
+    );
+
+COMMIT TRAN;
+
+PRINT 'Listo. Cabeceras quitadas de errados.';

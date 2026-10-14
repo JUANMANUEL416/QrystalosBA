@@ -1,0 +1,227 @@
+{
+  "procedencia": "RGLO",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Motor: tipo CNSGLO en validar config + checks doc-fglo-*.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_CONTAB_FGLO.sql",
+  "documentoOrigen": {
+    "tabla": "FGLO",
+    "claves": [
+      "CNSGLO"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSGLO"
+    }
+  },
+  "generador": "SPK_CONTAB_FGLO",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-fglo"
+      ]
+    },
+    {
+      "id": "N3-contab-fglo",
+      "orden": 3,
+      "sp": "SPK_CONTAB_FGLO",
+      "requiresDocumento": [
+        {
+          "id": "fglo-ref",
+          "desc": "FGLO REFERENCIA1 en MCP; factura/cartera ligada",
+          "obligatorio": true,
+          "validacionSql": "FGLO VLRRECUPERAR + FTR",
+          "checkMotor": "doc-fglo-*"
+        },
+        {
+          "id": "tipo-glo",
+          "desc": "Aceptada vs recuperación cambia cuentas (TTEC / USVGS CONTABCXC)",
+          "obligatorio": true,
+          "validacionSql": "VLRRECUPERAR vs VLRACEPTADO",
+          "checkMotor": "doc-fglo-tipo"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "ttec-glo",
+          "tabla": "TTEC",
+          "desc": "CUENTARAD, CUENTALG, CUENTACG",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-rglo",
+          "usvgs": [
+            "CONTABCXC",
+            "IDCON_TCOM_RGLO"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-cierre-glo"
+      ],
+      "puntosCriticos": [
+        "PC-RGLO-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_CONTAB_FGLO.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "CONTABCXC",
+          "CUENTAGLOSAACEPTADA",
+          "IDCON_TCOM_RGLO",
+          "IDMODELOCONTABLE"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe o se encuentrar cerrado"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante glosa (PROCEDENCIA RGLO)"
+    },
+    {
+      "id": "N2-cierre-glo",
+      "orden": 2,
+      "desc": "Cierre glosa FCIERRE",
+      "llamaAnterior": [
+        "N1-respuesta-glo"
+      ],
+      "nombre": "Glosa aceptada / lista contabilizar",
+      "sp": [
+        "SPK_RESPUESTAGLOSA",
+        "SPK_FINALIDAD_GLOSAS"
+      ],
+      "metodoUi": "Cartera glosas → respuesta EPS; OM Glosas",
+      "requiresDocumento": [
+        {
+          "id": "fglo-estado",
+          "desc": "FGLO en estado que permite SPK_CONTAB_FGLO",
+          "obligatorio": true
+        },
+        {
+          "id": "ftr-fcxcd",
+          "desc": "Factura/cuenta de cobro ligada",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "usvgs-rglo",
+          "usvgs": [
+            "CONTABCXC",
+            "CUENTARAD",
+            "CUENTALG"
+          ],
+          "desc": "Recuperación vs aceptada cambia cuenta",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "Dispara SPK_CONTAB_FGLO (PROCEDENCIA RGLO)",
+      "puntosCriticos": [
+        "PC-RGLO-01"
+      ]
+    },
+    {
+      "id": "N1-respuesta-glo",
+      "orden": 1,
+      "desc": "Respuesta EPS / glosa en cartera",
+      "llamaAnterior": [
+        "N0-config-glo"
+      ],
+      "nombre": "Radicar / responder glosa",
+      "sp": "SPK_RADICAGLOSAS",
+      "requiresDocumento": [
+        {
+          "id": "fcglo",
+          "tabla": "FCGLO",
+          "obligatorio": "si conciliación glosa"
+        }
+      ]
+    },
+    {
+      "id": "N0-config-glo",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "desc": "CUENTARAD, CUENTALG, CUENTACG",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "IDCON_TCOM_RGLO",
+            "CONTABCXC"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración glosas y cartera"
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "RGLO",
+    "tablaOrigen": "FGLO"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/rglo.json",
+    "procesoHermano": "glosas",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-rglo.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

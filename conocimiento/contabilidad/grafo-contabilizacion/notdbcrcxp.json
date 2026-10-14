@@ -1,0 +1,253 @@
+{
+  "procedencia": "NOTDBCRCXP",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "catalogo",
+    "nota": "Validación global en Auditoría BA; cruce documento pendiente salvo CNSFPAG.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_NC_CONTAB_CXPFNT.sql; SPQ_FCXPDBCR · CONTABILIZAR_NOTACREDITO",
+  "documentoOrigen": {
+    "tabla": "FCXPDBCR",
+    "claves": [
+      "CNSFCXP",
+      "ITEM"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFCXP",
+      "REFERENCIA2": "ITEM nota"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_CXPFNT",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-cxpfnt"
+      ]
+    },
+    {
+      "id": "N3-contab-cxpfnt",
+      "orden": 3,
+      "sp": "SPK_NC_CONTAB_CXPFNT",
+      "metodoUi": [
+        "SPQ_FCXPDBCR · CONTABILIZAR_NOTACREDITO",
+        "SPQ_CONTABILIDAD_3 · Notas CxP"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcxpdbcr",
+          "desc": "FCXPDBCR ítem; REFERENCIA1/2 en MCP",
+          "obligatorio": true,
+          "validacionSql": "FCXPDBCR CNSFCXP+ITEM",
+          "checkMotor": "doc-fcxpdbcr-*"
+        },
+        {
+          "id": "fcxp-mcp-previo",
+          "desc": "CxP origen contabilizada (MCP CXP)",
+          "obligatorio": true,
+          "validacionSql": "FCXP.CONTABILIZADA + MCP CXP REF1",
+          "checkMotor": "doc-fcxpdbcr-mcp-cxp"
+        },
+        {
+          "id": "imov-unico",
+          "desc": "Nota inventario: un IMOV por nota (INV_*)",
+          "obligatorio": "si inventario",
+          "validacionSql": "FCXPD N_PRESUP distintos",
+          "checkMotor": "doc-fcxpdbcr-imov-unico"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "idmodelo",
+          "usvgs": "IDMODELOCONTABLE",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom",
+          "usvgs": [
+            "IDCON_TCOM_DEFAULT",
+            "IDCON_TCOM_CXPFNT"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "idimp-iva",
+          "usvgs": "IDIMP_IVA",
+          "desc": "FIMPDV vigente en líneas IVA",
+          "obligatorio": "si IVA"
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-contabilizar-nota-cxp"
+      ],
+      "puntosCriticos": [
+        "PC-CXPFNT-01"
+      ],
+      "llamaAnidado": [
+        "SPK_NC_CONTAB_INV",
+        "SPK_NC_CONTAB_CXP"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_CXPFNT.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "FCXP_ENVIO_DIAN_AUTO",
+          "IDCON_TCOM_DEFAULT",
+          "IDIMP_IVA",
+          "IDIMP_RETEIVA",
+          "IDMODELOCONTABLE"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante nota CxP (NOTDBCRCXP)"
+    },
+    {
+      "id": "N2-contabilizar-nota-cxp",
+      "orden": 2,
+      "sp": [
+        "SPQ_FCXPDBCR · CONTABILIZAR_NOTACREDITO",
+        "SPK_CIERRA_FCXPDBCR"
+      ],
+      "llamaAnterior": [
+        "N1-nota-cxp"
+      ],
+      "nombre": "Cerrar y contabilizar nota CxP",
+      "metodoUi": "Notas CxP → Contabilizar (o vía SPQ_FCXP.CONTABILIZAR_NOTACREDITO)",
+      "requiresDocumento": [
+        {
+          "id": "fcxp-contabilizada",
+          "desc": "FCXP origen con MCP CXP vigente",
+          "obligatorio": true
+        },
+        {
+          "id": "fcxpdbcr-item",
+          "desc": "FCXPDBCR ítem; REFERENCIA2 MCP = ítem",
+          "obligatorio": true
+        },
+        {
+          "id": "gencxp-rama",
+          "desc": "GENCXP=1 puede crear FCXP nueva + SPK_NC_CONTAB_CXP antes de CXPFNT",
+          "obligatorio": "según flags"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "cont-fcxpdbcr",
+          "usvgs": [
+            "CONT_FCXPDBCR_Y_FCXP",
+            "GENCXP"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_NC_CONTAB_CXPFNT (y opcional SPK_NC_CONTAB_CXP); REVISAMCPE",
+      "puntosCriticos": [
+        "PC-CXPFNT-01"
+      ]
+    },
+    {
+      "id": "N1-nota-cxp",
+      "orden": 1,
+      "desc": "Creación nota débito/crédito proveedor",
+      "llamaAnterior": [
+        "N0-config-cxp"
+      ],
+      "nombre": "Registrar nota débito/crédito CxP",
+      "sp": "SPQ_FCXPDBCR",
+      "metodoUi": "Alta nota sobre FCXP; cuentas DB/CR en ítem",
+      "requiresDocumento": [
+        {
+          "id": "fcxp-abierta",
+          "desc": "CxP con saldo y servicios válidos",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-cxp",
+      "orden": 0,
+      "enlace": "grafo-contabilizacion/cxp.json",
+      "llamaAnterior": [],
+      "nombre": "Configuración notas CxP (enlace CXP)",
+      "requiresConfig": [
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "IDCON_TCOM_CXPFNT",
+            "CONT_FCXPDBCR_Y_FCXP",
+            "IDIMP_IVA"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "NOTDBCRCXP",
+    "tablaOrigen": "FCXPDBCR"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/notdbcrcxp.json",
+    "procesoHermano": "cxp-fcxp",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-notdbcrcxp.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

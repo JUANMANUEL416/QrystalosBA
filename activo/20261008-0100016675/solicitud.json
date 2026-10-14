@@ -1,0 +1,167 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-09T01:31:30.208Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016675",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261008-0100016675",
+    "idReq": "0100016675",
+    "fecha": "2026-10-08",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "CLINICA MEDICAL",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CARTERA · Cartera",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "YOXIMAR PADRINO",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/MDICAL834",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CARTERA · Cartera",
+    "requerimiento": "Se requiere realizar un ajuste en el módulo de Glosas, específicamente en el FORMATO DE RESPUESTA DE GLOSA, de manera que las observaciones registradas por cada ítem de la respuesta sean visibles tanto en la previsualización como en la impresión del formato. Actualmente, cuando el usuario registra una observación asociada a un ítem específico, esta información no se visualiza al momento de realizar la previsualización ni se incluye en el formato impreso.\n\n Por qué soporte pidió pasar esta solicitud a requerimiento.\n\nGarantiza que la información detallada y los argumentos específicos de cada ítem sean visibles tanto para el equipo interno como para la entidad pagadora, evitando rechazos por falta de sustento y asegurando una comunicación clara, transparente y completa de la gestión realizada.",
+    "criteriosAceptacion": "1) En una glosa con Tipo respuesta «Por ítem» (TIPORESPUESTA=I), tras guardar «Observación responsable» en al menos un ítem (FGLOD), el PDF del FORMATO DE RESPUESTAS DE GLOSA (paquete FGLOI e impresión individual FGLOI_IND) muestra ese texto en la columna «Respuesta Glosa» del ítem, junto con la respuesta estándar si existe.\n2) La exportación Excel del paquete en Auditoría → Glosas → pestaña Respuestas (ImpRespGlo) incluye la misma observación por ítem en la columna de respuesta.\n3) Glosas respondidas «Por total» (TIPORESPUESTA=T) no cambian de comportamiento salvo regresión en columnas actuales.\n4) Ítems sin observación responsable se imprimen igual que hoy (solo texto de respuesta/motivo ya existente).\n5) Prueba de regresión: aplicar glosa, armar lote FGLOI, imprimir ORIGINAL/COPIA y exportar Excel con el caso de prueba CnsGlosa de las capturas (observación larga con acentos).",
+    "alcance": "Proceso Cartera · Glosas, control «Imprimir respuesta» (Auditoría → Glosas → pestaña Respuestas / ImpRespGloComponent): previsualización PDF vía useCartera → MODELO CARTERA_IMPRESION (FGLOI, FGLOI_IND) y exportación Excel del mismo formato. Incluye ajuste en IXONLINE/SQL SPQ_CARTERA_IMPRESION (consultas DETA1 por ítem) y en Qrystalos2 (RpRptaGlosas.js + ImpRespGloComponent.vue) para pintar FGLOD.OBSRESPON. La captura del diálogo «Respuesta Glosa por Item» (Responder Glosas / RespGlosasComponent) confirma que el dato ya se persiste; no se rediseña ese formulario.",
+    "restricciones": "Fuera de alcance: cambiar textos legales de catálogo FCGLO/FGRPTA, carga masiva (plantilla OBSRESPON_ITEM ya documentada), radicación FEV-RIPS, contabilización de glosa (SPK_RESPUESTAGLOSA / NC), ni otros informes de cartera. No mover la observación a la columna «Motivo Glosa» salvo decisión explícita del comité (propuesta: columna Respuesta). No ejecutar scripts desde Qrystalos BA.",
+    "analisis": "Paso 0 — ¿Ya existe? El REQ pide ver «observaciones por ítem» en previsualización e impresión del FORMATO DE RESPUESTAS DE GLOSA. En Qrystalos2 el camino ya existe para capturarlas: Auditoría → Glosas → Responder Glosas → ítem → campo «Observacion Responsable» (FGLOD.OBSRESPON), persistido por SPQ_FGLO_COL · CRUD_FGLOD (ficha leída en conocimiento/glosas). Las capturas muestran texto guardado en el ítem (trazabilidad MVC/Sanitas) mientras el PDF impreso (pág. 4) solo repite el párrafo genérico de código de respuesta en «Respuesta Glosa». Clasificación: defecto de salida (hueco en consulta + render), no capacitación.\n\nCaminos del control revisados: (1) Responder glosa por ítem y por total; (2) Aplicar/cerrar glosa; (3) Lote FGLOI — asignar glosas (CRUD_FGLOID), Imprimir paquete / Excel / impresión por factura (FGLOI_IND); (4) Radicar respuesta en cartera reutiliza IMP_RESPUESTA para contador, no el layout. La previsualización es el mismo pipeline PDF/Excel que la impresión (useCartera.getPDFinfoCartera).\n\nCausa técnica: SPQ_CARTERA_IMPRESION · FGLOI y FGLOI_IND devuelven en el recordset de ítems (DETA1) FGLOD.OBSERVACION y FGLOD.RESPUESTA pero omiten FGLOD.OBSRESPON. El front concatena solo item.RESPUESTA || item.OBSERVACIONRTA (RpRptaGlosas.js e ImpRespGloComponent buildTextoRespuestaExcel). Por eso el sustento por ítem nunca llega al formato aunque esté en base de datos.\n\nMódulo del formulario dice Cartera pero el flujo operativo es proceso glosas (FGLO_COL / FGLOI); sql.procesoId = glosas. El SP de impresión está catalogado en reportes-cartera (MODELO lógico CARTERA_IMPRESION).",
+    "opciones": [],
+    "recomendacion": "Desarrollo acotado: (A) ampliar SELECT DETA1 en SPQ_CARTERA_IMPRESION · FGLOI y FGLOI_IND con LTRIM(RTRIM(FGLOD.OBSRESPON)) AS OBSRESPON (mismo criterio de limpieza que OBSERVACION/RESPUESTA; valorar CAST NVARCHAR si hay acentos); (B) en Qrystalos2 unificar helper de texto de columna Respuesta para incluir OBSRESPON después de RESPUESTA (salto de línea si ambos existen) en RpRptaGlosas.js y ImpRespGloComponent.vue. Validar en preversión con glosa TIPORESPUESTA=I del cliente antes de cerrar fase 1. Impacto contable: ninguno. Riesgo bajo; regresión principal en glosas por total y paquetes sin ítems.",
+    "cambioPropuestoSimple": "Hoy el auditor puede escribir argumentos detallados por ítem en «Observación responsable», pero al generar el PDF o el Excel del formato oficial de respuesta de glosa ese párrafo no aparece: solo se ve el texto estándar del código de respuesta. Se propone que el servidor envíe ese campo en la consulta de impresión y que el reporte lo muestre en la columna «Respuesta Glosa» de cada ítem, igual en pantalla previa e impresión.",
+    "cambioPropuestoSql": "Objeto: IXONLINE/SQL · SPQ_CARTERA_IMPRESION · METODO FGLOI (tercer recordset, TIPORESPUESTA='I') y METODO FGLOI_IND (mismo detalle por ítem).\n\nBEFORE (extracto DETA1 — sin OBSRESPON):\nFGLOD.OBSERVACION,FGLOD.RESPUESTA,\nFGLOD.VLRGLOSA,FGLOD.VLRACEPTADO,FGLOD.VLRRECUPERAR\n\nAFTER (añadir columna):\nFGLOD.OBSERVACION, FGLOD.RESPUESTA,\nLTRIM(RTRIM(FGLOD.OBSRESPON)) AS OBSRESPON,\nFGLOD.VLRGLOSA, FGLOD.VLRACEPTADO, FGLOD.VLRRECUPERAR\n\nRepetir el mismo bloque en FGLOI_IND (SELECT de ítems filtrado por @N_FACTURA).\n\nValidación en BD (solo lectura):\nSELECT TOP 5 CNSGLO, ITEM, RESPUESTA, OBSRESPON\nFROM FGLOD\nWHERE CNSGLO = @CNSGLO_PRUEBA AND LTRIM(RTRIM(ISNULL(OBSRESPON,''))) <> '';\n\nComparar recordset AppStore.json MODELO CARTERA_IMPRESION METODO FGLOI antes/después: DETA1 debe traer OBSRESPON poblado.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Solo lectura adicional en SPQ_CARTERA_IMPRESION y presentación en PDF/Excel; no modifica FGLO/FGLOD al imprimir, NC, MCPE ni SPK_RESPUESTAGLOSA.",
+        "validadoEn": "2026-10-09T02:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": false,
+      "texto": ""
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-09-18_122526_2_.png",
+        "ruta": "activo/20261008-0100016675/imagenes/Captura_de_pantalla_2026-09-18_122526_2_.png",
+        "subidaEn": "2026-10-08T20:25:22",
+        "url": "/api/caso/20261008-0100016675/imagen/Captura_de_pantalla_2026-09-18_122526_2_.png"
+      },
+      {
+        "nombre": "Captura_de_pantalla_2026-09-18_122947.png",
+        "ruta": "activo/20261008-0100016675/imagenes/Captura_de_pantalla_2026-09-18_122947.png",
+        "subidaEn": "2026-10-08T20:25:22",
+        "url": "/api/caso/20261008-0100016675/imagen/Captura_de_pantalla_2026-09-18_122947.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En una glosa con Tipo respuesta «Por ítem» (TIPORESPUESTA=I), tras guardar «Observación responsable» en al menos un ítem (FGLOD), el PDF del FORMATO DE RESPUESTAS DE GLOSA (paquete FGLOI e impresión individual FGLOI_IND) muestra ese texto en la columna «Respuesta Glosa» del ítem, junto con la respuesta estándar si existe.\n2) La exportación Excel del paquete en Auditoría → Glosas → pestaña Respuestas (ImpRespGlo) incluye la misma observación por ítem en la columna de respuesta.\n3) Glosas respondidas «Por total» (TIPORESPUESTA=T) no cambian de comportamiento salvo regresión en columnas actuales.\n4) Ítems sin observación responsable se imprimen igual que hoy (solo texto de respuesta/motivo ya existente).\n5) Prueba de regresión: aplicar glosa, armar lote FGLOI, imprimir ORIGINAL/COPIA y exportar Excel con el caso de prueba CnsGlosa de las capturas (observación larga con acentos).",
+      "originalesEn": "2026-10-09T01:30:57.280Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En una glosa con Tipo respuesta «Por ítem» (TIPORESPUESTA=I), tras guardar «Observación responsable» en al menos un ítem (FGLOD), el PDF del FORMATO DE RESPUESTAS DE GLOSA (paquete FGLOI e impresión individual FGLOI_IND) muestra ese texto en la columna «Respuesta Glosa» del ítem, junto con la respuesta estándar si existe.\n2) La exportación Excel del paquete en Auditoría → Glosas → pestaña Respuestas (ImpRespGlo) incluye la misma observación por ítem en la columna de respuesta.\n3) Glosas respondidas «Por total» (TIPORESPUESTA=T) no cambian de comportamiento salvo regresión en columnas actuales.\n4) Ítems sin observación responsable se imprimen igual que hoy (solo texto de respuesta/motivo ya existente).\n5) Prueba de regresión: aplicar glosa, armar lote FGLOI, imprimir ORIGINAL/COPIA y exportar Excel con el caso de prueba CnsGlosa de las capturas (observación larga con acentos).",
+      "trasAnalisisEn": "2026-10-09T01:30:58.912Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "REQ contrastado con proceso glosas + impresión CARTERA_IMPRESION. Defecto confirmado: OBSRESPON persistido en CRUD_FGLOD no sale en FGLOI/FGLOI_IND ni en PDF/Excel. Fichas FGLOI/FGLOI_IND y CRUD_FGLOD leídas; no se requiere bajar SP a carpeta del caso salvo releer línea exacta en preversión al implementar.",
+      "fecha": "2026-10-09T02:30:00.000Z",
+      "estado": "listo",
+      "sps": "SPQ_CARTERA_IMPRESION (FGLOI, FGLOI_IND) · fix SELECT; SPQ_FGLO_COL (CRUD_FGLOD) · referencia persistencia"
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261008-0100016675/diagramas/flujo.html",
+      "subidaEn": "2026-10-08T20:31:14",
+      "url": "/api/caso/20261008-0100016675/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "glosas",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261008-0100016675-flujo.html"
+    },
+    "mockups": [
+      "activo/20261008-0100016675/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261008-0100016675\\sql\\",
+    "carpetaRelativa": "activo/20261008-0100016675/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016675\\",
+    "archivosEsperados": [
+      "NO REQUIERE"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "glosas",
+    "catalogo": "conocimiento/glosas/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FGLO_COL",
+        "metodo": "CRUD_FGLOD",
+        "estado": "leido",
+        "hace": "CRUD FGLOD por ítem; recalcula FGLOCG desde CODGLOSA.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FGLO_COL",
+        "metodo": "IMP_RESPUESTA",
+        "estado": "leido",
+        "hace": "Marca FGLOI impreso; incrementa IMPRESIONES.",
+        "llama": []
+      }
+    ],
+    "notas": "Impresión usa MODELO CARTERA_IMPRESION (catálogo reportes-cartera). Proceso de negocio: glosas.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261008-0100016675.html",
+    "aprobados": "aprobados/20261008-0100016675/",
+    "imagenes": "aprobados/20261008-0100016675/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-08",
+    "ultimoEnvio": "2026-10-08T20:35:17",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

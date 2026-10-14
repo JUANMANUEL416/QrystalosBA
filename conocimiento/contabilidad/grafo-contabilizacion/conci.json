@@ -1,0 +1,237 @@
+{
+  "procedencia": "CONCI",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "catalogo",
+    "nota": "Validación global en Auditoría BA; cruce documento pendiente salvo CNSFPAG.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_CONTAB_CONCI.sql, SPK_NC_CONTAB_ANULA_CONCI.sql",
+  "documentoOrigen": {
+    "tabla": "FCONCI",
+    "claves": [
+      "IDFCONCI"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "IDFCONCI"
+    }
+  },
+  "generadores": [
+    "SPK_CONTAB_CONCI",
+    "SPK_NC_CONTAB_ANULA_CONCI"
+  ],
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-contab-conci"
+      ]
+    },
+    {
+      "id": "N3-contab-conci",
+      "orden": 3,
+      "sp": "SPK_CONTAB_CONCI",
+      "metodoUi": [
+        "Conciliaciones cartera · contabilizar",
+        "SPQ_CONTABILIDAD_3 (no confundir pestaña FCXC errada)"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fconci-ref",
+          "desc": "FCONCI REFERENCIA1; VLRRECUPERAR > 0",
+          "obligatorio": true,
+          "validacionSql": "FCONCI + FCONCID VLRRECUPERAR",
+          "checkMotor": "doc-fconci-*"
+        },
+        {
+          "id": "anula",
+          "desc": "Anulación: SPK_NC_CONTAB_ANULA_CONCI (procedencia distinta)",
+          "obligatorio": false
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "usvgs-conci",
+          "usvgs": [
+            "IDCON_TCOM_CONCI",
+            "CUENTA_CONCI"
+          ],
+          "desc": "KO FNOT: NO EXISTE CONFIGURACION CONTABLE PARA CONCILIACIONES (concepto relacionado)",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-cerrar-conci"
+      ],
+      "puntosCriticos": [
+        "PC-CONCI-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_CONTAB_CONCI.sql",
+          "SPK_NC_CONTAB_ANULA_CONCI.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "FNOT_FECHACONCILIA",
+          "IDCON_TCOM_CONCI",
+          "IDMODELOCONTABLE"
+        ],
+        "validacionesKo": [
+          "No Existe valor a recuperar no hay necesidad de comprobante",
+          "Periodo Contable NO Existe",
+          "Periodo Contable Cerrado"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante conciliación (PROCEDENCIA CONCI)",
+      "variantesGenerador": [
+        {
+          "generador": "SPK_CONTAB_CONCI",
+          "condicion": "Causación recuperación"
+        },
+        {
+          "generador": "SPK_NC_CONTAB_ANULA_CONCI",
+          "condicion": "Anular conciliación contabilizada"
+        }
+      ]
+    },
+    {
+      "id": "N2-cerrar-conci",
+      "orden": 2,
+      "desc": "Conciliación aplicada a cartera",
+      "llamaAnterior": [
+        "N1-armar-fconci"
+      ],
+      "nombre": "Cerrar conciliación cartera",
+      "sp": "SPK_APLICA_CONCILIACION",
+      "metodoUi": "Conciliaciones cartera → cerrar FCONCI",
+      "requiresDocumento": [
+        {
+          "id": "fconci-cuadre",
+          "desc": "FCONCI + detalle cuadrado con cartera",
+          "obligatorio": true
+        },
+        {
+          "id": "vlr-recuperar",
+          "desc": "VLRRECUPERAR > 0 para generar comprobante",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "usvgs-conci",
+          "usvgs": [
+            "IDCON_TCOM_CONCI",
+            "CUENTA_CONCI_*"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "EXEC SPK_CONTAB_CONCI; anulación vía SPK_NC_CONTAB_ANULA_CONCI",
+      "puntosCriticos": [
+        "PC-CONCI-01"
+      ]
+    },
+    {
+      "id": "N1-armar-fconci",
+      "orden": 1,
+      "desc": "Detalle FCONCID vs FCXCD",
+      "llamaAnterior": [
+        "N0-config-conci"
+      ],
+      "nombre": "Armar conciliación",
+      "sp": "SPQ_FCONCI*",
+      "requiresDocumento": [
+        {
+          "id": "fcxc-saldos",
+          "desc": "Cuentas de cobro y movimientos del periodo",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-conci",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración conciliación vs contable",
+      "nota": "Distinto de /cont/conciContables (cruce MCP)"
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3",
+    "procedencia": "CONCI",
+    "tablaOrigen": "FCONCI",
+    "nota": "Distinto de conciliación bancaria saldos"
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/conci.json",
+    "procesoHermano": "conciliaciones",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-conci.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

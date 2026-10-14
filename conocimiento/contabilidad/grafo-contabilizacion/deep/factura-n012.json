@@ -1,0 +1,156 @@
+{
+  "actualizado": "2026-10-13",
+  "nodos": [
+    {
+      "id": "N2-gate-factura",
+      "nombre": "Factura lista para contabilizar",
+      "sp": [
+        "SPK_FACTURA_AUTPG",
+        "SPK_FACTURACE_N",
+        "SPK_FACTURA_ASIS",
+        "SPK_FAC_VENTA_INV",
+        "SPQ_FTR_COL · cierre/emisión"
+      ],
+      "metodoUi": [
+        "Facturación masiva / individual (AUTPG, CI, CE, ARS)",
+        "Inventario venta → SPK_FAC_VENTA_INV",
+        "Job FTRCO si CONTAB_FTR_JOB=SI",
+        "SPQ_CONTABILIDAD_3 · pestaña Facturas"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "contabilizada-0",
+          "desc": "FTR.CONTABILIZADA=0 antes del SPK",
+          "obligatorio": true
+        },
+        {
+          "id": "ftrd-completo",
+          "desc": "FTRD con prefijos, centros, IVA coherentes",
+          "obligatorio": true
+        },
+        {
+          "id": "si-dian",
+          "desc": "FACTE=2 y XML DIAN cuadrado si CONTAB_FTR_POSTDIAN=SI",
+          "obligatorio": "según variable"
+        },
+        {
+          "id": "tercero-ftr",
+          "desc": "IDTERCERO en TER (o homologación AFI)",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-f-factura",
+          "tabla": "PRI",
+          "desc": "PRI.CERRADO=0 mes F_FACTURA",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "Dispara SPK_NC_CONTAB_FTR (inline o OM); puede anidar SPK_NC_CONTAB_CAJA_ING (copago POS), SPK_NC_CONTAB_INV (costo venta)",
+      "llamaAnterior": [
+        "N1-origen-ftr"
+      ],
+      "puntosCriticos": [
+        "PC-FTR-01"
+      ]
+    },
+    {
+      "id": "N1-origen-ftr",
+      "nombre": "Emitir / armar factura",
+      "sp": [
+        "SPQ_FTR_COL",
+        "SPK_CREA_FACTURA_POS_CAJA",
+        "Origen HADM/HPRE/CIT según procedencia operativa"
+      ],
+      "metodos": [
+        "FTR_CRUD / generación desde admisión",
+        "Prefactura → factura",
+        "RIPS / PGP si aplica"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "origen-modulo",
+          "desc": "Documento fuente (AUT, HADM, IMOV, FCJ copago…) según FTR.PROCEDENCIA operativa",
+          "obligatorio": true
+        },
+        {
+          "id": "plan-cobertura",
+          "desc": "PPT/PLAN/CONTRATO resuelto para líneas y TIPOTTEC",
+          "obligatorio": "según módulo"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "kmcom-prefijos",
+          "tabla": "KMCOM",
+          "desc": "Modelo IDMODELOCONTABLE + prefijos FTRD",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec-ingreso",
+          "tabla": "TTEC",
+          "desc": "TIPOTTEC → cuentas ingreso/cartera",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-factura"
+      ]
+    },
+    {
+      "id": "N0-config-factura",
+      "nombre": "Configuración facturación y contable",
+      "pantallas": [
+        "/conf/kmcom",
+        "/conf/ttec",
+        "/cont/params_contables",
+        "USVGS facturación y CONTAB_FTR*"
+      ],
+      "requiresConfig": [
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "desc": "IDTIPOCONT DESCUENTOS, ingresos por prefijo",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "desc": "Detalle para cuentas FTRD y impuestos",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-ftr",
+          "usvgs": [
+            "IDCON_TCOM_FTR",
+            "CONTAB_FTR_POSTDIAN",
+            "CONTAB_IMP_FTR",
+            "FACTURAPOS_ACTIVA",
+            "CONTAB_GASTOVEN_UNI",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "fimp",
+          "tabla": "FIMPDV",
+          "desc": "Vigencia impuestos en líneas",
+          "obligatorio": "si IVA"
+        }
+      ],
+      "llamaAnterior": []
+    }
+  ],
+  "nodosExtra": []
+}

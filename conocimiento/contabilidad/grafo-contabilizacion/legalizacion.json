@@ -1,0 +1,229 @@
+{
+  "procedencia": "LEGALIZACION",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo CNSFLEG — FLEG/FLEGD, CAJ menor, MCP LEGALIZACION.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "sql/SPK_CONTAB_FLEG.sql",
+  "documentoOrigen": {
+    "tabla": "FLEG",
+    "claves": [
+      "CNSFLEG"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFLEG"
+    }
+  },
+  "generador": "SPK_CONTAB_FLEG",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión (flujo clásico MCP)",
+      "sp": [
+        "SPK_REVISAR_COMPROBANTE",
+        "SPK_SUMA_DBCR"
+      ],
+      "llamaAnterior": [
+        "N3-contab-fleg"
+      ]
+    },
+    {
+      "id": "N3-contab-fleg",
+      "orden": 3,
+      "sp": "SPK_CONTAB_FLEG",
+      "metodoUi": [
+        "Caja menor · legalización gastos"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fleg",
+          "desc": "FLEG + detalle gastos caja menor",
+          "obligatorio": true,
+          "validacionSql": "FLEG CNSFLEG + FLEGD",
+          "checkMotor": "doc-fleg-*"
+        },
+        {
+          "id": "caja-menor",
+          "desc": "CAJ.CLASE=MENOR; no confundir con ANTICIPOS",
+          "obligatorio": true,
+          "validacionSql": "CAJ.CLASE MENOR",
+          "checkMotor": "doc-fleg-caj"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "cpcj",
+          "tabla": "CPCJ",
+          "desc": "Conceptos con CUENTA Detalle",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-leg",
+          "usvgs": "IDCON_TCOM_LEG",
+          "obligatorio": true
+        },
+        {
+          "id": "habilita-menor",
+          "usvgs": "HABILITA_CCAFCJMENOR",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-legalizar"
+      ],
+      "puntosCriticos": [
+        "PC-FLEG-01"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_CONTAB_FLEG.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "IDCON_TCOM_CXC",
+          "IDCON_TCOM_DEFAULT"
+        ],
+        "validacionesKo": [
+          "Periodo Contable NO Existe"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "nombre": "Generar comprobante legalización (LEGALIZACION)"
+    },
+    {
+      "id": "N2-legalizar",
+      "orden": 2,
+      "desc": "Cierre legalización menor",
+      "llamaAnterior": [
+        "N1-gastos-menor"
+      ],
+      "nombre": "Legalizar gastos caja menor",
+      "sp": "SPK_CONTAB_FLEG",
+      "metodoUi": "Caja menor → legalización FLEG",
+      "requiresDocumento": [
+        {
+          "id": "fleg-detalle",
+          "desc": "FLEG + líneas con soporte y conceptos",
+          "obligatorio": true
+        },
+        {
+          "id": "caja-menor",
+          "desc": "CAJ.CLASE=MENOR; egresos previos sin duplicar MCP",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "cpcj-menor",
+          "tabla": "CPCJ",
+          "obligatorio": true
+        },
+        {
+          "id": "tcom-leg",
+          "usvgs": "IDCON_TCOM_LEG",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        }
+      ],
+      "efecto": "PROCEDENCIA LEGALIZACION — distinto ANTICIPOS",
+      "puntosCriticos": [
+        "PC-FLEG-01"
+      ]
+    },
+    {
+      "id": "N1-gastos-menor",
+      "orden": 1,
+      "enlace": "grafo-contabilizacion/caja.json",
+      "llamaAnterior": [
+        "N0-config-leg"
+      ],
+      "nombre": "Registrar gastos / reintegros",
+      "sp": "SPQ_CONF_CAJA",
+      "metodos": [
+        "Egresos caja menor",
+        "Reembolso CPCJ_REEMB (sin MCP CAJA)"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcj-menor",
+          "desc": "Recibos egreso caja menor acumulados",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-leg",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "caj-menor",
+          "tabla": "CAJ",
+          "desc": "HABILITA_CCAFCJMENOR",
+          "obligatorio": true
+        },
+        {
+          "id": "cpcj",
+          "tabla": "CPCJ",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "HABILITA_CCAFCJMENOR",
+            "IDCON_TCOM_LEG"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración legalización",
+      "enlace": "grafo-contabilizacion/caja.json"
+    }
+  ],
+  "nota": "No confundir con SPK_NC_CONTAB_ANTICIPO (anticipos compras)",
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/legalizacion.json",
+    "procesoHermano": "caja",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-legalizacion.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  },
+  "puertaOtrosModulos": {
+    "procedencia": "LEGALIZACION",
+    "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS",
+    "nota": "Pestaña Otros módulos; mismo generador que Reconstruir en MCPE.",
+    "tablaOrigen": "FLEG / caja menor"
+  }
+}

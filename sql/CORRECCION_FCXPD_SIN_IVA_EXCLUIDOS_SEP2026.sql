@@ -1,0 +1,222 @@
+/*
+  Corrección de cuentas. CEM. Septiembre 2026.
+  Seis cuentas por pagar sin IVA quedaron en medicamentos gravados.
+  El detalle pasa a medicamentos excluidos. El crédito del encabezado,
+  donde quedó en gravados, pasa a proveedores. El lote de inventario
+  nacido en esa entrada pasa a excluidos y a su devolución.
+
+    26CM000489  DPE11219   detalle. El crédito ya es 22050101.
+    34CM000014  DPE10812   detalle y crédito
+    03CM002011  DPE11248   detalle y crédito
+    34CM000015  DPE11687   detalle y crédito
+    34CM000016  DPE11686   detalle y crédito
+    34CM000017  DPE11674   detalle y crédito
+
+  16 líneas, IVA 0, sin cuenta de IVA, sin contabilizar.
+  DPE10812 no creó lote: esos artículos están en los lotes de DPE11248.
+
+  Si alguna línea tiene IVA, ya está contabilizada o el lote no está
+  en gravados, no deja nada grabado. Ejecutar el bloque completo.
+*/
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+BEGIN TRAN;
+
+IF (
+  SELECT COUNT(*)
+  FROM CUE
+  WHERE CUENTA = N'14150502'
+    AND TIPO = N'Detalle'
+    AND ESTADO = N'Activa'
+    AND MCUEGRAV = 1
+    AND CUENTAGRAV = N'14150501'
+    AND CUENTAREV = N'14150591'
+) <> 1
+OR (
+  SELECT COUNT(*)
+  FROM CUE
+  WHERE CUENTA = N'22050101'
+    AND TIPO = N'Detalle'
+    AND ESTADO = N'Activa'
+) <> 1
+OR (
+  SELECT COUNT(*)
+  FROM CUE
+  WHERE CUENTA = N'14150591'
+    AND TIPO = N'Detalle'
+    AND ESTADO = N'Activa'
+) <> 1
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50001, 'La cuenta de excluidos, proveedores o devolucion no esta como se espera. No se cambio nada.', 1;
+END;
+
+IF (
+  SELECT COUNT(*)
+  FROM FCXP
+  WHERE CNSFCXP IN (
+      N'26CM000489', N'34CM000014', N'03CM002011',
+      N'34CM000015', N'34CM000016', N'34CM000017'
+    )
+    AND ESTADO = N'N'
+    AND COALESCE(CONTABILIZADA, 0) = 0
+    AND COALESCE(NROCOMPROBANTE, N'') = N''
+) <> 6
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50002, 'Alguna CxP no esta en estado N o ya tiene comprobante. No se cambio nada.', 1;
+END;
+
+IF (
+  SELECT COUNT(*)
+  FROM FCXP
+  WHERE CNSFCXP IN (N'34CM000014', N'03CM002011', N'34CM000015', N'34CM000016', N'34CM000017')
+    AND CUECREDITO = N'14150501'
+) <> 5
+OR (
+  SELECT COUNT(*)
+  FROM FCXP
+  WHERE CNSFCXP = N'26CM000489'
+    AND CUECREDITO = N'22050101'
+) <> 1
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50003, 'El credito del encabezado no esta como se espera. No se cambio nada.', 1;
+END;
+
+IF (
+  SELECT COUNT(*)
+  FROM FCXPD
+  WHERE CNSFCXP IN (
+      N'26CM000489', N'34CM000014', N'03CM002011',
+      N'34CM000015', N'34CM000016', N'34CM000017'
+    )
+) <> 16
+OR EXISTS (
+  SELECT 1
+  FROM FCXPD
+  WHERE CNSFCXP IN (
+      N'26CM000489', N'34CM000014', N'03CM002011',
+      N'34CM000015', N'34CM000016', N'34CM000017'
+    )
+    AND (
+      COALESCE(VLR_IVA, 0) <> 0
+      OR CUENTA_SER <> N'14150501'
+      OR COALESCE(CUENTA_IVA, N'') <> N''
+    )
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50004, 'Hay una linea con IVA o que no esta en 14150501. No se cambio nada.', 1;
+END;
+
+IF EXISTS (
+  SELECT 1
+  FROM IEXI I
+  WHERE EXISTS (
+      SELECT 1
+      FROM FCXPD D
+      WHERE D.N_PRESUP = I.CNSMOV
+        AND D.IDSERVICIO = I.IDARTICULO
+        AND D.CNSFCXP IN (
+          N'26CM000489', N'34CM000014', N'03CM002011',
+          N'34CM000015', N'34CM000016', N'34CM000017'
+        )
+    )
+    AND (
+      I.CUEDEBITO <> N'14150501'
+      OR I.CUECREDITO <> N'14150590'
+    )
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50005, 'Hay un lote de estas entradas que no esta en gravados. No se cambio nada.', 1;
+END;
+
+UPDATE FCXPD
+SET CUENTA_SER = N'14150502'
+WHERE CNSFCXP IN (
+    N'26CM000489', N'34CM000014', N'03CM002011',
+    N'34CM000015', N'34CM000016', N'34CM000017'
+  )
+  AND COALESCE(VLR_IVA, 0) = 0
+  AND CUENTA_SER = N'14150501'
+  AND COALESCE(CUENTA_IVA, N'') = N'';
+
+UPDATE FCXP
+SET CUECREDITO = N'22050101'
+WHERE CNSFCXP IN (N'34CM000014', N'03CM002011', N'34CM000015', N'34CM000016', N'34CM000017')
+  AND CUECREDITO = N'14150501'
+  AND ESTADO = N'N'
+  AND COALESCE(CONTABILIZADA, 0) = 0;
+
+UPDATE I
+SET CUEDEBITO = N'14150502',
+    CUECREDITO = N'14150591'
+FROM IEXI I
+WHERE I.CUEDEBITO = N'14150501'
+  AND I.CUECREDITO = N'14150590'
+  AND EXISTS (
+    SELECT 1
+    FROM FCXPD D
+    WHERE D.N_PRESUP = I.CNSMOV
+      AND D.IDSERVICIO = I.IDARTICULO
+      AND D.CNSFCXP IN (
+        N'26CM000489', N'34CM000014', N'03CM002011',
+        N'34CM000015', N'34CM000016', N'34CM000017'
+      )
+      AND D.CUENTA_SER = N'14150502'
+      AND COALESCE(D.VLR_IVA, 0) = 0
+  );
+
+IF EXISTS (
+  SELECT 1
+  FROM FCXPD
+  WHERE CNSFCXP IN (
+      N'26CM000489', N'34CM000014', N'03CM002011',
+      N'34CM000015', N'34CM000016', N'34CM000017'
+    )
+    AND CUENTA_SER <> N'14150502'
+)
+OR EXISTS (
+  SELECT 1
+  FROM FCXP
+  WHERE CNSFCXP IN (
+      N'26CM000489', N'34CM000014', N'03CM002011',
+      N'34CM000015', N'34CM000016', N'34CM000017'
+    )
+    AND CUECREDITO <> N'22050101'
+)
+OR EXISTS (
+  SELECT 1
+  FROM IEXI I
+  WHERE EXISTS (
+      SELECT 1
+      FROM FCXPD D
+      WHERE D.N_PRESUP = I.CNSMOV
+        AND D.IDSERVICIO = I.IDARTICULO
+        AND D.CNSFCXP IN (
+          N'26CM000489', N'34CM000014', N'03CM002011',
+          N'34CM000015', N'34CM000016', N'34CM000017'
+        )
+    )
+    AND (I.CUEDEBITO <> N'14150502' OR I.CUECREDITO <> N'14150591')
+)
+BEGIN
+  ROLLBACK TRAN;
+  THROW 50006, 'La correccion no quedo completa. No se cambio nada.', 1;
+END;
+
+COMMIT TRAN;
+
+SELECT P.CNSFCXP, P.NOREFERENCIA, P.CUECREDITO,
+       SUM(CASE WHEN D.CUENTA_SER = N'14150502' THEN 1 ELSE 0 END) AS LINEAS_EXCLUIDOS
+FROM FCXP P
+INNER JOIN FCXPD D ON D.CNSFCXP = P.CNSFCXP
+WHERE P.CNSFCXP IN (
+    N'26CM000489', N'34CM000014', N'03CM002011',
+    N'34CM000015', N'34CM000016', N'34CM000017'
+  )
+GROUP BY P.CNSFCXP, P.NOREFERENCIA, P.CUECREDITO
+ORDER BY P.CNSFCXP;

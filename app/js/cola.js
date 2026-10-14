@@ -5,17 +5,22 @@ window.QrysCola = (function () {
   const STORAGE_COLA = "qrystalos_ba_cola";
   const STORAGE_COLA_LEGACY = "qrys_quatec_cola";
   const PATH_COLA = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\";
+  /** Copia en memoria: si el navegador rechaza localStorage, la tabla igual muestra el estado nuevo. */
+  let memoriaCola = null;
 
   function loadCola() {
+    if (memoriaCola) return memoriaCola;
     try {
       const raw = localStorage.getItem(STORAGE_COLA) || localStorage.getItem(STORAGE_COLA_LEGACY) || "[]";
       const items = JSON.parse(raw);
       if (!localStorage.getItem(STORAGE_COLA) && localStorage.getItem(STORAGE_COLA_LEGACY)) {
         localStorage.setItem(STORAGE_COLA, raw);
       }
-      return Array.isArray(items) ? items : [];
+      memoriaCola = Array.isArray(items) ? items : [];
+      return memoriaCola;
     } catch {
-      return [];
+      memoriaCola = [];
+      return memoriaCola;
     }
   }
 
@@ -23,22 +28,46 @@ window.QrysCola = (function () {
     localStorage.setItem(STORAGE_COLA, JSON.stringify(items));
   }
 
+  /** La lista completa iba repetida en cada REQ y el navegador rechazaba el guardado. */
+  function colaParaGuardar(items) {
+    return (items || []).map((item) => {
+      if (!item?.parseResult?.filas) return item;
+      const parseResult = { ...item.parseResult };
+      delete parseResult.filas;
+      return { ...item, parseResult };
+    });
+  }
+
   async function persistColaToServer(items) {
-    if (location.protocol === "file:") return;
+    if (location.protocol === "file:") return { ok: false, error: "file" };
     try {
-      await fetch("/api/cola", {
+      const resp = await fetch("/api/cola", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),
       });
-    } catch {
-      /* caché local sigue válida */
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) return { ok: false, error: data.error || `HTTP ${resp.status}` };
+      return { ok: true, ...data };
+    } catch (e) {
+      return { ok: false, error: e.message || "No hubo respuesta del servidor" };
     }
   }
 
   function saveCola(items) {
-    saveColaLocal(items);
-    persistColaToServer(items);
+    const slim = colaParaGuardar(items);
+    memoriaCola = slim;
+    try {
+      saveColaLocal(slim);
+    } catch {
+      try {
+        localStorage.removeItem(STORAGE_COLA);
+        saveColaLocal(slim);
+      } catch {
+        /* la tabla usa memoriaCola; el POST igual deja el estado en el servidor */
+      }
+    }
+    return persistColaToServer(slim);
   }
 
   async function syncFromServer() {
@@ -48,8 +77,19 @@ window.QrysCola = (function () {
       if (!resp.ok) return loadCola();
       const data = await resp.json();
       if (Array.isArray(data.items) && data.items.length) {
-        saveColaLocal(data.items);
-        return data.items;
+        const slim = colaParaGuardar(data.items);
+        memoriaCola = slim;
+        try {
+          saveColaLocal(slim);
+        } catch {
+          try {
+            localStorage.removeItem(STORAGE_COLA);
+            saveColaLocal(slim);
+          } catch {
+            /* la tabla usa memoriaCola */
+          }
+        }
+        return slim;
       }
     } catch {
       /* usar local */
@@ -473,7 +513,7 @@ window.QrysCola = (function () {
         const prev = cola[existingIdx];
         // Si volvió a aparecer en la lista dinámica, reabre como pendiente
         // solo cuando estaba marcado terminado (no toca en_analisis/dictamen/…).
-        const reabrir = prev.estado === "terminado" ? { estado: "pendiente" } : {};
+        const reabrir = prev.estado === "terminado" ? { estado: "pendiente", reabierto: true } : {};
         cola[existingIdx] = {
           ...prev,
           ...reabrir,
@@ -519,13 +559,14 @@ window.QrysCola = (function () {
       });
     }
 
-    saveCola(sortColaItems(cola));
+    const guardado = saveCola(sortColaItems(cola));
 
     return {
       registrados,
       omitidos,
       terminados,
       totalEnArchivo: parseResult.filas?.length || 0,
+      guardado,
     };
   }
 
@@ -570,33 +611,39 @@ window.QrysCola = (function () {
 
     const item = buildColaItem({ fileName, parseResult, idReqSeleccionado: reqId, ordenPagina });
     cola.push(item);
-    saveCola(sortColaItems(cola));
-    return { added: true, duplicate: false, item, idReq: reqId };
+    const guardado = saveCola(sortColaItems(cola));
+    return { added: true, duplicate: false, item, idReq: reqId, guardado };
   }
 
   function updateEstado(archivoCola, estado, extra = {}, idReq) {
     const cola = loadCola();
-    const i = cola.findIndex(
-      (c) =>
-        c.archivoCola === archivoCola &&
-        (!idReq || c.idReqSeleccionado === idReq || c.parsed?.idReq === idReq),
-    );
-    if (i >= 0) {
-      const rank = {
-        pendiente: 0,
-        en_analisis: 1,
-        dictamen: 2,
-        aprobado: 3,
-        enviado: 4,
-        terminado: 5,
-      };
-      const actual = cola[i].estado;
-      // "terminado" (ausente en lista) siempre gana; el resto no baja de rango.
-      const siguiente =
-        estado === "terminado" || (rank[estado] || 0) >= (rank[actual] || 0) ? estado : actual;
-      cola[i] = { ...cola[i], ...extra, estado: siguiente };
-      saveCola(cola);
+    const req = String(idReq || "").trim();
+    let i = -1;
+    if (req) {
+      i = cola.findIndex((c) => c.idReqSeleccionado === req || c.parsed?.idReq === req);
     }
+    if (i < 0 && archivoCola) {
+      i = cola.findIndex((c) => c.archivoCola === archivoCola && !req);
+    }
+    if (i < 0) return Promise.resolve(false);
+    const rank = {
+      pendiente: 0,
+      en_analisis: 1,
+      dictamen: 2,
+      aprobado: 3,
+      enviado: 4,
+      terminado: 5,
+    };
+    const actual = cola[i].estado;
+    const reabierto = extra.reabierto && estado === "pendiente" && actual === "terminado";
+    const siguiente = reabierto
+      ? "pendiente"
+      : estado === "terminado" || (rank[estado] || 0) >= (rank[actual] || 0)
+        ? estado
+        : actual;
+    cola[i] = { ...cola[i], ...extra, estado: siguiente };
+    if (!reabierto) delete cola[i].reabierto;
+    return saveCola(cola).then(() => true);
   }
 
   function migrateOrdenPagina() {
@@ -639,6 +686,21 @@ window.QrysCola = (function () {
     const base = verTerminados ? cola : activos;
     const visibles = base.filter((item) => coincideFiltroReq(item, filtro));
     const nTerm = cola.length - activos.length;
+    const nPend = cola.filter((i) => i.estado === "pendiente" || !i.estado).length;
+    const nDict = cola.filter((i) => i.estado === "dictamen" || i.estado === "aprobado").length;
+    const nProg = cola.filter((i) => i.estado === "en_analisis").length;
+
+    const setKpi = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(val);
+    };
+    setKpi("colaKpiTotal", cola.length);
+    setKpi("colaKpiPendientes", nPend);
+    setKpi("colaKpiDictamen", nDict);
+    setKpi("colaKpiTerminados", nTerm);
+    setKpi("hubKpiColaTotal", activos.length);
+    setKpi("hubKpiCasosFase1", nProg);
+
     const hint = document.getElementById("colaFiltroHint");
     if (hint) {
       const partes = [];

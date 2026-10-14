@@ -3,9 +3,9 @@
   "nombre": "Cartera · Recaudos",
   "modulo": "FPAG_COL",
   "estado": "parcial",
-  "resumen": "Registrar el pago del pagador (FPAG), asignar facturas de CxC (FPAGD/FPAGDI vía RPDX), aplicar el recaudo y contabilizar. Ventana Administrativo → Cartera → Recaudos. Orquestador FE: MODELO FPAG_COL → SPQ_FPAG_COL. Al aplicar llama SPK_PAGOSCXC (actualiza CxC; si hay glosa crea FGLO).",
-  "actualizado": "2026-09-06T07:52:00",
-  "notaSql": "SPQ_FPAG_COL 46/46 leído en sql/SPQ_FPAG_COL.sql (2026-09-06). SPKs PAGOSCXC, DESPAGOSCXC, CARGA_MASIVA, FINALIDAD_GLOSAS, FPAG, RETIRA_FPAGD, BORRAPAGO, NC_CONTAB_CXC, FINALIDAD_DEVOL, RETIRAFTR leídos.",
+  "resumen": "Registrar el pago del pagador (FPAG), asignar facturas de CxC y aplicar. Ingresos: CAJA, BANCOS, GLOSAS (Paso a seguir 3–6), CXP, DEVOLUCION (0–2), LEVANTAMIENTO. La plantilla Excel la arma la pantalla según ingreso y FINDEVOL. Desaplicar en periodo cerrado con aval contable (REQ 0100016348, solo PREVERSION). Ventana Administrativo → Cartera → Recaudos.",
+  "actualizado": "2026-10-03T16:40:00",
+  "notaSql": "2026-10-03: SPQ_FPAG_COL bajado de DESAIX a sql/ (Documentar). PREVERSION ≠ última Cerrada 2.0.7 (IDANT 2.0.6): PREVERSION trae CONSULTA_PRI_RECAUDO, SOLICITAR_AVAL_RECAUDO, LISTAR_RECAUDOS_AVAL_PENDIENTE, AVALAR_RECAUDO y RETIRO_MASIVO_CON_AVAL y endurece DESAPLICARPAGO contra PRI (REQ 0100016348). La 2.0.7 no los tiene. 2026-10-02: SPK_FINALIDAD_GLOSAS idéntico en PREVERSION y liberada.",
   "alcanceHasta": "Aplicar o anular/desaplicar el recaudo y su efecto en CxC. Glosas (FGLO), conciliaciones, notas DB/CR y presupuesto son procesos hermanos.",
   "familia": "cartera",
   "prioridad": 3,
@@ -22,7 +22,7 @@
       "ruta": "admin.recaudos",
       "path": "/admin/Recaudos",
       "vue": "FPAGComponent → CXCComponent (SUBIR_TXT, CARGAR_FACTURAS, DETALLE_RESPONDER)",
-      "entrada": "Dentro del recaudo abierto: cargue plano o Excel de facturas. Columnas según INGRESO (GLOSAS incluye MOTIVO1/MOTIVO2)."
+      "entrada": "Dentro del recaudo abierto: Estructura Excel según INGRESO y Paso a seguir (FINDEVOL). VALIDACION es fórmula de la hoja (FINDEVOL 4, 5, 6 y CAJA/BANCOS/CXP); no se envía al servidor."
     },
     {
       "uso": "Consignaciones ADRES (Perú)",
@@ -30,6 +30,13 @@
       "path": "/admin/Recaudos",
       "vue": "FPAGComponent → DistribuyeAdresComponent (MODELO BMOV / DISTRUYE_ADRES)",
       "entrada": "Botón visible si PAGOS_ADRES devuelve PEND > 0. Permiso BDistribuirAdres."
+    },
+    {
+      "uso": "Aval contable para desaplicar en periodo cerrado (preversión)",
+      "ruta": "cont.avalRecaudos",
+      "path": "/cont/avalRecaudos",
+      "vue": "AvalRecaudosPage.vue → Contable/AvalRecaudosComponent.vue",
+      "entrada": "Contable → Aval recaudos. Lista FPAG CAJA/BANCOS cerrados con AVALCONTABLE=Pendiente; Avalar seleccionados (permiso BAvalRecaudoConta, módulo MENUQ_CONTABLE). Solo en PREVERSION de IXONLINE/SQL (REQ 0100016348)."
     }
   ],
   "capas": [
@@ -38,7 +45,7 @@
       "numero": 1,
       "nombre": "Configuración",
       "estado": "parcial",
-      "explicacion": "Antes de aplicar: periodo contable abierto (PRI), cuentas de impuesto vigentes en FIMPDV, códigos de glosa/devolución en FCGLO si INGRESO=GLOSAS o DEVOLUCION, y variables REC_VLRMAX_AJUSTE / VLRMAXAJUSTERECAUDOS para límites de ajuste al peso.",
+      "explicacion": "Antes de aplicar: periodo contable abierto (PRI), cuentas de impuesto vigentes en FIMPDV, códigos de glosa/devolución en FCGLO si INGRESO=GLOSAS o DEVOLUCION, variable REC_VLRMAX_AJUSTE para el ajuste al peso y, si la empresa exige aprobación de contabilidad para desaplicar en periodo cerrado, REC_SOLICITA_AVAL=SI.",
       "tablasClave": [
         "FCGLO",
         "FIMPDV",
@@ -75,7 +82,7 @@
         {
           "id": "variables-ajuste",
           "nombre": "Límites de ajuste al peso",
-          "explicacion": "Variable REC_VLRMAX_AJUSTE (FNK_VALORVARIABLE): el FE bloquea BANCOS/CAJA/CXP si no está configurada; el SP valida |VLRAJUSTEPESO| en APLICARPAGO. VLRMAXAJUSTERECAUDOS aparece comentada para otros descuentos.",
+          "explicacion": "Variable REC_VLRMAX_AJUSTE (FNK_VALORVARIABLE): el FE bloquea BANCOS/CAJA/CXP si no está configurada; el SP valida |VLRAJUSTEPESO| en APLICARPAGO. VLRMAXAJUSTERECAUDOS aparece comentada para otros descuentos. REC_SOLICITA_AVAL (FNK_VALORVARIABLE): si vale SI, desaplicar un recaudo CAJA/BANCOS de periodo cerrado exige aval previo de Contabilidad; si no, el mismo botón Desaplicar hace el reverso y registra el aval con el usuario que desaplica.",
           "invariante": "Ajuste al peso fuera del máximo → KO en aplicar (y aviso en FE para BANCOS/CAJA/CXP).",
           "sps": []
         }
@@ -147,8 +154,8 @@
         {
           "id": "devolucion-findevol",
           "nombre": "Devolución de facturas (FINDEVOL 0–2)",
-          "explicacion": "INGRESO=DEVOLUCION (o DEVPAR parcial con NC). Paso a Seguir en cabecera FPAG: 0=Solo devolver (retira FTR de CxC vía SPK_RETIRAFTR_DE_CXC), 1=Devolver y anular (post-apply SPK_FINALIDAD_DEVOL), 2=Devolver y radicar (SPK_FINALIDAD_DEVOL). Una factura por línea; no duplicar N_FACTURA. FE bloquea retirar factura si FINDEVOL≠0 y recaudo cerrado.",
-          "invariante": "DEVOLUCION fuerza TIPO F en carga masiva. VLRGLOSA en plantilla = saldo devuelto. DESAPLICAR/ANULAR bloqueados si FINDEVOL≠0 (FE).",
+          "explicacion": "INGRESO=DEVOLUCION (o DEVPAR parcial con NC). Paso a Seguir: 0=Solo devolver (retira FTR de CxC vía SPK_RETIRAFTR_DE_CXC), 1=Devolver y anular (al confirmar: retira, devuelve a facturación y anula; no se puede desaplicar), 2=Devolver y radicar (retira de la CxC actual, crea otra lista para radicar). Plantilla: 0 = N_FACTURA y VLRPAGO (MOTIVO1 y/o OBS solo si MOBSERVADEVOLFACTURA o MOBSERVAFRECGLOSA = SI). 1 y 2 = N_FACTURA, VLRPAGO, MOTIVO1, OBS. La hoja que genera Estructura Excel no trae MOTIVO2.",
+          "invariante": "DEVOLUCION fuerza TIPO F al buscar facturas. Con FINDEVOL distinto de 0, observaciones obligatorias al asignar y DESAPLICAR/ANULAR/retirar factura quedan bloqueados si el recaudo ya está cerrado.",
           "sps": [
             {
               "nombre": "SPK_PAGOSCXC",
@@ -170,8 +177,8 @@
         {
           "id": "anular-desaplicar",
           "nombre": "Anular, desaplicar o retirar",
-          "explicacion": "DESAPLICARPAGO y ANULARPAGO llaman SPK_DESPAGOSCXC. QUITARFPAGD / retirar factura usa SPK_RETIRA_FACTURA_FPAGD. BORRARTODO → SPK_BORRAPAGO. Restricciones en FE para devoluciones (FINDEVOL) y facturas retiradas.",
-          "invariante": "No anular si hay facturas retiradas o devolución con FINDEVOL≠0 según reglas FE.",
+          "explicacion": "DESAPLICARPAGO y ANULARPAGO llaman SPK_DESPAGOSCXC. QUITARFPAGD / retirar factura usa SPK_RETIRA_FACTURA_FPAGD (en cerrado solo BANCOS o GLOSAS FINDEVOL 3/5 con BRetiraFactura). BORRARTODO → SPK_BORRAPAGO. Desde PREVERSION, DESAPLICARPAGO lee el periodo de FPAG.FECHA en PRI: si está cerrado (CERRADO o CERRADO_CARTERA) responde KO (GLOSAS nunca; BANCOS/CAJA remite al circuito de aval). Restricciones en FE para devoluciones (FINDEVOL≠0) y facturas retiradas.",
+          "invariante": "No anular si hay facturas retiradas o devolución con FINDEVOL≠0. No desaplicar (clásico) si el periodo de FPAG.FECHA está cerrado, si hay glosas contestadas, notas crédito por descuentos o facturas Retirada.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -188,8 +195,8 @@
         {
           "id": "cruce-cxp",
           "nombre": "Cruce con cuentas por pagar",
-          "explicacion": "INGRESO=CXP: pestaña cruce en FPAGComponent (tabla FPAGDCXP). CRUD_FPAGDCXP agrega FCXP con VLRCRUCE; REGRESA_FCXPAGDCXP actualiza VALORPAGO. APLICARPAGO exige SUM(VLRCRUCE)=VLRITEMS del recaudo.",
-          "invariante": "Recaudo abierto; no duplicar CNSFCXP; totales deben cuadrar antes de Aplicar.",
+          "explicacion": "INGRESO=CXP tiene dos piezas. (1) Facturas de CxC: la misma plantilla que CAJA y BANCOS (N_FACTURA, VLRPAGO, TIPO; impuestos y VLR_DTO si el archivo los trae; VALIDACION al final). (2) Cruce: pestaña FPAGDCXP. CRUD_FPAGDCXP agrega FCXP con saldo > 0 y estado distinto de anulado; REGRESA_FCXPAGDCXP actualiza VALORPAGO. APLICARPAGO exige SUM(VLRCRUCE)=VLRITEMS.",
+          "invariante": "Recaudo abierto; no duplicar CNSFCXP; el cruce cuadra con los ítems antes de Aplicar. Sin REC_VLRMAX_AJUSTE el ingreso CXP no se ofrece.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -200,6 +207,29 @@
               "nombre": "SPQ_FPAG_COL",
               "metodo": "APLICARPAGO",
               "rol": "Valida igualdad cruce vs ítems."
+            }
+          ]
+        },
+        {
+          "id": "desaplicar-con-aval",
+          "nombre": "Desaplicar en periodo cerrado (aval contable)",
+          "explicacion": "Solo CAJA/BANCOS, recaudo CERRADO=1 con NROCOMPROBANTE y periodo de FPAG.FECHA cerrado en PRI. El FE consulta CONSULTA_PRI_RECAUDO y oculta el Desaplicar clásico. Si REC_SOLICITA_AVAL=SI: botón Solicitar aval → FPAG.AVALCONTABLE='Pendiente'; Contabilidad (Contable → Aval recaudos, permiso BAvalRecaudoConta) avala → 'Avalado' con USUARIOAVAL/FECHAAVAL; Cartera pulsa Desaplicar con aval → RETIRO_MASIVO_CON_AVAL: SPK_REVERSAR_RECUADO crea el comprobante de reversión (REFERENCIA3 = comprobante original, lote REV), todas las FPAGD pasan a ESTADO='Retirada' con CONTABILIZADA_R=1 y NROCOMPROBANTE_R, reliquida cada factura (SPK_RELIQUIDA_FTR) y el FPAG sigue CERRADO=1. Si REC_SOLICITA_AVAL≠SI el botón Desaplicar llama el mismo método y auto-registra el aval. Disponible solo en PREVERSION (REQ 0100016348).",
+          "invariante": "El periodo no se reabre y el recaudo no vuelve a Abierto. Una sola vez: si ya hay FPAGD Retirada no se repite. Sin comprobante original en MCP/MCH no se reversa. GLOSAS, CXP, DEVOLUCION y LEVANTAMIENTO no entran al circuito.",
+          "sps": [
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "CONSULTA_PRI_RECAUDO / SOLICITAR_AVAL_RECAUDO / RETIRO_MASIVO_CON_AVAL",
+              "rol": "Lado cartera. Leído 2026-10-03 (PREVERSION)."
+            },
+            {
+              "nombre": "SPQ_FPAG_COL",
+              "metodo": "LISTAR_RECAUDOS_AVAL_PENDIENTE / AVALAR_RECAUDO",
+              "rol": "Lado contabilidad (Aval recaudos). Leído 2026-10-03 (PREVERSION)."
+            },
+            {
+              "nombre": "SPK_REVERSAR_RECUADO",
+              "metodo": "(anidado)",
+              "rol": "Comprobante de reversión. Listado, no leído."
             }
           ]
         }
@@ -235,8 +265,8 @@
         {
           "id": "desde-caja-banco",
           "nombre": "Recaudo desde caja o banco",
-          "explicacion": "INGRESO=CAJA: INSERTAR enlaza CODCAJA+CNSFACJ y marca FCJ.ENPAGOS=1. INGRESO=BANCOS: enlaza BMOVD (banco/sucursal/cuenta/ítem/renglón) y marca ENPAGOS=1.",
-          "invariante": "El movimiento origen no debe estar ya en otro recaudo abierto.",
+          "explicacion": "La búsqueda no filtra la caja maestra (CAJ.ACEPTARECAUDO). CAJA: lista recibos FCJ del tercero con RECAUDO=1 (casilla Recaudo del ingreso externo en Caja), CERRADA=1, ESTADO=P, y que aún no estén en otro FPAG (CODCAJA+CNSFACJ). BANCOS: lista BMOVD del tercero con RECAUDO=1 (lo copia la operación OFIN al confirmar el movimiento), ENPAGOS=0, BMOV.ESTADO=O y saldo por legalizar > 0. INSERTAR amarra el origen y pone ENPAGOS=1. ACEPTARECAUDO es el toggle «Acepta Recaudo» solo de caja menor en configuración; Recaudos no lo usa para buscar.",
+          "invariante": "Un recibo o una línea de banco ya enlazada no vuelve a salir. Sin REC_VLRMAX_AJUSTE numérica no se crean recaudos CAJA, BANCOS ni CXP.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -248,8 +278,8 @@
         {
           "id": "carga-masiva",
           "nombre": "Plano / Excel masivo",
-          "explicacion": "Dentro del recaudo abierto: Subir Archivo Excel (CARGAR_FACTURAS) o TXT (SUBIR_TXT) → staging RPDX+FTIMP → revisar → ASIGNAR → FPAGD. Columnas base: N_FACTURA, VLRPAGO, VLRGLOSA, TIPO (F/G/R), impuestos (hasta 4), MOTIVO1/MOTIVO2, OBS, VLR_DTO. Plantilla depende INGRESO+FINDEVOL (HelpManual sección 13). EXPORT_ERRADOS/LOG para corregir.",
-          "invariante": "Encabezado idéntico a plantilla descargada; VALIDACION=OK en FINDEVOL 4/5/6; no aplicar hasta ASIGNAR exitoso.",
+          "explicacion": "Estructura Excel la arma CXCComponent.getColumnasEsperadas (ayuda sección 13). CAJA, BANCOS y CXP: N_FACTURA, VLRPAGO, TIPO (F/G/R/C) y VALIDACION; impuestos (hasta 4) y VLR_DTO solo si se marcan al descargar. Al subir, obligatorias son las tres primeras; el resto se infiere del encabezado. GLOSAS 3 Recepcionar: N_FACTURA, TIPO, VLRPAGO y, si MOBSERVAFRECGLOSA o MOBSERVADEVOLFACTURA = SI, MOTIVO1, MOTIVO2 y OBS (o solo OBS). GLOSAS 4: esas más MOTIVO1, OBS, CODRPTA, VLR_ACEPTADO y VALIDACION; encabezado exacto. GLOSAS 5: N_FACTURA, TIPO, VLR_GLOSA, CODGLOSA, VLR_ITEM, OBSERVACION, VALIDACION → CARGAR_GLOSAS_DETALLE (sin enviar VALIDACION). GLOSAS 6: N_FACTURA, TIPO, CODGLOSA, VALOR, CODRPTA, VLR_ACEPTADO, OBSERVACIONES, VALIDACION; el FE la convierte a 16 columnas y llama DETALLE_RESPONDER. DEVOLUCION: ver control devolucion-findevol. Filas sin N_FACTURA se ignoran. VALIDACION debe decir OK.",
+          "invariante": "En GLOSAS 4, 5 y 6 el encabezado y el orden deben ser los de la plantilla descargada. No aplicar hasta ASIGNAR exitoso.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -266,8 +296,8 @@
         {
           "id": "carga-masiva-findevol-6",
           "nombre": "Carga FINDEVOL 6 (Detalles y Responder)",
-          "explicacion": "DETALLE_RESPONDER: plantilla con CODRPTA, VLR_ACEPTA, MOTIVO1; RPDX_1 resumen + detalle ítems glosa. Usado cuando Paso a Seguir = 6 en recaudo GLOSAS.",
-          "invariante": "Código glosa ∈ FCGLO; observaciones longitud mínima según FE.",
+          "explicacion": "Paso a seguir 6. La hoja trae N_FACTURA, TIPO, CODGLOSA, VALOR, CODRPTA, VLR_ACEPTADO, OBSERVACIONES y VALIDACION. El FE rellena la línea de 16 columnas (CODGLOSA→MOTIVO1, VALOR→VLRPAGO y VLGLOSA) y llama DETALLE_RESPONDER por lotes. OBSERVACIONES mínimo 10 caracteres.",
+          "invariante": "Código de glosa en FCGLO. VALIDACION=OK. Al aplicar, SPK_FINALIDAD_GLOSAS responde y devuelve a cartera; el FE avisa que no se puede revertir.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -292,8 +322,8 @@
         {
           "id": "glosas-al-aplicar",
           "nombre": "Glosas al aplicar",
-          "explicacion": "INGRESO=GLOSAS: SPK_PAGOSCXC crea FGLO si VLRGLOSA>0. Con FINDEVOL 4, 5 o 6 APLICARPAGO llama SPK_FINALIDAD_GLOSAS. MOTIVO1/MOTIVO2 van en FPAGD en carga masiva; el gate REQ 6259 documenta si llegan a FGLOCG.",
-          "invariante": "Responder glosas (Auditoría) es otro proceso; depende de lo que SPK_PAGOSCXC escriba.",
+          "explicacion": "Cuatro Pasos a seguir (columna Proceso). 3 Recepcionar: aplicar crea la glosa; no llama SPK_FINALIDAD_GLOSAS; Cartera envía a auditoría con el botón (ENVIAR_AUDIT). 4 Recepcionar y Responder: al aplicar responde sola (total), nota crédito según valor aceptado, imprime y devuelve a cartera. 5 Detalles Glosa: al aplicar deja el detalle de ítems en auditoría; el auditor responde a mano; no llama SPK_RESPUESTAGLOSA. 6 Detalles y Responder: detalle más respuesta automática por ítem (CODRPTA y valor aceptado). 4 y 6 avisan que no se pueden deshacer.",
+          "invariante": "FINDEVOL 3 no entra al circuito automático. Auditoría no sustituye Aplicar. Retirar factura de un recaudo de glosas ya cerrado solo se permite en 3 y 5 (permiso BRetiraFactura).",
           "sps": [
             {
               "nombre": "SPK_PAGOSCXC",
@@ -310,8 +340,8 @@
         {
           "id": "enviar-auditoria",
           "nombre": "Enviar a auditoría",
-          "explicacion": "Manual: ENVIAR_AUDIT (permiso BEnviarAuditoriaFPAG) crea ENT/ENTD glosas. Automático: tras APLICARPAGO si INGRESO=GLOSAS y FINDEVOL∈{4,5,6} → SPK_FINALIDAD_GLOSAS (ENVIAR_AUDIT → RECIBIR_GLOSA → respuesta SPK_RESPUESTAGLOSA). FINDEVOL 4=Recepcionar y Responder; 5=Detalles; 6=Detalles y Responder.",
-          "invariante": "Sin entrega previa ENT/ENTD por factura. Auditoría no sustituye Aplicar.",
+          "explicacion": "Camino manual (sobre todo FINDEVOL 3 Recepcionar): botón Enviar a auditoría, permiso BEnviarAuditoriaFPAG, METODO ENVIAR_AUDIT, crea ENT/ENTD y marca FPAG.ENAUDIT. Caminos 4, 5 y 6: APLICARPAGO llama SPK_FINALIDAD_GLOSAS, que hace el envío y la recepción. Solo 4 y 6 siguen con SPK_RESPUESTAGLOSA, impresión FGLOI y devolución de la respuesta a cartera. El 5 se queda en auditoría con FGLOCG/FGLOD.",
+          "invariante": "Sin entrega previa ENT/ENTD por factura. El 5 no cierra la respuesta.",
           "sps": [
             {
               "nombre": "SPQ_FPAG_COL",
@@ -410,5 +440,1303 @@
     }
   ],
   "flujoPasado": true,
-  "pasadaEn": "2026-09-05T23:20:36"
+  "pasadaEn": "2026-09-05T23:20:36",
+  "descripcion": {
+    "queEs": "Módulo central de tesorería y cartera encargado de registrar y controlar el ingreso efectivo de recursos a la institución por pagos de EPS, aseguradoras, convenios o particulares, vinculando cada abono directamente a las facturas pendientes de cobro.",
+    "paraQueSirve": "Permite asentar pagos recibidos mediante consignaciones bancarias, recibos de caja, cruces con cuentas por pagar (CxP), giros directos de ADRES, así como registrar devoluciones de facturas y recepcionar glosas médicas de forma individual o masiva con plantillas de Excel.",
+    "proposito": "Garantizar la conciliación financiera exacta entre los ingresos de la institución y el estado de cuenta por cobrar de los clientes, asegurando la trazabilidad contable inmediata, el control de glosas y la actualización en tiempo real del saldo de cada factura."
+  },
+  "permisos": [
+    {
+      "codigo": "BNuevoFPAG",
+      "accion": "Nuevo Recaudo",
+      "rol": "Cajero / Analista de Cartera",
+      "descripcion": "Habilita la creación de un nuevo encabezado de recaudo indicando tercero, tipo de ingreso y fecha."
+    },
+    {
+      "codigo": "BAplicarPago",
+      "accion": "Aplicar Pago / Glosa / Devolución",
+      "rol": "Analista de Cartera / Tesorero",
+      "descripcion": "Cierra el recaudo, descuenta el saldo de las facturas en CxC y genera el comprobante contable automático."
+    },
+    {
+      "codigo": "BDesaplicarPago",
+      "accion": "Desaplicar Recaudo",
+      "rol": "Coordinador de Cartera / Supervisor",
+      "descripcion": "Reabre un recaudo cerrado para permitir correcciones o ajustes. (No disponible para devoluciones con anulación o radicación)."
+    },
+    {
+      "codigo": "BAnularPago",
+      "accion": "Anular Recaudo",
+      "rol": "Jefe de Cartera / Administrador",
+      "descripcion": "Anula definitivamente el recaudo en el sistema y revierte los movimientos asociados."
+    },
+    {
+      "codigo": "BInactivarFPAG",
+      "accion": "Inactivar Recaudo",
+      "rol": "Analista de Cartera",
+      "descripcion": "Permite descartar un recaudo que aún se encuentre en estado abierto y no se vaya a procesar."
+    },
+    {
+      "codigo": "BRetiraFactura",
+      "accion": "Retirar Factura de Recaudo",
+      "rol": "Analista de Cartera / Supervisor",
+      "descripcion": "Permite desvincular una factura de un recaudo abierto o de recaudos cerrados de bancos y glosas permitidas."
+    },
+    {
+      "codigo": "BDistribuirAdres",
+      "accion": "Consignaciones ADRES",
+      "rol": "Tesorero / Cartera Institucional",
+      "descripcion": "Habilita la distribución y conciliación de giros directos institucionales girados por la ADRES."
+    },
+    {
+      "codigo": "BEnviarAuditoriaFPAG",
+      "accion": "Enviar a Auditoría Médica",
+      "rol": "Analista de Glosas",
+      "descripcion": "Transfiere el recaudo de glosas recepcionadas al área de auditoría médica para su análisis."
+    },
+    {
+      "codigo": "BImpEntregaGloFPAG",
+      "accion": "Imprimir Acta de Entrega",
+      "rol": "Analista de Glosas / Radicador",
+      "descripcion": "Genera el reporte impreso de entrega de glosas a auditoría con su consecutivo oficial."
+    },
+    {
+      "codigo": "ChkNoContabilizaFPAG",
+      "accion": "Sin Contabilización Automática",
+      "rol": "Contador / Supervisor de Cartera",
+      "descripcion": "Permite marcar la casilla 'No Contabiliza' en casos especiales donde el asiento se ingresará por otro módulo."
+    },
+    {
+      "codigo": "InpFechaLegalizaFPAG",
+      "accion": "Editar Fecha de Legalización",
+      "rol": "Coordinador de Cartera",
+      "descripcion": "Permite modificar la fecha de legalización del recaudo; sin el permiso el campo es de solo lectura."
+    },
+    {
+      "codigo": "BAvalRecaudoConta",
+      "accion": "Avalar recaudos (Contable → Aval recaudos)",
+      "rol": "Contador / Jefe de Contabilidad",
+      "descripcion": "Autoriza a Contabilidad a avalar recaudos CAJA/BANCOS de periodo cerrado para que Cartera los desaplique con aval. Sin el permiso la lista solo se consulta. Preversión (REQ 0100016348)."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "REC_VLRMAX_AJUSTE",
+      "tipo": "Numérico (Moneda)",
+      "valorSugerido": "500 - 1000",
+      "descripcion": "Límite máximo permitido en valor absoluto para el ajuste al peso por redondeo en ingresos de Bancos, Caja y CxP. Es obligatoria para crear recaudos de estos tipos."
+    },
+    {
+      "nombre": "RECAU_FORM_BENEFIC",
+      "tipo": "Numérico entero",
+      "valorSugerido": "4",
+      "descripcion": "Cantidad mínima de caracteres que el usuario debe digitar en el campo Beneficiario para que el sistema active la búsqueda y autocompletado del tercero."
+    },
+    {
+      "nombre": "MOBSERVADEVOLFACTURA",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Cuando está en 'SI', exige el ingreso obligatorio de motivos (MOTIVO1/MOTIVO2) y observaciones al tramitar devoluciones de facturas."
+    },
+    {
+      "nombre": "MOBSERVAFRECGLOSA",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Cuando está en 'SI', activa las columnas de motivos y observaciones como obligatorias al registrar o cargar recaudos por glosas."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "Texto (Código País)",
+      "valorSugerido": "COL / PER",
+      "descripcion": "Define el país configurado en la instalación para habilitar reglas tributarias, formatos de retención y validaciones regionales específicas."
+    },
+    {
+      "nombre": "REC_SOLICITA_AVAL",
+      "tipo": "Texto (SI / NO)",
+      "valorSugerido": "SI",
+      "descripcion": "Si vale SI, desaplicar un recaudo de CAJA o BANCOS cuyo mes contable ya está cerrado exige aval previo de Contabilidad (Solicitar aval → Aval recaudos → Desaplicar con aval). Si no, el botón Desaplicar hace el reverso directamente y el aval queda registrado a nombre de quien desaplica. Preversión (REQ 0100016348)."
+    }
+  ],
+  "glosasDevoluciones": {
+    "devoluciones": [
+      {
+        "codigo": "0",
+        "nombre": "Solo Devolver",
+        "descripcion": "Retira la factura de la cuenta de cobro en que fue radicada, dejándola disponible para correcciones o ajustes sin alterar su estado contable original.",
+        "advertencia": "Permite desaplicar el recaudo si se requiere corregir.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "VLRPAGO"
+        ]
+      },
+      {
+        "codigo": "1",
+        "nombre": "Devolver y Anular",
+        "descripcion": "Retira la factura de la cuenta de cobro, la regresa al módulo de facturación y procede con la anulación formal de la factura en el sistema.",
+        "advertencia": "Acción definitiva: No se puede desaplicar una vez aplicado el recaudo.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "VLRPAGO",
+          "MOTIVO1",
+          "OBS"
+        ]
+      },
+      {
+        "codigo": "2",
+        "nombre": "Devolver y Radicar",
+        "descripcion": "Retira la factura de la cuenta actual, genera de forma automática una nueva cuenta de cobro y la deja lista para un nuevo proceso de radicación.",
+        "advertencia": "Acción definitiva: No se puede desaplicar una vez aplicado el recaudo.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "VLRPAGO",
+          "MOTIVO1",
+          "OBS"
+        ]
+      }
+    ],
+    "glosas": [
+      {
+        "codigo": "3",
+        "nombre": "Recepcionar",
+        "descripcion": "Registra la glosa en el sistema y crea el expediente pendiente para que el equipo de cartera o glosas pulse el botón 'Enviar a Auditoría' médica.",
+        "advertencia": "Permite retirar facturas individualmente aun después de aplicado.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "TIPO",
+          "VLRPAGO"
+        ]
+      },
+      {
+        "codigo": "4",
+        "nombre": "Recepcionar y Responder",
+        "descripcion": "Registra la glosa y emite de inmediato la respuesta formal institucional, aplicando la nota crédito por el valor total aceptado y devolviendo el saldo a cartera.",
+        "advertencia": "Acción definitiva: No se puede revertir ni desaplicar.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "TIPO",
+          "VLRPAGO",
+          "MOTIVO1",
+          "OBS",
+          "CODRPTA",
+          "VLR_ACEPTADO",
+          "VALIDACION"
+        ]
+      },
+      {
+        "codigo": "5",
+        "nombre": "Detalles Glosa",
+        "descripcion": "Registra el detalle minucioso ítem por ítem del servicio de salud glosado (código de actividad, valor unitario y observación) para análisis manual del auditor médico.",
+        "advertencia": "Permite retirar facturas individualmente con el permiso autorizado.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "TIPO",
+          "VLR_GLOSA",
+          "CODGLOSA",
+          "VLR_ITEM",
+          "OBSERVACION",
+          "VALIDACION"
+        ]
+      },
+      {
+        "codigo": "6",
+        "nombre": "Detalles y Responder",
+        "descripcion": "Registra el desglose ítem por ítem del servicio y responde de manera automática en el mismo acto con el código de respuesta y valor aceptado por la entidad.",
+        "advertencia": "Acción definitiva: No se puede revertir ni desaplicar. Observación mínima de 10 caracteres.",
+        "columnasExcel": [
+          "N_FACTURA",
+          "TIPO",
+          "CODGLOSA",
+          "VALOR",
+          "CODRPTA",
+          "VLR_ACEPTADO",
+          "OBSERVACIONES",
+          "VALIDACION"
+        ]
+      }
+    ]
+  },
+  "botones": [
+    {
+      "label": "Nuevo",
+      "icono": "add",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Abre el formulario para registrar un nuevo recaudo indicando tercero, fecha e ingreso."
+    },
+    {
+      "label": "Guardar",
+      "icono": "save",
+      "color": "teal-7",
+      "estilo": "unelevated",
+      "descripcion": "Guarda los cambios del formulario de cabecera o de los datos editados."
+    },
+    {
+      "label": "Traer Varias",
+      "icono": "download",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Abre la ventana de selección de facturas pendientes de la cuenta por cobrar del cliente."
+    },
+    {
+      "label": "Aplicar Pago",
+      "icono": "check_circle",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Aplica el recaudo a las facturas, descuenta cartera y genera el comprobante contable."
+    },
+    {
+      "label": "Desaplicar",
+      "icono": "undo",
+      "color": "warning",
+      "estilo": "outline",
+      "descripcion": "Reabre el recaudo cerrado para permitir adiciones o correcciones de facturas."
+    },
+    {
+      "label": "Anular",
+      "icono": "cancel",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Anula completamente el recaudo, cancelando sus efectos contables y en cartera."
+    },
+    {
+      "label": "Inactivar",
+      "icono": "block",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Inactiva un recaudo que se encuentra en estado abierto cuando se decide no continuar."
+    },
+    {
+      "label": "Consig. Adres",
+      "icono": "call_split",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Abre la ventana para conciliar y distribuir giros directos de ADRES a las facturas."
+    },
+    {
+      "label": "Cruce CXP",
+      "icono": "folder_plus",
+      "color": "indigo-10",
+      "estilo": "outline",
+      "descripcion": "Permite cruzar valores del recaudo contra cuentas por pagar vigentes con el mismo tercero."
+    },
+    {
+      "label": "Pago",
+      "icono": "print",
+      "color": "blue",
+      "estilo": "outline",
+      "descripcion": "Genera e imprime el comprobante de pago oficial para archivo o entrega al cliente."
+    },
+    {
+      "label": "Comprobante",
+      "icono": "print",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Imprime el comprobante contable con el asiento débito y crédito generado."
+    },
+    {
+      "label": "Enviar Auditoría",
+      "icono": "send",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Transfiere las glosas registradas a la bandeja de trabajo de los auditores médicos."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "file_download",
+      "color": "teal-10",
+      "estilo": "glossy",
+      "descripcion": "Descarga los recaudos listados según los filtros aplicados en formato Excel."
+    },
+    {
+      "label": "Carga masiva",
+      "icono": "upload_file",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Abre la carga de facturas por Excel o plano: Estructura Excel, subir, Procesar y Asignar al detalle del recaudo."
+    },
+    {
+      "label": "Borrar todo",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Vacía el detalle de un recaudo Abierto para volver a asignar facturas."
+    },
+    {
+      "label": "Solicitar aval",
+      "icono": "approval",
+      "color": "amber-9",
+      "estilo": "unelevated",
+      "descripcion": "Recaudo CAJA/BANCOS cerrado con mes contable cerrado y REC_SOLICITA_AVAL=SI: pide a Contabilidad el aval para desaplicar. La columna Aval queda en Pendiente. Preversión."
+    },
+    {
+      "label": "Desaplicar con aval",
+      "icono": "undo",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Con el aval de Contabilidad: crea el comprobante de reversión, deja todas las facturas Retiradas y libera la cartera sin reabrir el periodo. El recaudo sigue Cerrado. Preversión."
+    },
+    {
+      "label": "Imprimir Entrega",
+      "icono": "print",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "Imprime el acta de entrega de glosas a auditoría (permiso BImpEntregaGloFPAG)."
+    }
+  ],
+  "incluirProcesoMdEnLibro": false,
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Registrar el pago que una EPS consignó al banco",
+      "donde": "Administrativo → Cartera → Recaudos → Nuevo → Ingreso BANCOS → Banco, cuenta y documento",
+      "condicion": "El movimiento debe estar confirmado por tesorería y con la marca de recaudo; si no aparece, revise eso primero.",
+      "noEs": "No se digita el valor a mano: sale del saldo por legalizar del movimiento bancario."
+    },
+    {
+      "necesidad": "Aplicar un recibo de caja que pagó un pagador en ventanilla",
+      "donde": "Recaudos → Nuevo → Ingreso CAJA → Buscar recibo",
+      "condicion": "El recibo debe estar cerrado, activo, con la casilla Recaudo marcada y no usado por otro recaudo.",
+      "noEs": "El toggle «Acepta Recaudo» de la configuración de caja menor no tiene que ver con esta búsqueda."
+    },
+    {
+      "necesidad": "Subir muchas facturas de una vez con Excel",
+      "donde": "Recaudo abierto → Carga masiva → Estructura Excel → diligenciar → subir → Procesar → Asignar",
+      "condicion": "Use la plantilla descargada hoy para ese ingreso y Paso a Seguir; la columna VALIDACION debe decir OK.",
+      "noEs": "No es radicar la cuenta de cobro ni facturar: solo asigna facturas ya radicadas en cartera."
+    },
+    {
+      "necesidad": "Registrar las glosas que informó el pagador",
+      "donde": "Recaudos → Nuevo → Ingreso GLOSAS → Paso a Seguir 3, 4, 5 o 6 → asignar → Aplicar Glosas",
+      "condicion": "Los códigos de glosa deben existir en el maestro de motivos. Los pasos 4 y 6 no se pueden deshacer.",
+      "noEs": "Responder la glosa en auditoría médica es el proceso Cartera · Glosas, salvo que use los pasos 4 o 6 que responden solos."
+    },
+    {
+      "necesidad": "Devolver una factura que el pagador no aceptó",
+      "donde": "Recaudos → Nuevo → Ingreso DEVOLUCION → Paso a Seguir 0, 1 o 2 → asignar → Aplicar Devolución",
+      "condicion": "Solo facturas tipo F. Con paso 1 o 2 no se puede desaplicar ni retirar la factura.",
+      "noEs": "La respuesta posterior (Soportar o Anular) se da en Administrativo → Respuesta Devoluciones, no aquí."
+    },
+    {
+      "necesidad": "Cruzar lo que nos deben con lo que le debemos al mismo tercero",
+      "donde": "Recaudos → Nuevo → Ingreso CXP → asignar facturas → Cruce CXP → Nueva CXP → Aplicar",
+      "condicion": "La suma del cruce debe ser igual al valor de las facturas asignadas.",
+      "noEs": "No es pagar al proveedor: eso es Cuentas por Pagar."
+    },
+    {
+      "necesidad": "Deshacer un recaudo que ya apliqué",
+      "donde": "Seleccionar el recaudo Cerrado → Desaplicar",
+      "condicion": "Permiso BDesaplicarPago, mes contable de la fecha abierto, sin glosas ya contestadas, sin notas crédito por descuentos y sin facturas retiradas.",
+      "noEs": "Anular lo cancela definitivamente; Desaplicar lo reabre para corregir."
+    },
+    {
+      "necesidad": "Desaplicar un recaudo de un mes que ya cerró contabilidad",
+      "donde": "Recaudo CAJA/BANCOS cerrado → Solicitar aval → Contable → Aval recaudos → Avalar → Recaudos → Desaplicar con aval",
+      "condicion": "Solo CAJA y BANCOS. Si la empresa no exige aval (REC_SOLICITA_AVAL ≠ SI), el botón Desaplicar hace el reverso directo. Disponible en preversión.",
+      "noEs": "No reabre el mes ni el recaudo: deja las facturas Retiradas con comprobante de reversión; arme un recaudo nuevo."
+    },
+    {
+      "necesidad": "Quitar una sola factura de un recaudo ya aplicado",
+      "donde": "Detalle del recaudo → icono de papelera en la línea",
+      "condicion": "Recaudo de BANCOS, o de GLOSAS con paso 3 o 5, y permiso BRetiraFactura. La línea queda Retirada con su comprobante de retiro.",
+      "noEs": "No aplica a devoluciones con paso 1 o 2 ni a glosas 4 y 6."
+    },
+    {
+      "necesidad": "Enviar las glosas recibidas a auditoría médica",
+      "donde": "Recaudo GLOSAS paso 3 ya aplicado → Enviar Auditoría → Imprimir Entrega",
+      "condicion": "Permiso BEnviarAuditoriaFPAG. Una glosa con entrega previa no se vuelve a enviar.",
+      "noEs": "Los pasos 4, 5 y 6 se envían solos al aplicar; no pulse Enviar Auditoría."
+    },
+    {
+      "necesidad": "Imprimir el soporte del pago o el comprobante contable",
+      "donde": "Seleccionar el recaudo → botones Pago y Comprobante",
+      "condicion": "El recaudo debe estar aplicado y contabilizado (Nro. Comprobante).",
+      "noEs": ""
+    },
+    {
+      "necesidad": "Sacar un listado de recaudos de un periodo",
+      "donde": "Filtros Ingreso, Aplicado, Estado, fechas y sede → Exportar Excel",
+      "condicion": "",
+      "noEs": "Los informes de cartera (resumen de recaudos, recaudos en bancos) están en Cartera · Reportes."
+    },
+    {
+      "necesidad": "Repartir una consignación de ADRES entre varias facturas",
+      "donde": "Recaudos → Consig. Adres",
+      "condicion": "Permiso BDistribuirAdres y consignaciones ADRES pendientes para el tercero.",
+      "noEs": "Instalaciones Perú."
+    },
+    {
+      "necesidad": "Que un recaudo no genere asiento contable",
+      "donde": "Formulario del recaudo → casilla ¿No Contabiliza?",
+      "condicion": "Permiso ChkNoContabilizaFPAG. Úselo solo si el asiento entra por otro módulo.",
+      "noEs": ""
+    }
+  ],
+  "estadosRecaudo": {
+    "titulo": "Cómo leer el estado de un recaudo",
+    "descripcion": "La grilla combina varias columnas: Cerrado (Abierto/Cerrado), Estado (Activo/Inactivo), Contabilizada, Aval y, en el detalle, el estado de cada factura. Guíese por esta tabla.",
+    "columnas": [
+      "Dónde se ve"
+    ],
+    "filas": [
+      {
+        "codigo": "AB",
+        "tono": "ambar",
+        "etiquetas": [
+          "Abierto",
+          "Columna Cerrado · filtro Aplicado = Sin aplicar"
+        ],
+        "significa": "Creado pero no aplicado. No ha tocado cartera ni contabilidad.",
+        "queHacer": "Asignar facturas y Aplicar. Si no va a procesarse: Inactivar o Borrar todo."
+      },
+      {
+        "codigo": "CE",
+        "tono": "verde",
+        "etiquetas": [
+          "Cerrado",
+          "Columna Cerrado · filtro Aplicado = Aplicados"
+        ],
+        "significa": "Aplicado: las facturas bajaron de saldo y hay comprobante contable.",
+        "queHacer": "Imprimir Pago / Comprobante. Para corregir: Desaplicar (mes abierto), retirar una factura o Desaplicar con aval (mes cerrado)."
+      },
+      {
+        "codigo": "IN",
+        "tono": "gris",
+        "etiquetas": [
+          "Inactivo",
+          "Columna Estado"
+        ],
+        "significa": "Recaudo descartado sin aplicar. No cuenta como recaudo abierto del tercero.",
+        "queHacer": "Nada. Si lo necesita, cree uno nuevo. Filtre Estado = Inactivo para verlos."
+      },
+      {
+        "codigo": "CT",
+        "tono": "verde",
+        "etiquetas": [
+          "Contabilizada = Sí",
+          "Columnas Contabilizada y Nro. Comprobante"
+        ],
+        "significa": "El asiento del recaudo ya existe en contabilidad.",
+        "queHacer": "Botón Comprobante para verlo. Si el recaudo tiene «¿No Contabiliza?», no habrá número."
+      },
+      {
+        "codigo": "AU",
+        "tono": "azul",
+        "etiquetas": [
+          "En auditoría",
+          "ENAUDIT · botón Enviar Auditoría deshabilitado"
+        ],
+        "significa": "Las glosas del recaudo ya fueron entregadas a auditoría médica.",
+        "queHacer": "Seguimiento en Cartera · Glosas. No se puede desaplicar si auditoría ya contestó."
+      },
+      {
+        "codigo": "AV",
+        "tono": "ambar",
+        "etiquetas": [
+          "Aval: Pendiente",
+          "Columna Aval · aviso ámbar en el detalle"
+        ],
+        "significa": "Cartera pidió aval para desaplicar un recaudo CAJA/BANCOS de mes cerrado; falta Contabilidad.",
+        "queHacer": "Contabilidad entra a Contable → Aval recaudos y avala. Hasta entonces no se puede desaplicar."
+      },
+      {
+        "codigo": "OK",
+        "tono": "verde",
+        "etiquetas": [
+          "Aval: Avalado",
+          "Columna Aval · aviso verde en el detalle"
+        ],
+        "significa": "Contabilidad autorizó el reverso sin reabrir el periodo.",
+        "queHacer": "Cartera pulsa Desaplicar con aval. Si ya se usó, las facturas aparecen Retiradas y el aviso lo indica."
+      },
+      {
+        "codigo": "RT",
+        "tono": "rojo",
+        "etiquetas": [
+          "Factura Retirada",
+          "Detalle · columna Estado de la factura · Nro. Comprobante R"
+        ],
+        "significa": "Esa factura se sacó del recaudo después de aplicado; su parte se reversó y quedó el comprobante de retiro.",
+        "queHacer": "Nada sobre la línea. Si todas están Retiradas (desaplicar con aval), arme un recaudo nuevo con las facturas correctas."
+      },
+      {
+        "codigo": "PS",
+        "tono": "gris",
+        "etiquetas": [
+          "Proceso (Paso a Seguir)",
+          "Columna Proceso (Paso a Seguir)"
+        ],
+        "significa": "Nombre del paso elegido: Solo Devolver, Devolver y Anular, Devolver y Radicar, Recepcionar, Recepcionar y Responder, Detalles Glosa, Detalles y Responder.",
+        "queHacer": "Antes de aplicar confirme el paso: 4, 6, 1 y 2 no se deshacen."
+      }
+    ],
+    "nota": "Un recaudo Cerrado de CAJA/BANCOS cuyo mes contable ya cerró muestra un aviso con el estado del aval en lugar del botón Desaplicar clásico (preversión)."
+  },
+  "textoQueEs": "Un **recaudo** es el registro de un dinero (o de una novedad del pagador) que llega a la institución y que debe cruzarse con facturas que ya están en la cuenta por cobrar. Quien cobra crea una cabecera con el tercero, el tipo de **Ingreso**, la fecha y el valor; le asigna facturas de la cuenta de cobro; y pulsa **Aplicar**. En ese momento el sistema descuenta el saldo de cada factura, genera el comprobante contable y deja el recaudo **Cerrado**.\n\nEl tipo de Ingreso cambia tres cosas: **de dónde sale el valor** al crear, **qué columnas trae la plantilla Excel** y **qué ocurre al aplicar**.\n\n- **CAJA**: el dinero ya entró por ventanilla. Se busca un recibo de caja cerrado con la casilla Recaudo marcada.\n- **BANCOS**: una consignación o transferencia ya confirmada por tesorería y marcada como recaudo.\n- **GLOSAS**: el pagador objeta facturas. Lleva **Paso a Seguir** 3, 4, 5 o 6 y al aplicar nace el expediente de glosa.\n- **CXP**: el pagador también es proveedor; se compensa cartera con cuentas por pagar (pestaña Cruce CXP).\n- **DEVOLUCION**: el pagador devuelve la factura sin pagarla. Lleva Paso a Seguir 0, 1 o 2.\n- **LEVANTAMIENTO**: una glosa registrada que el pagador levanta; el valor vuelve a ser cobrable.\n\nEl selector **Paso a Seguir** solo aparece en GLOSAS y DEVOLUCION y en la grilla se muestra en la columna **Proceso**. Si la variable de ajuste al peso no está configurada, CAJA, BANCOS y CXP no aparecen en el selector de Ingreso.\n\nLo que **no** hace este módulo: no factura, no radica cuentas de cobro, no responde glosas en auditoría (salvo los pasos 4 y 6) y no define la respuesta a devoluciones (eso es la ventana Respuesta Devoluciones).",
+  "flujos": [
+    {
+      "id": "flujo-hilo-comun",
+      "nombre": "Crear → asignar → aplicar",
+      "icono": "route",
+      "descripcion": "Los pasos que comparte todo recaudo, sea cual sea el ingreso.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Entrar y filtrar",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Cartera → Recaudos",
+          "descripcion": "La grilla muestra los recaudos. Filtre por tercero, Ingreso, Aplicado (Todas / Sin aplicar / Aplicados), Estado (Activo / Inactivo), fechas y sede. Exportar Excel descarga lo filtrado.",
+          "tablas": [
+            "FPAG",
+            "TER"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo: cabecera del recaudo",
+          "rol": "Analista de cartera (permiso BNuevoFPAG)",
+          "pantalla": "Formulario Recaudos de cartera",
+          "descripcion": "Elija el Ingreso, el tercero y la Fecha de legalización. Si es GLOSAS o DEVOLUCION aparecen Paso a Seguir y Fecha Glosa‑Devol. La casilla ¿No Contabiliza? solo con permiso. Guardar crea el recaudo Abierto.",
+          "tablas": [
+            "FPAG"
+          ],
+          "sp": "FPAG_COL · INSERTAR"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Ya tiene un recaudo abierto de ese tercero y ese ingreso?",
+          "descripcion": "El sistema no permite dos recaudos Abiertos del mismo usuario, tercero e ingreso.",
+          "si": "Mensaje «Existen Pagos Abiertos para este tercero y este Usuario». Use el recaudo que ya existe o inactívelo.",
+          "no": "Se crea el recaudo y queda seleccionado para asignar facturas.",
+          "sp": "FPAG_COL · INSERTAR"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Asignar facturas",
+          "rol": "Analista de cartera",
+          "pantalla": "Traer Varias / Carga masiva",
+          "descripcion": "Traer Varias abre la cuenta por cobrar del tercero para marcar facturas una a una. Carga masiva usa la plantilla Excel o plano: subir → Procesar → Asignar. Solo entran facturas radicadas a nombre del tercero y con saldo.",
+          "tablas": [
+            "RPDX",
+            "FPAGD",
+            "FPAGDI"
+          ],
+          "sp": "ADD_FACTURA · CARGAR_FACTURAS · ASIGNAR"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "Revisar totales y candados",
+          "descripcion": "Total Facturas, Total Glosas/Devoluciones y Total Impuestos deben cuadrar con lo recibido. El mes contable de la fecha debe estar abierto; el ajuste al peso dentro del límite; cada impuesto con su cuenta.",
+          "si": "Pulse Aplicar Pago / Aplicar Glosas / Aplicar Devolución.",
+          "no": "Corrija: retire o agregue facturas, revise impuestos o la fecha. Si el mes está cerrado, cambie la fecha de legalización (permiso) o pida abrir el periodo.",
+          "tablas": [
+            "PRI",
+            "FIMPDV"
+          ],
+          "sp": "FPAG_COL · APLICARPAGO (candados)"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Aplicar",
+          "rol": "Qrystalos",
+          "descripcion": "Descuenta el saldo de cada factura, genera el comprobante contable y marca el recaudo Cerrado. Según el ingreso crea la glosa, retira la factura devuelta o cruza la cuenta por pagar. Si algo falla responde KO y no deja nada a medias.",
+          "tablas": [
+            "FPAG",
+            "FPAGD",
+            "FCXCD",
+            "FGLO",
+            "MCP"
+          ],
+          "sp": "APLICARPAGO → SPK_PAGOSCXC → SPK_NC_CONTAB_CXC"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Recaudo Cerrado",
+          "rol": "Cartera",
+          "descripcion": "Imprima Pago o Comprobante. Para deshacer vea el capítulo «Me equivoqué: ¿qué botón uso?».",
+          "tablas": [
+            "FPAG"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-desde-caja",
+      "nombre": "Recaudo desde Caja",
+      "icono": "point_of_sale",
+      "descripcion": "El dinero ya entró por ventanilla; el recaudo lo cruza con facturas.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "En Caja: recibo marcado para recaudo",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja",
+          "descripcion": "El cajero registra un ingreso externo a nombre del pagador con la casilla Recaudo marcada y cierra el recibo. Sin esa casilla el recibo no aparece en Recaudos.",
+          "tablas": [
+            "FCJ"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo recaudo con Ingreso CAJA",
+          "rol": "Analista de cartera",
+          "pantalla": "Recaudos → Nuevo",
+          "descripcion": "Ingreso = CAJA, tercero y fecha de legalización. Pulse Buscar recibo.",
+          "tablas": [
+            "FPAG"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Aparece el recibo?",
+          "descripcion": "La búsqueda lista recibos del mismo tercero, cerrados, activos, con la casilla Recaudo y que no estén ya en otro recaudo. No consulta la caja maestra ni «Acepta Recaudo».",
+          "si": "Selecciónelo: se llenan Código Caja, Consecutivo Recibo y el valor.",
+          "no": "Revise con el cajero: casilla Recaudo, recibo cerrado, tercero correcto o si otro recaudo ya lo tomó.",
+          "tablas": [
+            "FCJ"
+          ],
+          "sp": "FPAG_COL · TRAE_PAGO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Guardar: el recibo queda en pagos",
+          "rol": "Qrystalos",
+          "descripcion": "El recaudo amarra caja + recibo y el recibo se marca «en pagos»; no vuelve a salir en otra búsqueda. Si edita la cabecera y cambia el recibo, se libera el anterior.",
+          "tablas": [
+            "FPAG",
+            "FCJ"
+          ],
+          "sp": "FPAG_COL · INSERTAR / ACTUALIZAR (ENPAGOS)"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Asignar y aplicar como en el hilo común",
+          "rol": "Analista de cartera",
+          "descripcion": "La suma de las facturas debe coincidir con el valor del recibo; la diferencia por redondeo va al ajuste al peso dentro del límite. Aplicar Pago descuenta cartera y contabiliza.",
+          "tablas": [
+            "FPAGD",
+            "MCP"
+          ],
+          "sp": "APLICARPAGO → SPK_PAGOSCXC"
+        }
+      ]
+    },
+    {
+      "id": "flujo-desde-bancos",
+      "nombre": "Recaudo desde Bancos",
+      "icono": "account_balance",
+      "descripcion": "Tesorería confirma el movimiento; cartera lo legaliza contra facturas.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "En Tesorería: movimiento confirmado y marcado",
+          "rol": "Tesorería",
+          "pantalla": "Tesorería → Bancos",
+          "descripcion": "La consignación o transferencia se registra a nombre del pagador; la operación financiera deja la línea marcada como recaudo y el movimiento se confirma.",
+          "tablas": [
+            "BMOV",
+            "BMOVD"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo recaudo con Ingreso BANCOS",
+          "rol": "Analista de cartera",
+          "pantalla": "Recaudos → Nuevo",
+          "descripcion": "Ingreso = BANCOS, tercero y fecha de legalización. Elija banco, cuenta y documento.",
+          "tablas": [
+            "FPAG"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Aparece la consignación?",
+          "descripcion": "Se listan las líneas del tercero con marca de recaudo, movimiento confirmado, que no estén ya en pagos y con saldo por legalizar mayor que cero.",
+          "si": "Selecciónela: el valor del recaudo es el saldo por legalizar.",
+          "no": "Revise con tesorería: ¿está confirmado? ¿tiene la marca de recaudo? ¿ya lo tomó otro recaudo? ¿es del mismo tercero?",
+          "tablas": [
+            "BMOVD"
+          ],
+          "sp": "FPAG_COL · TRAE_PAGO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Guardar: la línea queda vinculada",
+          "rol": "Qrystalos",
+          "descripcion": "El recaudo guarda banco, cuenta, ítem y documento; la línea pasa a «en pagos» y no vuelve a salir.",
+          "tablas": [
+            "FPAG",
+            "BMOVD"
+          ],
+          "sp": "FPAG_COL · INSERTAR (ENPAGOS)"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Asignar y aplicar",
+          "rol": "Analista de cartera",
+          "descripcion": "Traer Varias o plantilla Excel; retenciones y descuento administrativo si el archivo los trae (en BANCOS el descuento se valida antes de aplicar). Aplicar Pago legaliza la consignación, descuenta cartera y contabiliza. En BANCOS, con permiso, se puede retirar una factura aun aplicado.",
+          "tablas": [
+            "FPAGD",
+            "FPAGDI",
+            "MCP"
+          ],
+          "sp": "APLICARPAGO → SPK_PAGOSCXC"
+        }
+      ]
+    },
+    {
+      "id": "flujo-carga-masiva",
+      "nombre": "Carga masiva con Excel o plano",
+      "icono": "upload_file",
+      "descripcion": "La plantilla la arma la pantalla según el ingreso y el Paso a Seguir.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Descargar Estructura Excel",
+          "rol": "Analista de cartera",
+          "pantalla": "Recaudo abierto → Carga masiva",
+          "descripcion": "Trae las columnas exactas para ese Ingreso y Paso a Seguir. Al descargar puede marcar impuestos (hasta 4) y descuento administrativo; solo entonces se agregan esas columnas."
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Diligenciar la hoja",
+          "rol": "Analista de cartera",
+          "descripcion": "CAJA, BANCOS y CXP: N_FACTURA, VLRPAGO, TIPO (F, G, R o C) y VALIDACION. VLRPAGO mayor que cero y no superior al saldo. VALIDACION es una fórmula de la hoja: debe decir OK y no viaja al servidor. Las filas sin N_FACTURA se ignoran. Para GLOSAS y DEVOLUCION vea sus capítulos."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Subir y Procesar",
+          "rol": "Qrystalos",
+          "descripcion": "Revisa fila por fila: factura radicada en cartera del tercero, saldo suficiente, sin duplicados en el lote ni ya asignadas, impuestos con cuenta vigente. Reenviar borra el lote anterior.",
+          "tablas": [
+            "RPDX",
+            "FTIMP"
+          ],
+          "sp": "FPAG_COL · CARGAR_FACTURAS / SUBIR_TXT"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Hubo filas con error?",
+          "descripcion": "Los errores típicos: factura duplicada en el lote, saldo menor que el valor recaudado, factura con glosa previa, impuesto incompleto.",
+          "si": "Exportar errados / Exportar log muestran la fila y el motivo. Corrija la hoja y vuelva a subir.",
+          "no": "Pulse Asignar.",
+          "sp": "EXPORT_ERRADOS · EXPORT_LOG_CARGA"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Asignar: del lote al detalle",
+          "rol": "Qrystalos",
+          "descripcion": "Pasa el lote al detalle del recaudo y recalcula los totales. Bloquea si el recaudo ya está cerrado o hay facturas de otro tercero. Después ya puede Aplicar.",
+          "tablas": [
+            "FPAGD"
+          ],
+          "sp": "ASIGNAR → SPK_CARGA_MASIVA_FAC_CXC_02 → SPK_FPAG"
+        }
+      ]
+    },
+    {
+      "id": "flujo-cruce-cxp",
+      "nombre": "Ingreso CXP: cruce con cuentas por pagar",
+      "icono": "swap_horiz",
+      "descripcion": "Compensar facturas de cartera con facturas que le debemos al mismo tercero.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo recaudo con Ingreso CXP",
+          "rol": "Analista de cartera",
+          "pantalla": "Recaudos → Nuevo",
+          "descripcion": "Requiere la variable de ajuste al peso configurada; si no, CXP no aparece en el selector.",
+          "tablas": [
+            "FPAG"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Asignar las facturas de cartera",
+          "rol": "Analista de cartera",
+          "descripcion": "Igual que CAJA y BANCOS: Traer Varias o plantilla Excel (N_FACTURA, VLRPAGO, TIPO, VALIDACION; impuestos y VLR_DTO si el archivo los trae). La suma es el valor de los ítems.",
+          "tablas": [
+            "FPAGD"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Pestaña Cruce CXP → Nueva CXP",
+          "rol": "Analista de cartera",
+          "pantalla": "Botón Cruce CXP",
+          "descripcion": "Elija cuentas por pagar del mismo tercero con saldo mayor que cero y no anuladas; indique Vlr. Cruce. El total del recaudo se recalcula con la suma del cruce. No se puede repetir la misma cuenta por pagar ni editar un recaudo cerrado.",
+          "tablas": [
+            "FPAGDCXP",
+            "FCXP"
+          ],
+          "sp": "FPAG_COL · CRUD_FPAGDCXP · REGRESA_FCXPAGDCXP"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Suma del cruce = valor de las facturas?",
+          "descripcion": "Es el candado propio de CXP al aplicar.",
+          "si": "Aplicar: descuenta cartera, abona las cuentas por pagar cruzadas y contabiliza.",
+          "no": "KO «El valor de los pagos debe ser igual al valor del cruce». Ajuste el cruce o las facturas.",
+          "sp": "APLICARPAGO → SPK_PAGOSCXC · SPK_CALCULOVALORESCXP"
+        }
+      ]
+    },
+    {
+      "id": "flujo-aplicar",
+      "nombre": "Qué pasa al pulsar Aplicar",
+      "icono": "task_alt",
+      "descripcion": "Primero los candados, después cartera, contabilidad y el estado final.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Candados antes de mover nada",
+          "descripcion": "Periodo contable de la fecha abierto; detalle con facturas y sin repetidas; ajuste al peso dentro del límite; cada impuesto con desglose y cuenta vigente; en CXP, cruce igual a ítems.",
+          "si": "Continúa.",
+          "no": "KO con el motivo: «Periodo contable no existe o está cerrado», «Recaudo sin detalles», «impuesto sin cuenta en FIMPDV», «misma factura más de una vez».",
+          "tablas": [
+            "PRI",
+            "FPAGD",
+            "FPAGDI",
+            "FIMPDV"
+          ],
+          "sp": "FPAG_COL · APLICARPAGO"
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Cartera: las facturas cambian",
+          "rol": "Qrystalos",
+          "descripcion": "Pago: descuenta el saldo de cada factura. Glosa: crea el expediente con motivos y, según el paso, lo envía y responde. Devolución: retira la factura de la cuenta de cobro y, según el paso, la anula o la radica de nuevo. Levantamiento: recupera el valor glosado.",
+          "tablas": [
+            "FCXCD",
+            "FTRCXC",
+            "FGLO",
+            "FGLOCG",
+            "FCXCR"
+          ],
+          "sp": "SPK_PAGOSCXC · SPK_FINALIDAD_GLOSAS · SPK_FINALIDAD_DEVOL"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Contabilidad: comprobante automático",
+          "rol": "Qrystalos",
+          "descripcion": "El asiento se genera en el mismo acto (cartera, banco o caja, impuestos, glosas, ajuste al peso). La cabecera guarda Contabilizado = Sí y Nro. Comprobante. Excepción: casilla ¿No Contabiliza? con permiso.",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "FPAG"
+          ],
+          "sp": "SPK_NC_CONTAB_CXC"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Recaudo Cerrado",
+          "rol": "Cartera",
+          "descripcion": "Glosas 4 y 6: respuesta ya asentada. Glosas 3: falta Enviar Auditoría. Devoluciones 1 y 2: anulación o nueva cuenta de cobro ya creadas. Si la institución maneja presupuesto, registra el recaudo presupuestal.",
+          "tablas": [
+            "FPAG"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-corregir",
+      "nombre": "Me equivoqué: ¿qué botón uso?",
+      "icono": "undo",
+      "descripcion": "Depende de si el recaudo está Abierto o Cerrado y de si el mes contable de su fecha sigue abierto.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿El recaudo está Abierto?",
+          "descripcion": "Abierto = todavía no aplicado; no ha tocado cartera ni contabilidad.",
+          "si": "Quite la factura con la papelera de la línea, Borrar todo, Inactivar o Anular (Anular no sale en devoluciones con paso 1 o 2).",
+          "no": "Siga al paso 2.",
+          "sp": "QUITARFPAGD · BORRARTODO · INACTIVAR · ANULARPAGO"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿El mes contable de la fecha del recaudo sigue abierto?",
+          "descripcion": "Desde preversión la pantalla consulta el periodo de la fecha de legalización antes de mostrar los botones.",
+          "si": "Desaplicar (reabre para corregir), Anular (cancela definitivo) o retirar una sola factura.",
+          "no": "Solo CAJA y BANCOS: circuito de aval (paso 5). Glosas y devoluciones no se desaplican en mes cerrado.",
+          "tablas": [
+            "PRI"
+          ],
+          "sp": "FPAG_COL · CONSULTA_PRI_RECAUDO"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Desaplicar (clásico)",
+          "rol": "Coordinador de cartera (permiso BDesaplicarPago)",
+          "descripcion": "Revierte cartera y contabilidad y el recaudo vuelve a Abierto. Bloquea si hay glosas ya contestadas en auditoría, notas crédito por descuentos administrativos, facturas Retiradas o es devolución con paso 1 o 2.",
+          "tablas": [
+            "FPAG",
+            "FPAGD",
+            "MCP"
+          ],
+          "sp": "DESAPLICARPAGO → SPK_DESPAGOSCXC"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Retirar una sola factura de un recaudo aplicado",
+          "rol": "Analista con permiso BRetiraFactura",
+          "descripcion": "Solo BANCOS, o GLOSAS con paso 3 o 5. Revierte únicamente esa factura; la línea queda Retirada con su comprobante de retiro (Nro. Comprobante R). No aplica a devoluciones 1 y 2 ni a glosas 4 y 6.",
+          "tablas": [
+            "FPAGD"
+          ],
+          "sp": "QUITARFPAGD → SPK_RETIRA_FACTURA_FPAGD"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Mes cerrado: Desaplicar con aval",
+          "rol": "Cartera + Contabilidad",
+          "descripcion": "No se reabre el periodo: se crea un comprobante de reversión, todas las facturas quedan Retiradas, la cartera se libera y el recaudo sigue Cerrado. Si la empresa exige aval, Contabilidad debe avalar primero. Detalle en el capítulo siguiente.",
+          "tablas": [
+            "FPAG",
+            "FPAGD",
+            "MCP"
+          ],
+          "sp": "RETIRO_MASIVO_CON_AVAL → SPK_REVERSAR_RECUADO"
+        }
+      ]
+    },
+    {
+      "id": "flujo-aval-periodo-cerrado",
+      "nombre": "Desaplicar en periodo cerrado con aval contable",
+      "icono": "approval",
+      "descripcion": "Cartera pide, Contabilidad avala, Cartera reversa sin reabrir el mes. Disponible en preversión de IXONLINE/SQL (REQ 0100016348); la 2.0.7 liberada no lo trae.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿Aplica el circuito?",
+          "descripcion": "Recaudo CAJA o BANCOS, Cerrado, con comprobante contable, y el mes contable de la Fecha de legalización cerrado (cierre general o cierre de cartera).",
+          "si": "El Desaplicar clásico se oculta y aparece un aviso con el estado del aval.",
+          "no": "Use Desaplicar o Anular normales (mes abierto). GLOSAS, CXP y DEVOLUCION no entran.",
+          "tablas": [
+            "FPAG",
+            "PRI"
+          ],
+          "sp": "FPAG_COL · CONSULTA_PRI_RECAUDO"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿La empresa exige aval de Contabilidad?",
+          "descripcion": "Variable REC_SOLICITA_AVAL.",
+          "si": "SI: siga los pasos 3 y 4 (Solicitar aval → Avalar).",
+          "no": "Distinto de SI: el botón Desaplicar hace el reverso del paso 5 directamente y registra el aval a nombre de quien desaplica.",
+          "tablas": [
+            "USVGS"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cartera: Solicitar aval",
+          "rol": "Analista de cartera",
+          "pantalla": "Recaudos → recaudo seleccionado",
+          "descripcion": "La columna Aval queda en Pendiente y el aviso lo indica. Mientras tanto no se puede desaplicar.",
+          "tablas": [
+            "FPAG"
+          ],
+          "sp": "FPAG_COL · SOLICITAR_AVAL_RECAUDO"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Contabilidad: Avalar seleccionados",
+          "rol": "Contador (permiso BAvalRecaudoConta)",
+          "pantalla": "Contable → Aval recaudos",
+          "descripcion": "La lista muestra los recaudos Pendientes con tercero, valor, comprobante y quién lo solicitó. Seleccione y pulse Avalar seleccionados. Sin permiso la lista solo se consulta. El periodo histórico no se abre.",
+          "tablas": [
+            "FPAG"
+          ],
+          "sp": "FPAG_COL · LISTAR_RECAUDOS_AVAL_PENDIENTE · AVALAR_RECAUDO"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Cartera: Desaplicar con aval",
+          "rol": "Qrystalos",
+          "descripcion": "Crea el comprobante de reversión con fecha actual (ligado al original), deja todas las facturas del recaudo Retiradas con el número de ese comprobante, reliquida cada factura y libera sus saldos en cartera. Si ya hay facturas retiradas o no existe el comprobante original, no se ejecuta.",
+          "tablas": [
+            "MCP",
+            "MCH",
+            "FPAGD",
+            "FTR"
+          ],
+          "sp": "FPAG_COL · RETIRO_MASIVO_CON_AVAL → SPK_REVERSAR_RECUADO · SPK_RELIQUIDA_FTR"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "El recaudo sigue Cerrado; arme uno nuevo",
+          "rol": "Jefe de cartera",
+          "descripcion": "El recaudo no vuelve a Abierto ni se vuelve a aplicar. Con las facturas liberadas, cree un recaudo nuevo en el mes vigente con las facturas correctas.",
+          "tablas": [
+            "FPAG"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-adres",
+      "nombre": "Consignaciones ADRES",
+      "icono": "call_split",
+      "descripcion": "Repartir giros directos de ADRES entre facturas. Instalaciones Perú.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "¿Hay consignaciones ADRES pendientes para el tercero?",
+          "descripcion": "El botón Consig. Adres solo aparece si hay pendientes y el usuario tiene el permiso BDistribuirAdres.",
+          "si": "Pulse Consig. Adres.",
+          "no": "El botón no se muestra.",
+          "sp": "FPAG_COL · PAGOS_ADRES"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Distribuir",
+          "rol": "Tesorero / cartera institucional",
+          "pantalla": "Ventana Distribuye ADRES",
+          "descripcion": "Reparte la consignación agregada entre las facturas correspondientes.",
+          "tablas": [
+            "BMOV",
+            "BMOVD"
+          ],
+          "sp": "BMOV · DISTRUYE_ADRES"
+        },
+        {
+          "num": 3,
+          "tipo": "resultado",
+          "titulo": "Recaudos BANCOS listos para aplicar",
+          "rol": "Cartera",
+          "descripcion": "Las líneas distribuidas siguen el flujo normal de Recaudo desde Bancos."
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Guía rápida",
+      "titulo": "¿Qué necesita hacer?"
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Conceptos",
+      "titulo": "Qué es un recaudo y los seis tipos de ingreso",
+      "md": "Un **recaudo** es el registro de un dinero (o de una novedad del pagador) que llega a la institución y que debe cruzarse con facturas que ya están en la cuenta por cobrar. Quien cobra crea una cabecera con el tercero, el tipo de **Ingreso**, la fecha y el valor; le asigna facturas de la cuenta de cobro; y pulsa **Aplicar**. En ese momento el sistema descuenta el saldo de cada factura, genera el comprobante contable y deja el recaudo **Cerrado**.\n\nEl tipo de Ingreso cambia tres cosas: **de dónde sale el valor** al crear, **qué columnas trae la plantilla Excel** y **qué ocurre al aplicar**.\n\n- **CAJA**: el dinero ya entró por ventanilla. Se busca un recibo de caja cerrado con la casilla Recaudo marcada.\n- **BANCOS**: una consignación o transferencia ya confirmada por tesorería y marcada como recaudo.\n- **GLOSAS**: el pagador objeta facturas. Lleva **Paso a Seguir** 3, 4, 5 o 6 y al aplicar nace el expediente de glosa.\n- **CXP**: el pagador también es proveedor; se compensa cartera con cuentas por pagar (pestaña Cruce CXP).\n- **DEVOLUCION**: el pagador devuelve la factura sin pagarla. Lleva Paso a Seguir 0, 1 o 2.\n- **LEVANTAMIENTO**: una glosa registrada que el pagador levanta; el valor vuelve a ser cobrable.\n\nEl selector **Paso a Seguir** solo aparece en GLOSAS y DEVOLUCION y en la grilla se muestra en la columna **Proceso**. Si la variable de ajuste al peso no está configurada, CAJA, BANCOS y CXP no aparecen en el selector de Ingreso.\n\nLo que **no** hace este módulo: no factura, no radica cuentas de cobro, no responde glosas en auditoría (salvo los pasos 4 y 6) y no define la respuesta a devoluciones (eso es la ventana Respuesta Devoluciones).",
+      "imagen": "img/recaudos_seis_ingresos_sketchnote.jpg",
+      "imagenAlt": "Los seis tipos de Ingreso · Cartera · Recaudos",
+      "puntosClave": [
+        "El Ingreso decide de dónde sale el valor, la plantilla y lo que pasa al aplicar.",
+        "Paso a Seguir solo en GLOSAS (3–6) y DEVOLUCION (0–2).",
+        "Sin `REC_VLRMAX_AJUSTE`, CAJA, BANCOS y CXP no aparecen."
+      ]
+    },
+    {
+      "id": "hilo-comun",
+      "tipo": "flujo",
+      "flujoId": "flujo-hilo-comun",
+      "kicker": "Panorama",
+      "titulo": "El hilo común: crear → asignar → aplicar",
+      "intro": "Todo recaudo, sin importar el ingreso, recorre los mismos pasos. Apréndase este capítulo y los demás son variaciones.",
+      "imagen": "img/recaudos_hilo_comun_sketchnote.jpg",
+      "imagenAlt": "El hilo común de todo recaudo",
+      "puntosClave": [
+        "Un solo recaudo Abierto por usuario, tercero e ingreso.",
+        "Sin facturas asignadas no hay Aplicar.",
+        "Aplicar deja el recaudo Cerrado y genera el comprobante en el mismo acto."
+      ]
+    },
+    {
+      "id": "desde-caja",
+      "tipo": "flujo",
+      "flujoId": "flujo-desde-caja",
+      "kicker": "Origen del dinero",
+      "titulo": "Recaudo desde Caja",
+      "intro": "El pagador pagó en ventanilla. El recaudo busca ese **recibo** (no la caja maestra) y lo cruza con facturas.",
+      "imagen": "img/recaudos_desde_caja_sketchnote.jpg",
+      "imagenAlt": "Recaudo desde Caja: del recibo al pago aplicado",
+      "puntosClave": [
+        "Salen recibos cerrados, activos, con casilla Recaudo y no usados por otro recaudo.",
+        "«Acepta Recaudo» de caja menor no filtra aquí.",
+        "Al guardar, el recibo queda en pagos y no vuelve a salir."
+      ]
+    },
+    {
+      "id": "desde-bancos",
+      "tipo": "flujo",
+      "flujoId": "flujo-desde-bancos",
+      "kicker": "Origen del dinero",
+      "titulo": "Recaudo desde Bancos",
+      "intro": "Tesorería registró y confirmó la consignación. Cartera la legaliza contra facturas.",
+      "imagen": "img/recaudos_desde_bancos_sketchnote.jpg",
+      "imagenAlt": "Recaudo desde Bancos: de la consignación al pago aplicado",
+      "puntosClave": [
+        "Salen líneas con marca de recaudo, movimiento confirmado, sin estar en pagos y con saldo por legalizar.",
+        "Un movimiento se legaliza una sola vez.",
+        "En BANCOS se puede retirar una factura aun aplicado (permiso)."
+      ]
+    },
+    {
+      "id": "carga-masiva",
+      "tipo": "flujo",
+      "flujoId": "flujo-carga-masiva",
+      "kicker": "Plantilla",
+      "titulo": "Carga masiva con Excel: CAJA, BANCOS y CXP",
+      "intro": "La plantilla la arma la pantalla según el ingreso. Descargue, diligencie, suba, procese y asigne; recién entonces aplique.",
+      "imagen": "img/recaudos_plantilla_excel_sketchnote.jpg",
+      "imagenAlt": "Carga masiva: la plantilla la arma la pantalla",
+      "puntosClave": [
+        "Columnas base: `N_FACTURA`, `VLRPAGO`, `TIPO`, `VALIDACION`.",
+        "`VALIDACION` debe decir OK; no viaja al servidor.",
+        "Las filas sin factura se ignoran; reenviar borra el lote anterior."
+      ]
+    },
+    {
+      "id": "cruce-cxp",
+      "tipo": "flujo",
+      "flujoId": "flujo-cruce-cxp",
+      "kicker": "Compensación",
+      "titulo": "Ingreso CXP: cruce con cuentas por pagar",
+      "intro": "Cuando el pagador también es proveedor, se compensa lo que nos debe con lo que le debemos, sin que circule dinero.",
+      "imagen": "img/recaudos_cruce_cxp_sketchnote.jpg",
+      "imagenAlt": "Ingreso CXP: cobrar cruzando con lo que debemos",
+      "puntosClave": [
+        "Dos piezas: facturas de cartera + pestaña Cruce CXP.",
+        "Suma del cruce = valor de las facturas, o no aplica.",
+        "Solo en recaudo Abierto."
+      ]
+    },
+    {
+      "id": "glosas",
+      "tipo": "paso-a-seguir",
+      "grupo": "glosas",
+      "kicker": "Paso a Seguir",
+      "titulo": "Glosas: los cuatro Pasos a Seguir",
+      "intro": "El pagador objetó facturas. Con Ingreso GLOSAS, el Paso a Seguir decide la plantilla, quién responde y si se puede deshacer.",
+      "imagen": "img/recaudos_glosas_pasos_sketchnote.jpg",
+      "imagenAlt": "Glosas: los cuatro Pasos a Seguir",
+      "puntosClave": [
+        "3 Recepcionar: registra; Cartera envía a auditoría a mano.",
+        "4 y 6 responden solos y no se deshacen.",
+        "5 deja el detalle por ítem para que el auditor responda.",
+        "Códigos de glosa en el maestro `FCGLO`; al aplicar nace el expediente `FGLO`."
+      ]
+    },
+    {
+      "id": "devoluciones",
+      "tipo": "paso-a-seguir",
+      "grupo": "devoluciones",
+      "kicker": "Paso a Seguir",
+      "titulo": "Devoluciones: los tres Pasos a Seguir",
+      "intro": "El pagador devolvió la factura sin pagarla. Con Ingreso DEVOLUCION, el Paso a Seguir decide si solo se retira, se anula o se radica de nuevo.",
+      "imagen": "img/recaudos_devoluciones_pasos_sketchnote.jpg",
+      "imagenAlt": "Devoluciones: los tres Pasos a Seguir",
+      "puntosClave": [
+        "Solo facturas tipo F.",
+        "0 se puede corregir; 1 y 2 son definitivos (sin desaplicar ni retirar).",
+        "La respuesta (Soportar / Anular) se da después en Respuesta Devoluciones."
+      ]
+    },
+    {
+      "id": "aplicar",
+      "tipo": "flujo",
+      "flujoId": "flujo-aplicar",
+      "kicker": "El momento clave",
+      "titulo": "Qué pasa cuando pulso Aplicar",
+      "intro": "Aplicar es el único botón que mueve cartera y contabilidad. Primero valida; si todo cuadra, lo hace todo en un solo acto.",
+      "imagen": "img/recaudos_aplicar_efectos_sketchnote.jpg",
+      "imagenAlt": "Qué pasa cuando pulso Aplicar",
+      "puntosClave": [
+        "Periodo abierto, detalle sin repetidos, ajuste al peso e impuestos con cuenta.",
+        "El comprobante contable se genera en el mismo acto (salvo ¿No Contabiliza?).",
+        "Si falla, responde KO y nada queda a medias."
+      ]
+    },
+    {
+      "id": "corregir",
+      "tipo": "flujo",
+      "flujoId": "flujo-corregir",
+      "kicker": "Reversos",
+      "titulo": "Me equivoqué: ¿qué botón uso?",
+      "intro": "Dos preguntas: ¿el recaudo está Abierto o Cerrado? y ¿el mes contable de su fecha sigue abierto? Con eso se elige el botón.",
+      "imagen": "img/recaudos_corregir_sketchnote.jpg",
+      "imagenAlt": "Me equivoqué: ¿qué botón uso?",
+      "puntosClave": [
+        "Abierto: papelera, Borrar todo, Inactivar, Anular.",
+        "Cerrado y mes abierto: Desaplicar (reabre) o Anular (cancela).",
+        "Cerrado y mes cerrado: solo CAJA/BANCOS con aval."
+      ]
+    },
+    {
+      "id": "aval",
+      "tipo": "flujo",
+      "flujoId": "flujo-aval-periodo-cerrado",
+      "kicker": "Periodo cerrado",
+      "titulo": "Desaplicar en periodo cerrado: el aval contable",
+      "intro": "Si el mes ya cerró, desaplicar como siempre desordenaría cartera y contabilidad. Para CAJA y BANCOS existe un camino con aval de Contabilidad que reversa sin reabrir el mes. **Está en preversión** (REQ 0100016348); confirme que su instalación lo tenga.",
+      "imagen": "img/recaudos_aval_periodo_cerrado_sketchnote.jpg",
+      "imagenAlt": "Desaplicar en periodo cerrado: el aval contable",
+      "puntosClave": [
+        "Solicitar aval → Contable → Aval recaudos → Desaplicar con aval.",
+        "Si `REC_SOLICITA_AVAL` ≠ SI, Desaplicar hace el reverso directo y registra el aval.",
+        "El recaudo sigue Cerrado y las facturas quedan Retiradas: arme un recaudo nuevo."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosRecaudo",
+      "kicker": "Estados",
+      "titulo": "Cómo leer el estado de un recaudo"
+    },
+    {
+      "id": "adres",
+      "tipo": "flujo",
+      "flujoId": "flujo-adres",
+      "kicker": "Perú",
+      "titulo": "Consignaciones ADRES",
+      "intro": "Botón Consig. Adres: reparte giros directos de ADRES entre facturas. Solo aparece cuando hay pendientes."
+    }
+  ]
 }

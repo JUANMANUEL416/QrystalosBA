@@ -2,33 +2,858 @@
   "id": "rips-json",
   "nombre": "Facturación · RIPS JSON / FEVRIPS",
   "modulo": "RIPS_JSON",
+  "familia": "facturacion",
   "estado": "parcial",
-  "resumen": "Generación del JSON RIPS / FEV para SISPRO. Árbol cerrado 2026-09-12: FTR_COL → SPK_GENERAR_RIPS_JSON → hojas + persistir + CUV. No es DIAN (FACTE) ni radicar CXC.",
-  "actualizado": "2026-09-12T22:05:00",
-  "notaSql": "Hojas y FNK leídos 2026-09-12. El despachador vive en sql_refe/xsql y Qrystalos2/sql. Circuito CUV (SPQ_RIPS / FEVRIPS_COLA) leído 2026-09-06.",
-  "alcanceHasta": "JSON persistido (FTRJSON/FNOTJSON) + CUV ministerio. No radica FCXC ni contabiliza.",
+  "resumen": "Generación del JSON RIPS / FEV, envío a SISPRO y CUV. Pantallas: FEV/NC/NA-RIPS Masivo y Envíos y Respuestas · FEV RIPS. Contraste 2026-10-03 con Qrystalos2 (develop) + IXONLINE/SQL PREVERSION = 2.0.7. No es DIAN (FACTE) ni radicar CXC.",
+  "actualizado": "2026-10-03T17:30:00",
+  "notaSql": "2026-10-03: árbol RIPS (23 objetos) idéntico PREVERSION vs 2.0.7. Cambios desde 2026-09-12: despachador (planes CITPAQ), SPQ_RIPS SET_DATOS (ResultState texto) y GET_DATOS_XML (FTRE_XML_DESCENLINEA), FTR_IND/FTR_MAS (SR20260922-001, RIPS_CODSISPRO, IDMIPRESS). Ver sps.json.",
+  "alcanceHasta": "JSON persistido (FTRJSON/FNOTJSON) + CUV del Ministerio + descarga del paquete. No radica FCXC ni contabiliza.",
   "hermanoDe": "facturacion",
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "Es el paso en el que Qrystalos arma el archivo RIPS en formato JSON de una factura electrónica (o de una nota crédito, débito o de ajuste), lo une con el XML que ya aceptó la DIAN y lo envía al validador del Ministerio de Salud (SISPRO). Si el Ministerio lo aprueba, devuelve el CUV (Código Único de Validación).",
+    "paraQueSirve": "Para validar ante el Ministerio la información de los servicios facturados, factura por factura o en lote, revisar los rechazos, recuperar un CUV que ya existía y descargar el paquete (factura, JSON, CUV y XML) que se entrega al pagador junto con la cuenta.",
+    "proposito": "Que ninguna cuenta salga al pagador sin su CUV. El CUV no reemplaza al CUFE de la DIAN ni es la radicación de la cuenta: son tres validaciones distintas y la factura necesita las tres."
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Validar en el Ministerio muchas facturas a la vez",
+      "donde": "Administrativo → FEV/NC/NA-RIPS Masivo → pestaña FEV-RIPS → filtrar → Marcar todo / marcar por cuenta de cobro → V a l i d a r",
+      "condicion": "Solo aparecen facturas notificadas a la DIAN, de resolución electrónica, en estado P, contabilizadas, con valor mayor que cero, que no sean de caja ni estén anuladas por nota crédito, sin CUV y con fecha de 2025 en adelante.",
+      "metodo": "RIPS · MARCAFAC / MARCATODO / MARCAFCXC → FTR_COL · RIPS_JSON → servicio FEV-RIPS → RIPS · SET_DATOS",
+      "noEs": "Control RIPS (/admin/ControlRips): es el envío de RIPS planos, no el JSON."
+    },
+    {
+      "necesidad": "Descargar el paquete RIPS (ZIP) de una cuenta de cobro",
+      "donde": "FEV/NC/NA-RIPS Masivo → pestaña FEV-RIPS → activar Validados → botón Marcar para descargar por cuenta de cobro → D e s c a r g a r",
+      "condicion": "Las facturas ya tienen CUV. En la ventana de descarga se elige qué incluir: factura PDF, JSON, CUV y XML.",
+      "metodo": "RIPS · GET_DATOS / GET_DATOS_XML_ATTACHEDDOCUMENT / GET_CONFIG_EXPORT_RIPS",
+      "noEs": "Radicar CXC: la descarga no radica la cuenta ante el pagador."
+    },
+    {
+      "necesidad": "Saber por qué el Ministerio rechazó las facturas",
+      "donde": "FEV/NC/NA-RIPS Masivo → casilla Con Error + botón Errores SISPRO (Excel). Por factura: Envíos y Respuestas → FEV RIPS → Respuesta JSON o Descargar PDF.",
+      "condicion": "El rechazo queda guardado al validar; se borra cuando la factura obtiene su CUV.",
+      "metodo": "RIPS · SET_DATOS guarda la respuesta en FTR_MAS_LOG (PROCEDENCIA=FEVRIPS)",
+      "noEs": "Respuestas DIAN: esos son rechazos de la factura electrónica, no del RIPS."
+    },
+    {
+      "necesidad": "La factura ya fue validada antes y no aparece el CUV",
+      "donde": "Automático al validar (individual o masivo)",
+      "condicion": "Cuando el Ministerio responde RVG02 (documento ya validado), Qrystalos consulta el CUV existente y lo guarda.",
+      "metodo": "Servicio FEV-RIPS · RecuperarCUV → RIPS · SET_DATOS con ISVALIDACUV",
+      "noEs": "No hace falta generar de nuevo el JSON."
+    },
+    {
+      "necesidad": "Registrar un CUV que se obtuvo fuera de Qrystalos",
+      "donde": "Facturación → botón Fevrips de la factura → FEV RIPS → Validación externa (subir el JSON enviado y la respuesta)",
+      "condicion": "El documento no tiene CUV y la factura no está anulada ni con nota crédito.",
+      "metodo": "RIPS · SET_DATOS",
+      "noEs": "No envía nada al Ministerio: solo registra lo que ya respondió."
+    },
+    {
+      "necesidad": "Corregir un dato del RIPS antes de enviar",
+      "donde": "Envíos y Respuestas → FEV RIPS → Editar JSON → Guardar Cambios → Validar Ahora",
+      "condicion": "El cambio vale solo para ese envío. Si el error viene del afiliado, la atención o el servicio, corríjalo en el origen y use Generar.",
+      "metodo": "Edición en pantalla; se guarda como JSON_ENVIO al validar (RIPS · SET_DATOS)",
+      "noEs": "No corrige la historia, la admisión ni el afiliado. Un nuevo Generar trae el dato original."
+    },
+    {
+      "necesidad": "Nota de ajuste RIPS de una factura con glosa o ajuste",
+      "donde": "Facturación → botón Nota Ajuste (solo si la factura tiene CUV) o FEV/NC/NA-RIPS Masivo → pestaña NA-RIPS",
+      "condicion": "La factura base debe tener CUV del Ministerio.",
+      "metodo": "FTR_COL · RIPS_JSON (TIPODOC=AJUSTE) · FEVRIPS_COL · NOTA_AJUSTE",
+      "noEs": "No es la nota crédito DIAN."
+    },
+    {
+      "necesidad": "Enviar notas crédito y débito al Ministerio",
+      "donde": "FEV/NC/NA-RIPS Masivo → pestaña NC / ND → Validar Notas. Una a una: Notas DB/CR → Fevrips de la nota.",
+      "condicion": "La nota está notificada a la DIAN, la factura tiene CUV y la nota todavía no.",
+      "metodo": "FTR_COL · RIPS_JSON (NOTACR/NOTADB) → servicio FEV-RIPS (CargarNC / CargarNCTotal / CargarND)",
+      "noEs": "No genera la nota: la nota se crea en Notas DB/CR."
+    },
+    {
+      "necesidad": "Reintentar un documento que rechazó el microservicio",
+      "donde": "Envíos y Respuestas → FEV RIPS → aviso rojo → Reprocesar o Enviar ya",
+      "condicion": "Solo con FEVRIPS_MODO=MICROSERVICIO y el documento en estado Rechazado. El microservicio no reintenta solo.",
+      "metodo": "FEVRIPS_COLA · ENCOLAR",
+      "noEs": "No corrige el dato: corrija primero y luego devuelva a la cola."
+    },
+    {
+      "necesidad": "No me aparece la factura en el masivo",
+      "donde": "FEV/NC/NA-RIPS Masivo → pestaña FEV-RIPS",
+      "condicion": "Revise que cumpla el filtro base (DIAN, estado P, contabilizada, valor > 0, no caja, sin nota crédito, sin CUV, año 2025 o posterior). Si ya tiene CUV, active Validados.",
+      "metodo": "Filtro de la grilla en pantalla",
+      "noEs": "No es una falla: la pantalla no muestra lo que no puede enviarse."
+    }
+  ],
   "ventanas": [
     {
-      "uso": "FEV / RIPS masivo",
+      "uso": "FEV/NC/NA-RIPS Masivo",
       "ruta": "admin.fevripsmasivo",
       "path": "/admin/FEVRIPSMasivo",
-      "vue": "FEVRIPSMasivoPage.vue",
-      "entrada": "Administrativo → Facturación → FEVRIPS masivo. Generar o revalidar JSON y enviar a SISPRO."
+      "vue": "FEVRIPSMasivoPage.vue → FEVRIPSMasivoComponent (pestañas FEV · NC · NA)",
+      "entrada": "Administrativo → FEV/NC/NA-RIPS Masivo → Pestaña FEV-RIPS (Facturas). Permiso MENUQ_ADMINISTRATIVO · FEVRIPS_MASIVO. Acceso directo ?tab=fev|nc|na."
     },
     {
-      "uso": "Validaciones FEVRIPS",
+      "uso": "Envíos y Respuestas · FEV RIPS de una factura",
       "ruta": "admin.facturacion",
-      "path": "/admin/facturacion",
-      "vue": "ValidacionesFEVRipsComponent.vue · useRipsJsonAsync",
-      "entrada": "Facturación → validar / generar RIPS JSON (síncrono o job CONFIG_GENE_FEV)."
+      "path": "/admin/facturacion → columna Fevrips",
+      "vue": "FTRComponent → VisorXMLsComponent → ValidacionesFEVRipsComponent",
+      "entrada": "Facturación → botón Fevrips de la fila → pestaña FEV RIPS (habilitada si la factura está Notificada en DIAN)."
     },
     {
-      "uso": "Proceso DIAN · paquete FEVRIPS",
+      "uso": "Nota de ajuste RIPS",
       "ruta": "admin.facturacion",
-      "path": "/admin/facturacion",
-      "vue": "FTREComponent.vue",
-      "entrada": "Pestaña Proceso DIAN: descarga ZIP (XML + JSON) cuando hay CUV."
+      "path": "/admin/facturacion → botón Nota Ajuste",
+      "vue": "FTRComponent → VisorXMLsComponent (NA)",
+      "entrada": "Facturación → editar factura → Nota Ajuste (visible solo si la factura tiene CUV)."
+    },
+    {
+      "uso": "Notas DB/CR y Cuentas por cobrar",
+      "ruta": "admin.notasdbcr",
+      "path": "/admin/notasdbcr · Cuentas por cobrar",
+      "vue": "NotasDBCRComponent · FCXCAComponent → SopFevRipsComponent",
+      "entrada": "Notas DB/CR → Fevrips de la nota. Cuentas por cobrar → detalle → Descargar FEV-RIPS."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Guía rápida",
+      "titulo": "¿Qué necesita hacer?"
+    },
+    {
+      "id": "validacion-ministerio",
+      "tipo": "validacion-ministerio",
+      "flujoId": "flujo-ministerio-rips",
+      "kicker": "Qué es FEV-RIPS",
+      "titulo": "De la factura DIAN al CUV del Ministerio"
+    },
+    {
+      "id": "fevrips-individual",
+      "tipo": "flujo",
+      "flujoId": "flujo-fevrips-individual",
+      "kicker": "Una factura",
+      "titulo": "Validar una factura desde Facturación"
+    },
+    {
+      "id": "fevrips-masivo",
+      "tipo": "fevrips-masivo",
+      "flujoId": "flujo-fevrips-masivo",
+      "kicker": "Lote de facturas",
+      "titulo": "FEV/NC/NA-RIPS Masivo: validar y descargar"
+    },
+    {
+      "id": "rechazos-cuv",
+      "tipo": "flujo",
+      "flujoId": "flujo-rechazos-cuv",
+      "kicker": "Errores del Ministerio",
+      "titulo": "Rechazos, correcciones y recuperación del CUV"
+    },
+    {
+      "id": "notas-rips",
+      "tipo": "flujo",
+      "flujoId": "flujo-notas-rips",
+      "kicker": "Notas",
+      "titulo": "Notas crédito, débito y de ajuste"
+    },
+    {
+      "id": "cola-async",
+      "tipo": "flujo",
+      "flujoId": "flujo-cola-async",
+      "kicker": "Configuración",
+      "titulo": "Generación en segundo plano y microservicio"
+    }
+  ],
+  "masivoLibro": {
+    "filtroBase": [
+      {
+        "icono": "task_alt",
+        "titulo": "Notificada DIAN",
+        "detalle": "Ya tiene CUFE y es de resolución electrónica"
+      },
+      {
+        "icono": "rule",
+        "titulo": "Estado P",
+        "detalle": "Ni anulada ni con nota crédito total"
+      },
+      {
+        "icono": "account_balance",
+        "titulo": "Contabilizada",
+        "detalle": "Valor total mayor que cero"
+      },
+      {
+        "icono": "point_of_sale",
+        "titulo": "No es de caja",
+        "detalle": "Las de caja no se envían por aquí"
+      },
+      {
+        "icono": "event",
+        "titulo": "2025 en adelante",
+        "detalle": "Facturas anteriores no se listan"
+      }
+    ],
+    "pestanas": [
+      {
+        "id": "fev",
+        "icono": "receipt_long",
+        "titulo": "FEV-RIPS",
+        "sub": "Facturas",
+        "detalle": "Facturas sin CUV. Filtros: fechas, sede, procedencia, tercero, contrato y usuario que facturó."
+      },
+      {
+        "id": "nc",
+        "icono": "remove_circle_outline",
+        "titulo": "NC / ND",
+        "sub": "Notas débito y crédito",
+        "detalle": "Notas notificadas a la DIAN cuya factura ya tiene CUV y la nota todavía no."
+      },
+      {
+        "id": "na",
+        "icono": "edit_note",
+        "titulo": "NA-RIPS",
+        "sub": "Notas de ajuste",
+        "detalle": "Facturas con CUV que necesitan nota de ajuste. Permite subir el JSON corregido en ZIP."
+      }
+    ],
+    "credenciales": "Antes de validar, abra el panel SISPRO y complete NIT, tipo y número de documento y clave del usuario registrado en SISPRO. La URL del servicio viene de la variable URL_SERV_RIPS.",
+    "validar": [
+      {
+        "titulo": "Filtrar",
+        "detalle": "Fechas, sede, procedencia, tercero o contrato."
+      },
+      {
+        "titulo": "Marcar",
+        "detalle": "Marcar todo, una a una o por cuenta de cobro. También Subir listado de facturas (Excel)."
+      },
+      {
+        "titulo": "V a l i d a r",
+        "detalle": "Genera el JSON de cada factura marcada, lo envía y guarda la respuesta. Se puede Pausar y Reanudar."
+      },
+      {
+        "titulo": "Revisar",
+        "detalle": "Validado = tiene CUV. Error = active Con Error y descargue Errores SISPRO."
+      }
+    ],
+    "descargar": [
+      {
+        "titulo": "Validados",
+        "detalle": "Active la casilla Validados: solo facturas con CUV."
+      },
+      {
+        "titulo": "Marcar para descargar",
+        "detalle": "Todo, una a una o por cuenta de cobro."
+      },
+      {
+        "titulo": "D e s c a r g a r",
+        "detalle": "Elija nombre del ZIP y archivos: Factura .pdf, .JSON, Cuv.JSON y .XML."
+      },
+      {
+        "titulo": "Reconstruir (opcional)",
+        "detalle": "Vuelve a armar el JSON desde la base antes de empaquetar."
+      }
+    ],
+    "estados": [
+      {
+        "estado": "Pendiente",
+        "tono": "gris"
+      },
+      {
+        "estado": "Preparando envío",
+        "tono": "azul"
+      },
+      {
+        "estado": "Validando en SISPRO",
+        "tono": "azul"
+      },
+      {
+        "estado": "Validado",
+        "tono": "verde"
+      },
+      {
+        "estado": "Error",
+        "tono": "rojo"
+      }
+    ],
+    "nota": "Validar no radica la cuenta. Después de descargar el paquete, la cuenta se radica en Cuentas por cobrar."
+  },
+  "flujos": [
+    {
+      "id": "flujo-ministerio-rips",
+      "nombre": "Validación RIPS ante Ministerio/SISPRO",
+      "descripcion": "El JSON RIPS usa la factura que ya aceptó la DIAN y obtiene un CUV propio, distinto del CUFE.",
+      "icono": "health_and_safety",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Comprobar precondiciones FEV-RIPS",
+          "descripcion": "La factura está notificada a la DIAN, no está anulada ni tiene nota crédito, y la atención y el afiliado tienen sus datos completos.",
+          "si": "Generar o reutilizar el JSON.",
+          "no": "Corregir factura, atención, afiliado u homologaciones.",
+          "tablas": [
+            "FTR",
+            "AFI",
+            "HADM",
+            "CIT",
+            "AUT"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "Generar JSON RIPS",
+          "descripcion": "El motor elige la hoja según la modalidad: evento, masiva, cápita, PGP, programa (AUTPG) o citas paquete, y guarda el JSON de envío.",
+          "sp": "FTR_COL · RIPS_JSON → SPK_GENERAR_RIPS_JSON",
+          "tablas": [
+            "FTRJSON",
+            "FNOTJSON"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Armar y transmitir el paquete FEV-RIPS",
+          "descripcion": "Qrystalos une el XML aceptado por la DIAN con el JSON RIPS, inicia sesión en SISPRO con las credenciales del usuario y envía el paquete. La ruta cambia según el tipo: cápita inicial, periodo o final; factura estándar; nota crédito total, parcial, débito o de ajuste.",
+          "tablas": [
+            "FTR",
+            "FTRJSON"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Interpretar la respuesta del Ministerio",
+          "descripcion": "SISPRO valida estructura, identidad, códigos y coherencia entre la factura electrónica y los RIPS.",
+          "si": "La respuesta aprobada trae el CUV.",
+          "no": "Revisar los errores (Respuesta JSON, PDF o Errores SISPRO), corregir el origen y volver a validar.",
+          "tablas": [
+            "FTRJSON",
+            "FTR_MAS_LOG"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Registrar CUV y cerrar la validación",
+          "descripcion": "Qrystalos guarda el CUV y la fecha de validación en la factura o la nota. El paquete queda validado ante el Ministerio, pero la cuenta todavía no está radicada ante el pagador.",
+          "sp": "RIPS · SET_DATOS",
+          "tablas": [
+            "FTR",
+            "FTRJSON"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-fevrips-individual",
+      "nombre": "Validar una factura desde Facturación",
+      "descripcion": "Camino para revisar, corregir y validar una sola factura. Útil para resolver rechazos o probar antes de un lote.",
+      "icono": "description",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir Envíos y Respuestas",
+          "descripcion": "En la grilla de Facturación, pulse el botón Fevrips de la factura y elija la pestaña FEV RIPS. Solo se habilita si la factura está Notificada en la DIAN.",
+          "rol": "Facturador",
+          "pantalla": "Facturación",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Completar credenciales SISPRO",
+          "descripcion": "Registre NIT, tipo y número de documento y clave del usuario SISPRO. La URL del servicio sale de URL_SERV_RIPS.",
+          "rol": "Facturador",
+          "pantalla": "FEV RIPS"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Generar o traer el JSON",
+          "descripcion": "Generar arma un JSON nuevo desde la base. Si ya existe uno guardado, se reutiliza. Las facturas grandes se generan en segundo plano y la pantalla espera a que terminen.",
+          "rol": "Sistema",
+          "sp": "FTR_COL · RIPS_JSON / INICIAR_RIPS_JSON_JOB",
+          "tablas": [
+            "FTRJSON",
+            "PROCESO_JOB"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Hay que corregir algo?",
+          "descripcion": "Revise el JSON en la vista resumen o en Ver JSON.",
+          "si": "Si el error está en el origen (afiliado, atención, servicio), corríjalo allí y vuelva a Generar. Editar JSON corrige solo este envío.",
+          "no": "Continúe con Validar Ahora.",
+          "tablas": [
+            "AFI",
+            "HADM",
+            "SER"
+          ]
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Validar Ahora",
+          "descripcion": "Envía el paquete al Ministerio y muestra la respuesta. Se bloquea si la factura ya tiene CUV, está anulada o el microservicio la tiene en curso.",
+          "rol": "Facturador",
+          "sp": "RIPS · SET_DATOS",
+          "tablas": [
+            "FTR",
+            "FTRJSON"
+          ]
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Descargar el paquete",
+          "descripcion": "Con CUV, use Descargar Paquete Integral FEVRIPS (factura, JSON, CUV y XML) o Descargar JSON FEVRIPS.",
+          "rol": "Facturador",
+          "sp": "RIPS · GET_DATOS_XML_ATTACHEDDOCUMENT / GET_CONFIG_EXPORT_RIPS"
+        }
+      ]
+    },
+    {
+      "id": "flujo-fevrips-masivo",
+      "nombre": "FEV/NC/NA-RIPS Masivo",
+      "descripcion": "Valida y descarga por lote. Cada factura se procesa en orden: se genera su JSON, se envía y se guarda la respuesta antes de pasar a la siguiente.",
+      "icono": "dynamic_feed",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Filtrar y marcar",
+          "descripcion": "Filtre por fechas, sede, procedencia, tercero o contrato y marque las facturas: todas, por cuenta de cobro o desde un Excel.",
+          "rol": "Facturación / Cuentas médicas",
+          "pantalla": "Pestaña FEV-RIPS",
+          "sp": "RIPS · MARCAFAC / MARCATODO / MARCAFCXC",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "sistema",
+          "titulo": "V a l i d a r",
+          "descripcion": "Inicia sesión en SISPRO, genera el JSON de cada factura marcada, lo envía y guarda la respuesta. Se puede pausar y reanudar.",
+          "rol": "Sistema",
+          "sp": "FTR_COL · RIPS_JSON → RIPS · SET_DATOS",
+          "tablas": [
+            "FTRJSON",
+            "FTR_MAS_LOG"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Revisar resultados",
+          "descripcion": "Cada fila termina en Validado o Error.",
+          "si": "Validado: la factura ya tiene CUV.",
+          "no": "Error: active Con Error y descargue Errores SISPRO para corregir.",
+          "tablas": [
+            "FTR",
+            "FTR_MAS_LOG"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Descargar paquetes",
+          "descripcion": "Active Validados, marque por cuenta de cobro y pulse Descargar. Elija qué archivos incluir en el ZIP.",
+          "rol": "Cuentas médicas",
+          "sp": "RIPS · GET_DATOS / GET_CONFIG_EXPORT_RIPS"
+        }
+      ]
+    },
+    {
+      "id": "flujo-rechazos-cuv",
+      "nombre": "Rechazos, correcciones y recuperación del CUV",
+      "descripcion": "Qué hacer cuando el Ministerio no devuelve el CUV.",
+      "icono": "rule",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Ver el error",
+          "descripcion": "Por factura: pestaña Respuesta JSON o Descargar PDF. Por lote: casilla Con Error y botón Errores SISPRO (Excel con la ruta del campo que falló).",
+          "rol": "Facturador",
+          "tablas": [
+            "FTR_MAS_LOG"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Dónde está el error?",
+          "descripcion": "La mayoría de rechazos vienen de datos del afiliado, la atención, el servicio o la factura.",
+          "si": "Corrija en el origen y vuelva a Generar antes de validar.",
+          "no": "Si es un caso puntual, Editar JSON corrige solo ese envío.",
+          "tablas": [
+            "AFI",
+            "HADM",
+            "SER",
+            "FTR"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Documento ya validado (RVG02)",
+          "descripcion": "Si el Ministerio responde que el documento ya tenía CUV, Qrystalos lo recupera y lo guarda sin volver a enviar el paquete.",
+          "rol": "Sistema",
+          "sp": "RecuperarCUV → RIPS · SET_DATOS"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "CUV obtenido fuera de Qrystalos",
+          "descripcion": "Use Validación externa: suba el JSON que se envió y la respuesta del Ministerio para registrar el CUV.",
+          "rol": "Facturador",
+          "sp": "RIPS · SET_DATOS"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "Token SISPRO vencido",
+          "descripcion": "La sesión SISPRO dura 60 minutos y se renueva sola una vez.",
+          "si": "Si se renueva, el lote continúa.",
+          "no": "Si no, el lote se detiene: verifique las credenciales SISPRO y vuelva a validar."
+        }
+      ]
+    },
+    {
+      "id": "flujo-notas-rips",
+      "nombre": "Notas crédito, débito y de ajuste",
+      "descripcion": "Las notas también se validan ante el Ministerio y reciben su propio CUV. Requieren que la factura base ya tenga CUV.",
+      "icono": "edit_note",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "decision",
+          "titulo": "Factura base con CUV",
+          "descripcion": "Sin CUV de la factura no se puede validar la nota.",
+          "si": "Continúa.",
+          "no": "Valide primero la factura.",
+          "tablas": [
+            "FTR"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nota crédito o débito",
+          "descripcion": "La nota debe estar notificada a la DIAN. Se valida en la pestaña NC / ND (Validar Notas) o desde Notas DB/CR. La nota crédito que anula la factura se envía como total; las demás como parciales.",
+          "rol": "Facturador",
+          "pantalla": "Pestaña NC / ND",
+          "sp": "FTR_COL · RIPS_JSON (NOTACR / NOTADB)",
+          "tablas": [
+            "FNOT",
+            "FNOTJSON"
+          ]
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Nota de ajuste",
+          "descripcion": "Desde la factura (botón Nota Ajuste) o la pestaña NA-RIPS. Traer Original trae el JSON ya guardado sin regenerarlo; Generar arma uno nuevo.",
+          "rol": "Facturador / Cuentas médicas",
+          "pantalla": "Pestaña NA-RIPS",
+          "sp": "FTR_COL · RIPS_JSON (AJUSTE) · FEVRIPS_COL · NOTA_AJUSTE",
+          "tablas": [
+            "FNOTJSON",
+            "FGLO"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "CUV de la nota",
+          "descripcion": "El CUV queda en la nota (o en la glosa, para la nota de ajuste). La descarga NA usa el nombre de archivo _NA_CUV.",
+          "sp": "RIPS · SET_DATOS",
+          "tablas": [
+            "FNOT",
+            "FGLO",
+            "FNOTJSON"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flujo-cola-async",
+      "nombre": "Generación en segundo plano y microservicio",
+      "descripcion": "Dos ajustes de instalación cambian cómo trabaja el proceso: la generación en segundo plano (Conf. async) y el microservicio que envía solo.",
+      "icono": "settings_suggest",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "sistema",
+          "titulo": "¿Generar en segundo plano?",
+          "descripcion": "La variable CONFIG_GENE_FEV define qué procedencias se generan de inmediato y desde qué valor de factura se usa segundo plano. Sin esa variable, todas las facturas se generan en segundo plano.",
+          "rol": "Sistema",
+          "sp": "FNK_RIPS_JSON_USAR_ASYNC",
+          "tablas": [
+            "USVGS",
+            "PROCESO_JOB"
+          ]
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "Atención al abrir Conf. async",
+          "descripcion": "Si la variable CONFIG_GENE_FEV no existe, la ventana Conf. async muestra seis procedencias marcadas como inmediatas (SALUD, CI, CE, AUTPG, FINANCIERO, INVENTARIO), aunque hoy el sistema genera todo en segundo plano. Si pulsa Guardar sin cambiar nada, esas seis pasan a generarse de inmediato. Esta ventana cambia la configuración de toda la institución.",
+          "si": "Revise la lista antes de guardar y deje solo las procedencias que deben generarse de inmediato.",
+          "no": "Si no va a cambiar nada, cierre con Cancelar."
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Microservicio (FEVRIPS_MODO=MICROSERVICIO)",
+          "descripcion": "Un proceso automático busca las facturas notificadas sin CUV y las envía por su cuenta, sin necesidad de marcarlas.",
+          "rol": "Sistema",
+          "sp": "FEVRIPS_COLA · TOMAR_LOTE / SET_ESTADO",
+          "tablas": [
+            "FEVRIPS_COLA"
+          ]
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Envío manual con microservicio activo",
+          "descripcion": "Antes de validar a mano, Qrystalos reserva el documento para que no se envíe dos veces.",
+          "si": "Si está libre, se valida normalmente.",
+          "no": "Si el microservicio lo tiene en curso, la pantalla avisa desde hace cuántos minutos y no deja enviar.",
+          "sp": "FEVRIPS_COLA · TOMAR_MANUAL / LIBERAR_MANUAL"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Rechazados por el microservicio",
+          "descripcion": "Un documento rechazado no se reintenta solo. Corrija y use Reprocesar (vuelve a la cola) o Enviar ya (lo pone de primero).",
+          "rol": "Facturador",
+          "sp": "FEVRIPS_COLA · ENCOLAR",
+          "tablas": [
+            "FEVRIPS_COLA"
+          ]
+        }
+      ]
+    }
+  ],
+  "botones": [
+    {
+      "label": "Fevrips",
+      "icono": "description",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "En la grilla de Facturación abre Envíos y Respuestas de la factura. La pestaña FEV RIPS se habilita cuando la factura está Notificada en la DIAN."
+    },
+    {
+      "label": "Generar",
+      "icono": "auto_fix_high",
+      "color": "orange-9",
+      "estilo": "outline",
+      "descripcion": "Arma un JSON nuevo desde la base de datos. Úselo después de corregir datos de origen."
+    },
+    {
+      "label": "Validar Ahora",
+      "icono": "send",
+      "color": "indigo-10",
+      "estilo": "unelevated",
+      "descripcion": "Envía el paquete de esta factura al Ministerio y muestra la respuesta. No se permite si ya tiene CUV, está anulada o con nota crédito."
+    },
+    {
+      "label": "Editar JSON",
+      "icono": "edit",
+      "color": "blue",
+      "estilo": "outline",
+      "descripcion": "Corrige campos del JSON solo para este envío. No cambia el afiliado, la atención ni el servicio."
+    },
+    {
+      "label": "Validación externa",
+      "icono": "fact_check",
+      "color": "blue-grey",
+      "estilo": "outline",
+      "descripcion": "Registra un CUV obtenido fuera de Qrystalos: se sube el JSON enviado y la respuesta del Ministerio."
+    },
+    {
+      "label": "Subir JSON y Validar",
+      "icono": "cloud_upload",
+      "color": "purple",
+      "estilo": "outline",
+      "descripcion": "Envía un JSON ya armado (rips + xmlFevFile) sin consultar la base."
+    },
+    {
+      "label": "Descargar Paquete Integral FEVRIPS",
+      "icono": "folder_zip",
+      "color": "positive",
+      "estilo": "outline",
+      "descripcion": "Descarga en ZIP la factura, el JSON, el CUV y el XML de una factura ya validada."
+    },
+    {
+      "label": "Nota Ajuste",
+      "icono": "edit_note",
+      "color": "indigo",
+      "estilo": "outline",
+      "descripcion": "En la factura, abre la nota de ajuste RIPS. Solo aparece si la factura tiene CUV."
+    },
+    {
+      "label": "V a l i d a r",
+      "icono": "verified",
+      "color": "primary",
+      "estilo": "glossy",
+      "descripcion": "En FEV/NC/NA-RIPS Masivo, genera y envía al Ministerio todas las facturas marcadas, una tras otra."
+    },
+    {
+      "label": "D e s c a r g a r",
+      "icono": "download",
+      "color": "primary",
+      "estilo": "glossy",
+      "descripcion": "Con la casilla Validados activa, descarga en ZIP los paquetes de las facturas marcadas."
+    },
+    {
+      "label": "Errores SISPRO",
+      "icono": "table_view",
+      "color": "deep-orange",
+      "estilo": "outline",
+      "descripcion": "Exporta a Excel los rechazos del Ministerio con el campo que falló."
+    },
+    {
+      "label": "Subir listado de facturas",
+      "icono": "upload_file",
+      "color": "teal",
+      "estilo": "outline",
+      "descripcion": "Marca facturas a partir de un Excel con sus números."
+    },
+    {
+      "label": "Reprocesar / Enviar ya",
+      "icono": "replay",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Con microservicio activo, devuelve a la cola un documento rechazado ya corregido. Enviar ya lo pone de primero."
+    },
+    {
+      "label": "Conf. async",
+      "icono": "tune",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Define qué procedencias se generan de inmediato y desde qué valor se usa segundo plano. Afecta a toda la institución."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "FEVRIPS_MASIVO",
+      "accion": "Abrir FEV/NC/NA-RIPS Masivo",
+      "rol": "Facturación / Cuentas médicas",
+      "descripcion": "Procedimiento MENUQ_ADMINISTRATIVO. Sin él la pantalla masiva muestra el aviso de acceso bloqueado."
+    },
+    {
+      "codigo": "Sin código propio",
+      "accion": "Fevrips de una factura",
+      "rol": "Quien ve la grilla de Facturación",
+      "descripcion": "Envíos y Respuestas no pide un permiso adicional. La pestaña FEV RIPS depende de que la factura esté Notificada en la DIAN."
+    },
+    {
+      "codigo": "Sin código propio",
+      "accion": "Conf. async",
+      "rol": "Administrador del sistema",
+      "descripcion": "Hoy no exige permiso y cambia la variable CONFIG_GENE_FEV de toda la institución. Restrinja quién usa esta ventana."
+    },
+    {
+      "codigo": "Credenciales SISPRO",
+      "accion": "Validar / enviar al Ministerio",
+      "rol": "Usuario registrado en SISPRO",
+      "descripcion": "No es un permiso de Qrystalos: NIT, tipo y número de documento y clave del usuario SISPRO de la institución."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "URL_SERV_RIPS",
+      "tipo": "Texto (URL)",
+      "valorSugerido": "https://fevrips.qrystalos.com/",
+      "descripcion": "Dirección del servicio FEV-RIPS que envía los paquetes al Ministerio. La pantalla la carga como URL API Docker."
+    },
+    {
+      "nombre": "URL_SERV_RIPS_PRUEBA",
+      "tipo": "Texto (URL)",
+      "valorSugerido": "Según instalación",
+      "descripcion": "Servicio de pruebas. Se usa cuando la base de datos actual no es la de producción (BDATA_PRODUCCION)."
+    },
+    {
+      "nombre": "BDATA_PRODUCCION",
+      "tipo": "Texto (nombre de base)",
+      "valorSugerido": "Base productiva",
+      "descripcion": "Si la base en uso tiene otro nombre, Qrystalos trata el ambiente como pruebas."
+    },
+    {
+      "nombre": "CONFIG_GENE_FEV",
+      "tipo": "JSON",
+      "valorSugerido": "{\"procedenciasSinAsync\":[…],\"valorMinimoAsync\":0}",
+      "descripcion": "Procedencias que se generan de inmediato y valor mínimo para usar segundo plano. Sin la variable, todo se genera en segundo plano. Se edita en Conf. async."
+    },
+    {
+      "nombre": "FEVRIPS_MODO",
+      "tipo": "Texto",
+      "valorSugerido": "MICROSERVICIO / vacío",
+      "descripcion": "MICROSERVICIO activa el envío automático: el sistema busca y envía solo las facturas notificadas sin CUV."
+    },
+    {
+      "nombre": "FEVRIPS_CUV_TXT",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "SI descarga el archivo del CUV como .txt en lugar de .json."
+    },
+    {
+      "nombre": "RIPS_CODSISPRO",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "SI reporta el código SISPRO del servicio (si está lleno) en lugar del CUPS, en facturas por evento y masivas."
+    },
+    {
+      "nombre": "FTRE_XML_DESCENLINEA",
+      "tipo": "SI / NO",
+      "valorSugerido": "NO",
+      "descripcion": "SI limpia espacios y saltos de línea en la descripción de los ítems del XML que viaja en el paquete."
+    },
+    {
+      "nombre": "EPI_MEDICODEFAULT",
+      "tipo": "Código de médico",
+      "valorSugerido": "Según instalación",
+      "descripcion": "Profesional que se reporta cuando la atención no tiene médico asociado."
+    },
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "tipo": "Código de tercero",
+      "valorSugerido": "NIT de la institución",
+      "descripcion": "Identifica al prestador que factura en el JSON y en el envío."
+    },
+    {
+      "nombre": "IDMATERIALESRIPS",
+      "tipo": "Concepto RIPS",
+      "valorSugerido": "Según instalación",
+      "descripcion": "En los ítems de este concepto se reporta el código interno del servicio en lugar del CUPS."
+    },
+    {
+      "nombre": "IDPLANPART … IDPLANPART5",
+      "tipo": "Código de plan",
+      "valorSugerido": "Planes particulares",
+      "descripcion": "Identifican los planes particulares. La factura particular también se reporta al Ministerio."
+    },
+    {
+      "nombre": "FACTSEDE",
+      "tipo": "SI / NO",
+      "valorSugerido": "Según instalación",
+      "descripcion": "En cápita, SI toma el código de habilitación de la sede en lugar del de la institución."
+    },
+    {
+      "nombre": "Otras de las hojas RIPS",
+      "tipo": "Varias",
+      "valorSugerido": "—",
+      "descripcion": "También se leen FEVRIPS_INC_SINVLR, FTRDC_EXCUYSERPLAN, PGP_MOD_Y_COP_PROPIO, PGP_AUT_SOLODISPENSA, CUOTMODE_ENFACTFINAN, CIRUJANOENJSON, MODO_ASISTENCIAL, HCPLANTILLAEPI, TERCATASEGURADORA, IDTARIFASOAT e IDCONCEP_ANULAFTRCE. Su efecto se documentará en detalle."
     }
   ],
   "capas": [
@@ -37,27 +862,42 @@
       "numero": 1,
       "nombre": "Configuración",
       "estado": "parcial",
-      "explicacion": "Antes de generar: factura notificada DIAN (FACTE=2), resolución FDIAN, homologaciones TGEN RIPS_JSON (conceptoRecaudo ICI/ICE), USVGS CONFIG_GENE_FEV (async), FEVRIPS_MODO, EPI_MEDICODEFAULT, IDTERCEROINSTALADO, IDPLANPART*, IDMATERIALESRIPS, FACTSEDE, FEVRIPS_INC_SINVLR. Plan PPT.PGP / capita define la hoja.",
+      "explicacion": "Antes de generar: factura notificada DIAN (FACTE=2), resolución FDIAN electrónica, servicio FEV-RIPS (URL_SERV_RIPS / URL_SERV_RIPS_PRUEBA según BDATA_PRODUCCION), credenciales SISPRO del usuario, CONFIG_GENE_FEV (segundo plano), FEVRIPS_MODO (microservicio), RIPS_CODSISPRO, EPI_MEDICODEFAULT, IDTERCEROINSTALADO, IDMATERIALESRIPS, IDPLANPART*, FACTSEDE. El plan (PPT.PGP, CAPITADA, TIPOCAP) decide la hoja.",
       "tablasClave": [
         "USVGS",
         "TGEN",
         "FDIAN",
         "PPT",
         "TER",
-        "SED"
+        "SED",
+        "TRANSIENT"
       ],
       "controles": [
         {
           "id": "config-fevrips",
-          "nombre": "Variables y homologación RIPS",
-          "explicacion": "CONFIG_GENE_FEV (JSON: valorMinimoAsync, procedenciasSinAsync) decide cola vs síncrono. FEVRIPS_MODO=MICROSERVICIO activa SPQ_FEVRIPS_COLA. TGEN TABLA=RIPS_JSON campo conceptoRecaudo. Prestador: TER.IDALTERNA2 o SED.CODHABILITA si FACTSEDE=SI.",
-          "invariante": "Sin FACTE=2 el motor no genera. Sin CUV en la FV no hay AJUSTE.",
-          "ventanasFe": "/admin/FEVRIPSMasivo · ConfAsyncRipsDialog",
+          "nombre": "Variables y servicio FEV-RIPS",
+          "explicacion": "CONFIG_GENE_FEV (JSON: procedenciasSinAsync, valorMinimoAsync) decide segundo plano o inmediato; sin variable o JSON inválido → segundo plano. FEVRIPS_MODO=MICROSERVICIO activa FEVRIPS_COLA. El JWT SISPRO se guarda 60 min en TRANSIENT (JWT_RIPS) por usuario.",
+          "invariante": "Sin FACTE=2 el motor no genera. Sin CUV en la FV no hay AJUSTE ni NC/ND.",
+          "ventanasFe": "/admin/FEVRIPSMasivo · ConfAsyncRipsDialog · panel SISPRO",
           "sps": [
             {
               "nombre": "FNK_RIPS_JSON_USAR_ASYNC",
               "metodo": "(función)",
-              "rol": "Leído. 0 = FE cae a RIPS_JSON síncrono."
+              "rol": "Leído 2.0.7. 0 = FE cae a RIPS_JSON síncrono."
+            }
+          ]
+        },
+        {
+          "id": "conf-async-discrepancia",
+          "nombre": "Conf. async: valores por defecto",
+          "explicacion": "Sin CONFIG_GENE_FEV la BD usa segundo plano para todo, pero el diálogo Conf. async abre con todas las procedencias como inmediatas. Guardar sin cambios vuelve todo síncrono. El diálogo no valida permiso USGRUH.",
+          "invariante": "Revisar la lista antes de guardar. Cambia la variable de toda la institución.",
+          "ventanasFe": "VisorXMLsComponent → Conf. async",
+          "sps": [
+            {
+              "nombre": "SPQ_USVGS_COL",
+              "metodo": "ACTUALIZA_DATO",
+              "rol": "Escribe CONFIG_GENE_FEV. No leído en este módulo."
             }
           ]
         }
@@ -68,20 +908,29 @@
       "numero": 2,
       "nombre": "Proceso propio",
       "estado": "parcial",
-      "explicacion": "Generar JSON (FTR_COL · RIPS_JSON o job async) → persistir FTRJSON/FNOTJSON → marcar lote (SPQ_RIPS) → enviar SISPRO → CUV. Distinto de encolar DIAN.",
+      "explicacion": "Generar JSON (FTR_COL · RIPS_JSON o job) → persistir FTRJSON/FNOTJSON → marcar (SPQ_RIPS) → el navegador envía al servicio FEV-RIPS (LoginSISPRO + PaquetesFevRips/*) → SET_DATOS guarda CUV o rechazo (FTR_MAS_LOG). RVG02 → RecuperarCUV.",
       "tablasClave": [
         "FTR",
         "FTRJSON",
         "FNOTJSON",
         "FNOT",
+        "FTR_MAS_LOG",
         "PROCESO_JOB"
       ],
       "controles": [
         {
+          "id": "filtro-masivo",
+          "nombre": "Qué facturas lista el masivo",
+          "explicacion": "Pestaña FEV-RIPS: FACTE=2, FDIAN.FTRELECTRONICA=1, FDIAN.PROCEDENCIA FTR/FPOS, SI=0, ESTADO=P, CONTABILIZADA≠0, VR_TOTAL>0, PROCEDENCIA≠CAJA, TIPOANULACION≠NC, YEAR(F_FACTURA)>2024. Validados = CUV lleno; Con Error = existe FTR_MAS_LOG FEVRIPS.",
+          "invariante": "Una factura fuera de este filtro no aparece: no es defecto.",
+          "ventanasFe": "FEVRIPSMasivoComponent · NARIPSMasivoComponent",
+          "sps": []
+        },
+        {
           "id": "generar-json",
           "nombre": "Generar RIPS JSON",
-          "explicacion": "FE: useRipsJsonAsync. Síncrono RIPS_JSON o INICIAR_RIPS_JSON_JOB → EJECUTAR_RIPS_JSON_ASYNC. Motor SPK_GENERAR_RIPS_JSON despacha la hoja según CAPITADA+TIPOCAP+TIPOFAC+PROCEDENCIA+PPT.PGP.",
-          "invariante": "FACTE=2. GENERAR=NO reusa JSON_ENVIO si existe. SOLO_META no arma payload. AJUSTE capita no-PGP no regenera.",
+          "explicacion": "FE: useRipsJsonAsync. Síncrono RIPS_JSON o INICIAR_RIPS_JSON_JOB → EJECUTAR_RIPS_JSON_ASYNC (polling 15 s, hasta 60 min). Reintenta 3 veces si SQL reporta deadlock. Motor SPK_GENERAR_RIPS_JSON despacha la hoja según CAPITADA+TIPOCAP+TIPOFAC+PROCEDENCIA+PPT.PGP.",
+          "invariante": "FACTE=2. GENERAR=NO reusa JSON_ENVIO si existe. SOLO_META no arma payload. Factura anulada o con NC: la pantalla bloquea Generar y Validar.",
           "ventanasFe": "ValidacionesFEVRips · FEVRIPSMasivo · notas NA",
           "sps": [
             {
@@ -92,21 +941,35 @@
             {
               "nombre": "SPK_GENERAR_RIPS_JSON",
               "metodo": "(SP)",
-              "rol": "Despachador. Leído."
+              "rol": "Despachador. Leído 2.0.7."
+            }
+          ]
+        },
+        {
+          "id": "editar-vs-origen",
+          "nombre": "Editar JSON vs corregir el origen",
+          "explicacion": "Editar JSON cambia el JSON en memoria; se persiste como JSON_ENVIO solo al validar (SET_DATOS). Un nuevo Generar reconstruye desde AFI/HADM/SER y pierde la edición.",
+          "invariante": "La corrección permanente se hace en el dato de origen.",
+          "ventanasFe": "ValidacionesFEVRipsComponent · Editar JSON",
+          "sps": [
+            {
+              "nombre": "SPQ_RIPS",
+              "metodo": "SET_DATOS",
+              "rol": "Guarda JSON_ENVIO y JSON_RESPUESTA."
             }
           ]
         },
         {
           "id": "enviar-cuv",
           "nombre": "Marcar, enviar y CUV",
-          "explicacion": "MODELO RIPS: MARCAFAC/MARCATODO/MARCAFCXC → GET_DATOS/SET_DATOS (CUV + FRADICA_RIPS). Cola opcional FEVRIPS_COLA. ZIP: GET_DATOS_XML + GET_CONFIG_EXPORT_RIPS.",
-          "invariante": "CUV no es radicado FCXC. Marca masiva exige FACTE=2, contabilizada, CUV vacío, no caja.",
-          "ventanasFe": "/admin/FEVRIPSMasivo · FTREComponent",
+          "explicacion": "MODELO RIPS: MARCAFAC/MARCATODO/MARCAFCXC → envío desde el navegador al servicio FEV-RIPS (endpoint por tipo: CargarFevRips, CargarCapitaInicial/Periodo/Final, CargarNC, CargarNCTotal, CargarND, CargarNotaAjuste) → SET_DATOS (CUV + FRADICA_RIPS solo si ResultState='true'). RVG02 → ConsultasFevRips/RecuperarCUV → SET_DATOS ISVALIDACUV. ZIP: GET_DATOS_XML_ATTACHEDDOCUMENT + GET_CONFIG_EXPORT_RIPS.",
+          "invariante": "CUV no es radicado FCXC. Documento con CUV: Validar Ahora bloqueado. Token SISPRO inválido detiene el lote tras un intento de renovación.",
+          "ventanasFe": "/admin/FEVRIPSMasivo · ValidacionesFEVRips · FTREComponent",
           "sps": [
             {
               "nombre": "SPQ_RIPS",
               "metodo": "GET/SET_DATOS / MARCA* / GET_DATOS_XML*",
-              "rol": "10/10 leído."
+              "rol": "10/10 leído; SET_DATOS y GET_DATOS_XML releídos 2.0.7."
             },
             {
               "nombre": "SPQ_FEVRIPS_COLA",
@@ -122,22 +985,24 @@
       "numero": 3,
       "nombre": "Lo que llega",
       "estado": "parcial",
-      "explicacion": "El JSON come la factura ya armada (FTR/FTRD/FTRDC) y la atención: HADM, CIT, AUT, AUTPG, HPRE/HPRED, HCA/DX, QXRCN (recién nacido), medicamentos IART/IUNI.",
+      "explicacion": "El JSON come la factura ya armada (FTR/FTRD/FTRDC) y la atención: HADM, CIT, AUT, AUTPG, HPRE/HPRED, HCA/DX, QXRCN (recién nacido), medicamentos IART/IUNI, MIPRES (AUT.IDMIPRESS o FTR.IDMIPRESS). RIPS externos: FTRDJSON (SUBIR_AUTCOL).",
       "tablasClave": [
         "FTRD",
         "FTRDC",
+        "FTRDJSON",
         "HADM",
         "CIT",
         "AUT",
         "HPRED",
         "QXRCN",
-        "AFI"
+        "AFI",
+        "SER"
       ],
       "controles": [
         {
           "id": "atencion-a-rips",
           "nombre": "Atención y afiliado hacia el JSON",
-          "explicacion": "Usuario: AFI (TIPOUSUARIO o mapa TIPOAFILIADO). Servicios según procedencia de cada hoja. Recién nacido: FNK_RIPS_JSON_RECIENNACIDOS (1 QXRCN) o #RECIEN en masivas.",
+          "explicacion": "Usuario: AFI (TIPOUSUARIO o mapa TIPOAFILIADO). Servicios según procedencia de cada hoja. Código: CUPS o SER.CODSISPRO si RIPS_CODSISPRO=SI. Autorizaciones sin guion (SR20260922-001). Recién nacido: FNK_RIPS_JSON_RECIENNACIDOS (1 QXRCN) o #RECIEN en masivas.",
           "invariante": "Sin DOCIDAFILIADO IND no arma. Particular sí se reporta.",
           "sps": [
             {
@@ -154,17 +1019,18 @@
       "numero": 4,
       "nombre": "Subproceso unido",
       "estado": "parcial",
-      "explicacion": "Se une a Facturación (la FTR debe existir y estar en DIAN) y a Glosas (AJUSTE por CNSGLO). El XML FEV sale de FNK_AttachedDocument / FDIANR. No es empaque de anexos ni radicación.",
+      "explicacion": "Se une a Facturación (la FTR debe existir y estar en DIAN), a Notas DB/CR (FNOT.FACTE=2) y a Glosas (AJUSTE por CNSGLO). El XML FEV sale de FNK_AttachedDocument / FDIANR. Control RIPS (RIPS_COL, planos) es otro proceso.",
       "tablasClave": [
         "FDIANR",
         "FTRE",
-        "FGLO"
+        "FGLO",
+        "FNOT"
       ],
       "controles": [
         {
           "id": "dian-xml-fev",
           "nombre": "XML FEV de la DIAN",
-          "explicacion": "El sobre {rips, xmlFevFile} lleva el AttachedDocument en base64. Doble encode provoca FEV001. AJUSTE exige CUV de la FV.",
+          "explicacion": "El sobre {rips, xmlFevFile} lleva el AttachedDocument en base64. Doble encode provoca FEV001. AJUSTE exige CUV de la FV. FTRE_XML_DESCENLINEA=SI limpia espacios Description/CDATA.",
           "invariante": "FACTE=2 en FV; FNOT.FACTE=2 en NC/ND.",
           "sps": [
             {
@@ -181,7 +1047,7 @@
       "numero": 5,
       "nombre": "Contabilidad",
       "estado": "parcial",
-      "explicacion": "Este módulo no genera OM. La marca masiva exige factura ya contabilizada. El asiento es del proceso Facturación (ENVIA_CONTAB), no de RIPS.",
+      "explicacion": "Este módulo no genera OM. La pantalla masiva solo lista facturas ya contabilizadas. El asiento es del proceso Facturación (ENVIA_CONTAB), no de RIPS.",
       "tablasClave": [
         "FTR"
       ],
@@ -189,7 +1055,7 @@
         {
           "id": "sin-om-rips",
           "nombre": "Sin asiento propio",
-          "explicacion": "No hay SPK_NC_CONTAB desde las hojas RIPS. CONTABILIZADA≠0 es precondición de MARCAFCXC, no un efecto de generar JSON.",
+          "explicacion": "No hay SPK_NC_CONTAB desde las hojas RIPS. CONTABILIZADA≠0 es precondición del masivo y de MARCAFCXC, no un efecto de generar JSON.",
           "invariante": "Generar JSON no contabiliza.",
           "sps": []
         }

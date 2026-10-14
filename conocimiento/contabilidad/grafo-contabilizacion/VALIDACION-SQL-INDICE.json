@@ -1,0 +1,459 @@
+{
+  "actualizado": "2026-10-13",
+  "descripcion": "Índice de checks read-only en Auditoría BA vs requires[] de grafos. Solo SELECT; no ejecutar desde este repo.",
+  "motor": "scripts/auditoria_procesos.py · validar_config_contabilidad",
+  "fuenteGrafos": "conocimiento/contabilidad/grafo-contabilizacion/*.json",
+  "checksGlobales": [
+    {
+      "id": "usvgs-grafo",
+      "titulo": "USVGS citadas en requiresConfig",
+      "origenGrafo": "requiresConfig[].usvgs / .id",
+      "sqlPatron": "SELECT IDVARIABLE, VALOR FROM dbo.USVGS WHERE IDVARIABLE IN (...)",
+      "cuentasUsvgs": "Si ID es cuenta (CUENTA_*, CTA_*, IDCJ*, IDCON_*): JOIN CUE TIPO Detalle"
+    },
+    {
+      "id": "pri-abiertos",
+      "titulo": "Periodos contables recientes",
+      "origenGrafo": "requiresConfig pri-existe",
+      "sqlPatron": "SELECT ANO, MES, CERRADO FROM dbo.PRI ORDER BY ANO DESC, MES DESC"
+    },
+    {
+      "id": "kmco-modelo",
+      "titulo": "KMCO por IDTIPOCONT",
+      "origenGrafo": "requiresConfig idmodelo + _KMCOM_ESPERADO en Python",
+      "procedencias": {
+        "CAJA": ["COSTOS"],
+        "CXP": ["CXP_COMPRAS"],
+        "INV": ["MOV_INVENTARIO"],
+        "FACTURA": ["DESCUENTOS"]
+      }
+    },
+    {
+      "id": "ttec-rad-cg",
+      "titulo": "TTEC CUENTACG / CUENTARAD",
+      "origenGrafo": "CXC, RGLO, RAD CXC",
+      "sqlPatron": "SELECT IDTERCERO, CUENTACG, CUENTARAD FROM dbo.TTEC WHERE ..."
+    },
+    {
+      "id": "cpcj-com",
+      "titulo": "CPCJ con COM.COMPROBANTE",
+      "origenGrafo": "CAJA requires cpcj-com",
+      "sqlPatron": "CPCJ LEFT JOIN COM ON ..."
+    },
+    {
+      "id": "caj-nocontab",
+      "titulo": "CAJ.NOCONTAB",
+      "origenGrafo": "CAJA",
+      "nota": "Informativo; caja sin contabilizar no genera MCP"
+    },
+    {
+      "id": "fimpdv-vigente",
+      "titulo": "FIMPDV vigente por impuesto",
+      "origenGrafo": "CXC, CXP, FACTURA",
+      "sqlPatron": "FPAGDI / FCXPD vs FIMPDV fechas"
+    },
+    {
+      "id": "comms-multisede",
+      "titulo": "COMMS clase por sede",
+      "origenGrafo": "requires COMPROBMULTISEDE",
+      "condicion": "USVGS COMPROBMULTISEDE = SI"
+    }
+  ],
+  "checksPorProcedencia": [
+    {
+      "procedencia": "CAJA",
+      "checksExtra": ["fpa-cuenta", "documento-pcj-cpcj"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "FCJ: CODCAJA + CNSFACJ (REFERENCIA2/1 MCP)"
+    },
+    {
+      "procedencia": "CXC",
+      "checksExtra": ["fpa-cuenta", "bct-contable", "documento-fpag-ttect-fimpdv"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSFPAG en REFERENCIA1"
+    },
+    {
+      "procedencia": "BMOV",
+      "checksExtra": ["bct-contable", "ofin-comprobante"],
+      "auditoriaBd": "catalogo"
+    },
+    {
+      "procedencia": "CXP",
+      "checksExtra": ["kmco-cxp-compras"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSFCXP; traza OC engancha grafo CxP"
+    },
+    {
+      "procedencia": "INV",
+      "checksExtra": ["kmco-mov-inventario"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSMOV; traza OC engancha grafo IMOV"
+    },
+    {
+      "procedencia": "FACTURA",
+      "checksExtra": ["kmco-descuentos"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "N_FACTURA"
+    },
+    {
+      "procedencia": "CONCI",
+      "checksExtra": ["usvgs-conci-pack"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "IDFCONCI = REFERENCIA1 MCP CONCI"
+    },
+    {
+      "procedencia": "NOTDBCR",
+      "checksExtra": ["usvgs-notdbcr-pack"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSFNOT/CLASE = REFERENCIA1/2 MCP NOTDBCR"
+    },
+    {
+      "procedencia": "NOTDBCRCXP",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSFCXP/ITEM = REFERENCIA1/2 MCP NOTDBCRCXP"
+    },
+    {
+      "procedencia": "RAD CXC",
+      "checksExtra": ["ttec-rad-cg"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSCXC = REFERENCIA1 MCP RAD CXC · traza flujo-rad-cxc-contab"
+    },
+    {
+      "procedencia": "RGLO",
+      "checksExtra": ["ttec-rad-cg"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSGLO = REFERENCIA1 MCP RGLO"
+    },
+    {
+      "procedencia": "BMOV",
+      "checksExtra": ["bct-contable", "ofin-comprobante"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "BANCO/SUCURSAL/CTA_BCO/ITEM"
+    },
+    {
+      "procedencia": "MANUAL",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "NROCOMPROBANTE"
+    },
+    {
+      "procedencia": "NOMINA",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "NOMINA_PAGO: NUMDOC/CNSPAGO/CNSNIEPE (MCP REF1/2/3)"
+    },
+    {
+      "procedencia": "ANTICIPOS",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSANT/CNSFCOM (MCP REF1/2 ANTICIPOS)"
+    },
+    {
+      "procedencia": "IACT",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSIACTH = REFERENCIA1 MCP IACT"
+    },
+    {
+      "procedencia": "LEGALIZACION",
+      "checksExtra": ["documento-pcj-cpcj"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSFLEG = REFERENCIA1 MCP LEGALIZACION"
+    },
+    {
+      "procedencia": "CESIONES",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "CNSCES = REFERENCIA1 MCP CESIONES"
+    },
+    {
+      "procedencia": "AJDEP",
+      "checksExtra": ["comms-multisede"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "AJDEP_REF: NROCOMPROBANTE o ANO/MES[/IDSEDE]"
+    },
+    {
+      "procedencia": "REVERSOS",
+      "checksExtra": [],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "NRO_REV: comprobante reversión (REFERENCIA3 = origen)"
+    },
+    {
+      "procedencia": "CIERRE-PERIODO",
+      "checksExtra": ["pri-recientes", "mcpe-estado-0"],
+      "auditoriaBd": "implementado_parcial",
+      "referenciaDocumento": "Opcional ANO-MES en referencia"
+    }
+  ],
+  "flujosTrazaAuditoria": [
+    {
+      "flujoId": "flujo-compras-inv-cxp-caja",
+      "parametro": "ORDENCOMPRA / CNSFCOM",
+      "grafoEnganche": ["CNSFCXP", "CNSMOV"]
+    },
+    {
+      "flujoId": "flujo-recaudos-cartera-contab",
+      "parametro": "CNSFPAG",
+      "grafoEnganche": ["CNSFPAG"]
+    },
+    {
+      "flujoId": "flujo-rad-cxc-contab",
+      "parametro": "CNSCXC",
+      "grafoEnganche": ["CNSCXC", "generador RADICACXC vs _1"]
+    },
+    {
+      "flujoId": "flujo-bmov-contab",
+      "parametro": "BANCO/SUCURSAL/CTA_BCO/ITEM",
+      "grafoEnganche": ["BMOV_REF"]
+    },
+    {
+      "flujoId": "flujo-nomina-contab",
+      "parametro": "NUMDOC/CNSPAGO/CNSNIEPE",
+      "grafoEnganche": ["NOMINA_PAGO"]
+    },
+    {
+      "flujoId": "flujo-anticipos-contab",
+      "parametro": "CNSANT/CNSFCOM",
+      "grafoEnganche": ["CNSANT"]
+    },
+    {
+      "flujoId": "flujo-iact-contab",
+      "parametro": "CNSIACTH",
+      "grafoEnganche": ["CNSIACTH"]
+    },
+    {
+      "flujoId": "flujo-legalizacion-contab",
+      "parametro": "CNSFLEG",
+      "grafoEnganche": ["CNSFLEG", "flujo-bmov-contab si INGRESO=BANCOS"]
+    },
+    {
+      "flujoId": "flujo-cesiones-contab",
+      "parametro": "CNSCES",
+      "grafoEnganche": ["CNSCES"]
+    },
+    {
+      "flujoId": "flujo-ajdep-contab",
+      "parametro": "NROCOMPROBANTE o ANO/MES[/IDSEDE]",
+      "grafoEnganche": ["AJDEP_REF"]
+    },
+    {
+      "flujoId": "flujo-reversos-contab",
+      "parametro": "NROCOMPROBANTE reversión o ORIG:NRO_origen",
+      "grafoEnganche": ["NRO_REV"]
+    },
+    {
+      "flujoId": "flujo-cierre-periodo-contab",
+      "parametro": "ANO-MES opcional",
+      "grafoEnganche": ["CIERRE-PERIODO", "grafo-cierre-periodo.json"]
+    }
+  ],
+  "flujosTrazaAuditoriaTotal": 12,
+  "modoCierreFase2": {
+    "selector": "CIERRE_PERIODO",
+    "motor": "validar_cierre_periodo_contable",
+    "traza": "flujo-cierre-periodo-contab",
+    "grafo": "grafo-cierre-periodo.json",
+    "parametro": "ANO-MES o ANO/MES (opcional)",
+    "checksImplementados": [
+      "pri-recientes",
+      "pri-foco",
+      "pri-cartera",
+      "mcpe-estado-0",
+      "saldomes-periodo",
+      "saldomester-periodo",
+      "saldomesterfac-periodo",
+      "pri-siguiente",
+      "precierre-modulos",
+      "precierre-fnk",
+      "mcp-sin-confirmar",
+      "vpb-inv-sin-confirmar",
+      "vpb-saldos-iniciales-unico",
+      "vpb-periodo-no-cerrado",
+      "vpb-mcp-sin-confirmar",
+      "vpb-mcpe-en-tabla-errores",
+      "vpb-traslado-costos",
+      "opc-si-existe",
+      "opc-si-abierto-con-posteriores-cerrados",
+      "opc-periodo-calculado-vs-foco",
+      "opc-secuencia-posterior-cerrado",
+      "opc-periodo-anterior-cerrado",
+      "opc-cierre-fiscal",
+      "int-notdbcrcxp-mcp-duplicado",
+      "int-mcp-cuenta-no-detalle",
+      "libros-uscxs-registros",
+      "libros-uscxs-seis-tipos",
+      "int-fnk-validar-integridad",
+      "int-fnk-validar-integridad-sin-fiscal",
+      "int-notdbcr-mcp-duplicado",
+      "tbalanceh-fotos-mes",
+      "tbalanceh-foto-anual"
+    ]
+  },
+  "checksDocumentoImplementados": [
+    {
+      "tipoReferencia": "CNSFPAG",
+      "motor": "_checks_documento_fpag_grafo",
+      "checks": ["doc-fpag-missing", "doc-ttec-fpagd", "doc-fimpdv-fpagdi", "doc-pcj-cpcj"]
+    },
+    {
+      "tipoReferencia": "CNSFCXP",
+      "motor": "_checks_documento_cnsfcxp",
+      "checks": ["doc-fcxp-missing", "doc-fcxp-cab", "doc-fcxp-duplicado", "doc-fcxpd-lineas", "doc-fcxp-pri"]
+    },
+    {
+      "tipoReferencia": "N_FACTURA",
+      "motor": "_checks_documento_n_factura",
+      "checks": ["doc-ftr-missing", "doc-ftr-cab", "doc-ftr-duplicado", "doc-ftr-pri", "doc-ftrd-lineas", "doc-ftr-ttec"]
+    },
+    {
+      "tipoReferencia": "CNSMOV",
+      "motor": "_checks_documento_cnsmov",
+      "checks": ["doc-imov-missing", "doc-imov-estado", "doc-imov-pri", "doc-ibod-nocontab"]
+    },
+    {
+      "tipoReferencia": "FCJ",
+      "motor": "_checks_documento_fcj",
+      "checks": ["doc-fcj-cab", "doc-fcj-mcp-dup", "doc-fcj-pcj"],
+      "formatoReferencia": "CODCAJA/CNSFACJ"
+    },
+    {
+      "tipoReferencia": "CNSFNOT",
+      "motor": "_checks_documento_cnsfnot",
+      "checks": [
+        "doc-fnot-cab",
+        "doc-fnot-aplicada",
+        "doc-fnot-mcp-dup",
+        "doc-fnotd-lineas",
+        "doc-fnot-cpnt",
+        "doc-fnot-pri"
+      ],
+      "formatoReferencia": "CNSFNOT/CLASE"
+    },
+    {
+      "tipoReferencia": "FCXPDBCR",
+      "motor": "_checks_documento_fcxpdbcr",
+      "checks": [
+        "doc-fcxpdbcr-cab",
+        "doc-fcxpdbcr-mcp-cxp",
+        "doc-fcxpdbcr-mcp-cxp-vig",
+        "doc-fcxpdbcr-mcp-dup",
+        "doc-fcxpdbcr-imov-unico"
+      ],
+      "formatoReferencia": "CNSFCXP/ITEM"
+    },
+    {
+      "tipoReferencia": "IDFCONCI",
+      "motor": "_checks_documento_idfconci",
+      "checks": ["doc-fconci-cab", "doc-fconci-det", "doc-fconci-mcp-dup", "doc-fconci-pri"]
+    },
+    {
+      "tipoReferencia": "CNSCXC",
+      "motor": "_checks_documento_cnscxc",
+      "checks": ["doc-fcxc-cab", "doc-fcxc-det", "doc-fcxc-ftr-mcp", "doc-fcxc-mcp-dup", "doc-fcxc-pri"]
+    },
+    {
+      "tipoReferencia": "CNSGLO",
+      "motor": "_checks_documento_cnsglo",
+      "checks": [
+        "doc-fglo-cab",
+        "doc-fglo-recuperar",
+        "doc-fglo-tipo",
+        "doc-fglo-ttec",
+        "doc-fglo-mcp-dup",
+        "doc-fglo-pri"
+      ]
+    },
+    {
+      "tipoReferencia": "BMOV_REF",
+      "motor": "_checks_documento_bmov",
+      "checks": [
+        "doc-bmov-cab",
+        "doc-bmovd-sum",
+        "doc-bmov-bct",
+        "doc-bmov-ofin",
+        "doc-bmov-mcp-dup",
+        "doc-bmov-pri"
+      ],
+      "formatoReferencia": "BANCO/SUCURSAL/CTA_BCO/ITEM"
+    },
+    {
+      "tipoReferencia": "NROCOMPROBANTE",
+      "motor": "_checks_documento_nro_comprobante",
+      "checks": ["doc-mcp-cab", "doc-mch-cuadre", "doc-mch-cue"]
+    },
+    {
+      "tipoReferencia": "NOMINA_PAGO",
+      "motor": "_checks_documento_nomina_pago",
+      "checks": [
+        "doc-nom-cab",
+        "doc-nom-nieped",
+        "doc-nom-conceptos",
+        "doc-nom-mcp-dup",
+        "doc-nom-pri"
+      ],
+      "formatoReferencia": "NUMDOC/CNSPAGO/CNSNIEPE"
+    },
+    {
+      "tipoReferencia": "CNSANT",
+      "motor": "_checks_documento_cnsant",
+      "checks": [
+        "doc-ant-cab",
+        "doc-ant-tant",
+        "doc-ant-tercero",
+        "doc-ant-mcp-dup",
+        "doc-ant-pri"
+      ],
+      "formatoReferencia": "CNSANT/CNSFCOM"
+    },
+    {
+      "tipoReferencia": "CNSIACTH",
+      "motor": "_checks_documento_cnsiacth",
+      "checks": [
+        "doc-iact-cab",
+        "doc-iact-acfi",
+        "doc-iact-mcp-dup",
+        "doc-iact-pri"
+      ],
+      "formatoReferencia": "CNSIACTH"
+    },
+    {
+      "tipoReferencia": "CNSFLEG",
+      "motor": "_checks_documento_cnsfleg",
+      "checks": [
+        "doc-fleg-cab",
+        "doc-fleg-caj",
+        "doc-fleg-det",
+        "doc-fleg-mcp-dup",
+        "doc-fleg-pri"
+      ],
+      "formatoReferencia": "CNSFLEG"
+    },
+    {
+      "tipoReferencia": "CNSCES",
+      "motor": "_checks_documento_cnsces",
+      "checks": [
+        "doc-fces-cab",
+        "doc-fces-det",
+        "doc-fces-mcp-dup",
+        "doc-fces-pri"
+      ],
+      "formatoReferencia": "CNSCES"
+    },
+    {
+      "tipoReferencia": "AJDEP_REF",
+      "motor": "_checks_documento_ajdep",
+      "checks": ["doc-ajdep-cab", "doc-ajdep-mche", "doc-ajdep-pri"],
+      "formatoReferencia": "NROCOMPROBANTE o ANO/MES[/IDSEDE]"
+    },
+    {
+      "tipoReferencia": "NRO_REV",
+      "motor": "_checks_documento_nro_reverso",
+      "checks": ["doc-rev-cab", "doc-rev-origen", "doc-mch-cuadre", "doc-mch-cue"],
+      "formatoReferencia": "NROCOMPROBANTE reversión"
+    }
+  ],
+  "checksDocumentoPendientes": [],
+  "tiposDocumentoImplementados": 19,
+  "validacionSqlEnGrafos": "Campo opcional validacionSql en nodos requires[] — usar mismo id que checksGlobales cuando exista implementación."
+}

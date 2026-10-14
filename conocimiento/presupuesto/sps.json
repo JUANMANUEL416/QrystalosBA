@@ -1,7 +1,7 @@
 {
   "procesoId": "presupuesto",
-  "actualizado": "2026-09-12T09:43:00",
-  "nota": "2026-09-12: SPK_REVISANOMINA_ANTES, SPK_ENVIARNOMI_PPTO_MASIVO y SPK_GENERA_PAC_G leídos. CRUDPTNOT no desarrollado. PRESUPUESTO_FCXC sin rama. ENVIA_NOTADBCR_PPTO y SPK_ENTREGA_CXP_PTTO / FNK_PAC_G_CONSEC solo referenciados.",
+  "actualizado": "2026-10-04T22:00:00",
+  "nota": "2026-10-04 libro: IXONLINE/SQL PREVERSION = 2.0.7 (IDANT 2.0.6). Idénticas salvo SPQ_PPTO_RECO (PRE ≠ liberada: validar en preversión). SPQ_PTPTO no existe (maestro SPQ_PRESUPUESTO · CRUDPTPTO). CRUDPTNOT no está en PREVERSION; el FE sí llama PPTO_RECO · CRUDPTNOT + SPK_APLICA_NOTA_PPTO CONF/ANUL. TRAER_ANTICIPOCXP lo llama el FE y no aparece en SPQ_PPTO_REP. PRESUPUESTO_FCXC sin rama. Seguimiento Gastos (ppto.seguimiento_gastos) entregado. Capa 5 sin MCP. Fichas de 2026-09-12 se conservan.",
   "sps": [
     {
       "nombre": "SPQ_PPTO_PTCDP",
@@ -305,7 +305,7 @@
       "modelo": "PPTO_RECO",
       "estado": "leido",
       "fuente": "sql/SPQ_PPTO_RECO.sql",
-      "cola": "CRUDPTNOT no está en este .sql. Confirmar/anular nota vía SPK_APLICA_NOTA_PPTO (ACCION CONF u opuesta). PTMOV usa SPK_GENCONSECUTIVO (nombre distinto al _PPTO del CDP).",
+      "cola": "2026-10-04: PREVERSION ≠ liberada. CRUDPTNOT no está en PREVERSION; el FE PTNOTComponent sí lo llama. Confirmar/anular nota vía SPK_APLICA_NOTA_PPTO (CONF/ANUL). PTMOV usa SPK_GENCONSECUTIVO (nombre distinto al _PPTO del CDP).",
       "metodos": [
         {
           "id": "CRUDPTRECO",
@@ -393,12 +393,12 @@
         },
         {
           "id": "CRUDPTNOT",
-          "hace": "No desarrollado (acuerdo coordinador 2026-09-12). El FE cita el METODO; no hay rama en SPQ_PPTO_RECO ni otro .sql. El efecto de aplicar/revertir nota sí existe en SPK_APLICA_NOTA_PPTO.",
+          "hace": "2026-10-04: el FE (PTNOTComponent) envía PPTO_RECO · CRUDPTNOT para INSERTAR/EDITAR. PREVERSION de SPQ_PPTO_RECO aún no tiene la rama. Aplicar/revertir sí existe: SPK_APLICA_NOTA_PPTO CONF/ANUL.",
           "valida": [],
-          "noValida": ["CRUD de cabecera PTNOT (alta/edición desde pantalla)"],
+          "noValida": ["CRUD de cabecera PTNOT en el SP de PREVERSION"],
           "errores": [],
-          "llama": ["SPK_APLICA_NOTA_PPTO (cuando exista el CRUD)"],
-          "efecto": "Sin METODO. No fichar hasta que se desarrolle.",
+          "llama": ["SPK_APLICA_NOTA_PPTO (CONF/ANUL desde el FE, no desde esta rama)"],
+          "efecto": "Hallazgo ppto-crudptnot-fe-adelantado. Validar en preversión; no pedir a ciegas.",
           "capaId": "02-operacion",
           "gateId": "cadena-ingresos",
           "estado": "listado"
@@ -411,7 +411,7 @@
       "modelo": "PPTO_REP",
       "estado": "leido",
       "fuente": "sql/SPQ_PPTO_REP.sql",
-      "cola": "TRAER_FACTURA_PPTO, PRESUPUESTO_FPAG, PRESUPUESTO_FNOT y EXPORT_* leídos. PRESUPUESTO_FCXC no está en el script. ENVIA_NOTADBCR_PPTO y FNK_PAC_G_CONSEC solo referenciados.",
+      "cola": "2026-10-04: TRAER_FACTURA_PPTO, PRESUPUESTO_FPAG, PRESUPUESTO_FNOT y EXPORT_* leídos. PRESUPUESTO_FCXC sin rama. TRAER_ANTICIPOCXP lo llama AnticiposCxpComponent y no está en este SP. ENVIA_NOTADBCR_PPTO y FNK_PAC_G_CONSEC solo referenciados.",
       "metodos": [
         {
           "id": "TRAER_FACTURA_PPTO",
@@ -441,10 +441,22 @@
           "id": "PRESUPUESTO_FCXC",
           "hace": "Citado en FE (cartera → presupuesto).",
           "valida": [],
-          "noValida": ["No hay rama IF @METODO = 'PRESUPUESTO_FCXC' en sql/SPQ_PPTO_REP.sql"],
+          "noValida": ["No hay rama IF @METODO = 'PRESUPUESTO_FCXC' en IXONLINE/SQL SPQ_PPTO_REP"],
           "errores": [],
           "llama": [],
-          "efecto": "Posible alias obsoleto o otro script; usar TRAER_FACTURA_PPTO si CUENTAC.",
+          "efecto": "Posible alias obsoleto; usar TRAER_FACTURA_PPTO si CUENTAC. Hallazgo ppto-presupesto-fcxc-sin-rama.",
+          "capaId": "03-alimentadores",
+          "gateId": "traer-otros-modulos",
+          "estado": "listado"
+        },
+        {
+          "id": "TRAER_ANTICIPOCXP",
+          "hace": "2026-10-04: AnticiposCxpComponent llama PPTO_REP · TRAER_ANTICIPOCXP (CNSANT, CNSFCXP) si PRESUP_CXP_ACTIVADO=SI. No hay rama en SPQ_PPTO_REP PREVERSION.",
+          "valida": [],
+          "noValida": ["Cuerpo del METODO (no existe en el SP de hoy)"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Hallazgo ppto-traer-anticipocxp-sin-rama. Validar en preversión.",
           "capaId": "03-alimentadores",
           "gateId": "traer-otros-modulos",
           "estado": "listado"

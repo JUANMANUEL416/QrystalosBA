@@ -20,17 +20,25 @@ from cursor_bot import (  # noqa: E402
     CONOCIMIENTO_ID,
     CONSULTAS_ID,
     DOCUMENTAR_ID,
-    lanzar_bot,
+    cursor_key_status,
     leer_estado_bot,
     load_api_key,
     modelo_report,
 )
+import agentes_panel  # noqa: E402
 from qrystalos_ba_db import get_db  # noqa: E402
 import desarrolladores as devs  # noqa: E402
 import correo as mailer  # noqa: E402
 import conocimiento as kb  # noqa: E402
 import diagrama_flujo as diagflujo  # noqa: E402
+import mockup_generar as mockgen  # noqa: E402
+import mockup_empaquetar as mockzip  # noqa: E402
 import solicitud_req as solreq  # noqa: E402
+import auditoria_procesos as audproc  # noqa: E402
+import sql_revisar  # noqa: E402
+import servidores_admin  # noqa: E402
+import informe_contab_sesiones as icinforme  # noqa: E402
+import soporte_consultas as scconsulta  # noqa: E402
 
 ROOT = os.path.dirname(SCRIPT_DIR)
 SQL_ROOT = os.path.join(ROOT, "sql")
@@ -50,6 +58,15 @@ def _sql_files_in_dir(directory):
         f for f in os.listdir(directory)
         if f.lower().endswith(".sql") and os.path.isfile(os.path.join(directory, f))
     )
+
+
+def _sql_dir_caso(id_caso):
+    """SQL de un análisis. No usa la carpeta compartida sql/."""
+    if not id_caso or any(c in id_caso for c in "\\/:") or ".." in id_caso:
+        raise ValueError("idCaso inválido")
+    d = os.path.join(ACTIVO_ROOT, id_caso, "sql")
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def _caso_dir(id_caso):
@@ -321,6 +338,71 @@ def _diagramas_dir(id_caso):
     return os.path.join(_caso_dir(id_caso), "diagramas")
 
 
+def _mockups_dir(id_caso):
+    return os.path.join(_caso_dir(id_caso), "mockups")
+
+
+def _filtrar_mockups_caso_list(id_caso, rels):
+    """Quita mockups de otros casos en activo/; conserva activo/{id_caso}/ y solicitudes/."""
+    out = []
+    for rel in rels or []:
+        r = str(rel or "").strip().replace("\\", "/").lstrip("/")
+        if not r or r in out:
+            continue
+        if r.startswith("activo/"):
+            if not r.startswith(f"activo/{id_caso}/"):
+                continue
+        out.append(r)
+    return out
+
+
+def _sanitize_mockup_nombre(nombre):
+    return _sanitize_diagrama_nombre(nombre or "mockup.html")
+
+
+def _guardar_mockup_html(id_caso, contenido_html, nombre_sugerido="", reemplazar=False):
+    """Guarda HTML en activo/{id}/mockups/ y lo agrega a contenido.mockups."""
+    raw = (contenido_html or "").strip()
+    if not raw:
+        raise ValueError("Contenido HTML vacío")
+    if len(raw.encode("utf-8")) > 6 * 1024 * 1024:
+        raise ValueError("Mockup demasiado grande (máx. 6 MB)")
+    if "<" not in raw:
+        raise ValueError("El archivo no parece HTML")
+    nombre = _sanitize_mockup_nombre(nombre_sugerido)
+    mock_dir = _mockups_dir(id_caso)
+    os.makedirs(mock_dir, exist_ok=True)
+    path = os.path.join(mock_dir, nombre)
+    if os.path.exists(path) and not reemplazar:
+        base, ext = os.path.splitext(nombre)
+        nombre = f"{base}-{int(time.time())}{ext}"
+        path = os.path.join(mock_dir, nombre)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(raw)
+    try:
+        mockzip.empaquetar_mockup_html(path, id_caso=id_caso)
+    except OSError:
+        pass
+    ruta_rel = f"activo/{id_caso}/mockups/{nombre}"
+    db = get_db()
+    solicitud = db.get_solicitud(id_caso) or {}
+    contenido = dict(solicitud.get("contenido") or {})
+    rels = _filtrar_mockups_caso_list(id_caso, mailer.rutas_mockups_solicitud(solicitud))
+    if ruta_rel not in rels:
+        rels.append(ruta_rel)
+    contenido["mockups"] = rels
+    solicitud["contenido"] = contenido
+    db.guardar_solicitud(id_caso, solicitud)
+    return {
+        "nombre": nombre,
+        "ruta": ruta_rel,
+        "subidaEn": datetime.now().isoformat(timespec="seconds"),
+        "url": f"/{ruta_rel}",
+        "tipo": "mockup-ux",
+        "existe": True,
+    }
+
+
 def _guardar_diagrama_flujo(
     id_caso, contenido_html, nombre_sugerido="", solicitud_base=None, reemplazar=False
 ):
@@ -544,6 +626,46 @@ def _generar_y_guardar_diagrama_caso(id_caso, notas=""):
     return meta, ctx
 
 
+def _generar_y_guardar_mockups_caso(id_caso, notas=""):
+    db = get_db()
+    solicitud = db.get_solicitud(id_caso)
+    if not solicitud:
+        raise ValueError("No hay solicitud en disco para este caso. Active el análisis (Fase 1) primero.")
+    archivos = mockgen.generar_archivos(solicitud, notas=notas)
+    if not archivos:
+        raise ValueError("No se generó ningún mockup para este caso.")
+    nombres = []
+    for nombre, html in archivos:
+        _guardar_mockup_html(id_caso, html, nombre, reemplazar=True)
+        nombres.append(nombre)
+    try:
+        mockzip.empaquetar_mockups_caso(id_caso)
+    except OSError:
+        pass
+    solicitud = db.get_solicitud(id_caso) or solicitud
+    contenido = dict(solicitud.get("contenido") or {})
+    if notas:
+        contenido["mockupsNotas"] = notas
+    contenido["mockupsFuente"] = "conocimiento+analisis"
+    solicitud["contenido"] = contenido
+    db.guardar_solicitud(id_caso, solicitud)
+    ahora = datetime.now().isoformat(timespec="seconds")
+    lista = ", ".join(f"`activo/{id_caso}/mockups/{n}`" for n in nombres)
+    db.append_chat(
+        id_caso,
+        {
+            "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "m",
+            "autor": "sistema",
+            "texto": (
+                f"Mockups generados **alineados a la propuesta de desarrollo** (no a la captura del problema): {lista}. "
+                f"Quedan registrados en solicitud.json → contenido.mockups (correo y dictamen)."
+            ),
+            "fecha": ahora,
+        },
+    )
+    return nombres
+
+
 def _fmt_imagenes_analisis(id_caso, solicitud):
     imgs = ((solicitud or {}).get("contenido") or {}).get("imagenesAnalisis") or []
     if not imgs:
@@ -593,24 +715,27 @@ def _build_instruccion(solicitud):
     paso_sql = 4 + extras
     paso_q2 = paso_sql + 1
 
+    carpeta_sql = f"activo/{id_caso}/sql"
     if usar_doc and metodos:
-        sql_bloque = f"""{paso_sql}. **SQL — métodos documentados** (no exigir `sql/` de entrada)
+        sql_bloque = f"""{paso_sql}. **SQL — métodos documentados** (no exigir `{carpeta_sql}/` de entrada)
    - Catálogo: `{proceso_path}`
+   - Carpeta de ESTE análisis: `{carpeta_sql}/` (no usar la carpeta compartida `sql/`).
    - Métodos del formulario:
 {_fmt_metodos_documentados(metodos)}
    - Lea esas fichas (`hace`, `valida`, `noValida`, `errores`, `llama`, `efecto`).
-   - **No se detenga** porque `sql/` esté vacío si esos METODO cubren el REQ.
+   - **No se detenga** porque `{carpeta_sql}/` esté vacío si esos METODO cubren el REQ.
    - En el **Chat del caso** (`activo/{id_caso}/chat.json`), en el primer resumen, indique si hace falta el .sql de hoy:
      - Todos `leido` y el alcance no sale de lo documentado → seguir sin pedir el script.
-     - Alguno `listado` / `no_leido` / `parcial`, o el REQ toca validaciones no documentadas → **pedir** el .sql en `sql/` (los SP se actualizan a diario).
+     - Alguno `listado` / `no_leido` / `parcial`, o el REQ toca validaciones no documentadas → **bajar** el .sql a `{carpeta_sql}/` (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`).
    - No invente METODOs que no estén en `sps.json`.
 {paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
-        detener = "Si falta cola, aclaración, o el Chat concluye que hay que releer el SP: **DETENER y pedir** el .sql en `sql/`."
+        detener = f"Si falta cola, aclaración, o el Chat concluye que hay que releer el SP: **bajar** el .sql a `{carpeta_sql}/`. No lo deje en `sql/`."
     else:
-        lista = ", ".join(sql_list) if sql_list else "(ver manifest)"
-        sql_bloque = f"""{paso_sql}. `sql/` — scripts: {lista}
+        lista = ", ".join(sql_list) if sql_list else "(ver manifest de esa carpeta)"
+        sql_bloque = f"""{paso_sql}. `{carpeta_sql}/` — scripts de ESTE caso: {lista}
+   No lea ni escriba la carpeta compartida `sql/` (es de Documentar y mezcla otros análisis).
 {paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
-        detener = "Si falta algún SQL, imagen, HTML en cola o aclaración: **DETENER y pedirla**."
+        detener = f"Si falta algún SQL, imagen, HTML en cola o aclaración: **DETENER y pedirla**. El .sql de este caso va en `{carpeta_sql}/`."
 
     img_seccion = f"{img_bloque}\n" if img_bloque else ""
     arch_seccion = f"{arch_bloque}\n" if arch_bloque else ""
@@ -637,10 +762,11 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 
 ## Fase 1 — su tarea ahora
 1. **REQ → conocimiento** (INDICE, proceso.json, sps.json; sql_refe si hace falta).
-2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO **de este cambio** (no el catálogo del módulo).
+2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, complete `contenido.cambioPropuestoSql` (fragmentos para dictamen §5.2.1).
 3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
 4. Cuando el coordinador lo pida: dictamen en `dictamenes/{id_caso}.html`.
 5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
+6. **Mockup UX:** si genera o ajusta `activo/{id_caso}/mockups/`, pinte la **ventana propuesta** (`cambioPropuestoSimple`, criterios, recomendación), no la captura del error ni un control de otro REQ. `imagenes/` es solo referencia «Hoy».
 
 ## Chat
 El coordinador escribe **solo** en la app (pestaña Chat → `chat.json`).
@@ -776,16 +902,37 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
 
+        if parts == ["api", "agentes"]:
+            return self._json({
+                "ok": True,
+                "agentes": agentes_panel.catalogo(),
+                "modeloLocal": agentes_panel.modelo_local(),
+            })
+
+        if parts == ["api", "servidores", "estado"]:
+            token = self.headers.get("X-Ba-Sesion") or ""
+            return self._json({
+                "ok": True,
+                "configurado": servidores_admin.configurado(),
+                "sesion": servidores_admin.sesion_valida(token),
+            })
+
+        if parts == ["api", "servidores"]:
+            if not self._exige_sesion_servidores():
+                return None
+            return self._json({"ok": True, "servidores": servidores_admin.listar()})
+
         if len(parts) >= 2 and parts[0] == "api" and parts[1] == "health":
             db = get_db()
             return self._json({
                 "ok": True,
                 "version": 4,
                 "db": db.db_path,
-                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente", "imagenesAnalisis", "archivosAnalisis", "diagramaFlujo", "solicitarReq"],
+                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente", "imagenesAnalisis", "archivosAnalisis", "diagramaFlujo", "solicitarReq", "auditoriaProcesos", "revisarSql", "informeContab"],
                 "openai": {"configurado": False, "deshabilitado": True, "motivo": "Los textos del formulario los escribe el agente (Cursor)."},
                 "cursorBot": {
                     "configurado": bool(load_api_key()),
+                    **cursor_key_status(),
                     **modelo_report(),
                 },
                 "agentes": {
@@ -795,6 +942,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "vigilante": kb.load_vigilante(),
                     "valle": kb.siguiente_valle(),
                 },
+                "carpetaDialogo": solreq.servidor_puede_dialogo_carpeta(),
             })
 
         if len(parts) == 2 and parts[0] == "api" and parts[1] == "openai":
@@ -807,20 +955,52 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if parts == ["api", "solicitar"]:
             return self._json({"ok": True, "items": solreq.listar()})
 
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "solicitar" and parts[2] == "carpetas-sugeridas":
+            qs = parse_qs(parsed.query or "")
+            sid = (qs.get("sr") or qs.get("id") or [""])[0]
+            return self._json({"ok": True, "rutas": solreq.rutas_carpeta_sugeridas(unquote(sid))})
+
         if len(parts) == 3 and parts[0] == "api" and parts[1] == "solicitar":
             sid = unquote(parts[2])
             data = solreq.load(sid)
             if not data:
                 return self._json({"error": "Solicitud no encontrada"}, 404)
+            try:
+                estado_doc = solreq.estado_documento(sid)
+            except ValueError:
+                estado_doc = None
+            panel = solreq.panel_chat(sid)
             return self._json({
                 "ok": True,
                 "solicitud": data,
-                "chat": solreq.load_chat(sid),
+                "chat": panel.get("chat") or solreq.load_chat(sid),
                 "bot": leer_estado_bot(sid),
+                "estadoDocumento": estado_doc,
+                "analisisLanzado": panel.get("analisisLanzado"),
+                "documentos": panel.get("documentos") or [],
+                "mockups": panel.get("mockups") or [],
+                "diagrama": panel.get("diagrama"),
+                "entregables": panel.get("entregables") or [],
+                "archivos": panel.get("archivos") or [],
             })
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "documento" and parts[4] == "estado":
+            return self._get_solicitar_documento_estado(unquote(parts[2]))
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "documento":
             return self._serve_solicitar_documento(unquote(parts[2]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "archivo":
+            return self._serve_solicitar_archivo(unquote(parts[2]), unquote(parts[4]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "mockup":
+            return self._serve_solicitar_mockup(unquote(parts[2]), unquote(parts[4]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "diagrama":
+            return self._serve_solicitar_asset(unquote(parts[2]), "diagramas", unquote(parts[4]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "plataforma":
+            return self._serve_solicitar_asset(unquote(parts[2]), "plataforma", unquote(parts[4]))
 
         if len(parts) == 2 and parts[0] == "api" and parts[1] == "historico":
             return self._get_historico()
@@ -855,7 +1035,191 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "proceso": proc})
 
         if len(parts) >= 2 and parts[0] == "api" and parts[1] == "sql":
-            return self._list_sql()
+            qs = parse_qs(parsed.query)
+            id_caso = (qs.get("idCaso") or [""])[0].strip()
+            return self._list_sql(id_caso)
+
+        if parts == ["api", "auditoria", "servidores"]:
+            return self._json({"ok": True, "servidores": audproc.listar_servidores()})
+
+        if parts == ["api", "informe-contab", "servidores"]:
+            return self._json({"ok": True, "servidores": audproc.listar_servidores()})
+
+        if parts == ["api", "informe-contab", "sesiones"]:
+            return self._json({"ok": True, "sesiones": icinforme.listar_sesiones()})
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "meta":
+            sid = unquote(parts[2])
+            try:
+                return self._json({"ok": True, "meta": icinforme.leer_meta(sid)})
+            except FileNotFoundError:
+                return self._json({"ok": False, "error": "Sesión no encontrada."}, 404)
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "chat":
+            sid = unquote(parts[2])
+            try:
+                return self._json(icinforme.leer_chat(sid))
+            except FileNotFoundError:
+                return self._json({"ok": False, "error": "Sesión no encontrada."}, 404)
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "html":
+            return self._serve_informe_contab_html(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "pdf":
+            return self._serve_informe_contab_pdf(unquote(parts[2]), parsed)
+
+        if parts == ["api", "informe-contab", "bases"]:
+            qs = parse_qs(parsed.query or "")
+            servidor_id = (qs.get("servidorId") or [""])[0].strip()
+            if not servidor_id:
+                return self._json({"ok": False, "error": "Indique servidorId."}, 400)
+            try:
+                import servidores_admin
+
+                bases = servidores_admin.listar_bases_sql(servidor_id)
+                return self._json({"ok": True, "servidorId": servidor_id, "bases": bases, "origen": "sql"})
+            except ValueError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 400)
+            except RuntimeError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 502)
+            except Exception as exc:
+                return self._json({"ok": False, "error": str(exc)}, 500)
+
+        if parts == ["api", "soporte-consultas", "consultas"]:
+            return self._json({"ok": True, "consultas": scconsulta.listar_consultas()})
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "meta":
+            sid = unquote(parts[2])
+            try:
+                return self._json({"ok": True, "meta": scconsulta.leer_meta(sid)})
+            except FileNotFoundError:
+                return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "chat":
+            sid = unquote(parts[2])
+            try:
+                return self._json(scconsulta.leer_chat(sid))
+            except FileNotFoundError:
+                return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "html":
+            return self._serve_soporte_consulta_html(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "pdf":
+            return self._serve_soporte_consulta_pdf(unquote(parts[2]), parsed)
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "panel":
+            sid = unquote(parts[2])
+            try:
+                return self._json({"ok": True, **scconsulta.panel_consulta(sid)})
+            except FileNotFoundError:
+                return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+
+        if parts == ["api", "informe-contab", "clinica"]:
+            qs = parse_qs(parsed.query or "")
+            servidor_id = (qs.get("servidorId") or [""])[0].strip()
+            database = (qs.get("database") or [""])[0].strip()
+            if not servidor_id or not database:
+                return self._json({"ok": False, "error": "Indique servidorId y database."}, 400)
+            try:
+                from informe_errores_contab import leer_institucion_clinica
+
+                info = leer_institucion_clinica(servidor_id, database)
+                return self._json({"ok": True, **info})
+            except ValueError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 400)
+            except RuntimeError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 502)
+            except Exception as exc:
+                return self._json({"ok": False, "error": str(exc)}, 500)
+
+        if parts == ["api", "auditoria", "flujos"]:
+            return self._json({"ok": True, "flujos": audproc.listar_flujos()})
+
+        if parts == ["api", "auditoria", "procedencias-contab"]:
+            return self._json(
+                {
+                    "ok": True,
+                    "procedencias": audproc.listar_procedencias_contab(),
+                    "tiposReferencia": audproc.listar_tipos_referencia_contab(),
+                }
+            )
+
+        if parts == ["api", "auditoria", "tipos-referencia-contab"]:
+            return self._json({"ok": True, "tipos": audproc.listar_tipos_referencia_contab()})
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "auditoria" and parts[2] == "flujo":
+            flujo_id = unquote(parts[3])
+            if flujo_id not in audproc.FLUJO_IDS:
+                return self._json({"ok": False, "error": "Flujo no documentado."}, 404)
+            doc = audproc.cargar_flujo_documentacion(flujo_id)
+            return self._json({"ok": True, **doc})
+
+        if parts == ["api", "sql-revisar"]:
+            return self._json({"ok": True, "items": sql_revisar.listar()})
+
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "sql-revisar" and parts[2] == "buscar":
+            qs = parse_qs(parsed.query or "")
+            q = (qs.get("q") or [""])[0]
+            try:
+                return self._json({"ok": True, "archivos": sql_revisar.buscar_local(unquote(q))})
+            except ValueError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 400)
+
+        if len(parts) == 3 and parts[0] == "api" and parts[1] == "sql-revisar":
+            id_rev = unquote(parts[2])
+            if not sql_revisar.id_valido(id_rev):
+                return self._json({"error": "Revisión no encontrada"}, 404)
+            try:
+                data = sql_revisar.vista(id_rev)
+            except (OSError, json.JSONDecodeError, ValueError):
+                return self._json({"error": "Revisión no encontrada"}, 404)
+            data["ok"] = True
+            return self._json(data)
+
+        if parts == ["api", "auditoria", "runbook"]:
+            qs = parse_qs(parsed.query or "")
+            flujo_rb = (qs.get("flujoId") or ["flujo-compras-inv-cxp-caja"])[0].strip()
+            try:
+                if flujo_rb == "flujo-recaudos-cartera-contab":
+                    md = audproc.leer_runbook_recaudos_markdown()
+                    meta = audproc.meta_runbook_recaudos()
+                elif flujo_rb == "flujo-rad-cxc-contab":
+                    md = audproc.leer_runbook_radicacion_markdown()
+                    meta = audproc.meta_runbook_radicacion()
+                elif flujo_rb == "flujo-bmov-contab":
+                    md = audproc.leer_runbook_bmov_markdown()
+                    meta = audproc.meta_runbook_bmov()
+                elif flujo_rb == "flujo-nomina-contab":
+                    md = audproc._leer_proceso_md(audproc.NOMINA_DIR)
+                    meta = audproc.meta_runbook_nomina()
+                elif flujo_rb == "flujo-anticipos-contab":
+                    md = audproc._leer_proceso_md(audproc.ANTICIPOS_DIR)
+                    meta = audproc.meta_runbook_anticipos()
+                elif flujo_rb == "flujo-iact-contab":
+                    md = audproc._leer_proceso_md(audproc.IACT_DIR)
+                    meta = audproc.meta_runbook_iact()
+                elif flujo_rb == "flujo-legalizacion-contab":
+                    md = audproc._leer_proceso_md(audproc.FLEG_DIR)
+                    meta = audproc.meta_runbook_legalizacion()
+                elif flujo_rb == "flujo-cesiones-contab":
+                    md = audproc._leer_proceso_md(audproc.CESIONES_DIR)
+                    meta = audproc.meta_runbook_cesiones()
+                elif flujo_rb == "flujo-ajdep-contab":
+                    md = audproc._leer_proceso_md(audproc.AJDEP_DIR)
+                    meta = audproc.meta_runbook_ajdep()
+                elif flujo_rb == "flujo-reversos-contab":
+                    md = audproc._leer_proceso_md(audproc.REVERSOS_DIR)
+                    meta = audproc.meta_runbook_reversos()
+                elif flujo_rb == "flujo-cierre-periodo-contab":
+                    md = audproc._leer_proceso_md(audproc.CIERRE_DIR)
+                    meta = audproc.meta_runbook_cierre_periodo()
+                else:
+                    md = audproc.leer_runbook_markdown()
+                    meta = audproc.meta_runbook_soporte()
+            except FileNotFoundError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 404)
+            return self._json({"ok": True, "markdown": md, **meta})
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "chat":
             return self._get_chat(unquote(parts[2]))
@@ -868,6 +1232,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "documentos":
             return self._get_documentos(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "mockups":
+            return self._get_mockups(unquote(parts[2]), parsed)
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "dictamen":
             return self._serve_dictamen(unquote(parts[2]))
@@ -893,11 +1260,38 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
 
+        if parts == ["api", "agentes"]:
+            return self._post_agentes()
+
+        if parts == ["api", "servidores", "entrar"]:
+            return self._post_servidores_entrar()
+
+        if parts == ["api", "servidores", "salir"]:
+            return self._post_servidores_salir()
+
+        if parts == ["api", "servidores", "detalle"]:
+            return self._post_servidores_detalle()
+
+        if parts == ["api", "servidores", "guardar"]:
+            return self._post_servidores_guardar()
+
+        if parts == ["api", "servidores", "quitar"]:
+            return self._post_servidores_quitar()
+
+        if parts == ["api", "servidores", "traer-qrystalos2"]:
+            return self._post_servidores_traer()
+
+        if parts == ["api", "servidores", "listar-bases"]:
+            return self._post_servidores_listar_bases()
+
         if parts == ["api", "sql", "archivar"]:
             return self._archivar_sql()
 
         if parts == ["api", "solicitar"]:
             return self._post_solicitar()
+
+        if parts == ["api", "solicitar", "elegir-carpeta"]:
+            return self._post_solicitar_elegir_carpeta()
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "analizar":
             return self._post_solicitar_analizar(unquote(parts[2]))
@@ -905,8 +1299,26 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "documento":
             return self._post_solicitar_documento(unquote(parts[2]))
 
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "export-plataforma":
+            return self._post_solicitar_export_plataforma(unquote(parts[2]))
+
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "chat":
             return self._post_solicitar_chat(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "cerrar":
+            return self._post_solicitar_cerrar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "reabrir":
+            return self._post_solicitar_reabrir(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "archivo":
+            return self._post_solicitar_archivo(unquote(parts[2]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "mockups" and parts[4] == "generar":
+            return self._post_solicitar_mockups_generar(unquote(parts[2]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "solicitar" and parts[3] == "diagramas" and parts[4] == "generar":
+            return self._post_solicitar_diagrama_generar(unquote(parts[2]))
 
         if parts == ["api", "caso", "activar"]:
             return self._activar_caso()
@@ -928,6 +1340,66 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if parts == ["api", "borrador"]:
             return self._post_borrador()
+
+        if parts == ["api", "sql-revisar", "elegir-archivo"]:
+            return self._post_sql_revisar_elegir()
+
+        if parts == ["api", "sql-revisar", "subir"]:
+            return self._post_sql_revisar_subir()
+
+        if parts == ["api", "sql-revisar"]:
+            return self._post_sql_revisar()
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "sql-revisar" and parts[3] == "chat":
+            return self._post_sql_revisar_chat(unquote(parts[2]))
+
+        if parts == ["api", "auditoria", "trazar"]:
+            return self._post_auditoria_trazar()
+
+        if parts == ["api", "auditoria", "usvgs"]:
+            return self._post_auditoria_usvgs()
+
+        if parts == ["api", "auditoria", "movimientos-inventario"]:
+            return self._post_auditoria_movimientos_inventario()
+
+        if parts == ["api", "auditoria", "config-contabilidad"]:
+            return self._post_auditoria_config_contabilidad()
+
+        if parts == ["api", "informe-contab", "sesion"]:
+            return self._post_informe_contab_sesion()
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "generar":
+            return self._post_informe_contab_generar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "chat":
+            return self._post_informe_contab_chat(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "pdf":
+            return self._post_informe_contab_pdf(unquote(parts[2]))
+
+        if parts == ["api", "soporte-consultas", "consulta"]:
+            return self._post_soporte_consulta_nueva()
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "chat":
+            return self._post_soporte_consulta_chat(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "respuesta":
+            return self._post_soporte_consulta_respuesta(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "documento":
+            return self._post_soporte_consulta_documento(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "cerrar":
+            return self._post_soporte_consulta_cerrar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "pdf":
+            return self._post_soporte_consulta_pdf(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "analisis":
+            return self._post_soporte_consulta_analisis(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "agente":
+            return self._post_soporte_consulta_agente(unquote(parts[2]))
 
         if parts == ["api", "sugerir-criterios"]:
             return self._sugerir_criterios()
@@ -974,6 +1446,15 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "solicitud":
             return self._post_solicitud(unquote(parts[2]))
 
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "mockups" and parts[4] == "subir":
+            return self._post_mockup_subir(unquote(parts[2]))
+
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "mockups" and parts[4] == "generar":
+            return self._post_mockup_generar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "mockups":
+            return self._post_mockups(unquote(parts[2]))
+
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "chat":
             return self._post_chat(unquote(parts[2]))
 
@@ -1007,6 +1488,551 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if not length:
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def _post_sql_revisar_subir(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            ficha = sql_revisar.guardar_subido(body.get("nombre") or "", body.get("texto") or "")
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, **ficha})
+
+    def _post_sql_revisar_elegir(self):
+        try:
+            ruta = sql_revisar.elegir_archivo_sql()
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        if not ruta:
+            return self._json({"ok": False, "error": "No eligió un archivo."})
+        from pathlib import Path
+
+        return self._json({"ok": True, **sql_revisar._ficha_archivo(Path(ruta))})
+
+    def _post_sql_revisar(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            ficha = sql_revisar.preparar(
+                body.get("modo") or "",
+                nombre=body.get("nombre") or "",
+                ruta=body.get("ruta") or "",
+            )
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        bot = agentes_panel.lanzar("revisar-sql", ficha["id"], "revisar-sql")
+        ficha["bot"] = bot
+        ficha["ok"] = True
+        return self._json(ficha)
+
+    def _post_sql_revisar_chat(self, id_rev):
+        if not sql_revisar.id_valido(id_rev):
+            return self._json({"error": "Revisión no encontrada"}, 404)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        texto = (body.get("texto") or "").strip()
+        if not texto:
+            return self._json({"error": "Escriba la pregunta."}, 400)
+        try:
+            sql_revisar.append_chat(id_rev, "coordinador", texto)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 404)
+        bot = agentes_panel.lanzar("revisar-sql", id_rev, "revisar-sql-chat")
+        return self._json({"ok": True, "bot": bot, "revision": sql_revisar.vista(id_rev)})
+
+    def _post_auditoria_trazar(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        flujo = (body.get("flujoId") or "flujo-compras-inv-cxp-caja").strip()
+        try:
+            if flujo == "flujo-compras-inv-cxp-caja":
+                data = audproc.trazar_compras_oc(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                    (body.get("tipoParam") or "ordencompra").strip(),
+                )
+            elif flujo == "flujo-recaudos-cartera-contab":
+                data = audproc.trazar_recaudos(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-rad-cxc-contab":
+                data = audproc.trazar_radicacion_cxc(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-bmov-contab":
+                data = audproc.trazar_bmov(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-nomina-contab":
+                data = audproc.trazar_nomina_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-anticipos-contab":
+                data = audproc.trazar_anticipos_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-iact-contab":
+                data = audproc.trazar_iact_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-legalizacion-contab":
+                data = audproc.trazar_legalizacion_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-cesiones-contab":
+                data = audproc.trazar_cesiones_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-ajdep-contab":
+                data = audproc.trazar_ajdep_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-reversos-contab":
+                data = audproc.trazar_reversos_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            elif flujo == "flujo-cierre-periodo-contab":
+                data = audproc.trazar_cierre_periodo_contab(
+                    (body.get("servidorId") or "").strip(),
+                    (body.get("baseDatos") or "").strip(),
+                    (body.get("parametro") or "").strip(),
+                )
+            else:
+                return self._json({"ok": False, "error": "Flujo no implementado aún."}, 400)
+            return self._json(data)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_auditoria_usvgs(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            data = audproc.validar_usvgs_inventario(
+                (body.get("servidorId") or "").strip(),
+                (body.get("baseDatos") or "").strip(),
+            )
+            return self._json(data)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_auditoria_movimientos_inventario(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            data = audproc.mapa_movimientos_inventario(
+                (body.get("servidorId") or "").strip(),
+                (body.get("baseDatos") or "").strip(),
+            )
+            return self._json(data)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_auditoria_config_contabilidad(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            ref_doc = (body.get("referencia") or body.get("cnsfpag") or "").strip() or None
+            tipo_raw = body.get("tipoReferencia")
+            tipo_doc = (str(tipo_raw).strip() if tipo_raw is not None else "") or None
+            data = audproc.validar_config_contabilidad(
+                (body.get("servidorId") or "").strip(),
+                (body.get("baseDatos") or "").strip(),
+                (body.get("procedencia") or "CRITICO").strip(),
+                ref_doc,
+                tipo_doc,
+            )
+            return self._json(data)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_informe_contab_sesion(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        servidor_id = (body.get("servidorId") or "").strip()
+        database = (body.get("database") or body.get("baseDatos") or "").strip()
+        if not servidor_id or not database:
+            return self._json({"ok": False, "error": "Indique servidor y base de datos."}, 400)
+        institucion = (body.get("institucion") or "").strip()
+        try:
+            meta = icinforme.crear_sesion(servidor_id, database, institucion)
+            return self._json({"ok": True, "meta": meta})
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_informe_contab_generar(self, sid):
+        try:
+            out = icinforme.generar_para_sesion(sid)
+            return self._json(
+                {
+                    "ok": True,
+                    "meta": out["meta"],
+                    "urlHtml": f"/api/informe-contab/{sid}/html",
+                }
+            )
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Sesión no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_informe_contab_chat(self, sid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        texto = (body.get("texto") or "").strip()
+        if not texto:
+            return self._json({"error": "Mensaje vacío"}, 400)
+        autor = (body.get("autor") or "coordinador").strip().lower()
+        if autor not in ("coordinador", "agente"):
+            autor = "coordinador"
+        try:
+            msg = icinforme.append_chat(sid, autor, texto)
+            chat = icinforme.leer_chat(sid)
+            return self._json({"ok": True, "mensaje": msg, "mensajes": chat.get("mensajes", [])})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Sesión no encontrada."}, 404)
+
+    def _serve_informe_contab_html(self, sid):
+        try:
+            carp = icinforme.carpeta_sesion(sid)
+        except (FileNotFoundError, ValueError) as exc:
+            return self._json({"ok": False, "error": str(exc)}, 404)
+        path = os.path.join(carp, "informe-errores-contables.html")
+        if not os.path.isfile(path):
+            return self._json({"ok": False, "error": "Informe aún no generado."}, 404)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                html_body = f.read()
+        except OSError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        data = html_body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'inline; filename="informe-contab-{sid}.html"')
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _nombre_pdf_informe_contab(self, sid):
+        try:
+            meta = icinforme.leer_meta(sid)
+            base = (meta.get("institucion") or meta.get("database") or sid).strip()
+            safe = re.sub(r"[^\w\-]+", "-", base, flags=re.UNICODE)[:60].strip("-") or sid
+            return f"informe-contab-{safe}.pdf"
+        except Exception:
+            return f"informe-contab-{sid}.pdf"
+
+    def _serve_informe_contab_pdf(self, sid, parsed):
+        qs = parse_qs(parsed.query or "")
+        forzar = (qs.get("regenerar") or [""])[0].strip() in ("1", "true", "yes")
+        try:
+            pdf_path = icinforme.ruta_informe_pdf(sid)
+            if forzar or not pdf_path.is_file():
+                icinforme.generar_pdf(sid)
+            if not pdf_path.is_file():
+                return self._json({"ok": False, "error": "PDF no disponible."}, 404)
+            with open(pdf_path, "rb") as f:
+                data = f.read()
+        except FileNotFoundError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 404)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        nombre = self._nombre_pdf_informe_contab(sid)
+        dl = (qs.get("dl") or [""])[0].strip() in ("1", "true", "yes")
+        disp = "attachment" if dl else "inline"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'{disp}; filename="{nombre}"')
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _post_informe_contab_pdf(self, sid):
+        try:
+            icinforme.generar_pdf(sid)
+            pdf_path = icinforme.ruta_informe_pdf(sid)
+            with open(pdf_path, "rb") as f:
+                data = f.read()
+        except FileNotFoundError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 404)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        nombre = self._nombre_pdf_informe_contab(sid)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{nombre}"')
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _nombre_pdf_soporte_consulta(self, sid):
+        try:
+            meta = scconsulta.leer_meta(sid)
+            base = (meta.get("titulo") or sid).strip()
+            safe = re.sub(r"[^\w\-]+", "-", base, flags=re.UNICODE)[:50].strip("-") or sid
+            return f"soporte-respuesta-{safe}.pdf"
+        except Exception:
+            return f"soporte-respuesta-{sid}.pdf"
+
+    def _post_soporte_consulta_nueva(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            meta = scconsulta.crear_consulta(
+                body.get("titulo") or "",
+                body.get("pregunta") or body.get("texto") or "",
+                body.get("solicitante") or "",
+                body.get("cliente") or "",
+            )
+            return self._json({"ok": True, "meta": meta})
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_soporte_consulta_chat(self, sid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        texto = (body.get("texto") or "").strip()
+        autor = (body.get("autor") or "soporte").strip().lower()
+        try:
+            msg = scconsulta.append_chat(sid, autor, texto)
+            chat = scconsulta.leer_chat(sid)
+            return self._json({"ok": True, "mensaje": msg, "mensajes": chat.get("mensajes", [])})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _post_soporte_consulta_respuesta(self, sid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            texto = body.get("respuesta") or body.get("texto") or ""
+            proposito = body.get("proposito")
+            meta = scconsulta.guardar_respuesta(
+                sid, texto, proposito if "proposito" in body else None
+            )
+            return self._json(
+                {
+                    "ok": True,
+                    "meta": meta,
+                    "respuestaPreviewHtml": scconsulta.texto_respuesta_a_html(texto),
+                }
+            )
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+
+    def _post_soporte_consulta_documento(self, sid):
+        try:
+            _html, meta = scconsulta.generar_html_documento(sid)
+            return self._json({"ok": True, "meta": meta, "urlHtml": f"/api/soporte-consultas/{sid}/html"})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_soporte_consulta_cerrar(self, sid):
+        try:
+            meta = scconsulta.cerrar_consulta(sid)
+            return self._json({"ok": True, "meta": meta})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+
+    def _serve_soporte_consulta_html(self, sid):
+        try:
+            meta = scconsulta.leer_meta(sid)
+            if (meta.get("respuestaOficial") or "").strip():
+                scconsulta.generar_html_documento(sid)
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        path = scconsulta.ruta_html(sid)
+        if not path.is_file():
+            return self._json({"ok": False, "error": "Genere el documento primero."}, 404)
+        try:
+            html_body = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        data = html_body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'inline; filename="soporte-{sid}.html"')
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_soporte_consulta_pdf(self, sid, parsed):
+        qs = parse_qs(parsed.query or "")
+        try:
+            scconsulta.generar_pdf(sid)
+            pdf_path = scconsulta.ruta_pdf(sid)
+            data = pdf_path.read_bytes()
+        except FileNotFoundError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        nombre = self._nombre_pdf_soporte_consulta(sid)
+        dl = (qs.get("dl") or [""])[0].strip() in ("1", "true", "yes")
+        disp = "attachment" if dl else "inline"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'{disp}; filename="{nombre}"')
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _post_soporte_consulta_analisis(self, sid):
+        try:
+            scconsulta.escribir_instruccion(sid)
+            meta = scconsulta.leer_meta(sid)
+            ahora = datetime.now().isoformat(timespec="seconds")
+            scconsulta.append_chat(
+                sid,
+                "coordinador",
+                "Analice esta consulta contrastando conocimiento/ (procesos, DIAN, copagos, facturación, caja, "
+                "recaudos según aplique). Redacte respuestaOficial en meta.json y resuma en el chat.",
+            )
+            scconsulta.append_chat(
+                sid,
+                "sistema",
+                "El agente está contrastando con la base de conocimiento. En unos minutos verá la respuesta en el chat "
+                "y el borrador en «Respuesta oficial».",
+            )
+            bot = agentes_panel.lanzar("soporte-consultas", sid, "soporte-consulta-analisis")
+            if not bot.get("ok"):
+                scconsulta.append_chat(
+                    sid,
+                    "sistema",
+                    "El agente no pudo arrancar (" + str(bot.get("error") or "error") + "). Revise CURSOR_API_KEY y bot.log.",
+                )
+            scconsulta.actualizar_meta(sid, analisisLanzado=ahora)
+            return self._json({"ok": True, "bot": bot, **scconsulta.panel_consulta(sid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_soporte_consulta_agente(self, sid):
+        try:
+            try:
+                body = self._read_json_body()
+            except json.JSONDecodeError:
+                return self._json({"ok": False, "error": "JSON inválido"}, 400)
+            nota = (body.get("texto") or "").strip()
+            if nota:
+                scconsulta.append_chat(sid, "coordinador", nota)
+            scconsulta.append_chat(
+                sid,
+                "sistema",
+                "El agente está ajustando la respuesta según el chat.",
+            )
+            bot = agentes_panel.lanzar("soporte-consultas", sid, "soporte-consulta-chat")
+            if not bot.get("ok"):
+                scconsulta.append_chat(
+                    sid,
+                    "sistema",
+                    "El agente no pudo arrancar (" + str(bot.get("error") or "error") + ").",
+                )
+            return self._json({"ok": True, "bot": bot, **scconsulta.panel_consulta(sid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+
+    def _post_soporte_consulta_pdf(self, sid):
+        try:
+            scconsulta.generar_pdf(sid)
+            data = scconsulta.ruta_pdf(sid).read_bytes()
+        except FileNotFoundError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        nombre = self._nombre_pdf_soporte_consulta(sid)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{nombre}"')
+        self.end_headers()
+        self.wfile.write(data)
 
     def _sugerir_criterios(self):
         try:
@@ -1045,7 +2071,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             body.get("procesoId") or "",
         )
         if result.get("ok"):
-            result["bot"] = lanzar_bot(DOCUMENTAR_ID, "documentar")
+            result["bot"] = agentes_panel.lanzar("documentar", DOCUMENTAR_ID, "documentar")
         return self._json(result, 200 if result.get("ok") else 400)
 
     def _post_conocimiento_tarea(self):
@@ -1122,7 +2148,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             proceso_id,
             canal,
         )
-        bot = lanzar_bot(kb.bot_id(canal), canal)
+        bot = agentes_panel.lanzar(canal if canal in ("consultas", "documentar") else "documentar", kb.bot_id(canal), canal)
         if not bot.get("ok"):
             time.sleep(2)
             st = leer_estado_bot(kb.bot_id(canal))
@@ -1180,13 +2206,134 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "mensaje": "OpenAI ya no organiza textos. El agente (Cursor) asume criterios, análisis y recomendación.",
         }, 410)
 
+    def _post_agentes(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            if (body.get("modeloLocal") or "").strip() and not (body.get("id") or "").strip():
+                nombre = agentes_panel.asignar_modelo(body.get("modeloLocal") or "")
+                return self._json({
+                    "ok": True,
+                    "modeloLocal": nombre,
+                    "agentes": agentes_panel.catalogo(),
+                })
+            fila = agentes_panel.asignar(body.get("id") or "", body.get("motor") or "")
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._json({
+            "ok": True,
+            "agente": fila,
+            "agentes": agentes_panel.catalogo(),
+            "modeloLocal": agentes_panel.modelo_local(),
+        })
+
     def _post_solicitar(self):
         try:
             body = self._read_json_body()
         except json.JSONDecodeError:
             return self._json({"error": "JSON inválido"}, 400)
-        sol = solreq.guardar(body)
+        try:
+            sol = solreq.guardar(body)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
         return self._json({"ok": True, "solicitud": sol})
+
+    @staticmethod
+    def _json_solicitar_export(result, panel):
+        """panel_chat.archivos = adjuntos del chat; no pisar PDF/PNG del export."""
+        exportados = result.get("archivos") or []
+        entregables = exportados or panel.get("entregables") or []
+        base = {**result, **{k: v for k, v in panel.items() if k != "archivos"}}
+        base["archivos"] = exportados
+        base["entregables"] = entregables
+        base["archivosAdjuntos"] = panel.get("archivos") or []
+        return base
+
+    @staticmethod
+    def _opciones_export_solicitud(body):
+        raw = body.get("opciones") if isinstance(body.get("opciones"), dict) else {}
+        return {
+            "incluirDocumento": raw.get(
+                "incluirDocumento",
+                body.get("incluirDocumento", True),
+            ),
+            "incluirMockups": raw.get(
+                "incluirMockups",
+                body.get("incluirMockups", True),
+            ),
+            "incluirDiagrama": raw.get(
+                "incluirDiagrama",
+                body.get("incluirDiagrama", True),
+            ),
+        }
+
+    def _post_solicitar_elegir_carpeta(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        inicial = (body.get("inicial") or body.get("carpeta") or "").strip()
+        dialogo = solreq.servidor_puede_dialogo_carpeta()
+        if not dialogo.get("disponible"):
+            return self._json({
+                "ok": False,
+                "carpeta": "",
+                "interactive": False,
+                "error": dialogo.get("motivo") or "Diálogo no disponible.",
+            })
+        path = solreq.elegir_carpeta(inicial=inicial)
+        if not path:
+            return self._json({
+                "ok": False,
+                "carpeta": "",
+                "interactive": True,
+                "error": "Canceló o no se abrió la ventana. Escriba la ruta en el cuadro.",
+            })
+        return self._json({"ok": True, "carpeta": path, "interactive": True})
+
+    def _post_solicitar_cerrar(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        sid_body = (body.get("solicitudId") or body.get("id") or "").strip()
+        if sid_body and sid_body != id_sr:
+            return self._json(
+                {"error": f"Solicitud del formulario ({sid_body}) ≠ URL ({id_sr})."},
+                400,
+            )
+        carpeta = (body.get("carpeta") or body.get("carpetaPlataforma") or "").strip()
+        if not carpeta:
+            carpeta = ((body.get("plataforma") or {}).get("carpeta") or "").strip()
+        opciones = self._opciones_export_solicitud(body)
+        try:
+            sol = solreq.cerrar(id_sr, carpeta=carpeta, opciones=opciones)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        reutilizado = bool(sol.pop("_reutilizado", False))
+        if reutilizado:
+            nota = (
+                "Solicitud cerrada. Se conservaron los archivos del último Guardar; "
+                "no se volvieron a generar documento, mockup ni flujo."
+            )
+        else:
+            nota = (
+                "Solicitud cerrada. Quedaron PDF de la solicitud, PDF del mockup e imagen del flujo en solicitudes/"
+                f"{id_sr}/plataforma/."
+            )
+        solreq.append_chat(id_sr, "sistema", nota)
+        panel = solreq.panel_chat(id_sr)
+        return self._json({"ok": True, "reutilizado": reutilizado, **panel, "solicitud": sol})
+
+    def _post_solicitar_reabrir(self, id_sr):
+        try:
+            sol = solreq.reabrir(id_sr)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        solreq.append_chat(id_sr, "sistema", "Solicitud reabierta. Puede cerrar de nuevo para generar PDF e imagen.")
+        return self._json({"ok": True, "solicitud": sol, "chat": solreq.load_chat(id_sr)})
 
     def _post_solicitar_analizar(self, id_sr):
         try:
@@ -1207,8 +2354,14 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "restricciones, criterios y recomendación para el comité. Liste SOLO los SP/METODO de este "
             "cambio. No genere dictamen de implementación. Deje el resultado en este Chat y en solicitud.json.",
         )
-        bot = lanzar_bot(id_sr, "solicitar-req")
+        bot = agentes_panel.lanzar("solicitar", id_sr, "solicitar-req", "analizar")
         return self._json({"ok": True, **prep, "bot": bot})
+
+    def _get_solicitar_documento_estado(self, id_sr):
+        try:
+            return self._json(solreq.estado_documento(id_sr))
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 404)
 
     def _post_solicitar_documento(self, id_sr):
         try:
@@ -1227,7 +2380,40 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "sistema",
             f"Documento de comité generado: solicitudes/{id_sr}/documento.html (copia dictamenes/{id_sr}.html).",
         )
-        return self._json(result)
+        panel = solreq.panel_chat(id_sr)
+        return self._json({**result, **panel})
+
+    def _post_solicitar_export_plataforma(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        sid_body = (body.get("solicitudId") or body.get("id") or "").strip()
+        if sid_body and sid_body != id_sr:
+            return self._json(
+                {
+                    "error": f"La solicitud del formulario ({sid_body}) no coincide con la URL ({id_sr}). "
+                    "Abra la solicitud correcta en la lista.",
+                },
+                400,
+            )
+        carpeta = (body.get("plataforma") or {}).get("carpeta") or body.get("carpetaPlataforma") or ""
+        actual = solreq.load(id_sr)
+        if actual and not solreq._esta_cerrada(actual) and carpeta:
+            plat = dict(actual.get("plataforma") or {})
+            plat["carpeta"] = carpeta
+            actual["plataforma"] = plat
+            try:
+                solreq.guardar(actual)
+            except ValueError:
+                pass
+        opciones = self._opciones_export_solicitud(body)
+        try:
+            result = solreq.generar_export_plataforma(id_sr, carpeta=carpeta, opciones=opciones)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        panel = solreq.panel_chat(id_sr)
+        return self._json(self._json_solicitar_export(result, panel))
 
     def _post_solicitar_chat(self, id_sr):
         try:
@@ -1237,11 +2423,115 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         texto = (body.get("texto") or "").strip()
         if not texto:
             return self._json({"error": "Falta el mensaje"}, 400)
-        if not solreq.load(id_sr):
+        actual = solreq.load(id_sr)
+        if not actual:
             return self._json({"error": "Guarde la solicitud primero"}, 400)
+        if solreq._esta_cerrada(actual):
+            return self._json({"error": "La solicitud está cerrada. El Chat queda de consulta; no se envían mensajes."}, 400)
         solreq.append_chat(id_sr, "coordinador", texto)
-        bot = lanzar_bot(id_sr, "solicitar-req")
+        bot = agentes_panel.lanzar("solicitar", id_sr, "solicitar-req", "chat")
         return self._json({"ok": True, "chat": solreq.load_chat(id_sr), "bot": bot})
+
+    def _post_solicitar_archivo(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            meta = solreq.guardar_archivo(
+                id_sr,
+                body.get("nombre") or "",
+                body.get("dataUrl") or body.get("data") or "",
+                body.get("tipo") or "normativa",
+            )
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        if meta.get("tipo") == "necesidad":
+            bot = agentes_panel.lanzar("solicitar", id_sr, "solicitar-req", "analizar")
+        else:
+            bot = leer_estado_bot(id_sr)
+        return self._json({"ok": True, **solreq.panel_chat(id_sr), "archivo": meta, "bot": bot})
+
+    def _post_solicitar_mockups_generar(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        try:
+            rels = solreq.generar_mockups(id_sr, notas=(body.get("notas") or "").strip())
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        panel = solreq.panel_chat(id_sr)
+        return self._json({"ok": True, "mockupsGenerados": rels, **panel, "bot": leer_estado_bot(id_sr)})
+
+    def _serve_solicitar_archivo(self, id_sr, nombre):
+        safe = os.path.basename(nombre or "")
+        path = os.path.join(solreq.caso_dir(id_sr), "archivos", safe)
+        if not os.path.isfile(path):
+            return self._json({"error": "Archivo no encontrado"}, 404)
+        with open(path, "rb") as fh:
+            body = fh.read()
+        ext = os.path.splitext(safe)[1].lower()
+        tipos = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8", ".html": "text/html; charset=utf-8"}
+        self.send_response(200)
+        self.send_header("Content-Type", tipos.get(ext, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _post_solicitar_diagrama_generar(self, id_sr):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            body = {}
+        try:
+            meta = solreq.generar_diagrama(id_sr, notas=(body.get("notas") or "").strip())
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        panel = solreq.panel_chat(id_sr)
+        return self._json({"ok": True, "diagramaGenerado": meta, **panel})
+
+    def _serve_solicitar_asset(self, id_sr, subdir, nombre):
+        safe = os.path.basename(nombre or "")
+        path = os.path.join(solreq.caso_dir(id_sr), subdir, safe)
+        if not os.path.isfile(path):
+            return self._json({"error": "Archivo no encontrado"}, 404)
+        with open(path, "rb") as fh:
+            body = fh.read()
+        ext = os.path.splitext(safe)[1].lower()
+        tipos = {
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".html": "text/html; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
+            ".md": "text/plain; charset=utf-8",
+        }
+        self.send_response(200)
+        self.send_header("Content-Type", tipos.get(ext, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_solicitar_mockup(self, id_sr, nombre):
+        safe = os.path.basename(nombre or "")
+        path = os.path.join(solreq.caso_dir(id_sr), "mockups", safe)
+        if not os.path.isfile(path):
+            return self._json({"error": "Mockup no encontrado"}, 404)
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_solicitar_documento(self, id_sr):
         path = os.path.join(solreq.caso_dir(id_sr), "documento.html")
@@ -1276,6 +2566,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             instruccion = _build_instruccion(solicitud)
             result = db.activar_caso(solicitud, instruccion)
             db.sync_caso_to_disk(id_caso)
+            _sql_dir_caso(id_caso)
         except Exception as exc:
             print(f"ERROR activar caso {id_caso}: {exc}", flush=True)
             return self._json({"ok": False, "error": str(exc)}, 500)
@@ -1287,7 +2578,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         bot = {}
         try:
-            bot = lanzar_bot(id_caso, "activar")
+            bot = agentes_panel.lanzar("analista", id_caso, "activar")
         except Exception as exc:
             bot = {"ok": False, "error": str(exc)}
 
@@ -1344,7 +2635,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             db.guardar_solicitud(id_caso, solicitud)
         bot = {}
         if body.get("validarContabilidad"):
-            bot = lanzar_bot(id_caso, "contabilidad")
+            bot = agentes_panel.lanzar("analista", id_caso, "contabilidad")
         if body.get("analizarRequerimiento"):
             ahora = datetime.now().isoformat(timespec="seconds")
             imgs = ((solicitud.get("contenido") or {}).get("imagenesAnalisis") or [])
@@ -1383,7 +2674,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                         "restricciones y análisis; liste SOLO los SP/METODO de este cambio "
                         "No haga el dictamen completo. Deje el resultado en este Chat y en "
                         "solicitud.contenido (criterios, alcance, restricciones, analisis, "
-                        f"brechaAnalisis).{img_nota}"
+                        "brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos)."
+                        f"{img_nota}"
                     ),
                     "fecha": ahora,
                 },
@@ -1397,7 +2689,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "fecha": ahora,
                 },
             )
-            bot = lanzar_bot(id_caso, "analizar-req")
+            bot = agentes_panel.lanzar("analista", id_caso, "analizar-req")
             if not bot.get("ok"):
                 db.append_chat(
                     id_caso,
@@ -1426,8 +2718,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                         + con_analisis
                         + ". Liste los SP/METODO documentados a usar. Escriba en "
                         "solicitud.contenido.criteriosAceptacion, alcance, restricciones, analisis, "
-                        "recomendacion y criteriosMeta (fuente: agente). Resuma en este Chat. "
-                        "No haga el dictamen completo."
+                        "recomendacion, criteriosMeta (fuente: agente) y cambioPropuestoSql si hay "
+                        "fix SQL. Resuma en este Chat. No haga el dictamen completo."
                     ),
                     "fecha": ahora,
                 },
@@ -1441,7 +2733,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "fecha": ahora,
                 },
             )
-            bot = lanzar_bot(id_caso, "criterios")
+            bot = agentes_panel.lanzar("analista", id_caso, "criterios")
             if not bot.get("ok"):
                 db.append_chat(
                     id_caso,
@@ -1524,7 +2816,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "fecha": datetime.now().isoformat(timespec="seconds"),
         }
         db.append_chat(id_caso, aviso)
-        bot = lanzar_bot(id_caso, "chat")
+        bot = agentes_panel.lanzar("analista", id_caso, "chat")
         if not bot.get("ok"):
             fallo = {
                 "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "e",
@@ -1692,8 +2984,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         except OSError as e:
             return self._json({"ok": False, "error": f"No se pudo guardar desarrolladores: {e}"}, 500)
     def _get_cola(self):
-        get_db().reconciliar_cerrados()
-        return self._json({"items": get_db().get_cola()})
+        db = get_db()
+        db.aplicar_estados_cola()
+        return self._json({"items": db.get_cola()})
 
     def _post_cola_html(self):
         try:
@@ -1993,6 +3286,220 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         db.guardar_solicitud(id_caso, solicitud)
         return self._json({"ok": True, "nombre": nombre})
 
+    def _mockup_meta(self, rel):
+        rel = str(rel or "").strip().replace("\\", "/").lstrip("/")
+        if not rel:
+            return None
+        abs_path = os.path.join(ROOT, *rel.split("/"))
+        existe = os.path.isfile(abs_path)
+        nombre = os.path.basename(rel)
+        titulo = nombre.replace(".html", "").replace("-", " ")
+        tipo = "mockup-sp" if "sp" in nombre.lower() or "flujo-sp" in rel.lower() else "mockup-ux"
+        zip_abs = mockzip.nombre_zip_para_html(abs_path) if rel.lower().endswith(".html") else None
+        zip_existe = zip_abs.is_file() if zip_abs else False
+        zip_rel = ""
+        if zip_abs and zip_existe:
+            zip_rel = os.path.relpath(str(zip_abs), ROOT).replace("\\", "/")
+        id_caso = ""
+        if rel.startswith("activo/"):
+            parts = rel.split("/")
+            if len(parts) > 1:
+                id_caso = parts[1]
+        zip_url = ""
+        if id_caso and rel.lower().endswith(".html"):
+            from urllib.parse import quote
+
+            zip_url = f"/api/caso/{id_caso}/mockups?zip={quote(rel, safe='/')}"
+        return {
+            "tipo": tipo,
+            "titulo": f"Mockup: {titulo}",
+            "ruta": rel,
+            "url": f"/{rel}" if existe else None,
+            "existe": existe,
+            "estado": "adjunto-correo" if existe else "no-encontrado",
+            "zipRuta": zip_rel if zip_existe else None,
+            "zipExiste": zip_existe,
+            "zipUrl": zip_url if zip_existe or existe else None,
+        }
+
+    def _escanear_mockups_html(self, id_caso):
+        """Solo mockups del caso activo — no mezclar otros REQ en activo/ ni solicitudes/."""
+        found = set()
+        caso_mock = os.path.join(ROOT, "activo", id_caso, "mockups")
+        if os.path.isdir(caso_mock):
+            for name in os.listdir(caso_mock):
+                if name.lower().endswith(".html"):
+                    found.add(f"activo/{id_caso}/mockups/{name}")
+        return sorted(found)
+
+    def _filtrar_mockups_caso(self, id_caso, rels):
+        return _filtrar_mockups_caso_list(id_caso, rels)
+
+    def _plantillas_mockup(self):
+        out = []
+        plantillas = os.path.join(ROOT, "plantillas")
+        if not os.path.isdir(plantillas):
+            return out
+        labels = {
+            "mockup-flujo-sp.html": "Plantilla SP (expandibles METODO)",
+        }
+        for name in sorted(os.listdir(plantillas)):
+            if not (name.lower().startswith("mockup") and name.lower().endswith(".html")):
+                continue
+            rel = f"plantillas/{name}"
+            out.append({
+                "ruta": rel,
+                "titulo": labels.get(name, name),
+                "url": f"/{rel}",
+            })
+        return out
+
+    def _serve_mockup_zip(self, id_caso, ruta_rel):
+        from urllib.parse import unquote
+
+        ruta_rel = unquote(str(ruta_rel or "")).strip().replace("\\", "/").lstrip("/")
+        if not ruta_rel.lower().endswith(".html"):
+            return self._json({"error": "Solo mockups .html"}, 400)
+        if ruta_rel.startswith("activo/") and not ruta_rel.startswith(f"activo/{id_caso}/"):
+            return self._json({"error": "Mockup de otro caso"}, 403)
+        abs_html = os.path.join(ROOT, *ruta_rel.split("/"))
+        if not os.path.isfile(abs_html):
+            return self._json({"error": "Mockup no encontrado"}, 404)
+        try:
+            zip_path = mockzip.empaquetar_mockup_html(abs_html, id_caso=id_caso)
+        except OSError as exc:
+            return self._json({"error": str(exc)}, 500)
+        with open(zip_path, "rb") as fh:
+            body = fh.read()
+        nombre = os.path.basename(zip_path)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{nombre}"')
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.end_headers()
+        self.wfile.write(body)
+        return None
+
+    def _get_mockups(self, id_caso, parsed):
+        db = get_db()
+        solicitud = db.get_solicitud(id_caso) or _read_json_file(
+            os.path.join(ACTIVO_ROOT, id_caso, "solicitud.json"), {}
+        )
+        if not solicitud:
+            return self._json({"error": "Solicitud no encontrada", "idCaso": id_caso}, 404)
+        qs = parse_qs(parsed.query or "")
+        zip_ruta = (qs.get("zip") or [""])[0].strip()
+        if zip_ruta:
+            return self._serve_mockup_zip(id_caso, zip_ruta)
+        escanear = (qs.get("scan") or [""])[0].lower() in ("1", "true", "si", "sí")
+        rels = self._filtrar_mockups_caso(id_caso, mailer.rutas_mockups_solicitud(solicitud))
+        configurados = [m for m in (self._mockup_meta(r) for r in rels) if m]
+        sugeridos = []
+        if escanear:
+            cfg_set = set(rels)
+            sugeridos = [
+                m for m in (self._mockup_meta(r) for r in self._escanear_mockups_html(id_caso))
+                if m and m["ruta"] not in cfg_set
+            ]
+        try:
+            correo = mailer.estado(id_caso)
+            n_adj = len(configurados)
+            correo_hint = (
+                f"Dictamen + {n_adj} mockup(s) al enviar"
+                if n_adj
+                else "Solo dictamen (sin mockups declarados)"
+            )
+        except Exception:
+            correo_hint = ""
+        return self._json({
+            "ok": True,
+            "idCaso": id_caso,
+            "mockups": configurados,
+            "sugeridos": sugeridos,
+            "plantillas": self._plantillas_mockup(),
+            "correoHint": correo_hint,
+            "fase1Cerrada": bool(_read_json_file(os.path.join(ACTIVO_ROOT, id_caso, "estado.json"), {}).get("fase1Cerrada")),
+        })
+
+    def _post_mockups(self, id_caso):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        raw = body.get("mockups")
+        if raw is None and isinstance(body.get("accion"), str):
+            accion = body.get("accion").strip().lower()
+            if accion == "scan":
+                return self._get_mockups(id_caso, urlparse("?scan=1"))
+            return self._json({"error": "Acción no reconocida"}, 400)
+        if not isinstance(raw, list):
+            return self._json({"error": "Falta lista mockups"}, 400)
+        rels = []
+        for item in raw:
+            rel = str(item or "").strip().replace("\\", "/").lstrip("/")
+            if rel and rel not in rels:
+                rels.append(rel)
+        rels = self._filtrar_mockups_caso(id_caso, rels)
+        db = get_db()
+        solicitud = db.get_solicitud(id_caso) or _read_json_file(
+            os.path.join(ACTIVO_ROOT, id_caso, "solicitud.json"), {}
+        )
+        if not solicitud:
+            return self._json({"error": "Solicitud no encontrada", "idCaso": id_caso}, 404)
+        contenido = dict(solicitud.get("contenido") or {})
+        contenido["mockups"] = rels
+        if "mockupsNotas" in body:
+            contenido["mockupsNotas"] = str(body.get("mockupsNotas") or "").strip()
+        solicitud["contenido"] = contenido
+        db.guardar_solicitud(id_caso, solicitud)
+        configurados = [m for m in (self._mockup_meta(r) for r in rels) if m]
+        return self._json({
+            "ok": True,
+            "idCaso": id_caso,
+            "mockups": configurados,
+            "correoHint": f"Dictamen + {len(configurados)} mockup(s) al enviar" if configurados else "Solo dictamen",
+        })
+
+    def _post_mockup_subir(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        try:
+            meta = _guardar_mockup_html(
+                id_caso,
+                body.get("contenido") or body.get("html") or "",
+                body.get("nombre") or "",
+            )
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        notas = (body.get("notas") or body.get("mockupsNotas") or "").strip()
+        if notas:
+            db = get_db()
+            solicitud = db.get_solicitud(id_caso) or {}
+            contenido = dict(solicitud.get("contenido") or {})
+            contenido["mockupsNotas"] = notas
+            solicitud["contenido"] = contenido
+            db.guardar_solicitud(id_caso, solicitud)
+        return self._get_mockups(id_caso, urlparse(""))
+
+    def _post_mockup_generar(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        notas = (body.get("notas") or body.get("mockupsNotas") or "").strip()
+        try:
+            nombres = _generar_y_guardar_mockups_caso(id_caso, notas=notas)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._get_mockups(id_caso, urlparse("?scan=0"))
+
     def _get_documentos(self, id_caso):
         db = get_db()
         solicitud = db.get_solicitud(id_caso)
@@ -2064,6 +3571,17 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "estado": "flujo",
             })
 
+        for rel in mailer.rutas_mockups_solicitud(solicitud):
+            meta = self._mockup_meta(rel)
+            if meta:
+                docs.append({
+                    "tipo": meta["tipo"],
+                    "titulo": meta["titulo"],
+                    "ruta": meta["ruta"],
+                    "url": meta["url"],
+                    "estado": meta["estado"],
+                })
+
         return self._json({"idCaso": id_caso, "documentos": docs})
 
     def _dictamen_path(self, id_caso):
@@ -2072,13 +3590,25 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         dictamen_abs = os.path.join(ROOT, *dictamen_rel.split("/"))
         return dictamen_rel, dictamen_abs
 
+    def _base_dictamen_api(self, body):
+        """El dictamen se abre en /api/caso/{id}/dictamen. Sin <base>,
+        ../activo/ y ../app/ se resuelven bajo /api/caso/ y el mockup da 404."""
+        if re.search(br"<base\b", body, re.I):
+            return body
+        tag = b'<base href="/dictamenes/">'
+        match = re.search(br"<head\b[^>]*>", body, re.I)
+        if not match:
+            return tag + body
+        end = match.end()
+        return body[:end] + tag + body[end:]
+
     def _serve_dictamen(self, id_caso):
         dictamen_rel, dictamen_abs = self._dictamen_path(id_caso)
         if not os.path.isfile(dictamen_abs):
             return self._json({"error": "Dictamen no encontrado", "ruta": dictamen_rel}, 404)
 
         with open(dictamen_abs, "rb") as fh:
-            body = fh.read()
+            body = self._base_dictamen_api(fh.read())
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -2133,7 +3663,10 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 for item in cola:
                     req = item.get("idReqSeleccionado") or (item.get("parsed") or {}).get("idReq")
                     if req == id_req:
-                        item["estado"] = "enviado"
+                        item["estado"] = "terminado"
+                        item["terminadoPor"] = "correo_enviado"
+                        item["terminadoEn"] = item.get("terminadoEn") or datetime.now().isoformat(timespec="seconds")
+                        item["correoEnviado"] = True
                 db.save_cola(cola)
                 db.append_chat(
                     id_caso,
@@ -2214,45 +3747,74 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
     def _mover_sql_a_refe(self, id_req, id_caso):
         if not id_req or len(id_req) != 10 or not id_req.isdigit():
             return {"ok": False, "error": "idReq inválido", "movidos": []}
+        if not id_caso:
+            return {
+                "ok": False,
+                "error": "Falta idCaso. No se archiva la carpeta compartida sql/.",
+                "movidos": [],
+            }
 
+        try:
+            src_dir = _sql_dir_caso(id_caso)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "movidos": []}
         dest_dir = os.path.join(SQL_REF_ROOT, id_req)
         os.makedirs(dest_dir, exist_ok=True)
-        archivos = _sql_files_in_dir(SQL_ROOT)
+        archivos = _sql_files_in_dir(src_dir)
         movidos = []
         for nombre in archivos:
-            src = os.path.join(SQL_ROOT, nombre)
+            src = os.path.join(src_dir, nombre)
             dst = os.path.join(dest_dir, nombre)
             if os.path.exists(dst):
                 base, ext = os.path.splitext(nombre)
-                dst = os.path.join(dest_dir, f"{base}_{id_caso or 'dup'}{ext}")
+                dst = os.path.join(dest_dir, f"{base}_{id_caso}{ext}")
             shutil.move(src, dst)
             movidos.append(os.path.basename(dst))
 
         meta = {
             "idReq": id_req,
             "idCaso": id_caso,
+            "origen": f"activo/{id_caso}/sql",
             "archivadoEn": datetime.now().isoformat(timespec="seconds"),
             "archivos": movidos,
         }
         with open(os.path.join(dest_dir, "archivo.json"), "w", encoding="utf-8") as fh:
             json.dump(meta, fh, ensure_ascii=False, indent=2)
 
-        self._write_sql_manifest(_sql_files_in_dir(SQL_ROOT))
+        self._write_case_sql_manifest(src_dir, _sql_files_in_dir(src_dir))
         if not movidos:
             return {
                 "ok": True,
                 "movidos": [],
                 "destinoRelativo": f"sql_refe/{id_req}",
-                "mensaje": "No había .sql en sql/ para archivar.",
+                "origenRelativo": f"activo/{id_caso}/sql",
+                "mensaje": f"No había .sql en activo/{id_caso}/sql/ para archivar.",
             }
         return {
             "ok": True,
             "movidos": movidos,
             "destinoRelativo": f"sql_refe/{id_req}",
-            "mensaje": f"Archivados {len(movidos)} .sql en sql_refe/{id_req}/. sql/ limpia.",
+            "origenRelativo": f"activo/{id_caso}/sql",
+            "mensaje": f"Archivados {len(movidos)} .sql de activo/{id_caso}/sql/ en sql_refe/{id_req}/.",
         }
 
-    def _list_sql(self):
+    def _list_sql(self, id_caso=""):
+        if id_caso:
+            try:
+                directory = _sql_dir_caso(id_caso)
+            except ValueError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 400)
+            archivos = _sql_files_in_dir(directory)
+            rel = f"activo/{id_caso}/sql"
+            self._write_case_sql_manifest(directory, archivos)
+            return self._json({
+                "ok": True,
+                "idCaso": id_caso,
+                "ruta": directory,
+                "rutaRelativa": rel,
+                "archivos": archivos,
+                "mensaje": None if archivos else f"No hay .sql en {rel}/",
+            })
         archivos = _sql_files_in_dir(SQL_ROOT)
         self._write_sql_manifest(archivos)
         return self._json({
@@ -2260,8 +3822,17 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "ruta": SQL_ROOT,
             "rutaRelativa": "sql",
             "archivos": archivos,
-            "mensaje": None if archivos else "No hay .sql en sql/",
+            "mensaje": None if archivos else "No hay .sql en sql/ (Documentar).",
         })
+
+    def _write_case_sql_manifest(self, directory, archivos):
+        manifest = {
+            "generado": datetime.now().isoformat(timespec="seconds"),
+            "ruta": directory,
+            "archivos": archivos,
+        }
+        with open(os.path.join(directory, "manifest.json"), "w", encoding="utf-8") as fh:
+            json.dump(manifest, fh, ensure_ascii=False, indent=2)
 
     def _write_sql_manifest(self, archivos):
         manifest = {"generado": datetime.now().isoformat(timespec="seconds"), "ruta": SQL_ROOT, "archivos": archivos}
@@ -2284,8 +3855,95 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if not result.get("ok"):
             return self._json({"error": result.get("error") or "Error al archivar"}, 400)
         if not result.get("movidos"):
-            return self._json({"error": result.get("mensaje") or "No hay .sql en sql/"}, 404)
+            return self._json({"error": result.get("mensaje") or "No hay .sql en la carpeta del caso"}, 404)
         return self._json(result)
+
+    def _exige_sesion_servidores(self) -> bool:
+        token = self.headers.get("X-Ba-Sesion") or ""
+        if servidores_admin.sesion_valida(token):
+            return True
+        self._json({"ok": False, "error": "Inicie sesión para ver los servidores."}, 401)
+        return False
+
+    def _post_servidores_entrar(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            if body.get("crear"):
+                servidores_admin.crear_acceso(body.get("usuario") or "", body.get("clave") or "")
+            token = servidores_admin.entrar(body.get("usuario") or "", body.get("clave") or "")
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, "token": token})
+
+    def _post_servidores_salir(self):
+        servidores_admin.salir(self.headers.get("X-Ba-Sesion") or "")
+        return self._json({"ok": True})
+
+    def _post_servidores_detalle(self):
+        if not self._exige_sesion_servidores():
+            return None
+        try:
+            body = self._read_json_body()
+            ficha = servidores_admin.detalle(body.get("id") or "")
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, "servidor": ficha})
+
+    def _post_servidores_guardar(self):
+        if not self._exige_sesion_servidores():
+            return None
+        try:
+            body = self._read_json_body()
+            ficha = servidores_admin.guardar(body)
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, "servidor": ficha})
+
+    def _post_servidores_traer(self):
+        if not self._exige_sesion_servidores():
+            return None
+        try:
+            resumen = servidores_admin.importar_qrystalos2()
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, **resumen})
+
+    def _post_servidores_listar_bases(self):
+        if not self._exige_sesion_servidores():
+            return None
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        sid = (body.get("id") or "").strip()
+        try:
+            bases = servidores_admin.listar_bases_sql(sid)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except RuntimeError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 502)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+        return self._json({"ok": True, "id": sid, "bases": bases})
+
+    def _post_servidores_quitar(self):
+        if not self._exige_sesion_servidores():
+            return None
+        try:
+            body = self._read_json_body()
+            servidores_admin.quitar(body.get("id") or "")
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True})
 
     def end_headers(self):
         path = (urlparse(self.path).path or "").lower()
@@ -2297,7 +3955,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
     def _cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Ba-Sesion")
 
     def _json(self, data, code=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -2343,7 +4001,7 @@ def main():
     print(f"Qrystalos BA — http://localhost:{PORT}/app/", flush=True)
     print(f"SQLite:  data/qrystalos_ba.db", flush=True)
     print(f"Activos: activo/{{id-caso}}/", flush=True)
-    print(f"SQL:     sql/", flush=True)
+    print(f"SQL:     activo/{{id-caso}}/sql/  (sql/ solo Documentar)", flush=True)
     print(f"Procesos: conocimiento/", flush=True)
     try:
         import documentar_vigilante as docvig

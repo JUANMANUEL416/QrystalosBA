@@ -1,0 +1,3223 @@
+{
+  "id": "cxp-fcxp",
+  "nombre": "Cuentas por pagar (FCXP)",
+  "modulo": "FCXP",
+  "familia": "financiero",
+  "prioridad": 12,
+  "enRuta": false,
+  "estado": "documentado",
+  "resumen": "Registrar la obligación con un proveedor (factura, servicio, nómina, anticipo, reembolso de caja menor), contabilizarla, programar su pago en una orden de pago, autorizarla para que el egreso llegue a caja y confirmar el pago en caja con su forma de pago y comprobante. Tres modos de autorización según variables.",
+  "actualizado": "2026-10-04T23:45:00",
+  "dictamenRelacionado": "dictamenes/20260917-cxp-fcxp-radian.html",
+  "notaSql": "2026-10-04: DESAIX liberada 2.0.7 (IDANT 2.0.6). SPQ_FCXP PREVERSION difiere de 2.0.7 solo en CRUD_FCXP (bandera MASIVA_CXP), CRUD_FCXPD y CLONAR_FCXP (código UNSPSC en el detalle); el resto de métodos es idéntico. SPQ_ORDEN_PAGO, SPQ_CONF_CAJA, SPK_CONFIRMAR_PAGOSMASIVO, SPK_CIERRERECIBO_CAJA, SPK_NC_CONTAB_CAJA_EGR, SPK_MARCA_OP_PAGADA_POR_EGRESO, SPK_CALCULOVALORESCXP, SPK_DESCONFIRMAR_PAGOSMASIVO, SPK_ADMIN_PAGOMASIVO, SPK_ANULAR_CXP: idénticos. Scripts en sql/ (Documentar). REQ 6349 DPE* compras IMOV→FCXPD sigue en inventario.",
+  "alcanceHasta": "Administrativo → Cuentas por pagar (pestañas CxP, Facturas Radian, Auditoría, Orden de pago, Anticipos, Informes) → Administrativo → Órdenes de pago → Administrativo → Caja (Mov. Egreso, Confirmar orden de pago). Desde registrar la factura hasta el egreso confirmado en caja con su comprobante.",
+  "flujoResumen": "Nueva CXP (CRUD_FCXP) → detalle (CRUD_FCXPD) → impuestos (CRUD_FCXPI) → Contabilizar (VALIDAR_FCXP → CONTABILIZAR_FCXP → SPK_NC_CONTAB_CXP) → Orden de pago (CRUD_FCXPPM → LISTAR_CXP_PENDIENTES → PAGO_TOTAL / PAGO_PARCIAL → FCXPP) → Autorizar (AUTORIZAR → SPK_CONFIRMAR_PAGOSMASIVO | AUTORIZAR_INDIVIDUAL_TER | AUTORIZAR_INDIVIDUAL) → egreso FCJ pendiente en caja → Caja: forma de pago (PCJ) + Confirmar (CONFIRMAR_RECIBO_EGRESO → SPK_CIERRERECIBO_CAJA → SPK_CALCULOVALORESCXP; SPK_NC_CONTAB_CAJA_EGR; SPK_MARCA_OP_PAGADA_POR_EGRESO) → orden P, abonos P, factura P o C.",
+  "incluirProcesoMdEnLibro": false,
+  "diagramas": [
+    "conocimiento/cxp-fcxp/diagramas/flujo.html"
+  ],
+  "menu": {
+    "ruta": "Administrativo → Cuentas por Pagar · Administrativo → Órdenes de pago · Administrativo → Caja",
+    "fuente": "routes.js admin.CuentasxP (/admin/CuentasxPagar), admin.ordenPago (/admin/ordenPago), admin.caja (/admin/caja). Permisos de menú vía MENUQ (IDPROCEDIMIENTO MENUQ_CXP)."
+  },
+  "ventanas": [
+    {
+      "uso": "Registrar, contabilizar y administrar la factura; pagar desde la fila",
+      "ruta": "admin.CuentasxP",
+      "path": "/admin/CuentasxPagar",
+      "vue": "CuentasxpagarPage → CXPComponent (pestaña Cuentas por Pagar)",
+      "entrada": "Administrativo → Cuentas por Pagar. Filtros por fechas, estado, procedencia, sede, saldo, contabilizada. Barra: Nueva CXP, Carga Masiva, Generales (contabilizar / recalcular / reencolar DIAN masivo, exportar), Recalcular, Importar Soporte, Reportes y Cierre. En cada fila: columna Conta (contabilizar / deshacer / imprimir comprobante), menú de acciones (Anular, Enviar DIAN, Aplicar Anticipo, Cambia a Remisión, Clonar CxP, Reconstruir, Pagar) y, al expandir, detalle, impuestos, abonos y notas DB/CR."
+    },
+    {
+      "uso": "Orden de pago: agrupar facturas, abonar total o parcial, autorizar, archivo plano, realizar pago",
+      "ruta": "admin.ordenPago",
+      "path": "/admin/ordenPago",
+      "vue": "OrdenPagoPage → OPComponent (misma pestaña Orden de pago de Cuentas por Pagar)",
+      "entrada": "Administrativo → Órdenes de pago, o pestaña Orden de pago dentro de Cuentas por Pagar. Barra: Nuevo, Cierre CxP, Exportar Órdenes, Buscar Nómina. Al expandir la orden: Editar, Autorizar, Pendiente confirmar en caja, Subir Listado, Cruce con CxC, Desautorizar Orden, Anular Items, Imprimir Orden, Exportar Orden, Realizar Pago; en el detalle: Nuevo Detalle, Cerrar Orden / Abrir Orden, Archivo Plano, Pago parcial."
+    },
+    {
+      "uso": "Confirmar en caja el egreso que paga la orden",
+      "ruta": "admin.caja",
+      "path": "/admin/caja",
+      "vue": "CajaPage → CAJMovinComponent (botón Mov. Egreso)",
+      "entrada": "Administrativo → Caja, con la caja abierta por el cajero del turno. Mov. Egreso lista los recibos de egreso (clase PAGO) pendientes; en cada uno: Forma de Pago, Confirmar, Anular, Comp. Egreso, Desechar / Utilizar. Botón Confirmar orden de pago (solo con las variables de egreso individual) para confirmar de una vez todos los egresos de una orden."
+    },
+    {
+      "uso": "Pagar los egresos individuales de una orden sin salir de Órdenes de pago",
+      "ruta": "admin.ordenPago",
+      "path": "/admin/ordenPago",
+      "vue": "OPComponent → OPPagoEgresosDialog (botón Realizar Pago)",
+      "entrada": "Orden en estado Confirmado, con caja, en modo egreso individual por tercero. Recorre cada egreso: pide tipo de pago, confirma el recibo y marca el abono como pagado. Exige sesión de caja abierta; si no la hay pide confirmarlo desde Caja."
+    },
+    {
+      "uso": "Vista de las cuentas por pagar de compras desde inventario",
+      "ruta": "inv.conf_cxp",
+      "path": "/inv/.../CXP",
+      "vue": "CXPPage → CXPComponent PROCEDENCIA=INVENTARIO",
+      "entrada": "Inventario: la misma grilla con la interfaz reducida (sin anular, pagar ni acciones administrativas). Sirve para consultar la CxP que generó la entrada de compras."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "documentado",
+      "explicacion": "Plan de cuentas (cuenta crédito de la CxP, cuentas del detalle, IVA), modelo contable KMCOM por procedencia, periodos contables (PRI) y periodo administrativo de CxP (FCARTH), tipo de egreso de caja para pago a proveedores (IDCJTECXP) con su concepto de caja (CPCJ) y las variables que eligen el modo de autorización (AUT_EGRE_INDIVIDUAL, PERMITE_EGR_SIN_C, BANC_DINA_ARCH_PLANO).",
+      "controles": [
+        {
+          "id": "periodo-contable-cxp",
+          "nombre": "Periodo contable y periodo CxP",
+          "explicacion": "Toda grabación exige periodo contable abierto para la fecha. Además el cierre administrativo de CxP (Informes → Cierre CxP → Cerrar Periodo) congela el aging en FCARTH (procedencia CXP) y marca PRI.CERRADO_CXP: no se registran facturas (manuales, Radian, masivas) con fecha en ese mes. Abrir Periodo solo dentro de los 25 días siguientes al fin de mes.",
+          "invariante": "Periodo contable abierto para la fecha del documento y la fecha de la CxP; periodo CxP no cerrado.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "CRUD_FCXP / REGISTRAR_CXP_FRADIAN / VAL_CONTABLE",
+              "rol": "Validan PRI abierto y CERRADO_CXP=0."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "CERRAR_CUENTA / ABRIR_CUENTA",
+              "rol": "Cierre y apertura del mes de CxP."
+            },
+            {
+              "nombre": "SPK_CIERRA_CARTERA",
+              "metodo": "(SPK, parámetro CXP)",
+              "rol": "Snapshot FCARTH + CERRADO_CXP."
+            }
+          ]
+        },
+        {
+          "id": "tipo-egreso-cxp",
+          "nombre": "Tipo de egreso de pago a proveedores",
+          "explicacion": "La variable IDCJTECXP define el tipo de egreso de caja (CJTE) con que nacen los egresos de una orden; la caja puede tener su propio tipo (CAJ.TIPOEGRESO). El concepto de caja (CPCJ) activo tipo E es la línea del egreso. Sin esto la autorización falla.",
+          "invariante": "IDCJTECXP configurada; existe un concepto de egreso activo; la caja de la orden existe.",
+          "sps": [
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "AUTORIZAR_INDIVIDUAL_TER",
+              "rol": "Mensajes: variable IDCJTECXP, concepto CPCJ, caja de la orden."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion-fcxp",
+      "numero": 2,
+      "nombre": "Registrar la cuenta por pagar",
+      "estado": "documentado",
+      "explicacion": "Pestaña Cuentas por Pagar: cabecera (FCXP), detalle por concepto (FCXPD), impuestos y retenciones (FCXPI), anexos, documento equivalente DIAN, carga masiva por Excel. La factura nace sin contabilizar (CONTABILIZADA 0) y en estado N.",
+      "tablasClave": [
+        "FCXP",
+        "FCXPD",
+        "FCXPI",
+        "FCXPAG",
+        "FCXPA",
+        "FCXPAD",
+        "TER",
+        "FDIAN"
+      ],
+      "controles": [
+        {
+          "id": "crud-fcxp",
+          "nombre": "Alta y edición de la factura",
+          "explicacion": "Nueva CXP: tercero (trae la fecha de vencimiento según su plazo), fecha, fecha factura, referencia, procedencia, cuenta crédito. Al guardar el sistema rechaza si ya está contabilizada, si la referencia se repite para el mismo proveedor, si el periodo no está abierto, si falta el registro de presupuesto (cuando aplica) o si la restricción RESTRIN_CREA_CXP encuentra otra CxP sin detalle del mismo tercero/usuario.",
+          "invariante": "Referencia única por proveedor; periodo abierto; sin contabilizar para editar; ESTADO ≠ A para operar.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "CRUD_FCXP",
+              "rol": "Cabecera: consecutivo por sede, periodo, referencia, presupuesto, restricción de creación."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "CRUD_FCXPD / RECALCULAR_FCXP",
+              "rol": "Detalle y recálculo de valor, impuestos y saldo."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "CRUD_FCXPI",
+              "rol": "Impuestos y retenciones por CxP."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "VALIDA_TERCERO",
+              "rol": "Tercero proveedor y fecha de vencimiento."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "ANULAR_FCXP / CLONAR_FCXP / CAMBIA_FCXP",
+              "rol": "Ciclo de vida: anular (solo sin contabilizar, sin presupuesto confirmado, sin anexo soporte), clonar Servicios, cambiar a remisión Compras."
+            }
+          ]
+        },
+        {
+          "id": "dian-doc-equivalente",
+          "nombre": "Documento equivalente DIAN",
+          "explicacion": "Si la factura es documento equivalente (DOCEQUIVALENTE=1) se envía y consulta ante la DIAN; una CxP procesada ante la DIAN (CONTABILIZADA 2) ya no se descontabiliza ni se anula.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "NOTIFICAR_DIAN / CONSULTAR_RESPUESTA_DIAN",
+              "rol": "Envío y consulta FDIANR."
+            }
+          ]
+        },
+        {
+          "id": "carga-masiva-cxp",
+          "nombre": "Carga masiva",
+          "explicacion": "Excel → cabecera y detalle por fila → recalcular → contabilizar; si falla, anula lo creado. Opción de generar órdenes de pago masivas al final.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "CONTABILIZADO_FCXP_MASIVO / RECALCULAR_FCXP_MASIVO",
+              "rol": "Lote de contabilización y recálculo."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "06-contabilidad",
+      "numero": 3,
+      "nombre": "Contabilizar la cuenta por pagar",
+      "estado": "documentado",
+      "explicacion": "Icono Contabilizar en la columna Conta (o Contabilizar masivo en Generales). Primero VALIDAR_FCXP (tiene detalle; cuenta tipo detalle), luego CONTABILIZAR_FCXP: procedencia Nómina o Caja menor no se contabiliza desde aquí; valor no negativo; cuenta de IVA matriculada en el detalle si CUENTA_IVA_CXP=SI; cuentas en el plan; tasa cambiaria si hay moneda; recalcula valores y genera el comprobante (SPK_NC_CONTAB_CXP). Deshacer: el mismo icono; se bloquea si la CxP tiene abonos, órdenes de pago, movimientos financieros, notas o DIAN.",
+      "controles": [
+        {
+          "id": "contabilizar-cxp",
+          "nombre": "Contabilizar / deshacer",
+          "explicacion": "Sin contabilizar la factura no entra en una orden de pago (salvo que el usuario marque incluir no contabilizadas solo para verlas) y no se le aplican anticipos ni notas.",
+          "invariante": "CONTABILIZADA=1 con NROCOMPROBANTE; FCXPD con cuentas válidas; IVA en detalle si la variable lo exige.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "VALIDAR_FCXP / CONTABILIZAR_FCXP",
+              "rol": "Validación previa y asiento MCP."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_CXP",
+              "metodo": "(SPK)",
+              "rol": "Comprobante contable de la CxP."
+            },
+            {
+              "nombre": "SPK_CALCULOVALORESCXP",
+              "metodo": "(SPK)",
+              "rol": "Recalcula valor, abonos, notas, saldo y estado N/C/P."
+            }
+          ]
+        },
+        {
+          "id": "reconstruir-fcxpd",
+          "nombre": "Reconstruir cuentas / compras de inventario",
+          "explicacion": "Reconstruir rehace las cuentas del detalle con el modelo KMCOM (solo sin contabilizar, estado N y CXP_KMCOM_AUTOMATICO=SI). Las compras de inventario llegan por SPK_INSERT_CXP_INV.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "RECONSTRUIR_CUENTAS_FCXPD / PROCESAR_IMOVH",
+              "rol": "Cuentas del detalle; entrada de inventario a CxP."
+            },
+            {
+              "nombre": "SPK_INSERT_CXP_INV",
+              "metodo": "(SPK)",
+              "rol": "IMOV → FCXP/FCXPD."
+            }
+          ]
+        },
+        {
+          "id": "notas-db-cr",
+          "nombre": "Notas débito / crédito",
+          "explicacion": "Sobre una factura contabilizada y con saldo: nota del catálogo (FNT: tipo DB/CR, cuenta, cruce, afecta costo), valor bruto, Impuestos? (retenciones proporcionales), Afecta IVA, Saldo completo, Masivo por ítem (FCXPDNOT), Genera CxP? (CxP nueva a otro tercero). Se contabiliza aparte (comprobante NOTDBCRCXP) y solo entonces pesa en el saldo; DB contabilizada de un documento equivalente se envía a la DIAN. Desaplicar reversa el comprobante y deja la nota pendiente.",
+          "invariante": "Factura contabilizada, no anulada y con saldo; nota sin comprobante al editar o contabilizar; una DB no deja el saldo bajo cero; solo notas contabilizadas y no anuladas cuentan en el saldo.",
+          "sps": [
+            {
+              "nombre": "SPQ_FNT_COL",
+              "metodo": "CRUDFNT",
+              "rol": "Catálogo de tipos de nota."
+            },
+            {
+              "nombre": "SPQ_FCXPDBCR",
+              "metodo": "CRUD_FCXPDBCR_2 / CRUD_FCXPDBCR_2_MANUAL / AFECTA_RETENCION / VALIDA_IDNOTA / CRUD_NOTA_EDITA",
+              "rol": "Registro, reparto por ítem y retenciones."
+            },
+            {
+              "nombre": "SPQ_FCXPDBCR",
+              "metodo": "CONTABILIZAR_NOTACREDITO / ENVIARDIAN_NOTACREDITO / DESAPLICAR_NOTACREDITO / ELIMINR_NOTACREDITO",
+              "rol": "Asiento, DIAN y reversa."
+            },
+            {
+              "nombre": "SPQ_NC_CONTAB_CXPFNT",
+              "metodo": "(SP)",
+              "rol": "Comprobante de la nota."
+            },
+            {
+              "nombre": "SPK_CIERRA_FCXPDBCR",
+              "metodo": "(SPK)",
+              "rol": "Genera CxP?: CxP nueva al otro tercero."
+            },
+            {
+              "nombre": "SPK_ANULAR_FCXPDBCR",
+              "metodo": "(SPK)",
+              "rol": "Reversa del comprobante de la nota."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-pagos",
+      "numero": 4,
+      "nombre": "Orden de pago",
+      "estado": "documentado",
+      "explicacion": "La orden (FCXPPM) agrupa abonos (FCXPP) a una o varias facturas de uno o varios proveedores. Nace en N (No Confirmado). Nuevo Detalle lista las CxP pendientes (saldo > 0, contabilizadas, estado N o C) y permite pago total o parcial. Autorizar genera los egresos de caja y pasa la orden a C (Confirmado). También se puede pagar una factura desde su fila (botón Pagar), que crea la orden y la autoriza de inmediato.",
+      "tablasClave": [
+        "FCXPPM",
+        "FCXPP",
+        "FCXP",
+        "FCXPCXC",
+        "FCJ",
+        "FCJD",
+        "PCJ",
+        "CAJ",
+        "CJTE",
+        "CPCJ"
+      ],
+      "controles": [
+        {
+          "id": "crud-fcxppm",
+          "nombre": "Crear la orden",
+          "explicacion": "Nuevo: fecha, caja que pagará, observación, tercero a favor (opcional: paga a un tercero distinto del proveedor), forma de pago (tipo, banco, cuenta, documento, autorización). La sede sale del equipo o del usuario; la fecha debe caer en periodo contable abierto.",
+          "invariante": "Sede resuelta (UBEQ/USUSU); periodo abierto; consecutivo propio.",
+          "sps": [
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "CRUD_FCXPPM",
+              "rol": "Cabecera de la orden."
+            }
+          ]
+        },
+        {
+          "id": "abonos-fcxpp",
+          "nombre": "Agregar facturas a la orden (total o parcial)",
+          "explicacion": "Nuevo Detalle: filtros tercero, vencidas, fechas, procedencia, concepto, días vencidos, incluir no contabilizadas. Seleccionar y Pago total (todo el saldo) o Pago parcial (porcentaje o valor). Valida: factura contabilizada (y con comprobante real si BD_HISTORICAS), presupuesto confirmado si PRESUP_CXP_ACTIVADO, fecha de la orden ≥ fecha del documento, abono ≤ saldo, anticipos legalizados ya descontados. Crea el abono con saldo anterior, abono y saldo nuevo.",
+          "invariante": "Abono > 0 y ≤ saldo; solo se editan abonos en N; la orden en N.",
+          "sps": [
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "LISTAR_CXP_PENDIENTES",
+              "rol": "Facturas candidatas."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "PAGO_TOTAL / PAGO_PARCIAL / EDITA_ABONO_FORM",
+              "rol": "Abonos FCXPP."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "PAGO_CXPTOTAL",
+              "rol": "Pagar desde la fila de la factura: crea el abono y autoriza de inmediato."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "ANULA_INIDIVIDUAL / ANULA_MASIVO / CIERRA_PARCIAL",
+              "rol": "Anular ítems; recalcula la factura y el valor de la orden."
+            }
+          ]
+        },
+        {
+          "id": "autorizar-orden",
+          "nombre": "Autorizar (enviar a caja)",
+          "explicacion": "Tres modos según variables. Clásico: SPK_CONFIRMAR_PAGOSMASIVO crea un egreso por proveedor (procedencia CAJA, pendiente) con una línea por abono, descuenta el saldo de la factura y pasa abonos y orden a C. Egreso individual por tercero (AUT_EGRE_INDIVIDUAL=SI): exige forma de pago en la orden, IDCJTECXP, concepto de egreso y caja abierta; crea un egreso por proveedor (procedencia CXP) ya con su forma de pago y lo deja pendiente en caja; con PERMITE_EGR_SIN_C=SI el envío ocurre al Cerrar Orden y la orden sigue en N con la marca «Pendiente confirmar en caja». Archivo plano dinámico (BANC_DINA_ARCH_PLANO=SI): AUTORIZAR_INDIVIDUAL deja egresos confirmados y la orden en P.",
+          "invariante": "Orden en N con abonos; caja de la orden; tipo de egreso y concepto configurados.",
+          "sps": [
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "AUTORIZAR",
+              "rol": "Clásico → SPK_CONFIRMAR_PAGOSMASIVO."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "AUTORIZAR_INDIVIDUAL_TER / CERRAR_ORDEN / ABRIR_ORDEN",
+              "rol": "Egresos individuales por tercero, pendientes en caja."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "AUTORIZAR_INDIVIDUAL",
+              "rol": "Modo archivo plano dinámico."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "DESAUTORIZAR / DESAUTORIZAR_POR_RECIBO",
+              "rol": "Deshacer mientras ningún egreso esté confirmado; desde caja al anular el recibo."
+            },
+            {
+              "nombre": "SPK_CONFIRMAR_PAGOSMASIVO",
+              "metodo": "(SPK)",
+              "rol": "Egresos clásicos FCJ/FCJD, abonos C, saldo de la factura, orden C."
+            },
+            {
+              "nombre": "SPK_DESCONFIRMAR_PAGOSMASIVO",
+              "metodo": "(SPK)",
+              "rol": "Reversa de la autorización clásica."
+            }
+          ]
+        },
+        {
+          "id": "archivo-plano-banco",
+          "nombre": "Archivo plano y cruce con cartera",
+          "explicacion": "Cerrar Orden habilita Archivo Plano (formatos fijo y dinámico por banco) para dispersión bancaria. Cruce con CxC compensa saldos a favor del mismo tercero (FCXPCXC) y reduce lo por pagar.",
+          "sps": [
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "GET_INF_PLANO / EXPORTAR_NOMINA_PLANO / EXPORTAR_NOMINA_PLANO_DINAMICO / GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA",
+              "rol": "Archivos banco."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "REPORTE_OP",
+              "rol": "Impresión de la orden."
+            }
+          ]
+        },
+        {
+          "id": "anticipos-fcom",
+          "nombre": "Anticipos a proveedor",
+          "explicacion": "Orden de anticipo (FCOM): abierta C → Cerrar P → Enviar a Caja I. Enviar a Caja crea la CxP procedencia Anticipos, una orden de pago automática y el egreso pendiente en la caja de anticipos; el comprobante nace al confirmar el egreso (débito cuenta de anticipo del tipo TANT). Sobre la factura real (Compras) Aplicar Anticipo legaliza (ANT en L) y baja el saldo; Anular Anticipo deshace la legalización con periodo abierto.",
+          "sps": [
+            {
+              "nombre": "SPQ_TANT_COL",
+              "metodo": "CRUDTANT",
+              "rol": "Tipos de anticipo (cuentas)."
+            },
+            {
+              "nombre": "SPQ_ANTICIPOS_COL",
+              "metodo": "CRUD_FCOM / CRUD_FCOMD / CERRAR_FCOM / ENVIAR_CAJA / CARGA_IBOD",
+              "rol": "Orden de anticipo."
+            },
+            {
+              "nombre": "SPK_GEN_PROCESO_ANTICIPO",
+              "metodo": "(SPK)",
+              "rol": "CxP Anticipos + orden de pago + egreso."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "TRAER_VALORES_ANTI / APLICAR_ANTICIPO / ANULAR_ANTICIPO",
+              "rol": "Legalización sobre la factura."
+            },
+            {
+              "nombre": "SPK_ANTICIPO_LEG_CXP",
+              "metodo": "(SPK)",
+              "rol": "Legaliza ANT y recalcula."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_ANTICIPO",
+              "metodo": "(SPK)",
+              "rol": "Comprobante de legalización (si la variable lo pide)."
+            }
+          ],
+          "invariante": "Anticipo ≤ total de la orden (sumando anticipos previos); sin egresos de la orden pendientes en caja; legalización ≤ saldo de la factura y ≤ saldo del anticipo."
+        },
+        {
+          "id": "cruce-cxc",
+          "nombre": "Cruce con cuentas por cobrar",
+          "explicacion": "La orden de pago muestra los cruces FCXPCXC del tercero; si existen, el comprobante del egreso acredita la cartera por el cruce y el egreso sale por la diferencia. En Qrystalos2 no hay forma de crear un cruce (solo consulta).",
+          "invariante": "Cruce del mismo tercero y de la misma orden de pago.",
+          "sps": [
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_EGR",
+              "metodo": "(SPK · bloque cruces)",
+              "rol": "Asiento del cruce al confirmar el egreso."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "08-caja",
+      "numero": 5,
+      "nombre": "Pago en caja",
+      "estado": "documentado",
+      "explicacion": "El egreso (FCJ clase PAGO, tipo de egreso IDCJTECXP) llega pendiente a la caja de la orden. El cajero, con la caja abierta, registra la forma de pago (PCJ: efectivo, cheque, transferencia, banco/cuenta/documento) y Confirma. Confirmar cierra el recibo: abono → P, recálculo de la factura (saldo y estado), orden → P, comprobante contable del egreso. Tres pantallas llevan al mismo cierre: Caja → Mov. Egreso → Confirmar; Caja → Confirmar orden de pago (todos los egresos de una orden); Orden de pago → Realizar Pago.",
+      "tablasClave": [
+        "FCJ",
+        "FCJD",
+        "PCJ",
+        "ACJ",
+        "CAJ",
+        "CPCJ",
+        "FPA",
+        "MCP",
+        "MCHE"
+      ],
+      "controles": [
+        {
+          "id": "confirmar-egreso",
+          "nombre": "Confirmar recibo de egreso",
+          "explicacion": "Valida: el recibo tiene detalle de pago y suma igual al valor; fecha no futura; periodo contable abierto; no está cerrado, anulado ni desechado; valor > 0; no fue contabilizado antes; caja abierta exactamente una vez; traslados exigen caja destino abierta. Luego SPK_CIERRERECIBO_CAJA (abono P por la línea del egreso, SPK_CALCULOVALORESCXP, orden P, reembolso de caja menor si aplica), SPK_NC_CONTAB_CAJA_EGR (comprobante: débito a la cuenta por pagar por abono, crédito a la forma de pago), CERRADA=1 y, si el egreso es individual (procedencia CXP), SPK_MARCA_OP_PAGADA_POR_EGRESO.",
+          "invariante": "Caja abierta; forma de pago = valor; periodo abierto; recibo sin cerrar.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CONFIRMAR_RECIBO_EGRESO",
+              "rol": "Cierre del recibo."
+            },
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "VALIDA_INSERT_FPA_EGRESO / CRUDFPA_EGRESO / INSERT_FCJD_EGRESO",
+              "rol": "Forma de pago y líneas del egreso (en egreso CxP solo con IDCJTECXP_AJUSTE / IDCJTECXP_EDITAR)."
+            },
+            {
+              "nombre": "SPK_CIERRERECIBO_CAJA",
+              "metodo": "(SPK)",
+              "rol": "Abono P, recálculo factura, orden P, caja menor."
+            },
+            {
+              "nombre": "SPK_NC_CONTAB_CAJA_EGR",
+              "metodo": "(SPK)",
+              "rol": "Comprobante del egreso."
+            },
+            {
+              "nombre": "SPK_MARCA_OP_PAGADA_POR_EGRESO",
+              "metodo": "(SPK)",
+              "rol": "Egreso individual → abono y orden P."
+            }
+          ]
+        },
+        {
+          "id": "confirmar-orden-desde-caja",
+          "nombre": "Confirmar orden de pago desde caja / Realizar pago desde la orden",
+          "explicacion": "Con PERMITE_EGR_SIN_C y AUT_EGRE_INDIVIDUAL en SI, caja consulta la orden (egresos Pendiente / Confirmado / Anulado) y confirma todos de una vez; la orden queda autorizada y pagada. Desde la orden, Realizar Pago recorre cada egreso pidiendo tipo de pago y confirmándolo; exige sesión de caja abierta.",
+          "sps": [
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "CONSULTAR_ORDEN_CAJA / CONFIRMAR_EGRESOS_MASIVO_OP",
+              "rol": "Caja → Confirmar orden de pago."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "MARCAR_PAGADA_POR_EGRESO",
+              "rol": "Orden de pago → Realizar Pago (tras CONFIRMAR_RECIBO_EGRESO)."
+            },
+            {
+              "nombre": "SPQ_ORDEN_PAGO",
+              "metodo": "OBTENER_ORDENES_POR_RECIBO / DESAUTORIZAR_POR_RECIBO",
+              "rol": "Anular recibo en caja devuelve la orden."
+            }
+          ]
+        },
+        {
+          "id": "comprobante-egreso",
+          "nombre": "Comprobante de egreso",
+          "explicacion": "Comp. Egreso en caja o Imprimir egreso desde la factura: comprobante con proveedor, facturas pagadas, retenciones y forma de pago.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "IMPRIMIREGRESO / IMPRIMIRCXP",
+              "rol": "Impresión."
+            },
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "IMPRIME_CONTA_EGRESO",
+              "rol": "Comprobante contable del egreso."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-radian",
+      "numero": 6,
+      "nombre": "Facturas Radian, auditoría e informes",
+      "estado": "parcial",
+      "explicacion": "Alrededor del ciclo: factura electrónica recibida (FRADIAN) que se convierte en CxP; auditoría de glosas para procedencia Servicios; informes de vencimientos y cierre de periodo.",
+      "controles": [
+        {
+          "id": "radian-generar-cxp",
+          "nombre": "Radian → CxP",
+          "explicacion": "Bandeja FRADIAN (se llena sola). Eventos DIAN con permiso y datos completos del usuario (matriz TGEN FRADIAN/EVENTOS; Pendiente → Procesado/Error; Reencolar). Generar CxP solo con filtro de evento = acuse de recibo y desde la pestaña dentro de Cuentas por Pagar: XML → tercero por NIT → diálogo (cuenta crédito, CCOSTO y cuenta por línea) → REGISTRAR_CXP_FRADIAN. Marcar concilia las que ya tienen CxP (NIT + número).",
+          "sps": [
+            {
+              "nombre": "SPQ_FRADIAN",
+              "metodo": "ARCHIVOS / ACTUALIZAR_DATOS / GETEVENTOS / GETENVIO / MATRIZ_EVENTOS / ADDEVENTO / REENCOLAR_EVENTO / DELEVENTO",
+              "rol": "Bandeja y eventos."
+            },
+            {
+              "nombre": "SPQ_FCXP",
+              "metodo": "VALIDA_TERCERO / REGISTRAR_CXP_FRADIAN / CONCILIAR_CXP_FRADIAN / CONSULTAR_RESPUESTA_DIAN",
+              "rol": "Generar y marcar."
+            }
+          ],
+          "invariante": "Tercero existe por NIT; acuse de recibo registrado; periodo contable y periodo CxP abiertos para la fecha."
+        },
+        {
+          "id": "auditoria-glosas",
+          "nombre": "Auditoría CxP (Servicios)",
+          "explicacion": "Facturas de Servicios contabilizadas. Nueva Glosa crea una nota DB de auditoría (AUDT) y sus ítems FCXPS (Nuevo); Cerrar Glosa pasa los ítems a Glosa y contabiliza la nota; Levantar registra lo sustentado con nota CR; Cerrar Conci pasa a Conci. Cerrar Sin Glosa marca AUDITADO.",
+          "sps": [
+            {
+              "nombre": "SPQ_FCXP_AUDIT",
+              "metodo": "CRUD_FCXPS / ELIMINAR_FCXPS / CERRAR_GLOSA / CERRAR_CONCI / CERRAR_SIN_GLOSA / IMPRIMIR_GLOSA / IMPRIMIR_CONCI",
+              "rol": "Glosas."
+            },
+            {
+              "nombre": "SPQ_FCXPDBCR",
+              "metodo": "CRUD_FCXPDBCR / CONTABILIZAR_NOTACREDITO",
+              "rol": "Nota de auditoría."
+            }
+          ],
+          "invariante": "Solo Servicios contabilizadas; valor de la nota = suma de ítems; Cerrar Sin Glosa solo sin ítems."
+        },
+        {
+          "id": "informes-conf-cxp",
+          "nombre": "Informes y cierre",
+          "explicacion": "Reportes y Cierre / pestaña Informes: aging por vencimiento, histórico, por tercero, por rango, consultar CxP, estado del periodo, cuentas esperadas de salud. Exportan a Excel.",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CXP",
+              "metodo": "EXPORTAR_CXP / HIST_TOTALES / VENCIMIENTO_TERCERO / EXPORTAR_CXP_*",
+              "rol": "Reportes."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "caminosLibro": [
+    {
+      "codigo": "Compras",
+      "nombre": "Entrada de inventario con factura",
+      "origen": "Inventario → Movimientos (compras)",
+      "icono": "inventory_2",
+      "codigoOrigen": "SPK_INSERT_CXP_INV",
+      "descripcion": "Al confirmar la entrada de compras el sistema crea la CxP con el detalle de los artículos y sus cuentas. En Cuentas por Pagar aparece lista para revisar impuestos y contabilizar. Cambia a Remisión la devuelve a remisión si aún no está contabilizada.",
+      "ventana": "Inventario → Movimientos → Confirmar entrada"
+    },
+    {
+      "codigo": "Servicios",
+      "nombre": "Factura de servicios, honorarios, arriendos",
+      "origen": "Cuentas por Pagar → Nueva CXP",
+      "icono": "receipt_long",
+      "codigoOrigen": "CRUD_FCXP",
+      "descripcion": "Registro manual: cabecera, detalle por concepto con centro de costo y cuenta, impuestos. Es la única procedencia que pasa por Auditoría de glosas y admite Clonar CxP.",
+      "ventana": "Administrativo → Cuentas por Pagar → Nueva CXP"
+    },
+    {
+      "codigo": "Salud",
+      "nombre": "Factura de un prestador de la red",
+      "origen": "Cuentas por Pagar → Nueva CXP (Salud) / cuentas esperadas",
+      "icono": "local_hospital",
+      "codigoOrigen": "CRUD_FCXP",
+      "descripcion": "Obligaciones con prestadores y proveedores de salud. El informe de cuentas esperadas de salud contrasta lo autorizado con lo facturado.",
+      "ventana": "Administrativo → Cuentas por Pagar"
+    },
+    {
+      "codigo": "Nomina",
+      "nombre": "Nómina por pagar",
+      "origen": "Nómina → liquidación / soporte de nómina",
+      "icono": "badge",
+      "codigoOrigen": "EXPORTA_SOPORTE_NOMINA / IMPORTAR_SOPORTE_NOMINA",
+      "descripcion": "Llega ya contabilizada desde nómina; desde Cuentas por Pagar no se contabiliza ni se deshace. Se paga por orden de pago con Buscar Nómina y archivo plano.",
+      "ventana": "Órdenes de pago → Buscar Nómina"
+    },
+    {
+      "codigo": "Anticipos",
+      "nombre": "Anticipo entregado al proveedor",
+      "origen": "Pestaña Anticipos → Enviar a caja",
+      "icono": "payments",
+      "codigoOrigen": "SPK_GEN_PROCESO_ANTICIPO",
+      "descripcion": "La orden de anticipo genera el egreso y una CxP de procedencia Anticipos. Cuando llega la factura real, Aplicar Anticipo descuenta lo ya entregado.",
+      "ventana": "Administrativo → Cuentas por Pagar → Anticipos"
+    },
+    {
+      "codigo": "CAJAMENOR",
+      "nombre": "Reembolso de caja menor",
+      "origen": "Caja menor → solicitud de reembolso",
+      "icono": "point_of_sale",
+      "codigoOrigen": "SPK_SOL_REEMBOLSO_CAJAMENOR",
+      "descripcion": "La solicitud de reembolso crea la CxP a nombre del responsable. No se contabiliza desde Cuentas por Pagar. Al confirmar su egreso en caja, si ING_REEMBOL_CJAMENOR=SI, el reembolso entra solo a la caja menor.",
+      "ventana": "Caja menor → Reembolso"
+    },
+    {
+      "codigo": "Radian",
+      "nombre": "Factura electrónica recibida",
+      "origen": "Pestaña Facturas Radian",
+      "icono": "qr_code_2",
+      "codigoOrigen": "REGISTRAR_CXP_FRADIAN",
+      "descripcion": "El XML de la DIAN precarga tercero, número, fechas y líneas; el usuario completa centro de costo y cuenta y guarda. La conciliación marca las que ya tienen CxP.",
+      "ventana": "Administrativo → Cuentas por Pagar → Facturas Radian"
+    },
+    {
+      "codigo": "Pago",
+      "nombre": "Salida: orden de pago → caja",
+      "origen": "Pestaña Orden de pago / botón Pagar",
+      "icono": "account_balance",
+      "codigoOrigen": "AUTORIZAR → FCJ",
+      "descripcion": "Toda CxP contabilizada con saldo sale por una orden de pago. Autorizar crea el egreso en la caja elegida; el cajero lo confirma con su forma de pago y el sistema marca abono, orden y factura como pagados.",
+      "ventana": "Órdenes de pago → Autorizar → Caja → Mov. Egreso → Confirmar"
+    }
+  ],
+  "flujos": [
+    {
+      "id": "cxp-registrar",
+      "nombre": "Registrar y contabilizar la cuenta por pagar",
+      "descripcion": "Desde el menú Administrativo hasta la factura contabilizada y lista para pagar.",
+      "icono": "receipt_long",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Entrar a Cuentas por Pagar",
+          "descripcion": "Administrativo → Cuentas por Pagar → pestaña Cuentas por Pagar. Ajuste fechas, estado (Todas, Pagadas, Sin / Con órdenes de pago, Anuladas, En pago masivo), procedencia y sede. Buscar.",
+          "rol": "Tesorería / Contabilidad",
+          "pantalla": "Administrativo → Cuentas por Pagar",
+          "tablas": [
+            "FCXP"
+          ],
+          "sp": "AppStore.read FCXP"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nueva CXP: cabecera",
+          "descripcion": "Tercero (el sistema trae la fecha de vencimiento según el plazo del proveedor), fecha, fecha de la factura, número de referencia, procedencia, cuenta crédito, observación. Si el presupuesto está activo, elija el registro presupuestal.",
+          "rol": "Tesorería",
+          "pantalla": "Nueva CXP",
+          "tablas": [
+            "FCXP",
+            "TER"
+          ],
+          "sp": "SPQ_FCXP · VALIDA_TERCERO · CRUD_FCXP"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Validaciones al guardar",
+          "descripcion": "Rechaza si la CxP ya está contabilizada; si el número de referencia ya existe para ese proveedor; si el periodo contable de la fecha del documento o de la CxP no existe, está cerrado o el periodo de CxP está cerrado; si falta presupuesto (PRESUP_CXP_ACTIVADO=SI); si la restricción RESTRIN_CREA_CXP encuentra otra CxP del mismo tercero/usuario sin detalle («Se deben terminar o anular»). Asigna consecutivo por sede y periodo año/mes.",
+          "rol": "Sistema",
+          "pantalla": "Nueva CXP",
+          "tablas": [
+            "FCXP",
+            "PRI",
+            "FCARTH"
+          ],
+          "sp": "SPQ_FCXP · CRUD_FCXP"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Agregar el detalle",
+          "descripcion": "Expanda la factura → Nuevo detalle: concepto o servicio, cantidad (unidad o dos decimales según Redondeo), valor, IVA, descuento, centro de costo, área y cuenta. Cada línea recalcula el valor neto y el saldo de la factura.",
+          "rol": "Tesorería",
+          "pantalla": "Detalle FCXPD",
+          "tablas": [
+            "FCXPD"
+          ],
+          "sp": "SPQ_FCXP · CRUD_FCXPD · RECALCULAR_FCXP"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Impuestos y retenciones",
+          "descripcion": "Diálogo Impuestos: retención en la fuente, ICA, IVA asumido, prestablecidos del proveedor. El valor neto a pagar baja con las retenciones.",
+          "rol": "Tesorería",
+          "pantalla": "Impuestos FCXPI",
+          "tablas": [
+            "FCXPI"
+          ],
+          "sp": "SPQ_FCXP · CRUD_FCXPI"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿Lista para contabilidad?",
+          "descripcion": "Icono Contabilizar en la columna Conta. Primero se valida: la CxP tiene detalle y la cuenta crédito es de tipo detalle. Procedencias Nómina y Caja menor no se contabilizan desde aquí.",
+          "rol": "Contabilidad",
+          "pantalla": "Columna Conta",
+          "tablas": [
+            "FCXP",
+            "FCXPD",
+            "CUE"
+          ],
+          "sp": "SPQ_FCXP · VALIDAR_FCXP"
+        },
+        {
+          "num": 7,
+          "tipo": "sistema",
+          "titulo": "Contabilizar",
+          "descripcion": "Valor no negativo; cuenta de IVA matriculada en el detalle si CUENTA_IVA_CXP=SI; cuentas de cabecera y detalle en el plan; tasa cambiaria si hay moneda extranjera. Recalcula valores y genera el comprobante contable; la CxP queda CONTABILIZADA=1 con número de comprobante y usuario.",
+          "rol": "Sistema",
+          "pantalla": "Columna Conta",
+          "tablas": [
+            "FCXP",
+            "MCP",
+            "MCPE"
+          ],
+          "sp": "SPQ_FCXP · CONTABILIZAR_FCXP → SPK_CALCULOVALORESCXP → SPK_NC_CONTAB_CXP"
+        },
+        {
+          "num": 8,
+          "tipo": "resultado",
+          "titulo": "Factura lista para pagar",
+          "descripcion": "Estado N (sin abonos), saldo = valor neto. Aparece en Nuevo Detalle de la orden de pago y muestra el botón Pagar. Deshacer la contabilización usa el mismo icono y se bloquea si ya tiene abonos, órdenes de pago, movimientos financieros, notas o fue procesada ante la DIAN.",
+          "rol": "Tesorería",
+          "pantalla": "Cuentas por Pagar",
+          "tablas": [
+            "FCXP"
+          ],
+          "sp": "SPQ_FCXP · CONTABILIZAR_FCXP (deshacer)"
+        }
+      ]
+    },
+    {
+      "id": "cxp-orden-pago",
+      "nombre": "Orden de pago: agrupar, abonar y autorizar",
+      "descripcion": "De la factura contabilizada al egreso pendiente en caja.",
+      "icono": "fact_check",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nueva orden de pago",
+          "descripcion": "Administrativo → Órdenes de pago (o pestaña Orden de pago) → Nuevo: fecha, caja que va a pagar, observación, tercero a favor (si se paga a alguien distinto del proveedor) y forma de pago (tipo, banco, cuenta, documento, autorización). La sede sale del equipo o del usuario; la fecha debe estar en periodo contable abierto.",
+          "rol": "Tesorería",
+          "pantalla": "Órdenes de pago → Nuevo",
+          "tablas": [
+            "FCXPPM",
+            "CAJ",
+            "FPA"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · CRUD_FCXPPM"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo Detalle: elegir facturas",
+          "descripcion": "Lista las CxP con saldo, contabilizadas, en estado N o C; filtros por tercero, vencidas, fechas, procedencia, concepto y días vencidos (incluir no contabilizadas solo las muestra). Seleccione filas y pulse Pago total (todo el saldo) o Pago parcial (porcentaje o valor).",
+          "rol": "Tesorería",
+          "pantalla": "Nuevo Detalle",
+          "tablas": [
+            "FCXP",
+            "FCXPP"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · LISTAR_CXP_PENDIENTES · PAGO_TOTAL · PAGO_PARCIAL"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Validaciones del abono",
+          "descripcion": "La factura debe estar contabilizada (con comprobante válido si BD_HISTORICAS=SI); presupuesto confirmado si PRESUP_CXP_ACTIVADO=SI; la fecha de la orden no puede ser menor a la del documento; el abono no supera el saldo (los anticipos legalizados ya se descontaron); solo se editan abonos en N. Crea el abono con saldo anterior, abono y saldo nuevo; la orden suma sus abonos.",
+          "rol": "Sistema",
+          "pantalla": "Nuevo Detalle",
+          "tablas": [
+            "FCXPP",
+            "FCXPPM",
+            "ANT"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · PAGO_TOTAL / PAGO_PARCIAL → SPK_CALCULOVALORESCXP"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Camino corto: Pagar desde la factura",
+          "descripcion": "En Cuentas por Pagar, botón Pagar de una factura contabilizada con saldo: pide fecha y caja. Pago total crea la orden con ese abono y la autoriza de inmediato (el egreso llega a caja en el acto). Pago parcial crea la orden y, en modo egreso individual, la autoriza; si no puede, avisa que se autorice desde Órdenes de pago.",
+          "rol": "Tesorería",
+          "pantalla": "Cuentas por Pagar → Pagar",
+          "tablas": [
+            "FCXPPM",
+            "FCXPP",
+            "FCJ"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · CRUD_FCXPPM · PAGO_CXPTOTAL (→ SPK_CONFIRMAR_PAGOSMASIVO) · PAGO_PARCIAL · AUTORIZAR_INDIVIDUAL_TER"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Ajustar la orden",
+          "descripcion": "Mientras esté en N: Editar cabecera, Anular Items (recalcula factura y orden), Subir Listado (Excel de abonos), Cruce con CxC (compensa saldos a favor del mismo tercero), Cerrar Orden (bloquea nuevos detalles y habilita Archivo Plano) / Abrir Orden.",
+          "rol": "Tesorería",
+          "pantalla": "Órdenes de pago → orden expandida",
+          "tablas": [
+            "FCXPPM",
+            "FCXPP",
+            "FCXPCXC"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · CRUD_FCXPPM · ANULA_INIDIVIDUAL · ANULA_MASIVO · CERRAR_ORDEN · ABRIR_ORDEN · GET_INF_PLANO"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "Autorizar: ¿qué modo rige?",
+          "descripcion": "Autorizar aparece con la orden en N. El sistema elige el método por variables: ninguna activa → clásico; AUT_EGRE_INDIVIDUAL=SI → egreso individual por tercero; BANC_DINA_ARCH_PLANO=SI → archivo plano dinámico. Con egreso individual y PERMITE_EGR_SIN_C=SI el botón Autorizar se oculta: el envío a caja ocurre al Cerrar Orden y la orden muestra «Pendiente confirmar en caja».",
+          "rol": "Tesorería",
+          "pantalla": "Botón Autorizar / Cerrar Orden",
+          "tablas": [
+            "USVGS"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · AUTORIZAR | AUTORIZAR_INDIVIDUAL_TER | AUTORIZAR_INDIVIDUAL"
+        },
+        {
+          "num": 7,
+          "tipo": "sistema",
+          "titulo": "Modo clásico",
+          "descripcion": "La orden debe estar en N. Toma la caja de la orden y el tipo de egreso (el de la caja o la variable IDCJTECXP). Crea un recibo de egreso por proveedor (o por tercero a favor), pendiente de confirmar, con una línea por abono; los abonos pasan a C con el número de recibo; descuenta el saldo y suma los abonos de cada factura; la orden pasa a C. Si FECHAORDENPAGO=CONTABLE la fecha contable se fija al autorizar.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCJ",
+            "FCJD",
+            "FCXPP",
+            "FCXP",
+            "FCXPPM"
+          ],
+          "sp": "SPK_CONFIRMAR_PAGOSMASIVO"
+        },
+        {
+          "num": 8,
+          "tipo": "sistema",
+          "titulo": "Modo egreso individual por tercero",
+          "descripcion": "Exige: variable activa, orden en N con abonos, forma de pago en la orden, IDCJTECXP, concepto de egreso activo, caja en la orden y abierta. Crea un recibo de egreso por proveedor (procedencia CXP) ya con su forma de pago tomada de la orden y lo deja pendiente en caja; abonos → C. Sin PERMITE_EGR_SIN_C la orden pasa a C; con ella sigue en N marcada como enviada a caja.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCJ",
+            "FCJD",
+            "PCJ",
+            "FCXPP",
+            "FCXPPM"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · AUTORIZAR_INDIVIDUAL_TER"
+        },
+        {
+          "num": 9,
+          "tipo": "resultado",
+          "titulo": "Orden Confirmada, egresos en caja",
+          "descripcion": "Estado C: los recibos de egreso esperan en la caja indicada. Desautorizar Orden deshace todo (anula egresos, abonos a N, orden a N) solo si ningún egreso fue confirmado en caja. Imprimir Orden y Exportar Orden disponibles.",
+          "rol": "Tesorería",
+          "pantalla": "Órdenes de pago",
+          "tablas": [
+            "FCXPPM",
+            "FCJ"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · DESAUTORIZAR → SPK_DESCONFIRMAR_PAGOSMASIVO · REPORTE_OP"
+        }
+      ]
+    },
+    {
+      "id": "cxp-pago-caja",
+      "nombre": "Pago en caja: forma de pago, confirmar y comprobante",
+      "descripcion": "Del egreso pendiente al pago registrado, contabilizado y cerrado.",
+      "icono": "point_of_sale",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir la caja y entrar a Mov. Egreso",
+          "descripcion": "Administrativo → Caja. El cajero del turno abre la caja (equipo configurado como caja, cajero y turno válidos). Mov. Egreso lista los recibos de egreso pendientes, entre ellos los de la orden (clase PAGO, tipo de egreso de pago a proveedores).",
+          "rol": "Cajero",
+          "pantalla": "Administrativo → Caja → Mov. Egreso",
+          "tablas": [
+            "ACJ",
+            "CAJ",
+            "FCJ"
+          ],
+          "sp": "SPQ_CONF_CAJA · ABRIR_CAJA · INFO_CAJA"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Forma de pago",
+          "descripcion": "Botón Forma de Pago en el recibo: tipo de pago (efectivo, cheque con chequera y número, transferencia con banco y cuenta, documento y autorización). La suma de las formas de pago debe ser igual al valor del recibo. En egresos individuales la forma de pago ya viene de la orden.",
+          "rol": "Cajero",
+          "pantalla": "Forma de Pago",
+          "tablas": [
+            "PCJ",
+            "FPA",
+            "BCTDD"
+          ],
+          "sp": "SPQ_CONF_CAJA · VALIDA_INSERT_FPA_EGRESO · CRUDFPA_EGRESO"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "Confirmar el recibo de egreso",
+          "descripcion": "Valida: tiene detalle de pago y cuadra con el valor; fecha no mayor a hoy; periodo contable abierto; no está confirmado, anulado ni desechado; valor mayor a cero; no fue contabilizado antes; la caja está abierta una sola vez. Si es traslado, la caja destino debe estar abierta.",
+          "rol": "Cajero",
+          "pantalla": "Botón Confirmar",
+          "tablas": [
+            "FCJ",
+            "PCJ",
+            "PRI",
+            "MCP"
+          ],
+          "sp": "SPQ_CONF_CAJA · CONFIRMAR_RECIBO_EGRESO"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Cierre del recibo",
+          "descripcion": "Marca pagado el abono ligado a cada línea del egreso, recalcula la factura (valor, abonos, notas, saldo y estado N / C / P), pasa la orden a P y, si la CxP venía de caja menor con ING_REEMBOL_CJAMENOR=SI, registra el reembolso en la caja menor.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCXPP",
+            "FCXP",
+            "FCXPPM",
+            "CMREE"
+          ],
+          "sp": "SPK_CIERRERECIBO_CAJA → SPK_CALCULOVALORESCXP"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Comprobante contable y cierre",
+          "descripcion": "Genera el comprobante del egreso: débito a la cuenta por pagar de cada factura (prorrateado por línea del detalle) a nombre del proveedor y crédito a la cuenta de la forma de pago; el recibo queda CERRADA=1. Si el egreso es individual (procedencia CXP) marca el abono y, cuando no quedan pendientes, la orden como pagada.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "MCP",
+            "MCHE",
+            "FCJ",
+            "FCXPP",
+            "FCXPPM"
+          ],
+          "sp": "SPK_NC_CONTAB_CAJA_EGR · SPK_MARCA_OP_PAGADA_POR_EGRESO"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Alterno: Confirmar orden de pago desde caja",
+          "descripcion": "Con PERMITE_EGR_SIN_C y AUT_EGRE_INDIVIDUAL en SI, caja muestra el botón Confirmar orden de pago: se consulta la orden, se ven sus egresos (Pendiente / Confirmado / Anulado) y se confirman todos de una vez; la orden queda autorizada y pagada. Rechaza egresos que no sean de la orden, de otra orden, anulados, ya confirmados, sin forma de pago o con forma de pago distinta al valor.",
+          "rol": "Cajero",
+          "pantalla": "Caja → Confirmar orden de pago",
+          "tablas": [
+            "FCXPPM",
+            "FCJ",
+            "PCJ"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · CONSULTAR_ORDEN_CAJA · CONFIRMAR_EGRESOS_MASIVO_OP → SPK_CIERRERECIBO_CAJA"
+        },
+        {
+          "num": 7,
+          "tipo": "accion",
+          "titulo": "Alterno: Realizar Pago desde la orden",
+          "descripcion": "Orden en C con caja y egreso individual: Realizar Pago recorre cada egreso, pide tipo de pago y lo confirma; luego marca el abono como pagado. Requiere sesión de caja abierta en el equipo; si no la hay, avisa que se confirme desde Caja.",
+          "rol": "Tesorería / Cajero",
+          "pantalla": "Órdenes de pago → Realizar Pago",
+          "tablas": [
+            "FCJ",
+            "PCJ",
+            "FCXPP"
+          ],
+          "sp": "SPQ_CONF_CAJA · CONFIRMAR_RECIBO_EGRESO · SPQ_ORDEN_PAGO · MARCAR_PAGADA_POR_EGRESO"
+        },
+        {
+          "num": 8,
+          "tipo": "resultado",
+          "titulo": "Pagado",
+          "descripcion": "Orden P (Pagado), abonos P, factura P si el saldo llegó a cero o C si quedó saldo. Comp. Egreso imprime el comprobante. Anular el recibo en caja desautoriza la orden (vuelve a N) si la anulación procede.",
+          "rol": "Cajero / Tesorería",
+          "pantalla": "Caja / Órdenes de pago",
+          "tablas": [
+            "FCXPPM",
+            "FCXPP",
+            "FCXP",
+            "FCJ"
+          ],
+          "sp": "SPQ_FCXP · IMPRIMIREGRESO · SPQ_ORDEN_PAGO · DESAUTORIZAR_POR_RECIBO"
+        }
+      ]
+    },
+    {
+      "id": "cxp-archivo-plano",
+      "nombre": "Archivo plano para el banco",
+      "descripcion": "Cómo se genera el archivo de dispersión de pagos (Banco de Bogotá, Colpatria) a partir de una orden de pago cerrada, qué datos exige y qué no hace.",
+      "icono": "fa-file-lines",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Configurar la cuenta bancaria propia",
+          "descripcion": "Administrativo → Bancos → cuentas bancarias (BCT): la cuenta desde la que se pagará debe estar Activa y tener el tipo de plano del banco (BANCO_BOGOTA o COLPATRIA). Sin ese dato la cuenta no aparece en el diálogo del plano.",
+          "rol": "Tesorería / Configuración",
+          "pantalla": "Bancos → Cuentas bancarias",
+          "tablas": [
+            "BCT"
+          ],
+          "sp": "—"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Completar los datos bancarios del proveedor",
+          "descripcion": "En el tercero: banco, tipo de cuenta (Corriente / Ahorros) y número de cuenta bancaria. El catálogo de bancos aporta el código ACH. Sin estos datos la línea del proveedor sale incompleta y el banco la rechaza.",
+          "rol": "Tesorería",
+          "pantalla": "Terceros → datos bancarios",
+          "tablas": [
+            "TER",
+            "BCO"
+          ],
+          "sp": "—"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Armar y cerrar la orden de pago",
+          "descripcion": "Órdenes de pago → Nuevo → Nuevo Detalle (abonos) → Cerrar Orden. La orden queda cerrada y todavía No Confirmada: ese es el único estado en que aparece el botón Archivo Plano en la fila.",
+          "rol": "Tesorería",
+          "pantalla": "Órdenes de pago",
+          "tablas": [
+            "FCXPPM",
+            "FCXPP"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · CERRAR_ORDEN"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "Elegir el banco",
+          "descripcion": "Botón Archivo Plano → Plano Banco Bogotá · Plano Banco Colpatria · Plano Bancolombia. Bogotá y Colpatria abren el diálogo de parámetros; la opción Bancolombia de la orden no está operativa (ver hallazgos).",
+          "rol": "Tesorería",
+          "pantalla": "Órdenes de pago → Archivo Plano",
+          "tablas": [],
+          "sp": "—"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Indicar los parámetros",
+          "descripcion": "Cuenta desde la cual se genera el archivo (solo las BCT activas con ese tipo de plano), tipo de transacción (Nómina, Proveedores, Transferencias, Otros pagos) y código de oficina. Colpatria pide además la clave asignada por el banco.",
+          "rol": "Tesorería",
+          "pantalla": "Diálogo Plano Banco",
+          "tablas": [
+            "BCT"
+          ],
+          "sp": "—"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "El sistema trae los datos",
+          "descripcion": "GET_INF_PLANO devuelve la cabecera (tipo y número de identificación de la empresa, dígito de verificación, razón social, fecha y cuenta elegida) y una línea por abono de la orden: identificación, razón social, tipo y número de cuenta del proveedor, valor del abono, referencia de la factura y código ACH del banco destino.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "FCXPPM",
+            "FCXPP",
+            "FCXP",
+            "TER",
+            "BCO",
+            "BCT"
+          ],
+          "sp": "SPQ_ORDEN_PAGO · GET_INF_PLANO"
+        },
+        {
+          "num": 7,
+          "tipo": "sistema",
+          "titulo": "Se arma y descarga el archivo",
+          "descripcion": "La pantalla arma la cabecera, las líneas de detalle (y el registro de totales en Colpatria) con anchos fijos y descarga Plano_BB_<orden>_<fecha>.txt o Plano_colpatria_<orden>_<fecha>.txt.",
+          "rol": "Sistema",
+          "pantalla": "Navegador (descarga)",
+          "tablas": [],
+          "sp": "—"
+        },
+        {
+          "num": 8,
+          "tipo": "resultado",
+          "titulo": "Subir al banco y pagar en caja",
+          "descripcion": "El archivo se carga en el portal del banco por fuera de Qrystalos. Generarlo no cambia la orden ni los abonos ni deja rastro: el pago se registra cuando se confirma el egreso en caja (o con Autorizar en el modo plano dinámico).",
+          "rol": "Tesorería / Cajero",
+          "pantalla": "Portal del banco · Caja → Mov. Egreso",
+          "tablas": [
+            "FCJ",
+            "FCXPP",
+            "FCXPPM"
+          ],
+          "sp": "SPQ_CONF_CAJA · CONFIRMAR_RECIBO_EGRESO"
+        }
+      ]
+    },
+    {
+      "id": "cxp-notas",
+      "nombre": "Nota débito / crédito sobre una factura",
+      "descripcion": "Corregir una factura ya contabilizada sin tocarla: una nota débito baja lo que se debe (descuento, devolución, glosa) y una nota crédito lo sube. Se registra, se contabiliza aparte y, si aplica, se reporta a la DIAN.",
+      "icono": "receipt_long",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir las notas de la factura",
+          "descripcion": "Administrativo → Cuentas por Pagar → fila de la factura → expandir → pestaña Notas Débito / Notas Crédito (o el icono Nota de la fila). La factura debe estar contabilizada y con saldo.",
+          "rol": "Contabilidad / Tesorería",
+          "pantalla": "Cuentas por Pagar → Notas DB/CR",
+          "tablas": [
+            "FCXP",
+            "FCXPDBCR"
+          ],
+          "sp": "AppStore.read FCXPDBCR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nueva → Elegir Nota",
+          "descripcion": "El botón Nueva solo aparece con saldo mayor a cero. Elegir Nota trae del catálogo el tipo (DB o CR), la cuenta DB y si cruza saldos o afecta costo; la cuenta CR es la cuenta por pagar de la factura.",
+          "rol": "Contabilidad",
+          "pantalla": "Diálogo Nota → General",
+          "tablas": [
+            "FNT"
+          ],
+          "sp": "FNT_COL (catálogo)"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Cómo se reparte el valor?",
+          "descripcion": "Vlr. Bruto obligatorio. Impuestos? devuelve en proporción las retenciones de la factura (AFECTA_RETENCION). Afecta IVA agrega el % IVA. Saldo completo (solo DB) deja la factura en cero. Masivo por ítem reparte la nota entre las líneas del detalle con su propio centro de costo. Genera CxP? traslada el valor a una CxP nueva de otro tercero (pide tercero, servicio y documento).",
+          "rol": "Contabilidad",
+          "pantalla": "Diálogo Nota",
+          "tablas": [
+            "FCXPI",
+            "FCXPD"
+          ],
+          "sp": "FCXP · AFECTA_RETENCION / VALIDA_IDNOTA"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Guardar",
+          "descripcion": "Inserta la nota en estado N (pendiente) con los ítems repartidos (FCXPDNOT) y las retenciones proporcionales (FCXPDBCRIMP). Rechaza si la factura está anulada o sin saldo. Una nota contabilizada no se modifica.",
+          "rol": "Sistema",
+          "pantalla": "Diálogo Nota",
+          "tablas": [
+            "FCXPDBCR",
+            "FCXPDNOT",
+            "FCXPDBCRIMP"
+          ],
+          "sp": "FCXP · CRUD_FCXPDBCR_2 → SPQ_FCXPDBCR"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Contabilizar la nota",
+          "descripcion": "Botón Contabilizar en la nota seleccionada. Exige factura contabilizada, nota sin comprobante y que una DB no deje el saldo bajo cero. Genera el comprobante de la nota (procedencia NOTDBCRCXP) y recalcula la factura: desde ahí la nota pesa en el saldo. Con Genera CxP? primero crea y contabiliza la CxP del otro tercero.",
+          "rol": "Contabilidad",
+          "pantalla": "Notas DB/CR → Contabilizar",
+          "tablas": [
+            "FCXPDBCR",
+            "MCPE",
+            "MCHE",
+            "FCXP"
+          ],
+          "sp": "FCXP · CONTABILIZAR_NOTACREDITO → SPQ_FCXPDBCR → SPQ_NC_CONTAB_CXPFNT / SPK_CIERRA_FCXPDBCR"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿La factura es documento equivalente?",
+          "descripcion": "Si la factura ya fue aceptada por la DIAN como documento equivalente, la nota DB contabilizada se envía con Enviar DIAN (queda encolada; Reencolar si falla) y Respuesta DIAN muestra el resultado. Las notas CR no se envían.",
+          "rol": "Contabilidad",
+          "pantalla": "Notas DB/CR → Enviar DIAN / Respuesta DIAN",
+          "tablas": [
+            "FCXPDBCR",
+            "FDIANR"
+          ],
+          "sp": "FCXP · ENVIARDIAN_NOTACREDITO / CONSULTAR_RESPUESTA_DIAN_NOTA"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Reversa",
+          "descripcion": "Desaplicar: si la nota está contabilizada anula o reversa el comprobante (según el periodo esté abierto o cerrado) y la deja pendiente de nuevo; si no, la borra. Eliminar solo borra notas nunca contabilizadas. Las notas de devolución de inventario (procedencia INV) no se eliminan desde aquí.",
+          "rol": "Contabilidad",
+          "pantalla": "Notas DB/CR → Desaplicar",
+          "tablas": [
+            "FCXPDBCR",
+            "MCP",
+            "FCXP"
+          ],
+          "sp": "FCXP · DESAPLICAR_NOTACREDITO → SPK_ANULAR_FCXPDBCR · ELIMINR_NOTACREDITO"
+        }
+      ]
+    },
+    {
+      "id": "cxp-anticipos",
+      "nombre": "Anticipo a proveedor y legalización",
+      "descripcion": "Entregar dinero al proveedor antes de la factura y descontarlo cuando la factura real llegue.",
+      "icono": "payments",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la orden de anticipo",
+          "descripcion": "Administrativo → Cuentas por Pagar → pestaña Anticipos → Nuevo. Proveedor, bodega, tipo de anticipo (define las cuentas), observación. Luego Nuevo en el detalle: servicios del catálogo con cantidad y valor.",
+          "rol": "Compras / Tesorería",
+          "pantalla": "Anticipos → Nuevo",
+          "tablas": [
+            "FCOM",
+            "FCOMD",
+            "TANT"
+          ],
+          "sp": "ANTICIPOS_COL · CRUD_FCOM / CRUD_FCOMD / CARGA_IBOD"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Cerrar la orden",
+          "descripcion": "Botón Cerrar (solo en estado C). Exige detalle. La orden pasa a P (pendiente de caja) y ya no se edita; el mismo botón pasa a Imprimir.",
+          "rol": "Compras",
+          "pantalla": "Anticipos → Cerrar",
+          "tablas": [
+            "FCOM"
+          ],
+          "sp": "ANTICIPOS_COL · CERRAR_FCOM"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Enviar a Caja",
+          "descripcion": "Indica el valor del anticipo (no mayor al total de la orden sumando anticipos previos; sin egresos de la orden pendientes en caja). Crea la CxP de procedencia Anticipos, una orden de pago automática y el egreso pendiente en la caja de anticipos. La orden queda en I.",
+          "rol": "Tesorería",
+          "pantalla": "Anticipos → Enviar a Caja",
+          "tablas": [
+            "FCXP",
+            "FCXPD",
+            "FCXPPM",
+            "FCXPP",
+            "FCJ",
+            "FCJD"
+          ],
+          "sp": "ANTICIPOS_COL · ENVIAR_CAJA → SPK_GEN_PROCESO_ANTICIPO → SPK_CONFIRMAR_PAGOSMASIVO"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Pagar el anticipo en caja",
+          "descripcion": "El cajero confirma el egreso como cualquier otro (flujo Pago en caja). Ahí nace el comprobante: débito a la cuenta de anticipo del tipo y crédito a la forma de pago.",
+          "rol": "Cajero",
+          "pantalla": "Caja → Mov. Egreso",
+          "tablas": [
+            "FCJ",
+            "MCPE",
+            "MCHE"
+          ],
+          "sp": "CONF_CAJA · CONFIRMAR_RECIBO_EGRESO → SPK_NC_CONTAB_CAJA_EGR"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Llega la factura real → Aplicar Anticipo",
+          "descripcion": "Se registra la factura del proveedor (procedencia Compras). En su fila → Aplicar Anticipo → elegir la orden: muestra anticipo pagado, legalizado y saldo disponible. Propone el menor entre el saldo de la factura y el saldo del anticipo.",
+          "rol": "Contabilidad / Tesorería",
+          "pantalla": "Cuentas por Pagar → Aplicar Anticipo",
+          "tablas": [
+            "FCOM",
+            "ANT",
+            "FCXP"
+          ],
+          "sp": "FCXP · TRAER_VALORES_ANTI"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Legalizar",
+          "descripcion": "Crea la legalización (ANT en L) ligada a la factura y recalcula: el saldo de la factura baja en lo legalizado. Si la variable de contabilizar anticipos desde orden de servicios está activa, genera el comprobante de legalización (débito cuenta por pagar, crédito cuenta de anticipo). Rechaza si hay egresos del anticipo sin confirmar.",
+          "rol": "Sistema",
+          "pantalla": "Diálogo Legalización",
+          "tablas": [
+            "ANT",
+            "FCXP",
+            "FCOM",
+            "MCPE",
+            "MCHE"
+          ],
+          "sp": "FCXP · APLICAR_ANTICIPO → SPK_ANTICIPO_LEG_CXP → SPK_NC_CONTAB_ANTICIPO · SPK_CALCULOVALORESCXP"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Pagar la diferencia o anular",
+          "descripcion": "La factura sigue el ciclo normal por el saldo restante (orden de pago → caja). Ver Legalizaciones lista las aplicaciones; Anular Anticipo deshace una legalización si su periodo contable sigue abierto.",
+          "rol": "Tesorería",
+          "pantalla": "Cuentas por Pagar → Ver Legalizaciones",
+          "tablas": [
+            "ANT",
+            "MCP"
+          ],
+          "sp": "FCXP · ANULAR_ANTICIPO"
+        }
+      ]
+    },
+    {
+      "id": "cxp-radian",
+      "nombre": "Factura electrónica recibida (Radian) → CxP",
+      "descripcion": "Las facturas electrónicas que los proveedores emiten a la institución llegan a una bandeja; desde ahí se responde a la DIAN (eventos) y se convierte la factura en cuenta por pagar.",
+      "icono": "mark_email_read",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "sistema",
+          "titulo": "La factura entra a la bandeja",
+          "descripcion": "El servicio de recepción guarda la factura electrónica del proveedor (XML, PDF, NIT, número, monto, CUFE, fechas de emisión, radicación y recepción). No se digita.",
+          "rol": "Sistema",
+          "pantalla": "Facturas Radian",
+          "tablas": [
+            "FRADIAN",
+            "DOCS_RADIAN"
+          ],
+          "sp": "FRADIAN · ACTUALIZAR_DATOS / ARCHIVOS"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Revisar la factura",
+          "descripcion": "Filtros por fechas, En CxP, Procesado, Evento, número, NIT. En la fila: ver XML y PDF, línea de tiempo de eventos (emisión, radicación, recepción, eventos propios), solicitud y respuesta enviadas a la DIAN.",
+          "rol": "Contabilidad",
+          "pantalla": "Facturas Radian → fila",
+          "tablas": [
+            "FRADIAN",
+            "FRADIAND",
+            "FDIANR"
+          ],
+          "sp": "FRADIAN · GETEVENTOS / GETENVIO / ARCHIVOS"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Registrar el evento DIAN",
+          "descripcion": "Nuevo (con permiso) → elegir el evento de la matriz (acuse de recibo, recibo del bien o servicio, aceptación, reclamo) y observación. Exige que el usuario tenga nombres, apellidos, tipo y número de documento, departamento y cargo. El evento queda Pendiente hasta que el servicio lo procese; si falla, Reencolar; si no se procesó, se puede borrar.",
+          "rol": "Contabilidad",
+          "pantalla": "Facturas Radian → Eventos → Nuevo",
+          "tablas": [
+            "FRADIAND",
+            "USUSU",
+            "TGEN"
+          ],
+          "sp": "FRADIAN · MATRIZ_EVENTOS / ADDEVENTO / REENCOLAR_EVENTO / DELEVENTO"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Ya tiene acuse de recibo?",
+          "descripcion": "Generar CxP solo está disponible desde la pestaña dentro de Cuentas por Pagar y con el filtro de evento en acuse de recibo. Si la factura ya se registró a mano, Marcar la concilia (mismo NIT y número) en lugar de crear otra.",
+          "rol": "Contabilidad",
+          "pantalla": "Facturas Radian",
+          "tablas": [
+            "FRADIAN",
+            "FCXP"
+          ],
+          "sp": "FCXP · CONCILIAR_CXP_FRADIAN"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Generar CxP",
+          "descripcion": "Lee el XML, busca el tercero por NIT (debe existir), propone fecha de vencimiento y cuenta crédito del tercero. En el diálogo se completan cuenta crédito, centro de costo y cuenta de cada línea; la casilla de guardar la configuración contable para el proveedor hoy no tiene procedimiento detrás.",
+          "rol": "Contabilidad",
+          "pantalla": "Diálogo Generar Cuenta por Pagar",
+          "tablas": [
+            "TER",
+            "CUE",
+            "CEN"
+          ],
+          "sp": "FCXP · VALIDA_TERCERO"
+        },
+        {
+          "num": 6,
+          "tipo": "sistema",
+          "titulo": "Registrar",
+          "descripcion": "Crea cabecera y detalle de la CxP ligados a la factura Radian y la marca como registrada. Rechaza si el periodo contable o el periodo de CxP de la fecha está cerrado.",
+          "rol": "Sistema",
+          "pantalla": "Diálogo Generar Cuenta por Pagar → Guardar",
+          "tablas": [
+            "FCXP",
+            "FCXPD",
+            "FRADIAN",
+            "PRI"
+          ],
+          "sp": "FCXP · REGISTRAR_CXP_FRADIAN"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Sigue el ciclo normal",
+          "descripcion": "La CxP aparece en la pestaña Cuentas por Pagar con el consecutivo visible en la bandeja (imprimir / copiar). Impuestos, contabilizar, orden de pago y caja como cualquier factura.",
+          "rol": "Contabilidad / Tesorería",
+          "pantalla": "Cuentas por Pagar",
+          "tablas": [
+            "FCXP"
+          ],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "cxp-auditoria",
+      "nombre": "Auditoría de facturas de servicios (glosas)",
+      "descripcion": "Revisar una factura de servicios ya contabilizada, objetar parte del valor (glosa) y conciliar con el proveedor. La glosa es una nota débito.",
+      "icono": "fact_check",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir la factura",
+          "descripcion": "Administrativo → Cuentas por Pagar → pestaña Auditoría. Solo lista facturas de procedencia Servicios contabilizadas; la casilla Auditado muestra las ya cerradas.",
+          "rol": "Auditoría de cuentas",
+          "pantalla": "Auditoría CxP",
+          "tablas": [
+            "FCXP"
+          ],
+          "sp": "AppStore.read FCXP"
+        },
+        {
+          "num": 2,
+          "tipo": "decision",
+          "titulo": "¿Hay algo que objetar?",
+          "descripcion": "Si no: Cerrar Sin Glosa marca la factura como auditada (solo si no tiene ítems de glosa). Si sí: Nueva Glosa.",
+          "rol": "Auditoría",
+          "pantalla": "Auditoría CxP → detalle",
+          "tablas": [
+            "FCXP",
+            "FCXPS"
+          ],
+          "sp": "FCXP_AUDIT · CERRAR_SIN_GLOSA"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Nueva Glosa → ítems",
+          "descripcion": "Crea una nota débito de auditoría (procedencia AUDT) y, debajo, los ítems glosados por paciente o documento con valor y dependencia. El valor de la nota se iguala a la suma de los ítems.",
+          "rol": "Auditoría",
+          "pantalla": "Auditoría CxP → Glosas",
+          "tablas": [
+            "FCXPDBCR",
+            "FCXPS"
+          ],
+          "sp": "FCXP · CRUD_FCXPDBCR + FCXP_AUDIT · CRUD_FCXPS"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Cerrar Glosa",
+          "descripcion": "Los ítems pasan de Nuevo a Glosa y la nota débito se contabiliza: la factura baja su saldo en lo glosado. Imp. Glosa imprime el soporte para el proveedor.",
+          "rol": "Auditoría",
+          "pantalla": "Glosas → Cerrar Glosa",
+          "tablas": [
+            "FCXPS",
+            "FCXPDBCR",
+            "MCPE",
+            "MCHE",
+            "FCXP"
+          ],
+          "sp": "FCXP_AUDIT · CERRAR_GLOSA → FCXP · CONTABILIZAR_NOTACREDITO"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Levantar lo que el proveedor sustenta",
+          "descripcion": "Con la respuesta del proveedor, Levantar registra el valor levantado por ítem y su nota crédito; Conciliar abre la conciliación.",
+          "rol": "Auditoría",
+          "pantalla": "Glosas → Levantar / Conciliar",
+          "tablas": [
+            "FCXPS",
+            "FCXPDBCR"
+          ],
+          "sp": "FCXP_AUDIT · CRUD_FCXPS"
+        },
+        {
+          "num": 6,
+          "tipo": "resultado",
+          "titulo": "Cerrar Conci",
+          "descripcion": "Los ítems pasan de Glosa a Conci; Imp. Conci imprime el acta. Desaplicar la nota desde Cuentas por Pagar devuelve los ítems a Nuevo.",
+          "rol": "Auditoría",
+          "pantalla": "Glosas → Cerrar Conci",
+          "tablas": [
+            "FCXPS"
+          ],
+          "sp": "FCXP_AUDIT · CERRAR_CONCI / IMPRIMIR_GLOSA / IMPRIMIR_CONCI"
+        }
+      ]
+    }
+  ],
+  "estadosSolicitud": {
+    "titulo": "Estados de la factura, la orden, el abono y el recibo de egreso",
+    "descripcion": "FCXP.ESTADO y CONTABILIZADA, FCXPPM.ESTADO (con CERRADA y la marca de egresos individuales), FCXPP.ESTADO y FCJ (ESTADO + CERRADA). Lo que condiciona qué botón aparece.",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "CxP N",
+        "tono": "ambar",
+        "etiquetas": [
+          "FCXP.ESTADO N",
+          "Sin abonos"
+        ],
+        "significa": "Factura sin abonos. Si CONTABILIZADA=0 todavía se edita, se anula y se reconstruye; si CONTABILIZADA=1 ya aparece en Nuevo Detalle de la orden y muestra Pagar.",
+        "queHacer": "Completar detalle e impuestos y contabilizar; luego pagar por orden de pago."
+      },
+      {
+        "codigo": "CxP C",
+        "tono": "azul",
+        "etiquetas": [
+          "FCXP.ESTADO C",
+          "Con abonos"
+        ],
+        "significa": "Tiene abonos (autorizados o parciales) y saldo pendiente. El saldo baja al autorizar la orden (clásico) o al recalcular tras un abono parcial.",
+        "queHacer": "Seguir abonando en otra orden hasta agotar el saldo. No se descontabiliza."
+      },
+      {
+        "codigo": "CxP P",
+        "tono": "verde",
+        "etiquetas": [
+          "FCXP.ESTADO P",
+          "Pagada"
+        ],
+        "significa": "Saldo cero con abonos. Lo fija el recálculo (saldo 0 y abonos > 0); puede verse antes de que caja confirme el egreso si el abono programado cubre todo el saldo.",
+        "queHacer": "Nada. Consultar el egreso y el comprobante."
+      },
+      {
+        "codigo": "CxP A",
+        "tono": "rojo",
+        "etiquetas": [
+          "FCXP.ESTADO A",
+          "Anulada"
+        ],
+        "significa": "Anulada. Solo se anula sin contabilizar, sin presupuesto confirmado y sin anexo soporte; si está contabilizada, primero deshacer.",
+        "queHacer": "Registrar de nuevo si la obligación es real."
+      },
+      {
+        "codigo": "CxP M",
+        "tono": "gris",
+        "etiquetas": [
+          "FCXP.ESTADO M",
+          "En Pago Masivo"
+        ],
+        "significa": "Etiqueta del filtro Estado de la grilla. El listado de pendientes lo admite cuando la factura pertenece a la misma orden; en los procedimientos leídos ningún método lo asigna (heredado).",
+        "queHacer": "Si aparece, revisar la orden a la que está ligada antes de abonarla en otra."
+      },
+      {
+        "codigo": "Cont",
+        "tono": "gris",
+        "etiquetas": [
+          "FCXP.CONTABILIZADA"
+        ],
+        "significa": "0 sin contabilizar (editable, no pagable). 1 contabilizada con comprobante (pagable). 2 procesada ante la DIAN como documento equivalente: no se deshace ni se anula.",
+        "queHacer": "Contabilizar antes de pagar; corregir con notas si ya tiene comprobante."
+      },
+      {
+        "codigo": "OP N",
+        "tono": "ambar",
+        "etiquetas": [
+          "FCXPPM.ESTADO N",
+          "No Confirmado"
+        ],
+        "significa": "Orden en construcción: se editan cabecera y abonos, se anulan ítems, se cierra para archivo plano. Con CERRADA=1 y egresos individuales enviados a caja muestra «Pendiente confirmar en caja».",
+        "queHacer": "Agregar facturas y Autorizar (o Cerrar Orden en modo egreso individual sin autorización)."
+      },
+      {
+        "codigo": "OP C",
+        "tono": "azul",
+        "etiquetas": [
+          "FCXPPM.ESTADO C",
+          "Confirmado"
+        ],
+        "significa": "Autorizada: los recibos de egreso existen y esperan en la caja de la orden. Visible Desautorizar Orden y, en egreso individual, Realizar Pago.",
+        "queHacer": "Confirmar los egresos en caja (o Realizar Pago). Desautorizar solo si ninguno está confirmado."
+      },
+      {
+        "codigo": "OP P",
+        "tono": "verde",
+        "etiquetas": [
+          "FCXPPM.ESTADO P",
+          "Pagado"
+        ],
+        "significa": "Todos los egresos confirmados en caja; abonos pagados y facturas recalculadas.",
+        "queHacer": "Imprimir orden y comprobantes. Para revertir hay que anular el recibo en caja."
+      },
+      {
+        "codigo": "OP A",
+        "tono": "rojo",
+        "etiquetas": [
+          "FCXPPM.ESTADO A",
+          "Anulado"
+        ],
+        "significa": "Orden anulada; sus abonos quedaron anulados y las facturas recuperaron saldo.",
+        "queHacer": "Crear una orden nueva."
+      },
+      {
+        "codigo": "FCXPP",
+        "tono": "gris",
+        "etiquetas": [
+          "FCXPP.ESTADO"
+        ],
+        "significa": "N programado en la orden (editable); C autorizado con número de recibo de egreso; P pagado al confirmar el recibo; A anulado (no cuenta para el saldo).",
+        "queHacer": "Seguir el estado de la orden; un abono C sin P indica egreso pendiente en caja."
+      },
+      {
+        "codigo": "FCJ 0",
+        "tono": "ambar",
+        "etiquetas": [
+          "FCJ.ESTADO P",
+          "CERRADA 0"
+        ],
+        "significa": "Recibo de egreso creado por la autorización, sin confirmar. Procedencia CAJA (clásico) o CXP (individual).",
+        "queHacer": "En Caja → Mov. Egreso: Forma de Pago y Confirmar."
+      },
+      {
+        "codigo": "FCJ 1",
+        "tono": "verde",
+        "etiquetas": [
+          "FCJ.CERRADA 1"
+        ],
+        "significa": "Confirmado y contabilizado; el abono quedó pagado.",
+        "queHacer": "Comp. Egreso. Para deshacer: Anular recibo (desautoriza la orden)."
+      },
+      {
+        "codigo": "FCJ A/D",
+        "tono": "rojo",
+        "etiquetas": [
+          "FCJ.ESTADO A",
+          "FCJ.ESTADO D"
+        ],
+        "significa": "A: anulado (desautorizar o anular en caja). D: desechado en caja antes de confirmar; Utilizar Recibo lo reactiva.",
+        "queHacer": "Si la orden sigue viva, volver a autorizar para generar un recibo nuevo."
+      }
+    ],
+    "nota": "El filtro Estado de la grilla CxP (Pagadas, Sin / Con órdenes de pago, En pago masivo) combina ESTADO, saldo y abonos; no es un campo distinto."
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Registrar la factura de un proveedor o un servicio",
+      "donde": "Administrativo → Cuentas por Pagar → Nueva CXP → detalle → Impuestos",
+      "condicion": "Periodo contable abierto; referencia no repetida para ese proveedor; tercero creado.",
+      "noEs": "La CxP de compras no se digita: nace al confirmar la entrada de inventario."
+    },
+    {
+      "necesidad": "Enviar la cuenta por pagar a contabilidad",
+      "donde": "Cuentas por Pagar → columna Conta → icono Contabilizar (o Generales → Contabilizar masivo)",
+      "condicion": "Tiene detalle; cuentas en el plan; IVA en el detalle si CUENTA_IVA_CXP=SI. Nómina y caja menor no se contabilizan aquí.",
+      "noEs": "No es Enviar a contabilidad de la factura de venta (FTR)."
+    },
+    {
+      "necesidad": "Deshacer la contabilización de una CxP",
+      "donde": "Cuentas por Pagar → columna Conta → icono de deshacer",
+      "condicion": "Sin abonos, sin órdenes de pago, sin movimientos financieros, sin notas y no procesada ante la DIAN.",
+      "noEs": "Si ya tiene abonos la corrección es con nota débito / crédito."
+    },
+    {
+      "necesidad": "Pagar una factura completa rápido",
+      "donde": "Cuentas por Pagar → fila → Pagar → Pago total (fecha y caja)",
+      "condicion": "Factura contabilizada con saldo; caja indicada. Crea la orden y la autoriza en el acto; el egreso queda en caja.",
+      "noEs": "No confirma el pago: eso lo hace el cajero."
+    },
+    {
+      "necesidad": "Pagar varias facturas de varios proveedores en un solo lote",
+      "donde": "Órdenes de pago → Nuevo → Nuevo Detalle → seleccionar → Pago total",
+      "condicion": "Facturas contabilizadas con saldo; orden en N.",
+      "noEs": "No es el archivo plano: ese sale después de Cerrar Orden."
+    },
+    {
+      "necesidad": "Pagar solo una parte de la factura",
+      "donde": "Órdenes de pago → Nuevo Detalle → seleccionar → Pago parcial (porcentaje o valor)",
+      "condicion": "Abono > 0 y ≤ saldo; la factura queda en C con saldo pendiente.",
+      "noEs": "No es una nota crédito."
+    },
+    {
+      "necesidad": "Hacer llegar el pago a la caja",
+      "donde": "Órdenes de pago → orden expandida → Autorizar (o Cerrar Orden en modo egreso individual sin autorización)",
+      "condicion": "Orden en N con abonos; tipo de egreso IDCJTECXP y concepto de egreso configurados; en modo individual, forma de pago en la orden y caja abierta.",
+      "noEs": "Autorizar no paga: crea el recibo de egreso pendiente."
+    },
+    {
+      "necesidad": "Confirmar el pago en caja",
+      "donde": "Administrativo → Caja → Mov. Egreso → recibo → Forma de Pago → Confirmar",
+      "condicion": "Caja abierta por el cajero; forma de pago igual al valor; periodo abierto.",
+      "noEs": "No es un recibo de ingreso (cobro)."
+    },
+    {
+      "necesidad": "Confirmar de una vez todos los egresos de una orden",
+      "donde": "Caja → Confirmar orden de pago (o Órdenes de pago → Realizar Pago)",
+      "condicion": "Variables PERMITE_EGR_SIN_C y AUT_EGRE_INDIVIDUAL en SI; orden con egresos individuales; caja abierta.",
+      "noEs": "En modo clásico cada recibo se confirma uno a uno."
+    },
+    {
+      "necesidad": "Deshacer una orden ya autorizada",
+      "donde": "Órdenes de pago → Desautorizar Orden",
+      "condicion": "Orden en C y ningún egreso confirmado en caja. Si ya se confirmó, anular el recibo en caja.",
+      "noEs": "No anula la factura."
+    },
+    {
+      "necesidad": "Registrar una nota débito o crédito a la factura",
+      "donde": "Cuentas por Pagar → fila expandida → Notas Débito / Notas Crédito → Contabilizar",
+      "condicion": "Factura contabilizada; la nota se contabiliza aparte.",
+      "noEs": "No es nota de cartera."
+    },
+    {
+      "necesidad": "Descontar un anticipo ya entregado al proveedor",
+      "donde": "Cuentas por Pagar → fila → Aplicar Anticipo",
+      "condicion": "Factura contabilizada y no anulada; anticipo con saldo.",
+      "noEs": "El anticipo se entrega desde la pestaña Anticipos, no desde la factura."
+    },
+    {
+      "necesidad": "Ver qué está pendiente de pago o vencido",
+      "donde": "Cuentas por Pagar → Reportes y Cierre (o pestaña Informes): CxP por vencimiento, vencimientos por tercero, estado de CxP",
+      "condicion": "Haber abierto antes la pestaña Cuentas por Pagar.",
+      "noEs": "No es el informe de cartera."
+    },
+    {
+      "necesidad": "Cerrar el mes de cuentas por pagar",
+      "donde": "Órdenes de pago → Cierre CxP → periodo → Cerrar",
+      "condicion": "Periodo contable existente. Bloquea registrar CxP con fecha en ese mes.",
+      "noEs": "No es el cierre contable del periodo (PRI)."
+    },
+    {
+      "necesidad": "Generar el archivo plano para pagar a proveedores por el banco",
+      "donde": "Administrativo → Órdenes de pago → orden cerrada y No Confirmada → botón Archivo Plano → Plano Banco Bogotá / Plano Banco Colpatria → parámetros → Generar plano",
+      "condicion": "Cuenta bancaria propia Activa con tipo de plano del banco; proveedores con banco, tipo y número de cuenta; orden cerrada (Cerrar Orden).",
+      "noEs": "No paga ni cambia estados; no envía el archivo al banco; la opción Bancolombia de la orden no está operativa; no es el soporte de nómina en Excel."
+    },
+    {
+      "necesidad": "Descontarle a un proveedor un valor de una factura ya contabilizada (descuento, devolución, error)",
+      "donde": "Cuentas por Pagar → fila → Notas Débito → Nueva → Elegir Nota → Contabilizar",
+      "condicion": "Factura contabilizada y con saldo; nota del catálogo tipo DB; la nota no deja el saldo bajo cero.",
+      "noEs": "No se edita la factura ni se descontabiliza; la devolución de compras crea su nota desde Inventario."
+    },
+    {
+      "necesidad": "Subirle el valor a una factura contabilizada",
+      "donde": "Cuentas por Pagar → fila → Notas Crédito → Nueva (tipo CR) → Contabilizar",
+      "condicion": "Factura contabilizada y con saldo.",
+      "noEs": "Las notas CR no se envían a la DIAN."
+    },
+    {
+      "necesidad": "Devolver proporcionalmente las retenciones al hacer una nota",
+      "donde": "Diálogo Nota → casilla Impuestos?",
+      "condicion": "La factura tiene retenciones no asumidas.",
+      "noEs": "La reteIVA no se devuelve por esta casilla."
+    },
+    {
+      "necesidad": "Repartir una nota entre las líneas del detalle con su centro de costo",
+      "donde": "Diálogo Nota → casilla Masivo por ítem",
+      "condicion": "Nota que no afecta costo ni genera CxP.",
+      "noEs": "No es una nota por cada línea: es una sola nota con reparto."
+    },
+    {
+      "necesidad": "Pasar parte de la deuda a otro tercero",
+      "donde": "Diálogo Nota → Genera CxP? → tercero, servicio y documento → Contabilizar",
+      "condicion": "Nota DB contabilizable; el nuevo tercero existe.",
+      "noEs": "Cambio Tercero? solo marca; no traslada."
+    },
+    {
+      "necesidad": "Reportar a la DIAN la nota de una factura que es documento equivalente",
+      "donde": "Notas DB/CR → Enviar DIAN → Respuesta DIAN",
+      "condicion": "Nota DB contabilizada; la factura ya fue aceptada por la DIAN como documento equivalente.",
+      "noEs": "No aplica a notas CR ni a facturas sin documento equivalente."
+    },
+    {
+      "necesidad": "Deshacer una nota contabilizada",
+      "donde": "Notas DB/CR → Desaplicar",
+      "condicion": "Nota contabilizada; con periodo cerrado genera reversa.",
+      "noEs": "No borra la nota: la deja pendiente. Eliminar solo si nunca se contabilizó."
+    },
+    {
+      "necesidad": "Pagarle a un proveedor antes de que llegue la factura",
+      "donde": "Cuentas por Pagar → Anticipos → Nuevo → detalle → Cerrar → Enviar a Caja → Caja confirma",
+      "condicion": "Tipo de anticipo con cuentas; valor no mayor al total de la orden; caja de anticipos configurada.",
+      "noEs": "No es una CxP manual de procedencia Anticipos."
+    },
+    {
+      "necesidad": "Descontar el anticipo cuando llega la factura real",
+      "donde": "Cuentas por Pagar → fila de la factura (Compras) → Aplicar Anticipo → elegir la orden → Aplicar",
+      "condicion": "Anticipo pagado en caja; saldo de anticipo disponible; sin egresos del anticipo sin confirmar.",
+      "noEs": "No se hace con nota débito ni editando la factura."
+    },
+    {
+      "necesidad": "Deshacer una legalización de anticipo",
+      "donde": "Cuentas por Pagar → Ver Legalizaciones → Anular Anticipo",
+      "condicion": "Legalización en L y periodo contable abierto.",
+      "noEs": "No anula el anticipo pagado; solo la aplicación."
+    },
+    {
+      "necesidad": "Responder a la DIAN el acuse de recibo o la aceptación de una factura electrónica recibida",
+      "donde": "Facturas Radian → fila → Eventos → Nuevo → evento → Guardar",
+      "condicion": "Permiso BTN_NUEVO_EVENTO_RADIAN; usuario con nombres, apellidos, documento, departamento y cargo.",
+      "noEs": "El envío lo hace el servicio; la pantalla deja el evento Pendiente."
+    },
+    {
+      "necesidad": "Convertir una factura electrónica recibida en cuenta por pagar sin digitarla",
+      "donde": "Cuentas por Pagar → Facturas Radian → filtro Evento = acuse de recibo → icono Generar CxP → diálogo → Guardar",
+      "condicion": "Acuse registrado; tercero creado por NIT; periodo contable y CxP abiertos.",
+      "noEs": "Desde Administrativo → Proceso Radian no se genera (solo consulta y eventos)."
+    },
+    {
+      "necesidad": "Marcar las facturas electrónicas que ya se registraron a mano",
+      "donde": "Facturas Radian → Marcar (rango de fechas)",
+      "condicion": "Misma NIT y número de factura en la CxP.",
+      "noEs": "No crea CxP; solo marca."
+    },
+    {
+      "necesidad": "Objetar (glosar) parte de una factura de servicios",
+      "donde": "Cuentas por Pagar → Auditoría → factura → Nueva Glosa → ítems → Cerrar Glosa",
+      "condicion": "Factura de procedencia Servicios contabilizada.",
+      "noEs": "No aplica a Compras ni a facturas sin contabilizar; la glosa de salud (facturación) es otro módulo."
+    },
+    {
+      "necesidad": "Dar por auditada una factura sin objeciones",
+      "donde": "Auditoría → factura → Cerrar Sin Glosa",
+      "condicion": "Sin ítems de glosa.",
+      "noEs": "No contabiliza nada."
+    },
+    {
+      "necesidad": "Ver cuánto se le debe a cada proveedor y desde cuándo",
+      "donde": "Cuentas por Pagar → Reportes y Cierre (o pestaña Informes) → CxP por Vencimiento / Vencimientos por Tercero / Rango",
+      "condicion": "Pestaña Cuentas por Pagar cargada.",
+      "noEs": "El histórico congelado del mes está en Cierre CxP → Exportar Excel."
+    },
+    {
+      "necesidad": "Cerrar el mes para que nadie registre facturas con fecha vieja",
+      "donde": "Informes → Cierre CxP → año/mes → Cerrar Periodo",
+      "condicion": "Sin comprobantes errados del mes.",
+      "noEs": "No es el cierre contable (PRI.CERRADO); reabrir solo dentro de 25 días."
+    },
+    {
+      "necesidad": "Compensar lo que se paga a un proveedor con lo que él debe (cruce con cartera)",
+      "donde": "Orden de pago → Cruce con CxC (solo consulta)",
+      "condicion": "Cruce ya registrado en FCXPCXC.",
+      "noEs": "Hoy no se puede crear el cruce desde Qrystalos2 (hallazgo)."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nueva CXP",
+      "icono": "fas fa-plus",
+      "color": "blue-10",
+      "estilo": "unelevated",
+      "descripcion": "Abre la cabecera de una cuenta por pagar nueva."
+    },
+    {
+      "label": "Carga Masiva",
+      "icono": "fas fa-file-excel",
+      "color": "green-9",
+      "estilo": "unelevated",
+      "descripcion": "Excel con cabeceras y detalles; recalcula y contabiliza en lote."
+    },
+    {
+      "label": "Generales",
+      "icono": "fas fa-cogs",
+      "color": "indigo-9",
+      "estilo": "dropdown",
+      "descripcion": "Contabilizar masivo, Recalcular masivo, Reencolar DIAN masivo, Impuesto prestablecido masivo, Exportar."
+    },
+    {
+      "label": "Reportes y Cierre",
+      "icono": "fas fa-chart-bar",
+      "color": "teal-9",
+      "estilo": "dropdown",
+      "descripcion": "Informes de vencimientos, histórico, estado de CxP y cierre de periodo."
+    },
+    {
+      "label": "Contabilizar (columna Conta)",
+      "icono": "fa-solid fa-file-shield",
+      "color": "indigo-8",
+      "estilo": "flat round",
+      "descripcion": "Valida y contabiliza la CxP. Visible si no está anulada y CONTABILIZADA=0."
+    },
+    {
+      "label": "Deshacer contabilización (columna Conta)",
+      "icono": "fa-solid fa-file-circle-xmark",
+      "color": "orange-8",
+      "estilo": "flat round",
+      "descripcion": "Reversa el comprobante si no hay abonos, órdenes, notas ni DIAN."
+    },
+    {
+      "label": "Pagar",
+      "icono": "fas fa-sack-dollar",
+      "color": "blue-9",
+      "estilo": "menú de fila",
+      "descripcion": "Crea la orden de pago para esa factura (total o parcial) y la autoriza. Visible si contabilizada y con saldo."
+    },
+    {
+      "label": "Anular",
+      "icono": "fa-solid fa-ban",
+      "color": "red-9",
+      "estilo": "menú de fila",
+      "descripcion": "Anula la CxP si no está contabilizada, con saldo. En inventario no aparece."
+    },
+    {
+      "label": "Aplicar Anticipo",
+      "icono": "fas fa-hand-holding-dollar",
+      "color": "teal-9",
+      "estilo": "menú de fila",
+      "descripcion": "Descuenta un anticipo del proveedor. Visible con CxP contabilizada."
+    },
+    {
+      "label": "Cambia a Remision",
+      "icono": "fas fa-rotate",
+      "color": "grey-8",
+      "estilo": "menú de fila",
+      "descripcion": "Devuelve a remisión una CxP de Compras sin contabilizar."
+    },
+    {
+      "label": "Clonar CxP",
+      "icono": "fas fa-clone",
+      "color": "indigo-9",
+      "estilo": "menú de fila",
+      "descripcion": "Copia una CxP de Servicios contabilizada."
+    },
+    {
+      "label": "Reconstruir",
+      "icono": "fas fa-wrench",
+      "color": "orange-9",
+      "estilo": "menú de fila",
+      "descripcion": "Rehace las cuentas del detalle con el modelo contable. Solo con CXP_KMCOM_AUTOMATICO=SI, sin contabilizar y en N."
+    },
+    {
+      "label": "Enviar DIAN / Reencolar DIAN",
+      "icono": "fas fa-paper-plane",
+      "color": "purple-8",
+      "estilo": "menú de fila",
+      "descripcion": "Documento equivalente: envía o reintenta ante la DIAN."
+    },
+    {
+      "label": "Nuevo (orden)",
+      "icono": "fas fa-plus",
+      "color": "blue-10",
+      "estilo": "unelevated",
+      "descripcion": "Cabecera de la orden de pago: fecha, caja, tercero a favor, forma de pago."
+    },
+    {
+      "label": "Cierre CxP",
+      "icono": "fas fa-lock",
+      "color": "orange-9",
+      "estilo": "unelevated",
+      "descripcion": "Cierra o abre el periodo administrativo de CxP."
+    },
+    {
+      "label": "Buscar Nómina",
+      "icono": "fas fa-id-badge",
+      "color": "teal-9",
+      "estilo": "unelevated",
+      "descripcion": "Trae las CxP de nómina para pagarlas por orden."
+    },
+    {
+      "label": "Nuevo Detalle",
+      "icono": "fas fa-plus",
+      "color": "blue-10",
+      "estilo": "unelevated",
+      "descripcion": "Lista las CxP pendientes y permite Pago total o Pago parcial. Visible con la orden en N y no cerrada."
+    },
+    {
+      "label": "Pago parcial",
+      "icono": "fas fa-percent",
+      "color": "indigo-9",
+      "estilo": "unelevated",
+      "descripcion": "Abona un porcentaje o valor de las facturas seleccionadas."
+    },
+    {
+      "label": "Editar (orden)",
+      "icono": "fa-solid fa-file-circle-plus",
+      "color": "teal-9",
+      "estilo": "unelevated",
+      "descripcion": "Cabecera de la orden. Visible en N y no enviada a caja."
+    },
+    {
+      "label": "Autorizar",
+      "icono": "fa-solid fa-reply",
+      "color": "blue-9",
+      "estilo": "unelevated",
+      "descripcion": "Genera los recibos de egreso en la caja de la orden. Visible en N; oculto con egreso individual y PERMITE_EGR_SIN_C."
+    },
+    {
+      "label": "Pendiente confirmar en caja",
+      "icono": "fa-solid fa-hourglass-half",
+      "color": "orange-9",
+      "estilo": "deshabilitado",
+      "descripcion": "Marca informativa: la orden cerrada envió egresos individuales a caja sin autorizar."
+    },
+    {
+      "label": "Subir Listado",
+      "icono": "fa-solid fa-file-arrow-up",
+      "color": "indigo-9",
+      "estilo": "unelevated",
+      "descripcion": "Carga abonos desde archivo."
+    },
+    {
+      "label": "Cruce con CxC",
+      "icono": "fa-solid fa-file-circle-plus",
+      "color": "teal-9",
+      "estilo": "outline",
+      "descripcion": "Compensa saldos a favor del mismo tercero. Visible sin tercero a favor."
+    },
+    {
+      "label": "Desautorizar Orden",
+      "icono": "fa-solid fa-reply",
+      "color": "orange-9",
+      "estilo": "unelevated",
+      "descripcion": "Anula los egresos y devuelve la orden a N. Visible en C; falla si algún egreso ya está confirmado."
+    },
+    {
+      "label": "Anular Items",
+      "icono": "fa-solid fa-ban",
+      "color": "red-9",
+      "estilo": "unelevated",
+      "descripcion": "Anula abonos seleccionados; recalcula la factura y el valor de la orden. Visible en N."
+    },
+    {
+      "label": "Imprimir Orden / Exportar Orden",
+      "icono": "print",
+      "color": "teal-9",
+      "estilo": "unelevated",
+      "descripcion": "Reporte de la orden con sus facturas; exportación a Excel."
+    },
+    {
+      "label": "Realizar Pago",
+      "icono": "fas fa-sack-dollar",
+      "color": "blue-9",
+      "estilo": "unelevated",
+      "descripcion": "Confirma uno a uno los egresos individuales de la orden sin salir de Órdenes de pago. Visible en C con caja y modo individual."
+    },
+    {
+      "label": "Cerrar Orden / Abrir Orden",
+      "icono": "fas fa-lock",
+      "color": "orange-10",
+      "estilo": "unelevated",
+      "descripcion": "Cierra la orden (sin nuevos detalles; habilita Archivo Plano; en modo individual sin autorización envía egresos a caja) o la reabre (retira los egresos que llegaron a caja)."
+    },
+    {
+      "label": "Mov. Egreso (Caja)",
+      "icono": "fas fa-money-bill-transfer",
+      "color": "indigo-10",
+      "estilo": "tab",
+      "descripcion": "Lista los recibos de egreso de la caja, incluidos los de órdenes de pago."
+    },
+    {
+      "label": "Forma de Pago (Caja)",
+      "icono": "fas fa-credit-card",
+      "color": "indigo-10",
+      "estilo": "unelevated",
+      "descripcion": "Tipo de pago, banco, cuenta, cheque, documento. Debe sumar el valor del recibo."
+    },
+    {
+      "label": "Confirmar (Caja)",
+      "icono": "fas fa-check",
+      "color": "green-9",
+      "estilo": "unelevated",
+      "descripcion": "Cierra el recibo de egreso: paga el abono, contabiliza y marca la orden."
+    },
+    {
+      "label": "Confirmar orden de pago (Caja)",
+      "icono": "fas fa-list-check",
+      "color": "blue-9",
+      "estilo": "unelevated",
+      "descripcion": "Consulta una orden y confirma todos sus egresos pendientes. Visible solo con PERMITE_EGR_SIN_C y AUT_EGRE_INDIVIDUAL."
+    },
+    {
+      "label": "Anular / Desechar / Utilizar Recibo (Caja)",
+      "icono": "fas fa-trash",
+      "color": "red-9",
+      "estilo": "unelevated",
+      "descripcion": "Anular desautoriza la orden; Desechar aparta un recibo no confirmado; Utilizar lo reactiva."
+    },
+    {
+      "label": "Comp. Egreso (Caja)",
+      "icono": "print",
+      "color": "teal-9",
+      "estilo": "unelevated",
+      "descripcion": "Comprobante de egreso impreso."
+    },
+    {
+      "label": "Archivo Plano",
+      "icono": "fas fa-file-alt",
+      "color": "blue-10",
+      "estilo": "dropdown",
+      "descripcion": "Fila de la orden, solo cerrada y No Confirmada. Despliega Plano Banco Bogotá, Plano Banco Colpatria y Plano Bancolombia (esta última no operativa)."
+    },
+    {
+      "label": "Generar plano",
+      "icono": "fa-solid fa-download",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Diálogo de parámetros del plano: cuenta propia, tipo de transacción, código de oficina (y clave en Colpatria). Consulta GET_INF_PLANO y descarga el .txt."
+    },
+    {
+      "label": "Nueva (nota)",
+      "icono": "add_circle",
+      "color": "indigo",
+      "estilo": "unelevated",
+      "descripcion": "Nueva nota débito/crédito sobre la factura; solo con saldo mayor a cero."
+    },
+    {
+      "label": "Elegir Nota",
+      "icono": "list_alt",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Trae del catálogo el tipo (DB/CR), cuenta y reglas de la nota."
+    },
+    {
+      "label": "Saldo completo",
+      "icono": "account_balance_wallet",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Solo notas DB: calcula el bruto para dejar la factura en cero."
+    },
+    {
+      "label": "Contabilizar (nota)",
+      "icono": "savings",
+      "color": "teal",
+      "estilo": "unelevated",
+      "descripcion": "Genera el comprobante de la nota y recalcula la factura."
+    },
+    {
+      "label": "Enviar DIAN / Reencolar",
+      "icono": "send",
+      "color": "green-7",
+      "estilo": "unelevated",
+      "descripcion": "Encola la nota DB contabilizada para la DIAN; Reencolar si quedó en error."
+    },
+    {
+      "label": "Desaplicar",
+      "icono": "close",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Reversa el comprobante de la nota y la deja pendiente."
+    },
+    {
+      "label": "Respuesta DIAN (nota)",
+      "icono": "mark_email_read",
+      "color": "indigo",
+      "estilo": "unelevated",
+      "descripcion": "Muestra el resultado del envío de la nota."
+    },
+    {
+      "label": "Imp. Devolución",
+      "icono": "print",
+      "color": "orange",
+      "estilo": "unelevated",
+      "descripcion": "Imprime el movimiento de inventario de una nota de devolución."
+    },
+    {
+      "label": "Nuevo (anticipo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Nueva orden de anticipo."
+    },
+    {
+      "label": "Cerrar / Imprimir (anticipo)",
+      "icono": "lock",
+      "color": "teal-7",
+      "estilo": "unelevated",
+      "descripcion": "Cierra la orden abierta (pasa a P); una vez cerrada, imprime."
+    },
+    {
+      "label": "Enviar a Caja",
+      "icono": "point_of_sale",
+      "color": "purple",
+      "estilo": "unelevated",
+      "descripcion": "Genera la CxP de anticipo, la orden de pago y el egreso pendiente en caja."
+    },
+    {
+      "label": "Ver Legalizaciones",
+      "icono": "history",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Lista las legalizaciones de la orden; desde ahí Anular Anticipo."
+    },
+    {
+      "label": "Marcar (Radian)",
+      "icono": "fact_check",
+      "color": "teal-7",
+      "estilo": "unelevated",
+      "descripcion": "Concilia las facturas electrónicas que ya tienen CxP (NIT + número)."
+    },
+    {
+      "label": "Generar CxP (Radian)",
+      "icono": "note_add",
+      "color": "teal-7",
+      "estilo": "outline",
+      "descripcion": "Icono de la fila: convierte la factura electrónica en CxP (solo con acuse de recibo)."
+    },
+    {
+      "label": "Nuevo (evento Radian)",
+      "icono": "add_comment",
+      "color": "indigo",
+      "estilo": "unelevated",
+      "descripcion": "Registra un evento DIAN para la factura recibida (requiere permiso)."
+    },
+    {
+      "label": "Nueva Glosa",
+      "icono": "add_circle",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Crea la nota débito de auditoría y abre los ítems de glosa."
+    },
+    {
+      "label": "Cerrar Glosa",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Ítems Nuevo → Glosa y contabiliza la nota."
+    },
+    {
+      "label": "Levantar / Conciliar",
+      "icono": "handshake",
+      "color": "green-7",
+      "estilo": "unelevated",
+      "descripcion": "Registra lo sustentado por el proveedor y abre la conciliación."
+    },
+    {
+      "label": "Cerrar Conci",
+      "icono": "task_alt",
+      "color": "green-7",
+      "estilo": "unelevated",
+      "descripcion": "Ítems Glosa → Conci."
+    },
+    {
+      "label": "Cerrar Sin Glosa",
+      "icono": "verified",
+      "color": "positive",
+      "estilo": "unelevated",
+      "descripcion": "Marca la factura como auditada si no tiene ítems."
+    },
+    {
+      "label": "Imp. Glosa / Imp. Conci",
+      "icono": "print",
+      "color": "blue-grey",
+      "estilo": "outline",
+      "descripcion": "Soporte de la glosa y acta de conciliación."
+    },
+    {
+      "label": "Cerrar Periodo",
+      "icono": "lock",
+      "color": "negative",
+      "estilo": "unelevated",
+      "descripcion": "Congela el aging del mes y bloquea registrar facturas en él."
+    },
+    {
+      "label": "Abrir Periodo",
+      "icono": "lock_open",
+      "color": "green-7",
+      "estilo": "unelevated",
+      "descripcion": "Reabre el mes de CxP (solo dentro de 25 días)."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Administrativo → Cuentas por Pagar (MENUQ_CXP)",
+      "accion": "Entrar al módulo con sus seis pestañas",
+      "rol": "Tesorería / Contabilidad",
+      "descripcion": "La página no evalúa permisos por pestaña: quien entra ve CxP, Facturas Radian, Auditoría, Orden de pago, Anticipos e Informes."
+    },
+    {
+      "codigo": "Menú Administrativo → Órdenes de pago",
+      "accion": "Entrar a la orden de pago sin pasar por Cuentas por Pagar",
+      "rol": "Tesorería",
+      "descripcion": "Misma pantalla que la pestaña Orden de pago."
+    },
+    {
+      "codigo": "Menú Administrativo → Caja + equipo configurado como caja + cajero con turno",
+      "accion": "Abrir la caja y ver Mov. Egreso",
+      "rol": "Cajero",
+      "descripcion": "Sin caja abierta por el cajero del turno no se confirma ningún egreso (mensajes: No es Cajero, El equipo no es caja, No tiene turno)."
+    },
+    {
+      "codigo": "BrwCajaEgresos · confirmarEgreso",
+      "accion": "Botón Confirmar del recibo de egreso y Confirmar orden de pago",
+      "rol": "Cajero",
+      "descripcion": "Sin él los botones de confirmar quedan deshabilitados aunque la caja esté abierta."
+    },
+    {
+      "codigo": "BrwCajaEgresos · crearDocumentoEgreso · editarRegistroEgreso · Anular · desecharReciboEgreso · eliminar_fpa_egreso",
+      "accion": "Nuevo egreso, editar, anular, desechar y quitar forma de pago en caja",
+      "rol": "Cajero",
+      "descripcion": "Controles por botón en Mov. Egreso. Anular un recibo de orden desautoriza la orden."
+    },
+    {
+      "codigo": "BrwCajaEgresos · compContableEgreso · reciboDeCajaEgreso · anexoSoporteEgreso · archivarReciboEgreso · abrirRegistroEgreso",
+      "accion": "Comp. Egreso, recibo impreso, anexo soporte, archivar y reabrir",
+      "rol": "Cajero / Tesorería",
+      "descripcion": "Impresiones y archivo del recibo de egreso."
+    },
+    {
+      "codigo": "MENUQ_ADMINISTRATIVO · NOMINA_ARCHIVO_PLANO",
+      "accion": "Generar el archivo plano bancario desde la orden de pago",
+      "rol": "Tesorería",
+      "descripcion": "Lo consulta OPComponent; sin él no aparece la opción de archivo plano."
+    },
+    {
+      "codigo": "MENUQ_CXP · NOM_SOPORTE_EXP_CXP",
+      "accion": "Exportar soporte de nómina desde CxP",
+      "rol": "Nómina / Tesorería",
+      "descripcion": "Control de pantalla consultado por la pestaña CxP."
+    },
+    {
+      "codigo": "MENUQ_CXP · NOM_SOPORTE_IMP_CXP",
+      "accion": "Importar soporte de nómina (Importar Soporte)",
+      "rol": "Nómina / Tesorería",
+      "descripcion": "Control de pantalla consultado por la pestaña CxP."
+    },
+    {
+      "codigo": "CXP_AUDITORIA · CXP_ORDEN_PAGO · CXP_ANTICIPOS · CXP_INFORMES (ayuda en pantalla)",
+      "accion": "Según la ayuda, habilitarían cada pestaña",
+      "rol": "—",
+      "descripcion": "Los menciona el manual en pantalla, pero el código de la página no los consulta (hallazgo)."
+    },
+    {
+      "codigo": "MENUQ_CXP · BTN_NUEVO_EVENTO_RADIAN",
+      "accion": "Botón Nuevo evento en Facturas Radian",
+      "rol": "Contabilidad",
+      "descripcion": "Único control por botón de las pestañas satélite; notas, anticipos, auditoría y cierre no consultan permiso."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDCJTECXP",
+      "tipo": "USVGS",
+      "valorSugerido": "Código del tipo de egreso de caja (CJTE) para pago a proveedores",
+      "descripcion": "Tipo con que nacen los egresos de la orden y por el que caja reconoce que el recibo paga una CxP (cierra abonos y contabiliza contra la cuenta por pagar). Si la caja tiene su propio TIPOEGRESO, el clásico usa ese."
+    },
+    {
+      "nombre": "AUT_EGRE_INDIVIDUAL",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: Autorizar crea un egreso por proveedor con la forma de pago de la orden (procedencia CXP), pendiente en caja; habilita Realizar Pago y Confirmar orden de pago."
+    },
+    {
+      "nombre": "PERMITE_EGR_SIN_C",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Con AUT_EGRE_INDIVIDUAL=SI: oculta Autorizar; Cerrar Orden envía los egresos a caja con la orden aún en N («Pendiente confirmar en caja») y la caja autoriza al confirmar."
+    },
+    {
+      "nombre": "BANC_DINA_ARCH_PLANO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Modo plano dinámico: Autorizar crea egresos por tercero ya confirmados (AUTORIZAR_INDIVIDUAL) y muestra forma de pago en la orden con varios terceros. No habilita el botón Archivo Plano, que depende del estado de la orden."
+    },
+    {
+      "nombre": "FECHAORDENPAGO",
+      "tipo": "USVGS",
+      "valorSugerido": "CONTABLE u otro",
+      "descripcion": "CONTABLE: al autorizar se fija la fecha contable de la orden al momento de la autorización."
+    },
+    {
+      "nombre": "PRESUP_CXP_ACTIVADO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: la CxP exige registro presupuestal al crearla y confirmado al abonarla; no se anula si está en presupuesto."
+    },
+    {
+      "nombre": "PPTO_CONSICXP / DATOCXPSI",
+      "tipo": "USVGS",
+      "valorSugerido": "Según configuración de presupuesto",
+      "descripcion": "Marcas que identifican la CxP con presupuesto en las validaciones del abono."
+    },
+    {
+      "nombre": "BD_HISTORICAS",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: al abonar verifica que el comprobante de la CxP exista en contabilidad y no esté con errores ni preparado."
+    },
+    {
+      "nombre": "RESTRIN_CREA_CXP",
+      "tipo": "USVGS",
+      "valorSugerido": "TODO / TERCERO / USUARIO / USUTER",
+      "descripcion": "Impide crear otra CxP mientras exista una sin detalle (en todo el sistema, del mismo tercero, del mismo usuario o de ambos)."
+    },
+    {
+      "nombre": "CUENTA_IVA_CXP",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: para contabilizar, la cuenta de IVA debe estar en el detalle."
+    },
+    {
+      "nombre": "CXP_KMCOM_AUTOMATICO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: muestra Reconstruir (cuentas del detalle por modelo contable)."
+    },
+    {
+      "nombre": "CONT_FCXPDBCR_Y_FCXP",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Contabiliza la nota junto con la factura según configuración."
+    },
+    {
+      "nombre": "DOCEQUIVALENTE",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Habilita el documento equivalente electrónico (envío DIAN) en la CxP."
+    },
+    {
+      "nombre": "IDTIPOCXP_DEFAULT",
+      "tipo": "USVGS",
+      "valorSugerido": "Tipo de CxP por defecto",
+      "descripcion": "Si es ARS, el egreso clásico lleva el número de la orden en la observación."
+    },
+    {
+      "nombre": "MMCORPORATIVO / CUF_CPF_DE_SEDE",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Toman unidad de negocio y programa de la sede al crear la orden."
+    },
+    {
+      "nombre": "MANEJA_UNIDAD_NEG",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Muestra unidad de negocio en la orden de pago."
+    },
+    {
+      "nombre": "ING_REEMBOL_CJAMENOR",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "SI: al confirmar el egreso de una CxP de caja menor, registra automáticamente el reembolso en la caja menor."
+    },
+    {
+      "nombre": "IDCJTECXP_AJUSTE / IDCJTECXP_EDITAR",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Permiten agregar conceptos adicionales o editar la línea de un egreso de CxP en caja; por defecto el egreso de CxP no se toca."
+    },
+    {
+      "nombre": "IDCJFPACHEQUE / IDCJFPAEFECTIVO",
+      "tipo": "USVGS",
+      "valorSugerido": "Códigos de forma de pago cheque y efectivo",
+      "descripcion": "Formas de pago que caja trata de manera especial (chequera, efectivo)."
+    },
+    {
+      "nombre": "CXP_EDIT_CON_DIST / CXP_EDIT_VALOR_IMP",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Permiten editar la CxP con distribución y el valor de los impuestos en pantalla."
+    },
+    {
+      "nombre": "DECIMALES_IMP_CXP",
+      "tipo": "USVGS",
+      "valorSugerido": "Número de decimales",
+      "descripcion": "Redondeo de los impuestos de la CxP."
+    },
+    {
+      "nombre": "IDIVA / IDIMP_RETEFUENTE / IDIMPCLASE_RETEFEASA",
+      "tipo": "USVGS",
+      "valorSugerido": "Códigos de impuesto de la institución",
+      "descripcion": "Identifican IVA, retención en la fuente y retención asumida en el diálogo de impuestos y en el egreso."
+    },
+    {
+      "nombre": "IDTERCEROINSTALADO",
+      "tipo": "USVGS",
+      "valorSugerido": "Tercero de la institución",
+      "descripcion": "Tercero cuyos NIT, DV, tipo de identificación y razón social van en la cabecera del archivo plano."
+    },
+    {
+      "nombre": "MIMPUESTONOTADBCR",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "En notas de devolución de inventario decide si al saldo se le resta el valor bruto (SI) o el neto."
+    },
+    {
+      "nombre": "IDIVA / IDIMP_RETEIVA",
+      "tipo": "USVGS",
+      "valorSugerido": "Códigos de impuesto",
+      "descripcion": "IVA por defecto de la nota y reteIVA que no se devuelve con Impuestos?."
+    },
+    {
+      "nombre": "CODCAJANTICIPOS",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de caja",
+      "descripcion": "Caja donde cae el egreso automático del anticipo."
+    },
+    {
+      "nombre": "GENANTIDESDEORDENSER",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Si es SI, Aplicar Anticipo genera el comprobante de legalización (débito cuenta por pagar, crédito cuenta de anticipo)."
+    },
+    {
+      "nombre": "INFO_CARTERACONGLOSA",
+      "tipo": "USVGS",
+      "valorSugerido": "CONGLO / SINGLO",
+      "descripcion": "La exige el cierre de periodo (rutina compartida con cartera) aunque el cierre sea de CxP."
+    },
+    {
+      "nombre": "TGEN FRADIAN / EVENTOS",
+      "tipo": "TGEN",
+      "valorSugerido": "Matriz de eventos DIAN",
+      "descripcion": "Códigos y descripciones de los eventos Radian que ofrece el botón Nuevo."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "cxp-autorizar-individual-doble-egreso",
+      "tipo": "sql",
+      "detalle": "AUTORIZAR_INDIVIDUAL (modo BANC_DINA_ARCH_PLANO=SI) crea un egreso por tercero (procedencia CXP, cerrado) y a continuación ejecuta SPK_CONFIRMAR_PAGOSMASIVO con la orden aún en N; el SPK recorre los mismos abonos (ESTADO <> A) y crea un segundo juego de egresos (procedencia CAJA, pendientes), reapuntando FCXPP.CNSFACJ al nuevo recibo. Resultado probable: dos recibos de egreso por el mismo abono, uno confirmado sin abono ligado y otro pendiente en caja. Verificar en preversión antes de dictaminar.",
+      "solucionPropuesta": "Quitar de AUTORIZAR_INDIVIDUAL la llamada a SPK_CONFIRMAR_PAGOSMASIVO (ya creó, confirmó y ligó los egresos por tercero); dejar solo el cierre de la orden (ESTADO P, CERRADA 1, F_CONTABLE). Validar en preversión que hoy quedan dos recibos por abono.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-egreso-individual-sin-idservicio",
+      "tipo": "sql",
+      "detalle": "En los egresos individuales por tercero (AUTORIZAR_INDIVIDUAL_TER / AUTORIZAR_INDIVIDUAL) la línea del egreso (FCJD) no lleva el abono en IDSERVICIO. En caja, SPK_CIERRERECIBO_CAJA solo cierra abonos por IDSERVICIO (lo suple SPK_MARCA_OP_PAGADA_POR_EGRESO) y SPK_NC_CONTAB_CAJA_EGR, al no encontrar abono, debita la cuenta del concepto de caja (CPCJ.CUENTA) en lugar de la cuenta por pagar de cada factura. Confirmar con contabilidad si el concepto de egreso configurado apunta a la cuenta por pagar; si no, el asiento del pago individual no cancela la CxP contablemente.",
+      "solucionPropuesta": "En AUTORIZAR_INDIVIDUAL y AUTORIZAR_INDIVIDUAL_TER crear una línea FCJD por abono con IDSERVICIO = CNSFCXPP (como hace SPK_CONFIRMAR_PAGOSMASIVO) en vez de una sola línea por tercero. Así el cierre de caja encuentra el abono y SPK_NC_CONTAB_CAJA_EGR debita la cuenta por pagar de cada factura.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-permisos-pestanas-no-evaluados",
+      "tipo": "fe",
+      "detalle": "La ayuda en pantalla de Cuentas por Pagar dice que Auditoría, Orden de pago, Anticipos e Informes exigen CXP_AUDITORIA, CXP_ORDEN_PAGO, CXP_ANTICIPOS, CXP_INFORMES; CuentasxpagarPage no consulta esos controles y muestra las seis pestañas a quien tenga el menú. Solo NOM_SOPORTE_EXP_CXP / NOM_SOPORTE_IMP_CXP se evalúan (MENUQ_CXP).",
+      "solucionPropuesta": "En CuentasxpagarPage leer con useUsgruh los controles CXP_AUDITORIA, CXP_ORDEN_PAGO, CXP_ANTICIPOS, CXP_INFORMES (MENUQ_CXP) y ocultar la pestaña sin permiso; registrar los controles en el catálogo de permisos.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-eliminar-fcxpd-todos",
+      "tipo": "fe",
+      "detalle": "Eliminar todos los detalles no envía PROCEDE=2 ni NOITEM; el SP solo borra con PROCEDE 1/2. Eliminar una línea sí funciona.",
+      "solucionPropuesta": "En CXPComponent, al eliminar todos los detalles enviar PROCEDE = 2 (y NOITEM nulo) a CRUD_FCXPD, o recorrer los ítems con PROCEDE = 1; luego RECALCULAR_FCXP.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-aplicar-anticipo-vif-salud",
+      "tipo": "fe",
+      "detalle": "Condición de visibilidad usa props.row.SALUD (inexistente) en lugar de SALDO en el menú antiguo; la versión actual muestra Aplicar Anticipo con CONTABILIZADA=1. Verificar que no queden rutas con la condición vieja.",
+      "solucionPropuesta": "Reemplazar props.row.SALUD por props.row.SALDO en la condición del menú antiguo o retirar esa ruta si ya no se usa.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-informes-requiere-tab-cxp",
+      "tipo": "fe",
+      "detalle": "La pestaña Informes delega en la pestaña CxP (keep-alive): si el usuario entra directo a Informes sin abrir CxP, los botones no responden.",
+      "solucionPropuesta": "Que la pestaña Informes cargue su propio estado (filtros y métodos) o monte el componente CxP en keep-alive al abrir la página, sin depender de que el usuario haya pasado por la pestaña CxP.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-vincular-fradian-inexistente",
+      "tipo": "sql",
+      "detalle": "FacturasRadianComponent invoca VINCULAR_CXP_FRADIAN, que no existe en SPQ_FCXP (PREVERSION ni liberada); REGISTRAR_CXP_FRADIAN ya marca REGISTRADA_CXP. Dictamen 20260917-cxp-fcxp-radian.",
+      "solucionPropuesta": "Retirar la llamada a VINCULAR_CXP_FRADIAN del FE (REGISTRAR_CXP_FRADIAN ya marca la factura) o implementar el método. Cubierto en el dictamen 20260917-cxp-fcxp-radian.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-reconstruir-sin-cuentagrav",
+      "tipo": "sql",
+      "detalle": "RECONSTRUIR_CUENTAS_FCXPD no homologa CUENTAGRAV (REQ 6349, pendiente en inventario).",
+      "solucionPropuesta": "Incluir CUENTAGRAV en RECONSTRUIR_CUENTAS_FCXPD con la misma homologación que CUENTA_SER (REQ 6349, inventario).",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-estado-m-sin-origen",
+      "tipo": "doc",
+      "detalle": "La grilla CxP rotula FCXP.ESTADO 'M' como «En Pago Masivo» y LISTAR_CXP_PENDIENTES lo acepta cuando la factura pertenece a la misma orden, pero en los procedimientos leídos ningún método asigna 'M'. Posible estado heredado; se documenta en el semáforo como etiqueta de pantalla.",
+      "solucionPropuesta": "Decidir con negocio: si el estado M no se asigna en ningún proceso vigente, retirar la etiqueta «En Pago Masivo» del filtro y la excepción en LISTAR_CXP_PENDIENTES; si debe existir, documentar qué método lo asigna.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-pagar-parcial-siempre-individual",
+      "tipo": "fe",
+      "detalle": "Pagar → Pago parcial desde la fila de la factura (CXPComponent.onGuardaOrdenPago) crea la orden, abona con PAGO_PARCIAL y siempre invoca AUTORIZAR_INDIVIDUAL_TER, sin mirar AUT_EGRE_INDIVIDUAL. En instituciones con modo clásico el SP responde «La variable AUT_EGRE_INDIVIDUAL no esta activa.» y la pantalla pide autorizar desde Órdenes de pago: la orden queda creada en N. Pago total usa PAGO_CXPTOTAL (clásico inmediato) sin mirar las variables.",
+      "solucionPropuesta": "En CXPComponent.onGuardaOrdenPago leer AUT_EGRE_INDIVIDUAL / BANC_DINA_ARCH_PLANO (como OPComponent.onAutorizarPagos) y elegir AUTORIZAR, AUTORIZAR_INDIVIDUAL_TER o AUTORIZAR_INDIVIDUAL; aplicar la misma regla a Pago total (hoy siempre PAGO_CXPTOTAL clásico).",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-preversion-vs-liberada",
+      "tipo": "sql",
+      "detalle": "SPQ_FCXP PREVERSION vs 2.0.7: solo cambian CRUD_FCXP (bandera MASIVA_CXP), CRUD_FCXPD y CLONAR_FCXP (código UNSPSC en el detalle). Orden de pago y caja idénticos. No hay arreglo pendiente en la canasta para los hallazgos anteriores."
+    },
+    {
+      "id": "cxp-plano-bancolombia-orden-firma",
+      "tipo": "fe",
+      "detalle": "Órdenes de pago → Archivo Plano → «Plano Bancolombia» llama generarArchivoBancolombia(fila, 'BANCOLOMBIA') pero la función espera (empresa, filas, tipoTransaccion): recibe un texto como lista, no consulta GET_INF_PLANO y no descarga nada. Además esa función arma un formato tipo Banco de Bogotá, no el PAB de Bancolombia.",
+      "solucionPropuesta": "Retirar la opción de la lista hasta tener el formato, o implementarla: GET_INF_PLANO con FORMATO_PLANO='BANCOLOMBIA' (BCT.TIPO_PLANO) y un armado PAB (registro 1 cabecera, registro 6 detalle) propio.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-plano-nomina-dialogo-inalcanzable",
+      "tipo": "fe",
+      "detalle": "El diálogo «Órdenes de Pago - Nómina» (exportar plano de nómina, EXPORTAR_NOMINA_PLANO) solo se abre con el botón Buscar Nómina, que está comentado en OPComponent. Con BANC_DINA_ARCH_PLANO=SI su botón Exportar llama exportarNominaPlanoDinamico, que no existe en el componente (el SP sí tiene EXPORTAR_NOMINA_PLANO_DINAMICO).",
+      "solucionPropuesta": "Definir con negocio si el plano de nómina sigue vigente. Si sí: restaurar el botón (permiso MENUQ_ADMINISTRATIVO · NOMINA_ARCHIVO_PLANO) e implementar exportarNominaPlanoDinamico sobre EXPORTAR_NOMINA_PLANO_DINAMICO. Si no: retirar el diálogo y los dos métodos.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-plano-nomina-cuenta-bancaria",
+      "tipo": "sql",
+      "detalle": "EXPORTAR_NOMINA_PLANO y EXPORTAR_NOMINA_PLANO_DINAMICO devuelven FCXP.CUECREDITO (cuenta contable del pasivo) como CUENTA_BANCO y unen BCO por FCXP.IDTERCERO = BCO.IDTERCERO (el tercero del banco, no el del empleado), de modo que BANCO y CODACH salen vacíos. GET_INF_PLANO sí usa TER.CUE_BANCARIA, TER.TIPO_CUE y BCO.BANCO = TER.BANCO.",
+      "solucionPropuesta": "Unificar: en los dos métodos de nómina tomar TER.CUE_BANCARIA, TER.TIPO_CUE y LEFT JOIN BCO ON BCO.BANCO = TER.BANCO, y devolver FCXPP.ABONO como valor (no FCXP.VLR_NETO).",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-plano-guardar-historial-stub",
+      "tipo": "mixto",
+      "detalle": "Tras exportar, el FE llama MODELO 'FCXP' · GUARDAR_ARCHIVO_PLANO_BANCOLOMBIA, pero el método está en SPQ_ORDEN_PAGO (no en SPQ_FCXP) y además es un esqueleto: lee los parámetros y no guarda nada («-- ... resto del código ...»). El error se traga en un try vacío. No existe tabla ni campo que registre los planos generados por orden (FCXP.FECHA_GENERACION_PLANO solo se llena desde el soporte de nómina en Excel).",
+      "solucionPropuesta": "Crear el registro del archivo generado (tabla nueva FCXPPMPL: orden, formato, cuenta BCT, nombre de archivo, registros, valor, usuario, fecha) y llenarlo desde un único método GUARDAR_ARCHIVO_PLANO en SPQ_ORDEN_PAGO para Bogotá, Colpatria y Bancolombia; corregir el MODELO en el FE y mostrar en la orden «Plano generado el … por …».",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-plano-colpatria-parametros-ignorados",
+      "tipo": "fe",
+      "detalle": "En el plano Colpatria la pantalla pide clave, código de oficina y tipo de transacción, pero generarArchivoBancoColpatria usa constantes: clave 'PGCORPUCOO', oficina '2', tipo de pago '02' y el registro de totales siempre con número de fila '00002'. El campo Clave tiene maxlength 3 con una regla de 11 caracteres y el diálogo se titula siempre «Plano Banco Bogotá».",
+      "solucionPropuesta": "Usar paramPlanoBanco (clave, codigoOficina, tipoMovimiento) en el armado; numerar el registro 03 con el consecutivo real; corregir maxlength/regla de la clave (10) y el título según el banco.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-plano-bogota-tipo-identificacion",
+      "tipo": "fe",
+      "detalle": "El plano de Banco de Bogotá toma la primera letra de TER.TIPO_ID: CE sale como «C» (igual que cédula) y la función tipoIdentificacionXBanco nunca aplica para Bogotá porque compara contra 'BOGOTA ' (con espacio). La equivalencia de tipo de cuenta solo reconoce 'Corriente'; cualquier otro texto sale como Ahorros.",
+      "solucionPropuesta": "Corregir la comparación ('BOGOTA') y usar la función de homologación en el detalle y la cabecera; validar TIPO_CUE contra los valores del catálogo (Corriente / Ahorros) y avisar si el tercero no tiene cuenta.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-plano-sin-validacion-previa",
+      "tipo": "mixto",
+      "detalle": "GET_INF_PLANO no valida que cada proveedor tenga cuenta bancaria, tipo de cuenta y banco con código ACH; el archivo se descarga igual con campos en blanco o ceros y el rechazo lo da el banco. Tampoco se exige BCT.TIPO_PLANO configurado: si ninguna cuenta lo tiene, el selector sale vacío sin explicación.",
+      "solucionPropuesta": "Que GET_INF_PLANO devuelva un recordset de inconsistencias (tercero sin cuenta / sin banco / banco sin ACH) y que el FE muestre la lista y no descargue hasta corregir, o lo permita con confirmación. Mensaje claro cuando no hay cuentas BCT con tipo de plano.",
+      "dictamen": "dictamenes/20261004-cxp-hallazgos-archivo-plano.html"
+    },
+    {
+      "id": "cxp-fe-metodos-sin-sp",
+      "tipo": "mixto",
+      "detalle": "El frontend invoca métodos que no existen en el catálogo SQL (ni en PREVERSION ni en la última liberada): FCXP · GUARDAR_HOMOLOGA_RADIAN y BUSCAR_HOMOLOGA_RADIAN (diálogo Generar CxP desde Radian, casilla «guardar configuración contable»), FCXP · RELIQUIDAR_CXP (botón Reliquidar cxp en Auditoría) y FCXP · VINCULAR_CXP_FRADIAN. La casilla de homologación avisa que no pudo guardar; Reliquidar no hace nada.",
+      "solucionPropuesta": "Decidir: implementar los métodos (homologación contable por proveedor e ítem es útil para Radian) o retirar los controles del FE. Mientras tanto, ocultar la casilla y el botón.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-abrir-periodo-borra-cartera",
+      "tipo": "sql",
+      "detalle": "SPQ_ORDEN_PAGO · ABRIR_CUENTA quita CERRADO_CXP pero borra FCARTH con PROCEDENCIA='CARTERA' (el histórico de cuentas por cobrar) en lugar de 'CXP'. El aging de CxP congelado queda, así que un nuevo Cerrar Periodo entra por la rama «ya se realizó» y no lo regenera; y se pierde el histórico de cartera del mes.",
+      "solucionPropuesta": "DELETE FCARTH ... AND PROCEDENCIA='CXP'. Validar en preversión.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-cerrar-periodo-valida-cartera",
+      "tipo": "sql",
+      "detalle": "CERRAR_CUENTA valida comprobantes errados de procedencias de cartera y facturación (CXC, RAD CXC, NOTDBCR, FACTURA, RGLO, CONCI) y el mensaje habla de Cartera; no revisa las procedencias de CxP (CXP, NOTDBCRCXP, EGRESO_CXP_*). Además SPK_CIERRA_CARTERA exige la variable INFO_CARTERACONGLOSA aunque el cierre sea de CxP.",
+      "solucionPropuesta": "Validar MCPE de procedencias CxP y ajustar el mensaje; no exigir INFO_CARTERACONGLOSA cuando @PROCEDENCIA='CXP'.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-cerrar-sin-glosa-marca-con-error",
+      "tipo": "sql",
+      "detalle": "SPQ_FCXP_AUDIT · CERRAR_SIN_GLOSA registra el error «en proceso de auditoría» si hay ítems de glosa, pero ejecuta el UPDATE AUDITADO=1 antes de comprobar la lista de errores: la factura queda auditada y la pantalla recibe KO.",
+      "solucionPropuesta": "Comprobar @TBLERRORES antes del UPDATE (o RETURN tras insertar el error).",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-cruce-cxc-sin-captura",
+      "tipo": "mixto",
+      "detalle": "Cruce con CxC en la orden de pago solo lista FCXPCXC. Ningún procedimiento del catálogo inserta, actualiza o borra FCXPCXC y el FE solo la lee; el bloque de cruces del comprobante del egreso solo actúa sobre datos heredados.",
+      "solucionPropuesta": "Definir con el negocio si el cruce CxP–CxC se necesita en web; si sí, método para crear/anular el cruce (mismo tercero, orden en N) y validación en SPK_CONFIRMAR_PAGOSMASIVO.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-anular-nota-literal-aud",
+      "tipo": "sql",
+      "detalle": "SPK_ANULAR_FCXPDBCR devuelve los ítems de glosa a Nuevo comparando PROCEDENCIA='AUDT' en la rama contabilizada y 'AUD' en la rama no contabilizada, y filtra FCXPS por ITEM=@ITEM cuando el vínculo con la nota es ITEMNDB/ITEMNCR. La reversa de una glosa puede no devolver los ítems.",
+      "solucionPropuesta": "Unificar el literal (AUDT) y filtrar FCXPS por ITEMNDB (DB) / ITEMNCR (CR). Probar en preversión con una glosa cerrada y desaplicada.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-nota-gencxp-marca-condicional",
+      "tipo": "sql",
+      "detalle": "Con Genera CxP? y CONT_FCXPDBCR_Y_FCXP distinto de SI, SPK_CIERRA_FCXPDBCR marca la nota contabilizada con el comprobante de la CxP nueva solo si esa CxP obtuvo comprobante; si no, la nota queda sin marcar y el método igual responde OK. La pantalla la muestra pendiente aunque la CxP nueva exista.",
+      "solucionPropuesta": "Si la CxP nueva no se contabilizó, devolver KO y revertir; o marcar la nota con estado propio.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-glosa-valor-suma-todas",
+      "tipo": "sql",
+      "detalle": "SPQ_FCXP_AUDIT · CRUD_FCXPS iguala el valor de la nota (ITEMNDB) a SUM(VLRITEM) de todos los ítems FCXPS de la factura, no solo de los ligados a esa nota. Con más de una glosa en la misma factura la segunda nota toma el total.",
+      "solucionPropuesta": "Sumar solo FCXPS con ITEMNDB=@ITEMNDB (y ITEMNCR para el levantamiento).",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-aplicar-anticipo-error-fe",
+      "tipo": "fe",
+      "detalle": "En CXPComponent, AplicarAnt muestra el error con `el.ERROR` fuera del forEach (variable inexistente): cuando el método responde KO el usuario no ve el mensaje.",
+      "solucionPropuesta": "Usar res.data.result.recordset[0].ERROR.",
+      "dictamen": null
+    },
+    {
+      "id": "cxp-acumulado-circularizacion",
+      "tipo": "fe",
+      "detalle": "Reportes y Cierre ofrece CxP Acumulado y CxP Circularización; verificar que sus funciones (onCXPAcumulado / onCXPCircula) tengan método SQL y salida, no están en el catálogo CONF_CXP documentado.",
+      "solucionPropuesta": "Revisar en preversión; documentar o retirar.",
+      "dictamen": null
+    }
+  ],
+  "funcionalidadRevision": {
+    "completo": [
+      "Grilla FCXP/FCXPD CRUD admin",
+      "Contabilizar / descontabilizar CxP",
+      "Notas DB/CR + contabilizar nota + DIAN nota",
+      "Orden de pago (abonos, autorizar en tres modos, desautorizar, planos, egreso)",
+      "Pago en caja (Mov. Egreso, Confirmar orden de pago, Realizar Pago)",
+      "Radian generar/conciliar CxP",
+      "Auditoría glosas Servicios",
+      "Anticipos FCOM + aplicar a CxP",
+      "Informes vía CONF_CXP"
+    ],
+    "huecosDeuda": [
+      {
+        "item": "AUTORIZAR_INDIVIDUAL",
+        "detalle": "Doble generación de egresos (ver hallazgos)."
+      },
+      {
+        "item": "Egreso individual sin IDSERVICIO",
+        "detalle": "Asiento del egreso contra CPCJ.CUENTA (ver hallazgos)."
+      },
+      {
+        "item": "ELIMINAR_FCXPD todos",
+        "detalle": "Defecto FE: onBorrarDetTodos no envía PROCEDE=2 ni NOITEM."
+      },
+      {
+        "item": "CRUD_FCXPDBCR_2",
+        "detalle": "Backend existe; botón con v-if=false."
+      },
+      {
+        "item": "Tab Importar",
+        "detalle": "Comentada en CuentasxpagarPage."
+      },
+      {
+        "item": "InformesCXPComponent",
+        "detalle": "Requiere tab CXP montado."
+      },
+      {
+        "item": "RECONSTRUIR_CUENTAS_FCXPD",
+        "detalle": "No homologa CUENTAGRAV (REQ 6349)."
+      },
+      {
+        "item": "VINCULAR_CXP_FRADIAN",
+        "detalle": "FE lo invoca; no existe en SPQ_FCXP."
+      }
+    ]
+  },
+  "propuestaOptimizacionRadian": {
+    "idSolicitud": "SR20260917-001",
+    "mockups": "solicitudes/SR20260917-001/mockups/ventanas-radian-cxp.html",
+    "idDictamen": "20260917-cxp-fcxp-radian",
+    "modeloEntrega": "solicitudes/SR20260917-001/modelo-entrega-desarrollador.html",
+    "problema": "Tab switch + N×CRUD_FCXPD + sin memoria CC/cuenta + CUECREDITO no capturada si TER vacío",
+    "solucion": "ARCHIVOS → VALIDA_TERCERO → preview CUECREDITO → BUSCAR homologación (IDTERCERO+COD_EXT) → modal → GUARDAR homologación → REGISTRAR → opcional RECONSTRUIR",
+    "tablaHomologacion": "CXP_RADIAN_HOMO",
+    "entregaUnica": true
+  },
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita hacer?",
+      "intro": "Quince tareas frecuentes de cuentas por pagar, desde registrar la factura hasta confirmar el pago en caja, con su ruta exacta, la condición que debe cumplirse y lo que no hay que confundir."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué es una cuenta por pagar y cómo se paga",
+      "intro": "Una **cuenta por pagar** es la obligación que la institución reconoce con un tercero: la factura de un proveedor, un servicio, la nómina, un anticipo o un reembolso de caja menor. El módulo la **registra**, la **contabiliza**, la **programa** en una orden de pago y la **paga** en caja. Nada se paga sin pasar por la caja: la orden solo prepara el recibo de egreso; el cajero lo confirma.",
+      "md": "## Las piezas\n\n| Pieza | Tabla | Qué guarda |\n|---|---|---|\n| Factura (cabecera) | FCXP | Tercero, fechas, referencia, procedencia, cuenta crédito, valor, saldo, estado, contabilizada |\n| Detalle | FCXPD | Conceptos o servicios con cantidad, valor, IVA, descuento, centro de costo y cuenta |\n| Impuestos | FCXPI | Retenciones e impuestos que bajan el neto a pagar |\n| Orden de pago | FCXPPM | Fecha, caja que paga, tercero a favor, forma de pago, valor, estado |\n| Abono | FCXPP | Cuánto de cada factura paga esa orden: saldo anterior, abono, saldo nuevo, estado |\n| Recibo de egreso | FCJ / FCJD | El documento de caja que entrega el dinero, una línea por abono |\n| Forma de pago | PCJ | Efectivo, cheque, transferencia, banco, cuenta, documento |\n\n## El recorrido en una frase\n\n**Administrativo → Cuentas por Pagar**: registrar y contabilizar. **Administrativo → Órdenes de pago**: agrupar facturas, abonar y **Autorizar** (el egreso nace pendiente en la caja elegida). **Administrativo → Caja → Mov. Egreso**: forma de pago y **Confirmar** (se paga el abono, se contabiliza el egreso y la orden queda pagada).\n\n## Qué no es\n\n| Si lo que quiere es… | Entonces el camino es… |\n|---|---|\n| Cobrar a un cliente o a una EPS | Cartera / Facturación (cuentas por **cobrar**) |\n| Registrar la compra con sus artículos | Inventario → Movimientos: la CxP de Compras nace sola al confirmar la entrada |\n| Entregar dinero sin factura previa | Pestaña Anticipos (orden de anticipo) o egreso directo en Caja |\n| Corregir una factura ya contabilizada | Nota débito / crédito, no deshacer |\n| Enviar el archivo al banco | Órdenes de pago → Cerrar Orden → Archivo Plano (no confirma el pago) |\n\n## Quién participa\n\n- **Tesorería / cuentas por pagar**: registra, revisa impuestos, arma la orden y autoriza.\n- **Contabilidad**: contabiliza la factura (o lo hace tesorería según la institución) y valida el comprobante del egreso.\n- **Cajero**: confirma el recibo de egreso con su forma de pago.\n- **Sistema**: valida periodos, saldos, presupuesto; genera comprobantes; mueve estados de factura, orden, abono y recibo.",
+      "puntosClave": [
+        "Sin contabilizar no hay orden: la factura debe tener comprobante para entrar en una orden de pago.",
+        "Autorizar no paga: crea el recibo de egreso pendiente en la caja de la orden.",
+        "Confirmar en caja es el único paso que paga el abono y contabiliza el egreso.",
+        "Tres modos de autorización según variables; el libro los explica en su propio capítulo."
+      ]
+    },
+    {
+      "id": "caminos",
+      "tipo": "mapa-procedencias",
+      "datos": "caminosLibro",
+      "kicker": "Mapa",
+      "titulo": "De dónde nace una cuenta por pagar y por dónde sale",
+      "mapa": {
+        "pregunta": "¿Cómo llega una cuenta por pagar y qué pasa con ella después?",
+        "subtitulo": "Siete orígenes (compras, servicios, salud, nómina, anticipos, caja menor, Radian) y una sola salida: la orden de pago que termina en caja.",
+        "centroIcono": "receipt_long",
+        "centroTitulo": "Cuenta por pagar · FCXP",
+        "centroSub": "Procedencia en la cabecera, saldo que baja con cada abono",
+        "conector": "Caminos alrededor de la cuenta por pagar",
+        "destinoPrefijo": "",
+        "reglaTitulo": "Regla de lectura",
+        "regla": "La columna <code>Proce</code> de la grilla es <code>FCXP.PROCEDENCIA</code>: dice de dónde vino la obligación y qué botones aplican (Cambia a Remisión solo Compras; Clonar y Auditoría solo Servicios; Nómina y Caja menor no se contabilizan desde aquí). El pago siempre sale por <code>FCXPPM</code> → <code>FCJ</code> en la caja indicada en la orden."
+      }
+    },
+    {
+      "id": "flujo-registrar",
+      "tipo": "flujo",
+      "flujoId": "cxp-registrar",
+      "kicker": "Proceso 1",
+      "titulo": "Registrar y contabilizar la factura",
+      "imagen": "img/cxp_registro_sketchnote.jpg",
+      "imagenAlt": "Nueva CXP → detalle → impuestos → Contabilizar → factura lista para pagar",
+      "intro": "Desde el menú **Administrativo → Cuentas por Pagar**. La cabecera lleva tercero, fechas, referencia y procedencia; el detalle, los conceptos con su cuenta; los impuestos bajan el neto. El icono **Contabilizar** de la columna Conta valida y genera el comprobante. Las compras de inventario llegan ya con detalle: solo se revisan y contabilizan.",
+      "puntosClave": [
+        "El número de referencia no se repite para el mismo proveedor.",
+        "Periodo contable abierto para la fecha del documento y la de la CxP; además el mes de CxP no debe estar cerrado.",
+        "RESTRIN_CREA_CXP puede impedir abrir otra factura mientras exista una sin detalle.",
+        "Nómina y caja menor no se contabilizan desde esta pantalla.",
+        "Deshacer la contabilización se bloquea con abonos, órdenes, notas o DIAN."
+      ]
+    },
+    {
+      "id": "flujo-orden",
+      "tipo": "flujo",
+      "flujoId": "cxp-orden-pago",
+      "kicker": "Proceso 2",
+      "titulo": "Orden de pago: agrupar, abonar y autorizar",
+      "imagen": "img/cxp_orden_sketchnote.jpg",
+      "imagenAlt": "Nuevo → Nuevo Detalle (pago total / parcial) → Autorizar → egresos pendientes en caja",
+      "intro": "La orden agrupa abonos a una o varias facturas. **Nuevo Detalle** lista las facturas contabilizadas con saldo; **Pago total** abona todo el saldo, **Pago parcial** un porcentaje o valor. **Autorizar** crea los recibos de egreso en la caja de la orden y la pasa a **Confirmado**. El botón **Pagar** de la factura hace lo mismo en un paso para una sola factura.",
+      "puntosClave": [
+        "La orden necesita caja: sin ella no hay dónde generar el egreso.",
+        "El abono no supera el saldo; la fecha de la orden no es anterior a la del documento.",
+        "Pago total desde la factura autoriza en el acto: el egreso llega a caja de inmediato.",
+        "Desautorizar solo mientras ningún egreso esté confirmado en caja.",
+        "Cerrar Orden habilita el archivo plano; en modo egreso individual sin autorización también envía a caja."
+      ]
+    },
+    {
+      "id": "modos-autorizacion",
+      "tipo": "texto",
+      "kicker": "Tres modos",
+      "titulo": "Cómo decide el sistema qué pasa al Autorizar",
+      "intro": "El botón **Autorizar** es uno, pero según dos variables de la institución ejecuta uno de tres procedimientos. Lo que cambia es **qué recibo de egreso llega a caja**, **con qué forma de pago** y **quién termina autorizando**.",
+      "md": "## Los tres modos\n\n| Modo | Variables | Qué crea Autorizar | Forma de pago | Estado de la orden | Cómo se paga en caja |\n|---|---|---|---|---|---|\n| **Clásico** | Ninguna activa | Un recibo de egreso por proveedor (procedencia CAJA), una línea por abono, pendiente | La pone el cajero | C (Confirmado) | Caja → Mov. Egreso → Forma de Pago → Confirmar, recibo por recibo |\n| **Egreso individual por tercero** | AUT_EGRE_INDIVIDUAL = SI | Un recibo por proveedor (procedencia CXP) con la forma de pago de la orden, pendiente | Viene de la orden | C; con PERMITE_EGR_SIN_C = SI sigue en N marcada «Pendiente confirmar en caja» y se envía al **Cerrar Orden** | Caja → Confirmar orden de pago (todos de una vez), Caja → Confirmar uno a uno, u Órdenes de pago → Realizar Pago |\n| **Archivo plano dinámico** | BANC_DINA_ARCH_PLANO = SI | Recibos por proveedor ya confirmados (procedencia CXP) | Viene de la orden | P (Pagado) | No pasa por confirmación del cajero |\n\n## Qué exige cada uno\n\n- **Clásico**: orden en N con abonos; caja de la orden; tipo de egreso (el de la caja o IDCJTECXP). Descuenta el saldo de la factura al autorizar.\n- **Individual por tercero**: además, forma de pago en la cabecera de la orden, IDCJTECXP, un concepto de egreso activo y la caja de la orden **abierta**. Mensajes: «La orden de pago no tiene forma de pago. Indíquela al crear o editar la orden.», «No está configurada la variable IDCJTECXP…», «La orden de pago no tiene caja…», «La caja … no se encuentra abierta.»\n- **Archivo plano dinámico**: igual que el individual, y además ejecuta el cierre clásico; ver hallazgos.\n\n## Lo que sucede al confirmar en caja (todos los modos)\n\n1. El abono ligado al recibo pasa a **Pagado**.\n2. La factura se recalcula: valor, abonos, notas, saldo y estado (N / C / P).\n3. La orden pasa a **Pagado** cuando no quedan recibos pendientes.\n4. Se genera el comprobante contable del egreso y el recibo queda cerrado.\n5. Si el recibo es individual (procedencia CXP) el sistema vuelve a marcar abono y orden por el número de orden que viaja en la observación.",
+      "puntosClave": [
+        "Si no sabe qué modo rige, mire la cabecera de la orden: si pide forma de pago obligatoria y hay botón Realizar Pago, es egreso individual.",
+        "«Pendiente confirmar en caja» no es un error: la orden está esperando al cajero.",
+        "En clásico el saldo de la factura baja al autorizar; en individual, al recalcular tras el abono o al confirmar."
+      ]
+    },
+    {
+      "id": "flujo-plano",
+      "tipo": "flujo",
+      "flujoId": "cxp-archivo-plano",
+      "kicker": "Proceso 2b",
+      "titulo": "Archivo plano para el banco",
+      "imagen": "img/cxp_plano_sketchnote.jpg",
+      "imagenAlt": "Cuenta BCT con tipo de plano → orden cerrada → Archivo Plano → parámetros → .txt → portal del banco",
+      "intro": "Cuando la institución paga por transferencia, tesorería genera desde la orden de pago un archivo de texto con el formato del banco (dispersión de pagos) y lo sube al portal bancario. El archivo **no paga ni cambia estados**: es un insumo para el banco; el pago sigue registrándose en caja.",
+      "puntosClave": [
+        "El botón Archivo Plano solo aparece en una orden cerrada y No Confirmada.",
+        "Formatos operativos hoy: Banco de Bogotá y Colpatria. La opción Bancolombia de la orden no funciona.",
+        "La cuenta propia debe tener el tipo de plano del banco; el proveedor debe tener banco, tipo y número de cuenta.",
+        "Se genera una línea por abono de la orden (una factura = una línea, aunque sea el mismo proveedor).",
+        "No queda registro del archivo generado: si se repite, se descarga de nuevo sin aviso."
+      ]
+    },
+    {
+      "id": "plano-detalle",
+      "tipo": "texto",
+      "kicker": "Detalle",
+      "titulo": "Qué lleva cada archivo plano y qué revisar antes de subirlo",
+      "intro": "Resumen de lo que arma la pantalla para cada banco a partir de GET_INF_PLANO. Sirve para que tesorería entienda por qué el banco rechaza una línea y qué dato del tercero o de la cuenta corregir.",
+      "md": "## Datos que alimentan el archivo\n\n| Dato en el archivo | De dónde sale | Si falta |\n|---|---|---|\n| Cuenta de la empresa, NIT, DV, tipo de identificación, razón social | Tercero instalado (IDTERCEROINSTALADO) + cuenta BCT elegida | El sistema avisa «Faltan datos de la orden de pago» |\n| Tipo de transacción y código de oficina | Diálogo de parámetros | No deja generar |\n| Identificación y razón social del proveedor | Tercero de la factura | Línea sin beneficiario: el banco la rechaza |\n| Tipo de cuenta (1 Corriente / 2 Ahorros) y número de cuenta | Tercero → tipo de cuenta / cuenta bancaria | Sale «2» y cuenta en blanco |\n| Código ACH del banco destino | Catálogo de bancos (BCO) por el banco del tercero | Sale en ceros |\n| Valor | Abono de la orden (FCXPP.ABONO) | — |\n| Referencia de la factura | Referencia de la CxP (solo Colpatria; Bogotá la deja en ceros por ser alfanumérica) | — |\n\n## Banco de Bogotá\n\n- Registro 1 (cabecera): fecha de aplicación, tipo de cuenta, cuenta de la empresa, razón social, NIT+DV, tipo de movimiento (001 Nómina, 002 Proveedores, 003 Transferencias, 995 Otros pagos), fecha de elaboración, código de oficina, tipo de identificación.\n- Registro 2 (detalle, uno por abono): tipo de identificación (primera letra), identificación+DV, razón social, tipo de cuenta, cuenta, valor sin punto decimal (18 posiciones), forma de pago «A» (abono), código de banco, texto «PAGO <tipo de movimiento>», sin notificación al beneficiario.\n- Archivo: `Plano_BB_<orden>_<fecha>.txt`.\n\n## Colpatria (Scotiabank)\n\n- Registro 01 (cabecera): fecha, NIT+DV, clave del convenio, total de filas, oficina, cuenta de la empresa.\n- Registro 02 (detalle, uno por abono): identificación, razón social, código de transacción 911 (abono a otra entidad), tipo de pago 02 (proveedores), valor, número de factura, fecha de pago, código ACH, cuenta destino, tipo de cuenta, tipo de identificación (C, N, P, I, E).\n- Registro 03 (totales): total de filas.\n- Archivo: `Plano_colpatria_<orden>_<fecha>.txt`.\n\n## Antes de subir el archivo\n\n1. Abrirlo y comprobar que la cantidad de líneas de detalle coincide con los abonos de la orden.\n2. Revisar que ningún proveedor tenga cuenta en blanco o código ACH en ceros.\n3. Verificar que la suma de los valores sea el valor de la orden.\n4. Guardar el archivo con la orden (el sistema no lo conserva).\n\n## Lo que no es\n\n- No es el soporte de nómina en Excel de la pestaña Cuentas por Pagar (Exportar / Importar soporte).\n- No es el pago: la orden y las facturas cambian de estado al confirmar los egresos en caja.\n- No envía nada al banco: el archivo se sube en el portal bancario.",
+      "puntosClave": [
+        "Una línea por abono; el valor es el del abono, no el total de la factura.",
+        "Tipo de cuenta: Corriente = 1; cualquier otro valor sale como Ahorros (2).",
+        "Bogotá no lleva el número de factura; Colpatria sí."
+      ]
+    },
+    {
+      "id": "flujo-caja",
+      "tipo": "flujo",
+      "flujoId": "cxp-pago-caja",
+      "kicker": "Proceso 3",
+      "titulo": "Pago en caja: forma de pago, confirmar y comprobante",
+      "imagen": "img/cxp_caja_sketchnote.jpg",
+      "imagenAlt": "Caja abierta → Mov. Egreso → Forma de pago → Confirmar → abono pagado, factura recalculada, orden pagada, comprobante",
+      "intro": "El recibo de egreso espera en la caja indicada en la orden. El cajero, con la **caja abierta**, registra la **forma de pago** (debe sumar el valor del recibo) y pulsa **Confirmar**. Ese clic paga el abono, recalcula la factura, marca la orden como pagada y genera el comprobante contable del egreso. Hay dos atajos para órdenes con egresos individuales: **Confirmar orden de pago** en caja y **Realizar Pago** en la orden.",
+      "puntosClave": [
+        "Sin caja abierta por el cajero del turno no se confirma nada.",
+        "La forma de pago debe ser igual al valor del recibo; fecha no futura; periodo contable abierto.",
+        "Confirmar es irreversible desde la orden: para deshacer hay que anular el recibo en caja (eso desautoriza la orden).",
+        "El comprobante del egreso debita la cuenta por pagar de cada factura y acredita la forma de pago.",
+        "Si la CxP venía de caja menor y la variable lo permite, el reembolso entra solo."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosSolicitud",
+      "kicker": "Semáforo",
+      "titulo": "Estados de la factura, la orden, el abono y el recibo",
+      "intro": "Qué significa cada valor, qué botón habilita y qué hacer con él."
+    },
+    {
+      "id": "flujo-notas",
+      "tipo": "flujo",
+      "flujoId": "cxp-notas",
+      "kicker": "Alrededor 1",
+      "titulo": "Notas débito y crédito: corregir una factura contabilizada",
+      "imagen": "img/cxp_notas_sketchnote.jpg",
+      "imagenAlt": "Catálogo de notas → Nueva nota → Contabilizar → DIAN y reversa",
+      "intro": "Una factura **contabilizada** no se edita. Lo que se debe se ajusta con una **nota débito** (baja el saldo: descuento, devolución, glosa) o una **nota crédito** (lo sube). La nota se toma de un **catálogo** que define tipo y cuenta, se registra sobre la factura y se **contabiliza aparte**; solo desde ese momento pesa en el saldo.",
+      "puntosClave": [
+        "La nota hereda tipo y cuenta DB del catálogo; la cuenta CR es la cuenta por pagar de la factura.",
+        "Impuestos? devuelve retenciones en proporción; Afecta IVA agrega IVA; Saldo completo deja la factura en cero (solo DB).",
+        "Masivo por ítem reparte la nota entre las líneas del detalle con su centro de costo.",
+        "Genera CxP? traslada el valor a una CxP nueva de otro tercero.",
+        "Solo las notas DB contabilizadas de un documento equivalente aceptado se envían a la DIAN.",
+        "Desaplicar reversa el comprobante y deja la nota pendiente; Eliminar solo si nunca se contabilizó."
+      ]
+    },
+    {
+      "id": "notas-detalle",
+      "tipo": "texto",
+      "kicker": "Alrededor 1",
+      "titulo": "Qué hace cada casilla de la nota y qué pasa en contabilidad",
+      "intro": "Detalle de las opciones del diálogo Nota y de las reglas que aplica el procedimiento.",
+      "md": "## El catálogo (Tipos de nota)\n\nCada nota del catálogo trae: **tipo** (DB o CR), **cuenta** contable, **comprobante**, **Cruce saldos** (DECRUCES) y **Afecta costo** (AFCOSTO). Si afecta costo, la nota exige elegir un **servicio del detalle** de la factura (botón Servicio) y no permite Genera CxP ni Masivo por ítem.\n\n## Las casillas\n\n| Casilla | Qué hace |\n|---|---|\n| Vlr. Bruto | Valor de la nota antes de impuestos. Se habilita al elegir la nota. |\n| Impuestos? | Devuelve en proporción las retenciones de la factura (no la reteIVA ni las asumidas). La tabla muestra factor y valor por impuesto. |\n| Afecta IVA | Agrega el IVA al porcentaje elegido; el valor neto cambia. |\n| Saldo completo | Solo notas DB: calcula el bruto para dejar la factura en cero. |\n| Masivo por ítem | Reparte el bruto entre las líneas del detalle (FCXPDNOT) tomando el centro de costo de cada una. Edición manual por fila si se desmarca el bloqueo. |\n| Genera CxP? | Al contabilizar crea una CxP nueva (consecutivo SR) a nombre del tercero indicado, con una línea por el valor y el servicio nuevo, y la contabiliza. La factura original baja por nota débito. |\n| Cambio Tercero? | Pide tercero y documento; hoy solo se guarda como marca (sin lógica de traslado). |\n| Centro de costo | Obligatorio para el asiento salvo en masivo por ítem. |\n\n## Vista previa del asiento\n\nEl diálogo muestra el comprobante que se generará: nota **DB** debita la cuenta por pagar (cuenta CR de la factura) y acredita la cuenta de la nota; nota **CR** al revés. Las retenciones devueltas van a su cuenta y, si hay IVA, a la cuenta de IVA de la línea.\n\n## Reglas del procedimiento\n\n1. Registrar: factura no anulada y con saldo mayor a cero.\n2. Editar: la nota no puede estar contabilizada.\n3. Contabilizar: la factura debe estar contabilizada; la nota no debe tener comprobante; una DB no puede dejar el saldo bajo cero.\n4. El saldo de la factura solo considera notas **contabilizadas** y en estado N o P; las anuladas no cuentan.\n5. Enviar DIAN: solo DB, contabilizada, de una factura marcada documento equivalente y ya aceptada por la DIAN.\n6. Eliminar: solo notas nunca contabilizadas. Las de devolución de inventario (procedencia INV) nacen desde Inventario y se imprimen con Imp. Devolución.\n7. Desaplicar sobre una nota contabilizada: si el periodo está abierto anula el comprobante; si está cerrado genera la reversa. La nota vuelve a pendiente (N).\n\n## Notas que no se digitan aquí\n\n- **Devolución de compras**: Inventario crea la nota (procedencia INV) con el movimiento.\n- **Glosa de auditoría**: la pestaña Auditoría crea la nota DB (procedencia AUDT) y sus ítems.",
+      "puntosClave": [
+        "Ninguna nota se edita contabilizada.",
+        "El saldo solo ve notas contabilizadas y no anuladas.",
+        "Genera CxP? reparte la deuda: la original baja por nota y nace otra CxP para el nuevo tercero."
+      ]
+    },
+    {
+      "id": "flujo-anticipos",
+      "tipo": "flujo",
+      "flujoId": "cxp-anticipos",
+      "kicker": "Alrededor 2",
+      "titulo": "Anticipos a proveedor: orden, caja y legalización",
+      "imagen": "img/cxp_anticipos_sketchnote.jpg",
+      "imagenAlt": "Tipo de anticipo → Orden de anticipo → Enviar a Caja → Aplicar Anticipo",
+      "intro": "Cuando hay que **pagar antes de recibir la factura**, se crea una **orden de anticipo** y se envía a caja: nace una cuenta por pagar de procedencia Anticipos con su egreso. Cuando la factura real se registra, **Aplicar Anticipo** la descuenta (legalización) y la factura sigue el ciclo por el saldo restante.",
+      "puntosClave": [
+        "El tipo de anticipo define la cuenta de anticipo (débito) y la contrapartida (crédito).",
+        "La orden abierta (C) se cierra (P) y se envía a caja (I); el egreso cae en la caja de anticipos.",
+        "El anticipo se contabiliza al confirmar el egreso en caja, no al crearlo.",
+        "Aplicar Anticipo propone el menor entre el saldo de la factura y el saldo del anticipo.",
+        "Anular Anticipo deshace la legalización si el periodo sigue abierto."
+      ]
+    },
+    {
+      "id": "flujo-radian",
+      "tipo": "flujo",
+      "flujoId": "cxp-radian",
+      "kicker": "Alrededor 3",
+      "titulo": "Facturas Radian: eventos DIAN y generar la cuenta por pagar",
+      "imagen": "img/cxp_radian_sketchnote.jpg",
+      "imagenAlt": "Bandeja → Eventos DIAN → Generar CxP → Marcar",
+      "intro": "Las **facturas electrónicas** que los proveedores le emiten a la institución entran solas a la bandeja **Facturas Radian**. Desde ahí se responde a la DIAN con **eventos** (acuse de recibo, recibo del bien o servicio, aceptación o reclamo) y, con el acuse hecho, se **genera la cuenta por pagar** sin digitar la factura. **Marcar** concilia las que ya se registraron a mano.",
+      "puntosClave": [
+        "La bandeja se llena sola; no se digita la factura electrónica.",
+        "Registrar eventos exige permiso y datos completos del usuario (documento, departamento, cargo).",
+        "Generar CxP solo con el filtro de evento en acuse de recibo y desde la pestaña dentro de Cuentas por Pagar (la ruta Proceso Radian es solo consulta/eventos).",
+        "La CxP generada sigue el ciclo normal: impuestos, contabilizar, orden, caja.",
+        "Marcar no crea nada: cruza por NIT y número de factura."
+      ]
+    },
+    {
+      "id": "flujo-auditoria",
+      "tipo": "flujo",
+      "flujoId": "cxp-auditoria",
+      "kicker": "Alrededor 4",
+      "titulo": "Auditoría de facturas de servicios: glosa, conciliación y cierre",
+      "imagen": "img/cxp_auditoria_sketchnote.jpg",
+      "imagenAlt": "Factura de servicios contabilizada → Nueva Glosa → Cerrar Glosa → Levantar → Cerrar Conci",
+      "intro": "La pestaña **Auditoría** revisa facturas de **Servicios** ya contabilizadas. Si hay algo que objetar se registra una **glosa**: una nota débito de auditoría con ítems por paciente o documento. **Cerrar Glosa** la contabiliza y la factura baja; con la respuesta del proveedor se **levanta** lo sustentado y se **concilia**. Si no hay nada que objetar, **Cerrar Sin Glosa** marca la factura como auditada.",
+      "puntosClave": [
+        "Solo facturas de procedencia Servicios y contabilizadas.",
+        "La glosa es contable: baja la cuenta por pagar vía nota DB (procedencia AUDT).",
+        "Ítems: Nuevo → Glosa (cerrada y contabilizada) → Conci (conciliada).",
+        "Desaplicar la nota desde Cuentas por Pagar devuelve los ítems a Nuevo.",
+        "Reliquidar cxp y Escaneo están en pantalla pero sin procedimiento detrás."
+      ]
+    },
+    {
+      "id": "informes-cierre",
+      "tipo": "texto",
+      "kicker": "Alrededor 5",
+      "titulo": "Informes, cierre del mes de CxP y cruce con cartera",
+      "intro": "Lo que no es registrar ni pagar: consultar, exportar, cerrar el mes administrativo y lo que quedó del cruce con cuentas por cobrar.",
+      "md": "## Dónde están los informes\n\nDos entradas a las mismas consultas: el botón **Reportes y Cierre** de la pestaña Cuentas por Pagar y la pestaña **Informes** (tarjetas). La pestaña Informes necesita que la pestaña Cuentas por Pagar esté cargada.\n\n| Informe | Qué muestra | Método |\n|---|---|---|\n| CxP por Vencimiento | Facturas pendientes por proveedor con días de vencimiento (aging por tramos). | CONF_CXP · EXPORTAR_CXP_PENDIENTES |\n| CxP Vencimiento Histórico | Totales por tercero y procedencia a una fecha de corte, detallado o resumido. | CONF_CXP · HIST_TOTALES / DETALLADO_HIST_TOTALES |\n| Vencimientos por Tercero | Aging por tercero con detalle de facturas. | CONF_CXP · VENCIMIENTO_TERCERO / VENCIMIENTO_TERCERO_DETALLE |\n| CxP por Rango de Vencimiento | Totales y detalle por rango de días. | CONF_CXP · EXPORTAR_CXP_RANGO_VENCIMIENTOS / EXPORTAR_CXP_DETALLADO |\n| Consultar CxP | Listado por proveedor y fechas, contabilizadas o no, con totales. | CONF_CXP · EXPORTAR_CXP / RPT_CXP_PENDIENTES |\n| Estado CxP | Movimiento del periodo (año, mes, rango de cuentas). | CONF_CXP · EXPORTAR_CXP_ESTADO / BUSCANDO_CXP |\n| Cuentas Esperadas en Salud | Honorarios médicos presupuestados pendientes (libro Honorarios médicos). | CONF_CXP · EXPORTAR_CXP_ESPERADAS |\n| CxP Acumulado / Circularización | Opciones del menú Reportes y Cierre. | Ver hallazgos |\n\nTodos exportan a Excel; algunos imprimen PDF.\n\n## Cierre del mes de CxP\n\n**Informes → Cierre CxP** (o Reportes y Cierre → Cierre). Se elige año y mes del periodo contable y se pulsa **Cerrar Periodo**:\n\n1. Verifica que no haya comprobantes errados del mes.\n2. Congela el **aging** de las facturas pendientes a fin de mes en el histórico (FCARTH, procedencia CXP).\n3. Marca el periodo como **cerrado para CxP** (PRI.CERRADO_CXP).\n\nEfecto: no se registran ni generan facturas (manuales, Radian, masivas) con fecha de documento o de CxP en un mes cerrado; los movimientos de caja también lo respetan. Es el cierre **administrativo**; el cierre contable del periodo (PRI.CERRADO) es otro y lo hace Contabilidad.\n\n**Abrir Periodo** solo se permite dentro de los **25 días** siguientes al último día del mes; quita la marca y borra el histórico. **Exportar Excel** baja el aging congelado.\n\n## Cruce con cuentas por cobrar\n\nEn la orden de pago, **Cruce con CxC** muestra los cruces registrados (FCXPCXC): facturas de venta del mismo tercero que se compensan contra lo que se le paga. Cuando existen, el comprobante del egreso debita la cuenta por pagar por el abono y acredita la cartera por el cruce, y el egreso sale por la diferencia. En Qrystalos2 la ventana es **solo consulta**: no hay botón ni procedimiento que cree un cruce (ver hallazgos).\n\n## Caja menor y nómina\n\nLa **solicitud de reembolso de caja menor** crea una CxP a nombre del responsable; se paga por orden y, al confirmar el egreso, el reembolso puede entrar solo a la caja menor. La **nómina** llega contabilizada desde su módulo y se paga con Buscar Nómina y archivo plano.",
+      "puntosClave": [
+        "Mismos informes desde Reportes y Cierre y desde la pestaña Informes.",
+        "Cerrar Periodo congela el aging y bloquea registrar facturas en ese mes; Abrir solo dentro de 25 días.",
+        "El cierre de CxP es administrativo; el contable es otro.",
+        "Cruce con CxC: hoy solo se consulta."
+      ]
+    },
+    {
+      "id": "estados-alrededor",
+      "tipo": "semaforo",
+      "datos": "estadosAlrededor",
+      "kicker": "Alrededor 6",
+      "titulo": "Estados de notas, anticipos, Radian, glosas y periodo",
+      "intro": "Los valores que se ven en las pestañas satélite y lo que toca hacer con cada uno. Los estados de la factura y de la orden de pago están en el capítulo anterior de estados."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo que se encontró al contrastar las pantallas, la documentación y los procedimientos del ciclo completo (registrar, orden, caja, archivo plano) y de lo que lo rodea (notas, anticipos, Radian, auditoría, informes y cierre). Los del ciclo y el archivo plano tienen solución en el dictamen técnico «Cuentas por pagar: hallazgos del ciclo y archivo plano bancario»; los de alrededor quedan registrados para un dictamen posterior.",
+      "md": "## Hallazgos del ciclo (con solución propuesta)\n\n1. **Posible doble egreso en el modo archivo plano dinámico.** Al autorizar en ese modo se crea un recibo de egreso por proveedor ya confirmado y, acto seguido, se ejecuta el cierre clásico con la orden aún No Confirmada, que crea un segundo juego de recibos pendientes. **Solución:** quitar el cierre clásico de ese modo y dejar solo el cierre de la orden. Verificar antes en preversión.\n2. **El egreso individual por tercero no lleva el abono en su línea.** Por eso el comprobante del egreso debita la cuenta del concepto de caja y no la cuenta por pagar de cada factura. **Solución:** una línea de recibo por abono, con el abono enlazado, igual que en el modo clásico. Validar con contabilidad.\n3. **Permisos por pestaña no se evalúan.** **Solución:** leer CXP_AUDITORIA, CXP_ORDEN_PAGO, CXP_ANTICIPOS y CXP_INFORMES al abrir la página y ocultar la pestaña sin permiso.\n4. **Eliminar todos los detalles no envía lo que el procedimiento espera.** **Solución:** enviar el modo «todos» o recorrer los ítems uno a uno y recalcular la factura.\n5. **Informes necesita que la pestaña CxP se haya abierto antes.** **Solución:** que Informes cargue su propio estado.\n6. **Radian: vinculación inexistente.** **Solución:** retirar la llamada; el registro por lote ya marca la factura (dictamen Radian).\n7. **Reconstruir no homologa la cuenta gravada.** **Solución:** incluirla con la misma regla que la cuenta del servicio (requerimiento de inventario).\n8. **Estado M de la factura sin origen.** **Solución:** negocio decide si se retira la etiqueta «En Pago Masivo» o se documenta qué lo asigna.\n9. **Pagar desde la factura no mira el modo de autorización.** **Solución:** que el botón Pagar use la misma regla de variables que Autorizar en Órdenes de pago.\n\n## Hallazgos del archivo plano para el banco\n\n10. **La opción Plano Bancolombia de la orden no funciona.** Llama a una función con otros parámetros y no descarga nada. **Solución:** retirarla o implementarla con su formato propio.\n11. **El plano de nómina quedó inalcanzable.** El botón que abre su ventana está desactivado y, en el modo dinámico, llama a una función que no existe. **Solución:** definir con negocio si sigue vigente; restaurar o retirar.\n12. **El plano de nómina toma la cuenta contable como cuenta bancaria** y no encuentra el banco del empleado. **Solución:** leer banco, tipo y número de cuenta del tercero, como hace el plano de la orden.\n13. **No queda registro del archivo generado.** El guardado posterior apunta a un modelo equivocado y el método es un esqueleto. **Solución:** registro por orden (formato, cuenta, archivo, registros, valor, usuario, fecha) visible en la orden.\n14. **Colpatria ignora los parámetros que pide** (clave, oficina, tipo de transacción fijos) y el diálogo se titula siempre Banco Bogotá. **Solución:** usar lo digitado y corregir título y validaciones.\n15. **Banco de Bogotá homologa mal el tipo de identificación** (CE sale como cédula). **Solución:** corregir la comparación y usar la tabla de equivalencias.\n16. **No se valida nada antes de descargar.** Proveedores sin cuenta o sin código ACH salen en blanco y el rechazo lo da el banco. **Solución:** lista de inconsistencias antes de generar y mensaje claro cuando no hay cuentas propias con tipo de plano.\n\n## Hallazgos de alrededor del ciclo (pendientes de dictamen)\n\n1. **Botones y casillas que no tienen procedimiento detrás.** En Generar CxP desde Radian la casilla de guardar la configuración contable del proveedor avisa que no pudo guardar; en Auditoría el botón Reliquidar cxp no hace nada; el enlace de vinculación Radian tampoco existe. **Solución:** implementar la homologación contable por proveedor (útil para Radian) o retirar esos controles; mientras tanto ocultarlos.\n2. **Abrir Periodo borra el histórico equivocado.** Al reabrir el mes de CxP se quita la marca de cerrado pero se borra el aging congelado de cartera, no el de cuentas por pagar. El de CxP queda, así que un nuevo Cerrar Periodo no lo regenera, y cartera pierde su histórico del mes. **Solución:** borrar solo el histórico de CxP. Verificar en preversión.\n3. **Cerrar Periodo revisa comprobantes de cartera y no los de CxP.** El mensaje habla de Cartera y Facturación, y la rutina compartida exige la variable de cartera con glosa aunque el cierre sea de CxP. **Solución:** validar los comprobantes errados de cuentas por pagar, notas y egresos, ajustar el mensaje y no exigir esa variable en el cierre de CxP.\n4. **Cerrar Sin Glosa marca la factura aunque devuelva error.** Si la factura tiene ítems de glosa el procedimiento informa que está en auditoría, pero ya la dejó marcada como auditada. **Solución:** comprobar el error antes de marcar.\n5. **Cruce con cuentas por cobrar sin forma de crearlo.** La orden de pago muestra los cruces pero ninguna pantalla ni procedimiento los registra; el comprobante del egreso solo actúa sobre cruces heredados. **Solución:** definir con negocio si el cruce CxP–CxC sigue vigente en web; si sí, método para crear y anular el cruce con sus validaciones.\n6. **Desaplicar una glosa puede no devolver los ítems.** La reversa de la nota compara la procedencia de auditoría con dos literales distintos y filtra los ítems por una columna que no es la que los liga a la nota. **Solución:** unificar el literal y filtrar por el vínculo correcto. Probar con una glosa cerrada y desaplicada.\n7. **Genera CxP? puede responder bien dejando la nota sin marcar.** Si la cuenta por pagar nueva del otro tercero no obtuvo comprobante, la nota original queda pendiente en pantalla aunque la CxP exista. **Solución:** devolver error y revertir cuando la CxP nueva no se contabilice.\n8. **Una segunda glosa toma el valor de todas.** El valor de la nota de auditoría se iguala a la suma de todos los ítems glosados de la factura, no solo de los suyos. **Solución:** sumar solo los ítems ligados a esa nota.\n9. **Aplicar Anticipo no muestra el error.** Cuando el procedimiento rechaza la legalización, la pantalla intenta leer el mensaje de una variable que no existe y no se ve nada. **Solución:** tomar el mensaje de la respuesta.\n10. **CxP Acumulado y Circularización sin método documentado.** Están en el menú Reportes y Cierre pero no aparecen en el catálogo de informes. **Solución:** revisar en preversión; documentar o retirar.\n\n## Verificado\n\n- Orden de pago, caja, notas, anticipos, Radian, auditoría y cierre son idénticos entre la canasta de trabajo y la última versión liberada: ninguno de los hallazgos tiene arreglo pendiente en la canasta.\n- En SPQ_FCXP la canasta solo agrega la bandera de carga masiva en la cabecera y el código UNSPSC en el detalle (crear y clonar).\n- El libro anterior describía la orden como «autorizar → marcar pagada por egreso»; se completaron los tres modos de autorización, las validaciones exactas con sus mensajes, la confirmación en caja con sus tres pantallas, el comprobante del egreso, los estados de factura, orden, abono y recibo, y el archivo plano para el banco.",
+      "puntosClave": [
+        "Sin datos de ningún cliente en este libro.",
+        "Fichas leídas de los métodos de orden de pago, caja y los procedimientos de cierre."
+      ]
+    }
+  ],
+  "estadosAlrededor": {
+    "titulo": "Estados de la nota, la orden de anticipo, la legalización, el evento Radian, la glosa y el periodo",
+    "descripcion": "Qué significa cada valor que se ve en las pestañas satélite y qué hacer.",
+    "columnas": [
+      "Valor",
+      "Pantalla"
+    ],
+    "filas": [
+      {
+        "codigo": "N",
+        "tono": "ambar",
+        "etiquetas": [
+          "FCXPDBCR.ESTADO N",
+          "Conta: NO"
+        ],
+        "significa": "Nota registrada y pendiente. Todavía no pesa en el saldo de la factura; se puede editar, eliminar o contabilizar.",
+        "queHacer": "Revisar valor, impuestos e IVA y pulsar Contabilizar."
+      },
+      {
+        "codigo": "OK",
+        "tono": "verde",
+        "etiquetas": [
+          "CONTABILIZADA 1 · NROCOMPROBANTE",
+          "Conta: SI"
+        ],
+        "significa": "Tiene comprobante y ya baja (DB) o sube (CR) el saldo. No se edita.",
+        "queHacer": "Si fue documento equivalente, Enviar DIAN (solo DB). Para corregir: Desaplicar."
+      },
+      {
+        "codigo": "DIAN",
+        "tono": "azul",
+        "etiquetas": [
+          "FCXPDBCR.ESTADODIAN",
+          "Enviar DIAN / Reencolar"
+        ],
+        "significa": "1 = encolada para enviar; 2 = aceptada por la DIAN; 3 = con error (botón Reencolar).",
+        "queHacer": "Respuesta DIAN muestra el detalle; con 3 corregir y Reencolar."
+      },
+      {
+        "codigo": "A",
+        "tono": "gris",
+        "etiquetas": [
+          "FCXPDBCR.ESTADO A"
+        ],
+        "significa": "Nota anulada por reversa. Ya no cuenta en el saldo.",
+        "queHacer": "Nada; crear otra si hace falta."
+      },
+      {
+        "codigo": "C",
+        "tono": "ambar",
+        "etiquetas": [
+          "FCOM.ESTADO C",
+          "Botón Cerrar"
+        ],
+        "significa": "Orden de anticipo abierta: se edita cabecera y detalle.",
+        "queHacer": "Completar el detalle y Cerrar."
+      },
+      {
+        "codigo": "P",
+        "tono": "azul",
+        "etiquetas": [
+          "FCOM.ESTADO P",
+          "Botón Imprimir / Enviar a Caja"
+        ],
+        "significa": "Cerrada, pendiente de enviar a caja.",
+        "queHacer": "Enviar a Caja con el valor del anticipo."
+      },
+      {
+        "codigo": "I",
+        "tono": "verde",
+        "etiquetas": [
+          "FCOM.ESTADO I · ENCXP 1"
+        ],
+        "significa": "Ya generó anticipo (CxP procedencia Anticipos) o ya fue legalizada.",
+        "queHacer": "Pagar el egreso en caja; luego Aplicar Anticipo sobre la factura real."
+      },
+      {
+        "codigo": "I/L/A",
+        "tono": "azul",
+        "etiquetas": [
+          "ANT.ESTADO",
+          "Ver Legalizaciones"
+        ],
+        "significa": "I = creada; L = legalizada (ya descuenta de la factura); A = anulada.",
+        "queHacer": "Anular Anticipo solo sobre L y con periodo abierto."
+      },
+      {
+        "codigo": "Pend",
+        "tono": "ambar",
+        "etiquetas": [
+          "FRADIAND.PROCESADO 0",
+          "Línea de tiempo"
+        ],
+        "significa": "Evento registrado y en cola para el servicio que lo envía a la DIAN.",
+        "queHacer": "Esperar; se puede borrar mientras no se procese."
+      },
+      {
+        "codigo": "Proc",
+        "tono": "verde",
+        "etiquetas": [
+          "PROCESADO 1 · ERROR 0/1"
+        ],
+        "significa": "Procesado: la DIAN lo recibió. Error: el envío falló.",
+        "queHacer": "Con Error, Reencolar; revisar solicitud y respuesta en la fila."
+      },
+      {
+        "codigo": "CxP",
+        "tono": "verde",
+        "etiquetas": [
+          "FRADIAN registrada · CNSFCXP visible"
+        ],
+        "significa": "La factura electrónica ya tiene cuenta por pagar (generada o marcada).",
+        "queHacer": "Continuar en la pestaña Cuentas por Pagar."
+      },
+      {
+        "codigo": "Nuevo",
+        "tono": "ambar",
+        "etiquetas": [
+          "FCXPS.ESTADO Nuevo"
+        ],
+        "significa": "Ítem glosado registrado; la nota débito aún no está contabilizada.",
+        "queHacer": "Cerrar Glosa."
+      },
+      {
+        "codigo": "Glosa",
+        "tono": "rojo",
+        "etiquetas": [
+          "FCXPS.ESTADO Glosa"
+        ],
+        "significa": "Glosa cerrada y contabilizada: la factura ya bajó.",
+        "queHacer": "Esperar respuesta del proveedor; Levantar / Conciliar."
+      },
+      {
+        "codigo": "Conci",
+        "tono": "verde",
+        "etiquetas": [
+          "FCXPS.ESTADO Conci"
+        ],
+        "significa": "Conciliada con el proveedor.",
+        "queHacer": "Imp. Conci como acta."
+      },
+      {
+        "codigo": "Aud",
+        "tono": "verde",
+        "etiquetas": [
+          "FCXP.AUDITADO 1 · USUAUDITA"
+        ],
+        "significa": "Cerrada sin glosa.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "Cerr",
+        "tono": "rojo",
+        "etiquetas": [
+          "PRI.CERRADO_CXP 1",
+          "Informes → Cierre CxP"
+        ],
+        "significa": "No se registran ni generan facturas con fecha en ese mes; el aging quedó congelado.",
+        "queHacer": "Abrir Periodo solo dentro de los 25 días siguientes al fin de mes."
+      }
+    ]
+  }
+}

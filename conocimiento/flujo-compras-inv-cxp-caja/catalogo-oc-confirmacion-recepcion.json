@@ -1,0 +1,128 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "proposito": "Confirmar OC y primera recepción: estados FCOM, tránsito ITRA, caminos a IMOV y flags ENINVENTARIO/ENCXP.",
+  "continuaDesde": "catalogo-bodega-tipo-mov.json",
+  "pantallas": {
+    "ordcom": {
+      "path": "/inv/ordcom",
+      "vue": "FComComponent",
+      "modelo": "FCOM",
+      "metodosClave": [
+        "CONFIRMAR_ORDEN",
+        "RECEPCION_MASIVA",
+        "RECEPCION_PARCIAL_OC",
+        "ABRIR"
+      ]
+    },
+    "ges": {
+      "path": "/inv/ges",
+      "nota": "Tránsito, loteo, ON_ACEPTA_TRANSITO, CONF_ENTRADA"
+    }
+  },
+  "estadosFcom": [
+    {
+      "codigo": "C",
+      "ui": "ABIERTA / borrador",
+      "operacion": "Editable; aún no genera tránsito operativo por confirmación."
+    },
+    {
+      "codigo": "P",
+      "ui": "PROCESADA / confirmada",
+      "operacion": "Tras CONFIRMAR_ORDEN (desde C). Lista para recepcionar. SPK_INSERT_ITRA_REQ ya corrió."
+    },
+    {
+      "codigo": "R",
+      "ui": "RECEPCION PARCIAL",
+      "operacion": "Tras CONF_ENTRADA parcial; SPK_FCOM_RECALCULA_RECEPCION."
+    },
+    {
+      "codigo": "I",
+      "ui": "CONFIRMADA EN BODEGA",
+      "operacion": "Recepción total vs FCOMD pendiente."
+    },
+    {
+      "codigo": "A",
+      "ui": "ANULADA",
+      "operacion": "No recepcionar."
+    }
+  ],
+  "confirmarOrden": {
+    "sp": "SPQ_FCOM · CONFIRMAR_ORDEN",
+    "precondiciones": [
+      "Al menos una línea FCOMD",
+      "IDBODEGA e IDTERCERO definidos (operación)",
+      "Catálogo artículo y bodega/tipo mov ya válidos (capas previas)"
+    ],
+    "efecto": [
+      "ORDENCOMPRA incrementa (mínimo 1)",
+      "ESTADO C → P (si estaba en C)",
+      "EXEC SPK_INSERT_ITRA_REQ → ITRA + ITRAH por cada FCOMD",
+      "IEXIF/APLIMF → EN RUTA si aplica"
+    ],
+    "noHace": [
+      "No crea IMOV confirmado",
+      "No pone ENINVENTARIO=1 en el SP revisado (sigue en 0 al crear OC)"
+    ]
+  },
+  "itraAlConfirmar": {
+    "sp": "SPK_INSERT_ITRA_REQ",
+    "cabecera": {
+      "ESTADO": 0,
+      "LOTEADO": 0,
+      "CNSFCOM": "ligado",
+      "IDBODEGADES": "FCOM.IDBODEGA",
+      "IDTIPOMOV": "USVGS IDINVMOV_COMPRAS (IDINVMOV_PRESTAMOS si FCOM.IDTIPOSER=Presta)",
+      "PROCEDENCIA": "INV",
+      "CNSMOVORI": "ORDEN DE COMPRA"
+    },
+    "detalleItah": {
+      "INICIAL": 0,
+      "CANTIDADORI": "FCOMD.CANTIDAD",
+      "PCOSTO": "según TIPOREGIMEN proveedor y DECONSUMO",
+      "postUpdate": "ITAR.MLOTEO=1 → INICIAL=1, CANTIDADDES=CANTIDADORI (sin UI loteo)"
+    },
+    "puntosCriticos": ["PC-02", "PC-02b", "PC-02c", "PC-03"]
+  },
+  "primeraRecepcion": {
+    "caminos": [
+      {
+        "id": "manual-transito",
+        "nombre": "Tránsito + loteo + aceptar",
+        "pasos": [
+          "ITRA/ITRAH ya existen (confirmación o recepción parcial)",
+          "IZSOL_TRANSITO: AGREGAR_IART / ON_PROCESAR (si MLOTEO≠1)",
+          "IZSOL ON_ACEPTA_TRANSITO → SPK_INSERTENTTRANSITO",
+          "IMOV ESTADO=0",
+          "IZSOL CONF_ENTRADA → IEXI, FCOM R/I"
+        ]
+      },
+      {
+        "id": "masiva-excel",
+        "nombre": "Recepción masiva (Excel DIAN)",
+        "pasos": [
+          "SPQ_FCOM RECEPCION_MASIVA → SPQ_FCOM_RECEPCION_MASIVA",
+          "Puede crear ITRAH INICIAL=1 y SPK_INSERTENTTRANSITO sin UI loteo",
+          "CONF_ENTRADA aparte"
+        ]
+      }
+    ],
+    "postConfirmacionSinRecepcion": "Normal: ESTADO=P, ITRA ESTADO=0, sin IMOV o IMOV solo tras recepción."
+  },
+  "flagsCabecera": {
+    "ENINVENTARIO": {
+      "significado": "Marca relación del documento con inventario (UI/seguimiento).",
+      "observado": "Alta FCOM en SPQ_FCOM con valor 0; validar en cliente si sube tras CONF_ENTRADA o CxP."
+    },
+    "ENCXP": {
+      "significado": "Marca relación con cuentas por pagar.",
+      "observado": "Alta con 0; CxP se genera vía PROCESAR_IMOVH / SPK_INSERT_CXP_INV."
+    }
+  },
+  "siguienteCapa": "catalogo-conf-entrada-cxp.json",
+  "matrizImpacto": [
+    { "control": "CONFIRMAR_ORDEN", "fallaSi": ["sin FCOMD", "SPK_INSERT_ITRA_REQ error"] },
+    { "control": "ITRA.IDTIPOMOV", "fallaSi": ["≠ USVGS esperado", "ITMO inactivo"] },
+    { "control": "Primera recepción", "fallaSi": ["ESTADO A/C sin confirmar", "ITRAH sin loteo cuando aplica", "factura duplicada en IMOV"] }
+  ]
+}

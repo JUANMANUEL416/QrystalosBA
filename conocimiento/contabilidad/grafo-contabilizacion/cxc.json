@@ -1,0 +1,302 @@
+{
+  "procedencia": "CXC",
+  "actualizado": "2026-10-13",
+  "fuenteSql": "sql/SPK_NC_CONTAB_CXC.sql; SPQ_FPAG_COL · APLICARPAGO → SPK_PAGOSCXC (conocimiento/recaudos/sps.json)",
+  "documentoOrigen": {
+    "tabla": "FPAG",
+    "claves": [
+      "CNSFPAG"
+    ],
+    "referenciasMcp": {
+      "REFERENCIA1": "CNSFPAG",
+      "PROCEDENCIA": "CXC"
+    }
+  },
+  "generador": "SPK_NC_CONTAB_CXC",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión comprobante CXC",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "llamaAnterior": [
+        "N3-contab-cxc"
+      ]
+    },
+    {
+      "id": "N3-contab-cxc",
+      "orden": 3,
+      "nombre": "Generar comprobante recaudo (PROCEDENCIA CXC)",
+      "sp": "SPK_NC_CONTAB_CXC",
+      "metodoUi": [
+        "SPK_PAGOSCXC (anidado en APLICARPAGO)",
+        "SPQ_CONTABILIDAD_3 · OM Recaudos"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fpag-cerrado",
+          "desc": "FPAG CERRADO=1; FPAGD con facturas y valores",
+          "obligatorio": true,
+          "validacionSql": "FPAG + FPAGD por CNSFPAG"
+        },
+        {
+          "id": "ingreso-tesoreria",
+          "desc": "INGRESO CAJA/BANCOS/CXP: FCJ RECAUDO o BMOVD ENPAGOS coherente",
+          "obligatorio": true
+        },
+        {
+          "id": "fpagdi-fimpdv",
+          "desc": "Retenciones/impuestos FPAGDI vs FIMPDV vigente",
+          "obligatorio": "si impuestos"
+        },
+        {
+          "id": "fcglo-glosas",
+          "desc": "INGRESO GLOSAS/DEVOLUCION: FCGLO aplicada",
+          "obligatorio": "según INGRESO"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "tcom-cxc",
+          "usvgs": [
+            "IDCON_TCOM_CXC",
+            "IDCON_TCOM_CXC_GLOSA",
+            "IDCON_TCOM_CXC_DEVO",
+            "COMPROBMULTISEDE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "vlrmaxajuste",
+          "usvgs": [
+            "VLRMAXAJUSTERECAUDOS",
+            "REC_VLRMAX_AJUSTE"
+          ],
+          "obligatorio": true
+        },
+        {
+          "id": "ttec-lineas",
+          "tabla": "TTEC",
+          "desc": "Por TIPOTTEC en FPAGD → CUENTACG, CUENTARAD, CUENTALG",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom-cxc",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-aplicar-recaudo"
+      ],
+      "puntosCriticos": [
+        "PC-CXC-01",
+        "PC-CXC-02",
+        "PC-CXC-03"
+      ],
+      "catalogoSql": {
+        "archivos": [
+          "SPK_NC_CONTAB_CXC.sql"
+        ],
+        "canasta": "PREVERSION (sql/)",
+        "usvgsLeidas": [
+          "COMPROBMULTISEDE",
+          "CONTABCXC",
+          "CONTGLOSA_PORTTEC",
+          "CTADTOFINANCIERO",
+          "CTA_DTO_IND_RECA_CXC",
+          "CTA_FPAG_1441_SUPERI",
+          "CTA_FPAG_360_a_720",
+          "CTA_FPAG_721_a_1440",
+          "CUENTA_CART_CASTI",
+          "CUEOFIN_CONTABCXC",
+          "CUE_IMP_RECAUDOS",
+          "IDCON_TCOM_CXC",
+          "IDCON_TCOM_CXC_DEVO",
+          "IDCON_TCOM_CXC_GLOSA",
+          "IDMODELOCONTABLE",
+          "MAN_CTAS_DE_MORA",
+          "RECAU_VLLIMITE_APROV",
+          "USARCUEPUENTE",
+          "VLRMAXAJUSTERECAUDOS"
+        ],
+        "validacionesKo": [
+          "Per�odo Contable No Existe",
+          "Per�odo Contable Cerrado"
+        ]
+      },
+      "postGenerador": {
+        "id": "post-generacion",
+        "sp": [
+          "SPK_NC_REVISAMCPE",
+          "SPK_PASA_MCP_MCPNIIF"
+        ],
+        "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
+      },
+      "notaTecnica": "Tipo comprobante varía por INGRESO y COMMS; cruce auditoría CNSFPAG implementado"
+    },
+    {
+      "id": "N2-aplicar-recaudo",
+      "orden": 2,
+      "nombre": "Aplicar recaudo (gate cartera)",
+      "sp": "SPK_PAGOSCXC",
+      "metodoUi": "SPQ_FPAG_COL · APLICARPAGO",
+      "requiresDocumento": [
+        {
+          "id": "fpagd-lineas",
+          "obligatorio": true
+        },
+        {
+          "id": "pri-fechapago",
+          "desc": "Periodo de FECHAPAGO abierto",
+          "obligatorio": true
+        },
+        {
+          "id": "cruce-cxp",
+          "desc": "INGRESO=CXP: SUM(FPAGDCXP)=VLRITEMS",
+          "obligatorio": "si CXP"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "rec-vlrmax",
+          "usvgs": "REC_VLRMAX_AJUSTE",
+          "obligatorio": true
+        },
+        {
+          "id": "fimpdv",
+          "tabla": "FIMPDV",
+          "obligatorio": "si impuestos"
+        },
+        {
+          "id": "fcglo",
+          "tabla": "FCGLO",
+          "obligatorio": "GLOSAS/DEVOLUCION"
+        }
+      ],
+      "efecto": "FPAG.CERRADO=1; invoca SPK_NC_CONTAB_CXC; mueve FCXCD/FTR",
+      "llamaAnterior": [
+        "N1-asignar-fpagd"
+      ]
+    },
+    {
+      "id": "N1-asignar-fpagd",
+      "orden": 1,
+      "nombre": "Asignar facturas / staging",
+      "sp": [
+        "SPQ_FPAG_COL · ASIGNAR",
+        "SPK_CARGA_MASIVA_FAC_CXC_02"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "fcxc-radicada",
+          "desc": "FCXC/FCXCD con saldo aplicable",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N1-crear-fpag"
+      ]
+    },
+    {
+      "id": "N1-crear-fpag",
+      "orden": 1,
+      "nombre": "Crear cabecera recaudo",
+      "sp": "SPQ_FPAG_COL · INSERTAR",
+      "requiresDocumento": [
+        {
+          "id": "fcj-recaudo",
+          "desc": "CAJA: FCJ RECAUDO=1, CERRADA=1",
+          "obligatorio": "si CAJA"
+        },
+        {
+          "id": "bmovd-recaudo",
+          "desc": "BANCOS: BMOVD RECAUDO=1, ENPAGOS",
+          "obligatorio": "si BANCOS"
+        }
+      ],
+      "llamaAnterior": [
+        "N0-config-cartera"
+      ]
+    },
+    {
+      "id": "N0-config-cartera",
+      "orden": 0,
+      "nombre": "Configuración cartera y contable",
+      "requiresConfig": [
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "ttec",
+          "tabla": "TTEC",
+          "obligatorio": true
+        },
+        {
+          "id": "fimpdv",
+          "tabla": "FIMPDV",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs-recaudos",
+          "usvgs": [
+            "REC_VLRMAX_AJUSTE",
+            "VLRMAXAJUSTERECAUDOS",
+            "IDCON_TCOM_CXC*"
+          ],
+          "obligatorio": true
+        }
+      ]
+    }
+  ],
+  "puertaOtrosModulos": {
+    "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS",
+    "procedencia": "CXC",
+    "tablaOrigen": "FPAG",
+    "notaDefecto": "Pestaña Conciliaciones envía FCXC por error de diseño — no es este generador"
+  },
+  "enlaceCaja": {
+    "grafo": "grafo-contabilizacion/caja.json",
+    "desc": "Recaudo CAJA requiere recibo ya contabilizado o coherente en tesorería antes del CXC"
+  },
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "validar_config_contabilidad + _checks_documento_fpag_grafo; pasos en trazar_recaudos",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "TTEC",
+      "CPCJ",
+      "CAJ",
+      "FPA",
+      "FIMPDV",
+      "documento-CNSFPAG"
+    ]
+  },
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/cxc.json",
+    "procesoHermano": "recaudos",
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-cxc.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

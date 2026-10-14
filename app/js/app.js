@@ -4,8 +4,16 @@
 (function () {
   const STORAGE_KEY = "qrystalos_ba_solicitud";
   const STORAGE_KEY_LEGACY = "qrys_quatec_solicitud";
-  const PATH_SQL = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql\\";
   const PATH_SQL_REFE = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\";
+
+  function carpetaSqlCaso(idCaso) {
+    const id = String(idCaso || val("#idCaso") || "").trim();
+    return id ? `activo/${id}/sql/` : "activo/{id-caso}/sql/";
+  }
+
+  function carpetaSqlCasoAbs(idCaso) {
+    return `C:\\DevQuasar\\Qrystalos\\QrystalosBA\\${carpetaSqlCaso(idCaso).replaceAll("/", "\\")}`;
+  }
 
   let currentStep = 1;
   const totalSteps = 5;
@@ -20,6 +28,54 @@
   let imagenesAnalisis = [];
   let archivosAnalisis = [];
   let diagramaFlujo = null;
+  let mockupsFormDraft = [];
+  let mockupsFormMeta = { mockups: [], sugeridos: [], plantillas: [], correoHint: "" };
+  let mockupsFormDirty = false;
+  let mockupsFormPreviewRuta = "";
+  let mockupsFormCasoId = "";
+
+  function mockupBelongsToCaso(ruta, idCaso) {
+    const rel = String(ruta || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^\//, "");
+    const caso = String(idCaso || "").trim();
+    if (!rel) return false;
+    if (rel.startsWith("plantillas/")) return false;
+    if (rel.startsWith("activo/")) {
+      if (!caso) return true;
+      return rel.startsWith(`activo/${caso}/`);
+    }
+    return rel.startsWith("solicitudes/");
+  }
+
+  function filterMockupsForCaso(rels, idCaso) {
+    const caso = String(idCaso || "").trim();
+    return (rels || [])
+      .map((r) => String(r || "").trim().replace(/\\/g, "/").replace(/^\//, ""))
+      .filter((r) => r && mockupBelongsToCaso(r, caso));
+  }
+
+  function clearMockupFormPreview() {
+    mockupsFormPreviewRuta = "";
+    const preview = $("#mockupFormPreview");
+    if (preview) {
+      preview.removeAttribute("src");
+      preview.classList.add("hidden");
+    }
+  }
+
+  async function onIdentificacionCasoChanged() {
+    const idCaso = val("#idCaso").trim();
+    if (!idCaso || idCaso === mockupsFormCasoId) return;
+    mockupsFormCasoId = idCaso;
+    mockupsFormDraft = filterMockupsForCaso(mockupsFormDraft, idCaso);
+    mockupsFormDirty = false;
+    mockupsFormMeta = { mockups: [], sugeridos: [], plantillas: [], correoHint: "" };
+    clearMockupFormPreview();
+    renderMockupsForm();
+    await cargarSolicitudCaso(idCaso);
+  }
   let syncingCorreo = false;
   let analisisLoadingToken = 0;
 
@@ -125,6 +181,7 @@
     }
     ov.hidden = false;
     document.body.classList.add("analisis-loading-active");
+    window.__qrysOcupado = true;
   }
 
   function updateAnalisisLoadingDetalle(texto) {
@@ -136,12 +193,31 @@
     const ov = $("#analisisLoadingOverlay");
     if (ov) ov.hidden = true;
     document.body.classList.remove("analisis-loading-active");
+    window.__qrysOcupado = false;
   }
+
+  window.QrysOcupado = {
+    mostrar: showAnalisisLoading,
+    ocultar: hideAnalisisLoading,
+    activo() {
+      return !!window.__qrysOcupado;
+    },
+  };
+
+  document.addEventListener("click", (e) => {
+    if (!window.__qrysOcupado) return;
+    const ov = $("#analisisLoadingOverlay");
+    if (ov && !ov.hidden && ov.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
 
   function bindMainTabs() {
     $$(".main-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         if (isAnalisisEnCurso()) return;
+        const shell = $("#appShell");
+        if (shell && !shell.classList.contains("modo-analista")) return;
         $$(".main-tab").forEach((t) => t.classList.toggle("active", t === tab));
         $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${tab.dataset.view}`));
         if (tab.dataset.view === "historico") refreshHistorico();
@@ -163,6 +239,15 @@
         verTerminados: !!$("#chkVerTerminadosCola")?.checked,
       },
     );
+  }
+
+  function marcarEstadoCola(estado, extra) {
+    if (!window.QrysCola) return Promise.resolve(false);
+    const idReq = val("#idReq") || idReqVinculado;
+    if (!idReq && !archivoColaVinculado) return Promise.resolve(false);
+    const pending = QrysCola.updateEstado(archivoColaVinculado || "", estado, extra || {}, idReq);
+    refreshColaTable();
+    return pending;
   }
 
   function switchToView(viewName) {
@@ -211,6 +296,14 @@
       offlineBox.classList.remove("hidden");
     }
 
+    if (!window.QrysChat) {
+      if ($("#chatMessages")) {
+        $("#chatMessages").innerHTML =
+          "<p class='hint'>No cargó <code>chat.js</code>. Recargue con <strong>Ctrl+F5</strong> o reinicie con <strong>abrir-app.bat</strong>.</p>";
+      }
+      return;
+    }
+
     const casos = await QrysChat.listarCasosActivos();
     const idCaso = QrysChat.resolverIdCaso(casos, val("#idReq"), idCasoArg || val("#idCaso"));
     if (idCaso) {
@@ -226,6 +319,7 @@
         ? `<p class="hint">Hay <strong>${n}</strong> casos en <code>activo/</code>. Elija el REQ en la lista de arriba — el Chat no usa un solo caso.</p>`
         : "<p class='hint'>Seleccione un caso en la lista de arriba o ábralo desde la cola.</p>";
       QrysChat.renderAgentStatus(null);
+      QrysChat.renderMockupsPanel("", { mockups: [], correoHint: "—" }, { readonly: true });
       if (!silent) await fillChatSelect("", casos);
       return;
     }
@@ -247,6 +341,27 @@
     QrysChat.renderChat($("#chatMessages"), chat.mensajes, idCaso);
     const documentos = await QrysChat.fetchDocumentos(idCaso);
     QrysChat.renderDocumentList($("#chatDocumentList"), documentos, idCaso);
+    const mockData = await QrysChat.fetchMockups(idCaso);
+    QrysChat.renderMockupsPanel(idCaso, mockData, { readonly: !!estado.fase1Cerrada });
+    const mockupsCaseChanged = idCaso !== mockupsFormCasoId;
+    if (mockupsCaseChanged || !mockupsFormDirty) {
+      mockupsFormCasoId = idCaso;
+      if (mockupsCaseChanged) mockupsFormDirty = false;
+      mockupsFormDraft = filterMockupsForCaso(
+        (mockData.mockups || []).map((m) => m.ruta),
+        idCaso,
+      );
+      mockupsFormMeta = {
+        mockups: (mockData.mockups || []).filter((m) => mockupBelongsToCaso(m.ruta, idCaso)),
+        sugeridos: (mockData.sugeridos || []).filter((m) => mockupBelongsToCaso(m.ruta, idCaso)),
+        plantillas: mockData.plantillas || [],
+        correoHint: mockData.correoHint || "",
+      };
+      if (mockupsFormPreviewRuta && !mockupsFormDraft.includes(mockupsFormPreviewRuta)) {
+        clearMockupFormPreview();
+      }
+      renderMockupsForm();
+    }
     const statusCode = QrysChat.renderAgentStatus(
       QrysChat.computeAgentStatus(estado, chat.mensajes, documentos),
     );
@@ -308,9 +423,15 @@
     $("#btnChatCerrarVolver")?.addEventListener("click", () => switchToView("cola"));
     $("#btnChatVerHistorico")?.addEventListener("click", () => switchToView("historico"));
     $("#btnChatCerrarHistorico")?.addEventListener("click", () => switchToView("historico"));
+    if (window.QrysChat?.bindMockupsPanel) {
+      QrysChat.bindMockupsPanel(() => val("#idCaso") || $("#chatSelectCaso")?.value || "");
+    }
+    if (window.QrysChat?.bindChatWorkspace) {
+      QrysChat.bindChatWorkspace();
+    }
     $("#chatInput").addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
-      if (e.altKey) {
+      if (e.altKey || e.shiftKey) {
         e.preventDefault();
         const el = e.target;
         const start = el.selectionStart;
@@ -396,7 +517,7 @@
 
     if (!confirm(
       "¿Cerrar fase 1?\n\n" +
-        "El dictamen se aprueba, se copia a aprobados/, los .sql pasan a sql_refe/{ID-REQ}/ " +
+        "El dictamen se aprueba, se copia a aprobados/, los .sql de activo/{id-caso}/sql/ pasan a sql_refe/{ID-REQ}/ " +
         "y se envía el correo al desarrollador.",
     )) return;
 
@@ -404,48 +525,59 @@
     if (!dest) {
       return alert("No se cierra Fase 1 sin correo del desarrollador. Indíquelo en la tarjeta Correo o en la lista de desarrolladores.");
     }
+    if (window.__qrysOcupado) return;
 
-    const cierre = await QrysChat.cerrarFase1(idCaso, { correo: dest });
-    if (!cierre || (cierre.ok === false && !cierre.estado)) {
-      return alert(cierre?.error || "No se pudo cerrar Fase 1.");
-    }
-    const mail = cierre?.correo || {};
-    if (mail.ok && !mail.borrador) {
-      await guardarCorreoEnLista(val("#desarrollador"), dest);
-      aplicarResultadoCorreoEnviado(idCaso, mail);
-    } else if (archivoColaVinculado) {
-      QrysCola.updateEstado(archivoColaVinculado, "aprobado", {}, idReqVinculado);
-    }
-    refreshColaTable();
-    refreshChatView(idCaso);
-
-    const sqlInfo = cierre?.sql || {};
-    const movidos = sqlInfo.movidos || [];
-    if (movidos.length) {
-      sqlChecklistState = null;
-      if ($("#objetosSolicitados")) $("#objetosSolicitados").value = "";
-      if ($("#listaArchivosSql")) {
-        $("#listaArchivosSql").innerHTML = "<li class='hint'>Carpeta sql/ limpia — listo para el siguiente caso</li>";
-      }
-      if ($("#sqlLeidoEstado")) $("#sqlLeidoEstado").textContent = "";
-      if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = false;
-      saveToStorage();
-      updateAll();
-    }
-
-    const destSql = sqlInfo.destinoRelativo || `sql_refe/${val("#idReq")}/`;
-    const destHtml = cierre?.aprobado?.ruta || `aprobados/${idCaso}/`;
-    const listaSql = movidos.length
-      ? movidos.map((m) => "• " + m).join("\n")
-      : "• (no había .sql en sql/)";
-    const lineaMail = mail.ok && !mail.borrador
-      ? `Correo: enviado a ${mail.destinatario || dest}`
-      : `Correo: NO enviado. ${mail.error || "Use Enviar correo."}`;
-    alert(
-      `Fase 1 cerrada.\n\nDictamen: ${destHtml}\nSQL: ${destSql}\n${listaSql}\n${lineaMail}`,
+    showAnalisisLoading(
+      "Cerrando fase 1",
+      "Se archiva el dictamen, se mueven los SQL y se envía el correo. No cambie de caso ni de pestaña hasta que termine.",
+      idCaso,
     );
-    if (!mail.ok && mail.error && confirm(`${mail.error}\n\n¿Abrir un borrador en Outlook?`)) {
-      accionarCorreo({ display: true });
+    try {
+      const cierre = await QrysChat.cerrarFase1(idCaso, { correo: dest });
+      if (!cierre || (cierre.ok === false && !cierre.estado)) {
+        alert(cierre?.error || "No se pudo cerrar Fase 1.");
+        return;
+      }
+      const mail = cierre?.correo || {};
+      if (mail.ok && !mail.borrador) {
+        await guardarCorreoEnLista(val("#desarrollador"), dest);
+        aplicarResultadoCorreoEnviado(idCaso, mail);
+      } else if (archivoColaVinculado) {
+        QrysCola.updateEstado(archivoColaVinculado, "aprobado", {}, idReqVinculado);
+      }
+      refreshColaTable();
+      await refreshChatView(idCaso);
+
+      const sqlInfo = cierre?.sql || {};
+      const movidos = sqlInfo.movidos || [];
+      if (movidos.length) {
+        sqlChecklistState = null;
+        if ($("#objetosSolicitados")) $("#objetosSolicitados").value = "";
+        if ($("#listaArchivosSql")) {
+          $("#listaArchivosSql").innerHTML = "<li class='hint'>Carpeta SQL del caso archivada</li>";
+        }
+        if ($("#sqlLeidoEstado")) $("#sqlLeidoEstado").textContent = "";
+        if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = false;
+        saveToStorage();
+        updateAll();
+      }
+
+      const destSql = sqlInfo.destinoRelativo || `sql_refe/${val("#idReq")}/`;
+      const destHtml = cierre?.aprobado?.ruta || `aprobados/${idCaso}/`;
+      const listaSql = movidos.length
+        ? movidos.map((m) => "• " + m).join("\n")
+        : "• (no había .sql en la carpeta del caso)";
+      const lineaMail = mail.ok && !mail.borrador
+        ? `Correo: enviado a ${mail.destinatario || dest}`
+        : `Correo: NO enviado. ${mail.error || "Use Enviar correo."}`;
+      alert(
+        `Fase 1 cerrada.\n\nDictamen: ${destHtml}\nSQL: ${destSql}\n${listaSql}\n${lineaMail}`,
+      );
+      if (!mail.ok && mail.error && confirm(`${mail.error}\n\n¿Abrir un borrador en Outlook?`)) {
+        accionarCorreo({ display: true });
+      }
+    } finally {
+      hideAnalisisLoading();
     }
   }
 
@@ -595,7 +727,7 @@
   }
 
   async function activarAnalisis() {
-    if (!isFormComplete()) return alert("Complete el formulario y el paso SQL (métodos documentados o .sql en sql/).");
+    if (!isFormComplete()) return alert("Complete el formulario y el paso SQL (métodos documentados o .sql en la carpeta del caso).");
 
     const data = collectData();
     const idCaso = data.identificacion.idCaso;
@@ -633,7 +765,7 @@
         "Fase 1 activada.\n\n" +
           "El agente en Cursor lee activo/" +
           idCaso +
-          "/ (Qrystalos2, conocimiento/ y sql/ si aplica).\n" +
+          "/ (Qrystalos2, conocimiento/ y activo/" + idCaso + "/sql/ si aplica).\n" +
           "No se abre el Chat solo: use la pestaña Chat cuando quiera escribir.\n" +
           "La propuesta queda en dictamenes/.",
       );
@@ -669,18 +801,32 @@
   }
 
   function bindCola() {
-    $("#colaUpload").addEventListener("change", (e) => {
-      const file = e.target.files?.[0];
+    const inputCola = $("#colaUpload");
+    $("#btnColaUpload")?.addEventListener("click", () => inputCola?.click());
+    inputCola?.addEventListener("change", () => {
+      const file = inputCola.files?.[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        const canonical = QrysCola.normalizeFileName(file.name);
-        const parseResult = QrysCola.parseHtmlAvalasesor(reader.result, canonical);
-        guardarHtmlEnCola(canonical, reader.result);
-        procesarRegistroCola(canonical, reader.result, parseResult, file.name);
+        inputCola.value = "";
+        const nombre = $("#colaUploadNombre");
+        if (nombre) nombre.textContent = file.name;
+        void (async () => {
+          try {
+            const canonical = QrysCola.normalizeFileName(file.name);
+            const parseResult = QrysCola.parseHtmlAvalasesor(reader.result, canonical);
+            guardarHtmlEnCola(canonical, reader.result);
+            await procesarRegistroCola(canonical, reader.result, parseResult, file.name);
+          } catch (e) {
+            alert(`No se pudo registrar la cola:\n${e.message || e}`);
+          }
+        })();
+      };
+      reader.onerror = () => {
+        inputCola.value = "";
+        alert("No se pudo leer el archivo HTML.");
       };
       reader.readAsText(file, "UTF-8");
-      e.target.value = "";
     });
 
     $("#btnRegistrarColaManual").addEventListener("click", () => registrarColaManual());
@@ -696,10 +842,16 @@
       refreshColaTable();
       updateCorruptAlert();
     });
-    $("#filtroColaReq")?.addEventListener("input", () => refreshColaTable());
+    $("#filtroColaReq")?.addEventListener("input", (e) => {
+      const btn = $("#btnLimpiarFiltroCola");
+      if (btn) btn.style.display = e.target.value ? "inline-flex" : "none";
+      refreshColaTable();
+    });
     $("#chkVerTerminadosCola")?.addEventListener("change", () => refreshColaTable());
     $("#btnLimpiarFiltroCola")?.addEventListener("click", () => {
       setVal("#filtroColaReq", "");
+      const btn = $("#btnLimpiarFiltroCola");
+      if (btn) btn.style.display = "none";
       refreshColaTable();
       $("#filtroColaReq")?.focus();
     });
@@ -746,6 +898,20 @@
     }
   }
 
+  async function asegurarColaGuardada(guardado) {
+    if (!guardado || location.protocol === "file:") return true;
+    const saved = await guardado;
+    if (saved && saved.ok === false) {
+      alert(
+        "La página se leyó, pero la cola no se guardó en el servidor.\n\n" +
+          (saved.error || "Error desconocido") +
+          "\n\nVuelva a seleccionar el archivo.",
+      );
+      return false;
+    }
+    return true;
+  }
+
   async function procesarRegistroCola(fileName, html, parseResult, originalName) {
     if (!parseResult.filas?.length) {
       const n = (String(html || "").match(/\b010\d{7}\b/g) || []).length;
@@ -763,8 +929,10 @@
 
     if (parseResult.esLista) {
       const bulk = QrysCola.addAllToCola({ fileName, html, parseResult });
+      const guardada = await asegurarColaGuardada(bulk.guardado);
       refreshColaTable();
       updateCorruptAlert();
+      if (!guardada) return;
 
       if (!bulk.registrados.length) {
         let msg =
@@ -819,8 +987,10 @@
       parseResult,
       idReqSeleccionado: parseResult.filas[0].idReq,
     });
+    const guardada = await asegurarColaGuardada(result.guardado);
     refreshColaTable();
     updateCorruptAlert();
+    if (!guardada) return;
     if (result.duplicate) {
       return alert(
         `El REQ ${result.idReq} ya está en la cola.\n\nEstado: ${QrysCola.labelEstado(result.item.estado)}`,
@@ -916,8 +1086,9 @@
     refreshCorreoEstado();
   }
 
-  async function cargarSolicitudCaso(idCaso) {
+  async function cargarSolicitudCaso(idCaso, opts) {
     if (location.protocol === "file:" || !idCaso) return false;
+    const sondeo = !!opts?.sondeo;
     try {
       const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, { cache: "no-store" });
       if (!resp.ok) return false;
@@ -928,7 +1099,8 @@
         ...sol,
         _archivoColaVinculado: sol.cola?.archivoCola || archivoColaVinculado,
         _idReqVinculado: sol.cola?.idReq || sol.identificacion?.idReq || idReqVinculado,
-      });
+      }, { sondeo });
+      if (sondeo) return true;
       if (data.fase1Cerrada && sol.sql) {
         if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = true;
       }
@@ -969,9 +1141,16 @@
     imagenesAnalisis = [];
     archivosAnalisis = [];
     diagramaFlujo = null;
+    mockupsFormDraft = [];
+    mockupsFormMeta = { mockups: [], sugeridos: [], plantillas: [], correoHint: "" };
+    mockupsFormDirty = false;
+    mockupsFormPreviewRuta = "";
+    mockupsFormCasoId = "";
+    clearMockupFormPreview();
     renderImagenesAnalisis();
     renderArchivosAnalisis();
     renderDiagramaFlujo();
+    renderMockupsForm();
     renderBrechaAnalisis(null);
     const hintBrecha = $("#brechaAnalisisHint");
     if (hintBrecha) hintBrecha.textContent = "El agente (Cursor) contrasta el REQ con su análisis y lista qué le falta revisar. No usa OpenAI.";
@@ -1093,12 +1272,15 @@
     $("#btnArchivarSql").addEventListener("click", () => archivarSql());
     $("#chkSqlColocados").addEventListener("change", updateAll);
     $("#idReq").addEventListener("input", updateSqlPath);
+    $("#idCaso")?.addEventListener("change", () => onIdentificacionCasoChanged());
+    $("#idCaso")?.addEventListener("blur", () => onIdentificacionCasoChanged());
     bindCorreoDev();
     bindCriterios();
     bindCambioSimplePreview();
     bindImagenesAnalisis();
     bindArchivosAnalisis();
     bindDiagramaFlujo();
+    bindMockupsForm();
     $("#btnCopiarPromptDiagrama")?.addEventListener("click", () => copyPromptDiagrama());
     $("#btnAnalizarRequerimiento")?.addEventListener("click", () => analizarRequerimiento());
 
@@ -1165,12 +1347,26 @@
           ? `Dictamen listo. Falta el correo de ${nombre} en la lista — escríbalo arriba y se guarda solo.`
           : "Dictamen listo. Indique el correo destino del desarrollador.";
       } else {
-        hint.textContent = `Listo para enviar a ${dest}${nombre ? ` (${nombre})` : ""}. Al enviar se marcan check, fecha y cola Terminado.`;
+        const mock = c.tieneMockups && c.mockups?.length
+          ? ` · adjuntos: dictamen + ${c.mockups.length} mockup(s)`
+          : "";
+        hint.textContent = `Listo para enviar a ${dest}${nombre ? ` (${nombre})` : ""}${mock}. Al enviar se marcan check, fecha y cola Terminado.`;
       }
     }
     if (card) {
       card.classList.toggle("correo-ok", !!c.enviado);
       card.classList.toggle("correo-pendiente", !c.enviado);
+    }
+    const mockHint = $("#correoMockupsHint");
+    if (mockHint) {
+      if (c.tieneMockups && c.mockups?.length) {
+        const n = c.mockups.length;
+        const rutas = c.mockups.map((m) => (typeof m === "string" ? m : m.ruta || "")).filter(Boolean);
+        mockHint.innerHTML = `Mockups al correo: <strong>${n}</strong> HTML (${esc(rutas.join(", "))}). Ajuste en pestaña <strong>Chat</strong>.`;
+      } else {
+        mockHint.textContent =
+          "Mockups: configure en la pestaña Chat → bloque «Mockups — adjuntos al correo».";
+      }
     }
     syncingCorreo = false;
   }
@@ -1469,16 +1665,42 @@
     );
   }
 
+  function textoPropuestaEnFormulario() {
+    return solicitudTienePropuesta({
+      contenido: {
+        criteriosAceptacion: val("#criteriosAceptacion"),
+        alcance: val("#alcance"),
+        restricciones: val("#restricciones"),
+        analisis: val("#analisis"),
+        brechaAnalisis,
+      },
+    });
+  }
+
+  async function completarBrechaDesdeChat(idCaso) {
+    if (brechaAnalisis?.texto) return;
+    const chat = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/chat?t=${Date.now()}`, { cache: "no-store" });
+    const cj = await chat.json();
+    const msgs = (cj.mensajes || []).filter((m) => m.autor === "agente");
+    const last = msgs[msgs.length - 1];
+    if (last && last.texto) {
+      brechaAnalisis = { texto: last.texto, fecha: last.fecha, estado: "listo" };
+      renderBrechaAnalisis(brechaAnalisis);
+    }
+  }
+
+  function minutosDesdeIso(iso) {
+    if (!iso) return 0;
+    const t = Date.parse(String(iso));
+    if (!Number.isFinite(t)) return 0;
+    return Math.max(0, Math.floor((Date.now() - t) / 60000));
+  }
+
   async function pollBrechaAnalisis(idCaso, hintEl, loadingToken) {
     const hint = hintEl || $("#brechaAnalisisHint");
-    const snapshot = {
-      ca: val("#criteriosAceptacion"),
-      al: val("#alcance"),
-      re: val("#restricciones"),
-      an: val("#analisis"),
-    };
     const stale = () => loadingToken != null && loadingToken !== analisisLoadingToken;
-    for (let i = 0; i < 60; i++) {
+    // El agente de un REQ suele pasar de 4 min. 300 sondeos × 4 s ≈ 20 min.
+    for (let i = 0; i < 300; i++) {
       await new Promise((r) => setTimeout(r, 4000));
       if (stale()) return;
       try {
@@ -1490,62 +1712,27 @@
           updateAnalisisLoadingDetalle(bot.error || "El agente no pudo terminar. Revise el Chat.");
           return;
         }
-        if (i === 0) {
-          updateAnalisisLoadingDetalle("El agente está trabajando. Suele tardar 1–3 minutos…");
-        }
-        const cargada = await cargarSolicitudCaso(idCaso);
-        if (cargada && solicitudTienePropuesta({
-          contenido: {
-            criteriosAceptacion: val("#criteriosAceptacion"),
-            alcance: val("#alcance"),
-            restricciones: val("#restricciones"),
-            analisis: val("#analisis"),
-            brechaAnalisis,
-          },
-        })) {
-          const cambio =
-            val("#criteriosAceptacion") !== snapshot.ca ||
-            val("#alcance") !== snapshot.al ||
-            val("#restricciones") !== snapshot.re ||
-            val("#analisis") !== snapshot.an ||
-            (brechaAnalisis && brechaAnalisis.texto);
-          if (cambio && (bot.estado === "listo" || bot.estado === "terminado" || i >= 2)) {
-            if (hint) {
-              hint.textContent =
-                "Listo: criterios, alcance, restricciones y análisis quedaron en el formulario y en el Chat.";
-            }
-            updateAnalisisLoadingDetalle("Análisis listo. Actualizando formulario…");
-            if (bot.estado === "listo" || bot.estado === "terminado") return;
-          }
-        }
-        if (bot.estado === "listo" || bot.estado === "terminado") {
-          await cargarSolicitudCaso(idCaso);
-          if (!brechaAnalisis?.texto) {
-            const chat = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/chat?t=${Date.now()}`, { cache: "no-store" });
-            const cj = await chat.json();
-            const msgs = (cj.mensajes || []).filter((m) => m.autor === "agente");
-            const last = msgs[msgs.length - 1];
-            if (last && last.texto) {
-              brechaAnalisis = { texto: last.texto, fecha: last.fecha, estado: "listo" };
-              renderBrechaAnalisis(brechaAnalisis);
-            }
+        const termino = bot.estado === "listo" || bot.estado === "terminado";
+        if (termino) {
+          updateAnalisisLoadingDetalle("Análisis listo. Actualizando formulario…");
+          await cargarSolicitudCaso(idCaso, { sondeo: true });
+          await completarBrechaDesdeChat(idCaso);
+          if (window.QrysCola) {
+            await QrysCola.syncFromServer();
+            refreshColaTable();
           }
           if (hint) {
-            hint.textContent = solicitudTienePropuesta({
-              contenido: {
-                criteriosAceptacion: val("#criteriosAceptacion"),
-                alcance: val("#alcance"),
-                restricciones: val("#restricciones"),
-                analisis: val("#analisis"),
-                brechaAnalisis,
-              },
-            })
+            hint.textContent = textoPropuestaEnFormulario()
               ? "Listo: revise criterios, alcance, restricciones y análisis en el formulario."
               : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
           }
-          updateAnalisisLoadingDetalle(hint?.textContent || "Análisis finalizado.");
           return;
         }
+        const modelo = bot.modelo ? ` ${bot.modelo}${bot.fast ? " Fast" : ""}` : "";
+        const mins = minutosDesdeIso(bot.iniciadoEn);
+        const lleva = mins > 0 ? ` Lleva ${mins} min.` : "";
+        updateAnalisisLoadingDetalle(`El agente${modelo} sigue trabajando.${lleva} El aviso se cierra al terminar.`);
+        await cargarSolicitudCaso(idCaso, { sondeo: true });
       } catch {
         /* reintento */
       }
@@ -1698,7 +1885,7 @@
       if (btnQuitar) btnQuitar.classList.remove("hidden");
       if (preview) {
         if (url) {
-          preview.src = url;
+          if (preview.getAttribute("src") !== url) preview.src = url;
           preview.classList.remove("hidden");
         } else {
           preview.removeAttribute("src");
@@ -1855,8 +2042,463 @@
         if (f) await subirDiagramaFlujo(f);
       });
     }
+    $("#btnSubirDiagramaHtml")?.addEventListener("click", () => input?.click());
     $("#btnQuitarDiagrama")?.addEventListener("click", () => quitarDiagramaFlujo());
     $("#btnGenerarDiagrama")?.addEventListener("click", () => generarDiagramaDesdeKb());
+  }
+
+  function normalizeMockupPathForm(raw) {
+    return String(raw || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^\//, "");
+  }
+
+  function mockupMetaForRuta(ruta) {
+    const found =
+      (mockupsFormMeta.mockups || []).find((m) => m.ruta === ruta) ||
+      (mockupsFormMeta.sugeridos || []).find((m) => m.ruta === ruta);
+    return found || { ruta, existe: ruta.startsWith("activo/"), tipo: "mockup-ux" };
+  }
+
+  function mockupUrlForMeta(meta, idCaso) {
+    if (!meta) return "";
+    if (meta.url) return meta.url;
+    if (meta.existe === false) return "";
+    const ruta = meta.ruta || "";
+    if (!ruta) return "";
+    if (ruta.startsWith("activo/") && idCaso) return `/${ruta}`;
+    return `/${ruta.replace(/^\//, "")}`;
+  }
+
+  function descargarMockupZip(rutaArg) {
+    const idCaso = val("#idCaso");
+    const sel = $("#selectMockupAbrir");
+    const ruta = rutaArg || sel?.value || mockupsFormDraft[0] || "";
+    if (!idCaso || !ruta) {
+      return alert("Seleccione un mockup (.html) para empaquetar.");
+    }
+    if (!ruta.toLowerCase().endsWith(".html")) {
+      return alert("Solo se empaquetan archivos .html de mockup.");
+    }
+    const q = encodeURIComponent(ruta.replace(/^\//, ""));
+    window.location.href = `/api/caso/${encodeURIComponent(idCaso)}/mockups?zip=${q}`;
+  }
+
+  function abrirMockupForm(rutaArg) {
+    const idCaso = val("#idCaso");
+    const sel = $("#selectMockupAbrir");
+    let ruta = rutaArg || sel?.value || mockupsFormDraft[0] || "";
+    if (!ruta) {
+      return alert("No hay mockup para abrir. Pulse Generar mockups o suba un HTML.");
+    }
+    const meta = mockupMetaForRuta(ruta);
+    const url = mockupUrlForMeta(meta, idCaso);
+    if (!url) {
+      return alert("El archivo no está en disco. Escanee o regenere el mockup.");
+    }
+    if (window.QrysChat?.openDocument) {
+      QrysChat.openDocument(meta.ruta || ruta, idCaso, url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+    mockupsFormPreviewRuta = ruta;
+    const preview = $("#mockupFormPreview");
+    if (preview) {
+      preview.src = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+      preview.classList.remove("hidden");
+    }
+    renderMockupsForm();
+  }
+
+  function renderMockupsForm() {
+    const list = $("#mockupsFormList");
+    const hint = $("#hintMockupsForm");
+    const preview = $("#mockupFormPreview");
+    const suger = $("#mockupsFormSugeridos");
+    const idCaso = val("#idCaso");
+    const hasApi = location.protocol !== "file:" && !!window.QrysChat;
+
+    ["#btnGenerarMockups", "#btnMockupsEscanear", "#btnMockupsGuardar", "#selectPlantillaMockup", "#btnMockupsUsarPlantilla", "#btnAbrirMockup", "#btnDescargarMockupZip"].forEach((sel) => {
+      const el = $(sel);
+      if (el) el.disabled = !idCaso || !hasApi;
+    });
+
+    if (!list) return;
+
+    if (!idCaso) {
+      list.innerHTML = `<li class="hint compact">Indique ID de caso para cargar o subir mockups.</li>`;
+      if (hint) hint.textContent = "";
+      if (suger) {
+        suger.classList.add("hidden");
+        suger.innerHTML = "";
+      }
+      if (preview) {
+        preview.removeAttribute("src");
+        preview.classList.add("hidden");
+      }
+      return;
+    }
+
+    if (!hasApi) {
+      list.innerHTML = `<li class="hint compact">Abra http://localhost:8765/app/ (abrir-app.bat) para gestionar mockups.</li>`;
+      if (hint) hint.textContent = "Borrador local en solicitud al guardar formulario";
+      return;
+    }
+
+    mockupsFormDraft = filterMockupsForCaso(mockupsFormDraft, idCaso);
+
+    if (!mockupsFormDraft.length) {
+      list.innerHTML = `<li class="hint compact">Sin mockups — pulse <strong>Generar mockups</strong> (ventana propuesta, no la captura), suba HTML o use plantilla.</li>`;
+      if (mockupsFormPreviewRuta) clearMockupFormPreview();
+    } else {
+      list.innerHTML = mockupsFormDraft
+        .map((ruta) => {
+          const meta = mockupMetaForRuta(ruta);
+          const missing = meta.existe === false;
+          const url = meta.url || (missing ? "" : `/${ruta}`);
+          const isPrev = mockupsFormPreviewRuta === ruta;
+          return `<li class="${missing ? "missing" : ""}${isPrev ? " is-preview" : ""}" data-ruta="${escAttr(ruta)}">
+            <span class="mock-path" title="${escAttr(ruta)}">${esc(ruta)}</span>
+            <button type="button" class="btn btn-ghost btn-sm btn-mock-prev" data-url="${escAttr(url)}" data-ruta="${escAttr(ruta)}" ${!url ? "disabled" : ""}>Vista</button>
+            ${url ? `<a class="btn btn-ghost btn-sm" href="${escAttr(url)}" target="_blank" rel="noopener">Abrir</a>` : ""}
+            ${ruta.toLowerCase().endsWith(".html") ? `<button type="button" class="btn btn-ghost btn-sm btn-mock-zip" data-ruta="${escAttr(ruta)}">ZIP</button>` : ""}
+            <button type="button" class="btn btn-ghost btn-sm btn-mock-quitar" data-ruta="${escAttr(ruta)}">Quitar</button>
+          </li>`;
+        })
+        .join("");
+      list.querySelectorAll(".btn-mock-prev").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          mockupsFormPreviewRuta = btn.dataset.ruta || "";
+          if (preview && btn.dataset.url) {
+            preview.src = btn.dataset.url;
+            preview.classList.remove("hidden");
+          }
+          renderMockupsForm();
+        });
+      });
+      list.querySelectorAll(".btn-mock-zip").forEach((btn) => {
+        btn.addEventListener("click", () => descargarMockupZip(btn.dataset.ruta));
+      });
+      list.querySelectorAll(".btn-mock-quitar").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          mockupsFormDraft = mockupsFormDraft.filter((r) => r !== btn.dataset.ruta);
+          if (mockupsFormPreviewRuta === btn.dataset.ruta) {
+            mockupsFormPreviewRuta = "";
+            if (preview) {
+              preview.removeAttribute("src");
+              preview.classList.add("hidden");
+            }
+          }
+          mockupsFormDirty = true;
+          saveToStorage();
+          renderMockupsForm();
+        });
+      });
+    }
+
+    if (suger) {
+      const sugs = mockupsFormMeta.sugeridos || [];
+      if (sugs.length) {
+        suger.classList.remove("hidden");
+        suger.innerHTML = sugs
+          .map(
+            (m) =>
+              `<li><button type="button" class="btn-mock-suger" data-ruta="${escAttr(m.ruta)}" title="${escAttr(m.ruta)}">+ ${esc(m.titulo || m.ruta)}</button></li>`,
+          )
+          .join("");
+        suger.querySelectorAll(".btn-mock-suger").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const ruta = normalizeMockupPathForm(btn.dataset.ruta);
+            if (ruta && !mockupsFormDraft.includes(ruta)) mockupsFormDraft.push(ruta);
+            mockupsFormDirty = true;
+            saveToStorage();
+            renderMockupsForm();
+          });
+        });
+      } else {
+        suger.classList.add("hidden");
+        suger.innerHTML = "";
+      }
+    }
+
+    const abiertos = mockupsFormDraft
+      .map((ruta) => ({ ruta, meta: mockupMetaForRuta(ruta), url: mockupUrlForMeta(mockupMetaForRuta(ruta), idCaso) }))
+      .filter((x) => x.url);
+    const btnAbrir = $("#btnAbrirMockup");
+    const selAbrir = $("#selectMockupAbrir");
+    const estado = $("#mockupsFormEstado");
+    const btnZip = $("#btnDescargarMockupZip");
+    if (btnAbrir) btnAbrir.disabled = !idCaso || !hasApi || !abiertos.length;
+    if (btnZip) btnZip.disabled = !idCaso || !hasApi || !mockupsFormDraft.some((r) => r.toLowerCase().endsWith(".html"));
+    if (selAbrir) {
+      if (abiertos.length > 1) {
+        selAbrir.classList.remove("hidden");
+        selAbrir.disabled = !idCaso || !hasApi;
+        const prev = selAbrir.value;
+        selAbrir.innerHTML = abiertos
+          .map(
+            (x) =>
+              `<option value="${escAttr(x.ruta)}" data-url="${escAttr(x.url)}">${esc(x.ruta.split("/").pop() || x.ruta)}</option>`,
+          )
+          .join("");
+        if (prev && [...selAbrir.options].some((o) => o.value === prev)) selAbrir.value = prev;
+      } else {
+        selAbrir.classList.add("hidden");
+        selAbrir.innerHTML = "";
+        selAbrir.disabled = true;
+      }
+    }
+    if (estado) {
+      if (abiertos.length) {
+        const first = abiertos[0];
+        estado.hidden = false;
+        estado.classList.remove("hidden");
+        estado.innerHTML = `${abiertos.length} mockup(s) — <a href="${escAttr(first.url)}" target="_blank" rel="noopener">Abrir ${esc(first.ruta.split("/").pop() || "mockup")}</a>`;
+      } else {
+        estado.hidden = true;
+        estado.classList.add("hidden");
+        estado.textContent = "";
+      }
+    }
+
+    if (hint) {
+      const n = mockupsFormDraft.length;
+      const base = n
+        ? `${n} mockup(s)${mockupsFormMeta.correoHint ? " — " + mockupsFormMeta.correoHint : ""}`
+        : "Sin mockups — pulse Generar mockups (conocimiento + análisis)";
+      hint.textContent = mockupsFormDirty ? `${base} · cambios sin guardar en servidor` : base;
+    }
+
+    const selPlant = $("#selectPlantillaMockup");
+    if (selPlant && mockupsFormMeta.plantillas?.length) {
+      const prev = selPlant.value;
+      selPlant.innerHTML =
+        `<option value="">Plantilla SP…</option>` +
+        mockupsFormMeta.plantillas
+          .map((p) => `<option value="${escAttr(p.ruta)}">${esc(p.titulo || p.ruta)}</option>`)
+          .join("");
+      if (prev && [...selPlant.options].some((o) => o.value === prev)) selPlant.value = prev;
+    }
+  }
+
+  async function refreshMockupsForm(idCaso) {
+    if (!idCaso || !window.QrysChat || location.protocol === "file:") {
+      renderMockupsForm();
+      return;
+    }
+    const data = await QrysChat.fetchMockups(idCaso, false);
+    if (data.ok !== false) {
+      const caseChanged = idCaso !== mockupsFormCasoId;
+      mockupsFormCasoId = idCaso;
+      mockupsFormMeta = {
+        mockups: (data.mockups || []).filter((m) => mockupBelongsToCaso(m.ruta, idCaso)),
+        sugeridos: (data.sugeridos || []).filter((m) => mockupBelongsToCaso(m.ruta, idCaso)),
+        plantillas: data.plantillas || [],
+        correoHint: data.correoHint || "",
+      };
+      if (!mockupsFormDirty || caseChanged) {
+        if (caseChanged) mockupsFormDirty = false;
+        mockupsFormDraft = filterMockupsForCaso((data.mockups || []).map((m) => m.ruta), idCaso);
+      } else {
+        mockupsFormDraft = filterMockupsForCaso(mockupsFormDraft, idCaso);
+      }
+    }
+    renderMockupsForm();
+  }
+
+  async function generarMockupsDesdeKb() {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso (paso 1).");
+    if (location.protocol === "file:") {
+      return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
+    }
+    const btn = $("#btnGenerarMockups");
+    const hint = $("#hintMockupsForm");
+    if (btn) btn.disabled = true;
+    if (hint) hint.textContent = "Generando mockup de la propuesta de desarrollo…";
+    try {
+      saveToStorage();
+      const data = collectData();
+      const saveResp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solicitud: data }),
+      });
+      const saveOut = await parseJsonResponse(saveResp);
+      if (!saveResp.ok) throw new Error(saveOut.error || "No se pudo guardar el caso");
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/mockups/generar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notas: val("#notasMockups"), mockupsNotas: val("#notasMockups") }),
+      });
+      const out = await parseJsonResponse(resp);
+      if (!resp.ok || out.ok === false) throw new Error(out.error || "No se pudieron generar mockups");
+      mockupsFormMeta = {
+        mockups: out.mockups || [],
+        sugeridos: out.sugeridos || [],
+        plantillas: out.plantillas || [],
+        correoHint: out.correoHint || "",
+      };
+      mockupsFormDraft = (out.mockups || []).map((m) => m.ruta);
+      mockupsFormDirty = false;
+      saveToStorage();
+      renderMockupsForm();
+      if (hint) hint.textContent = out.correoHint || "Mockups listos en activo/…/mockups/";
+      alert(
+        "Mockup de la propuesta de desarrollo (no de la captura del problema).\n\nRevise la vista previa; si falta el análisis, complete cambio propuesto/criterios y regenere.",
+      );
+    } catch (e) {
+      if (hint) hint.textContent = e.message || "Error al generar";
+      alert(e.message || "Error al generar mockups.");
+    } finally {
+      if (btn) btn.disabled = !val("#idCaso");
+    }
+  }
+
+  async function escanearMockupsForm() {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso (paso 1).");
+    if (!window.QrysChat) return;
+    const hint = $("#hintMockupsForm");
+    if (hint) hint.textContent = "Escaneando disco…";
+    const data = await QrysChat.fetchMockups(idCaso, true);
+    mockupsFormMeta = {
+      mockups: data.mockups || [],
+      sugeridos: data.sugeridos || [],
+      plantillas: data.plantillas || [],
+      correoHint: data.correoHint || "",
+    };
+    if (!mockupsFormDirty) {
+      mockupsFormDraft = (data.mockups || []).map((m) => m.ruta);
+    }
+    renderMockupsForm();
+    if (hint) {
+      hint.textContent = data.sugeridos?.length
+        ? `Encontrados ${data.sugeridos.length} archivo(s) nuevos — pulse + para agregar`
+        : "Escaneo listo — no hay mockups nuevos fuera de la lista";
+    }
+  }
+
+  async function guardarMockupsForm() {
+    const idCaso = val("#idCaso");
+    if (!idCaso || !window.QrysChat) return alert("Use abrir-app.bat para guardar mockups.");
+    const result = await QrysChat.saveMockups(idCaso, mockupsFormDraft, {
+      mockupsNotas: val("#notasMockups"),
+    });
+    if (!result.ok) {
+      alert(result.error || "Error al guardar mockups.");
+      return;
+    }
+    mockupsFormMeta = {
+      mockups: result.mockups || [],
+      sugeridos: [],
+      plantillas: mockupsFormMeta.plantillas || [],
+      correoHint: result.correoHint || "",
+    };
+    mockupsFormDraft = (result.mockups || []).map((m) => m.ruta);
+    mockupsFormDirty = false;
+    saveToStorage();
+    renderMockupsForm();
+    alert("Mockups guardados en solicitud.json → contenido.mockups");
+  }
+
+  async function subirMockupHtml(file) {
+    const idCaso = val("#idCaso");
+    if (!idCaso) return alert("Indique ID de caso (paso 1).");
+    if (location.protocol === "file:") {
+      return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/ para subir mockups.");
+    }
+    if (!file) return;
+    let html;
+    try {
+      html = await file.text();
+    } catch (e) {
+      return alert(e.message || "No se pudo leer el archivo.");
+    }
+    try {
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/mockups/subir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contenido: html,
+          nombre: file.name || "mockup.html",
+          mockupsNotas: val("#notasMockups"),
+        }),
+      });
+      const out = await resp.json();
+      if (!resp.ok || !out.ok) throw new Error(out.error || "Error al subir mockup");
+      mockupsFormMeta = {
+        mockups: out.mockups || [],
+        sugeridos: out.sugeridos || [],
+        plantillas: out.plantillas || [],
+        correoHint: out.correoHint || "",
+      };
+      mockupsFormDraft = (out.mockups || []).map((m) => m.ruta);
+      mockupsFormDirty = false;
+      saveToStorage();
+      renderMockupsForm();
+      alert("Mockup subido y registrado en la solicitud.");
+    } catch (e) {
+      alert(e.message || "Error al subir el mockup.");
+    }
+  }
+
+  async function usarPlantillaMockup() {
+    const idCaso = val("#idCaso");
+    const ruta = normalizeMockupPathForm($("#selectPlantillaMockup")?.value);
+    if (!idCaso || !ruta) return alert("Elija una plantilla.");
+    if (location.protocol === "file:") {
+      return alert("Ejecute abrir-app.bat para copiar plantillas al caso.");
+    }
+    try {
+      const resp = await fetch(`/${ruta}`, { cache: "no-store" });
+      if (!resp.ok) throw new Error("No se pudo leer la plantilla.");
+      const html = await resp.text();
+      const base = ruta.split("/").pop() || "mockup.html";
+      const nombre = base.replace(/^mockup-/i, "").replace(/\.html$/i, "") || "mockup";
+      const subResp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/mockups/subir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contenido: html,
+          nombre: `${nombre}-${idCaso.slice(-6)}.html`,
+          mockupsNotas: val("#notasMockups"),
+        }),
+      });
+      const out = await subResp.json();
+      if (!subResp.ok || !out.ok) throw new Error(out.error || "Error al crear mockup desde plantilla");
+      mockupsFormMeta = {
+        mockups: out.mockups || [],
+        sugeridos: out.sugeridos || [],
+        plantillas: out.plantillas || [],
+        correoHint: out.correoHint || "",
+      };
+      mockupsFormDraft = (out.mockups || []).map((m) => m.ruta);
+      mockupsFormDirty = false;
+      saveToStorage();
+      renderMockupsForm();
+      alert("Plantilla copiada a activo/…/mockups/ y agregada a la solicitud.");
+    } catch (e) {
+      alert(e.message || "Error con la plantilla.");
+    }
+  }
+
+  function bindMockupsForm() {
+    const inputMock = $("#inputMockupHtml");
+    inputMock?.addEventListener("change", async () => {
+      const f = inputMock.files?.[0];
+      inputMock.value = "";
+      if (f) await subirMockupHtml(f);
+    });
+    $("#btnSubirMockupHtml")?.addEventListener("click", () => inputMock?.click());
+    $("#btnGenerarMockups")?.addEventListener("click", () => generarMockupsDesdeKb());
+    $("#btnAbrirMockup")?.addEventListener("click", () => abrirMockupForm());
+    $("#btnDescargarMockupZip")?.addEventListener("click", () => descargarMockupZip());
+    $("#btnMockupsEscanear")?.addEventListener("click", () => escanearMockupsForm());
+    $("#btnMockupsGuardar")?.addEventListener("click", () => guardarMockupsForm());
+    $("#btnMockupsUsarPlantilla")?.addEventListener("click", () => usarPlantillaMockup());
+    $("#notasMockups")?.addEventListener("input", () => saveToStorage());
   }
 
   function bindImagenesAnalisis() {
@@ -2070,6 +2712,7 @@
     saveToStorage();
     switchToFormulario();
     goStep(2);
+    await marcarEstadoCola("en_analisis");
     const hint = $("#brechaAnalisisHint");
     const btn = $("#btnAnalizarRequerimiento");
     const loadingToken = ++analisisLoadingToken;
@@ -2107,6 +2750,7 @@
       if (loadingToken === analisisLoadingToken) hideAnalisisLoading();
       if (btn) btn.disabled = false;
     }
+    if (loadingToken === analisisLoadingToken) await cargarSolicitudCaso(idCaso);
   }
 
   async function validarContabilidad() {
@@ -2221,9 +2865,109 @@
     });
   }
 
+  let _lastCriteriosTexto = null;
+
+  function renderAnCriteriosDinamicosDesdeTexto(forzar = false) {
+    const cont = $("#anCriteriosDinamicosLista");
+    if (!cont) return;
+    const txt = val("#criteriosAceptacion");
+    if (!forzar && txt === _lastCriteriosTexto) return;
+    _lastCriteriosTexto = txt;
+
+    const lineas = txt
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    cont.innerHTML = "";
+    if (!lineas.length) {
+      cont.innerHTML = `<p class="hint compact" style="margin:0;color:var(--q-muted);font-style:italic;padding:0.4rem 0;">Sin criterios añadidos. Agregue uno arriba o pídalos al agente.</p>`;
+      return;
+    }
+
+    lineas.forEach((linea, idx) => {
+      const limpia = linea.replace(/^[-*•\d\.\)]\s*/, "").trim();
+      const row = document.createElement("div");
+      row.className = "dynamic-item-row";
+      row.innerHTML = `
+        <label class="dynamic-item-label" style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;margin:0;">
+          <input type="checkbox" class="an-criterio-chk" style="width:16px;height:16px;accent-color:var(--q-primary);cursor:pointer;">
+          <span class="dynamic-item-text" style="font-size:0.88rem;color:var(--q-dark);line-height:1.4;">${esc(limpia)}</span>
+        </label>
+        <button type="button" class="btn-item-delete" title="Eliminar criterio" style="border:none;background:transparent;color:#c62828;cursor:pointer;padding:4px 6px;border-radius:4px;display:flex;align-items:center;">
+          <span class="material-symbols-outlined" style="font-size:1.1rem;">delete</span>
+        </button>
+      `;
+
+      const chk = row.querySelector(".an-criterio-chk");
+      const span = row.querySelector(".dynamic-item-text");
+      chk?.addEventListener("change", () => {
+        if (chk.checked) {
+          span.style.textDecoration = "line-through";
+          span.style.color = "var(--q-muted)";
+          row.style.background = "#f1f8e9";
+        } else {
+          span.style.textDecoration = "none";
+          span.style.color = "var(--q-dark)";
+          row.style.background = "#fff";
+        }
+      });
+
+      row.querySelector(".btn-item-delete")?.addEventListener("click", () => {
+        row.remove();
+        sincronizarAnCriteriosHaciaTexto();
+      });
+
+      cont.appendChild(row);
+    });
+  }
+
+  function sincronizarAnCriteriosHaciaTexto() {
+    const cont = $("#anCriteriosDinamicosLista");
+    if (!cont) return;
+    const items = cont.querySelectorAll(".dynamic-item-text");
+    const arr = [];
+    items.forEach((item, idx) => {
+      const t = item.textContent.trim();
+      if (t) arr.push(`${idx + 1}. ${t}`);
+    });
+    const nuevoTxt = arr.join("\n");
+    _lastCriteriosTexto = nuevoTxt;
+    setVal("#criteriosAceptacion", nuevoTxt);
+    saveToStorage();
+    updateAll();
+  }
+
+  function agregarNuevoAnCriterio() {
+    const input = $("#anNuevoCriterioInput");
+    if (!input) return;
+    const v = input.value.trim();
+    if (!v) return;
+    const cur = val("#criteriosAceptacion");
+    const lineas = cur ? cur.split("\n").filter((l) => l.trim()) : [];
+    lineas.push(`${lineas.length + 1}. ${v}`);
+    const nuevoTxt = lineas.join("\n");
+    _lastCriteriosTexto = nuevoTxt;
+    setVal("#criteriosAceptacion", nuevoTxt);
+    input.value = "";
+    renderAnCriteriosDinamicosDesdeTexto(true);
+    saveToStorage();
+    updateAll();
+  }
+
   function bindCriterios() {
     $("#btnSugerirCriterios")?.addEventListener("click", () => sugerirCriterios(false));
     $("#btnRefinarCriterios")?.addEventListener("click", () => sugerirCriterios(true));
+    $("#anBtnAddCriterio")?.addEventListener("click", () => agregarNuevoAnCriterio());
+    $("#anNuevoCriterioInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        agregarNuevoAnCriterio();
+      }
+    });
+    $("#criteriosAceptacion")?.addEventListener("input", () => {
+      renderAnCriteriosDinamicosDesdeTexto();
+    });
     document.addEventListener("click", (e) => {
       if (e.target.closest(".btn-usar-criterios")) aplicarCriteriosSugeridos("reemplazar");
       if (e.target.closest(".btn-anadir-criterios")) aplicarCriteriosSugeridos("anadir");
@@ -2314,6 +3058,7 @@
       if (btn) btn.disabled = false;
       if (btnRefinar) btnRefinar.disabled = false;
     }
+    if (loadingToken === analisisLoadingToken) await cargarSolicitudCaso(idCaso);
   }
 
   function aplicarCriteriosSugeridos(modo) {
@@ -2339,6 +3084,7 @@
   function updateCriteriosHint() {
     const el = $("#criteriosEstadoHint");
     if (el) el.textContent = QrysCriterios.estadoLabel(criteriosMeta, val("#criteriosAceptacion"));
+    renderAnCriteriosDinamicosDesdeTexto();
   }
 
   function renderCriteriosComparacion() {
@@ -2672,10 +3418,10 @@
       if (estadoEl) {
         estadoEl.textContent = nMet
           ? `${nMet} en el módulo · se filtran por este REQ`
-          : "Sin métodos documentados — use sql/";
+          : "Sin métodos documentados — use la carpeta del caso";
       }
       if (!nMet && !silent) {
-        alert("Este proceso aún no tiene métodos en sps.json. Coloque el .sql en sql/.");
+        alert("Este proceso aún no tiene métodos en sps.json. Coloque el .sql en la carpeta del caso.");
       }
     } catch (e) {
       if (estadoEl) estadoEl.textContent = "Error al traer métodos";
@@ -2809,13 +3555,13 @@
       ? `<ul>${metodos.map((m) => `<li><code>${esc(m.sp)}</code> · <strong>${esc(m.metodo)}</strong> <span class="sql-kb-badge ${esc(m.estado)}">${esc(m.estado)}</span></li>`).join("")}</ul>`
       : "<p class=\"hint\">Ningún método marcado todavía.</p>";
     const filasSql = archivos.length
-      ? `<ul>${archivos.map((a) => `<li><code>${esc(PATH_SQL)}${esc(a)}</code></li>`).join("")}</ul>`
-      : "<p class=\"hint\">No hay .sql en la carpeta de hoy (el Chat los pedirá si hace falta releer).</p>";
+      ? `<ul>${archivos.map((a) => `<li><code>${esc(carpetaSqlCasoAbs())}${esc(a)}</code></li>`).join("")}</ul>`
+      : "<p class=\"hint\">No hay .sql en la carpeta de este caso (el Chat los pedirá si hace falta releer).</p>";
     return `<h4>Dónde queda para el Chat</h4>
       <p><strong>Catálogo (fichas):</strong> <code>${esc(catalogo)}</code></p>
       <p><strong>Métodos de este REQ</strong> (solo los marcados; no el catálogo del módulo — <code>activo/${esc(idCaso)}/solicitud.json</code> → <code>sql.metodosDocumentados</code>):</p>
       ${filasMet}
-      <p><strong>SQL de hoy</strong> (si hay que releer o no está documentado): <code>${esc(PATH_SQL)}</code></p>
+      <p><strong>SQL de este análisis</strong> (si hay que releer o no está documentado): <code>${esc(carpetaSqlCaso())}</code></p>
       ${filasSql}
       <p><strong>Tras cerrar fase 1:</strong> <code>${esc(PATH_SQL_REFE)}${esc(idReq)}\\</code></p>`;
   }
@@ -2890,37 +3636,37 @@
     }
 
     try {
+      const idCaso = val("#idCaso").trim();
+      if (!idCaso) {
+        showErr("Indique el ID del caso (paso 1). Cada análisis lee solo activo/{id-caso}/sql/.");
+        return false;
+      }
       if (location.protocol === "file:") {
-        const local = window.QRYS_SQL_MANIFEST?.archivos || [];
-        if (!local.length) {
-          showErr("Ejecute abrir-app.bat y abra http://localhost:8765/app/ para leer sql/.");
-          return false;
-        }
-        applySqlFromDirectory(local, "manifest-local");
-        ok(`Leído de sql/ · ${local.length} .sql (lista embebida)`);
-        return true;
+        showErr("Ejecute abrir-app.bat y abra http://localhost:8765/app/ para leer la carpeta SQL del caso.");
+        return false;
       }
 
-      const resp = await fetch(`/api/sql?t=${Date.now()}`);
+      const resp = await fetch(`/api/sql?idCaso=${encodeURIComponent(idCaso)}&t=${Date.now()}`);
       const data = await parseJsonResponse(resp);
       const archivos = Array.isArray(data.archivos) ? data.archivos : [];
+      const rel = data.rutaRelativa || carpetaSqlCaso(idCaso);
 
       if (!archivos.length) {
         sqlChecklistState = null;
         renderListaSqlNombres();
-        ok("sql/ no tiene .sql. Coloque los scripts y pulse Leer de nuevo.");
+        ok(`${rel}/ no tiene .sql. Coloque los scripts de este caso y pulse Leer de nuevo.`);
         if (errBox) {
-          errBox.textContent = "Carpeta sql/ vacía. No se usó la lista del requerimiento anterior.";
+          errBox.textContent = `Carpeta ${rel}/ vacía. No se leen los .sql de otros análisis.`;
           errBox.classList.remove("hidden");
         }
         return false;
       }
 
       applySqlFromDirectory(archivos, "api");
-      ok(`Leído de sql/ · ${archivos.length} .sql`);
+      ok(`Leído de ${rel}/ · ${archivos.length} .sql`);
       return true;
     } catch (e) {
-      showErr(e.message || "No se pudo leer sql/. ¿Está ejecutando abrir-app.bat?");
+      showErr(e.message || "No se pudo leer la carpeta SQL del caso. ¿Está ejecutando abrir-app.bat?");
       return false;
     } finally {
       if (btn) {
@@ -2995,7 +3741,7 @@
 
   function updateSqlPath() {
     const idReq = val("#idReq") || "{ID-REQ}";
-    setText("#pathSqlCaso", PATH_SQL);
+    setText("#pathSqlCaso", carpetaSqlCaso());
     setText("#pathSqlRefe", `sql_refe/${idReq}/`);
     if (!sqlChecklistState) renderListaSqlNombres();
   }
@@ -3011,16 +3757,21 @@
     if (location.protocol === "file:") {
       return alert(
         "Ejecute servir-app.bat y abra http://localhost:8765/app/\n\n" +
-          `O use: scripts\\archivar-sql.ps1 -IdReq ${idReq} -IdCaso ${idCaso || '""'}`,
+          `O use: scripts\\archivar-sql.ps1 -IdReq ${idReq} -IdCaso ${idCaso}`,
       );
     }
 
+    if (!idCaso) {
+      return alert("Indique el ID del caso. El SQL se archiva desde activo/{id-caso}/sql/.");
+    }
+
     const archivos = getSqlArchivosSeleccionados();
+    const origen = carpetaSqlCaso(idCaso);
     const msg =
-      `¿Archivar ${archivos.length || "los"} SQL del caso y limpiar la carpeta de trabajo?\n\n` +
+      `¿Archivar ${archivos.length || "los"} SQL de este caso?\n\n` +
       `Destino: sql_refe/${idReq}/\n` +
-      `Origen: sql/\n\n` +
-      "Use esto cuando el dictamen esté aprobado.";
+      `Origen: ${origen}\n\n` +
+      "No mueve scripts de otros análisis.";
 
     if (!confirm(msg)) return;
 
@@ -3038,7 +3789,7 @@
 
       sqlChecklistState = null;
       $("#objetosSolicitados").value = "";
-      $("#listaArchivosSql").innerHTML = "<li class='hint'>Carpeta sql/ limpia — listo para el siguiente caso</li>";
+      $("#listaArchivosSql").innerHTML = "<li class='hint'>Carpeta SQL del caso archivada</li>";
       $("#sqlLeidoEstado").textContent = "";
       $("#chkSqlColocados").checked = false;
       $("#alertArchivoSql").hidden = false;
@@ -3098,6 +3849,8 @@
     $("#btnPrev").disabled = step === 1;
     $("#btnNext").textContent = step === totalSteps ? "Finalizar" : "Siguiente";
     $("#stepIndicator").textContent = `Paso ${step} de ${totalSteps}`;
+    const wizardScroll = $(".wizard-scroll");
+    if (wizardScroll) wizardScroll.scrollTop = 0;
     if (step === totalSteps) updateAll();
     if (step === 4) {
       leerCarpetaSql(true);
@@ -3181,7 +3934,7 @@
       } else if (nSql > 0 && !$("#chkSqlColocados")?.checked) {
         issues.push("SQL: marque «Confirmo que coloqué todos los .sql…» (paso 4)");
       } else {
-        issues.push("SQL: traiga y marque métodos documentados, o lea sql/ y confirme los .sql (paso 4)");
+        issues.push("SQL: traiga y marque métodos documentados, o lea la carpeta del caso y confirme los .sql (paso 4)");
       }
     }
     return [...new Set(issues)];
@@ -3247,6 +4000,7 @@
         opciones,
         recomendacion: val("#recomendacion"),
         cambioPropuestoSimple: val("#cambioPropuestoSimple"),
+        cambioPropuestoSql: val("#cambioPropuestoSql"),
         impactoFe: val("#impactoFe"),
         impactoApi: val("#impactoApi"),
         impactoSql: val("#impactoSql"),
@@ -3271,9 +4025,12 @@
           : val("#notasDiagramaFlujo")
             ? { notas: val("#notasDiagramaFlujo") }
             : null,
+        mockups: filterMockupsForCaso(mockupsFormDraft.slice(), val("#idCaso")),
+        mockupsNotas: val("#notasMockups"),
       },
       sql: {
-        carpetaFija: PATH_SQL,
+        carpetaFija: carpetaSqlCasoAbs(),
+        carpetaRelativa: carpetaSqlCaso(),
         carpetaSqlRefe: `${PATH_SQL_REFE}${val("#idReq") || "{ID-REQ}"}\\`,
         archivosEsperados: sqlArchivos,
         confirmadoEnCarpeta: $("#chkSqlColocados").checked,
@@ -3322,7 +4079,9 @@ ${d.contenido.opciones.length ? "## Opciones\n" + d.contenido.opciones.map((o, i
 
 ${d.contenido.recomendacion ? "## Recomendación\n" + d.contenido.recomendacion : ""}
 
-${d.contenido.cambioPropuestoSimple ? "## Cambio propuesto (palabras simples — sección 5 del dictamen)\n" + d.contenido.cambioPropuestoSimple : ""}
+${d.contenido.cambioPropuestoSimple ? "## Cambio propuesto (palabras simples — sección 5.0 del dictamen)\n" + d.contenido.cambioPropuestoSimple : ""}
+
+${d.contenido.cambioPropuestoSql ? "## Cambio propuesto — SQL (sección 5.2 del dictamen)\n```sql\n" + d.contenido.cambioPropuestoSql.trim() + "\n```" : ""}
 
 ## Validar antes de desarrollar
 - Aplica: ${d.contenido.validarAntes?.aplica ? "Sí" : "No"}
@@ -3357,6 +4116,13 @@ ${d.contenido.diagramaFlujo?.nombre
     ? `- HTML: activo/${d.identificacion.idCaso}/diagramas/${d.contenido.diagramaFlujo.nombre}\n- En dictamen usar enlace relativo: diagramas/${d.contenido.diagramaFlujo.nombre}\n${d.contenido.diagramaFlujo.notas ? "- Notas: " + d.contenido.diagramaFlujo.notas : ""}`
     : "(ninguno — botón «Generar diagrama» en paso Revisión: conocimiento + análisis)"}
 
+## Mockups (UX / SP — complemento del REQ)
+${(d.contenido.mockups || []).length
+    ? (d.contenido.mockups || [])
+        .map((r) => `- ${r}`)
+        .join("\n") + (d.contenido.mockupsNotas ? `\n- Notas: ${d.contenido.mockupsNotas}` : "")
+    : "(ninguno — botón «Generar mockups» en paso Revisión: conocimiento + análisis)"}
+
 ## Imágenes dictamen
 ${d.contenido.imagenesNecesarias || "El agente pedirá capturas si las necesita → aprobados/.../imagenes/"}
 
@@ -3374,8 +4140,9 @@ Al aprobar: copiar a aprobados/${d.identificacion.idCaso}/
       }).join("\n");
     }
     const archivos = d.sql.archivosEsperados || [];
+    const id = d.identificacion?.idCaso || "{id-caso}";
     if (archivos.length) {
-      return archivos.map((a) => `- sql/${a}`).join("\n");
+      return archivos.map((a) => `- activo/${id}/sql/${a}`).join("\n");
     }
     return "(ninguno — indique objetos SQL o marque métodos documentados)";
   }
@@ -3402,7 +4169,7 @@ Eres experto en SQL Server y procesos Qrystalos. Diseña y ejecuta pruebas unita
 ${objetos}
 
 ## Fuentes (leer en disco)
-- Scripts: carpeta fija \`sql/\` o archivados \`sql_refe/${idReq}/\`
+- Scripts de este caso: \`activo/${idCaso}/sql/\` o archivados \`sql_refe/${idReq}/\`
 ${d.sql.usarDocumentacion && d.sql.catalogo ? `- Catálogo METODO: \`${d.sql.catalogo}\`` : ""}
 - Dictamen (secciones 5 y 7): \`${dictamen}\`
 - Solicitud: \`activo/${idCaso}/solicitud.json\`
@@ -3550,7 +4317,7 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
     const prompt = buildPromptPruebasSqlUnitarias(data);
     await copyTextToClipboard(
       prompt,
-      "Prompt de pruebas unitarias SQL copiado.\n\nPéguelo en Cursor junto con los scripts en sql/ o sql_refe/."
+      "Prompt de pruebas unitarias SQL copiado.\n\nPéguelo en Cursor junto con los scripts en activo/" + idCaso + "/sql/ o sql_refe/."
     );
   }
 
@@ -3586,6 +4353,11 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
     const btnGenDiagrama = $("#btnGenerarDiagrama");
     if (btnGenDiagrama) btnGenDiagrama.disabled = !val("#idCaso");
     renderDiagramaFlujo();
+    renderMockupsForm();
+    const btnGenMock = $("#btnGenerarMockups");
+    if (btnGenMock) btnGenMock.disabled = !val("#idCaso") || location.protocol === "file:";
+    const btnAbrirMock = $("#btnAbrirMockup");
+    if (btnAbrirMock && !mockupsFormDraft.length) btnAbrirMock.disabled = true;
     const btnPruebasSql = $("#btnCopiarPromptPruebasSql");
     if (btnPruebasSql) btnPruebasSql.disabled = !val("#idCaso") || !sqlPasoPuedeAvanzar();
     const btnValidarDev = $("#btnCopiarPromptValidarDev");
@@ -3750,7 +4522,8 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
     }
   }
 
-  function applyStorageData(data) {
+  function applyStorageData(data, opts) {
+    const sondeo = !!opts?.sondeo;
     try {
       archivoColaVinculado = data._archivoColaVinculado || null;
       idReqVinculado = data._idReqVinculado || null;
@@ -3795,6 +4568,7 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
       set("#analisis", data.contenido?.analisis);
       set("#recomendacion", data.contenido?.recomendacion);
       set("#cambioPropuestoSimple", data.contenido?.cambioPropuestoSimple);
+      set("#cambioPropuestoSql", data.contenido?.cambioPropuestoSql);
       set("#impactoFe", data.contenido?.impactoFe);
       set("#impactoApi", data.contenido?.impactoApi);
       set("#impactoSql", data.contenido?.impactoSql);
@@ -3811,6 +4585,7 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
       if ($("#chkValidarAntes")) $("#chkValidarAntes").checked = !!va.aplica;
       set("#validarAntesTexto", va.texto);
       toggleValidarAntes();
+      if (sondeo) return;
       set("#imagenesNecesarias", data.contenido?.imagenesNecesarias);
       imagenesAnalisis = (data.contenido?.imagenesAnalisis || []).map((i) => ({
         ...i,
@@ -3835,8 +4610,25 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
       diagramaFlujo = data.contenido?.diagramaFlujo?.nombre ? data.contenido.diagramaFlujo : null;
       set("#notasDiagramaFlujo", data.contenido?.diagramaFlujo?.notas || "");
       renderDiagramaFlujo();
+      const idCasoLoad = data.identificacion?.idCaso || val("#idCaso");
+      mockupsFormCasoId = idCasoLoad || "";
+      mockupsFormDraft = filterMockupsForCaso(
+        Array.isArray(data.contenido?.mockups) ? data.contenido.mockups : [],
+        idCasoLoad,
+      );
+      mockupsFormDirty = false;
+      if (mockupsFormPreviewRuta && !mockupsFormDraft.includes(mockupsFormPreviewRuta)) {
+        clearMockupFormPreview();
+      }
+      set("#notasMockups", data.contenido?.mockupsNotas || "");
+      if (!sondeo) {
+        if (idCasoLoad) refreshMockupsForm(idCasoLoad);
+        else renderMockupsForm();
+      } else {
+        renderMockupsForm();
+      }
       if (data.sql?.confirmadoEnCarpeta) $("#chkSqlColocados").checked = true;
-      restaurarMetodosKb(data.sql);
+      if (!sondeo) restaurarMetodosKb(data.sql);
       const correo = data.correo || {};
       if (correo.destinatario) setVal("#correoDestino", correo.destinatario);
       if (correo.fechaEnvio) setVal("#fechaEnvioCorreo", correo.fechaEnvio);
@@ -3899,7 +4691,7 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
   }
 
   async function copyPrompt() {
-    if (!isFormComplete()) return alert("Complete el formulario y confirme SQL en carpeta fija.");
+    if (!isFormComplete()) return alert("Complete el formulario y confirme SQL en la carpeta del caso.");
     const data = collectData();
     const prompt = buildPrompt(data);
 
@@ -3916,11 +4708,14 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
 
     try {
       await navigator.clipboard.writeText(prompt);
-      alert("Prompt copiado. Péguelo en Cursor.\n\nRecuerde:\n- HTML en cola/\n- SQL en sql/" + data.identificacion.idCaso + "/");
+      alert("Prompt copiado. Péguelo en Cursor.\n\nRecuerde:\n- HTML en cola/\n- SQL en activo/" + data.identificacion.idCaso + "/sql/");
     } catch {
       alert("Copie manualmente el preview.");
     }
   }
+
+  window.refreshCorreoEstado = refreshCorreoEstado;
+  window.QrysApp = { refreshMockupsForm, abrirMockupForm };
 
   try {
     init();

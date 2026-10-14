@@ -12,6 +12,354 @@
       "autor": "agente",
       "texto": "Este Chat es independiente y solo de «Contabilidad». Facturación no mezcla caja (ni al revés). Nuevo abre otra conversación de este mismo módulo; Historial archiva la actual. Cada requerimiento tiene su propio Chat en Analista de negocio.",
       "en": "2026-09-12T21:28:13"
+    },
+    {
+      "id": "mcpeinv27",
+      "autor": "agente",
+      "texto": "## Comprobantes con error — flujo invertido (CEM)\n\nEl errado no se diagnostica desde el módulo que lo generó. Se abre en **Contabilidad → Comprobantes errados** (`/cont/mcpe`) y se lee hacia atrás.\n\n**1. Cabecera.** `PROCEDENCIA`, `NOREFERENCIA`, `REFERENCIA1`, `REFERENCIA2`, `IDSEDE`, tipo (`COMPROBANTE`), año y mes.\n\n**2. Línea en error.** `SPK_REVISAR_COMPROBANTE` solo escribe cinco textos: cuenta no existe, cuenta que no es de detalle, valor cero, valor negativo, tercero no existe. Si el texto va vacío, el detalle dice «Errores de Parametrización». El mismo detalle trae proceso, centro, área y referencias: eso es el puntero al documento.\n\n**3. Origen por procedencia** (lo que Reconstruir vuelve a ejecutar):\n\n| Procedencia | Documento | Dónde corregir |\n|---|---|---|\n| INV | Movimiento `REFERENCIA1` | Inventario / dispensación. Centro, área y modelo KMCOM |\n| CXP | CxP `REFERENCIA1` | Cuenta por pagar |\n| FACTURA | `NOREFERENCIA` | Factura |\n| CAJA | Recibo `REFERENCIA1` + caja `REFERENCIA2` | Recibo de caja |\n| CXC | `REFERENCIA1` | Cartera |\n| NOTDBCR | Nota `REFERENCIA1` | Nota débito/crédito factura |\n| NOTDBCRCXP | CxP `REFERENCIA1` + ítem `REFERENCIA2` | Nota de CxP |\n| NOMINA | `REFERENCIA2` / `REFERENCIA1` | Nómina |\n| BMOV | Movimiento banco en `REFERENCIA1` | Bancos |\n| RGLO / CONCI / RAD CXC / ANTICIPOS / IACT | `REFERENCIA1` | Glosa, conciliación, radicación, anticipo, activo |\n\n**4. Corrección.** Arreglar el documento. Luego **Revisar** y **Reconstruir**. Parchear solo la línea no sirve: Reconstruir rearma el asiento desde el origen.\n\n**5. Si Reconstruir se detiene** (no es el error de la línea): periodo cerrado, inventario o cartera cerrados, procedencia MANUAL, ya está en el libro, o «duplicado» de la misma referencia en **otra sede** (CEM: 3359 sede 33 vs 3459 sede 34). Esa otra sede no se anula.\n\n**CEM — familias ya vistas**\n\n- Cuenta `NO DEF.KMCOM` / «La Cuenta NO Existe» en inventario tipo 06: el movimiento nació sin centro (aplicación o transcripción). Comité SR20260923-003.\n- Reconstruir marca duplicado entre sedes: la validación no usa la sede. SR20260923-004. No está en la canasta 2.0.3.\n- Revisar se cae en categoría: la línea trae un NIT que no es afiliado. SR20260923-005.\n- Impuesto al consumo de CxP mezclado en el gasto: puede quedar **contabilizado** y no aparecer en errados. SR20260923-006.\n\n**Para que deje de repetirse:** publicar esos cuatro arreglos en preversión; no confirmar dispensación 06 sin centro; no reconstruir si el periodo del módulo está cerrado. La pantalla aún no agrupa errados por procedencia y texto: `OBTENER_ERRORES_DETALLE` solo lista cuentas que no están en el plan, y el diagnóstico masivo exige `SPK_DIAG_MCPE_ERRORES`.\n\nQuedó en `conocimiento/contabilidad` (control `mcpe-flujo-invertido`).",
+      "en": "2026-09-27T10:05:00"
+    },
+    {
+      "id": "ctbmap27",
+      "autor": "agente",
+      "texto": "## Contabilización — catálogo por procedencia\n\nConfirmé el pedido: ir documentando la contabilización según aparezca, en un solo sitio.\n\n**Dónde.** Consultas → Contabilidad → capa **3. Lo que llega y completa**. Un control por procedencia. El cuerpo del procedimiento sigue en el proceso hermano (inventario, CxP, caja, facturación, recaudos, notas, bancos, conciliaciones).\n\n**Cómo se anota cada hallazgo.** En el control de esa procedencia: texto de error, documento (`REFERENCIA1` / `NOREFERENCIA`), corrección y caso CEM. No se duplica el script.\n\n**Ya con ficha leída:** INV, CXP, nota de CxP, FACTURA, CXC, nota de factura, radicación sin abonos, BMOV, CONCI. Caja: egreso leído, ingreso parcial.\n\n**CEM ya escrito ahí:** tipo 06 sin centro y tercero que no es afiliado (INV); impuesto al consumo sin IVA (CXP, puede no caer en errados).\n\n**Solo el enlace** (Reconstruir los llama; el cuerpo no está leído): nómina, anticipos, cesiones, legalización, glosa, depreciación, activo IACT, radicación con abonos (`SPK_CONTAB_RADICACXC_1`).\n\nCuando traiga el siguiente errado o el siguiente módulo, lo agrego en su procedencia.",
+      "en": "2026-09-27T10:12:00"
+    },
+    {
+      "id": "ctbcie27",
+      "autor": "agente",
+      "texto": "## Cierre — pendientes CEM, septiembre 2026\n\nFoto de solo lectura del 2026-09-27. No se cerró nada. El único periodo abierto es **septiembre 2026**, compañía 01.\n\nLa lista que arma el botón (`FNK_REVISION_ANTES_CIERRE_PERIODO`, preversión = cerrada 2.0.5) da:\n\n- Caja cerrados sin contabilizar: **4** (C017 recibos 00002079, 00002082, 00002083 del 4; C028 00000912 del 14).\n- Caja sin confirmar: **6** (C046 00000006 y 00000007; C027 00000961; C003 00002512 y 00002515; C006 00009250).\n- Nómina sin cerrar: **5** (01202609P30-1, 02202609P30-1, 07202609P30-1, 09202609P30-1, 10202609P33-2).\n- CxP sin contabilizar: **655** (la variable está en Documento, así que mira la fecha del documento, no la de radicación).\n- Nota de CxP: **1** (26CM000417, 21 de septiembre).\n- Inventario confirmado sin contabilizar: **122** (VE 62, VC 22, tipo 06 20, tipo 31 18).\n- Cartera y CxP del periodo: siguen abiertos. Hay que cerrarlos antes que contabilidad.\n- Recaudos, bancos, conciliaciones, radicación y activos: 0.\n\nLas notas de factura **no salen en el botón**: la función compara el año con el mes. Con el mes bien, hay **1** abierta sin comprobante: 06C00023722.\n\nLa validación básica, que se detiene en el primer fallo, hoy pararía en el comprobante manual **0173000000085463** (estado 1). Detrás quedan **2944** errados (2943 inventario y 2 factura) y **4757** movimientos sin confirmar (4733 son tipo 06). Esos sin confirmar no frenan el botón: la variable VALIDAINVCIERRECONT no está en SI.\n\nQuedó el control «Lo pendiente antes de cerrar el periodo» en Contabilidad.",
+      "en": "2026-09-27T10:20:00"
+    },
+    {
+      "id": "ctbcaj27",
+      "autor": "agente",
+      "texto": "## Seis recibos sin confirmar — la apertura sigue abierta\n\nConsulta de solo lectura en CEM, 2026-09-27. Los seis siguen en estado P, sin cerrar el recibo y sin comprobante. La sesión ACJ de cada uno está **abierta** (ABIERTA=1, sin fecha de cierre) y la caja apunta a esa misma sesión:\n\n- C046 00000006 y 00000007 → sesión 29A00000002, abierta desde el 2026-08-03.\n- C027 00000961 → 22A00000077, abierta desde el 2026-09-03.\n- C003 00002512 y 00002515 → 02A00000104, abierta desde el 2026-09-21.\n- C006 00009250 → 05A00000311, abierta desde el 2026-09-21.\n\nNo aplica el caso de recibo huérfano con la apertura ya cerrada: aquí el turno no se ha cerrado.",
+      "en": "2026-09-27T10:25:00"
+    },
+    {
+      "id": "ctbmail27",
+      "autor": "agente",
+      "texto": "Quedó el aviso para Tesorería: seis recibos sin confirmar y sus aperturas siguen abiertas. Archivo conocimiento/contabilidad/novedad-tesoreria-recibos-sep2026.html. Asunto: Seis recibos abiertos impiden el cierre contable de septiembre.",
+      "en": "2026-09-27T10:36:00"
+    },
+    {
+      "id": "ctbdev27",
+      "autor": "agente",
+      "texto": "Correo para jefe de desarrollo, copia Naren Voos: la dispensación tipo 06 sigue sin solución definitiva. Incluye las correcciones de septiembre (SR11-001, SR23-002, SR23-003, SR23-004/0100016529, SR23-005/0100016510, SR24-001) y la foto del cierre (comprobante manual 0173000000085463, 2944 errados, 4733 movimientos tipo 06 sin confirmar). Archivo conocimiento/contabilidad/correo-desarrollo-dispensacion-sep2026.html.",
+      "en": "2026-09-27T10:58:00"
+    },
+    {
+      "id": "ctbdev27b",
+      "autor": "agente",
+      "texto": "Reescribí el correo de dispensación: solo inventario. Énfasis en los cuatro cambios, reuniones y llamadas, y cartas y correos del cliente en agosto. Mismo archivo correo-desarrollo-dispensacion-sep2026.html.",
+      "en": "2026-09-27T11:02:00"
+    },
+    {
+      "id": "ctbent27",
+      "autor": "agente",
+      "texto": "Correo de entradas a CxP para jefe de desarrollo, copia Guillermo García: encabezado por la entrada y no por la orden, IVA por lote (0100016507) e ingreso masivo con CUFE. Archivo conocimiento/contabilidad/correo-desarrollo-entradas-cxp-sep2026.html.",
+      "en": "2026-09-27T12:45:00"
+    },
+    {
+      "id": "ctberr28",
+      "autor": "agente",
+      "texto": "## Errados CEM — foto 2026-09-28 y orden para irlos sacando\n\nConsulta de solo lectura. Abiertos: comprobantes con estado 0. Son **2.984**.\n\n**Inventario tipo 06: 2.976**\n\n- **2.845** solo «La Cuenta NO Existe», cuenta NO DEF.KMCOM, sin centro y sin área. Es la dispensación ya dictaminada. Se corrige poniendo centro y área en el movimiento y reconstruyendo; el programa sigue dejándolos nacer vacíos.\n- **122** traen además la línea de IVA 24080501 en cero. Van en el mismo grupo, sin centro.\n- **9** sí tienen centro y área, y las cuentas ya son 61350502 (débito) y 14150502 (crédito). La columna ERROR va vacía; el detalle de la línea dice «La Cuenta NO Existe». En pantalla salen como error de parametrización. Movimientos: 3300005959, 3300006620, 3300006756, 3400009255, 3400009567, 3500007334, 3500008221, 3500008629, 3500009063.\n- **8** tienen centro y área y siguen en NO DEF.KMCOM. Sede 06, centro 10030102, área 4110: 0600011538, 0600011709, 0600011780. Sede 34, centro 10320202, área 4110: 3400000324, 3400000333, 3400000344, 3400000362, 3400000385.\n\n**Fuera de inventario: 8**\n\n- 3 facturas de septiembre, cuenta NO DEF.KMCOM: FV79363 (0659000000208783), FV79261 (0659000000208917, movimiento 0600014466), FV79211 (0662000000208667).\n- 5 notas crédito de marzo, sede 22, cuenta vacía: 22C00000193, 22C00000194, 22C00000199, 22C00000200, 22C00000201.\n\n**Orden.** Primero los 9 que ya tienen cuenta (puede ser cuenta inactiva o un estado que quedó pegado). Después los 8 de modelo KMCOM. Luego las 5 notas y las 3 facturas. Los 2.845 se dejan para el paquete de dispensación: llenar centro a mano no evita que el siguiente nazca igual.\n\nLas cuentas 61350502, 14150502 y 24080501 están activas y son de detalle. El modelo KMCOM de movimiento 06, área 4110, ya tiene débito 61350502 y crédito 14150502 en los centros 10030102, 10320202, 10330202 y 10340202. Los 9 y los 8 se pueden probar en pantalla: Revisar los 9 (la cuenta ya está en la línea) y Reconstruir los 8 (el modelo ya existe; el comprobante sigue con NO DEF.KMCOM). Si al reconstruir vuelven a NO DEF, el armado usa otra llave además de tipo, centro y área.",
+      "en": "2026-09-28T14:45:00"
+    },
+    {
+      "id": "ctbcc28",
+      "autor": "agente",
+      "texto": "## Tipo 06 de septiembre — centro desde la cita o la autorización\n\nCEM no se modificó. El centro no sale de KMCOM: el modelo solo dice la cuenta cuando el movimiento ya trae centro y área.\n\nKMCOM, modelo 01, movimiento de inventario, prefijo 06: 24 centros. En todos el débito es 61350502 y el crédito 14150502.\n\nLos 2.984 son comprobantes con error, de varios orígenes. En septiembre, tipo 06 confirmado y sin centro, hay 3.468:\n\n- 3.129 transcripciones con autorización (centro y área).\n- 286 aplicaciones con cita.\n- 40 aplicaciones sin cita: no se tocan.\n- 13 transcripciones sin autorización usable: no se tocan.\n\nEsos 3.415 pares ya tienen modelo. Los centros que más se repiten, área 4110: 10340202 (1.125), 10330202 (914), 10320202 (820), 10030202 (276), 10220202 (196), 10290202 (83 entre autorización y cita).\n\nDe los 3.468, 2.943 ya están en errados y 525 aún no tienen comprobante. Los confirmados de septiembre que ya traen centro (más de 36.000) quedan como están.\n\nScript en vista previa, @APLICAR = 0: sql/CORRECCION_IMOV_CCOSTO_TIPO06_SEP2026.sql. Primero se ejecuta así y se revisa el listado. Con @APLICAR = 1 graba centro y área en el movimiento y, si la línea sigue en NO DEF.KMCOM y el comprobante está en errados, pone la cuenta del modelo. No pasa el comprobante al definitivo. Después, en pantalla, Revisar y Reconstruir.",
+      "en": "2026-09-28T16:25:00"
+    },
+    {
+      "id": "ctb36228",
+      "autor": "agente",
+      "texto": "## Comprobante 0359000003622781\n\nEstá en errados, procedencia INV, sede 03, 26 de septiembre, valor 30.867. No está en el libro definitivo. El movimiento es 0300028137, tipo 06, bodega 0416 (Sala de aplicaciones), confirmado, sin centro y sin área. Por eso las cuatro líneas quedaron en NO DEF.KMCOM: «La Cuenta NO Existe.»\n\nLa solicitud 030000050992 es una aplicación (APLIM 23710), aprobada, sin cita. El script de septiembre solo copia el centro de la cita, así que este movimiento queda por fuera. El centro sí está en la aplicación y en la bodega: 10030202, área 4110, Salud Plena Ayacucho, activo. Las 40 aplicaciones de septiembre sin cita traen centro en la aplicación.\n\nCon ese centro, el modelo ya resuelve el débito (prefijo 06, cuenta 61350502) y el crédito de medicamentos (prefijo 01, 4.102, cuenta 14150502). El crédito de dispositivos médicos (prefijo 02, 26.765, artículos DM0009-1 y DM20-2) no tiene fila KMCOM para 10030202 y área 4110. En otros centros el prefijo 02 acredita 14150501 o 22050101. Hasta definir esa cuenta, Reconstruir seguiría dejando esa línea sin cuenta.",
+      "en": "2026-09-28T16:40:00"
+    },
+    {
+      "id": "ctb8771",
+      "autor": "agente",
+      "texto": "## Comprobante 3459000000008771 — no falta otro KMCOM\n\nErrados, inventario, sede 34, 25 de septiembre, 16.320. Movimiento 3400013038, tipo 06, bodega 077, confirmado, sin centro. Transcripción 340000010702: el enlace de autorización está vacío. La bodega Premium Plaza sí tiene centro 10320202 y área 4110.\n\nEl crédito de la línea dice prefijo 01 porque el artículo MX08-1 es medicamento. La cuenta no se busca por ese prefijo. Se busca por el tipo de movimiento 06. Prueba: el comprobante 3359000000003441 tiene crédito con prefijo 01 y cuenta 14150502, y en su centro 10330202 solo existe el modelo del tipo 06 (débito 61350502, crédito 14150502). No existe el prefijo 01.\n\nEn 10320202 y área 4110 el tipo 06 ya está: débito 61350502, crédito 14150502. Este comprobante no pide otra fila. Tampoco hace falta crear el prefijo 01 en 10320202 (1 movimiento) ni en 10330202 (3). La fila de prefijo 02 que quedó en 10030202 (crédito 22050101, débito 14150501) no es la que lee la salida.\n\nLo que falta en este comprobante es el centro en el movimiento. Con 10320202 y área 4110, Revisar y Reconstruir toman las cuentas del tipo 06.",
+      "en": "2026-09-28T16:50:00"
+    },
+    {
+      "id": "ctbfv79211",
+      "autor": "agente",
+      "texto": "## Comprobante 0662000000208667 — factura FV79211\n\nErrados, procedencia factura, 25 de septiembre, 120.987.216. El débito a Savia Salud en 13010501 ya está bien. Fallan los tres créditos, sin centro y en NO DEF.KMCOM:\n\n- Prefijo 12, materiales e insumos, 2.039.823,80. El modelo de ventas ya tiene crédito 41353804 en el centro 10320202, área 4110.\n- Prefijo 16, medicamentos no POS, 382.500. El modelo ya tiene crédito 41353802 en ese mismo centro.\n- Prefijo 15, medicamentos POS, 118.564.892,20. En 10320202 no existe el prefijo 15. En otros doce centros ese prefijo acredita 41353802, la misma cuenta del prefijo 16 en este centro.\n\nEl detalle de la factura ya trae el centro: una sola línea, referencia CSRC26, centro 10320202, área 4110, valor de servicios 121.992.216. El prefijo de esa línea está vacío. Por eso el centro se copia a las tres líneas del comprobante, no se inventa.\n\nFalta una fila de KMCOM: ventas, crédito, prefijo 15, centro 10320202, área 4110, cuenta 41353802. Con eso, las tres líneas quedan con centro 10320202 y área 4110, y la cuenta de cada prefijo. Después, Revisar. Reconstruir hoy volvería a armar el crédito desde el detalle, que ya no tiene los prefijos 12, 15 y 16.",
+      "en": "2026-09-28T21:10:00"
+    },
+    {
+      "id": "ctbimp28",
+      "autor": "agente",
+      "texto": "## CxP de septiembre con impuesto al consumo mal causado\n\nConsulta de solo lectura. Regla: el detalle trae impuesto al consumo y el comprobante no debita esa cuenta. El valor quedó dentro del gasto. No están en errados.\n\nDe las CxP con fecha de septiembre y valor de impuesto al consumo:\n\n- 22 contabilizadas, mal. Sede 06, procedencia Servicios, IVA en cero, cuenta 51051526. El débito de esa cuenta en el libro es cero. Impuesto sumado: 129.306.415.\n- 06SR019385 (FVEA94) ya quedó bien en el comprobante 0661000000208093: débito 18.905.040 en 51051526.\n- 06SR019014 también está bien: 14.643, y esa sí tiene IVA.\n- 06SR019106 (FE4397, comprobante 0661000000205899) trae 1.366.175 de impuesto y la cuenta del detalle está vacía. Está contabilizada.\n- Tres aún no tienen comprobante: 06SR019483, 06SR019484 y 06SR019499.\n\nLas 22 mal: 06SR018998 FE117, 06SR018999 FE118, 06SR019000 FE119, 06SR019101 FE4395, 06SR019104 FE4396, 06SR019109 FE4398, 06SR019110 FE4399, 06SR019114 FE4400, 06SR019117 FE4401, 06SR019120 FE4402, 06SR019130 FE120, 06SR019327 FE4410, 06SR019328 FE4411, 06SR019329 FE4412, 06SR019330 FE4413, 06SR019331 FE4414, 06SR019332 FE4415, 06SR019334 FE4416, 06SR019335 FE4417, 06SR019369 FE121, 06SR019370 FE122 y 06SR019386 FVEA93.\n\nRecontabilizarlas las separa si el procedimiento en CEM ya debita 51051526 aunque el IVA esté en cero. Si sigue exigiendo IVA, el asiento vuelve a mezclar el impuesto en el gasto.",
+      "en": "2026-09-28T21:30:00"
+    },
+    {
+      "id": "ctbimp28b",
+      "autor": "agente",
+      "texto": "Script de recontabilización de las 22 CxP, en vista previa. No se ejecutó.\n\nArchivo: sql/CORRECCION_FCXP_IMPCONSUMO_RECONSTRUIR_SEP2026.sql\n\nPor comprobante: si el estado es 2, SPK_NC_CONFIRMAR_CONTAB con DESCONTABILIZAR lo deja en 1. Luego SPK_PASA_A_MCPE lo pasa a cambios. Luego SPK_NC_CONTAB_CXP reconstruye el asiento. Queda en MCPE, sin confirmar de nuevo. Si el débito de 51051526 no coincide con el impuesto del detalle, se deshace ese comprobante.\n\nPrimero @APLICAR = 0 y se revisa el listado. Después @APLICAR = 1.",
+      "en": "2026-09-28T21:40:00"
+    },
+    {
+      "id": "ctbimp28c",
+      "autor": "agente",
+      "texto": "DESAIX no trae el arreglo en la rama que usan estas 22. No hay que reconstruir todavía.\n\nÚltima cerrada: 2.0.5, 23 de septiembre. Anterior: 2.0.4. PREVERSION (abierta el 25) es idéntica a la 2.0.5 en SPK_NC_CONTAB_CXP.\n\nEntre 2.0.4 y 2.0.5 sí cambió el procedimiento: el débito de impuesto al consumo quedó en la rama que exige cuenta de IVA y en la de compras. La rama de servicios sin cuenta de IVA sigue debitando el neto completo y no inserta el impuesto. El historial anterior, desde 1.8.6, tampoco lo tiene ahí.\n\nLas 22 no traen cuenta de IVA en el detalle. 06SR019385 tampoco, y en CEM ese comprobante sí debitó 51051526. El catálogo no explica ese asiento. Reconstruir con el procedimiento de DESAIX volvería a dejar el impuesto dentro del gasto. El script queda en vista previa.",
+      "en": "2026-09-28T21:50:00"
+    },
+    {
+      "id": "ctbimp28d",
+      "autor": "agente",
+      "texto": "El script se corrió en CEM y el control deshizo cada comprobante. El mensaje «El procedimiento no separó el impuesto al consumo» es el esperado: SPK_NC_CONTAB_CXP en CEM no debita 51051526 cuando no hay cuenta de IVA.\n\nLas 22 siguen en MCP, estado 2. Ninguna quedó en MCPE. No hay que volver a poner @APLICAR = 1 hasta que la rama de servicios sin IVA reste el impuesto y lo debite aparte.",
+      "en": "2026-09-28T21:55:00"
+    },
+    {
+      "id": "ctbimp28e",
+      "autor": "agente",
+      "texto": "Quedó el provisional del procedimiento, sin ejecutarlo.\n\nArchivo: sql/PROVISIONAL_CEM_SPK_NC_CONTAB_CXP.sql\n\nEs la 2.0.5 de DESAIX (igual a PREVERSION) con un solo cambio, en servicios sin cuenta de IVA: el gasto resta el impuesto al consumo y se inserta el débito a CTAIMPCONSUMO. El resto no se toca. Cuando desarrollo publique el definitivo, este provisional se reemplaza.\n\nOrden en CEM: primero ese script. Después sql/CORRECCION_FCXP_IMPCONSUMO_RECONSTRUIR_SEP2026.sql con @APLICAR = 1. Si el provisional no quedó, el de recontabilizar vuelve a deshacer el comprobante.",
+      "en": "2026-09-28T22:05:00"
+    },
+    {
+      "id": "ctbimp28f",
+      "autor": "agente",
+      "texto": "El provisional de las 21:55 sí quedó en CEM, y por eso el error siguió. Estas 22 son tipo IPS, procedencia Servicios, sin cuenta de IVA. El cambio anterior estaba en la rama que no es IPS, y esa no se ejecuta.\n\nEl script sql/PROVISIONAL_CEM_SPK_NC_CONTAB_CXP.sql ya trae el ELSE de la rama IPS: el gasto resta el impuesto y se debita CTAIMPCONSUMO. Hay que volver a ejecutarlo en CEM y después el de recontabilizar con @APLICAR = 1. El control ahora mira MCHE y MCH, por si el procedimiento ya pasó el comprobante al libro definitivo.",
+      "en": "2026-09-28T22:10:00"
+    },
+    {
+      "id": "ctbimp28g",
+      "autor": "agente",
+      "texto": "El CREATE falló y no reemplazó el procedimiento de las 21:55. El error es un ELSE de más: la rama IPS sin cuenta de IVA ya existe en la 2.0.5 y ya resta el impuesto e inserta el débito. Ese segundo ELSE no compila. Lo quité del archivo.\n\nEl procedimiento que sí quedó revisa el comprobante y, si cuadra, lo pasa al libro definitivo y borra las líneas de cambios. El script de recontabilizar solo miraba cambios, veía el débito en cero y deshacía un asiento que sí se había separado.\n\nNo hay que volver a crear el procedimiento. Hay que ejecutar de nuevo sql/CORRECCION_FCXP_IMPCONSUMO_RECONSTRUIR_SEP2026.sql con @APLICAR = 1. Ese script ya mira cambios y el libro definitivo.",
+      "en": "2026-09-28T22:15:00"
+    },
+    {
+      "id": "ctbimp28h",
+      "autor": "agente",
+      "texto": "Las 22 CxP quedaron corregidas y confirmadas en el libro definitivo. El débito a 51051526 coincide con el impuesto del detalle en cada una. Total del impuesto separado: 129.306.415. El cuadro para el correo está en el Chat.",
+      "en": "2026-09-28T22:20:00"
+    },
+    {
+      "id": "ctbcomp28",
+      "autor": "agente",
+      "texto": "CxP de compras de septiembre, tipo IPS. 1.157 documentos: 532 contabilizadas y 625 sin contabilizar.\n\nLas 532 contabilizadas cuadran. Débito igual a crédito. En las 42 que tienen IVA, el débito del libro coincide con el IVA del detalle. La cuenta usada ahí es 24080501, IVA descontable, detalle y activa.\n\nLo que no está contabilizado y hay que corregir antes de causarlo:\n\n- Encabezado distinto del detalle, misma diferencia en neto y en IVA: 01CM000871 DPE10917 (415.810,54), 01CM000873 DPE10920 (147.184,74), 03CM001766 DPE11105 (82.393.545,60) y 03CM002016 DPE11741 (el IVA del detalle está duplicado: 12.954.960 por dos).\n- 03CM001991 DPE11292 tiene IVA de 68.836 y 51.627 sin cuenta de IVA. La del inventario es 14150502. Si se causa así, el IVA queda dentro del inventario.\n- Siete líneas traen el IVA en 24080601, que es IVA generado, no el descontable 24080501. Incluye las dos líneas de 03CM002016.\n- Seis líneas con cuenta NO DEF.KMCOM, que no existe. 03CM002189 además tiene el crédito en esa misma cuenta.\n\nVLR_IMPUESTOS del encabezado no es el IVA. En contabilizadas ese campo difiere y el libro igual debitó el IVA del detalle.",
+      "en": "2026-09-28T22:35:00"
+    },
+    {
+      "id": "ctbcomp28b",
+      "autor": "agente",
+      "texto": "Las cuatro compras cuyo detalle trae más IVA que el encabezado ya están en sql/CORRECCION_FCXPD_IVA_SEP2026.sql. El encabezado está bien. El detalle repite el IVA del artículo en cada lote. El script pone en cada línea el IVA del lote de la entrada y recalcula el neto. No toca el encabezado ni contabiliza.\n\nSiguen descuadradas: 01CM000871, 01CM000873, 03CM001766 y 03CM002016. Ya cuadran 01CM000875, 01CM000880 y 03CM002019, que también están en ese script. Si se ejecuta el bloque completo y una de las que ya cuadran no cumple la condición, no graba nada.",
+      "en": "2026-09-28T22:50:00"
+    },
+    {
+      "id": "ctbcomp28c",
+      "autor": "agente",
+      "texto": "El script se devolvió entero (Msg 50002). No cambió nada.\n\nLas cuatro descuadradas sí quedarían iguales al encabezado si se ajustan solas. El bloque también traía 01CM000875, 01CM000880 y 03CM002019. Las dos primeras hoy igualan encabezado y detalle, pero varias líneas tienen el IVA del artículo y no el del lote. Al poner el IVA de la entrada el detalle queda por debajo del encabezado (875 baja 102.671,82 y 880 baja 215.898,36) y el cierre devuelve todo. 03CM002019 ya está contabilizada y el mismo cierre la rechaza.\n\nDejé en sql/CORRECCION_FCXPD_IVA_SEP2026.sql solo 01CM000871, 01CM000873, 03CM001766 y 03CM002016. Hay que volver a ejecutar ese bloque.",
+      "en": "2026-09-28T22:55:00"
+    },
+    {
+      "id": "ctbcomp28d",
+      "autor": "agente",
+      "texto": "Las cuatro quedaron bien. Encabezado y detalle coinciden en IVA y en neto, y cada línea trae el IVA de su lote. Siguen en estado N, sin contabilizar.\n\n01CM000871 DPE10917: IVA 603.792,44, neto 3.781.647,37.\n01CM000873 DPE10920: IVA 451.114,78, neto 2.825.403,07.\n03CM001766 DPE11105: IVA 20.598.386,40, neto 129.010.946,40.\n03CM002016 DPE11741: IVA 12.954.960, neto 81.138.960.\n\n01CM000875, 01CM000880 y 03CM002019 no se tocaron. 03CM002016 sigue con el IVA en la cuenta 24080601 (IVA generado). Este script no cambia la cuenta.",
+      "en": "2026-09-28T23:00:00"
+    },
+    {
+      "id": "ctbcomp28e",
+      "autor": "agente",
+      "texto": "Compras de septiembre con IVA y la cuenta del servicio todavía en excluidos. La regla de la confirmación es: si hay IVA, CUENTA_SER pasa a la gravada y CUENTA_IVA queda en 24080501.\n\nSin cuenta de IVA y en excluidos: 03CM001991 DPE11292, MX1944-1, ítems 1 y 2 (68.836 y 51.627). Deben ir a 14150501 y 24080501. El lote sigue en 14150502.\n\nCon cuenta de IVA descontable, pero el servicio sigue en excluidos: 03CM001611 (14200502→14200501; el lote ya está en gravados), 03CM001818 (14150502→14150501), 26CM000449 y 26CM000477 (14200502→14200501). 03CM001809 tiene las dos líneas en 14200502; el ítem 1 además trae el IVA en 24080601 y debe quedar en 24080501.\n\n01CM000740 DPE10712 ya está contabilizada (comprobante 2664000000002688). Esa no se toca con un cambio de detalle.\n\nLas seis sin contabilizar tampoco tienen el lote en la cuenta gravada, salvo 03CM001611.",
+      "en": "2026-09-28T23:05:00"
+    },
+    {
+      "id": "ctbcomp28f",
+      "autor": "agente",
+      "texto": "Quedó el script sql/CORRECCION_FCXPD_CON_IVA_GRAVADA_SEP2026.sql. No se ejecutó.\n\nCambia 11 líneas sin contabilizar: la cuenta del servicio pasa a la gravada (14150501 o 14200501) y la cuenta de IVA queda en 24080501. En 03CM001809 ítem 1 el IVA sale de 24080601. El lote de esta entrada, cuando existe, pasa al débito gravado, a la reversión gravada y a la misma cuenta de IVA. Son 9 lotes. El crédito del encabezado sigue en 22050101.\n\nNo entran 01CM000740 (ya contabilizada) ni los lotes de otras entradas: DM0089-1 de 03CM001611 y DM65-1 del ítem 4 de 26CM000477. Esas dos líneas sí cambian el detalle, porque su entrada no tiene lote.\n\nSi una línea o un lote no está como se espera, no graba nada. Hay que ejecutar el bloque completo.",
+      "en": "2026-09-28T23:10:00"
+    },
+    {
+      "id": "ctbcomp28g",
+      "autor": "agente",
+      "texto": "Las once líneas quedaron bien. Servicio en la cuenta gravada (14150501 o 14200501) y cuenta de IVA 24080501. El ítem 1 de 03CM001809 ya no está en 24080601. 03CM001991 ya tiene cuenta de IVA. Encabezado sigue en 22050101, estado N, sin contabilizar.\n\nLos nueve lotes de esta entrada quedaron en débito gravado, reversión gravada y 24080501. 03CM001611 y el ítem 4 de 26CM000477 siguen sin lote en su entrada. El lote DM65-1 de la otra entrada sigue en excluidos. 01CM000740 no se tocó: sigue contabilizada y en 14200502.",
+      "en": "2026-09-28T23:12:00"
+    },
+    {
+      "id": "ctbprec29",
+      "autor": "agente",
+      "texto": "Pre cierre de septiembre 2026, hoy 29. El periodo está abierto. Agosto está cerrado. Hay un solo periodo de saldos iniciales (octubre 2022). La depreciación de activos ya está. El traslado de costos no está hecho y la variable que lo exige está vacía, así que esa revisión no lo pide.\n\nLo primero que detiene el pre cierre son 5 comprobantes manuales sin confirmar: 0153000000098586, 0159000000098585, 0166000000098587 y 0168000000099707 en estado 0, y 0173000000085463 en estado 1.\n\nDespués aparecen 2 comprobantes en cambios, ambos de factura: 0653000000209298 FV79413 y 0661000000209488 FV79518.\n\nLa revisión de integridad, cuando llegue, también lista: cartera y CxP del periodo sin cerrar; 5 nóminas abiertas (01202609P30-1, 02202609P30-1, 07202609P30-1, 09202609P30-1, 10202609P33-2); 565 CxP por fecha de documento (555 compras y 10 servicios); 2 notas de CxP (03CM002374 del 29 y 26CM000417 del 21); 4 recibos cerrados sin contabilizar (C017 00002079, 00002082, 00002083 y C028 00000912); un movimiento del banco 02, ítem 8902, cuenta 460052061, del 16; 723 movimientos de inventario confirmados sin contabilizar, 674 del tipo 06.\n\nNo frenan: cuentas que no son de detalle, notas débito/crédito, recibos sin confirmar, recaudos, conciliaciones, radicación ni activos. Hay 5.190 movimientos de inventario sin confirmar; VALIDAINVCIERRECONT no está en SI, así que el pre cierre no los exige.",
+      "en": "2026-09-29T15:55:00"
+    },
+    {
+      "id": "ctbcomp29",
+      "autor": "agente",
+      "texto": "Compras de septiembre sin contabilizar, por fecha de documento: 556. El crédito está en proveedores y las 1.577 líneas tienen cuenta de servicio de detalle y activa. No hay neto en cero, ni impuesto al consumo sin cuenta, ni líneas sin IVA puestas en gravados.\n\nAl causarlas, el procedimiento rechaza solo las que tienen IVA y la cuenta de IVA vacía. Son cuatro, de 950.552 cada una, servicio todavía en 14200502: 03CM002153 DPE11511, 03CM002155 DPE11510, 03CM002156 DPE11512 y 03CM002157 DPE11513.\n\nLo demás no lo rechaza y lo causaría mal. 03CM001766 DPE11105 tiene el IVA (20.724.163) en 14200501 y, el ítem 5, en 14200590; el ítem 5 además sigue en excluidos. Cuatro documentos tienen el IVA en 24080601, generado, por 15.913.151,70: 03CM002016, 03CM002050, 03CM002274 y 03CM002279.\n\nDiecinueve tienen el detalle más alto que el encabezado. Al causar, el cálculo copia el detalle al encabezado y la deuda sube. Las más claras: 26CM000528 DPE11790 (9 líneas del mismo artículo, el detalle es 9 veces el encabezado, 592.541.440 de más), 03CM001706 DPE10943 y 01CM000861 DPE11203 (el detalle está al doble, y en 1706 también el IVA). El resto de la diferencia está en el Chat.",
+      "en": "2026-09-29T16:10:00"
+    },
+    {
+      "id": "ctbcomp29b",
+      "autor": "agente",
+      "texto": "01CM000843 DPE11027, entrada 0100093187. El valor de lo recibido es 5.892.464 (campo VALOR). El neto del detalle y el comprobante 0666000000209495 están en 10.234.064. La diferencia, 4.341.600, es MX347-3: llegó en dos lotes (4.050 y 1.350 a 804) y cada línea del detalle trae el valor de los 5.400, no el de su lote.\n\nEse comprobante está anulado, igual que otros dos del mismo documento y el mismo valor: 0663000000209493 y 0658000000209594. La CxP sigue sin contabilizar. Si se causa otra vez, el cálculo copia el detalle inflado y la deuda queda en 10.234.064.",
+      "en": "2026-09-29T18:55:00"
+    },
+    {
+      "id": "ctbcomp29c",
+      "autor": "agente",
+      "texto": "En septiembre hay 23 compras con el mismo patrón de 01CM000843: un artículo en varios lotes y cada línea trae el valor completo, no el de su lote.\n\nSolo una está contabilizada: 01CM000861 DPE11203, comprobante 2659000000002782, confirmado, por 5.692.000. Son dos lotes de MX931-1 y cada uno quedó en 2.846.000.\n\nLas otras 22 no están contabilizadas. La mayor es 26CM000528 DPE11790, nueve líneas del mismo artículo, 592.541.440 por encima de cantidad por precio. 01CM000843 está en esa lista, con 4.341.600 de más. El detalle de las 22 está en el Chat.",
+      "en": "2026-09-29T19:05:00"
+    },
+    {
+      "id": "ctbcomp29d",
+      "autor": "agente",
+      "texto": "Al comité sí se pidió la corrección del IVA, no la del neto. Solicitud SR20260922-002, cerrada el 22 de septiembre: «CxP de compras: el IVA del lote no se repite en cada línea». Cubre VWK_IMOVH_AGRUPADO y SPK_INSERT_CXP_INV para que VLR_IVA sea el del lote. El criterio deja la base igual y arma el neto como cantidad por costo más ese IVA. El ejemplo es 03CM001766. El script de datos es sql/CORRECCION_FCXPD_IVA_SEP2026.sql, siete CxP.\n\n01CM000843 no tiene IVA. Cada lote de MX347-3 trae el valor de los 5.400 (4.341.600) en el neto. Eso no está en SR20260922-002. SR20260926-001 es otra cosa: el encabezado de la recepción masiva queda con el total de la orden.",
+      "en": "2026-09-29T19:12:00"
+    },
+    {
+      "id": "ctbcomp29e",
+      "autor": "agente",
+      "texto": "Quedó el script provisional sql/CORRECCION_FCXPD_NETO_POR_LOTE_SEP2026.sql. No se ejecutó.\n\nCorrige 21 CxP sin contabilizar. En cada lote deja la base y el IVA de la entrada, y baja el neto y el saldo del encabezado a esa suma. No toca VALOR ni contabiliza. 01CM000843 pasa de 10.234.064 a 5.892.464.\n\nNo entran 01CM000861 (ya contabilizada, comprobante 2659000000002782; la entrada es de 300 y una línea trae 5.200) ni 03CM001888 (los dos lotes son iguales y el neto ya cuadra).\n\nSi una línea no tiene su lote, no graba nada. Hay que ejecutar el bloque completo.",
+      "en": "2026-09-29T19:35:00"
+    },
+    {
+      "id": "ctbcomp29f",
+      "autor": "agente",
+      "texto": "Las 21 CxP del script quedaron bien. Encabezado, detalle y saldo coinciden. Cada lote que cruza con la entrada trae la base y el IVA de ese lote. Siguen en estado N, sin contabilizar.\n\n01CM000843 DPE11027 quedó en 5.892.464. 26CM000528 DPE11790 quedó en 74.067.680. En 03CM001873, MX917-7 quedó 479.040 (240) y 239.520 (120).\n\n01CM000861 no se tocó. Su comprobante 2659000000002782 está anulado y la CxP sigue en 5.692.000, sin contabilizar. 03CM001888 tampoco se tocó.",
+      "en": "2026-09-29T20:15:00"
+    },
+    {
+      "id": "ctbsrv29",
+      "autor": "agente",
+      "texto": "Servicios de septiembre, por fecha de documento: 716. 705 contabilizadas y 11 sin contabilizar. Encabezado y detalle coinciden. El crédito está bien y las cuentas de servicio existen, son de detalle y están activas.\n\nEl IVA de servicios no va a 24080501. Va a la cuenta de IVA del gasto o del costo (casi todas terminan en 90 y se llaman IVA). En contabilizadas son 120.573.886,40.\n\nSiete líneas contabilizadas tienen el IVA en una cuenta que no es de IVA: 06SR019430, 06SR019431 y 06SR019432 (45.185 cada una en 61103595, la misma del servicio); 06SR019121 y 06SR019123 (7.110 en 61153595); 06SR019480 y 06SR019481 (410 y 42 en 53052006).\n\n06SR019106 FE4397, comprobante 0661000000205899, tiene 1.366.175 de impuesto al consumo sin cuenta. El comprobante debitó todo 18.443.359 a 61153595. El impuesto quedó dentro del gasto.\n\nLas 11 sin contabilizar: seis traen IVA en 51053590 o 61103590. 06SR019483, 06SR019484 y 06SR019499 además traen impuesto al consumo con cuenta 51051526. Cinco no tienen IVA.",
+      "en": "2026-09-29T20:30:00"
+    },
+    {
+      "id": "ctbcomp29g",
+      "autor": "agente",
+      "texto": "Compras de septiembre sin contabilizar, por fecha de documento: 539 CxP, 1.558 líneas.\n\nMedicamentos. 1.332 líneas sin IVA (467 CxP) están en 14150502, excluidos, y la cuenta de IVA va vacía. 3 líneas con IVA están en 14150501 y en 24080501. Ninguna línea sin IVA trae cuenta de IVA. Dos medicamentos sí tienen IVA y la gravada, pero el IVA quedó en 24080601 (generado) y debe ir a 24080501: 03CM002274 DPE12388 ítem 1 MX1944-1, IVA 17.209,06; 03CM002279 DPE12422 ítem 1 MX1944-1, IVA 757.198,64.\n\nInsumos con la misma regla, todavía mal. Con IVA y en excluidos 14200502: 03CM002153 DPE11511, 03CM002155 DPE11510, 03CM002156 DPE11512 y 03CM002157 DPE11513 (IVA 950.552 cada una, sin cuenta de IVA; deben quedar en 14200501 y 24080501). 03CM001766 DPE11105 ítem 5 sigue en 14200502 y el IVA 676.362,40 está en 14200590; los ítems 1, 2, 4 y 6 ya están en gravada, pero el IVA (4.372.299, 3.724.551, 2.979.640,80 y 3.854.100,60) está en 14200501 y debe ir a 24080501. En 24080601 en lugar de 24080501: 03CM002016 DPE11741 ítems 1 y 2 (3.514.032,90 y 9.440.927,10) y 03CM002050 DPE11925 ítem 3 (2.183.784). El resto de insumos cuadra: 136 líneas con IVA en gravada y 24080501, y 73 sin IVA en excluidos.",
+      "en": "2026-09-29T20:40:00"
+    },
+    {
+      "id": "ctbcomp29h",
+      "autor": "agente",
+      "texto": "Quedó el script provisional sql/CORRECCION_FCXPD_CUENTA_IVA_SEP2026.sql. No se ejecutó.\n\nCorrige 14 líneas sin contabilizar. Las deja en la gravada y en 24080501. No toca valores, encabezado ni crédito, y no contabiliza.\n\nPasan de excluidos 14200502: 03CM002153, 03CM002155, 03CM002156, 03CM002157 (sin cuenta de IVA) y 03CM001766 ítem 5 (el IVA está en 14200590). Solo cambia la cuenta de IVA: 03CM001766 ítems 1, 2, 4 y 6 (hoy en 14200501); 03CM002016 ítems 1 y 2, 03CM002050 ítem 3, 03CM002274 y 03CM002279 (hoy en 24080601).\n\nEl lote de 03CM002153 (entrada 0300027441) pasa a gravada y a 24080501. El lote de 03CM002016 ítem 2 ya está bien y no se toca. Las otras líneas no tienen lote en su entrada.\n\nSi una línea o el lote no está como se espera, no graba nada. Hay que ejecutar el bloque completo.",
+      "en": "2026-09-29T20:45:00"
+    },
+    {
+      "id": "ctbcomp29i",
+      "autor": "agente",
+      "texto": "Las 14 líneas del script quedaron en la gravada y en 24080501. El lote de 03CM002153 quedó en 14200501, 14200590 y 24080501. El lote de 03CM002016 ítem 2 sigue bien. Encabezado y detalle coinciden, el crédito es 22050101 y siguen sin contabilizar.\n\nOcho quedan listas para contabilidad: 03CM002016, 03CM002050, 03CM002153, 03CM002155, 03CM002156, 03CM002157, 03CM002274 y 03CM002279.\n\n03CM001766 DPE11105 todavía no. El ítem 3 (ins0039-2, sin prefijo) tiene IVA 5.117.209,20 en 14200501. No entró en el script. Los otros cinco ítems de esa CxP sí quedaron en 24080501. En el resto de compras de septiembre sin contabilizar no hay otra línea con IVA fuera de 24080501.",
+      "en": "2026-09-29T20:50:00"
+    },
+    {
+      "id": "ctbcomp29j",
+      "autor": "agente",
+      "texto": "Las nueve quedaron listas para contabilidad. Siguen en estado N, sin comprobante, crédito 22050101, y el encabezado coincide con el detalle.\n\n03CM001766 ítem 3 quedó en 14200501 y 24080501, con prefijo 03. El IVA de esa línea pasó de 5.117.209,20 a 5.117.209,00. El encabezado bajó los mismos 0,20 (IVA 20.724.162,80 y neto 129.798.702,80) y sigue igual al detalle.\n\nEn las compras de septiembre sin contabilizar no queda ninguna línea con IVA fuera de 24080501, ni con IVA en excluidos, ni sin IVA y con cuenta de IVA. 03CM002274 ítem 2 sigue bien: sin IVA, en 14150502 y sin cuenta de IVA.",
+      "en": "2026-09-29T20:55:00"
+    },
+    {
+      "id": "ctbcomp30",
+      "autor": "agente",
+      "texto": "Quedó el documento de las correcciones de CxP de compras, septiembre 2026. Archivo conocimiento/contabilidad/correcciones-cxp-compras-sep2026.html. Foto del 30 de septiembre.\n\nSon 45 cuentas. Cubre el modelo KMCOM (débitos de medicamentos en excluidos), el encabezado igual a lo recibido (3), las 16 líneas sin IVA que pasaron de gravados a excluidos (6 CxP; 03CM002011 quedó anulada después), el IVA de cada lote (4), el neto de cada lote (21) y la cuenta de IVA en 24080501 (11 líneas y luego 14, más el ítem 3 de 03CM001766).\n\nNo se corrigieron 01CM000861, 03CM001888 ni 01CM000740. El programa de la recepción masiva y el del IVA por lote siguen pedidos en SR20260926-001 y SR20260922-002.",
+      "en": "2026-09-30T09:10:00"
+    },
+    {
+      "id": "ctbprec30",
+      "autor": "agente",
+      "texto": "Facturas de septiembre notificadas a la DIAN (FACTE=2): 5.391. 5.387 están en el libro (23.763.632.196). Una no está causada: FVSF1077, 9 de septiembre, inventario sede 25, 59.200, comprobante 0. Tres están en comprobantes con error, no en el libro: FV79413 (0653000000209298, 488.160), FV79518 (0661000000209488, 385.290) y FV79613 (0668000000209674, 488.160). Las tres son prefijo 12, sin centro y sin área. El crédito quedó en NO DEF.KMCOM («La Cuenta NO Existe.») y el IVA en 24080601. El débito es cartera 13010601. Hay 142 facturas en estado P que no se han notificado ni causado; esas no entran en este cruce.\n\nNotas FNOT del mes enviadas a la DIAN: 128, por 712.912.969,84. Todas están contabilizadas. No hay notas enviadas fuera de contabilidad. Dos notas crédito de hoy sí están causadas y aún no notificadas: 06C00023730 (FV77524) y 06C00023731 (FV77526), 450.549 cada una.\n\nPre cierre de septiembre, periodo abierto. Lo primero que frena son los 5 comprobantes manuales sin confirmar: 0153000000098586, 0159000000098585, 0166000000098587, 0168000000099707 (estado 0) y 0173000000085463 (estado 1). Después, los 3 comprobantes con error de esas facturas.\n\nDetrás: cartera y CxP del periodo sin cerrar; 5 nóminas (01202609P30-1, 02202609P30-1, 07202609P30-1, 09202609P30-1, 10202609P33-2); 539 CxP; 2 notas de CxP (03CM002374 y 26CM000417); 4 recibos cerrados sin causar (C017 00002079, 00002082, 00002083 y C028 00000912) y uno abierto de hoy, C005 00007673 por 5.000; 975 movimientos de inventario confirmados sin causar (904 tipo 06). El banco 02 ítem 8902 ya quedó contabilizado (0661000000209654). No frenan activos, radicación, recaudos, conciliaciones ni cuentas que no son de detalle. Hay 5.244 movimientos sin confirmar; la variable que los exige no está en SI.",
+      "en": "2026-09-30T10:25:00"
+    },
+    {
+      "id": "ctbpru30",
+      "autor": "agente",
+      "texto": "Revisión de compras sin contabilizar en pruebas (PCEM, servidor 1), septiembre por fecha de documento: 592 CxP, 1.704 líneas.\n\nMedicamentos sin IVA: 1.475 líneas (522 CxP) en 14150502 y sin cuenta de IVA. Con IVA y bien: 3 líneas en 14150501 y 24080501. Insumos bien: 147 líneas con IVA en gravada y 24080501, y 61 sin IVA en excluidos. Ninguna línea sin IVA trae cuenta de IVA, ni está en la gravada.\n\nSiguen mal, como antes de los scripts de producción. Con IVA y en excluidos: 03CM001818 FE602801 (107.066, debe pasar a 14150501); 03CM001611 FEP109844; 03CM001809 FEP109948 (el ítem 1 además tiene el IVA en 24080601); 26CM000449 INST256930 ítem 4; 26CM000477 INST257106 ítems 3 a 6. En gravada pero con el IVA en 24080601: 03CM002016 DPE11741 (las dos líneas traen 12.954.960 cada una), 03CM002050 DPE11925 ítem 3 (2.183.784), 03CM002274 y 03CM002279.\n\n03CM001766 DPE11105: el encabezado tiene IVA 20.598.386,40 y el detalle 102.991.932. Cuatro líneas sin IVA están en NO DEF.KMCOM: 03CM001753 ítem 5, 03CM002171 ítem 5, 03CM002189 ítem 1 (el crédito del encabezado también es NO DEF.KMCOM) y 03CM002275 ítem 2. 03CM001991 y las cuatro DPE11510 a DPE11513 no tienen IVA en esta base.",
+      "en": "2026-09-30T11:30:00"
+    },
+    {
+      "id": "ctbpru30b",
+      "autor": "agente",
+      "texto": "En pruebas, compras de septiembre sin contabilizar. El encabezado distinto del detalle son cuatro. En las cuatro la diferencia del neto es la misma del IVA: el detalle trae de más porque el IVA del artículo está pegado en cada línea.\n\n03CM001766 DPE11105: INS0038-3 en cinco líneas (1.020 a 15.000). Cada una trae 20.598.386,40, que es el IVA del encabezado. Detalle 102.991.932. De más: 82.393.545,60.\n03CM002016 DPE11741: INS0040-5 en dos líneas (6.510 y 17.490). Cada una trae 12.954.960. De más: 12.954.960.\n01CM000871 DPE10917: de más 415.810,54. INS0039-4 tres veces 102.671,82 (cantidades 60, 30 y 90); INS0056-1 dos veces 165.953,98 (60 y 690); INS0055-1 dos veces 44.512,92 (30 y 150).\n01CM000873 DPE10920: de más 147.184,74. INS0039-4 dos veces 102.671,82 (las dos de 90); INS0055-1 dos veces 44.512,92 (30 y 150).\n\nEl IVA también se repite, pero el encabezado ya quedó igual a ese detalle: 01CM000880 DPE10916 (INS0039-4 tres veces 102.671,82 en cantidades 30, 90 y 60; INS0053-2 dos veces 10.554,72) y 01CM000875 DPE10919 (INS0039-4 dos veces 102.671,82). 03CM001888 FE71142 son dos lotes iguales de 30 y el encabezado sí cuadra con la suma.",
+      "en": "2026-09-30T11:40:00"
+    },
+    {
+      "id": "ctbpru30c",
+      "autor": "agente",
+      "texto": "En pruebas, la orden mayor que la entrada son dos órdenes y tres movimientos. En esta base la CxP ya está en lo recibido, no en el total de la orden. Si el encabezado se deja con la orden, la deuda queda en ese valor más alto.\n\nOrden 2600001260, 106.891.881,12. Movimiento 2600006204 (18 de septiembre, bodega 044): entraron 210.432 de MX04-1 por 74.065.751,04. No entraron 93.264, que son 32.826.130,08. La CxP 26CM000528 DPE11790 está en 74.065.751,04. Con la orden quedaría en 106.891.881,12.\n\nOrden 2600001259, 5.680.472. Movimiento 0300026726 (16 de septiembre): 570 de MX1203-2, 132.810, CxP 03CM001951 DPE11721. Movimiento 3400013167 (25 de septiembre): 21.270 de MX1203-2, 4.955.910, CxP 34CM000083 DPE12636. MX1206-1, 2.800 unidades y 591.752, no ha entrado. Con la orden, la primera CxP quedaría en 5.680.472 en lugar de 132.810.",
+      "en": "2026-09-30T11:50:00"
+    },
+    {
+      "id": "ctbprec01",
+      "autor": "agente",
+      "texto": "Foto de solo lectura en CEM, 1 de octubre de 2026. Septiembre sigue abierto. Agosto está cerrado, con cartera y CxP. Octubre ya existe y está abierto. No se cerró nada.\n\nLo primero que detiene el botón es un comprobante manual sin confirmar: 0173000000085463, estado 1, tipo 12, referencia 00000846. Los otros cuatro del 30 ya quedaron confirmados: 0153000000098586, 0159000000098585, 0166000000098587 y 0168000000099707.\n\nDetrás hay 32 comprobantes con error, todos de factura. El 30 se habían nombrado 3. El crédito es NO DEF.KMCOM («La Cuenta NO Existe.»). En 31 el IVA quedó en 24080601 y el débito en cartera 13010601. La distinta es FV79643, sede 01. Facturas: FV79413, FV79507, FV79508, FV79509, FV79510, FV79513, FV79514, FV79516, FV79518, FV79519, FV79593, FV79595, FV79596, FV79597, FV79598, FV79599, FV79600, FV79601, FV79602, FV79603, FV79604, FV79605, FV79608, FV79613, FV79615, FV79616, FV79617, FV79618, FV79619, FV79620, FV79632 y FV79643.\n\nFacturas notificadas a la DIAN: 5.566 (el 30: 5.391). En el libro: 5.533. En errados: 32. Sin causar: FVSF1077, 9 de septiembre, sede 25, 59.200, comprobante 0. En estado P sin notificar: 0 (el 30 había 142).\n\nInventario confirmado sin causar: 1.372 (el 30: 975). Tipo 06: 1.303; 894 sin centro o sin área y 409 ya traen centro y área. Además: tipo 31 son 26, tipo 04 son 21, VC 10, VE 5, 8A 4, y uno de SP, de 05 y de 63. Sin confirmar hay 5.449. La variable VALIDAINVCIERRECONT no existe y VALIDACIERRECONTABLE está en NO, así que esos sin confirmar no frenan.\n\nPagos, recibos clase PAGO: 331 contabilizados. No hay cerrados sin causar ni abiertos.\n\nCaja, cobros: el botón lista 4, de citas, los mismos desde el 27: C017 00002079, 00002082, 00002083 y C028 00000912. El abierto C005 00007673 ya no está. Hay 157 cobros de venta de farmacia cerrados y sin causar el recibo (C038: 147 por 20.918.100; C030: 10 por 1.182.000). El botón no los trae: la procedencia es VENTA. En 133 la factura ya está en el libro. En 23 la factura es de hoy, estado P. La de septiembre que sigue sin comprobante es FVSF1077.\n\nNotas débito y crédito de factura: 139 enviadas a la DIAN y las 139 contabilizadas. No queda ninguna sin causar. El botón compara el año de la nota con el mes, así que por ese camino no las vería; la consulta directa da cero.\n\nCxP: el botón lista 465. Son 464 cuentas: 461 compras y 3 servicios (06SR007564 DS2357, 06SR018797 REME, 06SR019503). Notas de CxP sin causar: 03CM001773 del 10 de septiembre, 03CM002374 (la cuenta ya está causada en 0667000000209446; la nota no) y 26CM000417. El botón las repite y marca 6. Además señala 06SR018992: dos notas débito ya causadas, 9.963.999 en 0666000000205108 y 1 peso en 0668000000205109, las dos en el libro, estado 2. Ese aviso de nota duplicada no está en la copia de DESAIX (PREVERSION igual a la 2.0.5).\n\nCompras sin contabilizar: 461 cuentas, 1.243 líneas. 1.100 sin IVA están en excluidos y sin cuenta de IVA. 142 con IVA están en gravada y en 24080501. No hay IVA en excluidos ni líneas en NO DEF.KMCOM. Sigue mal 03CM002412 DPE12918 ítem 2: gravada 14200501, IVA 1.619.370 en 24080601. El encabezado no cuadra en 03CM001696 DPE10889: cabecera 856.239, detalle 1.361.919, sin IVA. De las nueve que quedaron listas el 29, ya se causaron 03CM002153, 03CM002155, 03CM002156 y 03CM002157. Siguen sin causar, con las líneas en la cuenta correcta: 03CM001766, 03CM002016, 03CM002050, 03CM002274 y 03CM002279.\n\nSiguen abiertos el periodo de cartera y el de CxP, y las cinco nóminas: 01202609P30-1, 02202609P30-1, 07202609P30-1, 09202609P30-1 y 10202609P33-2. No frenan bancos, recaudos, conciliaciones, radicación, activos ni cuentas que no son de detalle.",
+      "en": "2026-10-01T09:20:00"
+    },
+    {
+      "id": "ctb44901",
+      "autor": "agente",
+      "texto": "26CM000449, factura INST256930, documento 1 de septiembre, radicada el 2. Estado N, crédito 22050101, saldo igual al neto 1.076.950 (no está pagada). Ya está contabilizada: comprobante 0662000000209410, estado 2, procedencia CXP, no anulado. Centro 10220202, área 4110, proveedor ALFA TRADING.\n\nEl comprobante cuadra con las cuatro líneas. Débito 14200501: 400.000, 260.000, 130.000 y 115.000 (905.000). Débito 24080501: 171.950. Crédito 22050101: 1.076.950. Las cuatro líneas están en gravada y en 24080501. El ítem 4 (DM47-7, el que estaba en excluidos) ya quedó en 14200501. Su lote 304/2025M, bodega 044, entrada 2600005363, está en 14200501, 14200590 y 24080501; existencia 0.\n\nEl ítem 3, DM38-4, en la cuenta trae el lote del proveedor IN25019724-M y la entrada 2600005363, cantidad 1.000. En existencia ese lote, bodega 044, está en la entrada 2600005248: 2.700 unidades, gravada 14200501, reversión 14200590 e IVA 24080501. En la entrada 2600005363 el lote interno de ese artículo es 26L00005468 y ese código no está en existencia. Los otros tres artículos de esta entrada sí tienen su lote en 2600005363.",
+      "en": "2026-10-01T18:05:00"
+    },
+    {
+      "id": "ctb44902",
+      "autor": "agente",
+      "texto": "26CM000449, segunda lectura. El total del comprobante sí cierra con el neto de la cuenta: crédito 1.076.950 y la suma de los Vlr Neto del detalle es la misma. El encabezado VALOR es 905.000, que es la base sin IVA, y ese es el débito a 14200501. El IVA 171.950 va en una sola línea a 24080501.\n\nLínea por línea el comprobante no trae el Vlr Neto. Trae cantidad por el valor unitario:\n1 DM0866-1: valor 1.000 por 400 = 400.000. IVA 76.000. Neto 476.000. Débito 400.000.\n2 DM37-4: 130 por 2.000 = 260.000. IVA 49.400. Neto 309.400. Débito 260.000.\n3 DM38-4: 130 por 1.000 = 130.000. IVA 24.700. Neto 154.700. Débito 130.000.\n4 DM47-7: 115 por 1.000 = 115.000. IVA 21.850. Neto 136.850. Débito 115.000.\n\nEl que no coincide es el ítem 4, el que se pasó de excluidos a gravada. En la cuenta y en el comprobante el costo es 115 sin IVA. En el lote 304/2025M, entrada 2600005363, bodega 044, el costo quedó en 136,85 (115 por 1,19, el neto unitario) y el IVA del lote en 0. Los otros tres lotes de esta entrada sí quedaron al valor sin IVA (1.000, 130 y 130) y con el IVA unitario aparte (190, 24,70 y 24,70).",
+      "en": "2026-10-02T06:40:00"
+    },
+    {
+      "id": "ctb44903",
+      "autor": "agente",
+      "texto": "Mismo problema del ítem 4 de 26CM000449: la cuenta separa el valor sin IVA y el IVA, y el lote quedó con el neto unitario y el IVA en cero. Lectura de solo lectura en CEM, compras no anuladas, bodega 044. En 2026 son 8 cuentas y 9 líneas. En 2025 hay una más. Listado: conocimiento/contabilidad/cxp-lote-costo-con-iva.csv. No se corrigió nada.\n\nLas nueve entradas son tipo 02, confirmadas, y no se contabilizan solas. La CxP ya está contabilizada. El comprobante de la cuenta no es lo que hay que mover. Hay que dejar el costo del lote en el valor sin IVA y el IVA unitario aparte.\n\nSolo el lote está mal. La entrada sí tiene el valor sin IVA y el IVA. Existencia 0 en las tres:\n26CM000449 INST256930 01/09 ítem 4 DM47-7 lote 304/2025M, entrada 2600005363. Cantidad 1.000, valor 115, IVA 21.850. Lote hoy 136,85. Debe quedar costo 115 e IVA unitario 21,85. Comprobante 0662000000209410.\n03CM001809 FEP109948 08/09 ítem 1 DM0046-1 lote 20260125, entrada 0300026057. Cantidad 20, valor 1.500, IVA 5.700. Lote hoy 1.785. Debe quedar 1.500 e IVA unitario 285. Comprobante 0664000000209956.\n03CM001809 ítem 2 DM0088-1 lote 26201101. Cantidad 10, valor 15.250, IVA 28.975. Lote hoy 18.147,50. Debe quedar 15.250 e IVA unitario 2.897,50.\n\nLa entrada y el lote traen el neto, y el IVA de la entrada está en cero. Aquí también hay que corregir el costo de la entrada:\n03CM000699 DISR111672 23/04 ítem 2 DM0322-1 lote J2500557, entrada 0300014250. Cantidad 20, valor 345.877, IVA 1.314.332,60. Costo hoy 411.593,63. Existencia 0. Debe quedar 345.877 e IVA unitario 65.716,63. Comprobante 0670000000168827.\n03CM001136 124622 11/06 ítem 3 DM15-1 lote 10190226, entrada 0300018830. Cantidad 40, valor 1.173, IVA 8.914,80. Costo hoy 1.395,87. Existencia 34. Debe quedar 1.173 e IVA unitario 222,87. Comprobante 0652000000188013.\n03CM001505 DPE9934 24/08 ítem 2 DM65-5 lote 20250624, entrada 0300024408. Cantidad 200, valor 170,06, IVA 6.462,28. Costo hoy 202,37. Existencia 0. Debe quedar 170,06 e IVA unitario 32,3114. Comprobante 0656000000202209.\n03CM001515 MCFL113091 25/08 ítem 2 INS0013-1 lote S19877, entrada 0300024594. Cantidad 35, valor 40.000, IVA 266.000. Costo hoy 47.600. Existencia 6. Debe quedar 40.000 e IVA unitario 7.600. Comprobante 2676000000002221.\n26CM000412 FV65523 25/08 ítem 3 DM54-1 lote 052026, entrada 2600005169. Cantidad 2, valor 3.115, IVA 1.183,70. Costo hoy 3.706,85. Existencia 0. Debe quedar 3.115 e IVA unitario 591,85. Comprobante 0662000000201583.\n26CM000435 INST256790 28/08 ítem 6 DM47-7 lote 412/2025M, entrada 2600005311. Mismo artículo y mismo 115 de 26CM000449. Cantidad 9.000, IVA 196.650. Costo hoy 136,85. Existencia 4.800. Debe quedar 115 e IVA unitario 21,85. Comprobante 0610000000203761.\n06CM000488 F60627167 11/11/2025 ítem 1 MX703-1 lote f090663, entrada 0600001535. Cantidad 10, valor 3.697,48, IVA 7.025,21. Costo hoy 4.400. Existencia 0. Debe quedar 3.697,48 e IVA unitario 702,521. Comprobante 0676000000129911.\n\nCon existencia, y por eso saldrán al costo con IVA si no se corrigen: 26CM000435 (4.800), 03CM001136 (34) y 03CM001515 (6). En las de existencia 0 el costo inflado ya pudo salir en dispensaciones; cambiar el lote ahora no devuelve esas salidas.",
+      "en": "2026-10-02T06:50:00"
+    },
+    {
+      "id": "ctb44904",
+      "autor": "agente",
+      "texto": "Quedó solo septiembre. Octubre, hasta el 2, no trae ninguna compra con el lote en el neto y el IVA del lote en cero.\n\nSeptiembre son 2 cuentas y 3 líneas. En las tres la entrada está bien y el lote no. Existencia 0. El comprobante de la cuenta no se mueve.\n\n26CM000449 INST256930 01/09 ítem 4 DM47-7 lote 304/2025M, entrada 2600005363. Valor 115, IVA 21.850, cantidad 1.000. Lote hoy 136,85. Debe quedar costo 115 e IVA unitario 21,85. Comprobante 0662000000209410.\n03CM001809 FEP109948 08/09 ítem 1 DM0046-1 lote 20260125, entrada 0300026057. Cantidad 20, valor 1.500, IVA 5.700. Lote hoy 1.785. Debe quedar 1.500 e IVA unitario 285. Comprobante 0664000000209956.\n03CM001809 ítem 2 DM0088-1 lote 26201101. Cantidad 10, valor 15.250, IVA 28.975. Lote hoy 18.147,50. Debe quedar 15.250 e IVA unitario 2.897,50.\n\nEl CSV quedó solo con esas tres: conocimiento/contabilidad/cxp-lote-costo-con-iva.csv.",
+      "en": "2026-10-02T08:45:00"
+    },
+    {
+      "id": "ctb0707a",
+      "autor": "agente",
+      "texto": "## Centro de costo en FTRD — facturas de octubre en errados (CEM, solo lectura)\n\nFoto de hoy. Comprobantes de factura en error, crédito sin centro o en NO DEF.KMCOM: **232**, todos de octubre. **230 facturas son CE** (231 comprobantes) y **1 es financiera**.\n\nLa financiera es FV80201, sede 01. Ya tiene centro 10020101 y área 4115. El prefijo de la línea está vacío. No entra en este arreglo.\n\nLas 230 de CE están en sede de factura 06, sin centro y sin área en el detalle. Prefijo **12** (insumos): 199 facturas. Prefijo **16** (medicamento no POS): 31. CCOSTOENPRESTACION está en HPRE:CCOSTO, así que la factura de consulta externa copia el centro de la autorización, y esas autorizaciones nacen vacías. FACTSEDE está en NO y la homologación de centro por sede está apagada: si el centro queda activo en el detalle, el comprobante lo conserva.\n\nEl crédito busca en KMCOM de ventas el prefijo más ese centro. Con centro resuelto, el 12 acredita **41353804** y el 16 acredita **41353802**. El área de esos centros de farmacia es **4110**.\n\n**Cómo se llena el detalle.** Un centro por línea. El modelo de dispensación (inventario tipo 06) dice qué centros existen; no se parte el valor de la factura entre todos.\n\n1. **136 facturas** cuyo número de admisión del detalle es un movimiento. Se copia el centro y el área de la **bodega** del movimiento. En tipo 06, 93 coinciden con el centro del movimiento y 16 no: se queda la bodega, que es la que entregó. En 5 el centro del movimiento no está en ventas (40101, 40201 o 10280102); la bodega sí está y el crédito resuelve.\n2. **82 facturas** son autorización sin movimiento, sin centro y sin solicitud. Se usa el centro de dispensación de la sede de la autorización que ya tiene ventas de ese prefijo: sede 29 → **10290202** (67), sede 33 → **10330202** (5), sede 34 → **10320202** (4), sede 35 → **10340202** (6).\n3. **12 facturas** de la sede administrativa 06 (7 del prefijo 12 por 3.468.240 y 5 del 16 por 3.455.760) no tienen bodega ni centro de dispensación en esa sede. Esas se deciden aparte. No se reparten entre las demás farmacias.\n\nCon el centro y el área en el detalle, se reconstruye el comprobante. Esto corrige las ya emitidas. La factura de consulta externa seguirá naciendo sin centro mientras la autorización no lo traiga y la de farmacia no copie la bodega.",
+      "en": "2026-10-07T08:20:00"
+    },
+    {
+      "id": "ctb0707b",
+      "autor": "agente",
+      "texto": "## Corrección: el movimiento del mismo número no es la factura\n\nLas 230 siguen siendo consulta externa. En 136 el número de la autorización también existe como movimiento. El artículo de la factura no está en ese movimiento, la fecha no coincide y el movimiento no apunta a esta factura. No se copia ese centro.\n\nEl procedimiento que factura (SPK_FACTURACE_N y la masiva SPQ_FACTURACE_ESCMA) copia el centro y el área de la autorización. PREVERSION y la 2.0.7 son iguales. En CEM la variable está en HPRE:CCOSTO, la autorización nace vacía y el renglón también. Por eso el detalle queda sin centro. El arreglo no está en preversión.\n\nScript de las ya emitidas, sin ejecutar: solicitudes/SR20261007-001/sql/CORRECCION_FTRD_CCOSTO_CE.sql. Lista con @APLICAR = 0. Graba 218: sede 26 → 10220202, 29 → 10290202, 33 → 10330202, 34 → 10320202, 35 → 10340202. Las 12 de la sede 06 no entran. Después se reconstruye el comprobante.\n\nDesarrollo pedido en SR20261007-001: si la autorización no trae centro, usar el único centro de dispensación de su sede que ya tenga ventas del prefijo.",
+      "en": "2026-10-07T08:35:00"
+    },
+    {
+      "id": "ctb0707c",
+      "autor": "agente",
+      "texto": "Quedan 13 comprobantes de factura en error, todos de consulta externa. Doce siguen sin centro, sede 06. El script de corrección les asigna un centro al azar entre los de dispensación que ya tienen ventas de ese prefijo. Con @APLICAR = 1 ese sorteo queda grabado; después se reconstruye.\n\nFV79757 ya tiene centro 10220202 y área 4110. Su comprobante 0662000000210182 cuadra en 366.120 y no tiene líneas. Se cierra al reconstruir, sin cambiar el centro.",
+      "en": "2026-10-07T08:45:00"
+    },
+    {
+      "id": "fichaerr09",
+      "autor": "agente",
+      "texto": "## Ficha de corrección de comprobantes errados\n\nEl trabajo en Qrystalos2 sigue siendo el caso: por qué falló y cuánto se demora. Aquí quedó la consulta para no volver a armar ese recorrido.\n\n**Dónde:** libro de Contabilidad, capítulo **Ficha de corrección: del error al procedimiento** (justo antes del flujo de Errados). Catálogo: `conocimiento/contabilidad/errores-comprobantes.json`.\n\n**Cómo se usa:** procedencia + texto de la línea (SPK_REVISAR_COMPROBANTE) o código de Diagnosticar errores (SPK_DIAG_MCPE_ERRORES). La fila dice el procedimiento que Reconstruir ejecuta, las variables ya leídas y la corrección.\n\n**Quedó fichado:** los textos de la línea, los códigos de Diagnosticar errores y una fila por cada procedencia (de FACTURA y CAJA hasta MANUAL). En nómina, anticipos, cesiones, legalización y activo la ficha ya dice el procedimiento y la referencia; las variables de esos generadores quedan pendientes de documentar.\n\nEl siguiente errado se anota en esa ficha (código o procedencia), no en un análisis nuevo.",
+      "en": "2026-10-09T07:20:00"
+    },
+    {
+      "id": "agentesproc09",
+      "autor": "agente",
+      "texto": "## Agente de Contabilidad y un subagente por procedencia\n\nQuedó asignado el agente **Contabilidad** en el panel. No vuelve a armar el caso. Con la procedencia entrega el errado al subagente de esa procedencia.\n\nCada subagente tiene su ficha en `conocimiento/contabilidad/procedencias/`. Ahí están el procedimiento, las variables que lee y, cuando el cuerpo ya se leyó, qué cambia en el asiento y cómo se corrige.\n\n**Variante ya escrita:** factura (DIAN y anticipo de impuestos), cuenta por pagar (fecha y tipo según la clase, IVA), nota de CxP (inventario e IVA), inventario (KMCOM), glosa (aceptada y recuperación), anticipos (cuenta del tipo o de la CxP) y depreciación (tipo por sede).\n\n**Variables nombradas, efecto en el primer errado:** caja, recaudo, nota de factura, bancos, radicación con abonos y reversos.\n\n**Sin cuerpo todavía:** nómina, cesiones, legalización, activo, conciliación y la radicación en cero. El subagente los baja una vez y deja la variante. El siguiente errado de esa procedencia se resuelve con la ficha.\n\nLa misma sección quedó en el libro, capítulo Ficha de corrección, apartado Variantes ya escritas.",
+      "en": "2026-10-09T07:40:00"
+    },
+    {
+      "id": "cxpfk09",
+      "autor": "agente",
+      "texto": "## CxP 03CM002017 — FK_MCHE_MCHENROCOMPROBANTE\n\nProcedencia CXP. Lo atiende el subagente de cuenta por pagar. El camino es SPQ_FCXP · CONTABILIZAR_FCXP → SPK_NC_CONTAB_CXP.\n\nLa CxP está sin contabilizar y conserva el número 0662000000213356. Ese número no está en libros ni en errados. Como el número viene lleno, el generador no crea la cabecera y el detalle choca con la llave de MCPE.\n\nQuedó así al deshacer un errado: CONTABILIZADA pasa a 0, se borran MCPE y MCHE, y el número de la CxP no se limpia.\n\nCorrección de este documento: dejar NROCOMPROBANTE en nulo y volver a contabilizar. Septiembre 2026 está abierto. La cuenta crédito 22050101 y las del detalle son de tipo Detalle. La CxP no tiene sede: el número nuevo sale de la sede del equipo.\n\nEl mismo patrón está en 01CM000852, 06SR000031, 06CM000002 y 06SR000030.\n\nArreglo del procedimiento: al deshacer el errado, limpiar el número; si el número no está en MCP ni en MCPE, armar la cabecera antes de las líneas. No se ejecutó ningún cambio.",
+      "en": "2026-10-09T07:50:00"
+    },
+    {
+      "id": "hcodrev09",
+      "autor": "agente",
+      "texto": "## Revisión KHCODAZZI — comprobantes en errados\n\nConectado al servidor de Qrystalos2, base KHCODAZZI. Solo lectura. Hay 356 cabeceras no anuladas: 271 en estado 0 y 85 en estado 1.\n\n**1. Reverso de nota, agosto 2026: 154 cabeceras, sin líneas y en cero.** Las 154 apuntan al mismo origen, 0125800000041325. Ese comprobante es manual, de octubre 2024, estado 0, sin líneas y en cero. SPK_REVERSAR_MCP copia las líneas del origen; como no hay líneas, la cabecera del reverso queda vacía. Reconstruir las 154 repite la cabecera vacía. Se corrige o se descarta el origen, no cada reverso.\n\n**2. La Cuenta NO Existe, cuenta NO DEF.KMCOM.** Factura: 46. Inventario: 29. Falta la fila del modelo (prefijo, área y centro). Se crea y se reconstruye.\n\n**3. La Cuenta NO Existe, cuenta real que no está en el plan.** Nota de factura: 15. Glosa: 8. Conciliación: 5. No es KMCOM. Se corrige la cuenta del concepto o se crea en el plan como Detalle.\n\n**4. Recaudo 2026.** 81 cuadran y están en estado 1; 1 cuadra y está en estado 0. Las líneas sin texto de error son cuentas de orden de glosa (CUEORDENGLOSADB / CUEORDENGLOSACR) y la cuenta sí existe. No se corrige en KMCOM. El siguiente paso es Revisar uno y leer por qué no pasa a libros.\n\nLa variante del reverso vacío quedó en la ficha de reversos y en el capítulo Ficha de corrección.",
+      "en": "2026-10-09T08:00:00"
+    },
+    {
+      "id": "hcodscr09",
+      "autor": "agente",
+      "texto": "## KHCODAZZI — borrado, modelo y recaudo de glosa\n\nLos scripts quedan en vista previa (@APLICAR = 0). No se ejecutó ningún cambio.\n\n**1. Reversos de saldos iniciales.** Script conocimiento/contabilidad/casos/khcodazzi-borrar-reversos-saldos-iniciales.sql. Borra primero el detalle y luego la cabecera, solo si la procedencia es REVNOTDBCR, el origen es 0125800000041325, la observación es la reversión de saldos iniciales, agosto 2026, totales en cero, sin líneas y el número no está en libros. No toca el comprobante manual de origen. No se reconstruye.\n\n**2. NO DEF.KMCOM.** Script conocimiento/contabilidad/casos/khcodazzi-kmcom-corregir.sql. La factura busca VENTAS crédito clase S. Varias filas ya existen con clase P o vacía (16, 31 y 36 en 132/4140, y 41 en 128/4110): se deja la clase en S y se conserva la cuenta. La clave no admite dos clases; la nota de factura busca la misma clave con clase P. Donde no hay fila se copia la cuenta de un prefijo del mismo centro: 41 en 011/4110 toma 43122001 del prefijo 36; PYM en 000701/4110 toma 43121801; MAT en 1001/1000 toma 43122001 del mismo prefijo en 012/4110. El inventario busca clase P por tipo de movimiento. El tipo 01 en 012/4110 se copia del tipo 05 (crédito 15149010, débito 73100290). No se inventa cuenta para el prefijo vacío de factura, el tipo 01 en 132/4140 ni el tipo 05 en 000272, 119, 128 y 145. El tipo 01 en 117/4135 ya está en clase P. Después de aplicar, reconstruir factura e inventario.\n\n**4. Recaudo 2026, estado 1.** Los 81 son glosas (FPAG.INGRESO = GLOSAS). Solo traen las cuentas de orden CUEORDENGLOSADB y CUEORDENGLOSACR (83331601 y 89151701), de detalle, con tercero y en cero de centro porque el generador de esa rama deja el centro vacío. Cuadran, el periodo está abierto, el tipo existe y el número no está en el libro. El recaudo sigue sin contabilizar. La suma los dejó preparados y el pase al libro se revirtió. No es un hueco de KMCOM. Los disparadores de MCP y MCH están cifrados. El texto del fallo sale al revisar uno, por ejemplo 0110000000166733, en una copia. No se ejecutó esa revisión.",
+      "en": "2026-10-09T09:40:00"
     }
   ]
 }

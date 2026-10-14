@@ -1,0 +1,213 @@
+{
+  "procedencia": "MANUAL",
+  "actualizado": "2026-10-13",
+  "auditoriaBd": {
+    "estado": "implementado_parcial",
+    "nota": "Tipo NROCOMPROBANTE — cuadre MCHE y CUE Detalle.",
+    "checksImplementados": [
+      "USVGS",
+      "PRI",
+      "KMCO",
+      "requires-grafo"
+    ]
+  },
+  "fuenteSql": "SPQ_MCP_COL · CRUDMCP; SPK_NC_REVISAMCPE en revisar",
+  "documentoOrigen": {
+    "tabla": "(usuario)",
+    "referenciasMcp": {
+      "PROCEDENCIA": "MANUAL"
+    }
+  },
+  "generador": "(ninguno — digitación directa MCPE/MCH)",
+  "nodos": [
+    {
+      "id": "N4-revision-comun",
+      "orden": 4,
+      "nombre": "Revisión y paso a libros",
+      "sp": [
+        "SPK_NC_REVISAMCPE",
+        "SPK_PASA_MCP_MCPNIIF"
+      ],
+      "disparadoDesde": "Generador al cerrar MCPE/MCHE",
+      "requiresDocumento": [],
+      "requiresConfig": [],
+      "nota": "Errores de línea → MCPE estado 0. SPK_REVISAR_COMPROBANTE en confirmación manual.",
+      "llamaAnterior": [
+        "N3-crud-mcp"
+      ]
+    },
+    {
+      "id": "N3-crud-mcp",
+      "orden": 3,
+      "sp": "SPQ_MCP_COL · CRUDMCP / CRUDMCH",
+      "metodoUi": [
+        "Contabilidad · Movimiento diario"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "mch-detalle",
+          "desc": "Cada MCH.CUENTA ∈ CUE TIPO Detalle",
+          "obligatorio": true
+        },
+        {
+          "id": "tercero-cue",
+          "desc": "Tercero obligatorio según naturaleza cuenta",
+          "obligatorio": "según CUE"
+        },
+        {
+          "id": "cuadre",
+          "desc": "SPK_SUMA_DBCR antes de confirmar",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-abierto",
+          "tabla": "PRI",
+          "desc": "VALIDAR_PERIODO al guardar/confirmar",
+          "obligatorio": true
+        },
+        {
+          "id": "com-tipo",
+          "tabla": "COM",
+          "desc": "Tipo comprobante permitido en CRUD",
+          "obligatorio": true
+        },
+        {
+          "id": "cue",
+          "tabla": "CUE",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [
+        "N2-revisar-md"
+      ],
+      "puntosCriticos": [
+        "PC-MAN-01"
+      ],
+      "nombre": "Comprobante manual (PROCEDENCIA MANUAL)",
+      "postGenerador": {
+        "sp": [
+          "SPK_REVISAR_COMPROBANTE",
+          "SPK_NC_CONFIRMAR_CONTAB"
+        ],
+        "nota": "Manual: usuario confirma desde MCP; no MCPE intermedio salvo envío errados"
+      }
+    },
+    {
+      "id": "N2-revisar-md",
+      "orden": 2,
+      "sp": [
+        "SPK_REVISAR_COMPROBANTE",
+        "SPK_SUMA_DBCR"
+      ],
+      "llamaAnterior": [
+        "N1-digitacion"
+      ],
+      "nombre": "Revisar borrador manual",
+      "metodoUi": "MCP → Revisar líneas antes de confirmar",
+      "requiresDocumento": [
+        {
+          "id": "mch-lineas",
+          "desc": "Al menos una línea MCH con cuenta Detalle",
+          "obligatorio": true
+        },
+        {
+          "id": "cuadre-db-cr",
+          "desc": "Suma débitos = créditos",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N1-digitacion",
+      "orden": 1,
+      "desc": "Usuario ingresa líneas",
+      "llamaAnterior": [
+        "N0-config-man"
+      ],
+      "nombre": "Digitación comprobante",
+      "sp": "SPQ_MCP_COL",
+      "metodos": [
+        "CRUDMCP",
+        "CRUDMCH",
+        "GENERAR_COMPROBANTE"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "terceros-linea",
+          "desc": "Tercero en TER si cuenta exige",
+          "obligatorio": "según CUE"
+        }
+      ],
+      "requiresConfig": [
+        {
+          "id": "pri-abierto",
+          "tabla": "PRI",
+          "desc": "VALIDAR_PERIODO al guardar",
+          "obligatorio": true
+        },
+        {
+          "id": "com-tipo",
+          "tabla": "COM",
+          "desc": "Tipo comprobante manual permitido",
+          "obligatorio": true
+        }
+      ]
+    },
+    {
+      "id": "N0-config-man",
+      "orden": 0,
+      "requiresConfig": [
+        {
+          "id": "cue-detalle",
+          "tabla": "CUE",
+          "desc": "Solo TIPO Detalle en líneas",
+          "obligatorio": true
+        },
+        {
+          "id": "pri",
+          "tabla": "PRI",
+          "obligatorio": true
+        },
+        {
+          "id": "par",
+          "tabla": "PAR",
+          "desc": "Parámetros contables generales",
+          "obligatorio": true
+        },
+        {
+          "id": "usvgs",
+          "usvgs": [
+            "IDCON_TCOM_DEFAULT",
+            "IDMODELOCONTABLE"
+          ],
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": [],
+      "nombre": "Configuración comprobante manual",
+      "pantallas": [
+        "/cont/mcp",
+        "Plan CUE",
+        "Tipos comprobante COM"
+      ]
+    }
+  ],
+  "nota": "No se reconstruye desde documento origen; corrección en pantalla",
+  "metadatosFase1": {
+    "estadoDocumentacion": "profundizado-n012-n3",
+    "fichaErrados": "conocimiento/contabilidad/procedencias/manual.json",
+    "procesoHermano": null,
+    "puntosCriticosArchivo": "conocimiento/contabilidad/grafo-contabilizacion/puntos-criticos-manual.json",
+    "indiceMaestro": "conocimiento/contabilidad/grafo-contabilizacion-indice.json",
+    "revisionComunRef": "revisionComun en índice maestro"
+  },
+  "revisionComun": {
+    "revisar": "SPK_REVISAR_COMPROBANTE",
+    "suma": "SPK_SUMA_DBCR",
+    "confirmar": "SPK_NC_CONFIRMAR_CONTAB",
+    "errados": "SPK_PASA_A_MCPE / SPK_NC_REVISAMCPE",
+    "reconstruir": "SPQ_MCPE_COL · RECONSTRUIR"
+  }
+}

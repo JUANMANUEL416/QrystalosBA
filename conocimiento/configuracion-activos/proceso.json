@@ -1,0 +1,941 @@
+{
+  "id": "configuracion-activos",
+  "nombre": "Configuración · Activos F.",
+  "modulo": "CONF · Activos F.",
+  "familia": "configuracion",
+  "prioridad": 10,
+  "enRuta": true,
+  "estado": "documentado",
+  "resumen": "Submenú Activos F. del menú central Configuración: tipos de activo (qué pide el alta y cómo se deprecia), eventos de entrada/salida/traslado, tipos de artículo capitalizables, artículos con tipo de activo, grupos y subgrupos, equipos por sector y notificaciones de parada. La opción Activos del menú está en construcción: el alta y la ficha viven en Activos Fijos → Gestión. Las mismas pantallas se abren también desde Activos Fijos → Configuración.",
+  "actualizado": "2026-10-04T21:30:00",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (PREVERSION = 2.0.7, IDANT 2.0.6, idénticas): SPQ_TIPOAF (GUARDAR, ELIMINAR, GENERAR_DEP, GUARDAR_TIPOACTIVO_USUARIO), SPQ_EVENTOAF (GUARDAR, ELIMINAR), SPQ_GRUPAC, SPQ_ITAR, SPQ_EQXSEAF, SPQ_NOTIFPARADAAF, SPQ_IACT · TRE_TIPOACT. SPQ_IART listado (cuerpo en Inventario). Menú: árbol fijo en ConfLayout.arbolMenu; habilitación por MENUQ_COL · CONFIGURACION. PCEM no consultado.",
+  "alcanceHasta": "Solo el submenú Activos F. de Configuración (y su duplicado 1:1 en Activos Fijos → Configuración). El alta, las novedades, la depreciación mensual y la contabilización se documentan en el proceso Activos fijos. Inventario → Artículos es otro catálogo.",
+  "flujoResumen": "Tipo de activo (campos del alta, vida útil, salvamento) → eventos (qué pide, si contabiliza, estado de baja) → tipos de artículo ESACTIVO y artículos con IDTIPOACTIVO → grupos / equipos por sector / notificaciones. Después se da de alta el activo en Gestión.",
+  "incluirProcesoMdEnLibro": false,
+  "menu": {
+    "ruta": "Configuración → Activos F. → Activos · Tipos de Activos · Tipos de Artículos · Eventos · Grupos · Equipos Por Sector · Noti. Parada Por Sector · Artículos",
+    "fuente": "ConfLayout.vue arbolMenu (Activos F.) + routes.js /conf (conf.en_construccion, conf.iacttipoact, conf.iact_itar, conf.iacteventos, conf.iactgrupos, conf.iacteqxsec, conf.notixsec, conf.articulo). Duplicado 1:1 en /iact/conf_*. Menú por grupo: MENUQ_COL · CONFIGURACION."
+  },
+  "ventanas": [
+    {
+      "uso": "Activos (hueco)",
+      "ruta": "conf.en_construccion",
+      "path": "/conf/en_construccion",
+      "vue": "EnConstruccionPage",
+      "entrada": "Configuración → Activos F. → Activos"
+    },
+    {
+      "uso": "Tipos de activos",
+      "ruta": "conf.iacttipoact",
+      "path": "/conf/iacttipoact",
+      "vue": "TipoActivoComponent (TIPOAF)",
+      "entrada": "Configuración → Activos F. → Tipos de Activos"
+    },
+    {
+      "uso": "Tipos de artículos (solo ESACTIVO)",
+      "ruta": "conf.iact_itar",
+      "path": "/conf/iacttiparticulo",
+      "vue": "TipoArticuloComponent (ITAR, filtro ESACTIVO=1)",
+      "entrada": "Configuración → Activos F. → Tipos de Artículos"
+    },
+    {
+      "uso": "Eventos",
+      "ruta": "conf.iacteventos",
+      "path": "/conf/iacteventos",
+      "vue": "EventosComponent (EVENTOAF)",
+      "entrada": "Configuración → Activos F. → Eventos"
+    },
+    {
+      "uso": "Grupos",
+      "ruta": "conf.iactgrupos",
+      "path": "/conf/iactgrupos",
+      "vue": "GruposComponent (GRUPAC · TGEN ACTIVOSFIJOS/GRUPOS)",
+      "entrada": "Configuración → Activos F. → Grupos"
+    },
+    {
+      "uso": "Equipos por sector",
+      "ruta": "conf.iacteqxsec",
+      "path": "/conf/iacteqxsec",
+      "vue": "EquiposXSectorComponent (EQXSEAF)",
+      "entrada": "Configuración → Activos F. → Equipos Por Sector"
+    },
+    {
+      "uso": "Notificaciones de parada",
+      "ruta": "conf.notixsec",
+      "path": "/conf/notixsec",
+      "vue": "NotifiParXSectorComponent (NOTIFPARADAAF)",
+      "entrada": "Configuración → Activos F. → Noti. Parada Por Sector"
+    },
+    {
+      "uso": "Artículos de activo fijo",
+      "ruta": "conf.articulo",
+      "path": "/conf/articulo",
+      "vue": "ArticulosComponent (IART + ITAR + IACTT, filtro ESACTIVO e IDTIPOACTIVO)",
+      "entrada": "Configuración → Activos F. → Artículos"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-tipos",
+      "numero": 1,
+      "nombre": "Tipos de activo",
+      "estado": "documentado",
+      "explicacion": "IACTT define qué campos exige el alta, la clase Local/NIIF, la vida útil y el salvamento. Generar Depreciación marca depreciables los activos del tipo y recalcula cuotas. Asignar Administrador (variable TIPO_ACTIVO_USUARIO) liga empleados al tipo.",
+      "controles": [
+        {
+          "id": "tipo-activo",
+          "nombre": "Tipo de activo (IACTT)",
+          "sp": "SPQ_TIPOAF · GUARDAR / ELIMINAR / GENERAR_DEP / GUARDAR_TIPOACTIVO_USUARIO",
+          "regla": "Código único. Sin tipo no hay alta ni depreciación."
+        }
+      ]
+    },
+    {
+      "id": "02-eventos",
+      "numero": 2,
+      "nombre": "Eventos",
+      "estado": "documentado",
+      "explicacion": "IACTE: Entrada, Salida o Traslado. Pide al menos estado, valor o centro de costo. Si se contabiliza exige comprobante. La marca de baja se enciende cuando el estado asociado coincide con IACT_ESTADOBAJA.",
+      "controles": [
+        {
+          "id": "eventos-maestro",
+          "nombre": "Catálogo de eventos (IACTE)",
+          "sp": "SPQ_EVENTOAF · GUARDAR / ELIMINAR",
+          "regla": "Código único. Se contabiliza? = Sí → comprobante obligatorio (pantalla)."
+        }
+      ]
+    },
+    {
+      "id": "03-articulos",
+      "numero": 3,
+      "nombre": "Artículos y tipos de artículo",
+      "estado": "documentado",
+      "explicacion": "ITAR con ESACTIVO=1: el tipo de inventario que puede capitalizarse. IART con IDTIPOACTIVO y fabricante: el artículo que se elige al dar de alta el activo. No es el catálogo completo de Inventario (conf.iart).",
+      "controles": [
+        {
+          "id": "tipos-articulo",
+          "nombre": "Tipo de artículo capitalizable (ITAR)",
+          "sp": "SPQ_ITAR · GUARDAR / ACTUALIZAR / ELIMINAR",
+          "regla": "No se borra si tiene artículos. Esta pantalla solo lista ESACTIVO = 1."
+        },
+        {
+          "id": "articulos-af",
+          "nombre": "Artículo de activo fijo (IART)",
+          "sp": "SPQ_IART · GUARDAR / ELIMINAR",
+          "regla": "Filtro ESACTIVO e IDTIPOACTIVO. El fabricante es obligatorio para la hoja de vida."
+        }
+      ]
+    },
+    {
+      "id": "04-grupos-sectores",
+      "numero": 4,
+      "nombre": "Grupos, sectores y notificaciones",
+      "estado": "documentado",
+      "explicacion": "Grupos y subgrupos en TGEN ACTIVOSFIJOS/GRUPOS. Equipos por sector (dotación por habitación-servicio). Notificaciones de parada (contacto y correo por servicio).",
+      "controles": [
+        {
+          "id": "grupos",
+          "nombre": "Grupos y subgrupos",
+          "sp": "SPQ_GRUPAC · GUARDAR / GUARDAR_SUBGRUP / ELIMINAR / ELIMINAR_SUBGRUP",
+          "regla": "Código de grupo único; subgrupo único dentro del grupo."
+        },
+        {
+          "id": "equipos-sector",
+          "nombre": "Equipos por sector",
+          "sp": "SPQ_EQXSEAF · GUARDAR / ELIMINAR",
+          "regla": "Sector + artículo + cantidad."
+        },
+        {
+          "id": "noti-parada",
+          "nombre": "Notificación de parada por sector",
+          "sp": "SPQ_NOTIFPARADAAF · GUARDAR / ELIMINAR",
+          "regla": "Contacto y correo por servicio."
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "confact-tipo",
+      "nombre": "Crear un tipo de activo y generar su depreciación",
+      "icono": "category",
+      "descripcion": "El catálogo que el alta consulta para saber qué campos son obligatorios y cómo se deprecia.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo tipo",
+          "descripcion": "Tipos de Activos → Nuevo: código, clase Local o NIIF, descripción, estado Activo.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Tipos de Activos",
+          "tablas": ["IACTT"],
+          "sp": "SPQ_TIPOAF · GUARDAR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Marcar qué pide el alta",
+          "descripcion": "Casillas Pedir modelo, escritura, marca, linderos, serial, partes, referencia, matrícula. Al elegir el tipo en Gestión, TRE_TIPOACT vuelve esos campos obligatorios.",
+          "rol": "Administrador",
+          "pantalla": "Tipos de Activos → formulario",
+          "tablas": ["IACTT"],
+          "sp": "SPQ_IACT · TRE_TIPOACT"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Vida útil y salvamento",
+          "descripcion": "Tipo de salvamento Valor o Porcentaje (el porcentaje no supera 100) y vida útil en meses. Guardar.",
+          "rol": "Administrador",
+          "pantalla": "Tipos de Activos → formulario",
+          "tablas": ["IACTT"],
+          "sp": "SPQ_TIPOAF · GUARDAR"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Hay que asignar administrador?",
+          "descripcion": "Si la variable TIPO_ACTIVO_USUARIO está encendida aparece Asignar Administrador: liga empleados al tipo. Error: «El empleado ya se encuentra asignado».",
+          "rol": "Administrador",
+          "pantalla": "Tipos de Activos → Asignar Administrador",
+          "tablas": ["TGEN"],
+          "sp": "SPQ_TIPOAF · GUARDAR_TIPOACTIVO_USUARIO"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Generar Depreciación del tipo",
+          "descripcion": "Marca depreciables los activos cuyo costo alcanza el salvamento y recalcula cuotas. No contabiliza: eso es Contabilidad → Depreciación activos.",
+          "rol": "Administrador",
+          "pantalla": "Tipos de Activos → Generar Depreciación",
+          "tablas": ["IACT", "IACTD"],
+          "sp": "SPQ_TIPOAF · GENERAR_DEP"
+        }
+      ]
+    },
+    {
+      "id": "confact-evento",
+      "nombre": "Definir un evento de entrada, salida o traslado",
+      "icono": "swap_horiz",
+      "descripcion": "El catálogo que Gestión → Eventos usa al registrar una novedad.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Nuevo evento",
+          "descripcion": "Eventos → Nuevo: código único, tipo Entrada / Salida / Traslado, descripción.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Eventos",
+          "tablas": ["IACTE"],
+          "sp": "SPQ_EVENTOAF · GUARDAR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Qué pide la novedad",
+          "descripcion": "Al menos una casilla: Pide estado, Pide valor o Pide centro de costo y área. Estado asociado (tabla general ESTADOACTIVO).",
+          "rol": "Administrador",
+          "pantalla": "Eventos → formulario",
+          "tablas": ["IACTE"],
+          "sp": "SPQ_EVENTOAF · GUARDAR"
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Se contabiliza?",
+          "descripcion": "Si Sí, el comprobante del catálogo COM es obligatorio en la pantalla. La novedad generará comprobante al aplicarse. Si No, solo actualiza la ficha.",
+          "rol": "Administrador",
+          "pantalla": "Eventos → formulario",
+          "tablas": ["IACTE", "COM"],
+          "sp": "SPQ_EVENTOAF · GUARDAR"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Marca de baja",
+          "descripcion": "Si el estado asociado coincide con la variable IACT_ESTADOBAJA, la casilla Baja de activo se marca sola. Ese evento deja el activo no depreciable al aplicarse.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": ["IACTE", "USVGS"],
+          "sp": "—"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Usar el evento en Gestión",
+          "descripcion": "Activos Fijos → Gestión → fila → Eventos. Cambiar el catálogo no reescribe novedades ya aplicadas.",
+          "rol": "Administrador",
+          "pantalla": "Activos Fijos → Gestión",
+          "tablas": ["IACTH"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "confact-articulos",
+      "nombre": "Marcar tipos de artículo y crear el artículo capitalizable",
+      "icono": "inventory_2",
+      "descripcion": "El tipo de inventario que puede ser activo fijo y el artículo que se elige en el alta.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Tipo de artículo con ESACTIVO",
+          "descripcion": "Tipos de Artículos → Nuevo / Editar: marcar que es de activo fijo. Esta pantalla solo lista ESACTIVO = 1. El catálogo completo está en Inventario.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Tipos de Artículos",
+          "tablas": ["ITAR"],
+          "sp": "SPQ_ITAR · GUARDAR / ACTUALIZAR"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Crear el artículo",
+          "descripcion": "Artículos → Nuevo: artículo, tipo de artículo, tipo de activo, fabricante (categoría FAB) y documentos. El listado filtra por ESACTIVO e IDTIPOACTIVO.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Artículos",
+          "tablas": ["IART", "IACTT"],
+          "sp": "SPQ_IART · GUARDAR"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Artículos Pendientes",
+          "descripcion": "El botón revisa artículos creados desde otros módulos (hasArtTmp). Hoy no está implementado: no hace nada.",
+          "rol": "Sistema",
+          "pantalla": "Artículos → Artículos Pendientes",
+          "tablas": ["IART"],
+          "sp": "—"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Elegir el artículo en el alta",
+          "descripcion": "En Gestión → Nuevo activo el combo de artículo muestra estos, no el catálogo de Inventario (conf.iart).",
+          "rol": "Administrador",
+          "pantalla": "Activos Fijos → Gestión → Nuevo activo",
+          "tablas": ["IACT", "IART"],
+          "sp": "—"
+        }
+      ]
+    },
+    {
+      "id": "confact-grupos",
+      "nombre": "Grupos, equipos por sector y notificaciones",
+      "icono": "account_tree",
+      "descripcion": "Clasificar el activo y avisar cuando un equipo de un servicio se para.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear el grupo",
+          "descripcion": "Grupos → Nuevo: código y descripción (TGEN ACTIVOSFIJOS / GRUPOS). Luego Nuevo subgrupo dentro del grupo.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Grupos",
+          "tablas": ["TGEN"],
+          "sp": "SPQ_GRUPAC · GUARDAR / GUARDAR_SUBGRUP"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Equipos por sector",
+          "descripcion": "Equipos Por Sector → Nuevo: servicio/habitación, artículo y cantidad de dotación.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Equipos Por Sector",
+          "tablas": ["TGEN"],
+          "sp": "SPQ_EQXSEAF · GUARDAR"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Correo de parada",
+          "descripcion": "Noti. Parada Por Sector → Nuevo: contacto y correo del servicio que recibe el aviso cuando un activo se marca en parada.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Activos F. → Noti. Parada Por Sector",
+          "tablas": ["TGEN"],
+          "sp": "SPQ_NOTIFPARADAAF · GUARDAR"
+        },
+        {
+          "num": 4,
+          "tipo": "resultado",
+          "titulo": "Usar grupo y sector en el alta",
+          "descripcion": "En la ficha del activo se eligen grupo, área y servicio. La parada usa el correo configurado aquí.",
+          "rol": "Administrador",
+          "pantalla": "Activos Fijos → Gestión",
+          "tablas": ["IACT"],
+          "sp": "—"
+        }
+      ]
+    }
+  ],
+  "estadosConfigActivos": {
+    "titulo": "Estados y marcas de los catálogos de Activos F.",
+    "descripcion": "Qué significa cada valor que se ve en Configuración → Activos F. y qué permite o bloquea.",
+    "columnas": ["Valor", "Dónde"],
+    "filas": [
+      {
+        "codigo": "Loc",
+        "tono": "azul",
+        "etiquetas": ["IACTT.CLASE = Local"],
+        "significa": "Tipo de activo del plan local. Es el que exige el alta por defecto.",
+        "queHacer": "Crear también el tipo NIIF si el proceso contable es MIXTO."
+      },
+      {
+        "codigo": "NIIF",
+        "tono": "verde",
+        "etiquetas": ["IACTT.CLASE = NIIF"],
+        "significa": "Tipo de activo del plan NIIF. El alta lo pide cuando IDPROCESOCONTABLE = MIXTO.",
+        "queHacer": "No sustituye al tipo Local."
+      },
+      {
+        "codigo": "TipA",
+        "tono": "verde",
+        "etiquetas": ["IACTT.ESTADO = Activo"],
+        "significa": "Tipo vigente: aparece en el combo del alta.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "TipI",
+        "tono": "gris",
+        "etiquetas": ["IACTT.ESTADO = Inactivo"],
+        "significa": "Tipo retirado: no se elige en altas nuevas.",
+        "queHacer": "Inactivar en lugar de borrar si ya hay activos."
+      },
+      {
+        "codigo": "Ent",
+        "tono": "verde",
+        "etiquetas": ["IACTE.TIPO = Entrada"],
+        "significa": "Novedad que actualiza estado y/o valor al aplicar.",
+        "queHacer": "El evento de compra (variable) nace al dar de alta."
+      },
+      {
+        "codigo": "Sal",
+        "tono": "ambar",
+        "etiquetas": ["IACTE.TIPO = Salida"],
+        "significa": "Novedad que cambia el estado; si es de baja deja de depreciar.",
+        "queHacer": "Revisar IACT_ESTADOBAJA."
+      },
+      {
+        "codigo": "Tra",
+        "tono": "azul",
+        "etiquetas": ["IACTE.TIPO = Traslado"],
+        "significa": "Novedad que cambia centro de costo y área.",
+        "queHacer": "Marcar Pide centro de costo."
+      },
+      {
+        "codigo": "Baja",
+        "tono": "rojo",
+        "etiquetas": ["IACTE.BAJA + IACT_ESTADOBAJA"],
+        "significa": "El evento da de baja: al aplicar, DEPRECIABLE = 0.",
+        "queHacer": "No editar la variable sin revisar los eventos marcados."
+      },
+      {
+        "codigo": "Cont",
+        "tono": "ambar",
+        "etiquetas": ["IACTE.MUEVECONTABILIDAD = Sí"],
+        "significa": "Al aplicar la novedad se genera comprobante (regla KMCOM MOV_ACTIVOS).",
+        "queHacer": "Elegir comprobante; configurar la regla de contabilización."
+      },
+      {
+        "codigo": "EsAf",
+        "tono": "verde",
+        "etiquetas": ["ITAR.ESACTIVO = 1"],
+        "significa": "Tipo de artículo que puede capitalizarse. Esta pantalla solo lista esos.",
+        "queHacer": "El resto de tipos se ve en Inventario → Tipos de Artículos."
+      },
+      {
+        "codigo": "Grp",
+        "tono": "azul",
+        "etiquetas": ["TGEN ACTIVOSFIJOS / GRUPOS"],
+        "significa": "Grupo o subgrupo de clasificación de la ficha.",
+        "queHacer": "Crear el grupo antes del alta si se va a usar el filtro."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear un tipo de activo",
+      "donde": "Configuración → Activos F. → Tipos de Activos → Nuevo → Guardar",
+      "condicion": "Código no repetido.",
+      "noEs": "No da de alta el activo: eso es Activos Fijos → Gestión."
+    },
+    {
+      "necesidad": "Decir qué campos pide el alta de un tipo",
+      "donde": "Tipos de Activos → Editar → casillas Pedir modelo / escritura / marca / linderos / serial / partes / referencia / matrícula",
+      "condicion": "Tipo existente.",
+      "noEs": "No se configuran en la ficha del activo."
+    },
+    {
+      "necesidad": "Fijar vida útil y salvamento del tipo",
+      "donde": "Tipos de Activos → Editar → tipo de salvamento (Valor o Porcentaje) y meses",
+      "condicion": "Porcentaje ≤ 100.",
+      "noEs": "Generar Depreciación no contabiliza."
+    },
+    {
+      "necesidad": "Generar las cuotas de depreciación de todos los activos de un tipo",
+      "donde": "Tipos de Activos → Generar Depreciación",
+      "condicion": "Tipo con vida útil y salvamento.",
+      "noEs": "No envía a contabilidad: eso es Contabilidad → Depreciación activos."
+    },
+    {
+      "necesidad": "Asignar un administrador por tipo de activo",
+      "donde": "Tipos de Activos → Asignar Administrador",
+      "condicion": "Variable TIPO_ACTIVO_USUARIO encendida; empleado no repetido en el tipo.",
+      "noEs": "No es el responsable de la ficha (eso es Gestión → Responsables)."
+    },
+    {
+      "necesidad": "Inactivar o borrar un tipo",
+      "donde": "Tipos de Activos → Editar → Estado Inactivo, o Eliminar",
+      "condicion": "Eliminar depende de que no haya activos (FK).",
+      "noEs": "Mejor inactivar si ya se usó."
+    },
+    {
+      "necesidad": "Crear un evento de entrada, salida o traslado",
+      "donde": "Configuración → Activos F. → Eventos → Nuevo → Guardar",
+      "condicion": "Código único; al menos una casilla Pide…",
+      "noEs": "No registra la novedad: eso es Gestión → Eventos."
+    },
+    {
+      "necesidad": "Que el evento genere comprobante",
+      "donde": "Eventos → Se contabiliza? = Sí + comprobante",
+      "condicion": "Comprobante del catálogo COM.",
+      "noEs": "Hace falta la regla KMCOM MOV_ACTIVOS en Contable."
+    },
+    {
+      "necesidad": "Marcar el evento que da de baja",
+      "donde": "Eventos → estado asociado = valor de IACT_ESTADOBAJA (la casilla Baja se marca sola)",
+      "condicion": "Variable IACT_ESTADOBAJA definida.",
+      "noEs": "No se marca a mano: la fija el estado."
+    },
+    {
+      "necesidad": "Ver solo los tipos de artículo que se capitalizan",
+      "donde": "Configuración → Activos F. → Tipos de Artículos",
+      "condicion": "ITAR.ESACTIVO = 1.",
+      "noEs": "No es Inventario → Tipos de Artículos (ahí están todos)."
+    },
+    {
+      "necesidad": "Marcar un tipo de artículo como de activo fijo",
+      "donde": "Tipos de Artículos → Editar → ESACTIVO, o crearlo desde esta pantalla",
+      "condicion": "Sin artículos si se va a borrar.",
+      "noEs": "No crea el artículo."
+    },
+    {
+      "necesidad": "Crear el artículo que se elige al dar de alta un activo",
+      "donde": "Configuración → Activos F. → Artículos → Nuevo",
+      "condicion": "Tipo de artículo ESACTIVO y tipo de activo.",
+      "noEs": "No es Inventario → Artículos (conf.iart): ese catálogo no filtra por activo fijo."
+    },
+    {
+      "necesidad": "Revisar artículos creados desde otros módulos",
+      "donde": "Artículos → Artículos Pendientes",
+      "condicion": "Ninguna hoy: el botón no está implementado.",
+      "noEs": "No hay cola de pendientes funcional."
+    },
+    {
+      "necesidad": "Crear un grupo de activos",
+      "donde": "Configuración → Activos F. → Grupos → Nuevo",
+      "condicion": "Código único.",
+      "noEs": "El subgrupo se crea desde la fila del grupo."
+    },
+    {
+      "necesidad": "Crear un subgrupo",
+      "donde": "Grupos → fila → Nuevo subgrupo",
+      "condicion": "Código único dentro del grupo.",
+      "noEs": "No es el tipo de activo."
+    },
+    {
+      "necesidad": "Definir la dotación de equipos de un sector",
+      "donde": "Configuración → Activos F. → Equipos Por Sector → Nuevo",
+      "condicion": "Servicio y artículo.",
+      "noEs": "No da de alta el activo: solo la cantidad esperada."
+    },
+    {
+      "necesidad": "Avisar por correo cuando un equipo se para",
+      "donde": "Configuración → Activos F. → Noti. Parada Por Sector → Nuevo",
+      "condicion": "Contacto y correo del servicio.",
+      "noEs": "No es el evento de salida."
+    },
+    {
+      "necesidad": "Dar de alta el activo (ficha, foto, accesorios)",
+      "donde": "Activos Fijos → Gestión → Nuevo activo",
+      "condicion": "Tipo, artículo y fabricante configurados.",
+      "noEs": "La opción Activos de este submenú está en construcción."
+    },
+    {
+      "necesidad": "Registrar una novedad (traslado, salida, entrada)",
+      "donde": "Activos Fijos → Gestión → fila → Eventos",
+      "condicion": "Evento del catálogo.",
+      "noEs": "Este submenú solo crea el evento, no la novedad."
+    },
+    {
+      "necesidad": "Abrir la misma pantalla desde Activos Fijos",
+      "donde": "Activos Fijos → Configuración → Tipos / Eventos / Grupos / Artículos / Equipos / Notificaciones",
+      "condicion": "Permiso del menú de Activos Fijos.",
+      "noEs": "No es otra lógica: es el mismo componente."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nuevo (Tipo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Tipo de activo nuevo (código, clase, casillas Pedir…, salvamento, vida útil)."
+    },
+    {
+      "label": "Editar",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Edita la fila (tipo, evento, grupo, artículo, sector)."
+    },
+    {
+      "label": "Eliminar",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Borra el tipo, evento, grupo, artículo o fila de sector."
+    },
+    {
+      "label": "Generar Depreciación",
+      "icono": "calculate",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Marca depreciables los activos del tipo y recalcula cuotas. No contabiliza."
+    },
+    {
+      "label": "Asignar Administrador",
+      "icono": "person_add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Liga empleados al tipo; visible con TIPO_ACTIVO_USUARIO."
+    },
+    {
+      "label": "Nuevo (Evento)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Evento Entrada / Salida / Traslado."
+    },
+    {
+      "label": "Nuevo (Tipo de artículo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Tipo de artículo con marca ESACTIVO."
+    },
+    {
+      "label": "Nuevo (Artículo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Artículo de inventario con tipo de activo y fabricante."
+    },
+    {
+      "label": "Artículos Pendientes",
+      "icono": "pending_actions",
+      "color": "amber",
+      "estilo": "outline",
+      "descripcion": "Pensado para artículos creados desde otros módulos; hoy sin implementar."
+    },
+    {
+      "label": "Nuevo (Grupo)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Grupo TGEN ACTIVOSFIJOS / GRUPOS."
+    },
+    {
+      "label": "Nuevo subgrupo",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Subgrupo dentro del grupo elegido."
+    },
+    {
+      "label": "Nuevo (Equipos por sector)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Dotación artículo × servicio."
+    },
+    {
+      "label": "Nuevo (Noti. parada)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Contacto y correo de parada por servicio."
+    },
+    {
+      "label": "Guardar / Cancelar",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma o cierra cualquiera de los formularios."
+    },
+    {
+      "label": "Manual de Usuario",
+      "icono": "help",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Ayuda integrada en tipos, eventos y artículos cuando existe Help*."
+    },
+    {
+      "label": "Limpiar filtros",
+      "icono": "filter_alt_off",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Reinicia los filtros de la grilla."
+    },
+    {
+      "label": "Nuevo activo (Gestión)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Alta de la ficha: no está en este submenú; vive en Activos Fijos → Gestión."
+    },
+    {
+      "label": "Eventos (Gestión)",
+      "icono": "swap_horiz",
+      "color": "primary",
+      "estilo": "tab",
+      "descripcion": "Novedades del activo; no se confunde con el catálogo de Eventos."
+    },
+    {
+      "label": "Documentos",
+      "icono": "attach_file",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Adjuntos del artículo (DOCXTPO)."
+    },
+    {
+      "label": "Fabricantes",
+      "icono": "factory",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Alta de tercero categoría fabricante (desde Gestión)."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Configuración (MENUQ_COL · CONFIGURACION)",
+      "accion": "Ver y abrir las opciones del submenú Activos F.",
+      "rol": "Administrador",
+      "descripcion": "El árbol es fijo; qué opción se habilita por grupo lo decide el menú de Configuración del cliente."
+    },
+    {
+      "codigo": "Sin getPermiso / sin IDCONTROL",
+      "accion": "Crear / editar / borrar tipos, eventos, grupos y artículos",
+      "rol": "Quien entra a la pantalla",
+      "descripcion": "Ninguna pantalla de este submenú pide permiso por botón. El acceso a la opción es el único control."
+    },
+    {
+      "codigo": "TIPO_ACTIVO_USUARIO (variable)",
+      "accion": "Ver Asignar Administrador",
+      "rol": "Administrador",
+      "descripcion": "No es permiso de grupo: enciende el botón."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "TIPO_ACTIVO_USUARIO",
+      "tipo": "USVGS",
+      "valorSugerido": "SI / NO",
+      "descripcion": "Enciende el botón Asignar Administrador en Tipos de Activos."
+    },
+    {
+      "nombre": "IACT_ESTADOBAJA",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de estado de la tabla general ESTADOACTIVO",
+      "descripcion": "Cuando el evento usa este estado, se marca Baja de activo. No publicar el valor de un cliente."
+    },
+    {
+      "nombre": "IACTEVENTOCOMPRA",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de evento de Entrada",
+      "descripcion": "Evento que nace al dar de alta el activo en Gestión."
+    },
+    {
+      "nombre": "IDPROCESOCONTABLE",
+      "tipo": "USVGS",
+      "valorSugerido": "LOCAL o MIXTO",
+      "descripcion": "Con MIXTO el alta pide también tipo NIIF."
+    },
+    {
+      "nombre": "TERCATFABRICANTE",
+      "tipo": "USVGS",
+      "valorSugerido": "Categoría de tercero fabricante",
+      "descripcion": "Categoría que usa el botón Fabricantes de Gestión."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "confact-activos-en-construccion",
+      "tipo": "hueco",
+      "detalle": "Configuración → Activos F. → Activos apunta a la página en construcción. El alta, la ficha, los accesorios, los responsables y las novedades están en Activos Fijos → Gestión.",
+      "solucionPropuesta": "Apuntar la opción a Gestión o quitarla del árbol para no confundir."
+    },
+    {
+      "id": "confact-articulos-pendientes",
+      "tipo": "hueco",
+      "detalle": "Artículos → Artículos Pendientes / hasArtTmp está cableado en la pantalla pero no implementado: el botón no revisa ni importa artículos temporales.",
+      "solucionPropuesta": "Implementar la cola o ocultar el botón."
+    },
+    {
+      "id": "confact-useusvgs-sin-get",
+      "tipo": "fe",
+      "detalle": "La pantalla de tipos importa useUsvgs y no llama getUsvgs: TIPO_ACTIVO_USUARIO puede no evaluarse y el botón Asignar Administrador no aparece aunque la variable esté encendida.",
+      "solucionPropuesta": "Llamar getUsvgs (o getVariable) al montar, o leer la variable por AppStore.read."
+    },
+    {
+      "id": "confact-iactt-iacte-sin-ficha",
+      "tipo": "doc",
+      "detalle": "IACTT e IACTE no tienen ficha en la documentación de tablas. IART.md solo menciona la FK hacia el activo.",
+      "solucionPropuesta": "Documentar IACTT e IACTE en el catálogo de tablas."
+    },
+    {
+      "id": "confact-no-confundir-iart-inventario",
+      "tipo": "decision",
+      "detalle": "Hay dos entradas Artículos: Activos F. → Artículos (filtro ESACTIVO e IDTIPOACTIVO) e Inventario → Artículos (conf.iart, catálogo completo). El usuario que entra por Inventario no ve el tipo de activo y cree que falta el campo.",
+      "solucionPropuesta": "Dejar claro en ayuda y en el menú que el catálogo capitalizable es Activos F. → Artículos."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita configurar de activos fijos?",
+      "intro": "Veinte tareas frecuentes del submenú Activos F.: dónde está el botón, qué condición exige y qué no hay que confundir con Gestión o con Inventario."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué configura el submenú Activos F. y dónde se da de alta el activo",
+      "imagen": "img/confact_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa del submenú Activos F. de Configuración",
+      "intro": "El menú central **Configuración → Activos F.** reúne los catálogos que el módulo de activos consulta al trabajar: **qué tipo** se pide en el alta, **qué evento** mueve la ficha, **qué artículo** se capitaliza y **cómo se agrupa** (grupos, sectores, avisos de parada). Nada aquí crea el activo: la ficha se abre en **Activos Fijos → Gestión**. La opción **Activos** de este árbol está en construcción.",
+      "md": "## Siete catálogos y un hueco\n\n| Bloque | Opción del menú | Tablas | Quién lo consume |\n|---|---|---|---|\n| Hueco | Activos | — | En construcción. El alta está en Activos Fijos → Gestión |\n| Tipo | Tipos de Activos | IACTT | El formulario de alta (TRE_TIPOACT) y Generar Depreciación |\n| Evento | Eventos | IACTE | Gestión → Eventos (novedad) y la regla KMCOM MOV_ACTIVOS |\n| Artículo | Tipos de Artículos, Artículos | ITAR, IART | El combo de artículo del alta; no es Inventario → Artículos |\n| Clasificar | Grupos, Equipos Por Sector, Noti. Parada | TGEN | Filtros de la ficha, dotación y correo de parada |\n\n## La misma pantalla, dos menús\n\nCada opción funcional se abre también desde **Activos Fijos → Configuración** (`/iact/conf_*`): es el mismo componente, no otra lógica.\n\n## La regla\n\nEl árbol es fijo. **Qué opción se habilita** lo decide el menú de Configuración del cliente. Quien entra a la opción puede crear, editar y borrar: estas pantallas no piden permiso por botón.",
+      "puntosClave": [
+        "Configurar tipo → artículo → evento antes del primer alta.",
+        "Activos de este menú no abre la ficha: vaya a Gestión.",
+        "Inventario → Artículos es otro catálogo."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa del submenú Activos F.: qué abre cada opción",
+      "intro": "Las ocho opciones del árbol, la pantalla que abren y el procedimiento que las atiende (IXONLINE/SQL).",
+      "md": "| Opción del menú | Pantalla | Procedimiento · METODO | Qué administra |\n|---|---|---|---|\n| Activos | Página en construcción | — | Hueco: use Activos Fijos → Gestión |\n| Tipos de Activos | Tipo de activo (Nuevo, Generar Depreciación, Asignar Administrador) | SPQ_TIPOAF · GUARDAR, ELIMINAR, GENERAR_DEP, GUARDAR_TIPOACTIVO_USUARIO | IACTT, TGEN TIPOACTXUSUARIO |\n| Tipos de Artículos | Tipos con ESACTIVO = 1 | SPQ_ITAR · GUARDAR, ACTUALIZAR, ELIMINAR | ITAR |\n| Eventos | Catálogo Entrada / Salida / Traslado | SPQ_EVENTOAF · GUARDAR, ELIMINAR | IACTE |\n| Grupos | Grupos y subgrupos | SPQ_GRUPAC · GUARDAR, GUARDAR_SUBGRUP, ELIMINAR, ELIMINAR_SUBGRUP | TGEN ACTIVOSFIJOS/GRUPOS |\n| Equipos Por Sector | Dotación por servicio | SPQ_EQXSEAF · GUARDAR, ELIMINAR | TGEN |\n| Noti. Parada Por Sector | Correo de parada | SPQ_NOTIFPARADAAF · GUARDAR, ELIMINAR | TGEN |\n| Artículos | Artículos con tipo de activo | SPQ_IART · GUARDAR, ELIMINAR | IART (filtro ESACTIVO e IDTIPOACTIVO) |\n\n## Lo que no está aquí pero parece\n\n- **Alta, foto, accesorios, responsables, novedades, hoja de vida:** Activos Fijos → Gestión.\n- **Contabilizar la depreciación del mes:** Contabilidad → Depreciación activos.\n- **Regla de cuentas de activos:** Configuración → Contable → Contabilización por Ubicación (tipos DEPRECIACION y MOV_ACTIVOS).\n- **Catálogo completo de artículos:** Configuración → Inventario → Artículos.",
+      "puntosClave": [
+        "Las rutas /conf/iact* y /iact/conf_* son el mismo componente.",
+        "Sin tipo y sin evento no se puede operar Gestión."
+      ]
+    },
+    {
+      "id": "flujo-tipos",
+      "tipo": "flujo",
+      "kicker": "Flujo 1",
+      "titulo": "Crear un tipo de activo y generar su depreciación",
+      "flujoId": "confact-tipo",
+      "imagen": "img/confact_tipo_sketchnote.jpg",
+      "imagenAlt": "Tipo de activo",
+      "intro": "Cinco pasos: identidad, campos del alta, salvamento, administrador y generar cuotas."
+    },
+    {
+      "id": "detalle-tipo",
+      "tipo": "texto",
+      "kicker": "Tipos",
+      "titulo": "El tipo de activo campo por campo",
+      "intro": "Lo que pide el formulario y lo que hace Generar Depreciación.",
+      "md": "## Identidad (IACTT)\n\nCódigo (único), Descripción, Clase **Local** o **NIIF**, Estado Activo/Inactivo.\n\n## Qué pide el alta\n\nPedir modelo, escritura, marca, linderos, serial, partes, referencia, matrícula. Al elegir el tipo en Gestión, **TRE_TIPOACT** devuelve esas marcas y el formulario las vuelve obligatorias.\n\n## Depreciación del tipo\n\nTipo de salvamento **Valor** o **Porcentaje** (la pantalla no deja superar 100) y vida útil en meses. **Generar Depreciación** marca depreciables los activos cuyo costo alcanza el salvamento, fija el valor de salvamento y recalcula las cuotas (SPK_GEN_DEPRECIACION por activo). No arma comprobante.\n\nMensajes: «EL ID … YA SE ENCUENTRA REGISTRADO» · «EL CODIGO … YA SE ENCUENTRA REGISTRADO» · error propagado del SPK si un activo ya está depreciado por completo.\n\n## Administrador\n\nVisible con **TIPO_ACTIVO_USUARIO**. Liga empleados al tipo. «EL EMPLEADO YA SE ENCUENTRA ASIGNADO AL TIPO DE ACTIVO …».",
+      "puntosClave": [
+        "Sin tipo no hay alta: el formulario no sabe qué exigir.",
+        "Generar Depreciación del tipo no contabiliza."
+      ]
+    },
+    {
+      "id": "flujo-eventos",
+      "tipo": "flujo",
+      "kicker": "Flujo 2",
+      "titulo": "Definir un evento de entrada, salida o traslado",
+      "flujoId": "confact-evento",
+      "imagen": "img/confact_evento_sketchnote.jpg",
+      "imagenAlt": "Eventos de activo",
+      "intro": "El catálogo que Gestión usa al registrar una novedad."
+    },
+    {
+      "id": "detalle-eventos",
+      "tipo": "texto",
+      "kicker": "Eventos",
+      "titulo": "Entrada, salida, traslado, baja y comprobante",
+      "intro": "Qué significa cada casilla del evento y cuándo se genera el asiento.",
+      "md": "## Tipo de movimiento\n\n**Entrada** actualiza estado y/o valor. **Salida** cambia el estado (y da de baja si corresponde). **Traslado** cambia centro de costo y área. Los eventos de mantenimiento no salen en novedades.\n\n## Qué pide\n\nAl menos una de: Pide estado, Pide valor, Pide centro de costo y área. Estado asociado: tabla general ESTADOACTIVO.\n\n## Contabilidad y baja\n\n- **Se contabiliza?** + comprobante (COM): al aplicar la novedad se genera el comprobante (regla KMCOM MOV_ACTIVOS).\n- **Baja de activo:** se marca sola cuando el estado asociado es el de **IACT_ESTADOBAJA**. Al aplicar, el activo deja de depreciarse.\n\nCambiar el catálogo no reescribe novedades ya aplicadas.",
+      "puntosClave": [
+        "El evento de compra lo crea el alta (variable IACTEVENTOCOMPRA).",
+        "Sin comprobante y sin regla KMCOM, la novedad contable llega a errados."
+      ]
+    },
+    {
+      "id": "articulos-tipos",
+      "tipo": "texto",
+      "kicker": "Artículos",
+      "titulo": "Tipos de artículo capitalizables y artículos de activo fijo",
+      "flujoId": "confact-articulos",
+      "intro": "El filtro ESACTIVO e IDTIPOACTIVO, y por qué no es el catálogo de Inventario.",
+      "md": "## Tipos de Artículos (ITAR)\n\nEsta pantalla **solo lista** los tipos con ESACTIVO = 1. Crear o editar aquí deja el tipo listo para capitalizar. No se borra un tipo con artículos asignados («EL TIPO DE ARTICULO TIENE ARTICULOS ASIGNADOS»).\n\n## Artículos (IART)\n\nArtículo + tipo de artículo + **tipo de activo** + fabricante. El listado filtra por ESACTIVO e IDTIPOACTIVO. El fabricante es obligatorio para imprimir la hoja de vida.\n\n## Lo que no hay que confundir\n\n**Configuración → Inventario → Artículos** (`conf.iart`) es el catálogo completo: no filtra por activo fijo y no muestra el tipo de activo. Quien entre por ahí creerá que falta el campo.\n\n**Artículos Pendientes** no está implementado (ver hallazgos).",
+      "puntosClave": [
+        "Primero el tipo ESACTIVO, después el artículo con IDTIPOACTIVO.",
+        "Inventario → Artículos no sustituye esta pantalla."
+      ]
+    },
+    {
+      "id": "grupos-sectores",
+      "tipo": "texto",
+      "kicker": "Clasificar",
+      "titulo": "Grupos, equipos por sector y notificaciones de parada",
+      "flujoId": "confact-grupos",
+      "intro": "Tres catálogos en TGEN que la ficha y la parada consultan.",
+      "md": "## Grupos (TGEN ACTIVOSFIJOS / GRUPOS)\n\nGrupo → subgrupo. Código de grupo único; subgrupo único dentro del grupo. Se eligen en la ficha del activo.\n\n## Equipos por sector (EQXSEAF)\n\nServicio (habitación/sector) + artículo + cantidad. Es la dotación esperada, no el alta del activo.\n\n## Noti. parada (NOTIFPARADAAF)\n\nContacto y correo por servicio. Cuando un activo se marca en parada, el aviso usa esta fila.",
+      "puntosClave": [
+        "Grupo y sector son referencias de la ficha, no prerequisito del tipo.",
+        "La parada no es el evento de salida."
+      ]
+    },
+    {
+      "id": "orden-implantacion",
+      "tipo": "texto",
+      "kicker": "Implantación",
+      "titulo": "Orden de implantación y lista de chequeo",
+      "intro": "Qué configurar primero cuando se montan activos fijos por primera vez.",
+      "md": "## Orden\n\n1. **Tipos de Activos** (Local; y NIIF si el proceso contable es MIXTO): campos del alta, vida útil, salvamento.\n2. **Eventos:** al menos compra (entrada), traslado y baja (salida con IACT_ESTADOBAJA). Variable IACTEVENTOCOMPRA.\n3. **Tipos de Artículos** ESACTIVO y **Artículos** con tipo de activo y fabricante.\n4. **Grupos** (si se van a filtrar), **Equipos por sector** y **Noti. parada** si aplica.\n5. **Contable:** regla KMCOM DEPRECIACION (prefijo = tipo de activo) y MOV_ACTIVOS (prefijo = evento); comprobante IDCON_TCOM_DEPR.\n6. Primer alta en **Activos Fijos → Gestión**. Probar Generar Depreciación del tipo y una novedad.\n\n## Lista de chequeo\n\n- [ ] Cada clase de bien tiene tipo Local (y NIIF si MIXTO).\n- [ ] Evento de compra, traslado y baja.\n- [ ] IACT_ESTADOBAJA y TIPO_ACTIVO_USUARIO revisadas (sin publicar el valor de la instalación).\n- [ ] Artículos con tipo de activo; no usar el catálogo de Inventario para el alta.\n- [ ] Regla KMCOM de depreciación y de movimiento de activos.\n- [ ] Un activo de prueba dado de alta en Gestión (no en Activos de este menú).",
+      "puntosClave": [
+        "Si falta el tipo, el alta no sabe qué pedir.",
+        "Si falta la regla KMCOM, la novedad contable llega a errados."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosConfigActivos",
+      "kicker": "Semáforo",
+      "titulo": "Estados y marcas de los catálogos de Activos F.",
+      "intro": "Qué significa cada valor que se ve en estas pantallas y qué permite o bloquea."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo que se encontró al contrastar el menú, las pantallas y los procedimientos. Validar en preversión antes de pedir desarrollo.",
+      "md": "## Huecos y defectos\n\n1. **Activos abre la página en construcción.** El alta está en Activos Fijos → Gestión.\n2. **Artículos Pendientes no está implementado.** El botón (hasArtTmp) no hace nada.\n3. **useUsvgs importado sin leer la variable.** Asignar Administrador puede no aparecer aunque TIPO_ACTIVO_USUARIO esté encendida.\n4. **IACTT e IACTE sin ficha** en la documentación de tablas.\n5. **Dos catálogos Artículos.** Inventario → Artículos no filtra por activo fijo: no es esta pantalla.\n\nNinguno pide un cambio a ciegas: validar en preversión (PREVERSION = 2.0.7, IDANT 2.0.6).",
+      "puntosClave": [
+        "Lo primero que el usuario reporta como «no puedo crear el activo» suele ser la opción Activos en construcción.",
+        "No pedir de nuevo un arreglo que ya esté en la canasta abierta: validar en preversión."
+      ]
+    }
+  ]
+}

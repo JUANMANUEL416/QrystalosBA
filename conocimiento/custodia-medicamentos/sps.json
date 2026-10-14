@@ -1,0 +1,281 @@
+{
+  "procesoId": "custodia-medicamentos",
+  "actualizado": "2026-10-04T12:30:00",
+  "nota": "2026-10-04. Fichas leídas sobre PREVERSION (IXONLINE/SQL). Comparación DESAIX PREVERSION vs última liberada 2.0.7 (anterior 2.0.6): AGREGA_CUSTODIA, SUBIR_CUSTODIA_MASIVA, AGREGA_ARTICULO_ITRAH, CONSULTA_ARTICULOS_PRUEBA, las tres actas de IMOV_3 y EXPORTA_INFORME_CUSTODIA son idénticos en las dos canastas. CONF_ENTRADA difiere en PREVERSION solo por la lectura de PROCEDENCIA (no toca custodia). SPK_CONFIRMARENTRADAS difiere en devoluciones e IDXB (tampoco custodia). Todo lo escrito aquí vale para la liberada.",
+  "sps": [
+    {
+      "nombre": "SPQ_IZSOL",
+      "tipo": "SPQ",
+      "modelo": "IZSOL",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7 en estos métodos).",
+      "cola": "Botones Ingresar Custodia (manual), Ingresar Custodia (masiva, barra superior) y Confirmar entrada en Inventario → Movimientos.",
+      "actualizado": "2026-10-04T12:30:00",
+      "metodos": [
+        {
+          "id": "AGREGA_CUSTODIA",
+          "hace": "Abre el tránsito de custodia (ITRA) en la bodega elegida: CNSMOVORI = CUSTODIA, PROCEDENCIA = INV, IDTIPOMOV = IDINVTPROPIA, ESTADO 0, LOTEADO 0, USUARIOTRA = tercero. Devuelve OK y el CNSITRA.",
+          "parametros": ["IDTERCERO (puede venir vacío en la masiva: el NIT va en el Excel)", "OBSERVACION", "IDBODEGA"],
+          "valida": [
+            "Variable IDINVTPROPIA configurada",
+            "Consecutivo @ITRA único: toma un lock por compañía y sede, reintenta hasta 50 veces y si sigue repetido usa MAX+1"
+          ],
+          "noValida": [
+            "Que la bodega sea de custodia (ESDECUSTODIA): eso lo pide la masiva, no este alta",
+            "Que el tercero exista o sea proveedor",
+            "Bodega de hemoderivados (IDBOD_HEMODERIVADOS): no la rechaza"
+          ],
+          "errores": [
+            "Debe de configurar la variable IDINVTPROPIA",
+            "No fue posible obtener lock para generar CNSITRA (@ITRA) en custodia.",
+            "Error al generar CNSITRA único (@ITRA) para custodia. Revise SEQ_…"
+          ],
+          "llama": ["SPQ_GENSEQUENCE (@ITRA)", "sp_getapplock / sp_releaseapplock"],
+          "efecto": "INSERT ITRA. No crea IMOV ni IEXI.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-abrir",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTA_ARTICULOS_PRUEBA",
+          "hace": "Llena las listas del diálogo de custodia: artículos activos no principales (PRINCIPAL = 0) permitidos en la bodega por tipo de artículo (IBODS → ITAR) y terceros de categoría PRO (proveedores).",
+          "parametros": ["IDBODEGA"],
+          "valida": [],
+          "noValida": ["Existencia ni vencimiento: solo catálogo"],
+          "errores": [],
+          "llama": ["VWK_TEXCA"],
+          "efecto": "Solo lectura.",
+          "capaId": "03-alimentadores",
+          "controlId": "custodia-catalogos",
+          "estado": "leido"
+        },
+        {
+          "id": "AGREGA_ARTICULO_ITRAH",
+          "hace": "Agrega una línea al tránsito de custodia manual: ITRAH con NOLOTE interno (@ICBU), CANTIDADORI = cantidad digitada, CANTIDADDES 0, PCOSTO 0. Solo actúa con PROCESO = Nuevo.",
+          "parametros": ["IDARTICULO", "CANTIDAD", "CNSITRA", "PROCESO (Nuevo)"],
+          "valida": [],
+          "noValida": [
+            "Que el artículo exista, esté activo o esté permitido en la bodega",
+            "Que la cantidad sea mayor que cero",
+            "Que el tránsito exista y esté abierto",
+            "No pide lote del proveedor ni fecha de vencimiento (se completan al traer del tránsito y confirmar)"
+          ],
+          "errores": [],
+          "llama": ["SPQ_GENSEQUENCE (@ICBU)"],
+          "efecto": "INSERT ITRAH. El bloque de validación del método es un marcador vacío (IF 'VALIDACION' <> 'VALIDACION'): hoy no valida nada.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-abrir",
+          "estado": "leido"
+        },
+        {
+          "id": "ON_ACEPTA_TRANSITO",
+          "hace": "Acepta el tránsito (camino manual): toma el tipo del ITRA (IDINVTPROPIA en custodia), llama SPK_INSERTENTTRANSITO para generar la entrada en estado 0 y pasa el ITRA a ESTADO 1. Ficha solo de la parte que afecta custodia; el resto del método pertenece al libro de inventario.",
+          "parametros": ["CNSITRA", "CNSFCOM", "IDBODEGA"],
+          "valida": [
+            "Ninguna línea base (INICIAL = 0) con cantidad pendiente sin causa (IDCAUSAL)",
+            "El tipo de movimiento del tránsito existe en ITMO",
+            "Para compras: al menos una línea loteada (no aplica a custodia, que no tiene CNSFCOM ni tipo de compras)"
+          ],
+          "noValida": ["Que el tránsito sea de custodia: lo trata como cualquier tránsito"],
+          "errores": [
+            "Existen artículos pendientes por no loteo sin causa asignada. Registre la causa (individual o masiva) antes de aceptar el tránsito.",
+            "El tipo de movimiento (IDTIPOMOV: …) no existe en la tabla ITMO. Por favor, verifique la configuración de tipos de movimientos."
+          ],
+          "llama": ["SPK_INSERTENTTRANSITO"],
+          "efecto": "INSERT IMOV / IMOVH vía SPK. UPDATE ITRA.ESTADO 1.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-abrir",
+          "estado": "leido"
+        },
+        {
+          "id": "SUBIR_CUSTODIA_MASIVA",
+          "hace": "Procesa el Excel de custodia. Agrupa un tránsito (ITRA) por proveedor —el primero reutiliza el CNSITRA abierto, los demás se clonan con consecutivo nuevo— y un movimiento de entrada (IMOV) por paciente y proveedor, tipo IDINVTPROPIA, ESTADO 0, ESTRANSITO 1, CNSTRAN = paciente, TIPO_DOC_COMPRA N, PROCEDENCIA INV. Por cada unidad crea IMOVH (CANTIDAD 1), ITRAH (INICIAL 1, CANTIDADREV 1 o 0, temperatura, cumple, aprobado) e IEXI con EXISLOTE 0 y CANTINICIAL 1. Al final marca el tránsito LOTEADO 1, ESTADO 2 y CNSMOVDES (CNSMOV o VARIOS). Devuelve artículos procesados, totales, CNSITRA, movimientos generados y un resumen por paciente y proveedor.",
+          "parametros": ["DATOS (filas del Excel)", "CNSITRA (el abierto por AGREGA_CUSTODIA)", "IDBODEGA"],
+          "valida": [
+            "Bodega con ESDECUSTODIA = 1",
+            "El CNSITRA existe y no está procesado ni anulado",
+            "Todos los NIT de la columna TERCERO existen en TER",
+            "Fechas FECHAVENCE válidas en formato YYYY-MM-DD",
+            "Al menos una fila con artículo",
+            "Artículos existen y están activos",
+            "Ningún artículo es principal (IART.PRINCIPAL = 1): se exige el código de presentación (PRINCIPAL = 0)",
+            "Artículos permitidos en la bodega (IBODS por tipo de artículo)",
+            "Campos obligatorios: CEDULA, TERCERO (NIT), CANTIDAD ≥ 1, CANTIDADREV entre 0 y CANTIDAD, NOLOTEPEDIDO, FECHAVENCE, CUMPLE, APROBADO, TEMPERATURA",
+            "Pacientes existen y están activos (AFI)",
+            "Cada artículo tiene servicio asociado (IDSERVICIO / SER)"
+          ],
+          "noValida": [
+            "Vencimiento ya pasado: acepta cualquier fecha válida",
+            "PCOSTO: opcional, admite cero",
+            "Duplicados de la misma cédula + artículo + lote dentro del Excel: los apila como unidades"
+          ],
+          "errores": [
+            "La bodega seleccionada (…) no está configurada para custodia masiva.",
+            "El consecutivo de custodia no existe.",
+            "La custodia ya está procesada o anulada.",
+            "Los siguientes NIT de proveedor no existen en catálogo TER: …",
+            "Hay fechas inválidas. Formato esperado: YYYY-MM-DD",
+            "No se encontraron artículos para procesar.",
+            "Artículos no existen o inactivos: …",
+            "No se permiten artículos principales (IART.PRINCIPAL = 1). Utilice el código del fabricante/presentación (PRINCIPAL = 0): …",
+            "Algunos artículos no están permitidos en esta bodega (IBODS).",
+            "Campos obligatorios vacíos o inválidos: CEDULA, PROVEEDOR (NIT), CANTIDAD (>=1), CANTIDADREV (>=0 y <= CANTIDAD), NOLOTEPEDIDO, FECHAVENCE, CUMPLE, APROBADO, TEMPERATURA.",
+            "Pacientes no existen o inactivos: …",
+            "Artículos sin servicio asociado (IDSERVICIO/SER): …"
+          ],
+          "llama": ["SPQ_GENSEQUENCE (@MOV, @ICBU, @ITRA)"],
+          "efecto": "INSERT ITRA (clones), IMOV, IMOVH, ITRAH, IEXI (EXISLOTE 0). UPDATE ITRA del abierto. Las existencias siguen en cero hasta Confirmar entrada.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-masiva",
+          "estado": "leido"
+        },
+        {
+          "id": "CONF_ENTRADA",
+          "hace": "Confirma la entrada. En el tipo IDINVTPROPIA: no exige costo mayor que cero ni factura, exige el paciente (CNSTRAN), llama SPK_CONFIRMARENTRADAS y después corre el enlace automático con la aplicación de medicamentos (APLIMF / IEXIF) del mismo paciente.",
+          "parametros": ["CNSMOV"],
+          "valida": [
+            "Movimiento en ESTADO 0",
+            "Paciente (CNSTRAN) obligatorio cuando el tipo es IDINVTPROPIA",
+            "Las demás reglas generales de entrada (periodo, lotes, principal) que aplican a cualquier IMOV"
+          ],
+          "noValida": [
+            "Costo cero en los lotes (excluido para IDINVTPROPIA)",
+            "Factura, fecha de factura y vencimiento de factura (solo compras y remisión)"
+          ],
+          "errores": [
+            "Es obligatorio, para este tipo de movimiento el Paciente.",
+            "El Movimiento de Inventario No esta Preparado para Confirmar Revise"
+          ],
+          "llama": ["SPK_CONFIRMARENTRADAS"],
+          "efecto": "IMOV.ESTADO 1, IEXI con existencia, tránsito cerrado. Enlace: APLIMF pendiente del paciente pasa a RESERVADO con el IDIEXI del lote e IEXIF a RECEPCIONADO. Cuatro rutas: 1) IEXIF pendiente de gestión o compra; 2) cita agendada sin IEXIF; 3) paciente + servicio directo; 4) cualquier lote de custodia del paciente, incluidas entradas anteriores. Orden de asignación: FECHAVENCE más próxima primero.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-confirmar",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_INSERTENTTRANSITO",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7, idénticas).",
+      "cola": "Lo llama ON_ACEPTA_TRANSITO al aceptar el tránsito manual.",
+      "actualizado": "2026-10-04T12:30:00",
+      "metodos": [
+        {
+          "id": "(cuerpo) generar entrada desde el tránsito",
+          "hace": "Crea la entrada (IMOV, una por tipo de artículo o única según IDINVENTRADAUNICA) a partir de las líneas del tránsito con INICIAL = 1: tipo del tránsito, tercero = proveedor del tránsito (USUARIOTRA) cuando no hay orden de compra, ESTADO 0, ESTRANSITO 1, CNSITRA del tránsito, CNSTRAN vacío (el paciente se pone en la entrada), TIPO_DOC_COMPRA N para los tipos que no son compra. Copia a IMOVH lote del proveedor, vencimiento y cantidad de cada línea loteada.",
+          "valida": ["Existe al menos una línea con INICIAL = 1", "El consecutivo generado no está usado por otro movimiento"],
+          "noValida": ["Paciente (se exige después, al confirmar)", "Costo"],
+          "errores": [
+            "No hay detalle de tránsito con INICIAL=1 para generar la entrada del tránsito ….",
+            "EL CONSECUTIVO … UTILIZADO POR UN MOVIMIENTO, VERIFIQUE SUS CONTADORES"
+          ],
+          "llama": ["SPK_GENCONSECUTIVO (@MOV / @EMOV)", "SPK_INSERTENTTRANSITO_ICBU (lotes únicos)"],
+          "efecto": "INSERT IMOV, IMOVH. No toca IEXI ni existencias.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-abrir",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_CONFIRMARENTRADAS",
+      "tipo": "SPK",
+      "modelo": null,
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION). Las diferencias con 2.0.7 son de devoluciones e IDXB, no de custodia.",
+      "cola": "Lo llama CONF_ENTRADA. Aquí se suma la existencia.",
+      "actualizado": "2026-10-04T12:30:00",
+      "metodos": [
+        {
+          "id": "(cuerpo) reglas de custodia",
+          "hace": "Al confirmar una entrada del tipo IDINVTPROPIA: toma el tránsito solo desde IMOV.CNSITRA (no desde CNSTRAN, que en custodia es el paciente), no fusiona unidades de distintos pacientes aunque compartan lote de proveedor (1 IEXI por unidad) y suma la cantidad a los IEXI pre-creados con EXISLOTE 0, solo de las líneas marcadas (IMOVH.ESTADO 9).",
+          "valida": ["Líneas en ESTADO 9 (marcadas para confirmar)"],
+          "noValida": ["No reescribe NOLOTEPEDIDO del lote"],
+          "errores": [],
+          "llama": [],
+          "efecto": "UPDATE IEXI.EXISLOTE (+cantidad), IDTERCERO, RINVIMA. Actualiza el tránsito (ITRA) con CNSITRA o, si va vacío, con CNSTRAN / CNSMOVDES.",
+          "capaId": "02-operacion",
+          "controlId": "custodia-confirmar",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_IMOV_3",
+      "tipo": "SPQ",
+      "modelo": "IMOV_3",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7).",
+      "cola": "Acta de recepción de custodia (clic derecho en el movimiento) y Acta custodia por tercero (barra superior).",
+      "actualizado": "2026-10-04T12:30:00",
+      "metodos": [
+        {
+          "id": "RPT_ACTA_RECEPCION_CUSTODIA",
+          "hace": "Datos del acta de un movimiento de custodia: cabecera (fecha, tercero, bodega, observación, usuario que confirmó y su firma —primero DOCS FIRMA_IMOV / ACTA_RECEP_TECNICA, si no la firma del usuario—) y detalle por paciente, artículo, lote y vencimiento con cantidad, revisada, temperatura, cumple y aprobado tomados de ITRAH.",
+          "parametros": ["CNSMOV", "PROCEDENCIA"],
+          "valida": [],
+          "noValida": ["Que el movimiento sea de custodia: lo decide la pantalla (solo ofrece la opción si IDTIPOMOV = IDINVTPROPIA)"],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "04-unido",
+          "controlId": "custodia-acta",
+          "estado": "leido"
+        },
+        {
+          "id": "RPT_ACTAS_CUSTODIA_TERCERO_LISTA",
+          "hace": "Lista los movimientos de custodia (IDTIPOMOV = IDINVTPROPIA) de un proveedor, con filtros opcionales de bodega, fechas y estado.",
+          "parametros": ["IDTERCERO (obligatorio)", "IDBODEGA", "FDESDE", "FHASTA", "ESTADO"],
+          "valida": ["Tercero indicado", "Variable IDINVTPROPIA configurada"],
+          "noValida": [],
+          "errores": ["Debe indicar el tercero en el filtro.", "Variable IDINVTPROPIA no configurada."],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "04-unido",
+          "controlId": "custodia-acta",
+          "estado": "leido"
+        },
+        {
+          "id": "RPT_ACTA_CUSTODIA_TERCERO_CONSOLIDADA",
+          "hace": "Acta consolidada de un proveedor: todos sus movimientos de custodia en el rango, agrupados para un solo documento.",
+          "parametros": ["IDTERCERO (obligatorio)", "IDBODEGA", "FDESDE", "FHASTA", "ESTADO"],
+          "valida": ["Proveedor indicado", "Variable IDINVTPROPIA configurada", "Existen movimientos con esos filtros"],
+          "noValida": [],
+          "errores": ["Debe indicar el proveedor en el filtro.", "Variable IDINVTPROPIA no configurada.", "No hay movimientos de custodia para el proveedor con los filtros actuales."],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "04-unido",
+          "controlId": "custodia-acta",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_EXISTENCIA",
+      "tipo": "SPQ",
+      "modelo": "EXISTENCIA",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7).",
+      "cola": "Exportar a Excel en Existencias → Informe de Custodia.",
+      "actualizado": "2026-10-04T12:30:00",
+      "metodos": [
+        {
+          "id": "EXPORTA_INFORME_CUSTODIA",
+          "hace": "Devuelve los lotes de las bodegas de custodia (IBOD.ESDECUSTODIA = 1) con artículo, bodega, lote interno y del proveedor, fecha de ingreso, vencimiento, laboratorio, CUM, movimiento, cantidad ingresada y existencia actual, más el paciente del movimiento. Acepta la misma condición que la grilla y TODAS_BODEGAS para ignorar la bodega.",
+          "parametros": ["CONDICION", "IDBODEGA", "TODAS_BODEGAS"],
+          "valida": [],
+          "noValida": [],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "capaId": "04-unido",
+          "controlId": "custodia-informe",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

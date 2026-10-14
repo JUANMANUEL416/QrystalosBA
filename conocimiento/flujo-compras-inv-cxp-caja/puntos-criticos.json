@@ -1,0 +1,327 @@
+{
+  "flujoId": "flujo-compras-inv-cxp-caja",
+  "actualizado": "2026-09-19",
+  "dimensiones": ["existencias", "costo", "contabilidad"],
+  "puntos": [
+    {
+      "id": "PC-00a",
+      "nombre": "ITAR con PRECNS/MCNS y flags de operación",
+      "dimension": ["existencias", "costo"],
+      "etapa": "iart",
+      "severidad": "alta",
+      "invariante": "Sin PRECNS no hay consecutivo (SPQ_IART GUARDAR). MLOTEO y MFECHAVENCIMIENTO deben reflejar la política real de compra.",
+      "validacionSql": "iart_itar_flags",
+      "referencia": "catalogo-articulo.json · capa-tipo-itar; SPQ_IART GUARDAR"
+    },
+    {
+      "id": "PC-00b",
+      "nombre": "ITAR — IVA e impuesto de tipo",
+      "dimension": ["costo", "contabilidad"],
+      "etapa": "iart",
+      "severidad": "media",
+      "invariante": "MIVA/IDIMPUESTO en ITAR alineados con IART; base para FNK_PIVA_IART y CONTAB_INV_IVA_ITAR.",
+      "validacionSql": "iart_itar_iva",
+      "referencia": "ITAR · IART; CONF_ENTRADA / FCXPD"
+    },
+    {
+      "id": "PC-00c",
+      "nombre": "IART activo con IDITAR válido",
+      "dimension": ["existencias"],
+      "etapa": "iart",
+      "severidad": "alta",
+      "invariante": "ESTADO Activo; IDITAR existe; líneas FCOMD/ITRAH referencian IDARTICULO existente.",
+      "validacionSql": "iart_estado",
+      "referencia": "SPQ_IART GUARDAR; FCOMD"
+    },
+    {
+      "id": "PC-00d",
+      "nombre": "IART — impuesto en artículo",
+      "dimension": ["contabilidad"],
+      "etapa": "iart",
+      "severidad": "alta",
+      "invariante": "Si IMPUESTO_OBL=SI (USVGS), IDIMPUESTO e IDCLASE_IMP en IART; coherencia con TIENEIVA en OC.",
+      "validacionSql": "iart_impuesto",
+      "referencia": "IARTComponent; FCXPD"
+    },
+    {
+      "id": "PC-00e",
+      "nombre": "SER vinculado al artículo",
+      "dimension": ["contabilidad"],
+      "etapa": "iart",
+      "severidad": "alta",
+      "invariante": "IDSERVICIO con fila SER (o CREARSER vía VALIDA_SERVICIO); DEINVNODESER vacío bloquea VALIDA_SERVICIO.",
+      "validacionSql": "iart_ser",
+      "referencia": "SPQ_IART VALIDA_SERVICIO · SER CRUDSERVICIO"
+    },
+    {
+      "id": "PC-00g",
+      "nombre": "USVGS IDINVMOV_COMPRAS ↔ ITMO compras",
+      "dimension": ["existencias", "contabilidad"],
+      "etapa": "ibod-itmo",
+      "severidad": "alta",
+      "invariante": "IDINVMOV_COMPRAS apunta a ITMO activo, entrada (Crédito), usado en ITRA/IMOV de la OC.",
+      "validacionSql": "usvgs_idinvmov_compras",
+      "referencia": "SPK_INSERT_ITRA_REQ; catalogo-bodega-tipo-mov.json"
+    },
+    {
+      "id": "PC-00h",
+      "nombre": "Bodega OC (FCOM.IDBODEGA / IBOD)",
+      "dimension": ["existencias", "costo"],
+      "etapa": "ibod-itmo",
+      "severidad": "alta",
+      "invariante": "Bodega Activa, mueve existencias, CCOSTO/IDAREA si VALID_CCOSTO_CXP; usuario con IBODS.",
+      "validacionSql": "fcom_ibod",
+      "referencia": "FCOM; IBOD; SPQ_IMOV CRUD_IMOV"
+    },
+    {
+      "id": "PC-00i",
+      "nombre": "SECONTABILIZA efectivo (ITMO × IBOD)",
+      "dimension": ["contabilidad"],
+      "etapa": "ibod-itmo",
+      "severidad": "media",
+      "invariante": "NOCONTABILIZA en bodega anula contabilización INV aunque ITMO.SECONTABILIZA=1.",
+      "validacionSql": "secontabiliza_efectivo",
+      "referencia": "SPK_NC_CONTAB_INV; OM Inventario"
+    },
+    {
+      "id": "PC-00f",
+      "nombre": "Lista de precios / cotización",
+      "dimension": ["costo"],
+      "etapa": "cotizacion",
+      "severidad": "media",
+      "invariante": "Camino ILPRE: artículo en ILPRED con precio ≥ mínimo antes de GENERAR_OC.",
+      "validacionSql": "ilpre_linea",
+      "referencia": "SPQ_ILPRE GENERAR_OC"
+    },
+    {
+      "id": "PC-01",
+      "nombre": "KMCOM compras e inventario por prefijo SER",
+      "dimension": ["costo", "contabilidad"],
+      "etapa": "iart",
+      "severidad": "alta",
+      "invariante": "Prefijo SER con KMCOM CXP_COMPRAS (VALID_CCOSTO_CXP) y MOV_INVENTARIO; CUENTAGRAV si gravado.",
+      "validacionSql": "iart_kmcom",
+      "referencia": "FNK_NC_CUENTA_KMCOM; CONF_ENTRADA; SPK_NC_CONTAB_INV"
+    },
+    {
+      "id": "PC-02",
+      "nombre": "OC confirmada antes de recepción",
+      "dimension": ["existencias"],
+      "etapa": "fcom",
+      "severidad": "alta",
+      "invariante": "Recepcionar con ESTADO P, R o I (no C borrador ni A anulada). ORDENCOMPRA≥1 tras CONFIRMAR_ORDEN.",
+      "validacionSql": "fcom_estado",
+      "referencia": "SPQ_FCOM CONFIRMAR_ORDEN; OC-CONFIRMACION-RECEPCION.md"
+    },
+    {
+      "id": "PC-02b",
+      "nombre": "Tránsito generado al confirmar",
+      "dimension": ["existencias"],
+      "etapa": "fcom",
+      "severidad": "alta",
+      "invariante": "Tras confirmar debe existir ITRA(CNSFCOM) con ITRAH por artículos FCOMD (SPK_INSERT_ITRA_REQ).",
+      "validacionSql": "itra_post_confirmar",
+      "referencia": "SPK_INSERT_ITRA_REQ"
+    },
+    {
+      "id": "PC-02c",
+      "nombre": "ITRA.IDTIPOMOV vs USVGS",
+      "dimension": ["existencias"],
+      "etapa": "itra_transito",
+      "severidad": "alta",
+      "invariante": "IDTIPOMOV en ITRA = IDINVMOV_COMPRAS (o IDINVMOV_PRESTAMOS si IDTIPOSER=Presta).",
+      "validacionSql": "itra_idtipomov",
+      "referencia": "SPK_INSERT_ITRA_REQ; PC-00g"
+    },
+    {
+      "id": "PC-03",
+      "nombre": "Tránsito ITRA abierto vs recepcionado",
+      "dimension": ["existencias"],
+      "etapa": "itra_transito",
+      "severidad": "alta",
+      "invariante": "Toda recepción de compra debe tener CNSITRA ligado a CNSFCOM; ITRA.ESTADO coherente antes de aceptar.",
+      "validacionSql": "itra_estado",
+      "referencia": "SPQ_FCOM_RECEPCION_MASIVA · SPK_INSERT_ITRA_REQ"
+    },
+    {
+      "id": "PC-03b",
+      "nombre": "Loteo obligatorio (ITRAH INICIAL=1, NOLOTE)",
+      "dimension": ["existencias", "costo"],
+      "etapa": "loteo_transito",
+      "severidad": "alta",
+      "invariante": "ON_ACEPTA_TRANSITO exige al menos una línea INICIAL=1 con NOLOTE; pendientes INICIAL=0 sin IDCAUSAL bloquean.",
+      "validacionSql": "itrah_loteo",
+      "referencia": "SPQ_IZSOL_TRANSITO ON_PROCESAR · SPQ_IZSOL ON_ACEPTA_TRANSITO"
+    },
+    {
+      "id": "PC-03c",
+      "nombre": "IMOV borrador post tránsito",
+      "dimension": ["existencias", "costo"],
+      "etapa": "acepta_transito",
+      "severidad": "alta",
+      "invariante": "SPK_INSERTENTTRANSITO deja IMOV ESTADO=0; PCOSTO base coherente con Excel (recepción masiva restaura IMOVH.PCOSTO).",
+      "validacionSql": "imov_entrada_estado",
+      "referencia": "SPK_INSERTENTTRANSITO · CONF_ENTRADA"
+    },
+    {
+      "id": "PC-04",
+      "nombre": "Entrada confirmada vs cantidades OC",
+      "dimension": ["existencias", "costo"],
+      "etapa": "imov_entrada",
+      "severidad": "media",
+      "invariante": "Suma IMOVH cantidades/costos coherente con FCOMD recepcionado; PCOSTO restaurado en recepción masiva.",
+      "validacionSql": "fcomd_vs_imovh",
+      "referencia": "SPK_CONFIRMARENTRADAS"
+    },
+    {
+      "id": "PC-04b",
+      "nombre": "Precondiciones CONF_ENTRADA",
+      "dimension": ["existencias", "costo", "contabilidad"],
+      "etapa": "imov_entrada",
+      "severidad": "alta",
+      "invariante": "IMOV(0): vencimientos, PCOSTO>0, factura no duplicada, KMCOM CXP_COMPRAS si VALID_CCOSTO_CXP.",
+      "validacionSql": "conf_entrada_pre",
+      "referencia": "SPQ_IZSOL CONF_ENTRADA; CONF-ENTRADA-CXP.md"
+    },
+    {
+      "id": "PC-N1",
+      "nombre": "IEXI completo tras CONF_ENTRADA",
+      "dimension": ["existencias"],
+      "etapa": "imov_entrada",
+      "severidad": "critica",
+      "invariante": "IMOV confirmado: toda línea IMOVH con cantidad tiene IEXI (bodega+artículo+NOLOTE); EXISLOTE incrementado.",
+      "validacionSql": "iexi_vs_imov_confirmado",
+      "referencia": "SPK_CONFIRMARENTRADAS; NUCLEO-CRITICO-IEXI-CXP.md"
+    },
+    {
+      "id": "PC-N2",
+      "nombre": "Generación FCXPD desde entrada",
+      "dimension": ["contabilidad", "costo"],
+      "etapa": "cxp_detalle",
+      "severidad": "critica",
+      "invariante": "PROCESAR_IMOVH: FCXPD N_PRESUP=CNSMOV, IMOVH.ENCXP=1, homologación gravada.",
+      "validacionSql": "fcxpd_generacion",
+      "referencia": "SPK_INSERT_CXP_INV"
+    },
+    {
+      "id": "PC-N3",
+      "nombre": "KMCOM CXP_COMPRAS (entrada y FCXPD)",
+      "dimension": ["contabilidad"],
+      "etapa": "cxp_detalle",
+      "severidad": "critica",
+      "invariante": "VALID_CCOSTO_CXP en CONF_ENTRADA; FCXPD.CUENTA_SER vía FNK_CUENTA_KMCOM.",
+      "validacionSql": "kmcom_cxp_compras",
+      "referencia": "CONF_ENTRADA; SPK_INSERT_CXP_INV"
+    },
+    {
+      "id": "PC-N4",
+      "nombre": "Tipo de reconstrucción CxP",
+      "dimension": ["contabilidad"],
+      "etapa": "cxp_detalle",
+      "severidad": "alta",
+      "invariante": "Cambio de importes ⇒ PROCESAR_IMOVH; RECONSTRUIR_CUENTAS_FCXPD solo cuentas; FCXP no contabilizada.",
+      "validacionSql": "reconstruccion_tipo",
+      "referencia": "SPQ_FCXP RECONSTRUIR_CUENTAS_FCXPD"
+    },
+    {
+      "id": "PC-N5",
+      "nombre": "Cuadre IMOVH ↔ FCXPD ↔ FCXP",
+      "dimension": ["costo", "contabilidad"],
+      "etapa": "cxp_detalle",
+      "severidad": "critica",
+      "invariante": "Totales base e IVA del movimiento ≈ FCXPD del CNSMOV ≈ FCXP (tolerancia redondeo).",
+      "validacionSql": "cuadre_imov_fcxpd_fcxp",
+      "referencia": "SPK_CALCULOVALORESCXP; NUCLEO-CRITICO-IEXI-CXP.md"
+    },
+    {
+      "id": "PC-05",
+      "nombre": "Puente IMOV → FCXPD",
+      "dimension": ["contabilidad", "costo"],
+      "etapa": "cxp_detalle",
+      "severidad": "alta",
+      "invariante": "Tras PROCESAR_IMOVH: FCXPD con N_PRESUP=CNSMOV; IMOVH.ENCXP=1; CUENTAGRAV si IVA gravado.",
+      "validacionSql": "fcxpd_imov",
+      "referencia": "SPK_INSERT_CXP_INV · PROCESAR_IMOVH"
+    },
+    {
+      "id": "PC-06",
+      "nombre": "Impuestos FCXPI vs detalle",
+      "dimension": ["contabilidad"],
+      "etapa": "cxp_impuestos",
+      "severidad": "media",
+      "invariante": "Retenciones FCXPI coherentes con base FCXPD; CUENTA_IVA_CXP=SI exige CUENTA_IVA en líneas con VLR_IVA.",
+      "validacionSql": "fcxpi_resumen",
+      "referencia": "SPQ_FCXP CRUD_FCXPI · CONTABILIZAR_FCXP"
+    },
+    {
+      "id": "PC-07",
+      "nombre": "CxP contabilizada (MCP)",
+      "dimension": ["contabilidad"],
+      "etapa": "cxp_contab",
+      "severidad": "alta",
+      "invariante": "FCXP.CONTABILIZADA=1 y MCP PROCEDENCIA CXP con NROCOMPROBANTE; débitos/créditos balanceados.",
+      "validacionSql": "mcp_cxp",
+      "referencia": "SPK_NC_CONTAB_CXP"
+    },
+    {
+      "id": "PC-08",
+      "nombre": "Doble contabilización compra (CxP + OM INV entrada)",
+      "dimension": ["contabilidad", "costo"],
+      "etapa": "cxp_contab",
+      "severidad": "media",
+      "invariante": "Mismo CNSMOV no debe tener MCP INV costo compra si ya contabilizó vía CxP (ITMO.SECONTABILIZA / IBOD.NOCONTABILIZA).",
+      "validacionSql": "mcp_inv_mismo_mov",
+      "referencia": "SPK_NC_CONTAB_INV vs SPK_NC_CONTAB_CXP"
+    },
+    {
+      "id": "PC-09",
+      "nombre": "Orden de pago vs saldo CxP",
+      "dimension": ["contabilidad"],
+      "etapa": "orden_pago",
+      "severidad": "alta",
+      "invariante": "FCXPP suma ≤ saldo FCXP; CxP contabilizada antes de OP; ESTADO OP coherente tras egreso.",
+      "validacionSql": "fcxpp_saldo",
+      "referencia": "SPQ_ORDEN_PAGO PAGO_* · AUTORIZAR"
+    },
+    {
+      "id": "PC-10",
+      "nombre": "Egreso caja confirmado",
+      "dimension": ["contabilidad"],
+      "etapa": "caja",
+      "severidad": "alta",
+      "invariante": "FCJ egreso CERRADA=1; MCP CAJA; FCXPP ligada a CNSFACJ; MARCAR_PAGADA coherente.",
+      "validacionSql": "fcj_egreso_cxp",
+      "referencia": "CONF_CAJA · SPK_NC_CONTAB_CAJA_EGR"
+    },
+    {
+      "id": "PC-11",
+      "nombre": "Salida inventario y costo IEXI",
+      "dimension": ["existencias", "costo"],
+      "etapa": "imov_salida",
+      "severidad": "alta",
+      "invariante": "Tras CONFIRMA_SALIDA, IEXI disminuye; IMOV salida ESTADO=1.",
+      "validacionSql": "imov_salida_estado",
+      "referencia": "SPK_CONFIRMARSALIDAS"
+    },
+    {
+      "id": "PC-12",
+      "nombre": "Contabilización salida con/sin IVA",
+      "dimension": ["contabilidad", "costo"],
+      "etapa": "contab_inv",
+      "severidad": "media",
+      "invariante": "SPK_NC_CONTAB_INV: CNSPAGO IVA si VR_IVA/VLRIVA; CUENTAGRAV si MCUEGRAV=1.",
+      "validacionSql": "mcp_inv_salida_iva",
+      "referencia": "SPK_NC_CONTAB_INV · USVGS CONTAB_INV_IVA_ITAR"
+    },
+    {
+      "id": "PC-13",
+      "nombre": "Periodo PRI abierto en fechas clave",
+      "dimension": ["contabilidad"],
+      "etapa": "transversal",
+      "severidad": "media",
+      "invariante": "Contabilizar CxP/caja/OM con periodo cerrado debe fallar en SP; movimientos IMOV pueden no revalidar PRI al confirmar.",
+      "validacionSql": null,
+      "referencia": "PRI · VAL_CONTABLE · CERRADO_INV"
+    }
+  ]
+}

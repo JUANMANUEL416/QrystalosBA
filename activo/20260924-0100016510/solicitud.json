@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-25T00:28:43.063Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016510",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260924-0100016510",
+    "idReq": "0100016510",
+    "fecha": "2026-09-24",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "COMITE DE ESTUDIOS MEDICOS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "CONTABILIDAD · Contabilidad",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "NAREN VOOS",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/COESME631",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "CONTABILIDAD · Contabilidad",
+    "requerimiento": "Al revisar un comprobante, si el dato de la línea no es un afiliado, el alta del tercero no debe seguir a la categoría. Hoy esa alta no inserta fila y el proceso se cae en la categoría.\n\nAl revisar un comprobante, si el dato de la línea no es un afiliado, el alta del tercero no debe seguir a la categoría. Hoy esa alta no inserta fila y el proceso se cae en la categoría.",
+    "criteriosAceptacion": "1) En Contabilidad → Comprobantes errados (MCPE), al usar Revisar sobre el preliminar 0153000000092095 (CEM), el proceso no se detiene por error de llave en TEXCA/CAT por categoría vacía o tercero inexistente.\n2) Las líneas MCHE del comprobante quedan con el IDTERCERO correcto (ej. 060000000680 para NIT 1036339753), no con el documento/NIT suelto en el campo tercero.\n3) Si el movimiento de inventario asociado (ej. 0100092720, PROCEDENCIA INV) traía documento que no es afiliado, tras revisar/reconstruir el tercero operativo coincide con el de TER (o la regla acordada para entradas sin tercero válido).\n4) Si SPK_INSERT_TERDEAFI intenta crear tercero desde AFI y el INSERT en TER no inserta fila (@@ROWCOUNT=0), el SP termina sin grabar TEXCA ni PPT.\n5) No se altera numeración de comprobantes ni reglas de confirmación MCP (ESTADO 1→2); solo la resolución de tercero en revisión MCPE y el alta auxiliar.",
+    "alcance": "Incluye SPK_INSERT_TERDEAFI (búsqueda por NIT cuando @IDAFILIADO no está en AFI; salida anticipada si no hay fila en TER; no insertar TEXCA si @IDCATEGORIA viene vacía o no existe en CAT) y SPK_NC_REVISAMCPE (resolver línea con NIT/documento al IDTERCERO existente en TER antes de invocar SPK_INSERT_TERDEAFI; propagar IDTERCERO a MCHE y, si PROCEDENCIA=INV, a IMOV). Punto de entrada usuario: MCPEComponent → Revisar (MCPE_COL · REVISAR_MCPE). Referencia de especificación y scripts provisionales: solicitudes/SR20260923-005/sql/. Opcional en el mismo paquete (prevención entradas INV): SPK_NC_CONTAB_INV con IDTERCEROINSTALADO — solo si el comité confirma que aplica al mismo ticket.",
+    "restricciones": "Publicar en PREVERSION y contrastar con última versión Cerrada antes de liberar (el arreglo no estaba en canasta al análisis SR20260923-005). No ejecutar scripts desde BA; reemplazo completo CREATE OR ALTER del procedimiento en la base del cliente. No corrige masivamente datos históricos ni anula comprobantes. Rama asignada: bugfix/COESME631.",
+    "analisis": "REQ IX 0100016510 = misma necesidad documentada en SR20260923-005 (comité CEM). Paso 0 — ¿ya existe?: No es capacitación. El control Revisar en /cont/mcpe (MCPEComponent, MCPE_COL · REVISAR_MCPE) ya existe; también Reconstruir y diagnóstico de errores. Clasificación: defecto en SQL anidado, no hueco de pantalla.\n\nFlujo: usuario abre comprobante errado → Revisar → SPQ_MCPE_COL · REVISAR_MCPE → SPK_NC_REVISAMCPE. Cuando una línea trae un dato que no es IDTERCERO en TER (ej. NIT 1036339753 sin fila AFI), la revisión intenta SPK_INSERT_TERDEAFI con categoría en blanco. Hoy: @DOCUMENTO queda vacío o el INSERT TER desde AFI no inserta filas (sin @@ROWCOUNT); igual se ejecuta INSERT TEXCA con @IDCATEGORIA vacía → violación FK_TEXCA_TEXCAIDCATEGORIA / CAT y la revisión aborta.\n\nCausa raíz (KB + scripts en solicitudes/SR20260923-005/sql/): orden incorrecto (categoría antes de garantizar tercero) y búsqueda de tercero solo vía AFI cuando el dato de línea ya es NIT de TER existente (060000000680).\n\nImpacto: SQL Sí (SPK_INSERT_TERDEAFI, SPK_NC_REVISAMCPE). FE y API No (mismo botón y METODO). Contabilidad: no cambia reglas de asiento ni plan CUE; solo evita fallo en revisión. validarAntes: comprobar en DESAIX que PREVERSION sigue sin el fix antes de codificar de nuevo.",
+    "opciones": [],
+    "recomendacion": "Implementar el control en SPK_INSERT_TERDEAFI (guardas post-INSERT y antes de TEXCA) y el mapeo NIT→IDTERCERO en SPK_NC_REVISAMCPE según especificación del comité (scripts provisionales en solicitudes/SR20260923-005/sql/ como base de diff). Tras desplegar en preversión, reprobar con comprobante 0153000000092095 y movimiento 0100092720. No requiere cambio en MCPEComponent salvo mensajes de error más claros si se desea (opcional).",
+    "cambioPropuestoSimple": "Al revisar un comprobante errado, si la línea trae un documento que no es un afiliado sino el NIT de un tercero ya creado, el sistema debe ubicar ese tercero y actualizar la línea antes de intentar categorías. Si intenta dar de alta un tercero desde afiliado y no logra crear la fila, debe detenerse ahí y no grabar categoría. Así la revisión deja de caerse y el comprobante puede reconstruirse.",
+    "cambioPropuestoSql": "-- Especificación. No ejecutar desde BA. Fuente diff: solicitudes/SR20260923-005/sql/\n-- Objetos: SPK_INSERT_TERDEAFI, SPK_NC_REVISAMCPE (opcional SPK_NC_CONTAB_INV)\n\n-- === SPK_INSERT_TERDEAFI (después de INSERT TER desde AFI) ===\n-- BEFORE: sigue a TEXCA aunque @@ROWCOUNT=0\n-- AFTER:\n        IF @@ROWCOUNT = 0\n        BEGIN\n           SET @IDTERCERO = NULL\n           RETURN\n        END\n    IF NOT EXISTS (SELECT 1 FROM TER WHERE IDTERCERO = @IDTERCERO)\n       RETURN\n    IF NULLIF(LTRIM(RTRIM(@IDCATEGORIA)), '') IS NOT NULL\n       AND EXISTS (SELECT 1 FROM CAT WHERE IDCATEGORIA = @IDCATEGORIA)\n       AND NOT EXISTS(SELECT 1 FROM TEXCA WHERE IDTERCERO=@IDTERCERO AND IDCATEGORIA=@IDCATEGORIA)\n    BEGIN\n        INSERT INTO TEXCA ...\n    END\n-- Además: si no hay AFI, resolver @IDTERCERO por TER.NIT = @IDAFILIADO (ver ARREGLO_PROVISIONAL_SPK_INSERT_TERDEAFI.sql líneas 99-106).\n\n-- === SPK_NC_REVISAMCPE (bloque tercero línea) ===\nSELECT @DOCUMENTONIT = DOCIDAFILIADO FROM AFI WHERE IDAFILIADO = @TERCEROSINTER\nIF NULLIF(LTRIM(RTRIM(@DOCUMENTONIT)), '') IS NULL\n   SET @DOCUMENTONIT = @TERCEROSINTER\n-- Resolver @IDTERCERADO desde TER WHERE NIT = @DOCUMENTONIT (ver ARREGLO_PROVISIONAL_SPK_NC_REVISAMCPE.sql)\nUPDATE MCHE SET IDTERCERO = @IDTERCERADO\nWHERE NROCOMPROBANTE = @NROCOMPROBANTE AND IDTERCERO = @TERCEROSINTER\nIF @PROCEDENCIA = 'INV'\n   UPDATE IMOV SET IDTERCERO = @IDTERCERADO\n   WHERE CNSMOV = @REFERENCIA1 AND IDTERCERO = @TERCEROSINTER\n\n-- Validación post-fix:\n-- SELECT IDTERCERO, NIT FROM TER WHERE NIT = '1036339753'\n-- SELECT IDTERCERO FROM MCHE WHERE NROCOMPROBANTE = '0153000000092095'\n-- Revisar MCPE sin error FK en TEXCA",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "No modifica definición de cuentas, asientos automáticos ni confirmación MCP. Corrige resolución de tercero y evita error al revisar MCPE; el comprobante contable resultante sigue las mismas reglas de débito/crédito.",
+        "validadoEn": "2026-09-24T20:55:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En DESAIX/SQLIX contrastar PREVERSION vs última Cerrada para SPK_INSERT_TERDEAFI y SPK_NC_REVISAMCPE. Si el fix ya está en PREVERSION, no re-desarrollar; validar con comprobante 0153000000092095 en test."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "SR20260923-005-diagrama-flujo.png",
+        "ruta": "activo/20260924-0100016510/imagenes/SR20260923-005-diagrama-flujo.png",
+        "subidaEn": "2026-09-24T15:47:20",
+        "url": "/api/caso/20260924-0100016510/imagen/SR20260923-005-diagrama-flujo.png"
+      }
+    ],
+    "archivosAnalisis": [
+      {
+        "nombre": "SR20260923-005-mockups.pdf",
+        "ruta": "activo/20260924-0100016510/archivos/SR20260923-005-mockups.pdf",
+        "extracto": "SR20260923-005-mockups.extracto.txt",
+        "extractoRuta": "activo/20260924-0100016510/archivos/SR20260923-005-mockups.extracto.txt",
+        "tipo": "circular",
+        "mime": "application/pdf",
+        "bytes": 52399,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-09-24T15:47:31",
+        "url": "/api/caso/20260924-0100016510/archivo/SR20260923-005-mockups.pdf",
+        "urlExtracto": "/api/caso/20260924-0100016510/archivo/SR20260923-005-mockups.extracto.txt"
+      },
+      {
+        "nombre": "SR20260923-005-documento-comite.pdf",
+        "ruta": "activo/20260924-0100016510/archivos/SR20260923-005-documento-comite.pdf",
+        "extracto": "SR20260923-005-documento-comite.extracto.txt",
+        "extractoRuta": "activo/20260924-0100016510/archivos/SR20260923-005-documento-comite.extracto.txt",
+        "tipo": "circular",
+        "mime": "application/pdf",
+        "bytes": 297456,
+        "charsExtracto": 0,
+        "avisoExtracto": "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original.",
+        "subidaEn": "2026-09-24T15:47:31",
+        "url": "/api/caso/20260924-0100016510/archivo/SR20260923-005-documento-comite.pdf",
+        "urlExtracto": "/api/caso/20260924-0100016510/archivo/SR20260923-005-documento-comite.extracto.txt"
+      }
+    ],
+    "criteriosMeta": {
+      "originales": "1) En Contabilidad → Comprobantes errados (MCPE), al usar Revisar sobre el preliminar 0153000000092095 (CEM), el proceso no se detiene por error de llave en TEXCA/CAT por categoría vacía o tercero inexistente.\n2) Las líneas MCHE del comprobante quedan con el IDTERCERO correcto (ej. 060000000680 para NIT 1036339753), no con el documento/NIT suelto en el campo tercero.\n3) Si el movimiento de inventario asociado (ej. 0100092720, PROCEDENCIA INV) traía documento que no es afiliado, tras revisar/reconstruir el tercero operativo coincide con el de TER (o la regla acordada para entradas sin tercero válido).\n4) Si SPK_INSERT_TERDEAFI intenta crear tercero desde AFI y el INSERT en TER no inserta fila (@@ROWCOUNT=0), el SP termina sin grabar TEXCA ni PPT.\n5) No se altera numeración de comprobantes ni reglas de confirmación MCP (ESTADO 1→2); solo la resolución de tercero en revisión MCPE y el alta auxiliar.",
+      "originalesEn": "2026-09-24T20:50:35.252Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En Contabilidad → Comprobantes errados (MCPE), al usar Revisar sobre el preliminar 0153000000092095 (CEM), el proceso no se detiene por error de llave en TEXCA/CAT por categoría vacía o tercero inexistente.\n2) Las líneas MCHE del comprobante quedan con el IDTERCERO correcto (ej. 060000000680 para NIT 1036339753), no con el documento/NIT suelto en el campo tercero.\n3) Si el movimiento de inventario asociado (ej. 0100092720, PROCEDENCIA INV) traía documento que no es afiliado, tras revisar/reconstruir el tercero operativo coincide con el de TER (o la regla acordada para entradas sin tercero válido).\n4) Si SPK_INSERT_TERDEAFI intenta crear tercero desde AFI y el INSERT en TER no inserta fila (@@ROWCOUNT=0), el SP termina sin grabar TEXCA ni PPT.\n5) No se altera numeración de comprobantes ni reglas de confirmación MCP (ESTADO 1→2); solo la resolución de tercero en revisión MCPE y el alta auxiliar.",
+      "trasAnalisisEn": "2026-09-24T20:50:37.756Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo. REQ alineado con SR20260923-005. Cuerpos SPK en solicitudes/SR20260923-005/sql/ (no copiados a activo/20260924-0100016510/sql/); bajar de DESAIX al dictamen si hace falta línea exacta del entorno de hoy.",
+      "fecha": "2026-09-24T20:55:00.000Z",
+      "estado": "listo",
+      "sps": "SPK_INSERT_TERDEAFI · (procedimiento) · no en sps.json · fix principal. SPK_NC_REVISAMCPE · (procedimiento) · no en sps.json · revisión MCPE. SPQ_MCPE_COL · REVISAR_MCPE · leido · entrada FE."
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260924-0100016510/diagramas/flujo.html",
+      "subidaEn": "2026-09-24T19:27:42",
+      "url": "/api/caso/20260924-0100016510/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "contabilidad",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260924-0100016510-flujo.html"
+    },
+    "mockups": [
+      "activo/20260924-0100016510/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20260924-0100016510\\sql\\",
+    "carpetaRelativa": "activo/20260924-0100016510/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016510\\",
+    "archivosEsperados": [
+      "no requiere"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": false,
+    "procesoId": "contabilidad",
+    "catalogo": "conocimiento/contabilidad/sps.json",
+    "metodosDocumentados": [],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260924-0100016510.html",
+    "aprobados": "aprobados/20260924-0100016510/",
+    "imagenes": "aprobados/20260924-0100016510/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-24",
+    "ultimoEnvio": "2026-09-24T20:10:12",
+    "reenvios": 0,
+    "destinatario": "naren.voos@ixcolombia.com",
+    "via": "smtp"
+  }
+}

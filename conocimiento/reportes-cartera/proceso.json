@@ -5,30 +5,30 @@
   "familia": "cartera",
   "prioridad": 15,
   "enRuta": false,
-  "estado": "parcial",
-  "resumen": "Consultas y reportes de cartera: vencimientos (aging), cuentas de cobro, radicación, recaudos, facturas en CxC. Pantalla principal ConsRptCarteraPage (14 informes). Orquestador SPQ: CARTERA_RPT; impresiones PDF: CARTERA_IMPRESION. Muchos informes usan vistas VWK_* vía AppStore.read.",
-  "actualizado": "2026-09-06T08:44:00",
-  "notaSql": "Hub 14 informes + satélites trazados FE 2026-09-06. SPQ 17/17 en export sql/. EXECUTE_SPK y TRAER_DETALLE_HISTORICO: FE los llama pero SSMS=NO en BD — pendientes L3. FSEG+FCXCR+ajuste NC documentados.",
+  "estado": "completo",
+  "resumen": "Hub Administrativo → Consultas y Reportes: 13 informes de solo lectura (facturas, cuentas de cobro, vencimientos/aging con 6 pestañas, resúmenes de radicación y recaudos, bancos, varios, admisiones) + Detalle de factura con ajuste NC, Seguimiento cartera (FSEG) y Cierre cartera (histórico FCARTH). SPQ_CARTERA_RPT 16 METODO en catálogo; EXECUTE_SPK_REPORTES_VARIOS_CARTERA y TRAER_DETALLE_HISTORICO siguen ausentes (2.0.7) → Varios x mes no recalcula.",
+  "actualizado": "2026-10-03T21:30:00",
+  "notaSql": "Releído 2026-10-03: SPQ_CARTERA_RPT desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7). 16 METODO; el FE invoca además EXECUTE_SPK_REPORTES_VARIOS_CARTERA (Varios x mes / Estado admisiones) y TRAER_DETALLE_HISTORICO (export detalle Histórico), que NO existen en el catálogo → confirmado defecto, pendiente L3.",
   "alcanceHasta": "Consultas e informes de cartera (solo lectura / export Excel-PDF). No incluye operación Recaudos, Notas, Glosas ni cierre de periodo (CierreCarteraPage → PRI.CERRADO_CARTERA).",
   "ventanas": [
     {
       "uso": "Consultas y reportes (hub principal)",
-      "ruta": "admin.ConsRptCartera",
-      "path": "/admin/ConsRptCartera",
+      "ruta": "Admin.RptCarte",
+      "path": "/admin/InformesCartera",
       "vue": "ConsRptCarteraPage.vue",
-      "entrada": "Administrativo → Consultas y Reportes. Rejilla de 14 informes (pestañas)."
+      "entrada": "Administrativo → Consultas y Reportes. Rejilla de 13 informes: Facturas CXC, Facturas sin CXC, Devoluciones, Vencimientos (6 pestañas), CXC entregadas, CXC sin entregar, Cuentas de cobro, Resumen radicación, Resumen recaudos, Facturas radicadas, Recaudos en bancos, Varios x mes, Estado de admisiones. Solo lectura salvo Reliquidar, Ajuste NC (Detalle) y Devoluciones."
     },
     {
       "uso": "Seguimiento cartera (gestión)",
-      "ruta": "admin.SeguiCartera",
-      "path": "/admin/SeguiCartera",
+      "ruta": "admin.SeguiCXC",
+      "path": "/admin/SeguiCXC",
       "vue": "SeguiCarteComponent.vue → MODELO FSEG_COL",
       "entrada": "Administrativo → Seguimiento Cartera. CRUD seguimiento por factura/tercero."
     },
     {
       "uso": "Cierre periodo cartera",
-      "ruta": "admin.CierreCartera",
-      "path": "/admin/CierreCartera",
+      "ruta": "Admin.Cierre",
+      "path": "/admin/CierreCart",
       "vue": "CerrarProceAdmComponent PROCEDENCIA=CARTERA",
       "entrada": "Marca PRI.CERRADO_CARTERA. No es un reporte."
     },
@@ -67,7 +67,7 @@
         {
           "id": "hub-consultas-reportes",
           "nombre": "Hub Consultas y Reportes",
-          "explicacion": "14 informes ConsRptCarteraPage (2026-09-06). Mix read VWK_* / tablas + CARTERA_RPT + jsPDF frontend. Ver trazabilidad en Chat Documentar.",
+          "explicacion": "13 informes en ConsRptCarteraPage (2026-10-03). Mix read VWK_* / tablas + CARTERA_RPT + jsPDF frontend. Libro: capítulos 2–13.",
           "invariante": "Solo lectura salvo RELIQUIDA_FTR, EJECUTAR_AJUSTE_NC_FCXCDV y acciones FCXCR (Devoluciones).",
           "sps": [
             {
@@ -85,7 +85,7 @@
         {
           "id": "vencimientos-aging",
           "nombre": "Vencimientos y aging",
-          "explicacion": "Pestaña Vencimientos → VtosCxcComponent: Actual, Actual-Total, Histórico, por Régimen, Tipo tercero contable, Por plan. Vistas VWK_VCTOS / VWK_CXCDIASVTO + CARTERA_RPT TRAER_TTEC, TRAER_TOTAL*, ACTUALIZAR_DATOS_ACTUAL_TOTAL.",
+          "explicacion": "Pestaña Vencimientos → VtosCxcComponent: Actual (VWK_VCTOS + TRAER_TOTAL1), Actual-Total (Procesar → ACTUALIZAR_DATOS_ACTUAL_TOTAL → SPK_CARTERA → RPDX), Histórico (VWK_VCTOSH / FCARTH del cierre de cartera; TRAER_TOTAL_HISTORICO), por Régimen (VWK_VCTOS_TIPOREGIMEN), Tipo Tercero (VWK_VCTOS_TTEC; TRAER_TOTAL_HISTORICO_CONTABLE), Por Plan (TRAER_TOTAL_POR_PLAN). Export detalle Histórico usa TRAER_DETALLE_HISTORICO, ausente en 2.0.7.",
           "invariante": "Aging por F_VENCE de FCXCDV; Actual-Total refresca snapshot vía SPQ antes de mostrar.",
           "sps": [
             {
@@ -104,7 +104,7 @@
           "id": "varios-por-mes",
           "nombre": "Varios x mes / Estado admisiones",
           "explicacion": "ReportesComponent y EstadoAdmisiones: EXECUTE_SPK_REPORTES_VARIOS_CARTERA → staging RPDX → grilla/export PDF. 5 sub-informes (radicación/recaudo por régimen, cartera x fact rad, etc.).",
-          "invariante": "Requiere rango fechas + CNSID base; SPK_REPORTES_VARIOS_CARTERA → RPDX _01.._05. ⚠ SSMS 2026-09-06: EXECUTE_SPK no existe en SPQ_CARTERA_RPT de BD — informe posiblemente no funcional en este ambiente.",
+          "invariante": "Requiere rango fechas + CNSID base fijo (0116608638); SPK_REPORTES_VARIOS_CARTERA → RPDX _01.._05. ⚠ Confirmado 2026-10-03 en IXONLINE/SQL (PREVERSION = 2.0.7): EXECUTE_SPK_REPORTES_VARIOS_CARTERA no existe en SPQ_CARTERA_RPT → Procesar no recalcula; informe no confiable. Estado de admisiones lee HADM/CIT/AUT en vivo y sí funciona.",
           "sps": [
             {
               "nombre": "SPQ_CARTERA_RPT",
@@ -158,7 +158,7 @@
         {
           "id": "seguimiento-fseg",
           "nombre": "Seguimiento cartera (FSEG)",
-          "explicacion": "SeguiCarteraPage (/admin/SeguiCartera) → FSEG_COL: TRAE_DATOS, FSEG_CRUD (Nuevo), PROCESO_FSEG (cerrar=1 / borrar=3). Gestión de seguimiento por FCXC/factura, no informe de saldos.",
+          "explicacion": "SeguiCarteraPage (/admin/SeguiCXC, name admin.SeguiCXC) → FSEG_COL: TRAE_DATOS, FSEG_CRUD (Nuevo), PROCESO_FSEG (cerrar=1 / borrar=3). Gestión de seguimiento por FCXC/factura, no informe de saldos.",
           "invariante": "Alta exige FCXC existente; PROCESO_FSEG solo sobre CERRADA=0.",
           "sps": [
             {
@@ -205,6 +205,975 @@
       "estado": "parcial",
       "explicacion": "CierreCarteraPage marca PRI.CERRADO_CARTERA. Cont → Seguimiento/Castigo cartera usa cuentas CUE. Informes contables de vencimientos: TRAER_TOTAL_HISTORICO_CONTABLE (CARTERA_RPT).",
       "controles": []
+    }
+  ],
+  "incluirProcesoMdEnLibro": false,
+  "descripcion": {
+    "queEs": "La ventana de consulta de cartera: trece informes de solo lectura que muestran el resultado de radicar, recaudar, hacer notas, responder glosas y conciliar. Responde cuatro preguntas: qué pasa con una factura, qué cuentas de cobro se entregaron, cuánto deben y hace cuánto (aging), y cuánto se radicó y recaudó cada mes. Alrededor del hub están el Detalle de la factura (historial y ajuste con nota crédito), el Seguimiento de cartera (bitácora de cobro) y el Cierre de cartera (foto mensual que alimenta el Histórico).",
+    "paraQueSirve": "Gestionar el cobro con datos: priorizar terceros por mora, soportar la radicación ante la EPS, cuadrar recaudos contra bancos, detectar facturas sin cuenta de cobro o atenciones sin factura, y explicar el saldo de cualquier factura movimiento por movimiento antes de pedir una corrección.",
+    "proposito": "Que cartera, coordinación y contabilidad lean la misma cartera con los mismos cortes (por vencer, 0-30 … 361+, radicada o no, con glosa o sin glosa) y que el histórico de fin de mes sea comparable con contabilidad."
+  },
+  "botones": [
+    {
+      "label": "Rejilla de 13 informes",
+      "icono": "grid_view",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Parte superior de Consultas y Reportes. Un botón por informe; el panel queda vacío («Seleccione un informe para iniciar») hasta elegir uno. El tooltip muestra el nombre completo."
+    },
+    {
+      "label": "Exportar Excel",
+      "icono": "download",
+      "color": "green-7",
+      "estilo": "flat",
+      "descripcion": "En todas las grillas. Exporta lo que la grilla está filtrando. En Vencimientos hay además «Exportar datos filtrados a Excel» y «Exportar detalle de vencimientos»."
+    },
+    {
+      "label": "Configurar exportación",
+      "icono": "tune",
+      "color": "red",
+      "estilo": "flat",
+      "descripcion": "Vencimientos, Varios x mes, Estado admisiones. Elige columnas y cantidad de registros (datos de la tabla o todos) antes de exportar a Excel/PDF."
+    },
+    {
+      "label": "Detalle (Facturas CXC)",
+      "icono": "visibility",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Fila de Facturas CXC. Abre el Detalle de la factura: vencimientos (tipo, saldo), devoluciones, notas, pagos, glosas y conciliaciones; permite el ajuste con nota crédito."
+    },
+    {
+      "label": "Reliquidar",
+      "icono": "calculate",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Facturas CXC. Recalcula el saldo de la factura seleccionada a partir de sus movimientos (CARTERA_RPT · RELIQUIDA_FTR). No crea movimientos."
+    },
+    {
+      "label": "Consulta masiva de facturas (archivo)",
+      "icono": "upload_file",
+      "color": "teal-6",
+      "estilo": "outline",
+      "descripcion": "Facturas CXC. Sube Excel o TXT con números de factura y cruza contra los vencimientos: informa encontradas y sin registro."
+    },
+    {
+      "label": "Ajuste de Saldos Cartera (Registrar NC)",
+      "icono": "receipt",
+      "color": "deep-orange",
+      "estilo": "unelevated",
+      "descripcion": "Detalle de factura. Sobre un vencimiento tipo C o G con saldo: concepto CPNT, valor (> 0 y ≤ saldo), observación. Crea y aplica una NC procedencia AJUSTE y reliquida."
+    },
+    {
+      "label": "Imprimir NC de ajuste",
+      "icono": "print",
+      "color": "indigo-7",
+      "estilo": "flat",
+      "descripcion": "Detalle de factura, tras registrar el ajuste. Imprime la nota crédito generada."
+    },
+    {
+      "label": "Procesar (Actual-Total)",
+      "icono": "play_arrow",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Vencimientos → Actual-Total. Recalcula la cartera con los filtros (tercero opcional, glosa, radicadas, particulares) y arma la tabla por factura. Sin Procesar no hay datos."
+    },
+    {
+      "label": "Generar PDF por rango de vencimientos",
+      "icono": "picture_as_pdf",
+      "color": "red",
+      "estilo": "flat",
+      "descripcion": "Vencimientos (Actual, Actual-Total, Histórico). Imprime el aging del tercero seleccionado con los rangos elegidos."
+    },
+    {
+      "label": "Detalle por tercero (Vencimientos)",
+      "icono": "list",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Fila del aging. Lista cada vencimiento del tercero: factura, tipo, glosa, días vencidos, saldo."
+    },
+    {
+      "label": "Procesar (Varios x mes)",
+      "icono": "play_arrow",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Varios x mes. Debería recalcular los cinco cruces (CARTERA_RPT · EXECUTE_SPK_REPORTES_VARIOS_CARTERA). El método no existe en el catálogo (2.0.7): no recalcula ni avisa."
+    },
+    {
+      "label": "PDF resumen (Radicación / Recaudos / CXC)",
+      "icono": "picture_as_pdf",
+      "color": "red",
+      "estilo": "flat",
+      "descripcion": "Resumen radicación, Resumen recaudos, CXC entregadas, CXC sin entregar, Facturas radicadas. Formatos PDF del frontend."
+    },
+    {
+      "label": "Responder / Enviar (Devoluciones)",
+      "icono": "reply",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Devoluciones. Por factura o por Excel: código de respuesta, paso a seguir Soportar (crear cuenta de cobro nueva) o Anular (devolver a facturación). Reglas en Cartera · Recaudos (FCXCR)."
+    },
+    {
+      "label": "Nuevo seguimiento",
+      "icono": "add_comment",
+      "color": "primary",
+      "estilo": "unelevated",
+      "descripcion": "Administrativo → Seguimiento Cartera. Registra fecha, con quién se habló, observaciones, valor gestionado, advertencia y próxima llamada sobre una cuenta de cobro / factura."
+    },
+    {
+      "label": "Cerrar / Eliminar seguimiento",
+      "icono": "task_alt",
+      "color": "teal-6",
+      "estilo": "flat",
+      "descripcion": "Seguimiento Cartera. Solo sobre seguimientos abiertos: Cerrar marca la gestión cumplida; Eliminar lo borra."
+    },
+    {
+      "label": "Cerrar / Abrir periodo cartera",
+      "icono": "lock",
+      "color": "indigo-8",
+      "estilo": "unelevated",
+      "descripcion": "Administrativo → Cierre cartera. Cerrar marca PRI.CERRADO_CARTERA y toma la foto FCARTH (Histórico). Abrir borra la foto; solo hasta 25 días después del fin de mes."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Admin.RptCarte (acceso a pantalla)",
+      "accion": "Entrar a Administrativo → Consultas y Reportes",
+      "rol": "Analista de cartera / Coordinación / Contabilidad",
+      "descripcion": "Los 13 informes se habilitan con el acceso al menú. No hay permisos por informe ni por botón (Reliquidar y Ajuste NC quedan abiertos a quien entra)."
+    },
+    {
+      "codigo": "admin.SeguiCXC (acceso a pantalla)",
+      "accion": "Entrar a Administrativo → Seguimiento Cartera",
+      "rol": "Analista de cartera",
+      "descripcion": "Bitácora de gestión de cobro."
+    },
+    {
+      "codigo": "Admin.Cierre (acceso a pantalla)",
+      "accion": "Entrar a Administrativo → Cierre cartera",
+      "rol": "Coordinación de cartera / Contabilidad",
+      "descripcion": "Cerrar o reabrir el periodo de cartera; genera o borra el histórico."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "TERCATAFILIADO",
+      "tipo": "Categoría de tercero",
+      "valorSugerido": "Categoría de pacientes particulares",
+      "descripcion": "Los informes con casilla «Incluir particulares» excluyen por defecto a los terceros de esta categoría (CXC entregadas, Cuentas de cobro, Resúmenes, Vencimientos)."
+    },
+    {
+      "nombre": "FACTSEDE",
+      "tipo": "Texto",
+      "valorSugerido": "Según la instalación",
+      "descripcion": "Decide el logo que llevan los PDF de cartera (formatos de impresión)."
+    },
+    {
+      "nombre": "Catálogo TTEC (tipo de tercero contable)",
+      "tipo": "Catálogo",
+      "valorSugerido": "Definido por contabilidad",
+      "descripcion": "Filtro «Tipo tercero» del aging y agrupación de la pestaña Tipo Tercero. Un tercero sin TTEC no aparece en esa pestaña."
+    },
+    {
+      "nombre": "Catálogo CPNT (conceptos de nota)",
+      "tipo": "Catálogo",
+      "valorSugerido": "Concepto de ajuste de cartera",
+      "descripcion": "Obligatorio para el Ajuste de Saldos Cartera desde el Detalle de la factura."
+    },
+    {
+      "nombre": "Cierre de cartera mensual",
+      "tipo": "Operación",
+      "valorSugerido": "Cerrar cada mes antes del día 25 del siguiente",
+      "descripcion": "Sin cierre no existe la foto FCARTH y la pestaña Histórico de ese mes queda vacía. Reabrir borra la foto."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Saber por qué una factura tiene ese saldo",
+      "donde": "Consultas y Reportes → Facturas CXC → buscar la factura → Detalle",
+      "condicion": "La factura debe estar en una cuenta de cobro.",
+      "noEs": "No es una corrección: el Detalle solo muestra; el ajuste NC es una acción aparte dentro de él."
+    },
+    {
+      "necesidad": "Cuánto me debe cada EPS y hace cuánto (aging)",
+      "donde": "Consultas y Reportes → Vencimientos → Actual (una fila por tercero) o Actual-Total → Procesar (por factura)",
+      "condicion": "Filtre Radicadas = Sí para la cartera exigible.",
+      "noEs": "No es el Histórico: Actual cambia con cada pago o nota."
+    },
+    {
+      "necesidad": "Cómo estaba la cartera al cierre de un mes anterior",
+      "donde": "Consultas y Reportes → Vencimientos → Histórico → año/mes",
+      "condicion": "Ese mes debe tener Cierre de cartera hecho (Administrativo → Cierre cartera).",
+      "noEs": "Si el mes no se cerró, la pestaña está vacía: no es un defecto."
+    },
+    {
+      "necesidad": "Aging por régimen, por tipo de tercero contable o por plan",
+      "donde": "Vencimientos → pestañas por Régimen / Tipo Tercero / Por Plan",
+      "condicion": "Año/mes y Clase informe.",
+      "noEs": "No son saldos distintos: es el mismo saldo agrupado."
+    },
+    {
+      "necesidad": "Imprimir el estado de cuenta de una EPS para enviárselo",
+      "donde": "Vencimientos → Actual o Actual-Total → seleccionar tercero → Generar PDF por rango de vencimientos",
+      "condicion": "Seleccionar primero el tercero en la tabla.",
+      "noEs": "No es la cuenta de cobro (eso es Facturación → Cuentas de cobro)."
+    },
+    {
+      "necesidad": "Exportar todos los vencimientos con factura y días a Excel",
+      "donde": "Vencimientos → Actual → Exportar detalle de vencimientos con los filtros actuales",
+      "condicion": "Aplique filtros antes; exporta lo filtrado.",
+      "noEs": "El Excel de la grilla solo trae la fila por tercero."
+    },
+    {
+      "necesidad": "Qué facturas liberadas aún no están en cuenta de cobro",
+      "donde": "Consultas y Reportes → Facturas sin CXC",
+      "condicion": "Filtre por facturador, procedencia, rango y Devuelta / Retirada / Sin devolución.",
+      "noEs": "No las incluye: eso se hace en Facturación → Cuentas de cobro."
+    },
+    {
+      "necesidad": "Qué cuentas de cobro falta radicar",
+      "donde": "Consultas y Reportes → CXC sin entregar (o Cuentas de cobro con Estado = Sin radicar)",
+      "condicion": "Rango de fecha de la cuenta.",
+      "noEs": "No registra el recibido: eso es Radicación de cuentas."
+    },
+    {
+      "necesidad": "Soporte de lo radicado en un periodo",
+      "donde": "CXC entregadas (PDF) · Facturas radicadas (por tercero) · Cuentas de cobro con No. radicación, guía y quién recibió",
+      "condicion": "Rango de fecha de recibido.",
+      "noEs": "No es el resumen mensual (Resumen radicación)."
+    },
+    {
+      "necesidad": "Cuánto se radicó y cuánto se recaudó cada mes",
+      "donde": "Resumen radicación y Resumen recaudos → Año, Mes, Incluir particulares → PDF",
+      "condicion": "Año válido.",
+      "noEs": "No es el aging: son flujos del mes, no saldos."
+    },
+    {
+      "necesidad": "Pagos que están en el banco y no se han legalizado",
+      "donde": "Consultas y Reportes → Recaudos en bancos → Estado = Pendientes",
+      "condicion": "Rango de fecha de operación bancaria.",
+      "noEs": "No legaliza: eso es Cartera · Recaudos."
+    },
+    {
+      "necesidad": "Cruzar un listado de facturas que mandó la EPS contra cartera",
+      "donde": "Facturas CXC → Consulta masiva de facturas → subir Excel/TXT",
+      "condicion": "Una columna o una línea por número de factura exacto.",
+      "noEs": "No carga nada: solo informa encontradas / sin registro."
+    },
+    {
+      "necesidad": "Bajar un saldo pequeño que no se va a cobrar",
+      "donde": "Facturas CXC → Detalle → marcar vencimiento tipo C o G → Ajuste de Saldos Cartera (concepto, valor, observación)",
+      "condicion": "Saldo > 0 y valor ≤ saldo del ítem.",
+      "noEs": "No sirve para vencimientos tipo F: use Notas DB/CR. No es conciliación."
+    },
+    {
+      "necesidad": "El saldo de la factura no coincide con sus movimientos",
+      "donde": "Facturas CXC → seleccionar factura → Reliquidar",
+      "condicion": "—",
+      "noEs": "No corrige un movimiento equivocado; solo vuelve a sumar."
+    },
+    {
+      "necesidad": "Registrar la gestión de cobro (llamadas, compromisos)",
+      "donde": "Administrativo → Seguimiento Cartera → cuenta de cobro → Nuevo seguimiento",
+      "condicion": "La cuenta de cobro debe existir.",
+      "noEs": "No está en Consultas y Reportes; no mueve saldo."
+    },
+    {
+      "necesidad": "Atenciones cerradas que no se facturaron",
+      "donde": "Consultas y Reportes → Estado de admisiones → Facturación = No facturadas",
+      "condicion": "Rango de fechas.",
+      "noEs": "La corrección es de Facturación / Asistencial."
+    },
+    {
+      "necesidad": "Varios x mes no cambia al pulsar Procesar",
+      "donde": "Es un defecto conocido: el método que recalcula no existe en el catálogo SQL (2.0.7)",
+      "condicion": "Use Vencimientos, Resúmenes y Recaudos en bancos mientras tanto.",
+      "noEs": "No es un problema de filtros ni de la grilla."
+    },
+    {
+      "necesidad": "Responder una devolución de la EPS",
+      "donde": "Consultas y Reportes → Devoluciones → Responder (o Excel) → Enviar",
+      "condicion": "Reglas en Cartera · Recaudos (FCXCR).",
+      "noEs": "No es responder una glosa."
+    }
+  ],
+  "marcasAging": {
+    "titulo": "Cómo leer las columnas y marcas del aging",
+    "descripcion": "Los informes de vencimientos usan siempre las mismas columnas. Cada una dice en qué situación está el saldo y qué gestión corresponde.",
+    "columnas": [
+      "Columna / marca",
+      "Qué significa",
+      "Qué hacer"
+    ],
+    "filas": [
+      {
+        "codigo": "PV",
+        "tono": "verde",
+        "etiquetas": [
+          "Por vencer",
+          "Vlr. por vencer"
+        ],
+        "significa": "Saldo cuya fecha de vencimiento aún no llega. No está en mora.",
+        "queHacer": "Nada urgente; confirmar que la cuenta de cobro esté radicada."
+      },
+      {
+        "codigo": "30",
+        "tono": "verde",
+        "etiquetas": [
+          "0-30 días",
+          "Saldo_0_30"
+        ],
+        "significa": "Venció hace menos de un mes.",
+        "queHacer": "Gestión normal: recordatorio a la EPS, registrar seguimiento."
+      },
+      {
+        "codigo": "60",
+        "tono": "ambar",
+        "etiquetas": [
+          "31-60 · 61-90 días"
+        ],
+        "significa": "Mora reciente.",
+        "queHacer": "Llamada formal, verificar glosas o devoluciones pendientes."
+      },
+      {
+        "codigo": "120",
+        "tono": "ambar",
+        "etiquetas": [
+          "91-120 · 121-150 · 151-180 días"
+        ],
+        "significa": "Mora media.",
+        "queHacer": "Proponer conciliación; escalar a coordinación."
+      },
+      {
+        "codigo": "360",
+        "tono": "rojo",
+        "etiquetas": [
+          "181-360 días"
+        ],
+        "significa": "Mora alta.",
+        "queHacer": "Evaluar cobro jurídico o castigo con contabilidad."
+      },
+      {
+        "codigo": "361",
+        "tono": "rojo",
+        "etiquetas": [
+          "361+ días",
+          "Saldo_361_Mas"
+        ],
+        "significa": "Más de un año vencido.",
+        "queHacer": "Castigo de cartera (Contabilidad → Castigo cartera) o cobro jurídico."
+      },
+      {
+        "codigo": "NR",
+        "tono": "gris",
+        "etiquetas": [
+          "No radicada",
+          "Radicadas = No"
+        ],
+        "significa": "La cuenta de cobro no tiene recibido de la EPS: el saldo no es exigible todavía.",
+        "queHacer": "Radicar antes de gestionar. Un saldo No radicada en mora es una alerta de proceso."
+      },
+      {
+        "codigo": "GL",
+        "tono": "azul",
+        "etiquetas": [
+          "Con glosa",
+          "Clase informe = Con glosa"
+        ],
+        "significa": "El saldo proviene de una glosa defendida (G) o ratificación (R).",
+        "queHacer": "Seguir el camino de Glosas o Conciliaciones, no el de recaudo simple."
+      },
+      {
+        "codigo": "PA",
+        "tono": "gris",
+        "etiquetas": [
+          "Particular",
+          "Incluir particulares"
+        ],
+        "significa": "Tercero de la categoría de afiliados particulares (TERCATAFILIADO). Excluido por defecto.",
+        "queHacer": "Marcar «Incluir particulares» si debe cuadrar con contabilidad."
+      },
+      {
+        "codigo": "CJ",
+        "tono": "rojo",
+        "etiquetas": [
+          "Cobro J.",
+          "Facturas CXC"
+        ],
+        "significa": "Factura marcada en cobro jurídico.",
+        "queHacer": "No gestionar por cartera; coordinar con jurídica."
+      },
+      {
+        "codigo": "CA",
+        "tono": "gris",
+        "etiquetas": [
+          "Castigada",
+          "Facturas CXC"
+        ],
+        "significa": "Factura castigada por contabilidad: ya no se espera cobrarla.",
+        "queHacer": "No conciliar ni generar asiento; si la EPS paga, recaudo con tratamiento contable especial."
+      },
+      {
+        "codigo": "DV",
+        "tono": "ambar",
+        "etiquetas": [
+          "Devuelta",
+          "Facturas CXC / Facturas sin CXC"
+        ],
+        "significa": "La EPS devolvió la factura; está en Devoluciones esperando respuesta.",
+        "queHacer": "Responder en Devoluciones: soportar o anular."
+      }
+    ],
+    "nota": "Los días se cuentan desde la fecha de vencimiento de cada vencimiento (F_VENCE), no desde la fecha de la factura. Actual lee en vivo; Histórico es la foto del cierre de cartera y no cambia."
+  },
+  "flujos": [
+    {
+      "id": "flujo-detalle-factura",
+      "titulo": "Revisar una factura hasta el movimiento que explica su saldo",
+      "descripcion": "El camino de soporte cuando el usuario dice «el saldo está mal».",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Abrir Facturas CXC",
+          "descripcion": "Consultas y Reportes → Facturas CXC. Filtrar por N. factura (o tercero + rango).",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Consultas y Reportes",
+          "tablas": [
+            "VWK_FACTURAS_ENCXC"
+          ],
+          "sp": "AppStore.read VWK_FACTURAS_ENCXC"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Leer la fila",
+          "descripcion": "Valor total, pagos, NC, ND, glosas, aceptado, recuperar, levantado y saldo neto; marcas Radicada, Devuelta, Cobro J., Capitada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Grilla Facturas CXC",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Detalle",
+          "descripcion": "Botón Detalle: vencimientos (tipo F/G/R/C, inicial, saldo, fechas), devoluciones, notas, pagos, glosas y conciliaciones de la factura.",
+          "rol": "Analista de cartera",
+          "pantalla": "Detalle de factura",
+          "tablas": [
+            "FCXCDV",
+            "FCXCR",
+            "FNOT",
+            "FPAGD",
+            "FGLO",
+            "FCONCID"
+          ],
+          "sp": "SPQ_CARTERA_RPT · TRAE_DETALLES"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿El saldo no cuadra con los movimientos?",
+          "descripcion": "Sume: valor − pagos − NC + ND − glosa aceptada… Si la suma no da el saldo neto, reliquidar.",
+          "rol": "Analista de cartera",
+          "pantalla": "Detalle / Facturas CXC",
+          "tablas": [],
+          "sp": "",
+          "si": "Reliquidar (recalcula)",
+          "no": "El saldo es correcto: el problema es un movimiento"
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Reliquidar",
+          "descripcion": "Recalcula el saldo de la factura desde sus movimientos. «Reliquidación aplicada correctamente».",
+          "rol": "Sistema",
+          "pantalla": "Facturas CXC",
+          "tablas": [
+            "FCXCD",
+            "FTR"
+          ],
+          "sp": "SPQ_CARTERA_RPT · RELIQUIDA_FTR"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿Queda un saldo pequeño tipo C o G que no se va a cobrar?",
+          "descripcion": "Solo vencimientos tipo conciliación (C) o glosa (G) con saldo > 0.",
+          "rol": "Analista de cartera",
+          "pantalla": "Detalle de factura",
+          "tablas": [],
+          "sp": "",
+          "si": "Ajuste de Saldos Cartera",
+          "no": "Corregir en el módulo de origen (Recaudos, Notas, Glosas)"
+        },
+        {
+          "num": 7,
+          "tipo": "sistema",
+          "titulo": "Ajuste con nota crédito",
+          "descripcion": "Marcar el vencimiento → concepto CPNT → valor (> 0, ≤ saldo) → observación → Registrar. Crea NC procedencia AJUSTE, la aplica y reliquida.",
+          "rol": "Sistema",
+          "pantalla": "Ajuste de Saldos Cartera",
+          "tablas": [
+            "FNOT",
+            "FNOTD",
+            "FCXCDV"
+          ],
+          "sp": "SPQ_CARTERA_RPT · TRAER_CAB_AJUSTE_NO_CREDITO / EJECUTAR_AJUSTE_NC_FCXCDV → SPK_AJUSTE_FCXCDV_NC"
+        },
+        {
+          "num": 8,
+          "tipo": "resultado",
+          "titulo": "Saldo explicado o ajustado",
+          "descripcion": "La NC se imprime desde el detalle y se consulta en Notas DB/CR. Si el error está en un recaudo, nota o glosa, se corrige allá.",
+          "rol": "Analista de cartera",
+          "pantalla": "Detalle de factura",
+          "tablas": [],
+          "sp": ""
+        }
+      ]
+    },
+    {
+      "id": "flujo-aging",
+      "titulo": "Sacar el aging de una EPS y enviárselo",
+      "descripcion": "Vencimientos → Actual / Actual-Total.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Vencimientos → Actual",
+          "descripcion": "Filtros: tercero, Clase informe (Sin glosa / Con glosa), Radicadas = Sí, Tipo tercero, Tipo facturas, Grupo de días, Particulares.",
+          "rol": "Analista de cartera",
+          "pantalla": "Consultas y Reportes → Vencimientos",
+          "tablas": [
+            "VWK_VCTOS",
+            "TER"
+          ],
+          "sp": "AppStore.read VWK_VCTOS · SPQ_CARTERA_RPT · TRAER_TOTAL1 / TRAER_TTEC"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Leer la fila del tercero",
+          "descripcion": "Vlr. total, por vencer y los rangos 0-30 … 361+; No radicada aparte.",
+          "rol": "Analista de cartera",
+          "pantalla": "Grilla Actual",
+          "tablas": [],
+          "sp": ""
+        },
+        {
+          "num": 3,
+          "tipo": "decision",
+          "titulo": "¿Necesita factura por factura con pagos, notas y glosas?",
+          "descripcion": "Actual muestra una fila por tercero; Actual-Total descompone por factura.",
+          "rol": "Analista de cartera",
+          "pantalla": "Vencimientos",
+          "tablas": [],
+          "sp": "",
+          "si": "Actual-Total → filtros → Procesar",
+          "no": "Seguir en Actual"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Procesar (Actual-Total)",
+          "descripcion": "Recalcula la cartera con los filtros y arma la tabla por factura (aging + pagos, NC, ND, deducciones, glosa aceptada, por recuperar, plan, contrato, TTEC).",
+          "rol": "Sistema",
+          "pantalla": "Actual-Total",
+          "tablas": [
+            "RPDX",
+            "FTR"
+          ],
+          "sp": "SPQ_CARTERA_RPT · ACTUALIZAR_DATOS_ACTUAL_TOTAL → SPK_CARTERA · VERIFICAR_IDTERCERO"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Detalle por tercero",
+          "descripcion": "Botón Detalle de la fila: cada vencimiento con factura, tipo, glosa, días y saldo. Exportar detalle a Excel.",
+          "rol": "Analista de cartera",
+          "pantalla": "Diálogo detalle",
+          "tablas": [
+            "VWK_CXCDIASVTO"
+          ],
+          "sp": "AppStore.read VWK_CXCDIASVTO · EXPORT_DETA / EXPORT_DETA2"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Generar PDF por rango",
+          "descripcion": "Seleccionar el tercero → Generar PDF por rango de vencimientos → elegir rangos → PDF para la EPS.",
+          "rol": "Analista de cartera",
+          "pantalla": "Vencimientos",
+          "tablas": [],
+          "sp": "useCartera.getPDFCarteraRangoVencimientos"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Estado de cuenta enviado",
+          "descripcion": "Registrar la gestión en Seguimiento Cartera con próxima llamada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Seguimiento Cartera",
+          "tablas": [
+            "FSEG"
+          ],
+          "sp": "SPQ_FSEG_COL · FSEG_CRUD"
+        }
+      ]
+    },
+    {
+      "id": "flujo-mes",
+      "titulo": "Rutina de cierre de mes con los informes",
+      "descripcion": "Orden sugerido para que Histórico y contabilidad cuadren.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Recaudos en bancos → Pendientes",
+          "descripcion": "Legalizar en Cartera · Recaudos todo pago identificado en el banco del mes.",
+          "rol": "Analista de cartera",
+          "pantalla": "Consultas y Reportes → Recaudos en bancos",
+          "tablas": [
+            "VWK_PAGOS_BCO"
+          ],
+          "sp": "AppStore.read VWK_PAGOS_BCO"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Facturas sin CXC y CXC sin entregar",
+          "descripcion": "Incluir en cuentas de cobro lo que falte y radicar lo armado.",
+          "rol": "Analista de cartera",
+          "pantalla": "Consultas y Reportes",
+          "tablas": [
+            "FTR",
+            "FCXC"
+          ],
+          "sp": "AppStore.read FTR / FCXC"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Devoluciones",
+          "descripcion": "Responder (soportar / anular) las devoluciones abiertas.",
+          "rol": "Analista de cartera",
+          "pantalla": "Consultas y Reportes → Devoluciones",
+          "tablas": [
+            "FCXCR"
+          ],
+          "sp": "SPQ_FCXCR · DEFINIR_FACTURA / ENVIAR_FACTURA"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Aging Actual y seguimientos",
+          "descripcion": "Gestionar terceros en mora y registrar seguimientos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Vencimientos → Actual · Seguimiento Cartera",
+          "tablas": [
+            "VWK_VCTOS",
+            "FSEG"
+          ],
+          "sp": ""
+        },
+        {
+          "num": 5,
+          "tipo": "sistema",
+          "titulo": "Cerrar cartera del mes",
+          "descripcion": "Administrativo → Cierre cartera → periodo → Cerrar. Marca el periodo y toma la foto de vencimientos (FCARTH).",
+          "rol": "Coordinación de cartera",
+          "pantalla": "Administrativo → Cierre cartera",
+          "tablas": [
+            "PRI",
+            "FCARTH"
+          ],
+          "sp": "SPQ_PRI · CERRAR_FACTURA (PROCEDENCIA CARTERA)"
+        },
+        {
+          "num": 6,
+          "tipo": "decision",
+          "titulo": "¿Histórico del mes cuadra con contabilidad?",
+          "descripcion": "Vencimientos → Histórico → año/mes y pestaña Tipo Tercero (TTEC) contra saldos contables.",
+          "rol": "Contabilidad",
+          "pantalla": "Vencimientos → Histórico / Tipo Tercero",
+          "tablas": [
+            "VWK_VCTOSH",
+            "VWK_VCTOS_TTEC"
+          ],
+          "sp": "SPQ_CARTERA_RPT · TRAER_TOTAL_HISTORICO / TRAER_TOTAL_HISTORICO_CONTABLE",
+          "si": "Mes cerrado",
+          "no": "Abrir periodo (≤ 25 días), corregir, volver a cerrar"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Resúmenes del mes",
+          "descripcion": "Resumen radicación y Resumen recaudos en PDF para el informe gerencial.",
+          "rol": "Coordinación de cartera",
+          "pantalla": "Consultas y Reportes",
+          "tablas": [
+            "VWK_RD_RS",
+            "VWK_RC_P_RS"
+          ],
+          "sp": "AppStore.read"
+        }
+      ]
+    },
+    {
+      "id": "flujo-seguimiento",
+      "titulo": "Registrar y cerrar un seguimiento de cobro",
+      "descripcion": "Administrativo → Seguimiento Cartera (FSEG).",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Buscar la cuenta de cobro",
+          "descripcion": "Filtros tercero, N. factura, Cns. CxC. La grilla muestra cuentas con valor, radicación, saldo, glosas, notas y pagos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Administrativo → Seguimiento Cartera",
+          "tablas": [
+            "FCXC",
+            "FCXCD",
+            "TER"
+          ],
+          "sp": "AppStore.read FCXC / FCXCD"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Ver seguimientos previos",
+          "descripcion": "Lista de seguimientos de esa cuenta / factura con estado, usuario, fecha y próxima llamada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Seguimiento Cartera",
+          "tablas": [
+            "FSEG"
+          ],
+          "sp": "SPQ_FSEG_COL · TRAE_DATOS"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Nuevo seguimiento",
+          "descripcion": "Fecha, ¿Con quién se habló?, Observaciones, Valor gestionado, Fecha y valor de advertencia, Próxima llamada.",
+          "rol": "Analista de cartera",
+          "pantalla": "Formulario FSEG",
+          "tablas": [
+            "FSEG"
+          ],
+          "sp": "SPQ_FSEG_COL · FSEG_CRUD (Nuevo) → SPK_GENCONSECUTIVO @FSEG"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿La gestión se cumplió (pagó, concilió) o fue un error?",
+          "descripcion": "Solo seguimientos abiertos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Seguimiento Cartera",
+          "tablas": [],
+          "sp": "",
+          "si": "Cerrar (ACCION 1)",
+          "no": "Eliminar (ACCION 3) si fue error; si sigue abierto, nueva próxima llamada"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Bitácora completa",
+          "descripcion": "Evidencia de gestión por cuenta de cobro, exportable a Excel. No cambia saldos.",
+          "rol": "Analista de cartera",
+          "pantalla": "Seguimiento Cartera",
+          "tablas": [
+            "FSEG"
+          ],
+          "sp": "SPQ_FSEG_COL · PROCESO_FSEG"
+        }
+      ]
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Antes de pedir un desarrollo",
+      "titulo": "¿Ya existe? Guía rápida de necesidades",
+      "intro": "Lo que el usuario suele preguntar de cartera y qué informe lo responde hoy."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "md": "**Consultas y Reportes** (Administrativo → Consultas y Reportes) es la ventana de **solo lectura** de cartera. Tiene una rejilla con **13 informes**; cada uno abre sus filtros, su grilla y su exportación a Excel (y PDF en varios). Lo que muestran es el resultado de los demás procesos: radicar cuentas de cobro, aplicar recaudos, hacer notas, responder glosas y conciliar.\n\nConviene agruparlos en **cinco familias**:\n\n- **Facturas** — Facturas CXC (ya en cuenta de cobro, con botón **Detalle**), Facturas sin CXC (liberadas que no han entrado a ninguna cuenta), Facturas radicadas (por tercero según la cuenta esté radicada o no).\n- **Cuentas de cobro** — CXC entregadas (con recibido), CXC sin entregar, Cuentas de cobro (listado completo con No. radicación, guía y quién recibió) y Devoluciones (la única pestaña que cambia estado).\n- **Vencimientos** — un informe con seis pestañas: Actual, Actual-Total, Histórico, por Régimen, Tipo Tercero y Por Plan. Todas usan los mismos rangos: por vencer, 0-30, 31-60, 61-90, 91-120, 121-150, 151-180, 181-360 y 361+.\n- **Recaudos** — Resumen radicación y Resumen recaudos (por mes del año, con PDF) y Recaudos en bancos (pagos identificados en extractos: pendientes, confirmados, anulados).\n- **Varios** — Varios x mes (cinco cruces; ver advertencia en el capítulo 11) y Estado de admisiones (admisiones, citas y autorizaciones con o sin factura).\n\nTres acciones sí **modifican** datos y por eso se explican aparte: **Reliquidar** (recalcula el saldo de una factura), **Ajuste de Saldos Cartera** (nota crédito de ajuste desde el Detalle) y **Devoluciones** (responder y enviar).\n\nAlrededor del hub hay dos ventanas que lo complementan: **Seguimiento Cartera** (bitácora de gestión de cobro) y **Cierre cartera** (marca el mes y toma la **foto** de vencimientos que alimenta la pestaña Histórico).\n\nLo que **no** se hace aquí: registrar pagos (Recaudos), crear notas (Notas DB/CR), responder glosas (Glosas), armar o radicar cuentas de cobro (Facturación / Radicación).",
+      "kicker": "Capítulo 2",
+      "titulo": "Qué hay en Consultas y Reportes y qué no",
+      "intro": "Trece informes de solo lectura, agrupados en cinco familias, más tres acciones puntuales y dos ventanas vecinas.",
+      "imagen": "img/rptcartera_que_es_sketchnote.jpg",
+      "imagenAlt": "La ventana, cinco familias, origen de los datos y lo que no es",
+      "puntosClave": [
+        "Casi todo es lectura: solo Reliquidar, Ajuste NC y Devoluciones cambian datos.",
+        "Los informes muestran el resultado de Recaudos, Notas, Glosas, Conciliaciones y Radicación.",
+        "Histórico depende del Cierre de cartera; Actual-Total depende de Procesar."
+      ]
+    },
+    {
+      "id": "mapa",
+      "tipo": "texto",
+      "kicker": "Capítulo 3",
+      "titulo": "Mapa: qué pregunta responde cada informe",
+      "md": "Elija el informe por la **pregunta**, no por el nombre:\n\n| Pregunta | Informe |\n|---|---|\n| ¿Qué pasa con esta factura? ¿Por qué tiene ese saldo? | **Facturas CXC → Detalle** |\n| ¿Qué facturas liberadas no están en cuenta de cobro? | **Facturas sin CXC** |\n| ¿Cuánto facturé a cada EPS, radicado o no? | **Facturas radicadas** |\n| ¿Qué cuentas de cobro falta radicar? | **CXC sin entregar** / Cuentas de cobro (Sin radicar) |\n| ¿Soporte de lo que radiqué (guía, quién recibió)? | **Cuentas de cobro** / CXC entregadas |\n| ¿Qué me devolvió la EPS y qué respondo? | **Devoluciones** |\n| ¿Cuánto me deben y hace cuánto? | **Vencimientos → Actual** (por tercero) / **Actual-Total** (por factura) |\n| ¿Cómo estaba la cartera al cierre de un mes? | **Vencimientos → Histórico** |\n| ¿Aging por régimen, tipo contable o plan? | **Vencimientos → por Régimen / Tipo Tercero / Por Plan** |\n| ¿Cuánto radiqué y recaudé cada mes? | **Resumen radicación** / **Resumen recaudos** |\n| ¿Qué pagos están en el banco sin legalizar? | **Recaudos en bancos → Pendientes** |\n| ¿Atenciones cerradas sin factura? | **Estado de admisiones → No facturadas** |\n| Cruces radicación / recaudo × régimen | **Varios x mes** (hoy no recalcula; ver capítulo 11) |\n\nLa **gestión de cobro** (llamadas, compromisos) no está en el hub: es Administrativo → **Seguimiento Cartera**.",
+      "imagen": "img/rptcartera_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa de los 13 informes en cinco familias",
+      "puntosClave": [
+        "Facturas · Cuentas de cobro · Vencimientos · Recaudos · Varios.",
+        "Detalle de factura es la pantalla de soporte.",
+        "Seguimiento y Cierre son ventanas aparte."
+      ]
+    },
+    {
+      "id": "facturas",
+      "tipo": "texto",
+      "md": "**Facturas CXC** — facturas que ya están en una cuenta de cobro. Filtros: tipo de fecha (Todas / Radicada / Factura) con rango, tercero, Cns. CxC, N. factura, Radicado (Todas / Sí / No), tipo de tercero, valor, valor glosa y glosa por recuperar. Columnas: valor total, servicios, copago, impuestos, pagos, nota crédito, nota débito, glosa inicial, glosas, aceptado, por recuperar, levantado y **saldo neto**; marcas Radicada, Devuelta, Cobro J., Capitada, fechas de glosa y conciliación. Acciones: **Detalle** (historial completo; capítulo siguiente), **Reliquidar** (recalcula el saldo de la factura seleccionada a partir de sus movimientos) y **Consulta masiva**: suba un Excel o TXT con números de factura y el sistema informa cuáles tienen registro en vencimientos y cuáles no.\n\n**Facturas sin CXC** — facturas liberadas, no anuladas por NC, que **no están en ninguna cuenta de cobro**. Filtros: tercero, facturador, procedencia (asistencial, farmacia, citas, convenio, cápita…), rango de fecha de factura y Devuelta / Retirada / Sin devolución / Todas. Sirve para saber qué falta por incluir antes de radicar y para detectar facturas devueltas sin reprocesar. La inclusión se hace en Facturación → Cuentas de cobro.\n\n**Facturas radicadas** — valor facturado por tercero según la cuenta de cobro tenga recibido (**Radicadas** marcada) o no (desmarcada). Filtros: rango de fecha de recibido, tercero, buscador. Exporta Excel y el PDF de CXC entregadas.\n\n**Regla de lectura:** *Radicada* significa que la EPS recibió la cuenta de cobro; no significa pagada. La factura sigue en cartera hasta que se pague, se concilie o se castigue.",
+      "kicker": "Capítulo 4",
+      "titulo": "Informes de facturas: CXC, sin CXC y radicadas",
+      "intro": "Tres miradas a la misma factura según en qué punto del camino esté.",
+      "imagen": "img/rptcartera_facturas_sketchnote.jpg",
+      "imagenAlt": "Facturas CXC, consulta masiva, Facturas sin CXC y Facturas radicadas",
+      "puntosClave": [
+        "Facturas CXC: saldo neto y todos sus componentes; Detalle, Reliquidar y Consulta masiva.",
+        "Facturas sin CXC: lo que falta por incluir en cuentas de cobro.",
+        "Radicada ≠ pagada."
+      ]
+    },
+    {
+      "id": "detalle",
+      "tipo": "flujo",
+      "flujoId": "flujo-detalle-factura",
+      "kicker": "Capítulo 5",
+      "titulo": "Detalle de una factura y ajuste con nota crédito",
+      "intro": "El camino de soporte cuando «el saldo está mal»: leer la fila, abrir el Detalle, reliquidar y, si aplica, ajustar un saldo tipo C o G.",
+      "imagen": "img/rptcartera_detalle_sketchnote.jpg",
+      "imagenAlt": "Vencimientos, historial, ajuste NC y límites",
+      "puntosClave": [
+        "El Detalle muestra vencimientos (F, G, R, C), devoluciones, notas, pagos, glosas y conciliaciones.",
+        "Reliquidar solo vuelve a sumar; no corrige movimientos.",
+        "El ajuste NC solo aplica a vencimientos tipo C o G con saldo, con concepto CPNT y valor ≤ saldo.",
+        "La NC de ajuste lleva procedencia AJUSTE y se consulta en Notas DB/CR."
+      ]
+    },
+    {
+      "id": "cuentas",
+      "tipo": "texto",
+      "md": "Las cuatro pestañas siguen el camino de la **cuenta de cobro** (CXC): se arma → se envía → la EPS la recibe (radicada) → o la devuelve.\n\n- **CXC sin entregar** — cuentas **sin indicador de recibido**. Filtros: rango de fecha de la cuenta, tercero. PDF. Es la lista de lo que falta por radicar.\n- **CXC entregadas** — cuentas de cartera **con recibido**. Filtros: rango de fecha de recibido, tercero, Incluir particulares. PDF. Soporte de radicación del periodo.\n- **Cuentas de cobro** — listado completo: fecha, cierre, envío, recibido, **No. radicación, No. guía, quién recibió**, usuario, sede, modalidad, atención, régimen, año y mes. Filtro Estado (Todas / Radicadas / Sin radicar) e Incluir particulares. La exportación de detalle baja las facturas de cada cuenta.\n- **Devoluciones** — facturas que la EPS devolvió, con motivo, fecha de radicación, estado, respuesta y paso a seguir. Se **responde** por factura (código de respuesta del catálogo de glosas clase RESPUESTA; paso a seguir Soportar o Anular) o por **Excel** con plantilla, y se **envía**: Soportar crea una cuenta de cobro nueva; Anular devuelve la factura a facturación. Las reglas detalladas están en Cartera · Recaudos (FCXCR).\n\n**Tres fechas distintas:** fecha de la cuenta (cuándo se armó), fecha de envío y fecha de recibido (radicación). Cada informe filtra por una de ellas: léalo en la etiqueta del filtro.\n\n**Incluir particulares:** por defecto se excluyen los terceros de la categoría `TERCATAFILIADO` (pacientes particulares). Marque la casilla si necesita cuadrar con contabilidad.",
+      "kicker": "Capítulo 6",
+      "titulo": "Cuentas de cobro: entregadas, sin entregar, listado y devoluciones",
+      "intro": "Cuatro pestañas que siguen la cuenta de cobro desde que se arma hasta que la EPS la recibe o la devuelve.",
+      "imagen": "img/rptcartera_cuentas_sketchnote.jpg",
+      "imagenAlt": "CXC sin entregar, entregadas, listado y devoluciones",
+      "puntosClave": [
+        "Sin entregar = sin recibido; Entregadas = con recibido.",
+        "Cuentas de cobro trae No. radicación, guía y quién recibió.",
+        "Devoluciones es la única pestaña que cambia estado (Soportar / Anular)."
+      ]
+    },
+    {
+      "id": "vencimientos",
+      "tipo": "flujo",
+      "flujoId": "flujo-aging",
+      "kicker": "Capítulo 7",
+      "titulo": "Vencimientos: sacar el aging y enviarlo a la EPS",
+      "intro": "Seis pestañas sobre el mismo saldo: Actual, Actual-Total (Procesar), Histórico, por Régimen, Tipo Tercero y Por Plan.",
+      "imagen": "img/rptcartera_vencimientos_sketchnote.jpg",
+      "imagenAlt": "Las seis pestañas del aging",
+      "puntosClave": [
+        "Actual: una fila por tercero, en vivo. Actual-Total: por factura, tras Procesar.",
+        "Histórico: foto del cierre de cartera; no cambia.",
+        "Mismos rangos en todas: por vencer, 0-30 … 361+.",
+        "PDF por rango de vencimientos para la EPS."
+      ]
+    },
+    {
+      "id": "aging",
+      "tipo": "semaforo",
+      "datos": "marcasAging",
+      "kicker": "Capítulo 8",
+      "titulo": "Cómo leer el aging: columnas y marcas",
+      "intro": "Qué significa cada columna del aging y qué gestión corresponde.",
+      "imagen": "img/rptcartera_aging_sketchnote.jpg",
+      "imagenAlt": "Vlr. total, por vencer, rangos vencidos, marcas y detalle",
+      "puntosClave": [
+        "Total = por vencer + rangos vencidos.",
+        "Los días se cuentan desde la fecha de vencimiento del vencimiento.",
+        "No radicada en mora es una alerta de proceso, no de cobro."
+      ]
+    },
+    {
+      "id": "recaudos",
+      "tipo": "texto",
+      "md": "- **Resumen radicación** — Año, Mes, Incluir particulares. Valor radicado por tercero y por mes (enero a diciembre hasta el mes elegido). PDF «Resumen de radicación». Base para la meta de recaudo.\n- **Resumen recaudos de cartera** — mismos filtros. Valor recaudado (recaudos aplicados) por tercero y por mes. PDF «Resumen de recaudos». Comparado con radicación dice cuánto de lo radicado ya se cobró.\n- **Recaudos en bancos** — pagos identificados en los extractos bancarios. Filtros: rango de **fecha de operación** bancaria, banco, tercero, Estado (**Pendientes** / Confirmados / Anulados). Columnas: banco, cuenta, fecha, tercero, valor, saldo, valor legalizado, ajuste y ajuste al peso. Exporta Excel. Los pendientes son dinero que ya está en el banco y aún no bajó cartera: se legalizan desde Cartera · Recaudos.\n\n**Cómo cruzarlos:** radicado − recaudado del periodo ≈ lo que la EPS aún debe de ese periodo (debe parecerse al aging). Si recaudos del mes > banco confirmado, hay recaudos sin soporte bancario (o pagos en caja). Los resúmenes exigen un **año válido**.",
+      "kicker": "Capítulo 9",
+      "titulo": "Resúmenes de radicación, recaudos y recaudos en bancos",
+      "intro": "Tres informes para el seguimiento mensual del flujo de cartera.",
+      "imagen": "img/rptcartera_recaudos_sketchnote.jpg",
+      "imagenAlt": "Resumen radicación, resumen recaudos, recaudos en bancos y cómo cruzarlos",
+      "puntosClave": [
+        "Resúmenes por mes del año, con PDF; exigen año válido.",
+        "Recaudos en bancos filtra por fecha de operación bancaria; Pendientes = sin legalizar.",
+        "Radicado − recaudado ≈ lo que la EPS aún debe del periodo."
+      ]
+    },
+    {
+      "id": "mes",
+      "tipo": "flujo",
+      "flujoId": "flujo-mes",
+      "kicker": "Capítulo 10",
+      "titulo": "Rutina de cierre de mes con los informes",
+      "intro": "Orden sugerido para que el Histórico y contabilidad cuadren: legalizar, radicar, responder, gestionar, cerrar, comparar.",
+      "puntosClave": [
+        "Cerrar cartera toma la foto del mes (Histórico).",
+        "Reabrir solo hasta 25 días después del fin de mes.",
+        "Tipo Tercero (TTEC) es la pestaña para cuadrar con contabilidad."
+      ]
+    },
+    {
+      "id": "varios",
+      "tipo": "texto",
+      "md": "**Varios x mes** — cinco cruces en pestañas: *Radicación × empresa y recaudo legalizado × régimen*, *Reporte general de pagos por fecha de pago*, *Cartera × facturas radicadas*, *Recaudo × régimen* y *Radicación × régimen*. Filtros: fecha inicial, fecha final, Id. tercero → botón **Procesar**, que debería recalcular los cinco cruces en una tabla de resultados que la grilla luego lee. Exporta con «Configurar exportación».\n\n> **Estado verificado (IXONLINE/SQL, PREVERSION = liberada 2.0.7):** el método que ejecuta el cálculo (`CARTERA_RPT · EXECUTE_SPK_REPORTES_VARIOS_CARTERA`) **no existe** en el procedimiento. Procesar no recalcula y no muestra error; la grilla enseña lo que haya quedado de una corrida anterior o nada. Mientras no se publique el método, el informe **no es confiable**: responda las mismas preguntas con Vencimientos, los Resúmenes y Recaudos en bancos. Si un usuario reporta que «no cambia», no es un defecto de filtros ni de la grilla: **validar antes de desarrollar**.\n\n**Estado de admisiones** — admisiones, citas y autorizaciones del rango con su factura. Filtros: rango de fechas, Facturación (facturadas / no facturadas / todas), Estado, Capitado (capitados / evento). Pestañas: **No. Admisión** (altas médica, de enfermería y administrativa, factura, valor), **Citas** (médico, plan, factura) y **Autorizaciones** (prefijo, proveedor, factura). Lee las tablas en vivo, así que sí funciona. Sirve para detectar **atenciones cerradas sin factura** (fuga de facturación); la corrección es de Facturación / Asistencial.",
+      "kicker": "Capítulo 11",
+      "titulo": "Varios x mes y Estado de admisiones",
+      "intro": "Dos informes de cruce. Varios x mes depende de un método que hoy no está en el catálogo SQL.",
+      "imagen": "img/rptcartera_varios_sketchnote.jpg",
+      "imagenAlt": "Varios x mes, su estado actual, y Estado de admisiones",
+      "puntosClave": [
+        "Varios x mes: Procesar no recalcula (método ausente en 2.0.7); no confiar en sus cifras.",
+        "Estado de admisiones lee en vivo y sirve para detectar atenciones sin factura.",
+        "Validar antes de desarrollar si el usuario reporta que «no cambia»."
+      ]
+    },
+    {
+      "id": "seguimiento",
+      "tipo": "flujo",
+      "flujoId": "flujo-seguimiento",
+      "kicker": "Capítulo 12",
+      "titulo": "Seguimiento de cartera y Cierre de cartera",
+      "intro": "Dos ventanas aparte: la bitácora de gestión de cobro (FSEG) y el cierre mensual que alimenta el Histórico.",
+      "imagen": "img/rptcartera_seguimiento_sketchnote.jpg",
+      "imagenAlt": "Seguimiento cartera, para qué sirve, cierre de cartera y rutina del mes",
+      "puntosClave": [
+        "Seguimiento no mueve saldo; es evidencia y agenda.",
+        "Solo los seguimientos abiertos se cierran o eliminan.",
+        "Cierre cartera marca el periodo y crea FCARTH."
+      ]
+    },
+    {
+      "id": "config",
+      "tipo": "texto",
+      "md": "- **TERCATAFILIADO** — categoría de terceros «particulares». Los informes con casilla *Incluir particulares* los excluyen por defecto.\n- **FACTSEDE** — decide el logo de los PDF de cartera.\n- **Catálogo TTEC** (tipo de tercero contable) — filtro *Tipo tercero* del aging y pestaña *Tipo Tercero*. Un tercero sin TTEC no aparece en esa pestaña.\n- **Catálogo CPNT** (conceptos de nota) — obligatorio para el Ajuste de Saldos Cartera.\n- **Cierre de cartera mensual** — Administrativo → Cierre cartera marca `PRI.CERRADO_CARTERA` y toma la foto de vencimientos (**FCARTH**) que alimenta la pestaña **Histórico**. Reabrir borra la foto y solo se permite hasta **25 días** después del fin de mes. Sin cierre, Histórico de ese mes está vacío.\n- **Acceso** — tres permisos de menú: Consultas y Reportes (`Admin.RptCarte`), Seguimiento Cartera (`admin.SeguiCXC`) y Cierre cartera (`Admin.Cierre`). No hay permisos por informe ni por botón: quien entra al hub puede Reliquidar y registrar el ajuste NC.\n\n**Pendientes conocidos (catálogo SQL 2.0.7):** `EXECUTE_SPK_REPORTES_VARIOS_CARTERA` (Varios x mes) y `TRAER_DETALLE_HISTORICO` (exportar detalle de un tercero en Histórico) no existen en `CARTERA_RPT`; ambos botones fallan en silencio o con error.",
+      "kicker": "Capítulo 13",
+      "titulo": "Configuración y pendientes conocidos",
+      "intro": "Variables, catálogos, cierre mensual, accesos y los dos métodos que faltan en el catálogo SQL.",
+      "puntosClave": [
+        "TERCATAFILIADO define «particulares».",
+        "Sin cierre de cartera no hay Histórico.",
+        "EXECUTE_SPK_REPORTES_VARIOS_CARTERA y TRAER_DETALLE_HISTORICO no existen en 2.0.7."
+      ]
     }
   ]
 }

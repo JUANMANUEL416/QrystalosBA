@@ -1,0 +1,174 @@
+{
+  "id": "aplicacion-medicamentos",
+  "nombre": "Aplicación de medicamentos",
+  "modulo": "APLI",
+  "familia": "asistencial",
+  "prioridad": 24,
+  "enRuta": false,
+  "estado": "parcial",
+  "resumen": "Consulta externa. El ciclo APLI agenda eventos APLIM; farmacia dispensa los insumos APLIMF y enfermería marca la aplicación.",
+  "actualizado": "2026-10-02T17:10:00",
+  "notaSql": "2026-10-02. SPQ_APLI y SPQ_APLIS existen en PREVERSION y en la 2.0.5 con el mismo largo. El cuerpo no se releyó línea a línea. La pantalla sí llama CRUDAPLI, GESTION_APLIM, PROCESAR_MED, GESTION_APLIMF y la agenda de citas.",
+  "alcanceHasta": "Ciclo, evento, insumos, agenda y seguimiento AUTE. No incluye la salida de inventario: eso es el proceso dispensacion.",
+  "flujoResumen": "APLI (ciclo) → APLIM (evento/cita) → APLIMF (insumo, puede pedir IZSOL) → dispensación → GESTION_APLIM marca aplicado. Seguimiento AUTE en APLIS si USA_APLIMF=SI.",
+  "ventanas": [
+    {
+      "uso": "Aplicación de medicamentos",
+      "ruta": "ce.apli_med",
+      "path": "/ce/aplim",
+      "vue": "AplicacionMedPage",
+      "entrada": "Consulta externa → Aplicación de medicamentos. Vistas: Aplicaciones, Seguimiento AUTE, Agenda, Configuraciones, Trazabilidad."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Permiso APLIM_WEB (nuevo, editar, cancelar, agenda, seguimiento, configuración, trazabilidad). USA_APLIMF=SI muestra Seguimiento AUTE. El seguimiento automático desde autorización solo toma servicios con SER.SEG_APLIS=1.",
+      "tablasClave": [
+        "USVGS",
+        "USGRUH",
+        "SER",
+        "TGEN"
+      ],
+      "controles": [
+        {
+          "id": "aplim-permiso",
+          "nombre": "Quién ve cada vista",
+          "explicacion": "Sin el control de APLIM_WEB la vista no aparece. Seguimiento AUTE exige además USA_APLIMF=SI.",
+          "invariante": "La pestaña no se inventa: permiso y variable.",
+          "sps": [
+            {
+              "nombre": "SPQ_APLI",
+              "metodo": "APLIM_CONFIG",
+              "rol": "Configuración del módulo. Listado, cuerpo no releído."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Se abre o edita el ciclo del paciente (APLI: servicio, plan, tercero, autorización). Cada fecha es un evento APLIM, con vía, cantidad y cita. La gestión deja bitácora APLIMG. PROCESAR_MED marca el medicamento del evento.",
+      "tablasClave": [
+        "APLI",
+        "APLIM",
+        "APLIMG"
+      ],
+      "controles": [
+        {
+          "id": "apli-ciclo",
+          "nombre": "Ciclo y evento",
+          "explicacion": "CRUDAPLI guarda la cabecera. GESTION_APLIM trabaja el evento: estado, aplicado, fecha de aplicación y médico. La cita queda en APLIM.CONSECUTIVOCIT.",
+          "invariante": "Aplicar un evento exige el ciclo abierto y los datos que el procedimiento pide (médico y vía según APLIM_VALIDA_MEDSC).",
+          "sps": [
+            {
+              "nombre": "SPQ_APLI",
+              "metodo": "CRUDAPLI",
+              "rol": "Cabecera. Lo llama la pantalla."
+            },
+            {
+              "nombre": "SPQ_APLI",
+              "metodo": "GESTION_APLIM",
+              "rol": "Evento."
+            },
+            {
+              "nombre": "SPQ_APLI",
+              "metodo": "PROCESAR_MED",
+              "rol": "Marca el medicamento del evento."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "El paciente y el plan vienen de afiliados. La agenda (procedencia APLIM) asigna la cita. La autorización puede generar el seguimiento con SPK_AUTE_TO_APLI.",
+      "tablasClave": [
+        "AFI",
+        "CIT",
+        "AUT"
+      ],
+      "controles": [
+        {
+          "id": "aplim-agenda",
+          "nombre": "Agenda de la aplicación",
+          "explicacion": "La vista Agenda usa procedencia APLIM. La cita legacy pide bodega, sillas, días y horas, valida la cita y la asigna. Las vías subcutánea e intravenosa salen de APLIM_VSUBCUTANEA y APLIM_VINTRAVENOSA.",
+          "invariante": "No se asigna cita si VALIDA_CIT no la acepta.",
+          "sps": [
+            {
+              "nombre": "SPQ_APLI",
+              "metodo": "ASIGNAR_CITA / VALIDA_CIT",
+              "rol": "Agenda. Lo llama la pantalla."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "parcial",
+      "explicacion": "El insumo APLIMF puede llevar CNSIZSOL: la farmacia lo dispensa en Solicitudes. Si la línea es de custodia (MEDCUSTODIA), el lote es del paciente y no de la compra del hospital. Al confirmar la dispensación, la clase APLIM queda marcada como dispensada.",
+      "tablasClave": [
+        "APLIMF",
+        "IZSOL",
+        "IEXI"
+      ],
+      "controles": [
+        {
+          "id": "aplimf-a-dispensacion",
+          "nombre": "Insumo hacia farmacia",
+          "explicacion": "GESTION_APLIMF y GET_APLIMF trabajan la línea. ESTADO_FAR y DISPENSADO dicen si farmacia ya entregó. El proceso hermano es dispensacion.",
+          "invariante": "Esta pantalla no descuenta la existencia. La salida la confirma la dispensación.",
+          "sps": [
+            {
+              "nombre": "SPQ_APLI",
+              "metodo": "GESTION_APLIMF / GET_APLIMF",
+              "rol": "Líneas de insumo."
+            },
+            {
+              "nombre": "SPQ_IZSOL",
+              "metodo": "CONF_MOVIMIENTO",
+              "rol": "Proceso dispensacion. Marca APLIM dispensado."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-seguimiento",
+      "numero": 5,
+      "nombre": "Seguimiento",
+      "estado": "parcial",
+      "explicacion": "Seguimiento AUTE (APLIS, MODELO APLIS) registra gestiones y puede pedir existencias faltantes. No contabiliza.",
+      "tablasClave": [
+        "APLIS"
+      ],
+      "controles": [
+        {
+          "id": "aplis-seguimiento",
+          "nombre": "Seguimiento AUTE",
+          "explicacion": "Visible con USA_APLIMF=SI y permiso de seguimiento. SPQ_APLIS está en la canasta con el mismo largo que la 2.0.5. El cuerpo no se releyó.",
+          "invariante": "Solo entran servicios marcados SEG_APLIS.",
+          "sps": [
+            {
+              "nombre": "SPQ_APLIS",
+              "metodo": "REGISTRAR_GESTION",
+              "rol": "Listado en la pantalla de seguimiento. Cuerpo no releído."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

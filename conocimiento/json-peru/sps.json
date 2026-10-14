@@ -1,7 +1,7 @@
 {
   "procesoId": "json-peru",
-  "actualizado": "2026-09-12T22:45:00",
-  "nota": "Hojas JSON leídas en sql_refe. SPQ_FTR_PERU + SPK_CONSULTA_DOCUMENTO_ELECTRONICA + SPK_JSON_FTR_PERU_INTERFAX + SPK_JSON_FTR_PERU_INTERFAX_FNOT leídos 2026-09-12 (sql/).",
+  "actualizado": "2026-10-03T18:20:00",
+  "nota": "Contraste 2026-10-03: los 8 objetos del circuito (FACTURA, FTR_INTEGRA, NOTADBCR, SPQ_FTR_PERU, CONSULTA, INTERFAX, INTERFAX_FNOT, ENVIA_TRAMAS_CIPERU) PREVERSION = 2.0.7. Solo INTERFAX cambió frente a la copia de 2026-09-14.",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
@@ -15,27 +15,31 @@
         {
           "id": "ENVIA_CONTAB",
           "estado": "leido",
-          "hace": "Marca/envía factura a contabilidad; Perú genera JSON integración.",
+          "hace": "Cierra la factura: contabiliza (SPK_NC_CONTAB_FTR). En Perú, antes de contabilizar, arma y envía el JSON: TIPOFIN=C y FACTEP≠102 → SPK_GENERA_JSON_PERU_FTR_INTEGRA; resto → SPK_GENERA_JSON_PERU_FACTURA (uno u otro).",
           "valida": [
             "FTR existe",
-            "CONTABILIZADA no 1/2 (no Perú)",
             "VR_TOTAL>0 y ESTADO=P",
-            "Tiene FTRD",
-            "Capita/PGP con FTRDC o PPT capitado"
+            "tiene FTRD",
+            "CONTABILIZADA no 1/2 solo fuera de Perú",
+            "cápita/PGP con FTRDC solo fuera de Perú"
           ],
           "errores": [
-            "No existe el Documento",
+            "No existe el Documento En Facturacion (devuelto con 'OK' en la primera columna)",
             "Documento ya Contabilziado o Presenta Errores",
-            "Factura Sin Valor o Anulada",
-            "Factura Sin Detalles",
-            "Capitada/PGP sin relalcion de Capitado"
+            "Factura Sin Valor o Anulada, No se Puede Enviar",
+            "Factura Sin Detalles, No se Puede Enviar"
           ],
           "capaId": "02-operacion",
           "gateId": "enviar-sunat-ftr",
           "llama": [
             "SPK_GENERA_JSON_PERU_FTR_INTEGRA",
-            "SPK_GENERA_JSON_PERU_FACTURA"
-          ]
+            "SPK_GENERA_JSON_PERU_FACTURA",
+            "SPK_NC_CONTAB_FTR"
+          ],
+          "noValida": [
+            "En Perú no impide re-contabilizar una factura ya contabilizada"
+          ],
+          "releido": "2026-10-03 · PREVERSION 2.0.7"
         }
       ]
     },
@@ -53,7 +57,7 @@
           "hace": "Envía nota a SUNAT (Perú): SPK_GENERA_JSON_PERU_NOTADBCR.",
           "valida": [
             "IXCOUNTRY=PERU",
-            "FACTEP≠OK (pendiente envío)"
+            "FNOT con CNSFNOT+N_FACTURA y FACTEP≠OK"
           ],
           "errores": [
             "Variable pais no es Perú",
@@ -63,7 +67,8 @@
           "gateId": "enviar-sunat-nota",
           "llama": [
             "SPK_GENERA_JSON_PERU_NOTADBCR"
-          ]
+          ],
+          "releido": "2026-10-03 · PREVERSION 2.0.7"
         }
       ]
     },
@@ -101,7 +106,15 @@
       ],
       "efecto": "POST API; FACTEP=ESTDOC o 104A; FTRE.SOLICITUDJSON; FTRAPILOG METODO envío.",
       "capaId": "02-operacion",
-      "gateId": "enviar-sunat-ftr"
+      "gateId": "enviar-sunat-ftr",
+      "releido": "2026-10-03 · PREVERSION 2.0.7",
+      "silencioso": [
+        "FTRE ya existe",
+        "afecto+inafecto ≤ 0",
+        "TOKEN < 20",
+        "URL < 30",
+        "FACTEP en 101/102/103 tras un error previo"
+      ]
     },
     {
       "nombre": "SPK_GENERA_JSON_PERU_FTR_INTEGRA",
@@ -111,7 +124,7 @@
       "llamadoDesde": [
         "FTR_COL · ENVIA_CONTAB"
       ],
-      "hace": "Gemelo de SPK_GENERA_JSON_PERU_FACTURA (mismos RETURNS, token, POST, FTRE). Lo llama ENVIA_CONTAB junto con FACTURA. No hay rama distinta documentada en el script.",
+      "hace": "Variante de SPK_GENERA_JSON_PERU_FACTURA para TIPOFIN=C (mismos RETURN, token, POST y FTRE). No es gemela: afecto = VLRIMPUESTO (sin restar copago); suma FTRD.PAQUETE IN (0,2) en vez de ≠2; detalle de paquete con cursor propio; VAL_VTA_ITEM y MNT_PV_ITEM con otra fórmula; correo del receptor solo de TER; NOM_COMER_EMIS = razón social (no lee NOMBRE_COMERCIAL); dirección del receptor siempre TER.",
       "valida": [
         "Mismas precondiciones que FACTURA"
       ],
@@ -127,7 +140,8 @@
       ],
       "efecto": "Mismo destino FACTEP/FTRE/FTRAPILOG.",
       "capaId": "02-operacion",
-      "gateId": "enviar-sunat-ftr"
+      "gateId": "enviar-sunat-ftr",
+      "releido": "2026-10-03 · PREVERSION 2.0.7"
     },
     {
       "nombre": "SPK_GENERA_JSON_PERU_NOTADBCR",
@@ -149,13 +163,17 @@
         "Nota ya fue Recibida (RETURN)",
         "JSON no fue generado Correctamente"
       ],
+      "noValida": [
+        "TXT_DESC_MTVO arma FNOT.OBSERVACION solo quitando saltos de línea. No usa FNK_LIMPIATEXTO: la barra / y lo que no esté en 0-9 A-Z().;:, sale al JSON. TXT_DESC_ITEM (descripción del ítem) sí se limpia con ese patrón."
+      ],
       "llama": [
         "FNK_VALORVARIABLE",
         "FNK_LIMPIATEXTO"
       ],
-      "efecto": "POST nota; FTRAPILOG; actualiza CNSDIANFE si aplica.",
+      "efecto": "POST nota; FTRAPILOG; actualiza CNSDIANFE si aplica. Si la respuesta no es JSON o ESTDOC no es 101/102/103, FNOT.FACTEP=ERROR.",
       "capaId": "02-operacion",
-      "gateId": "enviar-sunat-nota"
+      "gateId": "enviar-sunat-nota",
+      "releido": "2026-10-13 · PREVERSION idéntica a 2.0.9"
     },
     {
       "nombre": "SPQ_FTR_PERU",
@@ -470,7 +488,11 @@
       "efecto": "OK codigo 0 → FTR.FACTEP=102 + FTRAPILOG INTER_FTR OK. Otro código → FACTEP=104. KO de envío → solo log. TokenExpiredError: borra JWT_QRYSTALOS y reintenta 1 vez. Usuarios caja: USR_CAJ_*/USR_VCAJ_* (MAD/PHD/CMV). SAP fijo en script: sede 1008, sociedad CI10, org venta CI16, región LIMA.",
       "capaId": "02-operacion",
       "gateId": "enviar-sunat-ftr",
-      "ventanaFe": "FTRPeComponent · ENVIAR_FACTURA_SAP"
+      "ventanaFe": "FTRPeComponent · ENVIAR_FACTURA_SAP",
+      "cambiosRecientes": [
+        "Pago Izipay (FNPAG): toma TOP 1 con ESTADO_OPE='AUTHORISED' ORDER BY ID DESC (antes cualquier fila del IDKPAGE)."
+      ],
+      "releido": "2026-10-03 · PREVERSION 2.0.7"
     },
     {
       "nombre": "SPK_JSON_FTR_PERU_INTERFAX_FNOT",

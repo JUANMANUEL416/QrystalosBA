@@ -1,0 +1,1874 @@
+{
+  "id": "configuracion-contabilidad",
+  "nombre": "Configuración · Contable",
+  "modulo": "CONF · Contable",
+  "familia": "configuracion",
+  "prioridad": 9,
+  "enRuta": true,
+  "estado": "documentado",
+  "resumen": "Submenú Contable del menú central Configuración: estructura (sedes, grupos de áreas, áreas funcionales, centros de costo, unidades de negocio), plan de cuentas local y NIIF (crear, importar, validar, exportar), reglas de contabilización por ubicación (KMCOM/KMCOMS), tipos de terceros contables, deducibles, distribución de gastos, tipos de comprobantes y su asignación por documento, periodos y parámetros contables, y las tablas generales (monedas, impuestos, tipos de servicio, retención de salarios).",
+  "actualizado": "2026-10-04T20:30:00",
+  "notaSql": "Leído 2026-10-04 desde IXONLINE/SQL (DESAIX · PREVERSION = 2.0.7, IDANT 2.0.6, idénticas): SPQ_CONF_CONTABLE (11 METODOs), SPQ_SED (CRUDSEDCONS), SPQ_CUE_COL (CRUDCUE, VALIDARCUENTAS, EXPOCUENTAS), SPQ_CUENIIF (GENEALOGICO, INSERTAR, EDITAR, ELIMINAR, CARGA_MASIVA), SPQ_KMCOM_COL (TRAER_KTCO, TRAE_CUENTAS, CRUD_KMCOM, CRUD_KMCOMS, VALIDA_CODNOMI), SPQ_KCDE_COL, SPQ_TTEC_COL, SPQ_COM_COL, SPQ_PRI (CRUDPRI, CERRAR_FACTURA, ABRIR_FACTURA), SPQ_MND_COL, SPQ_MNDV_COL, SPQ_FIMP_COL, SPQ_FIMPD_COL, SPQ_FIMPDV_COL, SPQ_FCTSER_COL, SPQ_FCTSERD_COL, SPQ_RETEFTE_SALARIO (CRUD_RETEI, ACTUALIZAR_UVT, CRUD_RETTER, LIQUIDAR_RTFTASALA), SPQ_CENH_COL (CRUD_CENH). Cuerpos en sql/ (Documentar sin caso). Menú: árbol fijo en ConfLayout.arbolMenu; habilitación por MENUQ_COL · CONFIGURACION (dato de instalación, no está en SQLIX). No se consultó PCEM: todo lo necesario salió de Qrystalos2, documentación y DESAIX.",
+  "alcanceHasta": "Solo el submenú Contable de Configuración. Los demás submenús (Inventario, Activos F., Generales, Caja, Asistencial…) son procesos aparte de la misma familia. Las tablas que estos catálogos alimentan (MCP/MCH, FCXP, FTR…) se documentan en sus procesos.",
+  "flujoResumen": "Estructura (sede → grupo → área → centro de costo → unidad de negocio) → plan de cuentas (crear/importar, validar) → reglas (KMCOM por tipo, TTEC, KCDE, FDIS) → comprobantes y periodos (COM, IDCON_TCOM_*, PRI, PAR) → generales (monedas, impuestos, tipos de servicio, retención).",
+  "incluirProcesoMdEnLibro": false,
+  "menu": {
+    "ruta": "Configuración → Contable → Sedes · Grupos de Áreas · A. Func./C.Costos · Unidades Negocio · Cuentas Contables · Cuentas NIIF · Tipos de Terceros · Deducibles · Contabilización por Ubicación · Distribución de Gastos · Tipos de Comprobantes · Comprobantes por Documentos · Períodos Contables · Generales (Monedas, Impuestos, Retención Honorarios, Retención Salarios, Tipos de Servicios, Dependencias) · Parámetros Contables",
+    "fuente": "ConfLayout.vue arbolMenu[0] (Contable) + routes.js /conf (conf.Sedes, conf.GrupoAreas, conf.Areas, conf.CodUng, conf.CueConta, conf.CueNiif, conf.contableGenerales?procedencia=TTEC|MND|FIMP|FCTSER, conf.kcde, conf.Kmcom, conf.FdisGa, conf.com, conf.CompDoc, conf.PRI, conf.ReteSal, conf.ParConta). Menú por grupo: MENUQ_COL · CONFIGURACION (USPROH/USGRUH del cliente)."
+  },
+  "ventanas": [
+    {
+      "uso": "Sedes",
+      "ruta": "conf.Sedes",
+      "path": "/conf/Sedes",
+      "vue": "SedesPage → SedesComponent (+ UngNegComponent)",
+      "entrada": "Configuración → Contable → Sedes"
+    },
+    {
+      "uso": "Grupos de áreas",
+      "ruta": "conf.GrupoAreas",
+      "path": "/conf/GrupoAre",
+      "vue": "GrupoAreasPage → GruposAreaComponent",
+      "entrada": "Configuración → Contable → Grupos de Áreas"
+    },
+    {
+      "uso": "Áreas funcionales y centros de costo",
+      "ruta": "conf.Areas",
+      "path": "/conf/Afuncional",
+      "vue": "AreCcostoPage → AreaCcostoComponent → CcostosComponent → CcostosHomoComponent",
+      "entrada": "Configuración → Contable → A. Func./C.Costos"
+    },
+    {
+      "uso": "Unidades de negocio",
+      "ruta": "conf.CodUng",
+      "path": "/conf/CodUng",
+      "vue": "UnidadNegPage → CodUngComponent",
+      "entrada": "Configuración → Contable → Unidades Negocio"
+    },
+    {
+      "uso": "Plan contable",
+      "ruta": "conf.CueConta",
+      "path": "/conf/Cuentas",
+      "vue": "CuentasContaPage → CueContaComponent (+ cueContaExcel.js, HelpManualPlanContable)",
+      "entrada": "Configuración → Contable → Cuentas Contables"
+    },
+    {
+      "uso": "Cuentas NIIF",
+      "ruta": "conf.CueNiif",
+      "path": "/conf/CuentasNiif",
+      "vue": "CuentasNiifPage → CueNiifComponent",
+      "entrada": "Configuración → Contable → Cuentas NIIF"
+    },
+    {
+      "uso": "Generales (Monedas, Impuestos, Tipos de servicio, Tipos de terceros)",
+      "ruta": "conf.contableGenerales",
+      "path": "/conf/contGenerales?procedencia=",
+      "vue": "ContGeneralesPage (pestañas MND, FIMP, FCTSER, TTEC)",
+      "entrada": "Configuración → Contable → Generales / Tipos de Terceros"
+    },
+    {
+      "uso": "Deducibles",
+      "ruta": "conf.kcde",
+      "path": "/conf/kcde",
+      "vue": "KCDEPage → KCDEComponent",
+      "entrada": "Configuración → Contable → Deducibles"
+    },
+    {
+      "uso": "Contabilización por ubicación",
+      "ruta": "conf.Kmcom",
+      "path": "/conf/Kmcom",
+      "vue": "KmcomConfPage → KmcomComponent (+ kmcomExcel.js, kmcomProcedencia.js)",
+      "entrada": "Configuración → Contable → Contabilización por Ubicación"
+    },
+    {
+      "uso": "Distribución de gastos",
+      "ruta": "conf.FdisGa",
+      "path": "/conf/FdisGasto",
+      "vue": "DistriGastosPage → FdistriGastosComponent",
+      "entrada": "Configuración → Contable → Distribución de Gastos"
+    },
+    {
+      "uso": "Tipos de comprobantes",
+      "ruta": "conf.com",
+      "path": "/conf/con",
+      "vue": "COMPage",
+      "entrada": "Configuración → Contable → Tipos de Comprobantes"
+    },
+    {
+      "uso": "Comprobantes por documentos",
+      "ruta": "conf.CompDoc",
+      "path": "/conf/CompDoc",
+      "vue": "CompDocumentosPage → CompDocuComponent",
+      "entrada": "Configuración → Contable → Comprobantes por Documentos"
+    },
+    {
+      "uso": "Periodos contables",
+      "ruta": "conf.PRI",
+      "path": "/conf/PRI",
+      "vue": "PRIPage → PRIComponent",
+      "entrada": "Configuración → Contable → Períodos Contables"
+    },
+    {
+      "uso": "Retención salarios",
+      "ruta": "conf.ReteSal",
+      "path": "/conf/ReteSal",
+      "vue": "ReteSalPage → RetenAsalaComponent",
+      "entrada": "Configuración → Contable → Generales → Retención Salarios"
+    },
+    {
+      "uso": "Parámetros contables",
+      "ruta": "conf.ParConta",
+      "path": "/conf/parconta",
+      "vue": "ParContablesPage → ParaContaComponent",
+      "entrada": "Configuración → Contable → Parámetros Contables"
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-estructura",
+      "numero": 1,
+      "nombre": "Estructura organizacional",
+      "estado": "documentado",
+      "explicacion": "Sede (SED) con consultorios (SEDCONS) y unidades de negocio por centro de costo (SEDUNG); grupo de área (HARE) → área funcional (AFU) → centro de costo (CEN) con homólogo para inactivar y homologación entre sedes (CENH); unidad de negocio (KUNG).",
+      "controles": [
+        {
+          "id": "sede-crud",
+          "nombre": "Sede: crear / editar / activar / inactivar",
+          "sp": "SPQ_CONF_CONTABLE · CRUD_SEDES",
+          "regla": "Id. Sede único; no se borra, se inactiva (ESTADOSEDE)."
+        },
+        {
+          "id": "sede-consultorios",
+          "nombre": "Consultorios por sede",
+          "sp": "SPQ_SED · CRUDSEDCONS",
+          "regla": "Número de consultorio único por sede."
+        },
+        {
+          "id": "sede-unidad",
+          "nombre": "Unidad de negocio por sede y centro",
+          "sp": "SPQ_CONF_CONTABLE · CRUD_SEDUNG",
+          "regla": "Llave sede + unidad + centro de costo."
+        },
+        {
+          "id": "grupo-area",
+          "nombre": "Grupo de área",
+          "sp": "SPQ_CONF_CONTABLE · CRUD_HARE",
+          "regla": "Código único."
+        },
+        {
+          "id": "area-funcional",
+          "nombre": "Área funcional",
+          "sp": "SPQ_CONF_CONTABLE · CRUD_AFU",
+          "regla": "Código único; marcas En Contabilidad / En Prestaciones."
+        },
+        {
+          "id": "centro-costo",
+          "nombre": "Centro de costo",
+          "sp": "SPQ_CONF_CONTABLE · CRUD_CCOSTO",
+          "regla": "Exige área funcional; para inactivar exige homólogo activo."
+        },
+        {
+          "id": "centro-homologacion",
+          "nombre": "Homologación de centros entre sedes",
+          "sp": "SPQ_CENH_COL · CRUD_CENH",
+          "regla": "Visible con variable HOMOLOGA_CCOSTOYSEDE; origen y destino deben existir en su sede."
+        },
+        {
+          "id": "unidad-negocio",
+          "nombre": "Unidad de negocio",
+          "sp": "SPQ_CONF_CONTABLE · CRUD_KUNG",
+          "regla": "Código único."
+        }
+      ]
+    },
+    {
+      "id": "02-plan-cuentas",
+      "numero": 2,
+      "nombre": "Plan de cuentas",
+      "estado": "documentado",
+      "explicacion": "Plan local (CUE): alta, edición, importación desde Excel, validación de jerarquía y exportación. Plan NIIF (CUENIIF): genealógico automático, carga masiva todo-o-nada, bloqueo con movimientos.",
+      "controles": [
+        {
+          "id": "cuenta-crud",
+          "nombre": "Cuenta contable",
+          "sp": "SPQ_CUE_COL · CRUDCUE",
+          "regla": "Cuenta única; FE: cuenta de un dígito no lleva cuenta suma."
+        },
+        {
+          "id": "cuenta-validar",
+          "nombre": "Validar cuentas",
+          "sp": "SPQ_CUE_COL · VALIDARCUENTAS",
+          "regla": "Cuenta suma = prefijo y tipo Suma; longitud par; nivel según dígitos."
+        },
+        {
+          "id": "cuenta-exportar",
+          "nombre": "Exportar / Importar",
+          "sp": "SPQ_CUE_COL · EXPOCUENTAS / CRUDCUE por fila",
+          "regla": "Importar usa la plantilla; cada fila = un guardado."
+        },
+        {
+          "id": "cueniif-crud",
+          "nombre": "Cuenta NIIF",
+          "sp": "SPQ_CUENIIF · GENEALOGICO / INSERTAR / EDITAR / ELIMINAR",
+          "regla": "Tipo Suma/Detalle, estado Activa/Inactiva, clase CXC/CXP/OTROS; con movimientos NIIF no se cambia código ni se borra."
+        },
+        {
+          "id": "cueniif-masiva",
+          "nombre": "Carga masiva NIIF",
+          "sp": "SPQ_CUENIIF · CARGA_MASIVA",
+          "regla": "Si una fila falla no se inserta ninguna; nivel por longitud (1,2,4,…,18)."
+        }
+      ]
+    },
+    {
+      "id": "03-reglas",
+      "numero": 3,
+      "nombre": "Reglas de contabilización",
+      "estado": "documentado",
+      "explicacion": "KMCOM: tipo de contabilización (KTCO) + prefijo + centro de costo → cuentas DB/CR (Ventas: IPS, PGP, Cápita; IVA); KMCOMS excepciones por servicio; plantillas Excel. TTEC cuentas por tipo de tercero. KCDE deducibles. FDIS/FDISD distribución porcentual.",
+      "controles": [
+        {
+          "id": "kmcom-tipo",
+          "nombre": "Elegir tipo de contabilización",
+          "sp": "SPQ_KMCOM_COL · TRAER_KTCO",
+          "regla": "Tipos NIIF y Prestaciones solo con IDPROCESOCONTABLE = MIXTO."
+        },
+        {
+          "id": "kmcom-regla",
+          "nombre": "Regla por prefijo y centro",
+          "sp": "SPQ_KMCOM_COL · CRUD_KMCOM",
+          "regla": "Centro con área; cuentas Detalle; prefijo validado según el tipo."
+        },
+        {
+          "id": "kmcom-excepcion",
+          "nombre": "Excepción por servicio",
+          "sp": "SPQ_KMCOM_COL · CRUD_KMCOMS",
+          "regla": "Cuenta válida; servicio activo."
+        },
+        {
+          "id": "kmcom-nomina",
+          "nombre": "Validar concepto de nómina",
+          "sp": "SPQ_KMCOM_COL · VALIDA_CODNOMI",
+          "regla": "Concepto egreso sin valor empresa → propone la cuenta crédito del concepto de salario."
+        },
+        {
+          "id": "ttec",
+          "nombre": "Tipo de tercero contable",
+          "sp": "SPQ_TTEC_COL · CRUDTTEC",
+          "regla": "Cuentas de cartera, radicación, glosas, difícil cobro, cobro jurídico, CREE, estimados."
+        },
+        {
+          "id": "kcde",
+          "nombre": "Deducible",
+          "sp": "SPQ_KCDE_COL · CRUDKCDE",
+          "regla": "Código, cuenta, tipo, modelo contable."
+        },
+        {
+          "id": "fdis",
+          "nombre": "Distribución de gastos",
+          "sp": "SPQ_CONF_CONTABLE · FDIS_CRUD / FDISD_CRUD / FDIS_TRAESUMA",
+          "regla": "Detalle con centro (con su área) y cuenta Detalle; FE no deja superar 100 %."
+        }
+      ]
+    },
+    {
+      "id": "04-comprobantes-periodos",
+      "numero": 4,
+      "nombre": "Comprobantes, periodos y parámetros",
+      "estado": "documentado",
+      "explicacion": "COM catálogo de comprobantes; ASIGNA_COM fija el comprobante de cada variable IDCON_TCOM_*; PRI periodos con cierres por módulo; PAR parámetros por compañía.",
+      "controles": [
+        {
+          "id": "com",
+          "nombre": "Tipo de comprobante",
+          "sp": "SPQ_COM_COL · CRUDCOM",
+          "regla": "Compañía + código."
+        },
+        {
+          "id": "asigna-com",
+          "nombre": "Comprobante por documento",
+          "sp": "SPQ_CONF_CONTABLE · ASIGNA_COM",
+          "regla": "Variable existe en USVGS y comprobante existe en COM."
+        },
+        {
+          "id": "pri",
+          "nombre": "Periodo contable",
+          "sp": "SPQ_PRI · CRUDPRI",
+          "regla": "Año-mes único; un solo SI y un solo SI NIIF; FE bloquea editar cerrado."
+        },
+        {
+          "id": "par",
+          "nombre": "Parámetros contables",
+          "sp": "SPQ_CONF_CONTABLE · EDITA_PAR",
+          "regla": "Cuenta puente tipo Detalle; compañía 01."
+        }
+      ]
+    },
+    {
+      "id": "05-generales",
+      "numero": 5,
+      "nombre": "Tablas generales",
+      "estado": "documentado",
+      "explicacion": "Monedas y vigencias (MND/MNDV), impuestos con divisiones y vigencias (FIMP/FIMPD/FIMPDV), tipos de servicio y detalle (FCTSER/FCTSERD), retención de salarios (RETEI, UVT en variable).",
+      "controles": [
+        {
+          "id": "mnd",
+          "nombre": "Moneda y vigencia",
+          "sp": "SPQ_MND_COL · CRUDMND / SPQ_MNDV_COL · CRUDMNDV",
+          "regla": "Insertar / Editar sin borrado."
+        },
+        {
+          "id": "fimp",
+          "nombre": "Impuesto, división y vigencia",
+          "sp": "SPQ_FIMP_COL / SPQ_FIMPD_COL / SPQ_FIMPDV_COL",
+          "regla": "Vigencia con fecha inicial/final, valor, rango, UVT, cuenta y cuenta asumida."
+        },
+        {
+          "id": "fctser",
+          "nombre": "Tipo de servicio y detalle",
+          "sp": "SPQ_FCTSER_COL / SPQ_FCTSERD_COL",
+          "regla": "Insertar / Editar."
+        },
+        {
+          "id": "retei",
+          "nombre": "Retención de salarios",
+          "sp": "SPQ_RETEFTE_SALARIO · CRUD_RETEI / ACTUALIZAR_UVT",
+          "regla": "Código R### automático; clase suma/resta; UVT en VALOR_UVT_RETEFTE."
+        }
+      ]
+    }
+  ],
+  "flujos": [
+    {
+      "id": "conf-estructura",
+      "nombre": "Montar la estructura: sede, áreas y centros de costo",
+      "icono": "account_tree",
+      "descripcion": "El orden en que se crea la estructura organizacional que todos los módulos exigen al registrar un movimiento.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la sede",
+          "descripcion": "Sedes → Nueva Sede. Pestañas General (código, nombre, dirección, ciudad, responsable, nivel, homólogo, habilitación, IDSGSSS, bodegas por defecto), Facturación (NIT, DV, representante, líneas de factura, gran contribuyente, textos legales, logo) e Interoperabilidad (credenciales del conector). Guardar.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Contable → Sedes",
+          "tablas": [
+            "SED"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · CRUD_SEDES"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Consultorios y unidad de negocio de la sede",
+          "descripcion": "Con la sede elegida, pestaña Consultorios (número, descripción, tipo, estado) y Unidad de Negocio (unidad + centro de costo + estado).",
+          "rol": "Administrador",
+          "pantalla": "Sedes → fila → Consultorios / Unidad de Negocio",
+          "tablas": [
+            "SEDCONS",
+            "SEDUNG"
+          ],
+          "sp": "SPQ_SED · CRUDSEDCONS · SPQ_CONF_CONTABLE · CRUD_SEDUNG"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Crear el grupo de área",
+          "descripcion": "Grupos de Áreas → Nuevo Grupo: código y descripción. Es el padre de las áreas funcionales.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Contable → Grupos de Áreas",
+          "tablas": [
+            "HARE"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · CRUD_HARE"
+        },
+        {
+          "num": 4,
+          "tipo": "accion",
+          "titulo": "Crear el área funcional",
+          "descripcion": "A. Func./C.Costos → Nueva Area: código, descripción, grupo (Area Hosp.), ámbito, tipo, estado, En Contabilidad, En Prestaciones. Confirmar.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Contable → A. Func./C.Costos",
+          "tablas": [
+            "AFU"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · CRUD_AFU"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿El área ya tiene centros de costo?",
+          "descripcion": "Cada movimiento contable cae en un centro de costo; sin centro el área no recibe gasto. Abrir los centros del área con el botón de la fila.",
+          "rol": "Administrador",
+          "pantalla": "A. Func./C.Costos → fila → Centros de costo",
+          "tablas": [
+            "CEN"
+          ],
+          "sp": "AppStore.read CEN"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Crear el centro de costo",
+          "descripcion": "Nuevo Ccosto: código, descripción, compañía, sede, tipo, nivel, ciudad, Triage, En Habitaciones, Alto Costo, homólogo, estado. El servidor exige el área; si el estado es Inactivo exige homólogo activo.",
+          "rol": "Administrador",
+          "pantalla": "Centros de costo → Nuevo Ccosto",
+          "tablas": [
+            "CEN",
+            "AFU"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · CRUD_CCOSTO"
+        },
+        {
+          "num": 7,
+          "tipo": "sistema",
+          "titulo": "Homologación entre sedes (opcional)",
+          "descripcion": "Si la variable HOMOLOGA_CCOSTOYSEDE está activa aparece el botón Homologación: sede y centro origen → sede y centro destino; al inactivar exige sucesor distinto.",
+          "rol": "Administrador",
+          "pantalla": "Centros de costo → Homologación",
+          "tablas": [
+            "CENH",
+            "CEN"
+          ],
+          "sp": "SPQ_CENH_COL · CRUD_CENH"
+        },
+        {
+          "num": 8,
+          "tipo": "resultado",
+          "titulo": "Unidades de negocio",
+          "descripcion": "Unidades Negocio → Nueva Unidad: código, descripción, ruta de logo. Luego se cruza con sede y centro en la pestaña Unidad de Negocio de Sedes.",
+          "rol": "Administrador",
+          "pantalla": "Configuración → Contable → Unidades Negocio",
+          "tablas": [
+            "KUNG"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · CRUD_KUNG"
+        }
+      ]
+    },
+    {
+      "id": "conf-plan-cuentas",
+      "nombre": "Plan de cuentas: crear, importar, validar y exportar",
+      "icono": "account_balance",
+      "descripcion": "Cómo nace y se mantiene el plan contable local y el plan NIIF.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Crear la cuenta",
+          "descripcion": "Cuentas Contables → Nueva Cuenta: compañía, cuenta, nombre, tipo (Suma/Detalle), nivel, cuenta suma, clase, corriente, estado; Detalle x Tercero / Ccosto / Referencia; De Impuesto, Aplica Ajuste; tipo tesorero, caja, cuenta de banco; homóloga, NIIF, concepto acreencia, espejo, reversión, gravada. Guardar.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Cuentas Contables",
+          "tablas": [
+            "CUE"
+          ],
+          "sp": "SPQ_CUE_COL · CRUDCUE"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Importar desde Excel (opcional)",
+          "descripcion": "Importar Cuentas → Descargar plantilla → llenar → Procesar. Cada fila con CUENTA pasa por el mismo guardado del formulario; la pantalla informa filas sin cuenta.",
+          "rol": "Contador",
+          "pantalla": "Cuentas Contables → Importar Cuentas",
+          "tablas": [
+            "CUE"
+          ],
+          "sp": "SPQ_CUE_COL · CRUDCUE (por fila)"
+        },
+        {
+          "num": 3,
+          "tipo": "sistema",
+          "titulo": "Validar Cuentas",
+          "descripcion": "Revisa todo el plan: cuenta suma = prefijo de la cuenta y de tipo Suma; longitud par desde el segundo nivel; nivel coherente con los dígitos. Devuelve la lista de cuentas con error.",
+          "rol": "Contador",
+          "pantalla": "Cuentas Contables → Validar Cuentas",
+          "tablas": [
+            "CUE"
+          ],
+          "sp": "SPQ_CUE_COL · VALIDARCUENTAS"
+        },
+        {
+          "num": 4,
+          "tipo": "decision",
+          "titulo": "¿Hay cuentas con error?",
+          "descripcion": "Con errores: exportar la lista a Excel, corregir cuenta por cuenta (Editar) y volver a validar. Sin errores: «Cuentas validadas correctamente».",
+          "rol": "Contador",
+          "pantalla": "Cuentas Contables → resultado de validación",
+          "tablas": [
+            "CUE"
+          ],
+          "sp": "—"
+        },
+        {
+          "num": 5,
+          "tipo": "accion",
+          "titulo": "Exportar a Excel",
+          "descripcion": "Plan completo con nombres de cuenta suma, homóloga, espejo, cierre de costos, banco y caja.",
+          "rol": "Contador",
+          "pantalla": "Cuentas Contables → Exportar a Excel",
+          "tablas": [
+            "CUE"
+          ],
+          "sp": "SPQ_CUE_COL · EXPOCUENTAS"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Cuentas NIIF: crear o cargar",
+          "descripcion": "Cuentas NIIF → Nueva cuenta: al escribir la cuenta el sistema propone nivel y cuenta suma (Genealógico). Carga masiva: Descargar plantilla → Archivo → Procesar archivo; si una fila falla no se inserta ninguna y los errores (con solución) se descargan.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Cuentas NIIF",
+          "tablas": [
+            "CUENIIF"
+          ],
+          "sp": "SPQ_CUENIIF · GENEALOGICO / INSERTAR / CARGA_MASIVA"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Mantener el plan NIIF",
+          "descripcion": "Editar permite cambiar nombre, tipo, flags y estado; el código solo si la cuenta no tiene movimientos NIIF. Eliminar solo sin movimientos; con movimientos se inactiva.",
+          "rol": "Contador",
+          "pantalla": "Cuentas NIIF → fila → Editar / Eliminar",
+          "tablas": [
+            "CUENIIF",
+            "MCHNIIF"
+          ],
+          "sp": "SPQ_CUENIIF · EDITAR / ELIMINAR"
+        }
+      ]
+    },
+    {
+      "id": "conf-kmcom",
+      "nombre": "Contabilización por ubicación: definir la regla de un tipo",
+      "icono": "rule",
+      "descripcion": "La regla que usan los generadores de comprobantes para saber qué cuentas débito y crédito lleva cada documento.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Elegir el tipo de contabilización",
+          "descripcion": "Tarjetas: Ventas, Nómina, CxP compras, CxP salud, CxP servicios, Depreciación, Descuentos, Mov. activos, Mov. inventario, Caja menor. Los tipos NIIF y Prestaciones solo con proceso contable MIXTO.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Contabilización por Ubicación",
+          "tablas": [
+            "KTCO"
+          ],
+          "sp": "SPQ_KMCOM_COL · TRAER_KTCO"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Nuevo → prefijo y centro de costo",
+          "descripcion": "El prefijo cambia según el tipo: servicio (Ventas, CxP salud, Descuentos), concepto de nómina, tipo de artículo, tipo de servicio, tipo de activo, evento de activo, tipo de movimiento, concepto de caja menor. Área funcional y centro de costo.",
+          "rol": "Contador",
+          "pantalla": "Contabilización por Ubicación → Nuevo",
+          "tablas": [
+            "KMCOM",
+            "CEN"
+          ],
+          "sp": "AppStore.read KMCOM"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Cuentas débito y crédito",
+          "descripcion": "Cuenta Débito y Cuenta Crédito (Detalle). Ventas además: Cuenta IPS, PGP y Cápita con sus cuentas crédito. Marca y cuenta de IVA. Guardar.",
+          "rol": "Contador",
+          "pantalla": "Contabilización por Ubicación → formulario",
+          "tablas": [
+            "KMCOM",
+            "CUE"
+          ],
+          "sp": "SPQ_KMCOM_COL · CRUD_KMCOM"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Validación del servidor",
+          "descripcion": "Centro de costo con su área; cuentas débito y crédito existen; prefijo válido para el tipo (servicio, concepto, tipo de artículo, tipo de servicio, tipo de activo, evento, tipo de movimiento, concepto de caja). En nómina, un concepto de egreso sin valor empresa propone la cuenta crédito del salario.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "KMCOM",
+            "PRE",
+            "NCON",
+            "ITAR",
+            "FCTSER",
+            "IACTT",
+            "IACTE",
+            "ITMO"
+          ],
+          "sp": "SPQ_KMCOM_COL · CRUD_KMCOM / VALIDA_CODNOMI"
+        },
+        {
+          "num": 5,
+          "tipo": "decision",
+          "titulo": "¿Un servicio puntual lleva cuentas distintas?",
+          "descripcion": "Excepciones (KMCOMS): servicio + cuentas DB/CR (+ IPS, IVA). El generador usa la excepción antes que la regla del prefijo.",
+          "rol": "Contador",
+          "pantalla": "Contabilización por Ubicación → Excepciones",
+          "tablas": [
+            "KMCOMS"
+          ],
+          "sp": "SPQ_KMCOM_COL · CRUD_KMCOMS"
+        },
+        {
+          "num": 6,
+          "tipo": "accion",
+          "titulo": "Masivo por Excel",
+          "descripcion": "Plantilla KMCOM / Plantilla KMCOMS → llenar con ESTADO ADICIONAR, CAMBIAR o BORRAR → Subir KMCOM / Subir KMCOMS. Se valida y luego se guarda fila por fila. Exportar Excel saca la configuración vigente.",
+          "rol": "Contador",
+          "pantalla": "Contabilización por Ubicación → Plantilla / Subir / Exportar",
+          "tablas": [
+            "KMCOM",
+            "KMCOMS"
+          ],
+          "sp": "SPQ_KMCOM_COL · CRUD_KMCOM / CRUD_KMCOMS"
+        },
+        {
+          "num": 7,
+          "tipo": "resultado",
+          "titulo": "Probar con un documento",
+          "descripcion": "Enviar un documento del módulo a contabilidad (Contabilidad → Otros Módulos) y leer el resultado en Comprobantes Errados: si la llave no existe el error lo dice.",
+          "rol": "Contador",
+          "pantalla": "Contabilidad → Otros Módulos / Comprobantes Errados",
+          "tablas": [
+            "MCPE",
+            "MCHE"
+          ],
+          "sp": "SPQ_CONTABILIDAD_3 · ENV_CONTA_OTROS_MODULS"
+        }
+      ]
+    },
+    {
+      "id": "conf-calendario",
+      "nombre": "Comprobantes, periodos y parámetros",
+      "icono": "event_available",
+      "descripcion": "Lo que el motor contable exige antes de recibir el primer comprobante.",
+      "pasos": [
+        {
+          "num": 1,
+          "tipo": "accion",
+          "titulo": "Tipos de comprobantes",
+          "descripcion": "Tipos de Comprobantes → Agregar: compañía, código, nombre, homólogo, comprobante externo. Insertar / Editar.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Tipos de Comprobantes",
+          "tablas": [
+            "COM"
+          ],
+          "sp": "SPQ_COM_COL · CRUDCOM"
+        },
+        {
+          "num": 2,
+          "tipo": "accion",
+          "titulo": "Comprobante por documento",
+          "descripcion": "Comprobantes por Documentos: lista de variables de tipo comprobante (IDCON_TCOM_*). Elegir la fila → Comprobante Contable → Aceptar.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Comprobantes por Documentos",
+          "tablas": [
+            "USVGS",
+            "COM"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · ASIGNA_COM"
+        },
+        {
+          "num": 3,
+          "tipo": "accion",
+          "titulo": "Crear los periodos del año",
+          "descripcion": "Períodos Contables → Agregar: año, mes, fechas, nombre, Saldo Inicial / SI NIIF, tipo de ajuste, cambio final, ajuste inflación; marcas Inventario y Facturación. Los demás cierres se ven pero los fijan sus módulos.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Períodos Contables",
+          "tablas": [
+            "PRI"
+          ],
+          "sp": "SPQ_PRI · CRUDPRI"
+        },
+        {
+          "num": 4,
+          "tipo": "sistema",
+          "titulo": "Reglas del periodo",
+          "descripcion": "Año-mes único; solo un periodo de saldos iniciales y uno SI NIIF; un periodo cerrado en contabilidad no se puede editar desde la pantalla.",
+          "rol": "Sistema",
+          "pantalla": "—",
+          "tablas": [
+            "PRI"
+          ],
+          "sp": "SPQ_PRI · CRUDPRI"
+        },
+        {
+          "num": 5,
+          "tipo": "resultado",
+          "titulo": "Parámetros contables",
+          "descripcion": "Parámetros Contables → fila de la compañía → Cuenta Puente (Detalle, Activa), Mes de Cierre, Cierre Costos, Cierre Impuestos, orden de Glosas → Aceptar.",
+          "rol": "Contador",
+          "pantalla": "Configuración → Contable → Parámetros Contables",
+          "tablas": [
+            "PAR"
+          ],
+          "sp": "SPQ_CONF_CONTABLE · EDITA_PAR"
+        }
+      ]
+    }
+  ],
+  "estadosConfiguracion": {
+    "titulo": "Estados y marcas de los catálogos contables",
+    "descripcion": "Qué significa cada valor que se ve en las pantallas de Configuración → Contable y qué permite o bloquea.",
+    "columnas": [
+      "Valor",
+      "Dónde"
+    ],
+    "filas": [
+      {
+        "codigo": "Suma",
+        "tono": "azul",
+        "etiquetas": [
+          "CUE.TIPO / CUENIIF.TIPO"
+        ],
+        "significa": "Cuenta de agrupación: totaliza a sus hijas. No recibe movimiento.",
+        "queHacer": "Debe ser la cuenta suma de las cuentas del nivel siguiente."
+      },
+      {
+        "codigo": "Det",
+        "tono": "verde",
+        "etiquetas": [
+          "CUE.TIPO / CUENIIF.TIPO = Detalle"
+        ],
+        "significa": "Cuenta de movimiento: la única que aceptan comprobantes, KMCOM, FDIS, TTEC y la cuenta puente.",
+        "queHacer": "Marcar qué detalle exige (tercero, ccosto, referencia)."
+      },
+      {
+        "codigo": "Act",
+        "tono": "verde",
+        "etiquetas": [
+          "CUE.ESTADO = Activa",
+          "CUENIIF.ESTADO = Activa"
+        ],
+        "significa": "Cuenta vigente: aparece en selectores y recibe movimiento.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "Ina",
+        "tono": "gris",
+        "etiquetas": [
+          "CUE.ESTADO = Inactiva",
+          "CUENIIF.ESTADO = Inactiva"
+        ],
+        "significa": "Cuenta retirada sin borrarla; conserva su historia.",
+        "queHacer": "Reemplazarla en las reglas (KMCOM, TTEC, parámetros) antes de inactivar."
+      },
+      {
+        "codigo": "N1",
+        "tono": "azul",
+        "etiquetas": [
+          "CUE.NIVEL / CUENIIF.NIVEL"
+        ],
+        "significa": "Nivel jerárquico: 1 = un dígito, 2 = dos dígitos, 3 = cuatro, 4 = seis… (longitud par desde el nivel 2).",
+        "queHacer": "Validar Cuentas lo revisa; en NIIF lo propone el Genealógico."
+      },
+      {
+        "codigo": "SedA",
+        "tono": "verde",
+        "etiquetas": [
+          "SED.ESTADOSEDE = Activo"
+        ],
+        "significa": "Sede operativa: aparece en selectores y recibe movimientos.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "SedI",
+        "tono": "gris",
+        "etiquetas": [
+          "SED.ESTADOSEDE = Inactivo"
+        ],
+        "significa": "Sede retirada; el filtro por defecto de la pantalla no la muestra.",
+        "queHacer": "Filtro Estado = Todos para verla; Activar si vuelve a operar."
+      },
+      {
+        "codigo": "AfuA",
+        "tono": "verde",
+        "etiquetas": [
+          "AFU.ESTADO = 1"
+        ],
+        "significa": "Área funcional activa.",
+        "queHacer": "Marcar En Contabilidad si recibe gasto y En Prestaciones si liquida prestaciones."
+      },
+      {
+        "codigo": "CenA",
+        "tono": "verde",
+        "etiquetas": [
+          "CEN.ESTADO = Activo"
+        ],
+        "significa": "Centro de costo vigente.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "CenI",
+        "tono": "ambar",
+        "etiquetas": [
+          "CEN.ESTADO = Inactivo + HOMOLOGO"
+        ],
+        "significa": "Centro retirado; sus movimientos se redirigen al homólogo, que debe estar activo.",
+        "queHacer": "Antes de inactivar fijar el homólogo; el servidor lo exige."
+      },
+      {
+        "codigo": "HomA",
+        "tono": "verde",
+        "etiquetas": [
+          "CENH.ESTADO"
+        ],
+        "significa": "Homologación entre sedes vigente (centro origen → destino).",
+        "queHacer": "Si se inactiva, indicar el centro sucesor distinto al homologado."
+      },
+      {
+        "codigo": "SUA",
+        "tono": "verde",
+        "etiquetas": [
+          "SEDUNG.ESTADO"
+        ],
+        "significa": "Cruce sede + unidad de negocio + centro activo.",
+        "queHacer": "Editar solo cambia el estado."
+      },
+      {
+        "codigo": "PAb",
+        "tono": "verde",
+        "etiquetas": [
+          "PRI.CERRADO = 0"
+        ],
+        "significa": "Periodo contable abierto: recibe comprobantes y se puede editar.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "PCe",
+        "tono": "rojo",
+        "etiquetas": [
+          "PRI.CERRADO = 1"
+        ],
+        "significa": "Periodo cerrado en contabilidad: no se edita desde Períodos Contables ni recibe movimientos.",
+        "queHacer": "Abrir desde Contabilidad → Abrir/Cerrar Periodos."
+      },
+      {
+        "codigo": "PFac",
+        "tono": "ambar",
+        "etiquetas": [
+          "PRI.CERRADO_FAC / CERRADO_INV"
+        ],
+        "significa": "Cierre de facturación / inventario del mes; se marcan desde esta pantalla.",
+        "queHacer": "Marcar solo cuando el módulo terminó el mes."
+      },
+      {
+        "codigo": "PMod",
+        "tono": "gris",
+        "etiquetas": [
+          "PRI.CERRADO_CARTERA / CXP / PPTO / CIERREFISCAL / CIERRECOSTOS / CIERREIMP"
+        ],
+        "significa": "Cierres que fijan sus módulos (cartera, CxP, presupuesto, cierre fiscal, costos, liquidación de impuestos); aquí se ven deshabilitados.",
+        "queHacer": "Nada desde Configuración."
+      },
+      {
+        "codigo": "SI",
+        "tono": "azul",
+        "etiquetas": [
+          "PRI.SI = 1",
+          "PRI.SINIIF = 1"
+        ],
+        "significa": "Periodo de saldos iniciales (local / NIIF). Solo puede haber uno de cada.",
+        "queHacer": "El cierre de ese periodo corre saldos iniciales, no cierre de mes."
+      },
+      {
+        "codigo": "DB",
+        "tono": "azul",
+        "etiquetas": [
+          "KMCOM.TIPO = DB"
+        ],
+        "significa": "Fila débito de la regla (tipo + prefijo + centro).",
+        "queHacer": "Siempre va en pareja con su fila CR."
+      },
+      {
+        "codigo": "CR",
+        "tono": "verde",
+        "etiquetas": [
+          "KMCOM.TIPO = CR"
+        ],
+        "significa": "Fila crédito; en Ventas carga cuenta IPS, PGP y Cápita.",
+        "queHacer": "Nada."
+      },
+      {
+        "codigo": "Exc",
+        "tono": "ambar",
+        "etiquetas": [
+          "KMCOMS (ESTADO Activo)"
+        ],
+        "significa": "Excepción por servicio: manda sobre la regla del prefijo.",
+        "queHacer": "Revisarla cuando un servicio contabiliza distinto a su familia."
+      },
+      {
+        "codigo": "RetA",
+        "tono": "verde",
+        "etiquetas": [
+          "RETEI.ESTADO = Activo"
+        ],
+        "significa": "Tipo de retención de salarios usable en la liquidación.",
+        "queHacer": "Clase suma/resta y orden definen el cálculo."
+      },
+      {
+        "codigo": "Vig",
+        "tono": "azul",
+        "etiquetas": [
+          "FIMPDV.FECHAINI / FECHAFIN",
+          "MNDV.FECHA"
+        ],
+        "significa": "Vigencia de la división de impuesto o del cambio de moneda: el documento toma la que cubre su fecha.",
+        "queHacer": "Al cambiar la tarifa crear vigencia nueva, no editar la vieja."
+      }
+    ]
+  },
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Crear una sede nueva",
+      "donde": "Configuración → Contable → Sedes → Nueva Sede → General / Facturación / Interoperabilidad → Guardar",
+      "condicion": "Id. Sede no repetido.",
+      "noEs": "No se crea desde Generales → Sedes (esa opción está en construcción)."
+    },
+    {
+      "necesidad": "Inactivar o reactivar una sede",
+      "donde": "Sedes → fila → Inactivar / Activar → Confirmar",
+      "condicion": "Ninguna; es un cambio de ESTADOSEDE.",
+      "noEs": "No se borra la sede."
+    },
+    {
+      "necesidad": "Registrar los consultorios de una sede",
+      "donde": "Sedes → fila → pestaña Consultorios → Nuevo",
+      "condicion": "Número de consultorio único por sede.",
+      "noEs": "No es la agenda: solo el catálogo físico."
+    },
+    {
+      "necesidad": "Cruzar sede, unidad de negocio y centro de costo",
+      "donde": "Sedes → fila → pestaña Unidad de Negocio → Nuevo",
+      "condicion": "Unidad creada en Unidades Negocio; centro de costo existente.",
+      "noEs": "Editar solo cambia el estado del cruce."
+    },
+    {
+      "necesidad": "Crear un grupo de áreas",
+      "donde": "Configuración → Contable → Grupos de Áreas → Nuevo Grupo",
+      "condicion": "Código único.",
+      "noEs": "No es el área funcional: es su padre."
+    },
+    {
+      "necesidad": "Crear un área funcional",
+      "donde": "Configuración → Contable → A. Func./C.Costos → Nueva Area → Confirmar",
+      "condicion": "Código único; grupo de área elegido.",
+      "noEs": "No crea centros de costo: se abren desde la fila del área."
+    },
+    {
+      "necesidad": "Crear un centro de costo",
+      "donde": "A. Func./C.Costos → fila del área → Centros de costo → Nuevo Ccosto",
+      "condicion": "Área funcional seleccionada; código único.",
+      "noEs": "No se crea sin área: el servidor lo rechaza."
+    },
+    {
+      "necesidad": "Inactivar un centro de costo",
+      "donde": "Centros de costo → Editar → Estado Inactivo + Homólogo → Guardar",
+      "condicion": "Homólogo activo.",
+      "noEs": "No se borra."
+    },
+    {
+      "necesidad": "Homologar centros de costo entre sedes",
+      "donde": "Centros de costo → botón Homologación → Nueva Homologación",
+      "condicion": "Variable HOMOLOGA_CCOSTOYSEDE activa; centros origen y destino existen en su sede.",
+      "noEs": "No es el homólogo de inactivación de la ficha."
+    },
+    {
+      "necesidad": "Crear una unidad de negocio",
+      "donde": "Configuración → Contable → Unidades Negocio → Nueva Unidad",
+      "condicion": "Código único.",
+      "noEs": "El cruce con sede se hace en Sedes."
+    },
+    {
+      "necesidad": "Crear una cuenta contable",
+      "donde": "Configuración → Contable → Cuentas Contables → Nueva Cuenta → Guardar",
+      "condicion": "Cuenta no existe; cuenta suma si tiene más de un dígito.",
+      "noEs": "No valida la jerarquía al guardar: eso lo hace Validar Cuentas."
+    },
+    {
+      "necesidad": "Importar el plan de cuentas desde Excel",
+      "donde": "Cuentas Contables → Importar Cuentas → Descargar plantilla → Procesar",
+      "condicion": "Archivo con la columna CUENTA llena.",
+      "noEs": "No es todo-o-nada: cada fila se guarda por separado."
+    },
+    {
+      "necesidad": "Revisar que el plan contable esté bien armado",
+      "donde": "Cuentas Contables → Validar Cuentas",
+      "condicion": "Ninguna.",
+      "noEs": "No corrige: lista las cuentas con error (exportable)."
+    },
+    {
+      "necesidad": "Sacar el plan de cuentas a Excel",
+      "donde": "Cuentas Contables → Exportar a Excel",
+      "condicion": "Ninguna.",
+      "noEs": "No es la plantilla de importación (esa está en Importar Cuentas)."
+    },
+    {
+      "necesidad": "Marcar una cuenta como de impuesto o de banco",
+      "donde": "Cuentas Contables → Editar → De Impuesto / Cuenta de Banco / Caja",
+      "condicion": "Cuenta tipo Detalle.",
+      "noEs": "La tarifa del impuesto va en Generales → Impuestos."
+    },
+    {
+      "necesidad": "Crear cuentas NIIF una a una",
+      "donde": "Cuentas NIIF → Nueva cuenta → Guardar",
+      "condicion": "Tipo Suma/Detalle; estado Activa/Inactiva; el genealógico propone nivel y cuenta suma.",
+      "noEs": "No reemplaza la cuenta local."
+    },
+    {
+      "necesidad": "Cargar el plan NIIF completo",
+      "donde": "Cuentas NIIF → Carga masiva → Descargar plantilla → Procesar archivo",
+      "condicion": "Padres (tipo Suma) antes que hijos en el archivo o ya en base.",
+      "noEs": "Si una fila falla no se carga ninguna: descargar errores y corregir."
+    },
+    {
+      "necesidad": "Cambiar el código de una cuenta NIIF",
+      "donde": "Cuentas NIIF → Editar",
+      "condicion": "Sin movimientos NIIF.",
+      "noEs": "Con movimientos: inactivar y crear la nueva."
+    },
+    {
+      "necesidad": "Definir qué cuentas usa una venta, compra, nómina, inventario o depreciación",
+      "donde": "Configuración → Contable → Contabilización por Ubicación → tarjeta del tipo → Nuevo",
+      "condicion": "Prefijo válido para el tipo; centro de costo con área; cuentas Detalle.",
+      "noEs": "No es el comprobante: es la regla con la que el módulo lo arma."
+    },
+    {
+      "necesidad": "Un servicio que contabiliza distinto a su prefijo",
+      "donde": "Contabilización por Ubicación → Excepciones (KMCOMS)",
+      "condicion": "Servicio activo; cuenta válida.",
+      "noEs": "No sustituye la regla general del prefijo."
+    },
+    {
+      "necesidad": "Cargar reglas de contabilización en bloque",
+      "donde": "Contabilización por Ubicación → Plantilla KMCOM / KMCOMS → Subir",
+      "condicion": "Columna ESTADO con ADICIONAR, CAMBIAR o BORRAR.",
+      "noEs": "No borra lo que no viene en el archivo."
+    },
+    {
+      "necesidad": "Cuentas de cartera, radicación y glosas por tipo de cliente",
+      "donde": "Configuración → Contable → Tipos de Terceros (pestaña Tipos Terceros Contables)",
+      "condicion": "Cuentas existentes.",
+      "noEs": "No es la categoría del tercero (Generales → Terceros → Categorías)."
+    },
+    {
+      "necesidad": "Crear un deducible",
+      "donde": "Configuración → Contable → Deducibles → Nuevo",
+      "condicion": "Cuenta existente.",
+      "noEs": "No es la retención (Generales → Impuestos)."
+    },
+    {
+      "necesidad": "Repartir un gasto entre centros de costo por porcentaje",
+      "donde": "Configuración → Contable → Distribución de Gastos → Nuevo → detalle por centro y cuenta",
+      "condicion": "La suma de porcentajes no supera 100.",
+      "noEs": "No es la contabilización por ubicación."
+    },
+    {
+      "necesidad": "Crear un tipo de comprobante",
+      "donde": "Configuración → Contable → Tipos de Comprobantes → Agregar",
+      "condicion": "Compañía + código no repetidos.",
+      "noEs": "No lo asigna a ningún documento: eso es Comprobantes por Documentos."
+    },
+    {
+      "necesidad": "Decir con qué comprobante contabiliza cada documento",
+      "donde": "Configuración → Contable → Comprobantes por Documentos → fila → Comprobante Contable → Aceptar",
+      "condicion": "Variable IDCON_TCOM_* existe; comprobante existe.",
+      "noEs": "No crea variables nuevas."
+    },
+    {
+      "necesidad": "Crear los periodos contables del año",
+      "donde": "Configuración → Contable → Períodos Contables → Agregar",
+      "condicion": "Año-mes no repetido; un solo Saldo Inicial.",
+      "noEs": "No cierra ni abre contabilidad: eso es Contabilidad → Abrir/Cerrar Periodos."
+    },
+    {
+      "necesidad": "Marcar el cierre de facturación o inventario del mes",
+      "donde": "Períodos Contables → Editar → Facturación / Inventario",
+      "condicion": "Periodo contable abierto.",
+      "noEs": "Cartera, CxP, presupuesto y fiscal se marcan desde sus módulos."
+    },
+    {
+      "necesidad": "Fijar la cuenta puente y el mes de cierre fiscal",
+      "donde": "Configuración → Contable → Parámetros Contables → fila → Aceptar",
+      "condicion": "Cuenta puente tipo Detalle y activa.",
+      "noEs": "Los radios de CxC, CxP, Ingresos y Egresos no se guardan hoy (ver hallazgos)."
+    },
+    {
+      "necesidad": "Crear una moneda y su tasa",
+      "donde": "Generales → Monedas → Agregar Monedas / Agregar Vigencia",
+      "condicion": "Código de moneda.",
+      "noEs": "La tasa por documento la toma la fecha de la vigencia."
+    },
+    {
+      "necesidad": "Crear un impuesto con su tarifa vigente",
+      "donde": "Generales → Impuestos → Nuevo impuesto → Nueva clase (división) → Nueva vigencia",
+      "condicion": "Impuesto → división → vigencia con fechas y cuenta.",
+      "noEs": "Al cambiar la tarifa se crea vigencia nueva, no se edita la anterior."
+    },
+    {
+      "necesidad": "Crear un tipo de servicio y sus servicios",
+      "donde": "Generales → Tipos de Servicios → Agregar Tipo de Servicio / Agregar Servicio",
+      "condicion": "Tipo con cuenta y rubro.",
+      "noEs": "No es el catálogo de servicios asistenciales (Generales → Servicios)."
+    },
+    {
+      "necesidad": "Actualizar el valor UVT para retención de salarios",
+      "donde": "Generales → Retención Salarios → Actualizar UVT",
+      "condicion": "Valor numérico válido.",
+      "noEs": "No actualiza las vigencias de impuestos con UVT (eso es Impuestos)."
+    },
+    {
+      "necesidad": "Crear un tipo de retención de salarios",
+      "donde": "Generales → Retención Salarios → Nuevo → Guardar",
+      "condicion": "Descripción y clase (suma/resta).",
+      "noEs": "El código R### lo asigna el sistema."
+    },
+    {
+      "necesidad": "Activar el cruce de unidad de negocio",
+      "donde": "Variable MANEJA_UNIDAD_NEG; luego Sedes → pestaña Unidad de Negocio y Áreas.",
+      "condicion": "Variable encendida y unidades creadas en Unidades Negocio.",
+      "noEs": "No crea la unidad: solo muestra el cruce."
+    }
+  ],
+  "botones": [
+    {
+      "label": "Nueva Sede",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Abre el formulario de sede con pestañas General, Facturación e Interoperabilidad."
+    },
+    {
+      "label": "Editar",
+      "icono": "edit",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Edita la fila elegida (sede, área, centro, cuenta, regla…)."
+    },
+    {
+      "label": "Inactivar",
+      "icono": "block",
+      "color": "orange",
+      "estilo": "solid",
+      "descripcion": "Pasa la sede a Inactivo tras confirmar."
+    },
+    {
+      "label": "Activar",
+      "icono": "check_circle",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Devuelve la sede a Activo."
+    },
+    {
+      "label": "Consultorios",
+      "icono": "chair",
+      "color": "primary",
+      "estilo": "tab",
+      "descripcion": "Pestaña de consultorios de la sede elegida (Nuevo / Editar)."
+    },
+    {
+      "label": "Unidad de Negocio",
+      "icono": "list",
+      "color": "primary",
+      "estilo": "tab",
+      "descripcion": "Pestaña de cruces sede + unidad + centro de costo."
+    },
+    {
+      "label": "Nuevo Grupo",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Grupo de área nuevo (código y descripción)."
+    },
+    {
+      "label": "Nueva Area",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Área funcional nueva."
+    },
+    {
+      "label": "Buscar en todas las areas",
+      "icono": "search",
+      "color": "primary",
+      "estilo": "toggle",
+      "descripcion": "Quita el filtro de sede del listado de áreas."
+    },
+    {
+      "label": "Nuevo Ccosto",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Centro de costo nuevo dentro del área elegida."
+    },
+    {
+      "label": "Homologacion",
+      "icono": "link",
+      "color": "purple",
+      "estilo": "flat",
+      "descripcion": "Homologaciones del centro entre sedes; visible con HOMOLOGA_CCOSTOYSEDE."
+    },
+    {
+      "label": "Nueva Homologación",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Centro origen → centro destino; sucesor si se inactiva."
+    },
+    {
+      "label": "Nueva Unidad",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Unidad de negocio nueva con ruta de logo."
+    },
+    {
+      "label": "Nueva Cuenta",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Cuenta contable nueva."
+    },
+    {
+      "label": "Validar Cuentas",
+      "icono": "fact_check",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Revisa jerarquía, longitud y nivel de todo el plan; lista errores."
+    },
+    {
+      "label": "Importar Cuentas",
+      "icono": "upload",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Diálogo con Descargar plantilla y Procesar archivo Excel."
+    },
+    {
+      "label": "Descargar plantilla",
+      "icono": "download",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Excel vacío con las columnas de importación (cuentas y NIIF)."
+    },
+    {
+      "label": "Procesar",
+      "icono": "play_arrow",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Lee el Excel y guarda fila por fila."
+    },
+    {
+      "label": "Exportar a Excel",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "Plan de cuentas completo con descripciones relacionadas."
+    },
+    {
+      "label": "Nueva cuenta (NIIF)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Cuenta NIIF; el genealógico propone nivel y cuenta suma."
+    },
+    {
+      "label": "Carga masiva",
+      "icono": "upload_file",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Carga NIIF todo-o-nada desde Excel."
+    },
+    {
+      "label": "Procesar archivo",
+      "icono": "play_arrow",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Ejecuta la carga masiva NIIF."
+    },
+    {
+      "label": "Descargar errores",
+      "icono": "error_outline",
+      "color": "negative",
+      "estilo": "flat",
+      "descripcion": "Excel con cuenta, nombre, error y solución de la carga NIIF."
+    },
+    {
+      "label": "Exportar Excel (NIIF)",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "Plan NIIF a Excel."
+    },
+    {
+      "label": "Leyenda de tipos",
+      "icono": "info",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Explica Suma / Detalle y las marcas de detalle."
+    },
+    {
+      "label": "Limpiar filtros",
+      "icono": "filter_alt_off",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Reinicia los filtros de la grilla."
+    },
+    {
+      "label": "Agregar Monedas",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Moneda nueva."
+    },
+    {
+      "label": "Agregar Vigencia",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Vigencia de moneda (fecha, valor) o de división de impuesto."
+    },
+    {
+      "label": "Nuevo impuesto",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Impuesto nuevo con homólogo DIAN."
+    },
+    {
+      "label": "Nueva clase",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "División del impuesto (clase, base)."
+    },
+    {
+      "label": "Nueva vigencia",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Vigencia de la división: fechas, valor, rango, UVT, cuenta, cuenta asumida."
+    },
+    {
+      "label": "Agregar Tipo de Servicio",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Tipo de servicio (cuenta, rubro, UNSPSC, grupo de impuesto, de consumo)."
+    },
+    {
+      "label": "Agregar Servicio",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Servicio detalle del tipo (valor, clase de cobro, en brigada)."
+    },
+    {
+      "label": "Agregar Terceros Cont.",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Tipo de tercero contable con sus cuentas."
+    },
+    {
+      "label": "Nuevo (Deducible)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Deducible nuevo (código, descripción, cuenta, tipo)."
+    },
+    {
+      "label": "Nuevo (KMCOM)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Regla de contabilización para el tipo elegido."
+    },
+    {
+      "label": "Volver a tipos de contabilización",
+      "icono": "arrow_back",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Regresa a las tarjetas de tipo."
+    },
+    {
+      "label": "Plantilla KMCOM",
+      "icono": "download",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Excel de reglas del tipo elegido."
+    },
+    {
+      "label": "Plantilla KMCOMS",
+      "icono": "download",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Excel de excepciones por servicio."
+    },
+    {
+      "label": "Subir KMCOM",
+      "icono": "upload",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Valida y guarda las filas con ESTADO ADICIONAR / CAMBIAR / BORRAR."
+    },
+    {
+      "label": "Subir KMCOMS",
+      "icono": "upload",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Igual para excepciones."
+    },
+    {
+      "label": "Exportar Excel (KMCOM)",
+      "icono": "table_view",
+      "color": "green",
+      "estilo": "outline",
+      "descripcion": "Configuración vigente del tipo."
+    },
+    {
+      "label": "Borrar",
+      "icono": "delete",
+      "color": "negative",
+      "estilo": "outline",
+      "descripcion": "Elimina la regla o la excepción tras advertencia (KMCOM, KMCOMS, FDIS, FDISD)."
+    },
+    {
+      "label": "Nuevo (Distribución)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Código de distribución nuevo; luego detalle por centro y cuenta con porcentaje."
+    },
+    {
+      "label": "Confirmar Borrado",
+      "icono": "delete_forever",
+      "color": "negative",
+      "estilo": "solid",
+      "descripcion": "Borra la distribución (solo sin detalle) o la fila de detalle."
+    },
+    {
+      "label": "Agregar Tipos de comprobante",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Comprobante nuevo (compañía, código, nombre, homólogo, externo)."
+    },
+    {
+      "label": "Aceptar (Comprobante por documento)",
+      "icono": "check",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Asigna el comprobante a la variable IDCON_TCOM_* elegida."
+    },
+    {
+      "label": "Agregar Periodos Contables",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "flat",
+      "descripcion": "Periodo nuevo; Insertar / Editar según el proceso."
+    },
+    {
+      "label": "Aceptar (Parámetros)",
+      "icono": "check",
+      "color": "primary",
+      "estilo": "outline",
+      "descripcion": "Guarda cuenta puente, mes de cierre, cierre costos, cierre impuestos y orden de glosas."
+    },
+    {
+      "label": "Nuevo (Retención)",
+      "icono": "add",
+      "color": "primary",
+      "estilo": "solid",
+      "descripcion": "Tipo de retención de salarios; código R### automático."
+    },
+    {
+      "label": "Actualizar UVT",
+      "icono": "update",
+      "color": "secondary",
+      "estilo": "outline",
+      "descripcion": "Escribe el valor UVT en la variable del sistema."
+    },
+    {
+      "label": "Manual de Usuario",
+      "icono": "help",
+      "color": "grey",
+      "estilo": "flat",
+      "descripcion": "Ayuda integrada en Áreas, Plan contable, Monedas, Impuestos, Tipos de servicio, Tipos de terceros, Deducibles, KMCOM, Distribución, Retención."
+    },
+    {
+      "label": "Guardar / Cancelar",
+      "icono": "save",
+      "color": "positive",
+      "estilo": "solid",
+      "descripcion": "Confirma o cierra cualquiera de los formularios."
+    }
+  ],
+  "permisos": [
+    {
+      "codigo": "Menú Configuración (MENUQ_COL · CONFIGURACION)",
+      "accion": "Ver y abrir las opciones del submenú Contable",
+      "rol": "Administrador / Contador",
+      "descripcion": "El árbol es fijo en la aplicación; qué opciones se habilitan por grupo lo decide el menú de Configuración del cliente."
+    },
+    {
+      "codigo": "HOMOLOGA_CCOSTOYSEDE (variable)",
+      "accion": "Ver el botón Homologación en centros de costo",
+      "rol": "Administrador",
+      "descripcion": "No es permiso de grupo: es una variable del sistema que enciende la función."
+    },
+    {
+      "codigo": "Sin controles por botón",
+      "accion": "Crear / editar / borrar en todos los catálogos",
+      "rol": "Quien entra a la pantalla",
+      "descripcion": "Ninguna pantalla del submenú pide permiso adicional (IDCONTROL) para guardar: el acceso a la opción es el único control."
+    }
+  ],
+  "variables": [
+    {
+      "nombre": "IDPROCESOCONTABLE",
+      "tipo": "USVGS",
+      "valorSugerido": "LOCAL o MIXTO",
+      "descripcion": "Con MIXTO aparecen los tipos de contabilización NIIF y Prestaciones y cobra sentido el plan NIIF."
+    },
+    {
+      "nombre": "HOMOLOGA_CCOSTOYSEDE",
+      "tipo": "USVGS",
+      "valorSugerido": "1 / 0",
+      "descripcion": "Enciende el botón Homologación de centros de costo entre sedes."
+    },
+    {
+      "nombre": "IDCON_TCOM_* (familia)",
+      "tipo": "USVGS · TABLA = COM",
+      "valorSugerido": "Un comprobante del catálogo por variable",
+      "descripcion": "Comprobante que usa cada documento (factura, caja, CxP, notas, reclasificación, castigo, reversión…). Se asignan en Comprobantes por Documentos."
+    },
+    {
+      "nombre": "IDCONPSALARIO",
+      "tipo": "USVGS",
+      "valorSugerido": "Concepto de salario",
+      "descripcion": "Al validar un concepto de nómina de egreso, KMCOM propone la cuenta crédito de este concepto."
+    },
+    {
+      "nombre": "VALOR_UVT_RETEFTE",
+      "tipo": "USVGS",
+      "valorSugerido": "UVT del año",
+      "descripcion": "Valor UVT que usa la retención de salarios; lo escribe el botón Actualizar UVT."
+    },
+    {
+      "nombre": "PAR.CTA_CAJ_REC_NOLEG",
+      "tipo": "PAR",
+      "valorSugerido": "Cuenta Detalle activa",
+      "descripcion": "Cuenta puente de caja; el servidor exige que sea Detalle."
+    },
+    {
+      "nombre": "PAR.MESDECIERRE",
+      "tipo": "PAR",
+      "valorSugerido": "1-12",
+      "descripcion": "Mes del cierre fiscal; el Cierre Fiscal de Contabilidad exige que el periodo coincida."
+    },
+    {
+      "nombre": "PAR.CIERRECOSTOS / CIERREIMP",
+      "tipo": "PAR",
+      "valorSugerido": "Sí / No",
+      "descripcion": "Habilitan los cierres de costos y de impuestos en el periodo."
+    },
+    {
+      "nombre": "PAR.MCUEORDEN_GLOSAS",
+      "tipo": "PAR",
+      "valorSugerido": "Si / No",
+      "descripcion": "Orden de glosas; único de los cinco radios que hoy se persiste."
+    },
+    {
+      "nombre": "MANEJA_UNIDAD_NEG",
+      "tipo": "USVGS",
+      "valorSugerido": "1 / 0",
+      "descripcion": "Enciende el cruce de unidad de negocio en Sedes y Áreas (pestaña / campos de unidad)."
+    },
+    {
+      "nombre": "IXCOUNTRY",
+      "tipo": "USVGS",
+      "valorSugerido": "Código de país de la instalación",
+      "descripcion": "Variante del plan de cuentas (columnas o validaciones locales). No publicar el valor de un cliente."
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "confconta-par-radios-no-persisten",
+      "tipo": "fe",
+      "detalle": "Parámetros Contables muestra radios Si/No para orden de CxC, CxP, Ingresos y Egresos (MCUEORDEN_CXC, MCUEORDEN_CXP, MCUEORDEN_INGRESOS, MCUEORDEN_EGRESOS) y los envía, pero EDITA_PAR solo actualiza CTA_CAJ_REC_NOLEG, MESDECIERRE, CIERRECOSTOS, CIERREIMP y MCUEORDEN_GLOSAS. El usuario cambia el valor y la pantalla lo confirma como guardado.",
+      "solucionPropuesta": "Agregar las cuatro columnas al UPDATE de EDITA_PAR o quitar los radios de la pantalla."
+    },
+    {
+      "id": "confconta-menu-opciones-sin-pestana",
+      "tipo": "fe",
+      "detalle": "En el árbol Contable → Generales, «Retención Honorarios» y «Dependencias» apuntan a la pantalla de Generales sin procedencia; la pantalla fija la pestaña con ese parámetro y queda sin pestaña activa (contenido vacío).",
+      "solucionPropuesta": "Definir la pestaña destino o quitar las dos opciones del árbol."
+    },
+    {
+      "id": "confconta-cue-rubro-igual-cuenta",
+      "tipo": "sql",
+      "detalle": "CRUDCUE lee RUBRO del formulario pero en INSERT y UPDATE graba RUBRO = CUENTA (la variable @RUBRO no se usa). El campo Rubro del plan contable nunca conserva lo digitado.",
+      "solucionPropuesta": "Confirmar si RUBRO debe ser la cuenta (y ocultar el campo) o grabar @RUBRO."
+    },
+    {
+      "id": "confconta-validar-nivel2",
+      "tipo": "sql",
+      "detalle": "VALIDARCUENTAS: para el nivel 2 el EXISTS compara longitud 2 pero el SELECT que inserta los errores usa longitud 1 (CASE WHEN @B=2 THEN 1). Las cuentas de dos dígitos con nivel distinto de 2 no se listan aunque se detecten.",
+      "solucionPropuesta": "Igualar el CASE del SELECT al del EXISTS (THEN 2)."
+    },
+    {
+      "id": "confconta-pri-editar-sin-rollback",
+      "tipo": "sql",
+      "detalle": "CRUDPRI EDITAR: la validación «ya existe un periodo de saldos iniciales» se acumula antes del UPDATE pero el UPDATE se ejecuta igual y después se informa KO. El periodo queda con SI=1 duplicado aunque la pantalla muestre error.",
+      "solucionPropuesta": "Verificar @TBLERRORES antes del UPDATE, como hace INSERTAR."
+    },
+    {
+      "id": "confconta-pri-cierre-fac-inv-sin-validar",
+      "tipo": "sql",
+      "detalle": "Desde Períodos Contables se marcan CERRADO_FAC y CERRADO_INV sin ninguna validación de pendientes (facturas o movimientos sin contabilizar), a diferencia de CERRAR_FACTURA que sí revisa errados.",
+      "solucionPropuesta": "Reutilizar la revisión de CERRAR_FACTURA o bloquear la edición de esas marcas en la pantalla."
+    },
+    {
+      "id": "confconta-kmcom-mensajes-copiados",
+      "tipo": "sql",
+      "detalle": "CRUD_KMCOM: el error de prefijo para DESCUENTOS dice «Tipo de Activo no Valido» y el de NOMINA «Tipo de Movimiento no Valido»; además queda un PRINT 'HOLA'. CAJA_MENOR valida contra concepto de caja pero el mensaje no lo dice.",
+      "solucionPropuesta": "Corregir los textos por tipo y retirar el PRINT."
+    },
+    {
+      "id": "confconta-kmcom-sin-validar-sedes-ni-prefijo-otros",
+      "tipo": "sql",
+      "detalle": "CRUD_KMCOM no valida el prefijo para CXP_SALUD, NIIF_* ni PRESTACIONES (solo los nueve tipos listados). Una llave mal escrita se guarda y el documento llegará a errados sin pista.",
+      "solucionPropuesta": "Agregar la validación del prefijo para los tipos restantes."
+    },
+    {
+      "id": "confconta-fdis-editar-codigo",
+      "tipo": "sql",
+      "detalle": "FDIS_CRUD Editar: si el código cambia solo verifica que el nuevo no exista y retorna sin actualizar (el UPDATE está en el ELSE); si no cambia, actualiza. Renombrar un código de distribución no tiene efecto.",
+      "solucionPropuesta": "Mover el UPDATE fuera del ELSE (y actualizar FDISD si cambia el código)."
+    },
+    {
+      "id": "confconta-cueniif-nivel-no-validado",
+      "tipo": "sql",
+      "detalle": "INSERTAR/EDITAR de cuentas NIIF aceptan cualquier NIVEL ≥ 1 y cualquier CUENTA_SUMA sin verificar que exista ni que sea tipo Suma; la carga masiva sí lo hace. Por pantalla se puede romper la jerarquía.",
+      "solucionPropuesta": "Aplicar en INSERTAR/EDITAR las mismas reglas de la carga masiva."
+    },
+    {
+      "id": "confconta-ccosto-borrar-no-existe",
+      "tipo": "hueco",
+      "detalle": "Sedes, áreas, centros de costo, unidades, grupos, cuentas locales, monedas, impuestos, tipos de servicio y tipos de tercero solo tienen Insertar / Editar: no hay borrado ni, salvo sede, centro y cuenta, un estado para retirar el registro (grupo de área, unidad de negocio, moneda, impuesto, tipo de servicio no tienen estado).",
+      "solucionPropuesta": "Definir un estado Activo/Inactivo uniforme en los catálogos que no lo tienen."
+    },
+    {
+      "id": "confconta-sedes-generales-en-construccion",
+      "tipo": "hueco",
+      "detalle": "El árbol tiene Sedes dos veces: Contable → Sedes (funcional) y Generales → Sedes → Sedes (ruta en construcción). Activos F. → Activos también apunta a en construcción.",
+      "solucionPropuesta": "Quitar las entradas en construcción o apuntarlas a la pantalla real."
+    },
+    {
+      "id": "confconta-sed-crud-sin-validar-fk",
+      "tipo": "sql",
+      "detalle": "CRUD_SEDES no valida ciudad, responsable, modelo de disponibilidad ni bodegas por defecto (IDBODEGALOG, IDBODEGACM, IDBODEGA24H, IDBODHEMO, IDBODEGACUSTODIA); graba lo que llegue. Las credenciales de interoperabilidad se guardan en claro en SED.",
+      "solucionPropuesta": "Validar las FK principales y evaluar cifrado de FHIR_CO_CLIENT_SECRET."
+    },
+    {
+      "id": "confconta-conf-contable-sin-estado-afu",
+      "tipo": "sql",
+      "detalle": "CRUD_AFU recibe ESTADO como texto 'true'/'false' (checkbox) mientras CEN usa 'Activo'/'Inactivo'; AFU.ESTADO queda 1/0. Dos convenciones para el mismo concepto en pantallas vecinas.",
+      "solucionPropuesta": "Unificar la convención de estado en la pantalla (sin cambio de datos)."
+    },
+    {
+      "id": "confconta-sin-permisos-por-boton",
+      "tipo": "decision",
+      "detalle": "Ninguna pantalla del submenú usa permisos por control: quien abre la opción puede crear, editar y borrar reglas de contabilización, periodos y parámetros. El único control es el acceso al menú.",
+      "solucionPropuesta": "Decidir si Parámetros, Períodos y KMCOM requieren permiso de edición separado del de consulta."
+    },
+    {
+      "id": "confconta-asigna-com-sin-filtro-tabla",
+      "tipo": "fe",
+      "detalle": "Comprobantes por Documentos filtra USVGS por TABLA='COM' en la pantalla; si una variable de comprobante no tiene TABLA = COM no aparece y no se puede asignar desde aquí (solo por edición directa de variables).",
+      "solucionPropuesta": "Revisar que todas las IDCON_TCOM_* tengan TABLA = COM en la instalación (dato de cliente) o ampliar el filtro por prefijo."
+    }
+  ],
+  "capitulosLibro": [
+    {
+      "id": "guia-rapida",
+      "tipo": "guia-rapida",
+      "kicker": "Empiece aquí",
+      "titulo": "Guía rápida: ¿qué necesita configurar?",
+      "intro": "Treinta y cuatro tareas frecuentes del submenú Contable de Configuración: dónde está el botón, qué condición exige y qué no hay que confundir."
+    },
+    {
+      "id": "que-es",
+      "tipo": "texto",
+      "kicker": "Visión general",
+      "titulo": "Qué configura el submenú Contable y por qué va antes que todo",
+      "imagen": "img/confconta_mapa_sketchnote.jpg",
+      "imagenAlt": "Mapa del submenú Contable de Configuración",
+      "intro": "El menú central **Configuración** reúne los catálogos que los módulos usan al trabajar. Su primer bloque, **Contable**, define la **estructura** donde cae cada movimiento (sedes, áreas, centros de costo), el **plan de cuentas** con el que se registra, las **reglas** con las que cada módulo arma su comprobante y el **calendario** (periodos, comprobantes, parámetros). Nada aquí mueve saldos; todo lo que mueve saldos depende de esto.",
+      "md": "## Cuatro bloques y una regla\n\n| Bloque | Opciones del menú | Tablas | Quién lo consume |\n|---|---|---|---|\n| Estructura | Sedes, Grupos de Áreas, A. Func./C.Costos, Unidades Negocio | SED, SEDCONS, SEDUNG, HARE, AFU, CEN, CENH, KUNG | Todos los módulos: facturación, caja, inventario, nómina, activos piden sede y centro de costo |\n| Plan de cuentas | Cuentas Contables, Cuentas NIIF | CUE, CUENIIF | Comprobantes (MCH), reglas KMCOM, TTEC, KCDE, FDIS, parámetros |\n| Reglas de contabilización | Contabilización por Ubicación, Tipos de Terceros, Deducibles, Distribución de Gastos | KMCOM, KMCOMS, KTCO, TTEC, KCDE, FDIS, FDISD | Los generadores de comprobantes de cada módulo (ventas, CxP, inventario, nómina, depreciación, caja menor) |\n| Comprobantes, periodos y generales | Tipos de Comprobantes, Comprobantes por Documentos, Períodos Contables, Parámetros Contables, Generales | COM, USVGS, PRI, PAR, MND, MNDV, FIMP, FIMPD, FIMPDV, FCTSER, FCTSERD, RETEI | El motor contable (periodo abierto, comprobante asignado) y la liquidación de impuestos, notas, CxP |\n\n## La regla\n\nEl árbol del menú, con sus etiquetas y rutas, es fijo en la aplicación. **Qué opción se habilita para cada grupo** lo decide el menú de Configuración del cliente (procedimiento MENUQ_COL · CONFIGURACION): una opción sin permiso se ve gris.\n\nCasi todas las pantallas comparten el mismo patrón: una grilla con filtros, un botón **Nuevo / Agregar**, un formulario con **Guardar / Cancelar** y la acción **Editar** en la fila. El servidor responde OK o un texto de error que la pantalla muestra tal cual.",
+      "puntosClave": [
+        "Configurar en orden: calendario y comprobantes → estructura → plan de cuentas → reglas.",
+        "Nada se borra en los catálogos principales: se inactiva (sede, centro, cuenta) o se deja sin usar.",
+        "Cambiar una regla no corrige comprobantes ya generados: hay que reconstruirlos desde Comprobantes Errados."
+      ]
+    },
+    {
+      "id": "mapa-menu",
+      "tipo": "texto",
+      "kicker": "El menú",
+      "titulo": "Mapa del submenú Contable: qué abre cada opción",
+      "intro": "Las quince opciones del árbol, la pantalla que abren y el procedimiento que las atiende (IXONLINE/SQL).",
+      "md": "| Opción del menú | Pantalla | Procedimiento · METODO | Qué administra |\n|---|---|---|---|\n| Sedes | Sedes (General · Facturación · Interoperabilidad; pestañas Consultorios y Unidad de Negocio) | SPQ_CONF_CONTABLE · CRUD_SEDES, CRUD_SEDUNG · SPQ_SED · CRUDSEDCONS | SED, SEDCONS, SEDUNG |\n| Grupos de Áreas | Grupos de Area | SPQ_CONF_CONTABLE · CRUD_HARE | HARE |\n| A. Func./C.Costos | Areas Funcionales → Centros de costo → Homologación | SPQ_CONF_CONTABLE · CRUD_AFU, CRUD_CCOSTO · SPQ_CENH_COL · CRUD_CENH | AFU, CEN, CENH |\n| Unidades Negocio | Unidades de Negocio | SPQ_CONF_CONTABLE · CRUD_KUNG | KUNG |\n| Cuentas Contables | Plan Contable (Nueva, Validar, Importar, Exportar) | SPQ_CUE_COL · CRUDCUE, VALIDARCUENTAS, EXPOCUENTAS | CUE |\n| Cuentas NIIF | Cuentas NIIF (Nueva, Carga masiva, Exportar) | SPQ_CUENIIF · GENEALOGICO, INSERTAR, EDITAR, ELIMINAR, CARGA_MASIVA | CUENIIF |\n| Tipos de Terceros | Generales → pestaña Tipos Terceros Contables | SPQ_TTEC_COL · CRUDTTEC | TTEC |\n| Deducibles | Deducibles | SPQ_KCDE_COL · CRUDKCDE | KCDE |\n| Contabilización por Ubicación | Tarjetas de tipo → reglas → excepciones → Excel | SPQ_KMCOM_COL · TRAER_KTCO, TRAE_CUENTAS, CRUD_KMCOM, CRUD_KMCOMS, VALIDA_CODNOMI | KTCO, KMCOM, KMCOMS |\n| Distribución de Gastos | Distribución de Gastos (cabecera y detalle) | SPQ_CONF_CONTABLE · FDIS_CRUD, FDISD_CRUD, FDIS_TRAESUMA | FDIS, FDISD |\n| Tipos de Comprobantes | Tipos de comprobante | SPQ_COM_COL · CRUDCOM | COM |\n| Comprobantes por Documentos | Variables de comprobante → asignar | SPQ_CONF_CONTABLE · ASIGNA_COM | USVGS (IDCON_TCOM_*) |\n| Períodos Contables | Periodos | SPQ_PRI · CRUDPRI | PRI |\n| Generales → Monedas / Impuestos / Tipos de Servicios | Generales (pestañas MND, FIMP, FCTSER) | SPQ_MND_COL, SPQ_MNDV_COL, SPQ_FIMP_COL, SPQ_FIMPD_COL, SPQ_FIMPDV_COL, SPQ_FCTSER_COL, SPQ_FCTSERD_COL | MND, MNDV, FIMP, FIMPD, FIMPDV, FCTSER, FCTSERD |\n| Generales → Retención Salarios | Retención Salarios | SPQ_RETEFTE_SALARIO · CRUD_RETEI, ACTUALIZAR_UVT | RETEI, variable UVT |\n| Generales → Retención Honorarios / Dependencias | Generales sin pestaña activa | — | Sin pantalla propia (ver hallazgos) |\n| Parámetros Contables | Parametros Contables | SPQ_CONF_CONTABLE · EDITA_PAR | PAR |\n\n## Lo que no está aquí pero parece\n\n- **Abrir y cerrar el periodo contable**, cierre fiscal y liquidación de impuestos: Contabilidad → Procesos.\n- **Naturaleza de cuentas, agrupación de cuentas, parámetros NIIF, exógena**: Contabilidad → Parametrización / Normas Niif.\n- **Terceros y sus categorías, servicios asistenciales, tarifas**: Configuración → Generales.",
+      "puntosClave": [
+        "Sedes aparece dos veces en el árbol: la funcional es Contable → Sedes.",
+        "Tipos de Terceros abre la misma pantalla de Generales en su pestaña."
+      ]
+    },
+    {
+      "id": "flujo-estructura",
+      "tipo": "flujo",
+      "kicker": "Flujo 1",
+      "titulo": "Montar la estructura: sede → grupo → área → centro de costo",
+      "flujoId": "conf-estructura",
+      "imagen": "img/confconta_estructura_sketchnote.jpg",
+      "imagenAlt": "Estructura organizacional",
+      "intro": "Ocho pasos en orden; cada uno es prerrequisito del siguiente."
+    },
+    {
+      "id": "estructura-detalle",
+      "tipo": "texto",
+      "kicker": "Estructura",
+      "titulo": "Sedes, áreas y centros de costo: campos, reglas y mensajes",
+      "intro": "Lo que pide cada formulario y lo que el servidor rechaza.",
+      "md": "## Sede (SED)\n\n**General:** Id. Sede (código corto, no se repite), Nombre, Dirección, Teléfonos, Ciudad (autocompletar), Responsable, Nivel y Nivel Vista, Atiende Otras Sedes, Homólogo, Código Habilitación, IDSGSS, Prestador de Salud (IPS), Extramural, Modelo (de disponibilidad), Entrega de Farmacia y las **bodegas por defecto**: Central, Logística, 24 Horas, Hemoderivados, de Custodia, Fórmulas Médicas.\n\n**Facturación / Datos legales:** NIT y DV, Tipo doc y Nro. Documento del Representante Legal, Líneas Factura 1-3, Gran contribuyente 1-2, Datos Legales 1-4, Ruta Logo.\n\n**Interoperabilidad:** Client ID, Client Secret, Scope, Subscription Key, Tenant ID del conector externo.\n\nMensajes: «posible error de Duplicidad, el Id.Sede ya existe» · «Sede No encontrada». **Activar / Inactivar** cambia el estado tras confirmar; el filtro por defecto muestra solo activas.\n\n**Consultorios (SEDCONS):** Número, Descripción, Tipo, Estado; el número no se repite dentro de la sede. **Unidad de Negocio (SEDUNG):** Unidad + Centro de costo + Estado; la llave completa no se repite y Editar solo cambia el estado.\n\n## Grupo de área (HARE) y área funcional (AFU)\n\nGrupo: Id. Area y Descripción. Área: Id. Area, Descripción, Area Hosp. (grupo), Ámbito, Tipo Area, Estado, **En Contabilidad**, **En Prestaciones**, Sede. Mensajes: «Ya existe un Area Funcional con este Codigo» · «Grupo de Area ya Existe».\n\n## Centro de costo (CEN)\n\nCentro Costo, Descripción, Compañía, Id. Sede, Id. Area (viene del área abierta), Tipo, Nivel, Ciudad, Triage, En Habitaciones, Alto Costo, Homologo, Estado.\n\nReglas del servidor: «Debe seleccionar un Área Funcional para el Centro de Costo» · «El Área Funcional no existe» · «Ya Existe un Centro de Costo con este Codigo» · al editar con estado Inactivo: «El centro de costo Homologo no existe o no esta activo». La pantalla también lo exige antes de enviar.\n\n## Homologación entre sedes (CENH)\n\nVisible solo con la variable HOMOLOGA_CCOSTOYSEDE. Campos: Compañía, Sede Origen, Centro Costo Origen, Sede Destino, Centro Costo Homologado, Estado, Centro Costo Sucesor (obligatorio si se inactiva y distinto al homologado). El servidor verifica que origen y destino existan en su sede y que no haya ya una homologación igual.\n\n## Unidad de negocio (KUNG)\n\nCod. Unidad, Descripción, Ruta Logo. Mensaje: «Ya existe una unidad de negocio con este codigo».",
+      "puntosClave": [
+        "El centro de costo es la unidad contable; el área y el grupo solo lo agrupan.",
+        "Inactivar un centro exige homólogo activo: ahí seguirán cayendo los movimientos.",
+        "La homologación entre sedes es otra cosa: cruza centros de sedes distintas para reportes y traslados."
+      ]
+    },
+    {
+      "id": "flujo-cuentas",
+      "tipo": "flujo",
+      "kicker": "Flujo 2",
+      "titulo": "Plan de cuentas: crear, importar, validar y exportar",
+      "flujoId": "conf-plan-cuentas",
+      "imagen": "img/confconta_cuentas_sketchnote.jpg",
+      "imagenAlt": "Plan de cuentas",
+      "intro": "El plan local y el plan NIIF, con sus validaciones."
+    },
+    {
+      "id": "cuentas-detalle",
+      "tipo": "texto",
+      "kicker": "Plan de cuentas",
+      "titulo": "La cuenta contable campo por campo y las reglas de validación",
+      "intro": "Qué significa cada casilla del formulario de cuenta y qué revisa Validar Cuentas.",
+      "md": "## Identidad\n\n| Campo | Significado |\n|---|---|\n| Compañía, Cuenta Contable, Nombre Cuenta | Llave y descripción. La cuenta no se repite. |\n| Tipo Cuenta | **Suma** (agrupa, no recibe movimiento) o **Detalle** (recibe movimiento). |\n| Nivel | Posición en la jerarquía: 1 = un dígito, 2 = dos dígitos, 3 = cuatro, 4 = seis, y así. |\n| Cuenta Suma | La cuenta padre: debe ser el prefijo de la cuenta y de tipo Suma. Una cuenta de un dígito no la lleva. |\n| Clasificación (clase) | CXC, CXP u OTROS: la usan los módulos para ubicar cuentas de cartera y proveedores. |\n| Estado | Activa / Inactiva. |\n\n## Qué detalle exige\n\n**Detalle x Tercero**, **Detalle x Ccosto**, **Detalle x Referencia**: cuando están marcados el comprobante debe traer tercero, centro de costo o referencia en cada línea de esa cuenta; el motor contable lo revisa.\n\n## Reglas contables\n\n| Campo | Para qué |\n|---|---|\n| De Impuesto | La cuenta entra en la liquidación de impuestos y en los diagnósticos de IVA. |\n| Aplica Ajuste | Participa del ajuste por inflación. |\n| Tipo Tesorero, Caja, Cuenta de Banco | Cuentas de caja y bancos: enlazan con la caja (CAJ) y la cuenta bancaria (BCT). |\n| Cuenta Homologa | Equivalente en otro plan o entidad. |\n| Cuenta NIIF | Su par en el plan NIIF (CUENIIF). |\n| Concepto Acreencia | Clasificación para acreencias / castigo. |\n| Cuenta Espejo | Contrapartida automática. |\n| Movimiento de Reversión + Cuenta Reversión | Cuenta a la que se reversa. |\n| Homologa Gravada + Cuenta Gravada | Cuenta gravada equivalente. |\n| Cuenta Costo DB / Cuenta 7 Credito | Cierre de costos. |\n\n## Validar Cuentas (reglas)\n\n1. La cuenta suma debe ser el prefijo de la cuenta (la cuenta sin sus dos últimos dígitos).\n2. La cuenta suma debe existir y ser tipo Suma.\n3. A partir del segundo nivel la longitud debe ser **par**.\n4. El nivel debe corresponder a los dígitos (1 → nivel 1, 2 → nivel 2, 4 → nivel 3…).\n\nResultado: lista de cuenta, nombre y error, exportable a Excel. Sin errores: «Cuentas validadas correctamente».\n\n## Importar\n\nDescargar plantilla → llenar → Procesar. Cada fila con CUENTA se guarda con el mismo procedimiento del formulario; la pantalla avisa «No se encontraron filas con CUENTA para importar» si el archivo viene vacío. No es todo-o-nada.\n\n## Cuentas NIIF (CUENIIF)\n\nCampos: Cuenta, Nombre, Tipo (Suma/Detalle), Nivel, Cuenta suma, Clase (CXC/CXP/OTROS), Corriente, Estado (Activa/Inactiva), Con centro de costo, Con producto, Con referencia, Con tercero, De impuesto.\n\n- **Genealógico:** al escribir la cuenta el sistema busca el padre y propone nivel y cuenta suma.\n- **Editar código / Eliminar:** solo si la cuenta no tiene movimientos NIIF; con movimientos: «Debe colocarla en estado Inactivo».\n- **Carga masiva:** valida todo el archivo (duplicados en archivo y en base, padre tipo Suma existente o cargado antes en el archivo, tipo y estado exactos, flags 0/1, longitud par ≤ 18, nivel por longitud) y si hay un solo error **no inserta ninguna**. Cada error trae su solución y se descarga en Excel.",
+      "puntosClave": [
+        "Guardar una cuenta no valida la jerarquía: hay que correr Validar Cuentas después de crear o importar.",
+        "En NIIF la carga masiva es más estricta que el formulario.",
+        "Solo las cuentas Detalle reciben movimiento: una Suma en una regla KMCOM hace fallar el comprobante."
+      ]
+    },
+    {
+      "id": "flujo-kmcom",
+      "tipo": "flujo",
+      "kicker": "Flujo 3",
+      "titulo": "Contabilización por ubicación: definir la regla de un tipo",
+      "flujoId": "conf-kmcom",
+      "imagen": "img/confconta_kmcom_sketchnote.jpg",
+      "imagenAlt": "Contabilización por ubicación",
+      "intro": "La regla tipo + prefijo + centro de costo → cuentas, con excepciones y carga por Excel."
+    },
+    {
+      "id": "reglas-detalle",
+      "tipo": "texto",
+      "kicker": "Reglas",
+      "titulo": "KMCOM, tipos de terceros, deducibles y distribución de gastos",
+      "intro": "Las cuatro tablas que los generadores de comprobantes consultan para armar débitos y créditos.",
+      "md": "## Contabilización por ubicación (KMCOM)\n\nLa **llave** es tipo de contabilización + prefijo + centro de costo (con su área funcional). Por cada llave hay una fila **DB** y una **CR**.\n\n| Tipo (KTCO) | Qué es el prefijo | Se valida contra |\n|---|---|---|\n| VENTAS | Prefijo del servicio facturado | Prefijos de servicio |\n| CXP_SALUD | Prefijo del servicio | Prefijos de servicio (no se valida en servidor) |\n| DESCUENTOS | Prefijo del servicio | Prefijos de servicio |\n| NOMINA | Concepto de nómina | Conceptos (NCON) |\n| CXP_COMPRAS | Tipo de artículo | Tipos de artículo (ITAR) |\n| CXP_SERVICIOS | Tipo de servicio | Tipos de servicio (FCTSER) |\n| DEPRECIACION | Tipo de activo | Tipos de activo (IACTT) |\n| MOV_ACTIVOS | Evento de activo | Eventos (IACTE) |\n| MOV_INVENTARIO | Tipo de movimiento | Tipos de movimiento (ITMO) |\n| CAJA_MENOR | Concepto de caja menor | Conceptos de caja con marca de caja menor |\n| NIIF_DEPRECIACION, NIIF_INGRESO, PRESTACIONES | Solo con proceso contable MIXTO | — |\n\n**Ventas** además lleva Cuenta IPS y las marcas **PGP** y **CAPITA** con su cuenta crédito. Toda regla puede llevar marca de **IVA** y cuenta de IVA.\n\nMensajes del servidor: «Centro de Costo no Valido» · «Cuenta contable Debito/Credito No Valida» · «Prefijo no Valido» · «Concepto de Caja no Valido» · «Tipo de Articulo / Tipo de Servicio / Tipo de Activo / Evento de Activo / Tipo de Movimiento no Valido».\n\n**Excepciones (KMCOMS):** mismo esquema más el servicio puntual; el generador consulta primero la excepción. «Ya existe un registro con esta Excepción» · «El Servicio no existe o esta Inactivo».\n\n**Nómina:** al elegir un concepto de egreso sin valor empresa, la pantalla consulta y propone la cuenta crédito del concepto de salario (variable IDCONPSALARIO).\n\n**Excel:** Plantilla KMCOM / KMCOMS → columna ESTADO = ADICIONAR, CAMBIAR o BORRAR → Subir. La pantalla valida el archivo («No hay filas con ESTADO…», «No se pudo determinar el tipo KMCOM») y guarda fila por fila.\n\n## Tipos de terceros contables (TTEC)\n\nPor tipo de tercero (cliente, EPS, particular…): Cuenta (DB) Radica, Cuenta (DB) Factura, Cuenta Glosa (DB), cuentas de orden de glosa DB/CR, Cta. Glosa Recuperada, Cuenta Dificil Cobro, Cta. Cobro Juridico, Cta. Conciliación, Auto CREE DB/CR, cartera e ingreso estimados, pasivo estimado, tipo de movimiento y Tipo de Aseguramiento. Las usan facturación, radicación, glosas, castigo de cartera y difícil cobro.\n\n## Deducibles (KCDE)\n\nCódigo, Descripción, Cuenta, Tipo, modelo contable. Lo consulta la contabilización de CxP y el castigo de cartera (clave CXC_CASTIGO_CARTERA).\n\n## Distribución de gastos (FDIS / FDISD)\n\nCabecera: Código y Descripción (clase CxP). Detalle: Centro de Costo (con su área), Cuenta (Detalle) y Porcentaje; la pantalla no deja superar 100 % y el servidor devuelve la suma tras cada cambio. No se borra una cabecera con detalle.",
+      "puntosClave": [
+        "Sin regla para la llave, el documento llega a Comprobantes Errados con «cuenta no existe» o sin líneas.",
+        "La excepción por servicio manda sobre la regla del prefijo.",
+        "Los tipos de tercero fijan las cuentas de cartera: cambiarlos cambia la contabilización de las facturas siguientes, no de las ya hechas."
+      ]
+    },
+    {
+      "id": "flujo-calendario",
+      "tipo": "flujo",
+      "kicker": "Flujo 4",
+      "titulo": "Comprobantes, periodos y parámetros",
+      "flujoId": "conf-calendario",
+      "imagen": "img/confconta_periodos_sketchnote.jpg",
+      "imagenAlt": "Calendario contable",
+      "intro": "Lo que el motor contable exige antes del primer comprobante."
+    },
+    {
+      "id": "calendario-detalle",
+      "tipo": "texto",
+      "kicker": "Calendario",
+      "titulo": "Tipos de comprobantes, asignación por documento, periodos y parámetros",
+      "intro": "Campos, reglas y qué módulo depende de cada uno.",
+      "md": "## Tipos de comprobantes (COM)\n\nCompañía, Comprobante (código), Nombre, Homólogo, Comprobante externo. Insertar / Editar.\n\n## Comprobantes por documentos\n\nLista las variables del sistema de tipo comprobante (IDCON_TCOM_*: factura, caja ingreso/egreso, CxP, notas, reclasificación de terceros y cuentas, castigo de cartera, reversiones, depreciación, cierre…). Elegir la fila → Comprobante Contable → Aceptar. El servidor valida «No se Encontro la Variable en la tabla Maestra» y «No se encontro el Comprobante en la tabla Maestra».\n\nSin esta asignación el generador del módulo no sabe con qué comprobante contabilizar y el documento queda en errados o no se envía.\n\n## Períodos contables (PRI)\n\nAño, Mes, Fecha Inicial, Fecha Final, Nombre de Periodo, **Saldo Inicial** (SI) y **SI NIIF**, Tipo Ajuste (Anual/Mensual), Cambio Final, Ajuste Inflación. Marcas de cierre: **Contabilidad** (solo lectura: la fija Contabilidad → Abrir/Cerrar), **Inventario** y **Facturación** (editables aquí), y se ven Cartera, CxP, Presupuesto, Cierre Fiscal, Cierre Costos, Cierre Imp (las fijan sus módulos).\n\nReglas: «Periodo insertado ya existe» · «Ya existe un periodo de saldos iniciales, no pueden existir mas de uno» (local y NIIF por separado) · la pantalla bloquea «No se puede editar un periodo cerrado». Año y mes no se cambian al editar.\n\n## Parámetros contables (PAR)\n\nUna fila por compañía: **Cuenta Puente** (Detalle y activa), **Mes de Cierre** (el que exige el Cierre Fiscal), **Cierre Costos**, **Cierre Impuestos**, y el orden de **Glosas**. La pantalla muestra además CxC, CxP, Ingresos y Egresos, pero hoy no se guardan (ver hallazgos). Mensaje: «La cuenta Ingresada no es detalle, no se puede continuar».",
+      "puntosClave": [
+        "Crear los doce periodos del año antes de que el primer módulo intente contabilizar.",
+        "Solo un periodo de saldos iniciales: su cierre corre saldos iniciales, no cierre de mes.",
+        "El mes de cierre de Parámetros y el Cierre Fiscal de Contabilidad deben coincidir."
+      ]
+    },
+    {
+      "id": "generales",
+      "tipo": "texto",
+      "kicker": "Generales",
+      "titulo": "Monedas, impuestos, tipos de servicio y retención de salarios",
+      "imagen": "img/confconta_generales_sketchnote.jpg",
+      "imagenAlt": "Tablas generales",
+      "intro": "La pantalla Generales con sus pestañas y la de Retención Salarios.",
+      "md": "## Monedas (MND / MNDV)\n\nMoneda: ID Moneda, Descripción, Símbolo, Codificación. Vigencias: Item, Fecha, Valor. Los documentos en otra moneda toman la vigencia que cubre su fecha.\n\n## Impuestos (FIMP / FIMPD / FIMPDV)\n\nImpuesto: ID Impuesto, Descripción, Homologo DIAN. División (clase): Id. Clase, Descripción, Base. Vigencia de la división: F. Inicial, F. Final, Valor (tarifa), Vlr. Inicial / Vlr. Final (rango), Maneja UVT, Vlr. UVT, Cuenta y cuenta asumida. Al cambiar una tarifa se crea una vigencia nueva. Las usan notas, CxP, facturación y la liquidación de impuestos.\n\n## Tipos de servicios (FCTSER / FCTSERD)\n\nTipo: IDTIPOSER, Descripción, Cuenta, Rubro, UNSPSC, grupo de impuesto, De consumo. Servicios del tipo: IDSERVICIO, Descripción, Valor, Clase de cobro, En brigada. Es el prefijo de la regla CXP_SERVICIOS.\n\n## Tipos de terceros contables (TTEC)\n\nSe describe en Reglas; se abre desde Tipos de Terceros o desde esta pantalla.\n\n## Retención de salarios (RETEI)\n\nTipos de retención: Código (R### automático), Descripción, Clase (suma/resta), Orden, Estado; tabla de UVT por rangos (UVT Mínimo, UVT Máximo, Tarifa Marginal, UVT Adicional). **Actualizar UVT** escribe el valor en la variable del sistema VALOR_UVT_RETEFTE. Mensajes: «La clase debe ser suma o resta» · «El estado debe ser Activo o Inactivo» · «UVT actualizado».\n\n## Retención Honorarios y Dependencias\n\nLas dos opciones del árbol abren Generales sin pestaña activa: no tienen pantalla propia hoy.",
+      "puntosClave": [
+        "Impuesto → división → vigencia: la tarifa vive en la vigencia, no en el impuesto.",
+        "La UVT de retención de salarios es una variable del sistema; la de impuestos va en cada vigencia."
+      ]
+    },
+    {
+      "id": "orden-implantacion",
+      "tipo": "texto",
+      "kicker": "Implantación",
+      "titulo": "Orden de implantación y lista de chequeo",
+      "imagen": "img/confconta_orden_sketchnote.jpg",
+      "imagenAlt": "Orden de implantación",
+      "intro": "Qué configurar primero cuando se monta una instalación o una sede nueva, y cómo probar que quedó bien.",
+      "md": "## Orden\n\n1. **Períodos Contables** del año (uno con Saldo Inicial si es la primera vez).\n2. **Tipos de Comprobantes** y **Comprobantes por Documentos** (toda variable IDCON_TCOM_* con comprobante).\n3. **Parámetros Contables**: cuenta puente y mes de cierre.\n4. **Sedes** (con consultorios), **Grupos de Áreas**, **Áreas funcionales**, **Centros de costo**, **Unidades de negocio** y su cruce.\n5. **Cuentas Contables** completas → **Validar Cuentas** sin errores. **Cuentas NIIF** si el proceso contable es MIXTO.\n6. **Generales**: monedas, impuestos con vigencias, tipos de servicio, tipos de tercero, retención; **Deducibles**; **Distribución de Gastos** si aplica.\n7. **Contabilización por Ubicación**, un tipo a la vez: Ventas, CxP (compras, servicios, salud), Inventario, Nómina, Depreciación, Mov. activos, Caja menor, Descuentos.\n\n## Prueba\n\nPor cada módulo, enviar **un** documento a contabilidad (Contabilidad → Otros Módulos) y leer el resultado en **Comprobantes Errados**: el texto de la línea dice qué falta (cuenta inexistente o no detalle, tercero, valor cero) y el diagnóstico señala la regla KMCOM o la vigencia de impuesto ausente. Corregir la configuración y **Reconstruir**.\n\n## Lista de chequeo\n\n- [ ] Doce periodos del año; uno solo con Saldo Inicial.\n- [ ] Cada IDCON_TCOM_* con comprobante.\n- [ ] Cuenta puente tipo Detalle; mes de cierre fiscal.\n- [ ] Toda sede con al menos un centro de costo activo y su área.\n- [ ] Validar Cuentas sin errores.\n- [ ] Cuentas de cartera por tipo de tercero.\n- [ ] Vigencia de IVA y retenciones del año.\n- [ ] Regla KMCOM para cada prefijo que factura, compra, consume o paga.\n- [ ] Un documento de prueba por módulo reconstruido sin error.",
+      "puntosClave": [
+        "Lo que falte aquí aparece después como comprobante errado, no como aviso en Configuración.",
+        "Cambiar una regla no toca comprobantes pasados: reconstruir."
+      ]
+    },
+    {
+      "id": "estados",
+      "tipo": "semaforo",
+      "datos": "estadosConfiguracion",
+      "kicker": "Semáforo",
+      "titulo": "Estados y marcas de los catálogos contables",
+      "intro": "Qué significa cada valor que se ve en estas pantallas y qué permite o bloquea."
+    },
+    {
+      "id": "hallazgos",
+      "tipo": "texto",
+      "kicker": "Hallazgos",
+      "titulo": "Hallazgos y pendientes",
+      "intro": "Lo que se encontró al contrastar el menú, las pantallas y los procedimientos. Ninguno tiene dictamen todavía: quedan registrados para validar en preversión antes de pedir desarrollo.",
+      "md": "## Defectos para validar y pedir a desarrollo\n\n1. **Parámetros Contables no guarda cuatro de los cinco órdenes.** Los radios de CxC, CxP, Ingresos y Egresos se muestran y se envían, pero el procedimiento solo persiste Glosas, cuenta puente, mes de cierre y los dos cierres. La pantalla confirma «Registro Actualizado» igual.\n2. **Retención Honorarios y Dependencias abren una pantalla vacía.** Apuntan a Generales sin indicar pestaña.\n3. **El campo Rubro de la cuenta nunca se guarda.** Al insertar y editar se graba la propia cuenta en RUBRO.\n4. **Validar Cuentas no lista los errores de nivel 2.** La condición que detecta y la que lista usan longitudes distintas.\n5. **Editar un periodo con Saldo Inicial duplicado actualiza y luego avisa error.** No hay verificación antes del UPDATE.\n6. **Cierre de facturación e inventario desde Períodos sin validar pendientes.** La marca se guarda sin revisar documentos sin contabilizar.\n7. **Mensajes copiados en la regla de contabilización.** Descuentos dice «Tipo de Activo», Nómina dice «Tipo de Movimiento»; queda un PRINT de depuración.\n8. **Prefijo sin validar para CxP salud, NIIF y Prestaciones.** Una llave mal escrita se guarda.\n9. **Renombrar un código de distribución de gastos no hace nada.** El UPDATE quedó en la rama equivocada.\n10. **Cuentas NIIF por pantalla sin validar jerarquía.** Insertar/Editar aceptan cualquier nivel y cuenta suma; la carga masiva sí valida.\n11. **Sede sin validar FK ni cifrar credenciales.** Ciudad, responsable y bodegas por defecto no se verifican; el secreto de interoperabilidad se guarda en claro.\n12. **Comprobantes por Documentos solo ve variables con TABLA = COM.** Una variable de comprobante sin esa marca no aparece.\n\n## Huecos y decisiones\n\n13. **Sin borrado ni estado** en grupos de área, unidades de negocio, monedas, impuestos, tipos de servicio: solo Insertar / Editar.\n14. **Entradas del árbol en construcción** (Generales → Sedes, Activos F. → Activos) y Sedes duplicada.\n15. **Dos convenciones de estado** entre área (true/false) y centro de costo (Activo/Inactivo).\n16. **Sin permisos por botón** en todo el submenú: quien abre la opción puede editar reglas, periodos y parámetros.",
+      "puntosClave": [
+        "Pedir a desarrollo primero los puntos 1, 5 y 9: son datos que el usuario cree guardados y no lo están.",
+        "Los demás se validan en preversión antes de dictaminar."
+      ]
+    }
+  ]
+}

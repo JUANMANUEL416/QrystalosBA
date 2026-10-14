@@ -1,0 +1,70 @@
+{
+  "mensajes": [
+    {
+      "id": "20261006150212764765",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos). Hay capturas en activo/20261006-0100016634/imagenes/ (Trasp._Fact._adm._png.png). Léalas y contrástelas con el REQ.",
+      "fecha": "2026-10-06T15:02:12"
+    },
+    {
+      "id": "20261006150212825847w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-10-06T15:02:12"
+    },
+    {
+      "id": "20261006150400506218",
+      "autor": "sistema",
+      "texto": "El agente se detuvo (CursorSDKError: Timed out waiting for bridge discovery). Reintente.",
+      "fecha": "2026-10-06T15:04:00"
+    },
+    {
+      "id": "20261006150600275200",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos). Hay capturas en activo/20261006-0100016634/imagenes/ (Trasp._Fact._adm._png.png). Léalas y contrástelas con el REQ.",
+      "fecha": "2026-10-06T15:06:00"
+    },
+    {
+      "id": "20261006150600312289w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-10-06T15:06:00"
+    },
+    {
+      "id": "20261006151345000001",
+      "autor": "agente",
+      "texto": "**Caso 20261006-0100016634 · ASOCABILIDOS — activación Fase 1 (sin dictamen HTML)**\n\n**Cola y captura**\nLeí `cola/IX OnLine.htm` (REQ 0100016634) y la imagen `Trasp._Fact._adm._png.png`. La captura muestra **Administrativo → Facturación → Traslados Facturas** con el control **Envío de facturas** (Enviar a Cartera / **Enviar a Auditoría**, columnas Dep. Entrega → Dep. Recibe). Eso **ya está homologado** en web. El párrafo de contexto del REQ aclara la necesidad real: poder **disparar el mismo circuito ENT hacia Auditoría desde admisiones**, como en escritorio, sin ir a Facturación.\n\n**Paso 0 — ¿Ya existe?**\n| Camino | Qué hace hoy |\n|--------|----------------|\n| Facturación · pestaña Traslados Facturas (`FTRComponent`, permiso `FACT_TRASLADAR`) | `ENTComponent` completo: envío a Cartera/Auditoría, cierre, impresión acta |\n| Admisiones · lateral **Traslados** (`vistaAdmi === 'traslados'`, permiso `traslados`) | Traslado clínico cama/paciente (**HNAT**), no ENT |\n| Admisiones · **Facturas** (`HADMFComponent`) | Solo `FTR_HADM_COL · GET_HADMF` + imprimir factura; **no** llama `ENT_COL` |\n\n**Clasificación:** **hueco de homologación UX** (faltó exponer ENT en admisiones), no capacitación del menú administrativo ni defecto del ENT en Facturación.\n\n**Proceso / SQL**\n- `sql.procesoId`: **facturacion** (correcto; retirado el arrastre erróneo de recaudos/`SPQ_FPAG_COL`).\n- Métodos del formulario: **8/8 `leido`** en `conocimiento/facturacion/sps.json` (SPQ_ENT_COL 19/19 documentado).\n- **Veredicto .sql de hoy:** **no hace falta bajar** `SPQ_ENT_COL` / `SPQ_FTR_HADM_COL` a `activo/.../sql/` para este análisis; el alcance sale de las fichas. Releer PREVERSION solo si **Validar antes** en ASOCAMAICAO muestra que `ASIGNAR_FACT`/`MARCAR_ITEM` excluyen FTR de admisión por `IDDEP` ≠ `IDFDEPFACTURACION`.\n- `contenido.cambioPropuestoSql`: vacío (SQL **contingente**, no obligatorio en primera implementación).\n\n**SP / METODO de este cambio (solo los que usaría la solución)**\n1. `FTR_HADM_COL · GET_HADMF` — listar facturas elegibles de la admisión.\n2. `ENT_COL · VALIDO_USUARIO` — mismo gate de usuario/depto que Facturación.\n3. `ENT_COL · CRUD_ENT` — crear ENT `PROCESO=AUDITORIA` (entrega facturación → recibe auditoría).\n4. `ENT_COL · MARCAR_ITEM` / `ASIGNAR_FACT` — marcar e incluir FTR en ENTD.\n5. `ENT_COL · CERRAR_ENT` / `IMPRIMIR_ENT` — cerrar envío e imprimir acta.\n6. *(Recepción, fuera del desarrollo FE admisiones)* `ENT_COL · RECIBIR_AUDIFACTU` en Auditoría.\n\n**Trazabilidad (control envío a auditoría desde admisiones)**\n| Paso | Vue | MODELO | METODO | Fuente |\n|------|-----|--------|--------|--------|\n| Listar facturas admisión | `HADMFComponent` | FTR_HADM_COL | GET_HADMF | sps.json leido |\n| Iniciar envío auditoría | *propuesto* en HADM o `ENTComponent` modo admisión | ENT_COL | CRUD_ENT | sps.json leido |\n| Marcar / asignar | idem | ENT_COL | MARCAR_ITEM, ASIGNAR_FACT | sps.json leido |\n| Cerrar / imprimir | idem | ENT_COL | CERRAR_ENT, IMPRIMIR_ENT | sps.json leido |\n| Recibir en auditoría | `RecepFacturaComponent` (existente) | ENT_COL | RECIBIR_AUDIFACTU | sps.json leido |\n\n**Propuesta (resumen)**\n- **Opción A (recomendada):** reutilizar `ENTComponent` o composable con **modo admisión** (filtro `NOADMISION`, acción «Enviar a Auditoría», permiso `ENT_ENVIAR_AUDITORIA` bajo menú admisiones o reutilizando control documentado en `ADMINQ_FACTURAS`).\n- Impacto: FE **Sí**, API **Sí** (endpoints actuales), SQL **Parcial** solo si falla elegibilidad por departamento.\n- Contabilidad: **No** (validación en formulario `no_aplica`).\n\n**Validar antes de desarrollar**\nEn ASOCAMAICAO: facturar admisión de prueba → en Buscar factura confirmar `FTR.IDDEP = IDFDEPFACTURACION` → probar envío a Auditoría desde Facturación para esa `N_FACTURA`. Si funciona allí pero no se puede marcar desde admisiones, capturar `IDDEP` y valorar ajuste en `ASIGNAR_FACT`/`MARCAR_ITEM` en preversión.\n\n**Formulario**\nCriterios, alcance, restricciones, análisis, recomendación, `cambioPropuestoSimple`, `validarAntes` y `brechaAnalisis` quedaron actualizados en `solicitud.json`. Opciones A/B con descripción breve.\n\n**Siguiente paso**\nCuando confirme ventana/permiso preferido (¿solo auditoría desde Facturas en HADM o diálogo tipo ENT completo?), pida **dictamen completo** → `dictamenes/20261006-0100016634.html`. Mockup UX, si lo desea, debe mostrar la **ventana propuesta** (botón envío en Facturas de admisiones), no la captura de Facturación.",
+      "fecha": "2026-10-06T15:13:45"
+    },
+    {
+      "id": "20261006151606681867",
+      "autor": "coordinador",
+      "texto": "genera el documento, para validar",
+      "fecha": "2026-10-06T15:16:06"
+    },
+    {
+      "id": "20261006151606706875w",
+      "autor": "sistema",
+      "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+      "fecha": "2026-10-06T15:16:06"
+    },
+    {
+      "id": "20261006151830000002",
+      "autor": "agente",
+      "texto": "Listo el **dictamen para validación**.\n\n**Documento:** dictamenes/20261006-0100016634.html\n\nIncluye: requerimiento y criterios acordados, análisis Paso 0 (hueco UX), sección **Validar antes** (IDDEP en ASOCAMAICAO), contabilidad **No**, trazabilidad FE → ENT_COL / FTR_HADM_COL, diagrama incrustado Hoy vs propuesto, cambios FE (opción A recomendada + mockup textual de Facturas en admisiones), SQL parcial contingente sin fragmentos 5.2.1, y checklists desarrollador / coordinador / soporte.\n\n**Recordatorio:** no hay cambio SQL obligatorio si la prueba confirma que las FTR de admisión ya entran en ASIGNAR_FACT desde Facturación.\n\nRevise el HTML (Ctrl+P si necesita PDF) y comente en este Chat ajustes antes de **Cerrar fase 1**. Si desea mockup HTML en carpeta del caso, indíquelo y lo generamos sobre la ventana propuesta (no la captura de Facturación).",
+      "fecha": "2026-10-06T15:18:30"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-10-06T15:31:13"
+    },
+    {
+      "id": "correo-cierre-20261006-0100016634",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a romario.ariza@ixcolombia.com.",
+      "fecha": "2026-10-06T15:31:20"
+    }
+  ]
+}

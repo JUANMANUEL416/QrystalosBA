@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-25T02:07:05.267Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016502",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260924-0100016502",
+    "idReq": "0100016502",
+    "fecha": "2026-09-24",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "COMITE DE ESTUDIOS MEDICOS",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "NOMINA · NOMINA",
+    "rutaPantalla": "Talento humano → Procesos nómina → pestaña DIAN (/nom/Nom_procesos, DianNominaComponent.vue)"
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "BRIANNE ACOSTA",
+    "desarrollador": "BRAYAN ORTEGA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/COESME625",
+    "prioridad": "2 - Media",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "NOMINA · NOMINA",
+    "requerimiento": "se requiere que los campos de cantidad donde se compara novedades vs liquidacion sean igual en uno se suma y en el otro no",
+    "criteriosAceptacion": "1) En SPK_GENERAR_XML_NOMINA, para ID_DIAN IncapacidadC, LicenciaMP, LicenciaNR y LicenciaR, la validación previa al XML compare SUM(HORAS) en NEDIA contra SUM(CANTIDAD) en VWK_NIEPED (mismo @PERIODO, @NUMDOC e ID_DIAN).\n2) Empleado con varias líneas liquidadas del mismo ID_DIAN: si los totales coinciden, PREVIEW_XML y el envío DIAN (proceso que invoca el mismo SP) generan XML sin RAISERROR de horas.\n3) Si los totales no coinciden, se mantiene el RAISERROR actual (no se relaja la validación).\n4) Empleado con una sola línea por tipo: comportamiento igual al actual.\n5) Sin cambios de pantalla, permisos, mensajes ni cursores del SP (solo las cuatro asignaciones acordadas).\n6) Validar en preversión que PREVERSION no traiga ya el arreglo antes de publicar (referencia: script local Qrystalos2/sql/SPK_GENERAR_XML_NOMINA.sql).",
+    "alcance": "Control Envío DIAN — nómina electrónica (conocimiento/nomina, capa 2 · envio-dian). Objeto único: SPK_GENERAR_XML_NOMINA — cuatro bloques de asignación @HORAS_NIEPED para IncapacidadC, LicenciaMP, LicenciaNR, LicenciaR. Invocado desde SPQ_NOM_DIAN · PREVIEW_XML y desde el proceso externo de envío al armar el XML. Fuera de alcance: IncapacidadP/IncapacidadL (siguen con CANTIDAD sin SUM en catálogo; ampliar solo si el cliente lo confirma), prenómina, liquidación NPER, contabilidad y FTR.",
+    "restricciones": "Solo publicar en SQLIX/PREVERSION el diff acordado; no reescribir el procedimiento ni tocar codificación de tildes en comentarios. Rama bugfix/COESME625. No ejecutar cambios desde Qrystalos BA. Contabilidad: no aplica. El tipo «Performance» en cola no describe el ticket (es corrección de agregación SQL).",
+    "analisis": "REQ (negocio): al comparar novedades vs liquidación para el XML de nómina electrónica, un lado suma cantidades/horas y el otro no, provocando bloqueos incorrectos.\n\nCola IX OnLine (REQ 0100016502) + captura xsde_1_.png: especificación de cuatro cambios SUM(CANTIDAD) en VWK_NIEPED (alineada con Qrystalos2/sql/SOLICITUD_SPK_GENERAR_XML_NOMINA.html). La captura ewertt_1_.png (Editar Plan / cobertura contributiva) no corresponde a este REQ de nómina DIAN; no usarla como evidencia funcional.\n\nPaso 0 — ¿Ya existe?: No es capacitación. Caminos del control en DianNominaComponent: GENERATE_NIEPEG, PREVIEW_XML (vista previa XML), PROCESAR_NIE / PROCESAR_NIE_FILTER (encola; el XML lo arma el SP al notificar). No hay botón alterno que «corrija» la comparación sin cambiar el SP. Clasificación: defecto — en catálogo liberado/PREVERSION la validación usa SELECT @HORAS_NIEPED = CANTIDAD mientras @SUM_HORAS_NEDIA = SUM(HORAS); con varias filas NIEPED del mismo ID_DIAN la variable queda parcial/indeterminada y dispara RAISERROR aunque los totales cuadren.\n\nKB: proceso nomina · control envio-dian; fichas SPQ_NOM_DIAN (PREVIEW_XML → SPK_GENERAR_XML_NOMINA) y SPK_GENERAR_XML_NOMINA leídas en sps.json. Script de trabajo en Qrystalos2 ya aplica SUM en los cuatro ID_DIAN del alcance; IncapacidadP/L aún sin SUM (observación documentada, fuera de este ticket).\n\nImpacto: FE No; API/MODELO sin cambio de contrato; SQL Sí (cuerpo SPK). validarAntes: comprobar PREVERSION vs última Cerrada antes de desarrollar — si el arreglo ya está publicado, no hay desarrollo.",
+    "opciones": [],
+    "recomendacion": "Publicar en PREVERSION las cuatro asignaciones SUM(CANTIDAD) del script local (rama bugfix/COESME625). Probar con empleado multi-línea por ID_DIAN vía PREVIEW_XML y un caso de envío real. No ampliar a IncapacidadP/IncapacidadL sin nuevo REQ. Opcional post-release: alinear ficha sps.json con el nuevo RAISERROR cubierto (horas novedades vs liquidación).",
+    "cambioPropuestoSimple": "Al generar el XML de nómina electrónica, el sistema comparará el total de horas de las novedades con el total de horas liquidadas (sumando todas las líneas del mismo tipo de incapacidad o licencia), en lugar de tomar solo una línea de la liquidación. Así dejará de fallar cuando el empleado tenga varios renglones liquidados pero los totales sí coincidan.",
+    "cambioPropuestoSql": "-- Especificación (no ejecutar desde BA). Objeto: SPK_GENERAR_XML_NOMINA\n-- Fuente catálogo: PREVERSION / última Cerrada (sin SUM en estos cuatro bloques).\n-- Referencia AFTER: Qrystalos2/sql/SPK_GENERAR_XML_NOMINA.sql\n\n-- 4.1 Incapacidad común — ID_DIAN = 'IncapacidadC'\n-- BEFORE (catálogo):\n-- SELECT @HORAS_NIEPED = CANTIDAD FROM DBO.VWK_NIEPED WHERE CONSECUTIVO = @PERIODO AND NUMDOC = @NUMDOC AND ID_DIAN = 'IncapacidadC'\n-- AFTER:\nSELECT @HORAS_NIEPED = SUM(CANTIDAD)\nFROM DBO.VWK_NIEPED\nWHERE CONSECUTIVO = @PERIODO AND NUMDOC = @NUMDOC AND ID_DIAN = 'IncapacidadC'\n\n-- 4.2 LicenciaMP — mismo patrón BEFORE CANTIDAD → AFTER SUM(CANTIDAD)\n\n-- 4.3 LicenciaNR — mismo patrón\n\n-- 4.4 LicenciaR — mismo patrón\n\n-- Validación (solo lectura, empleado con síntoma):\n-- SELECT ID_DIAN, SUM(CANTIDAD) AS HORAS_LIQ\n-- FROM DBO.VWK_NIEPED\n-- WHERE CONSECUTIVO = @PERIODO AND NUMDOC = @NUMDOC\n--   AND ID_DIAN IN ('IncapacidadC','LicenciaMP','LicenciaNR','LicenciaR')\n-- GROUP BY ID_DIAN;\n-- SELECT NCON.ID_DIAN, SUM(NEDIA.HORAS) AS HORAS_NOV\n-- FROM NEDIA INNER JOIN NEVE ON NEVE.IDEVENTO = NEDIA.IDEVENTO\n-- INNER JOIN NCON ON NCON.CODCONCEPTO = NEVE.CODCONCEPTO\n-- WHERE NEDIA.NUMDOC = @NUMDOC AND NCON.ID_DIAN IN ('IncapacidadC','LicenciaMP','LicenciaNR','LicenciaR')\n--   AND NEDIA.CNSPAGO IN (SELECT CNSPAGO FROM NIEPE WHERE NUMDOC = @NUMDOC AND CONCAT(ANO,MES) = @PERIODO)\n-- GROUP BY NCON.ID_DIAN;",
+    "impactoFe": "No",
+    "impactoApi": "No",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Generación/validación XML nómina electrónica (NIEPEG/FDIANR). No genera ni modifica comprobantes MCP, CON ni asientos.",
+        "validadoEn": "2026-09-25T02:10:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "Antes de publicar: comparar SPK_GENERAR_XML_NOMINA en DESAIX (PREVERSION vs última versión Cerrada). Si los cuatro bloques ya usan SUM(CANTIDAD), el error del cliente ya está corregido en canasta — informar y no desarrollar. Si son idénticos sin SUM, aplicar el diff del script local. Probar PREVIEW_XML con empleado multi-línea por ID_DIAN del alcance."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "xsde_1_.png",
+        "ruta": "activo/20260924-0100016502/imagenes/xsde_1_.png",
+        "subidaEn": "2026-09-24T21:04:27",
+        "url": "/api/caso/20260924-0100016502/imagen/xsde_1_.png"
+      },
+      {
+        "nombre": "ewertt_1_.png",
+        "ruta": "activo/20260924-0100016502/imagenes/ewertt_1_.png",
+        "subidaEn": "2026-09-24T21:04:27",
+        "url": "/api/caso/20260924-0100016502/imagen/ewertt_1_.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) En SPK_GENERAR_XML_NOMINA, para ID_DIAN IncapacidadC, LicenciaMP, LicenciaNR y LicenciaR, la validación previa al XML compare SUM(HORAS) en NEDIA contra SUM(CANTIDAD) en VWK_NIEPED (mismo @PERIODO, @NUMDOC e ID_DIAN).\n2) Empleado con varias líneas liquidadas del mismo ID_DIAN: si los totales coinciden, PREVIEW_XML y el envío DIAN (proceso que invoca el mismo SP) generan XML sin RAISERROR de horas.\n3) Si los totales no coinciden, se mantiene el RAISERROR actual (no se relaja la validación).\n4) Empleado con una sola línea por tipo: comportamiento igual al actual.\n5) Sin cambios de pantalla, permisos, mensajes ni cursores del SP (solo las cuatro asignaciones acordadas).\n6) Validar en preversión que PREVERSION no traiga ya el arreglo antes de publicar (referencia: script local Qrystalos2/sql/SPK_GENERAR_XML_NOMINA.sql).",
+      "originalesEn": "2026-09-25T02:06:21.251Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) En SPK_GENERAR_XML_NOMINA, para ID_DIAN IncapacidadC, LicenciaMP, LicenciaNR y LicenciaR, la validación previa al XML compare SUM(HORAS) en NEDIA contra SUM(CANTIDAD) en VWK_NIEPED (mismo @PERIODO, @NUMDOC e ID_DIAN).\n2) Empleado con varias líneas liquidadas del mismo ID_DIAN: si los totales coinciden, PREVIEW_XML y el envío DIAN (proceso que invoca el mismo SP) generan XML sin RAISERROR de horas.\n3) Si los totales no coinciden, se mantiene el RAISERROR actual (no se relaja la validación).\n4) Empleado con una sola línea por tipo: comportamiento igual al actual.\n5) Sin cambios de pantalla, permisos, mensajes ni cursores del SP (solo las cuatro asignaciones acordadas).\n6) Validar en preversión que PREVERSION no traiga ya el arreglo antes de publicar (referencia: script local Qrystalos2/sql/SPK_GENERAR_XML_NOMINA.sql).",
+      "trasAnalisisEn": "2026-09-25T02:06:30.251Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (defecto agregación en SPK_GENERAR_XML_NOMINA). Fichas SPQ_NOM_DIAN y SPK en conocimiento/nomina/sps.json cubren el flujo; no fue necesario bajar .sql al caso salvo para dictamen futuro si PREVERSION cambió. Observación: IncapacidadP/L siguen sin SUM fuera de alcance.",
+      "fecha": "2026-09-25T02:10:00.000Z",
+      "estado": "listo",
+      "sps": []
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260924-0100016502/diagramas/flujo.html",
+      "subidaEn": "2026-09-24T21:06:52",
+      "url": "/api/caso/20260924-0100016502/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "nomina",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260924-0100016502-flujo.html"
+    },
+    "mockups": [
+      "activo/20260924-0100016502/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20260924-0100016502\\sql\\",
+    "carpetaRelativa": "activo/20260924-0100016502/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016502\\",
+    "archivosEsperados": [
+      "SPK_GENERAR_XML_NOMINA.sql"
+    ],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "nomina",
+    "catalogo": "conocimiento/nomina/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_NOM_DIAN",
+        "metodo": "PREVIEW_XML",
+        "estado": "leido",
+        "hace": "Arma XML de vista previa con SPK_GENERAR_XML_NOMINA (@PATH_URL NULL). No notifica.",
+        "llama": [
+          "SPK_GENERAR_XML_NOMINA"
+        ]
+      },
+      {
+        "sp": "SPK_GENERAR_XML_NOMINA",
+        "metodo": "(procedimiento)",
+        "estado": "leido",
+        "hace": "Arma XML de nómina electrónica (tipo 102 o 103 ajuste) para un CNSNIEPEG. Con @PATH_URL NULL devuelve el XML; si hay ruta, llama SPK_GUARDAR_ARCHIVO.",
+        "llama": [
+          "SPK_GUARDAR_ARCHIVO (solo si @PATH_URL informado)",
+          "FNK_LIMPIATEXTO",
+          "FNK_VALORVARIABLE"
+        ]
+      }
+    ],
+    "notas": "No copiar catálogo completo de nómina. PROCESAR_NIE no llama al SP desde SPQ; el envío real usa el mismo SPK en servidor.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260924-0100016502.html",
+    "aprobados": "aprobados/20260924-0100016502/",
+    "imagenes": "aprobados/20260924-0100016502/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-24",
+    "ultimoEnvio": "2026-09-24T21:10:29",
+    "reenvios": 0,
+    "destinatario": "brayan.ortega@ixcolombia.com",
+    "via": "smtp"
+  }
+}

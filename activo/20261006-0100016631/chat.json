@@ -1,0 +1,52 @@
+{
+  "mensajes": [
+    {
+      "id": "20261006100228047395",
+      "autor": "coordinador",
+      "texto": "Analiza el requerimiento contrastándolo con la base de conocimiento (proceso/sps). Proponga solución, criterios de aceptación, alcance, restricciones y análisis; liste SOLO los SP/METODO de este cambio No haga el dictamen completo. Deje el resultado en este Chat y en solicitud.contenido (criterios, alcance, restricciones, analisis, brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos). Hay capturas en activo/20261006-0100016631/imagenes/ (Captura_de_pantalla_2026-09-07_160942.png, Captura_de_pantalla_2026-09-07_162406.png). Léalas y contrástelas con el REQ.",
+      "fecha": "2026-10-06T10:02:28"
+    },
+    {
+      "id": "20261006100228102839w",
+      "autor": "sistema",
+      "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+      "fecha": "2026-10-06T10:02:28"
+    },
+    {
+      "id": "20261006101306207395d",
+      "autor": "sistema",
+      "texto": "Diagrama de flujo generado desde conocimiento/recaudos/ y el análisis del REQ. Quedó **adjunto en el dictamen** (sección 4.5) y en dictamenes/20261006-0100016631-flujo.html.",
+      "fecha": "2026-10-06T10:13:06"
+    },
+    {
+      "id": "20261006101358477411m",
+      "autor": "sistema",
+      "texto": "Mockups generados **alineados a la propuesta de desarrollo** (no a la captura del problema): `activo/20261006-0100016631/mockups/mockup-ux-pantalla.html`. Quedan registrados en solicitud.json → contenido.mockups (correo y dictamen).",
+      "fecha": "2026-10-06T10:13:58"
+    },
+    {
+      "id": "20261006153000agente6631",
+      "autor": "agente",
+      "texto": "## Análisis REQ 0100016631 (ASOCABILIDOS · Recaudos / MARCAPAGO)\n\n**Problema (negocio):** Al aplicar o intentar aplicar pagos, la factura no coincide con lo que se puede asignar en Recaudos (ej. ASFE95817 con varios recaudos parciales en Informes de Cartera). Si queda `FCXCDV.MARCAPAGO = 1` tras un error o flujo incompleto, la factura no sale en el buscador y soporte desmarca por SQL (captura SSMS).\n\n**Paso 0 — ¿ya existe?** **Defecto + hueco de despliegue**, no capacitación sola.\n- La grilla de asignar facturas (`CXCComponent`) filtra `MARCAPAGO = 0` → «desaparece» la factura aunque Informes muestre saldo (efecto «discrepancia de valor»).\n- Caminos normales: quitar del plano (`DEL_FACTURA`), quitar línea detalle (`QUITARFPAGD`), borrar recaudo abierto (`BORRARTODO` / `SPK_BORRAPAGO`), aplicar OK (`SPK_PAGOSCXC` pone `MARCAPAGO = 0` incluso con saldo residual).\n- En **Qrystalos2** ya hay botón **«Facturas huérfanas»** → `LISTAR_FACTURAS_HUERFANAS` + `LIBERAR_MARCAPAGO`.\n- En **IXONLINE/SQL PREVERSION** esos METODOs y el **fix de `QUITARFPAGD`** (desmarcar antes de depender de `FPAGD` borrado) ya están; la copia `SPQ_FPAG_COL` en rama Qrystalos2 **sin** esos METODOs explica producción ASOCABILIDOS sin la utilidad.\n\n**Causa (KB):** marca al **asignar** al staging, no al aplicar; huérfanas por error/interrupción o `QUITARFPAGD` legacy (UPDATE tras DELETE).\n\n**Solución:** Desplegar paquete PREVERSION + FE (rama `bugfix/ASOCAB218`): utilidad huérfanas, `LIBERAR_MARCAPAGO`, `QUITARFPAGD` corregido; capacitar ruta Recaudo abierto → Asignar → **Facturas huérfanas** → Desmarcar. Opcional: panel diagnóstico si buscan por factura y la grilla viene vacía (REQ hermano 6332). **Validar antes** en preversión si ya opera → evitar re-codificar.\n\n**CA / alcance / restricciones:** escritos en el formulario (`contenido.criteriosAceptacion`, `alcance`, `restricciones`).\n\n**Contabilidad:** No afecta (solo candado FCXCDV).\n\n### SP · METODO · estado · rol en el fix\n| SP | METODO | estado | rol |\n|----|--------|--------|-----|\n| SPQ_FPAG_COL | LISTAR_FACTURAS_HUERFANAS | no_leido (PREVERSION) | Listado huérfanas |\n| SPQ_FPAG_COL | LIBERAR_MARCAPAGO | no_leido (PREVERSION) | Desmarca segura |\n| SPQ_FPAG_COL | QUITARFPAGD | leido | Fix UPDATE vs DELETE |\n| SPQ_FPAG_COL | DEL_FACTURA | leido | Camino normal |\n| SPQ_FPAG_COL | APLICARPAGO | leido | Gate apply |\n| SPK_PAGOSCXC | APLICAR | leido | MARCAPAGO=0 al aplicar |\n| SPK_BORRAPAGO | BORRARTODO | leido | Anular recaudo abierto |\n\n**SQL:** `contenido.cambioPropuestoSql` incluye fragmentos BEFORE/AFTER `QUITARFPAGD` y referencia apply.\n\n**Siguiente paso:** cuando apruebe el análisis, genero dictamen HTML (sin duplicar REQ 6332 salvo que quieran acotar solo despliegue ASOCAB).",
+      "fecha": "2026-10-06T10:30:00"
+    },
+    {
+      "id": "20261006142000agente6631act",
+      "autor": "agente",
+      "texto": "**Fase 1 — dictamen generado (activar)**\n\n- **Dictamen:** dictamenes/20261006-0100016631.html\n- **Diagrama 4.5:** incrustado en el HTML + copia dictamenes/20261006-0100016631-flujo.html\n- **Contabilidad:** solo «Afecta contabilidad: No».\n- **Validar antes:** obligatorio — probar PREVERSION + FE «Facturas huérfanas»; si ya cumple, foco en despliegue ASOCABILIDOS (bugfix/ASOCAB218), no re-codificar.\n- **Entregable desarrollo:** desplegar SPQ_FPAG_COL (LISTAR_FACTURAS_HUERFANAS, LIBERAR_MARCAPAGO, fix QUITARFPAGD) + CXCComponent; SPK_PAGOSCXC sin cambio.\n\nRevise el HTML en la app. Si está de acuerdo, **Cerrar fase 1** (archivar SQL si aplica, copiar a aprobados). Si ajusta criterios o permiso USGRUH, escríbalo aquí.",
+      "fecha": "2026-10-06T10:42:00"
+    },
+    {
+      "id": "fase1cerrada",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+      "fecha": "2026-10-06T11:00:20"
+    },
+    {
+      "id": "correo-cierre-20261006-0100016631",
+      "autor": "sistema",
+      "texto": "Fase 1 cerrada. Correo enviado a naren.voos@ixcolombia.com.",
+      "fecha": "2026-10-06T11:00:25"
+    }
+  ]
+}

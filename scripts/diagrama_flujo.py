@@ -305,6 +305,25 @@ def _gates_relevantes(proceso: dict, metodos: list[dict], solicitud: dict | None
 
 
 def _pasos_flujo(solicitud: dict, proceso: dict, metodos: list[dict]) -> list[dict]:
+    texto = _textos_req(solicitud).lower()
+    if "vwk_imovh_agrupado" in texto:
+        return [
+            {
+                "kind": "user",
+                "titulo": "Confirmación de entrada",
+                "detalle": "IMOV confirmada. Cada lote queda en IMOVH con su IVA.",
+            },
+            {
+                "kind": "vue",
+                "titulo": "Vista",
+                "detalle": "VWK_IMOVH_AGRUPADO agrupa por artículo, lote, vencimiento, estado y costo. El IVA sale de ese grupo.",
+            },
+            {
+                "kind": "sql",
+                "titulo": "CxP",
+                "detalle": "SPK_INSERT_CXP_INV graba ese IVA en cada línea de FCXPD.",
+            },
+        ]
     proyecto = solicitud.get("proyecto") or {}
     ventana = _ventana_del_req(proceso, solicitud)
     pantalla = (

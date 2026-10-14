@@ -1,0 +1,171 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-10-02T14:26:38.386Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016585",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20261002-0100016585",
+    "idReq": "0100016585",
+    "fecha": "2026-10-01",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Hospital de Codazzi",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "PPTO · PRESUPUESTO",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "EDGARDO MARTINEZ",
+    "desarrollador": "GUILLERMO GARCIA",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "bugfix/HCODAZ24",
+    "prioridad": "1 - Alta",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "PPTO · PRESUPUESTO",
+    "requerimiento": "Error al amarrar cuenta por pagar con CDP El usuario reporta que al intentar amarrar una cuenta por pagar con un CDP, recibe un error indicando que hay rubros sin saldos en el presupuesto de gastos. El mensaje de error es: 'saldo en 0 [CRUDPTCXPD;INSERTAR] Motor SQL 50000, TK_PTCXP_UPDATE, linea 62: Hay 1 Rubro(s) que no tienen Saldos en el Presupuesto de Gastos\n \n\nRevice los saldos\nR/ se revisan los saldos del rubro contra los movimientos y no coinciden, se hace recalculo de saldo para ese rubro pero aun no llega el saldo esperado. Se revisa el  TK_PTCXP_UPDATE , se revisan los SPQ pero la falla persiste.",
+    "criteriosAceptacion": "1) Caso piloto Codazzi (captura): CDP 0100000440, RP 0100001093 confirmado, rubro 2.1.2.02.01.002.201… (Uniformes): crear obligación presupuestal (PTCXP) y guardar detalle PTCXPD por el valor del RP (10.234.000 o fracción ≤ saldo PTRPD) sin error «Hay N Rubro(s) que no tienen Saldos en el Presupuesto de Gastos».\n2) El saldo mostrado al elegir rubro en el diálogo de detalle CXP debe ser coherente con lo que valida el motor (misma regla que al insertar línea de CDP: FNK_PPTO_SALDO_DISP_RUBRO / PTPTOG).\n3) Tras el fix, un recálculo de saldos del rubro (utilidad ya usada en soporte) debe alinear PTPTOG/PTPTOI con PTRPD y no volver a bloquear obligaciones nuevas en el mismo CDP.\n4) Regresión: insertar/editar PTCDPD, PTRPD, PTPAGD y confirmar RP/CXP siguen respetando topes presupuestales.\n5) Si el rubro no tiene fila en PTPTOG para el centro de costo del CDP, el sistema debe rechazar con mensaje explícito de configuración (no RAISERROR genérico del trigger).",
+    "alcance": "Proceso presupuesto · control cadena gastos (PTCDP → PTRP → PTCXP → PTCXPD). Pantallas PTCDPComponent / PTRPComponent / PTCXPComponent (flujo presupuestal CDP y botón CXP). Backend SPQ_PPTO_PTCDP (CRUDPTCXP, CRUDPTCXPD) y trigger TK_PTCXP_UPDATE; funciones de saldo FNK_PPTO_SALDO_DISP_RUBRO y procedimiento de recálculo de saldos que use el cliente (a identificar en PREVERSION). Fuera de alcance: envío nómina ENVIAR/SPK_ENTREGA_CXP_PTTO, anticipos AnticiposCxpComponent, contabilidad MCP, menú Seguimiento Gastos (REQ 6310).",
+    "restricciones": "Rama bugfix/HCODAZ24. No ejecutar correcciones de datos en producción sin respaldo. Validar en preversión con el CDP/RP del REQ antes de liberar. No desactivar triggers en producción como solución definitiva. Mantener compatibilidad con variable PPTO_CDP_DESCONFMOV y estados Confirmado del RP/CDP.",
+    "analisis": "REQ: al «amarrar» la cuenta por pagar presupuestal al CDP (obligación PTCXP + detalle por rubro PTCXPD), falla CRUDPTCXPD;INSERTAR con RAISERROR en TK_PTCXP_UPDATE línea 62: rubros sin saldos en presupuesto de gastos. Soporte comparó movimientos vs saldo del rubro y ejecutó recálculo sin recuperar el saldo esperado.\n\nCola IX OnLine.htm + texto del formulario coinciden con el error SQL citado.\n\nPaso 0 — ¿ya existe?: No es capacitación. Caminos del control cadena-gastos: (a) CDP confirmado → RP confirmado → botón CXP → crear PTCXP y detalle PTCXPD (PTRPD_RUBROS); (b) carga masiva RP; (c) alimentadores nómina/compras (SPK_ENTREGA_CXP_PTTO) — distinto flujo. La captura muestra el camino (a): flujo presupuestal CDP 0100000440, RP 0100001093 confirmado, detalle rubro con Valor CXP 0 y saldo RP 10.234.000 — coherente con alta de obligación, no pantalla equivocada.\n\nClasificación: defecto (bloqueo funcional / inconsistencia saldos ejecución vs cadena documental).\n\nContraste KB: CRUDPTCXPD (sps.json leído) valida CNSCXP, ítem CDPD y valor>0 pero no replica la pre-validación de saldo que sí tiene CRUDPTCDPD (PTPTOG + FNK_PPTO_SALDO_DISP_RUBRO). PTCXPComponent muestra saldo desde PTRPD.SALDO (AppStore.read), no CONSULTA_SALDO del SPQ (patrón usado en PTCDPDComponent). El INSERT en PTCXPD dispara TK_PTCXP_UPDATE, que exige saldos en tablas de ejecución de gastos (mensaje «Presupuesto de Gastos» — típicamente PTPTOG/PTPTOI), distinto bucket que PTRPD.SALDO. Eso explica UI con saldo aparente y motor en cero, y que el recálculo manual no alinee lo que el trigger consulta.\n\nCausa probable: desincronización o criterio distinto entre trigger TK_PTCXP_UPDATE, función FNK_PPTO_SALDO_DISP_RUBRO y utilidad de recálculo; falta validación temprana en CRUDPTCXPD INSERTAR.\n\nPendiente releer cuerpo PREVERSION: TK_PTCXP_UPDATE (~línea 62), FNK_PPTO_SALDO_DISP_RUBRO (referencia sql_refe/0100016310 SPQ_PPTO_PTCDP).",
+    "opciones": [
+      {
+        "titulo": "A — Alinear trigger + validación SPQ (recomendada)",
+        "descripcion": "Unificar criterio de saldo en TK_PTCXP_UPDATE con FNK_PPTO_SALDO_DISP_RUBRO; añadir pre-check en CRUDPTCXPD INSERTAR como CRUDPTCDPD; opcional FE CONSULTA_SALDO al elegir rubro."
+      },
+      {
+        "titulo": "B — Solo saneamiento de datos PTPTOG/PTPTOI",
+        "descripcion": "Corregir filas faltantes o recalcular en Codazzi sin cambiar objetos. Solo si PREVERSION demuestra trigger correcto y dato huérfano."
+      }
+    ],
+    "recomendacion": "Opción A: bajar TK_PTCXP_UPDATE y FNK_PPTO_SALDO_DISP_RUBRO a activo/20261002-0100016585/sql/, comparar PREVERSION vs liberada, reproducir con CDP 0100000440 / RP 0100001093, corregir trigger o SPQ para una sola fuente de verdad de saldo; complementar FE para mostrar el mismo saldo que rechaza/acepta el SP. Opción B solo contingencia acotada.",
+    "cambioPropuestoSimple": "Hoy, al registrar el detalle de la obligación presupuestal (CxP del CDP) por rubro, el sistema dice que el rubro no tiene saldo en el presupuesto de gastos aunque en pantalla el registro presupuestal (RP) sí muestra saldo disponible. Eso impide amarrar la obligación al CDP. Se unificará la regla de saldo entre lo que ve el usuario, el procedimiento de guardado y el trigger TK_PTCXP_UPDATE, y se validará antes de grabar con el mismo cálculo que usa el CDP.",
+    "cambioPropuestoSql": "-- Objetos: TK_PTCXP_UPDATE (trigger), SPQ_PPTO_PTCDP · CRUDPTCXPD · INSERTAR, DBO.FNK_PPTO_SALDO_DISP_RUBRO\n-- Fuente análisis: conocimiento/presupuesto/sps.json (fichas leídas); SPQ referencia sql_refe/0100016310/SPQ_PPTO_PTCDP.sql\n-- Confirmar cuerpo PREVERSION en activo/20261002-0100016585/sql/ antes de implementar:\n--   python scripts/sqlix_bajar_objeto.py --caso 20261002-0100016585 TK_PTCXP_UPDATE\n--   python scripts/sqlix_bajar_objeto.py --caso 20261002-0100016585 FNK_PPTO_SALDO_DISP_RUBRO\n\n-- HALLAZGO (SPQ archivado): CRUDPTCDPD INSERTAR ya hace:\n--   1) Resolver CLASE desde PTPTOG (COMPANIA, CONSECUTIVO, RUBRO, CCOSTO del CDP)\n--   2) @SALDO = FNK_PPTO_SALDO_DISP_RUBRO(@COMPANIA, @CONSECUTIVO, @RUBRO_ID, @CLASE, @CDP, @ITEM)\n--   3) Rechazar si @VALOR > @SALDO\n-- CRUDPTCXPD INSERTAR (aprox. líneas 1895-1937 sql_refe) inserta PTCXPD sin ese bloque; el error sale en trigger.\n\n-- PROPUESTA CRUDPTCXPD · INSERTAR (especificación AFTER, antes del INSERT):\n--   Obtener @CCOSTO de PTCDP; resolver @CLASE en PTPTOG como CRUDPTCDPD;\n--   SET @SALDO_DISP = FNK_PPTO_SALDO_DISP_RUBRO(@COMPANIA_REG, @CONSECUTIVO, @RUBRO_ID, @CLASE, @CDP, @ITEMCDPD);\n--   IF @VALOR > @SALDO_DISP RAISERROR/ @TBLERRORES con mensaje de saldo (igual tono CDPD);\n--   IF @CLASE IS NULL mensaje «rubro no registrado en PTPTOG…» (evitar RAISERROR opaco del trigger).\n\n-- PROPUESTA TK_PTCXP_UPDATE (~línea 62, tras leer PREVERSION):\n--   Comparar SELECT que arma «Rubro(s) que no tienen Saldos en el Presupuesto de Gastos»\n--   con resultado de FNK_PPTO_SALDO_DISP_RUBRO para inserted.RUBRO_ID/ITEMCDPD.\n--   BEFORE: posible EXISTS sobre PTPTOI/PTPTOG con saldo 0 o fila ausente pese a PTRPD.SALDO>0.\n--   AFTER: usar misma función o actualizar PTPTOI en CONFIRMAR RP/CDP para no divergir.\n\n-- Validación piloto Codazzi (solo lectura en análisis; ajustar @CONSECUTIVO presupuesto):\n-- SELECT COMPANIA, CONSECUTIVO, CDP, RP, RUBRO, RUBRO_ID, VALOR, SALDO, VALOR_CXP FROM PTRPD WHERE CDP='0100000440' AND RP='0100001093';\n-- SELECT * FROM PTPTOG WHERE CONSECUTIVO=@CONSECUTIVO AND RUBRO LIKE '2.1.2.02.01.002%';\n-- SELECT DBO.FNK_PPTO_SALDO_DISP_RUBRO(@COMPANIA, @CONSECUTIVO, @RUBRO_ID, @CLASE, '0100000440', @ITEMCDPD);\n-- Reproducir AppStore.json CRUDPTCXPD INSERTAR y capturar plan del trigger.",
+    "impactoFe": "Parcial",
+    "impactoApi": "Sí",
+    "impactoSql": "Sí",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "Permisos de pantalla (USGRUH). No genera ni modifica comprobantes MCP, CON ni MCPE.",
+        "validadoEn": "2026-09-26T14:55:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En copia/preversión con CDP 0100000440 y RP 0100001093: intentar CRUDPTCXPD INSERTAR del rubro de la captura. Consultar PTRPD.SALDO, PTPTOG/PTPTOI del rubro y FNK_PPTO_SALDO_DISP_RUBRO. Si PREVERSION ya corrige TK_PTCXP_UPDATE o CRUDPTCXPD, el REQ puede estar resuelto en canasta — no duplicar desarrollo."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "Captura_de_pantalla_2026-09-30_141611.png",
+        "ruta": "activo/20261002-0100016585/imagenes/Captura_de_pantalla_2026-09-30_141611.png",
+        "subidaEn": "2026-10-02T09:17:05",
+        "url": "/api/caso/20261002-0100016585/imagen/Captura_de_pantalla_2026-09-30_141611.png"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Caso piloto Codazzi (captura): CDP 0100000440, RP 0100001093 confirmado, rubro 2.1.2.02.01.002.201… (Uniformes): crear obligación presupuestal (PTCXP) y guardar detalle PTCXPD por el valor del RP (10.234.000 o fracción ≤ saldo PTRPD) sin error «Hay N Rubro(s) que no tienen Saldos en el Presupuesto de Gastos».\n2) El saldo mostrado al elegir rubro en el diálogo de detalle CXP debe ser coherente con lo que valida el motor (misma regla que al insertar línea de CDP: FNK_PPTO_SALDO_DISP_RUBRO / PTPTOG).\n3) Tras el fix, un recálculo de saldos del rubro (utilidad ya usada en soporte) debe alinear PTPTOG/PTPTOI con PTRPD y no volver a bloquear obligaciones nuevas en el mismo CDP.\n4) Regresión: insertar/editar PTCDPD, PTRPD, PTPAGD y confirmar RP/CXP siguen respetando topes presupuestales.\n5) Si el rubro no tiene fila en PTPTOG para el centro de costo del CDP, el sistema debe rechazar con mensaje explícito de configuración (no RAISERROR genérico del trigger).",
+      "originalesEn": "2026-10-02T14:25:13.744Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Caso piloto Codazzi (captura): CDP 0100000440, RP 0100001093 confirmado, rubro 2.1.2.02.01.002.201… (Uniformes): crear obligación presupuestal (PTCXP) y guardar detalle PTCXPD por el valor del RP (10.234.000 o fracción ≤ saldo PTRPD) sin error «Hay N Rubro(s) que no tienen Saldos en el Presupuesto de Gastos».\n2) El saldo mostrado al elegir rubro en el diálogo de detalle CXP debe ser coherente con lo que valida el motor (misma regla que al insertar línea de CDP: FNK_PPTO_SALDO_DISP_RUBRO / PTPTOG).\n3) Tras el fix, un recálculo de saldos del rubro (utilidad ya usada en soporte) debe alinear PTPTOG/PTPTOI con PTRPD y no volver a bloquear obligaciones nuevas en el mismo CDP.\n4) Regresión: insertar/editar PTCDPD, PTRPD, PTPAGD y confirmar RP/CXP siguen respetando topes presupuestales.\n5) Si el rubro no tiene fila en PTPTOG para el centro de costo del CDP, el sistema debe rechazar con mensaje explícito de configuración (no RAISERROR genérico del trigger).",
+      "trasAnalisisEn": "2026-10-02T14:25:20.016Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis de solución listo (Paso 0 defecto; propuesta SQL/FE). Releer en carpeta del caso TK_PTCXP_UPDATE y FNK_PPTO_SALDO_DISP_RUBRO desde DESAIX (PREVERSION) para cerrar línea exacta del trigger y confirmar si el arreglo ya está en canasta.",
+      "fecha": "2026-10-02T14:35:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "TK_PTCXP_UPDATE",
+        "FNK_PPTO_SALDO_DISP_RUBRO"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20261002-0100016585/diagramas/flujo.html",
+      "subidaEn": "2026-10-02T09:26:20",
+      "url": "/api/caso/20261002-0100016585/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "presupuesto",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20261002-0100016585-flujo.html"
+    },
+    "mockups": [
+      "activo/20261002-0100016585/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20261002-0100016585\\sql\\",
+    "carpetaRelativa": "activo/20261002-0100016585/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016585\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "presupuesto",
+    "catalogo": "conocimiento/presupuesto/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_PPTO_PTCDP",
+        "metodo": "CRUDPTCXP",
+        "estado": "leido",
+        "hace": "Obligación presupuestal PTCXP ligada a CDP/RP: alta, edición, baja, anular, confirmar, desconfirmar.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_PPTO_PTCDP",
+        "metodo": "CRUDPTCXPD",
+        "estado": "leido",
+        "hace": "Detalle de obligación (PTCXPD) por rubro/ítem RP.",
+        "llama": []
+      }
+    ],
+    "notas": "",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20261002-0100016585.html",
+    "aprobados": "aprobados/20261002-0100016585/",
+    "imagenes": "aprobados/20261002-0100016585/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-10-02",
+    "ultimoEnvio": "2026-10-02T09:29:20",
+    "reenvios": 0,
+    "destinatario": "guillermo.garcia@ixcolombia.com",
+    "via": "smtp"
+  }
+}

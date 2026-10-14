@@ -1,0 +1,181 @@
+{
+  "meta": {
+    "version": "2.1",
+    "generadoEn": "2026-09-23T11:26:03.312Z",
+    "listoParaAnalisis": true
+  },
+  "cola": {
+    "archivoCola": "IX OnLine.htm",
+    "idReq": "0100016499",
+    "rutaCola": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\IX OnLine.htm",
+    "instruccion": "El agente debe leer el HTML desde rutaCola en disco. No transcribir manualmente."
+  },
+  "identificacion": {
+    "idCaso": "20260922-0100016499",
+    "idReq": "0100016499",
+    "fecha": "2026-09-22",
+    "fechaAsignacion": "",
+    "fechaDesarrollo": "",
+    "diasDesarrollo": "",
+    "fechaEntregaCliente": "",
+    "orden": ""
+  },
+  "proyecto": {
+    "nombre": "Proveemos salud",
+    "area": "FINANCIERO · AREA FINANCIERA",
+    "modulo": "FTR · MODULO DE FACTURACION",
+    "rutaPantalla": ""
+  },
+  "personas": {
+    "asesor": "JOSE MANUEL JIMENEZ",
+    "coordinador": "JOSE MANUEL JIMENEZ",
+    "soporteProyecto": "SANDER TORRES",
+    "desarrollador": "ELAN BRAVO",
+    "subidoPor": ""
+  },
+  "gestion": {
+    "ticket": "",
+    "rama": "feature/PROVEE2",
+    "prioridad": "3 - Baja",
+    "estado": "ASIGNADO",
+    "aval": "Sin aval",
+    "tipo": "Performance"
+  },
+  "contenido": {
+    "titulo": "FTR · MODULO DE FACTURACION",
+    "requerimiento": "En la opcion de facturacion MASIVA  en clarion tenia dos filtros  donde se podia filtrar el documento y al mismo tiempo   el id servicio, de esa forma  podia organizar la informacion a facturar de manera mas sencilla, ademas de eso el boton marcar todos funciona mal,  si tu tienes  filtrados 20 servicios  y le das marcar todos    selecciona  todo lo que este pendiente por facturar   esto puedo causar errores delicados. DETALLE: Dejo 2 requerimientos puntuales sobre el módulo de Facturación Masiva:\n\nCorregir el botón \"Marcar todos\": Actualmente, si tienes servicios filtrados en pantalla (por ejemplo, 20 registros) y usas este botón, el sistema ignora el filtro y selecciona absolutamente todo lo que esté pendiente por facturar. Esto puede causar errores muy delicados al procesar servicios equivocados.\n\nRecuperar los filtros simultáneos (como en Clarion): Se necesita poder filtrar por \"Documento\" y al mismo tiempo por \"ID Servicio\". Esta combinación es indispensable para poder organizar la información a facturar de manera más sencilla y segura.",
+    "criteriosAceptacion": "1) Pestaña **Citas** de Facturación Masiva (`FTRMComponent`, permiso FACT_MASIVA): con tercero, plan, sede y rango de fechas cargados, si el usuario filtra la grilla (documento del paciente, Id. servicio y/o caja «Buscar») y pulsa **Marcar todo** en el encabezado, solo quedan marcados (`MARCAFAC=1`, `CNSFACT` del usuario) los registros que cumplen **los mismos criterios visibles** en la grilla (filtros de cabecera + documento + Id. servicio + texto de búsqueda), no todo el universo pendiente del pagador en el rango.\n2) **Desmarcar todo** en las mismas condiciones solo desmarca el subconjunto filtrado (marcas del usuario actual), sin tocar filas fuera del filtro.\n3) La pantalla ofrece al menos dos campos de filtro independientes y combinables: **Documento** (DOCIDAFILIADO) e **Id. servicio** (IDSERVICIO), aplicados en conjunto (AND) sobre `VWK_CARGOS_HADMAUTCIT` junto con los filtros existentes (Facturables, fechas, sede, etc.).\n4) Marcar/desmarcar fila individual y **Marcar/Desmarcar paciente** (`MARCAFACT` / `MARCAFACTPTE`) siguen funcionando sin regresión.\n5) **Facturar** (`FACTURAR_MASI` / `SPK_FACTURACI_ESCIP`) solo procesa las marcas del usuario; no se altera la lógica contable ni DIAN.\n6) Prueba coordinador (caso captura FOMAG): filtrar documento 22667538 + servicio 933301, marcar todo → conteo de marcados coincide con filas visibles; repetir con solo uno de los dos filtros.",
+    "alcance": "Frontend: `FTRMComponent.vue` (pestaña Citas de Facturación Masiva en `FTRComponent` → `/admin/facturacion`). Backend JSON: `FTR_COL` · `MARCATODOMASI` (y parámetros enviados desde `MarcarFacMasi`). SQL: rama `@PROCEDENCIA='CIT'` de `SPQ_FTR_COL` · `MARCATODOMASI` en PREVERSION (releer al implementar). Fuera de alcance: pestañas Autorizaciones, Unificada, Oncología, Hospitalización, Facturación Evento/Programa, Perú, RIPS/DIAN y `FtrMasivaComponent` legacy si no está en ruta del cliente.",
+    "restricciones": "No cambiar reglas de negocio de qué cita es facturable (`FACTURABLE`, `RIPS_CITSOLOCUMPLIDA`, valor > 0). Mantener generación de `@RPDX` / `CNSFACT` vía `SPK_GENCONSECUTO`. Cualquier condición dinámica adicional en SQL debe validarse contra inyección (patrón similar a `MARCATODO_UNI` en `SPQ_FTR_MASIVA_COL`, con lista blanca de columnas de la vista). Rama Colombia; cliente Proveemos salud / FOMAG.",
+    "analisis": "**REQ (negocio):** En Facturación masiva tipo Clarion, combinar filtro por documento e Id. servicio y que «marcar todos» respete lo filtrado.\n\n**Paso 0 — ¿Ya existe?** **No es capacitación.** El control Citas sí tiene caja «Buscar» (`ServerSideTableComponent`, `columnas_filtro` OR sobre varias columnas) y botones Marcar todo / Desmarcar todo, pero el comportamiento actual no cumple el REQ.\n\n**Ventana y caminos del control:** Administrativo → Facturación → pestaña Facturación Masiva → subpestaña **Citas** (`tabFacMasivas='Citas'`, `PROCE='CIT'`). Filtros de cabecera: tercero, plan, sede, fechas, Facturables/Marcados/Facturados, etc. (`filtrosfmasi`, `WFTRM`). Grilla server-side sobre `VWK_CARGOS_HADMAUTCIT`. Acciones: marcar línea (`MARCAFACT`), marcar paciente (`MARCAFACTPTE`), **Marcar todo** / **Desmarcar todo** (`MarcarFacMasi` → `MARCATODOMASI`), Facturar en paquete, Automática, Borrar filtros. Captura `SOLICITUD_FACTURACION_MASIVA.jpg` coincide con esta pestaña Citas.\n\n**Clasificación:** (A) **Defecto** — Marcar todo ignora filtro de grilla. (B) **Hueco UX** — no hay dos filtros AND documento + Id. servicio como en Clarion (un solo «Buscar» mezcla columnas con OR).\n\n**Causa técnica:** `MarcarFacMasi` envía solo `filtrosfmasi` (tercero, plan, sede, fechas, `PROCE`) a `FTR_COL` · `MARCATODOMASI`, sin el filtro de la grilla ni futuros campos documento/servicio. En `sql_refe/xsql/SPQ_FTR_COL.sql`, rama CIT de `MARCATODOMASI` hace `UPDATE CIT` por `IDTERCEROCA`, `IDPLAN`, `IDSEDE`, rango de fechas y facturable — equivalente a marcar **todo** lo pendiente del criterio de cabecera. La ficha en `conocimiento/facturacion/sps.json` describe «visibles del usuario» pero el SQL no replica `WFTRM` ni `StringABuscar`. Referencia de diseño: pestaña Unificada ya pasa `WHERE` a `FTR_MASIVA_COL` · `MARCATODO_UNI`.\n\n**Contabilidad:** No afecta (`afecta=false`).\n\n**Impacto:** FE sí (filtros + parámetros de marcar todo). API sí (`AppStore.json` FTR_COL). SQL parcial (extender `MARCATODOMASI` CIT; fichas `leido` — cuerpo en `sql_refe`, releer PREVERSION al codificar).",
+    "opciones": [
+      {
+        "titulo": "Alinear Citas con patrón Unificada (recomendada)",
+        "descripcion": ""
+      },
+      {
+        "titulo": "Solo FE — marcar filas de la página actual",
+        "descripcion": ""
+      }
+    ],
+    "recomendacion": "Opción **A**: en `FTRMComponent.vue`, añadir campos **Documento** e **Id. servicio** en la barra de filtros (AND en `WFTRM`); exponer el valor de búsqueda de la grilla al llamar `MarcarFacMasi`; extender `MARCATODOMASI` (rama CIT) para recibir `FILTRO_DOCUMENTO`, `FILTRO_IDSERVICIO` y criterio de búsqueda alineado con `/read`, o un `WHERE` validado sobre columnas de `VWK_CARGOS_HADMAUTCIT`. Validar en PREVERSION antes de merge. No tocar `FACTURAR_MASI` salvo prueba de regresión.",
+    "cambioPropuestoSimple": "En Facturación Masiva → Citas, el usuario podrá escribir documento e Id. de servicio a la vez para acotar la lista. Al pulsar «Marcar todo», solo se seleccionarán las citas que ve en esa lista filtrada, no todas las pendientes del EPS en el rango de fechas.",
+    "cambioPropuestoSql": "-- Objeto: SPQ_FTR_COL · METODO MARCATODOMASI (rama @PROCEDENCIA='CIT')\n-- Fuente referencia: sql_refe/xsql/SPQ_FTR_COL.sql (~L2130). Implementar sobre PREVERSION del día.\n\n-- BEFORE (simplificado): UPDATE CIT solo por tercero, plan, sede, fechas, FACTURABLE…\n\n-- AFTER: ampliar OPENJSON(@DATOS) con filtros opcionales:\n--   FILTRO_DOCUMENTO VARCHAR(20), FILTRO_IDSERVICIO VARCHAR(20), FILTRO_BUSCAR VARCHAR(100)\n-- En el WHERE del UPDATE CIT (rama CIT), añadir por ejemplo:\n--   AND (@FILTRO_DOCUMENTO IS NULL OR EXISTS (SELECT 1 FROM AFI WHERE AFI.IDAFILIADO=CIT.IDAFILIADO AND AFI.DOCIDAFILIADO LIKE '%'+@FILTRO_DOCUMENTO+'%'))\n--   AND (@FILTRO_IDSERVICIO IS NULL OR CIT.IDSERVICIO LIKE '%'+@FILTRO_IDSERVICIO+'%')\n--   AND (@FILTRO_BUSCAR IS NULL OR … replicar OR de columnas_filtro de la grilla sobre la vista/joins …)\n-- Alternativa más segura: UPDATE CIT FROM CIT INNER JOIN VWK_CARGOS_HADMAUTCIT V ON … WHERE <condición ya validada en FE igual a WFTRM+filtros>\n\n-- Validación QA:\n-- SELECT COUNT(*) FROM VWK_CARGOS_HADMAUTCIT WHERE <misma condición FE> AND COALESCE(MARCAFAC,0)=0;\n-- Tras Marcar todo ACCION=1, mismos filtros y MARCAFAC=1 y CNSFACT=@usuario debe coincidir el conteo.",
+    "impactoFe": "Sí",
+    "impactoApi": "Sí",
+    "impactoSql": "Parcial",
+    "contabilidad": {
+      "afecta": false,
+      "comoAfecta": "",
+      "desarrollo": "",
+      "validacion": {
+        "estado": "no_aplica",
+        "texto": "contenido.contabilidad.afecta=false. El control Soportes solo genera/descarga PDFs de soporte en FE (merge); no altera FTR.CONTABILIZADA, comprobantes MCPE/MCP ni envío SUNAT (FACTEP/FTRE).",
+        "validadoEn": "2026-09-22T21:30:00.000Z"
+      }
+    },
+    "validarAntes": {
+      "aplica": true,
+      "texto": "En test/copia FOMAG: Facturación Masiva → Citas, cargar pagador y rango de la captura; filtrar grilla (ej. documento 22667538); contar filas visibles; pulsar Marcar todo y verificar en grilla o BD que se marcaron registros fuera del filtro. Si ya no ocurre, cerrar como corregido en PREVERSION sin desarrollo."
+    },
+    "imagenesNecesarias": "",
+    "imagenesAnalisis": [
+      {
+        "nombre": "SOLICITUD_FACTURACION_MASIVA.jpg",
+        "ruta": "activo/20260922-0100016499/imagenes/SOLICITUD_FACTURACION_MASIVA.jpg",
+        "subidaEn": "2026-09-22T22:34:08",
+        "url": "/api/caso/20260922-0100016499/imagen/SOLICITUD_FACTURACION_MASIVA.jpg"
+      }
+    ],
+    "archivosAnalisis": [],
+    "criteriosMeta": {
+      "originales": "1) Pestaña **Citas** de Facturación Masiva (`FTRMComponent`, permiso FACT_MASIVA): con tercero, plan, sede y rango de fechas cargados, si el usuario filtra la grilla (documento del paciente, Id. servicio y/o caja «Buscar») y pulsa **Marcar todo** en el encabezado, solo quedan marcados (`MARCAFAC=1`, `CNSFACT` del usuario) los registros que cumplen **los mismos criterios visibles** en la grilla (filtros de cabecera + documento + Id. servicio + texto de búsqueda), no todo el universo pendiente del pagador en el rango.\n2) **Desmarcar todo** en las mismas condiciones solo desmarca el subconjunto filtrado (marcas del usuario actual), sin tocar filas fuera del filtro.\n3) La pantalla ofrece al menos dos campos de filtro independientes y combinables: **Documento** (DOCIDAFILIADO) e **Id. servicio** (IDSERVICIO), aplicados en conjunto (AND) sobre `VWK_CARGOS_HADMAUTCIT` junto con los filtros existentes (Facturables, fechas, sede, etc.).\n4) Marcar/desmarcar fila individual y **Marcar/Desmarcar paciente** (`MARCAFACT` / `MARCAFACTPTE`) siguen funcionando sin regresión.\n5) **Facturar** (`FACTURAR_MASI` / `SPK_FACTURACI_ESCIP`) solo procesa las marcas del usuario; no se altera la lógica contable ni DIAN.\n6) Prueba coordinador (caso captura FOMAG): filtrar documento 22667538 + servicio 933301, marcar todo → conteo de marcados coincide con filas visibles; repetir con solo uno de los dos filtros.",
+      "originalesEn": "2026-09-23T11:24:57.832Z",
+      "sugeridos": "",
+      "sugeridosEn": "",
+      "fuente": "agente",
+      "trasAnalisis": "1) Pestaña **Citas** de Facturación Masiva (`FTRMComponent`, permiso FACT_MASIVA): con tercero, plan, sede y rango de fechas cargados, si el usuario filtra la grilla (documento del paciente, Id. servicio y/o caja «Buscar») y pulsa **Marcar todo** en el encabezado, solo quedan marcados (`MARCAFAC=1`, `CNSFACT` del usuario) los registros que cumplen **los mismos criterios visibles** en la grilla (filtros de cabecera + documento + Id. servicio + texto de búsqueda), no todo el universo pendiente del pagador en el rango.\n2) **Desmarcar todo** en las mismas condiciones solo desmarca el subconjunto filtrado (marcas del usuario actual), sin tocar filas fuera del filtro.\n3) La pantalla ofrece al menos dos campos de filtro independientes y combinables: **Documento** (DOCIDAFILIADO) e **Id. servicio** (IDSERVICIO), aplicados en conjunto (AND) sobre `VWK_CARGOS_HADMAUTCIT` junto con los filtros existentes (Facturables, fechas, sede, etc.).\n4) Marcar/desmarcar fila individual y **Marcar/Desmarcar paciente** (`MARCAFACT` / `MARCAFACTPTE`) siguen funcionando sin regresión.\n5) **Facturar** (`FACTURAR_MASI` / `SPK_FACTURACI_ESCIP`) solo procesa las marcas del usuario; no se altera la lógica contable ni DIAN.\n6) Prueba coordinador (caso captura FOMAG): filtrar documento 22667538 + servicio 933301, marcar todo → conteo de marcados coincide con filas visibles; repetir con solo uno de los dos filtros.",
+      "trasAnalisisEn": "2026-09-23T11:25:02.112Z",
+      "definitivos": "",
+      "validados": false,
+      "coinciden": null,
+      "validadosEn": ""
+    },
+    "brechaAnalisis": {
+      "texto": "Análisis listo: defecto + hueco UX en control Citas de Facturación Masiva. Fichas SPQ_FTR_COL · MARCATODOMASI y MARCAFACT están leídas en conocimiento/facturacion/sps.json; cuerpo de referencia en sql_refe/xsql/SPQ_FTR_COL.sql. Al implementar, bajar PREVERSION de SPQ_FTR_COL y comparar rama MARCATODOMASI CIT. No se requiere sql/ en carpeta fija para dictaminar: alcance cubierto por ficha + sql_refe.",
+      "fecha": "2026-09-23T03:45:00.000Z",
+      "estado": "listo",
+      "sps": [
+        "SPQ_FTR_COL · MARCATODOMASI (leido; fix CIT)",
+        "SPQ_FTR_COL · MARCAFACT (leido; regresión)",
+        "SPQ_FTR_COL · MARCAFACTPTE (leido; regresión marcar paciente)"
+      ]
+    },
+    "diagramaFlujo": {
+      "nombre": "flujo.html",
+      "ruta": "activo/20260922-0100016499/diagramas/flujo.html",
+      "subidaEn": "2026-09-23T06:25:33",
+      "url": "/api/caso/20260922-0100016499/diagrama/flujo.html",
+      "notas": "",
+      "fuente": "conocimiento+analisis",
+      "procesoId": "facturacion",
+      "aviso": null,
+      "dictamenIncrustado": false,
+      "sidecar": "dictamenes/20260922-0100016499-flujo.html"
+    },
+    "mockups": [
+      "activo/20260922-0100016499/mockups/mockup-ux-pantalla.html"
+    ],
+    "mockupsNotas": ""
+  },
+  "sql": {
+    "carpetaFija": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\activo\\20260922-0100016499\\sql\\",
+    "carpetaRelativa": "activo/20260922-0100016499/sql/",
+    "carpetaSqlRefe": "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\sql_refe\\0100016499\\",
+    "archivosEsperados": [],
+    "confirmadoEnCarpeta": true,
+    "usarDocumentacion": true,
+    "procesoId": "facturacion",
+    "catalogo": "conocimiento/facturacion/sps.json",
+    "metodosDocumentados": [
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "MARCAFACT",
+        "estado": "leido",
+        "hace": "Marca/desmarca cargo para facturación masiva (@RPDX CNSFACT). Ramas: HADM/HPRED, CIT, AUT/AUTD, AUT_EVENTO, ONCO, INV.",
+        "llama": [
+          "SPK_GENCONSECUTIVO"
+        ]
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "MARCAFACTPTE",
+        "estado": "leido",
+        "hace": "Marca pendientes de facturar (PTE) en staging masiva.",
+        "llama": []
+      },
+      {
+        "sp": "SPQ_FTR_COL",
+        "metodo": "MARCATODOMASI",
+        "estado": "leido",
+        "hace": "Marca todos los cargos visibles del usuario en lote masivo (VWK_CARGOS_HADMAUTCIT).",
+        "llama": []
+      }
+    ],
+    "notas": "Referencia SQL: sql_refe/xsql/SPQ_FTR_COL.sql MARCATODOMASI ~L2130. Patrón WHERE dinámico: sql_refe/0100016283/SPQ_FTR_MASIVA_COL.sql MARCATODO_UNI.",
+    "pruebasUnitarias": ""
+  },
+  "rutas": {
+    "dictamen": "dictamenes/20260922-0100016499.html",
+    "aprobados": "aprobados/20260922-0100016499/",
+    "imagenes": "aprobados/20260922-0100016499/imagenes/"
+  },
+  "correo": {
+    "enviado": true,
+    "fechaEnvio": "2026-09-23",
+    "ultimoEnvio": "2026-09-23T07:14:25",
+    "reenvios": 0,
+    "destinatario": "elan.bravo@ixcolombia.com",
+    "via": "smtp"
+  }
+}
