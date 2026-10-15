@@ -1833,7 +1833,6 @@
           "estado": "leido",
           "hace": "Devolución de una dispensación: crea entrada con el tipo IDINVMOV_DEVOLUCION, la confirma (SPK_CONFIRMARENTRADAS), actualiza IZSOL/IZSOLD/AUT y puede crear una nueva solicitud con lo devuelto.",
           "valida": [],
-          "noValida": [],
           "errores": [
             "El motivo de la devoluci�n es obligatorio. Por favor ingrese un motivo v�lido.",
             "Este movimiento ya fue devuelto en su totalidad. No se puede devolver nuevamente.",
@@ -1866,7 +1865,10 @@
             "IZSOL",
             "IZSOLD"
           ],
-          "efecto": "",
+          "efecto": "Entrada IDINVMOV_DEVOLUCION confirmada; IEXI reingresa; IZSOL/AUT actualizados. Puede nacer una solicitud nueva con lo devuelto.",
+          "noValida": [
+            "PRI.CERRADO_INV"
+          ],
           "capaId": "02-operacion",
           "gateId": "imov-entrada",
           "ventanaFe": "/inv/izsol_2 · /inv/imov"
@@ -2339,8 +2341,8 @@
       "tipo": "SPQ",
       "modelo": "ITRA",
       "estado": "leido",
-      "fuente": "sql/SPQ_ITRA.sql",
-      "actualizado": "2026-09-12T21:15:18",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.9, idéntica a liberada)",
+      "actualizado": "2026-10-14T10:40:00",
       "metodos": [
         {
           "id": "ON_PROCESAR",
@@ -2363,18 +2365,53 @@
         },
         {
           "id": "ANIOS",
-          "hace": "Lista años de ITRA.",
-          "estado": "parcial"
+          "estado": "leido",
+          "hace": "Lista los años distintos de ITRA.FECHAING (más reciente primero).",
+          "valida": [],
+          "noValida": [
+            "No filtra por bodega, sede ni permiso",
+            "No mira PRI"
+          ],
+          "errores": [],
+          "efecto": "no aplica (solo lectura). No toca IEXI.",
+          "tablas": [
+            "ITRA"
+          ]
         },
         {
           "id": "EXCEL_DETALLE",
-          "hace": "Exporta detalle del traslado.",
-          "estado": "parcial"
+          "estado": "leido",
+          "hace": "Plantilla Excel del tránsito: líneas ITRAH INICIAL=0 (aún no loteadas) con artículo y CANTIDADORI; lote, vencimiento, costo e IVA van en NULL para que el usuario los llene.",
+          "valida": [],
+          "noValida": [
+            "CNSITRA vacío o inexistente: no KO, devuelve vacío",
+            "No hace RETURN (el siguiente IF no entra porque el METODO no coincide)"
+          ],
+          "errores": [],
+          "efecto": "no aplica (solo lectura). No toca IEXI ni ITRAH.",
+          "tablas": [
+            "ITRAH",
+            "IART"
+          ]
         },
         {
           "id": "EXPORT_TRANSITO",
-          "hace": "Exporta tránsito.",
-          "estado": "parcial"
+          "estado": "leido",
+          "hace": "Exporta líneas de la orden (FCOMD) ligadas al tránsito: cantidad solicitada, precio y JSON OPCIONES (artículos hermanos del mismo IDSERVICIO, principal primero). Filtro opcional CNSITRA y/o CNSFCOM. Solo ITRAH INICIAL=0.",
+          "valida": [],
+          "noValida": [
+            "Si CNSITRA y CNSFCOM van nulos, no restringe a un documento",
+            "JOIN ITRAH usa FCOMD.CNSFCOM = ITRA.CNSFCOM (no ITRAH.CNSITRA); el query por ITRAH quedó comentado"
+          ],
+          "errores": [],
+          "efecto": "no aplica (solo lectura). No toca IEXI.",
+          "tablas": [
+            "FCOMD",
+            "FCOM",
+            "IART",
+            "ITRA",
+            "ITRAH"
+          ]
         }
       ]
     },
@@ -2468,7 +2505,12 @@
             "Debe tener detalle",
             "Ninguna línea con valor unitario en cero"
           ],
-          "noValida": [],
+          "noValida": [
+            "No exige ESTADO=C: si ya está P, vuelve a llamar SPK_INSERT_ITRA_REQ (puede duplicar tránsito)",
+            "No valida IDBODEGA ni IDTERCERO",
+            "FECHAORDEN está comentada: no graba fecha de confirmación de la OC",
+            "No consulta PRI"
+          ],
           "errores": [
             "No cuenta con detalle.",
             "No se puede procesar la orden. Hay líneas con valor unitario en cero"
@@ -2572,7 +2614,10 @@
           "estado": "leido",
           "hace": "Anula la orden (ESTADO = A). Si venía de cotización (procedencia ILPRE) libera el detalle ICTZD; si venía de aplicación de medicamentos regresa IEXIF/APLIMF a PENDIENTE COMPRA.",
           "valida": [],
-          "noValida": [],
+          "noValida": [
+            "No comprueba ITRA ni IMOV confirmado: anula aunque ya haya recepción y existencias",
+            "No borra ni cancela el tránsito"
+          ],
           "errores": [],
           "capaId": "03-alimentadores",
           "gateId": "fcom-recepcion-imov",
@@ -2582,7 +2627,8 @@
             "FCOM",
             "ICTZD",
             "IEXIF"
-          ]
+          ],
+          "efecto": "FCOM ESTADO=A. No toca ITRA/IMOV/IEXI de una recepción ya hecha."
         },
         {
           "id": "IMPRIMIR",
@@ -2624,13 +2670,18 @@
         {
           "id": "ABRIR",
           "estado": "leido",
-          "hace": "Reabre una orden confirmada: ESTADO = C, ORDENCOMPRA = 0, IEXIF/APLIMF vuelven a ORDEN REALIZADA.",
+          "hace": "Reabre una orden confirmada: ESTADO = C, ORDENCOMPRA = 0, borra ITRA/ITRAH abiertos; IEXIF/APLIMF vuelven a ORDEN REALIZADA.",
           "valida": [
-            "Sin recepción en bodega (ni parcial ni total)",
-            "Debe estar CONFIRMADA (ORDENCOMPRA = 1)"
+            "Sin recepción en bodega (ITRA ESTADO≠0 o IMOV ESTADO=1)",
+            "ORDENCOMPRA≥1 y ESTADO P/R/I"
           ],
-          "noValida": [],
-          "errores": [],
+          "noValida": [
+            "Si el ABRIR falla, igual actualiza IEXIF/APLIMF a ORDEN REALIZADA"
+          ],
+          "errores": [
+            "No Puede Abrir la Orden de compra. Ya tiene recepción en bodega (parcial o total)",
+            "La orden de compra no se encuentra en estado 'CONFIRMADA'"
+          ],
           "capaId": "03-alimentadores",
           "gateId": "fcom-recepcion-imov",
           "llama": [],
@@ -3054,17 +3105,38 @@
         },
         {
           "id": "ON_ELIMINAR",
-          "hace": "Elimina preloteo en tránsito.",
+          "hace": "Marca la línea de preloteo MOV_TRAN como Eliminado y recalcula pendientes (CALCULO_CANTIDADES).",
+          "valida": [],
+          "noValida": [
+            "No comprueba que el lote no haya pasado ya a ITRAH INICIAL=1"
+          ],
+          "errores": [],
+          "efecto": "MOV_TRAN.ESTADO=Eliminado. No toca IEXI.",
           "capaId": "03-alimentadores",
           "gateId": "fcom-recepcion-imov",
-          "estado": "parcial"
+          "estado": "leido",
+          "llama": [
+            "CALCULO_CANTIDADES"
+          ],
+          "tablas": [
+            "MOV_TRAN"
+          ]
         },
         {
           "id": "ELIMINA_PREGUARDADO",
-          "hace": "Limpia preguardado MOV_TRAN.",
+          "hace": "Inactiva el preguardado MOV_TRAN (Activo → Inactivo) con usuario, fecha y observación.",
+          "valida": [],
+          "noValida": [
+            "No borra ITRAH ya loteado"
+          ],
+          "errores": [],
+          "efecto": "MOV_TRAN.ESTADO=Inactivo. No toca IEXI.",
           "capaId": "03-alimentadores",
           "gateId": "fcom-recepcion-imov",
-          "estado": "parcial"
+          "estado": "leido",
+          "tablas": [
+            "MOV_TRAN"
+          ]
         },
         {
           "id": "CALCULO_CANTIDADES",
@@ -3579,10 +3651,14 @@
           "hace": "Genera una orden de compra (FCOM estado C, procedencia ILPRE) por proveedor desde la cotización y marca ICTZ en Compra.",
           "valida": [
             "Cotización no cerrada ni con OC",
-            "Total por proveedor ≥ VLR_MIN_ACEPT"
+            "Total por proveedor ≥ VLR_MIN_ACEPT solo si hay ILPRE Activo vigente en la fecha de la cotización"
           ],
           "noValida": [
-            "No confirma la orden"
+            "No confirma la orden ni crea tránsito",
+            "No exige al menos una línea válida: si todas tienen proveedor vacío, cantidad 0 o valor 0, igual pasa ICTZ a Compra",
+            "No exige ILPRE: sin lista vigente no aplica el mínimo",
+            "No valida que IDBODEGA exista en IBOD",
+            "FCOMD.CANTISOL es SMALLINT: si CANTIDAD > 32767 la recorta a 32767 (CANTIDAD de la línea no se recorta)"
           ],
           "errores": [
             "El registro se encuentra cerrado.",
@@ -3606,10 +3682,22 @@
         },
         {
           "id": "LEER_DETALLE_OC",
-          "hace": "Consulta cabecera FCOM generada desde cotización.",
+          "hace": "Consulta cabecera FCOM (proveedor, total, fecha, estado, conteo de FCOMD) por CNSFCOM.",
+          "valida": [],
+          "noValida": [
+            "No comprueba que la OC exista: si no hay fila, el resultset va vacío sin KO"
+          ],
+          "errores": [],
+          "efecto": "Solo lectura. No cambia ICTZ ni FCOM.",
           "capaId": "03-alimentadores",
-          "estado": "parcial",
-          "llama": []
+          "gateId": "ilpre-cotizacion-compras",
+          "estado": "leido",
+          "llama": [],
+          "tablas": [
+            "FCOM",
+            "FCOMD",
+            "TER"
+          ]
         },
         {
           "id": "DESCARGA_ESTRUCTURA_HOMOLOGACION",
@@ -3644,9 +3732,24 @@
           "id": "IMPORTAR_MASIVO_ICTZD",
           "estado": "leido",
           "hace": "Carga masiva de líneas de cotización desde Excel (DESCARGA_PLANTILLA_MASIVO_ICTZD → VALIDAR_MASIVO_ICTZD → importar).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "valida": [
+            "CNSICTZ existe y no está en Compra",
+            "Hay filas en el archivo",
+            "Artículo existente, activo y no principal",
+            "NIT resoluble a TER"
+          ],
+          "noValida": [
+            "No aplica VLR_MIN_ACEPT (eso es GENERAR_OC)"
+          ],
+          "errores": [
+            "No existe CNSICTZ de cotización.",
+            "La cotización indicada no existe.",
+            "La cotización ya tiene orden de compra. No se puede cargar detalle.",
+            "El archivo no contiene filas para procesar.",
+            "IDARTICULO es obligatorio",
+            "El artículo está inactivo",
+            "El artículo es principal y no se puede cotizar"
+          ],
           "capaId": "03-alimentadores",
           "gateId": "ilpre-cotizacion-compras",
           "llama": [],
@@ -4222,6 +4325,10 @@
             "Valor > 0",
             "Cantidad ≤ existencia del lote en la bodega"
           ],
+          "noValida": [
+            "OPENJSON declara IDARTICULO VARCHAR(10): códigos más largos se recortan al armar el carrito",
+            "CANTIDAD entra como INT: decimales se truncan al agregar (GUARDA_VENTA sí usa DECIMAL)"
+          ],
           "errores": [
             "La cantidad ingresada excede el numero de existencias del item (bodega/lote).",
             "El valor del Item, esta en 0"
@@ -4233,7 +4340,6 @@
           "capaId": "03-alimentadores",
           "gateId": "venta-al-publico",
           "estado": "leido",
-          "noValida": [],
           "ventanaFe": "/inv/venta",
           "tablas": [
             "PRESELL",
@@ -4268,7 +4374,11 @@
           "capaId": "03-alimentadores",
           "gateId": "venta-al-publico",
           "estado": "leido",
-          "noValida": [],
+          "noValida": [
+            "PRI.CERRADO / CERRADO_INV (FECHACONF la pone SPK_CONFIRMARSALIDAS = hoy)",
+            "Que la caja esté abierta: si ACJ.ABIERTA≠1, CNSACJ queda NULL y el FCJ se inserta igual",
+            "IDITAR del artículo: la cabecera IMOV se graba con IDITAR='01' fijo"
+          ],
           "usvgs": [
             "IDCJCOPA",
             "IDINVENTA_PARTICULAR",
@@ -4588,10 +4698,25 @@
         },
         {
           "id": "ANEXO_PREVIO",
-          "hace": "Consulta dinámica (SQL param) tercero/plan para anexo previo facturación.",
+          "hace": "Consulta de anexo previo a facturar: cabecera tercero/plan y detalle ISAL (cantidad neta, valor por FNK_VALORSERVICIO a FECHACONF).",
+          "valida": [],
+          "noValida": [
+            "No escribe; arma SQL con el WHERE que manda la pantalla",
+            "CANTIDAD del anexo se convierte a INT (decimales se pierden en el listado)"
+          ],
+          "errores": [],
+          "efecto": "Solo lectura. No cambia IMOV ni IEXI.",
           "capaId": "03-alimentadores",
           "gateId": "imov-venta-ftr",
-          "estado": "listado"
+          "estado": "leido",
+          "llama": [],
+          "tablas": [
+            "IMOV",
+            "ISAL",
+            "IART",
+            "TER",
+            "PLN"
+          ]
         }
       ]
     },
@@ -7159,7 +7284,9 @@
             "Movimiento preparado",
             "Existencias suficientes"
           ],
-          "noValida": [],
+          "noValida": [
+            "PRI.CERRADO_INV (hereda SPK_CONFIRMARSALIDAS)"
+          ],
           "errores": [
             "No Ha Ingresado Ningn Articulo Para Devolucin",
             "El Movimiento de Inventario No esta Preparado para Confirmar Revise",
@@ -7170,6 +7297,7 @@
           "llama": [
             "SPK_CONFIRMARSALIDAS"
           ],
+          "efecto": "Salida tipo IDINVDEVPROVEEDOR confirmada; IEXI descuenta. No ajusta la CxP aquí.",
           "tablas": [
             "IMOVH",
             "ISAL"
@@ -7670,7 +7798,10 @@
             "Variable configurada",
             "Bodega con permiso"
           ],
-          "noValida": [],
+          "noValida": [
+            "PRI.CERRADO_INV",
+            "Reservas Pick & Pack (SPK_MOVSALIDAVENCIDOS tampoco)"
+          ],
           "errores": [
             "No Existe Configuracin Para Realizar Este movimiento.",
             "Esta Bodega No Tiene Permisos  Para Realizar Este movimiento.",
@@ -7683,7 +7814,8 @@
           ],
           "usvgs": [
             "IDINVSALVENCIDOS"
-          ]
+          ],
+          "efecto": "Salida 07 confirmada en el acto; IEXI descontado. ROLLBACK si falla."
         },
         {
           "id": "SEMAFORO_STOCK",

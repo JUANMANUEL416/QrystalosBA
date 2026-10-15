@@ -1,0 +1,72 @@
+{
+  "tramo": "confirmacion",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-INVOP-CNF-01",
+      "nombre": "PRI.CERRADO_INV no se mira al confirmar",
+      "nodo": "N0-config",
+      "dimension": ["fechaconf"],
+      "severidad": "critica",
+      "invariante": "CRUD_IMOV / CRUD_IMOV_SAL validan periodo al crear. CONF_ENTRADA, CONFIRMA_SALIDA, ANULAR_ENTRADA y ANULAR_SALIDA no. Se puede confirmar y descontar en mes de inventario cerrado. Propuesta SR20260911-001.",
+      "validacionSql": "imov_conf_sin_pri",
+      "fase2": "fechaconf"
+    },
+    {
+      "id": "PC-INVOP-CNF-02",
+      "nombre": "FECHACONF = ahora, no FECHAMOV",
+      "nodo": "N2-confirmar",
+      "dimension": ["fechaconf"],
+      "severidad": "alta",
+      "invariante": "SPK_CONFIRMARSALIDAS / CONFIRMARENTRADAS ponen FECHACONF = hoy sin milisegundos. El asiento INV usa FECHACONF. La grilla OM puede listar FECHAMOV. Una entrada «del mes pasado» confirmada hoy cae en el periodo de hoy.",
+      "validacionSql": "fechaconf_vs_fechamov",
+      "fase2": "fechaconf"
+    },
+    {
+      "id": "PC-INVOP-CNF-03",
+      "nombre": "PCOSTO y vencimiento NULL bloquean entrada",
+      "nodo": "N2-confirmar",
+      "dimension": ["null", "existencias"],
+      "severidad": "alta",
+      "invariante": "PCOSTO≤0 (salvo IDINVTPROPIA) KO. FECHAVENCE vacía si ITAR.MFECHAVENCIMIENTO=1 KO. Sin esas validaciones el lote nacería incompleto.",
+      "validacionSql": "conf_entrada_pre"
+    },
+    {
+      "id": "PC-INVOP-CNF-04",
+      "nombre": "Salida: bodega del IMOV y ESFARMACIA=SI",
+      "nodo": "N2-confirmar",
+      "dimension": ["existencias", "logica"],
+      "severidad": "alta",
+      "invariante": "CONFIRMA_SALIDA toma IDBODEGA del IMOV, no del filtro. Costo cero solo si ESFARMACIA vale exactamente SI (otro valor apaga el control). LEFT JOIN IEXI: sin fila de lote también bloquea.",
+      "validacionSql": "confirma_salida_iexi"
+    },
+    {
+      "id": "PC-INVOP-CNF-05",
+      "nombre": "IEXI completo tras confirmar entrada",
+      "nodo": "N3-iexi",
+      "dimension": ["existencias"],
+      "severidad": "critica",
+      "invariante": "Toda IMOVH con cantidad debe tener IEXI (bodega+artículo+NOLOTE) y EXISLOTE incrementado. PREVERSION corrige IDXB/IART con líneas ESTADO=9.",
+      "validacionSql": "iexi_vs_imov_confirmado"
+    },
+    {
+      "id": "PC-INVOP-CNF-06",
+      "nombre": "KMCOM modelo '01' al confirmar salida",
+      "nodo": "N4-satelite",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "SPK_CONFIRMARSALIDAS exige KMCOM MOV_INVENTARIO con IDMODELOCONT='01' fijo (INV-TCK-01). La contabilización puede usar otro modelo USVGS.",
+      "validacionSql": "kmcom_modelo_01",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-CNF-07",
+      "nombre": "Factura duplicada y fechas en blanco",
+      "nodo": "N2-confirmar",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "Compras/remisión: mismo NODOCUMENTO+IDTERCERO en otro IMOV no anulado → KO. TIPO_DOC_COMPRA F exige F_FACTURA y F_VENCE; R exige F_FACTURA.",
+      "validacionSql": "imov_factura_dup"
+    }
+  ]
+}

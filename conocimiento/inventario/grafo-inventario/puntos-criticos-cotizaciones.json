@@ -1,0 +1,82 @@
+{
+  "tramo": "cotizaciones",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-INVOP-ICTZ-01",
+      "nombre": "Cotización editable solo si no está Compra/Cerrado",
+      "nodo": "N1-cabecera-ictz",
+      "dimension": ["costo"],
+      "severidad": "alta",
+      "invariante": "GUARDA_COTIZACION rechaza estado Compra o Cerrado. GENERAR_OC deja Compra: ya no se edita ni se vuelve a generar.",
+      "validacionSql": "ictz_estado_editable"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-02",
+      "nombre": "Línea con proveedor, cantidad y valor",
+      "nodo": "N2-detalle-ictzd",
+      "dimension": ["costo"],
+      "severidad": "alta",
+      "invariante": "GUARDA_ICTZD: proveedor en TER, VLR_TOTAL > 0, artículo no repetido. ACTUALIZA_PROVEEDORES puede dejar IDTERCERO y VLR_TOTAL en NULL (limpia). Esa línea no entra en GENERAR_OC.",
+      "validacionSql": "ictzd_linea_valida"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-03",
+      "nombre": "GENERAR_OC no confirma ni toca IEXI",
+      "nodo": "N3-generar-oc",
+      "dimension": ["existencias"],
+      "severidad": "alta",
+      "invariante": "FCOM nace ESTADO=C, ORDENCOMPRA=0, PROCEDENCIA=ILPRE. Sin CONFIRMAR_ORDEN no hay ITRA ni IEXI. No hay FECHACONF en este tramo.",
+      "validacionSql": "fcom_estado_c_post_generar_oc"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-04",
+      "nombre": "Mínimo solo si hay lista vigente",
+      "nodo": "N3-generar-oc",
+      "dimension": ["costo", "logica"],
+      "severidad": "media",
+      "invariante": "VLR_MIN_ACEPT se lee de ILPRE Activo con ICTZ.FECHA entre FINICIAL y FFINAL. Si no hay lista, VLR_MIN_CFG es NULL y el KO no corre. Se puede generar OC sin lista de precios.",
+      "validacionSql": "ictz_vlr_min_si_ilpre",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-05",
+      "nombre": "Cotización Compra aunque no nazca ninguna orden",
+      "nodo": "N3-generar-oc",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Si todas las líneas tienen proveedor vacío, cantidad 0 o valor 0, el cursor no inserta FCOM y igual deja ICTZ.ESTADO=Compra (CNSFCOM_LIST vacío). Queda bloqueada y sin orden.",
+      "validacionSql": "ictz_compra_sin_fcom",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-06",
+      "nombre": "CANTISOL recortado a SMALLINT",
+      "nodo": "N3-generar-oc",
+      "dimension": ["truncamiento", "existencias"],
+      "severidad": "alta",
+      "invariante": "Al insertar FCOMD, CANTIDAD se copia completa; CANTISOL se recorta a 32767 si CANTIDAD > 32767. Si más adelante la recepción o el tránsito leen CANTISOL, el pendiente queda corto. No toca IEXI en este tramo; el efecto aparece al recepcionar.",
+      "validacionSql": "fcomd_cantisol_vs_cantidad",
+      "fase2": "truncamiento"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-07",
+      "nombre": "Textos KO con tildes rotas",
+      "nodo": "N2-detalle-ictzd",
+      "dimension": ["programacion"],
+      "severidad": "baja",
+      "invariante": "Ficha/script: «cotizacin», «lnea», «artculo». No afectan existencias.",
+      "validacionSql": null,
+      "fase2": "truncamiento"
+    },
+    {
+      "id": "PC-INVOP-ICTZ-08",
+      "nombre": "ICTZG no genera orden",
+      "nodo": "N4-aguas-abajo",
+      "dimension": ["capacitacion"],
+      "severidad": "media",
+      "invariante": "Cotización comercial (ICTZG) solo cambia estado. Capacitación: la OC sale de Cotización de compras (/inv/cotizacion), no de Cotización comercial.",
+      "validacionSql": null
+    }
+  ]
+}

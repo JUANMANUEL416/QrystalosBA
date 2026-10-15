@@ -1,0 +1,96 @@
+{
+  "tramo": "facturacion",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-SOAT-FAC-01",
+      "nombre": "El SP no exige admisión cerrada",
+      "nodo": "N1-control-facturar",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "El FE pide HADM.CERRADA=1 para mostrar Facturar. FACTURAR y SPK_FACTURA_SOAT_TODO leen CERRADA y no la usan. Llamar el METODO con admisión abierta crea FTR.",
+      "validacionSql": "distri_facturar_cerrada"
+    },
+    {
+      "id": "PC-SOAT-FAC-02",
+      "nombre": "Decimales bloquean si SOATVALDECFACT=SI",
+      "nodo": "N1-control-facturar",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Si SOATVALDECFACT=SI y TIPOADM=IDTARIFASOAT, un ítem abierto cobrable no anulado con decimales en VALOR, VALORCOPAGO o VALOREXCEDENTE produce KO y no llama al motor. El motor, si llega, redondea VR_TOTAL de la FTR.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-FAC-03",
+      "nombre": "Sin tercero/plan se salta el responsable",
+      "nodo": "N2-motor",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Si el GFACSOAT no resuelve IDTERCERO o IDPLAN, el motor hace PRINT y pasa al siguiente. No RAISERROR. FACTURAR igual devuelve OK. Ese responsable no factura.",
+      "validacionSql": "spk_soat_sin_tercero"
+    },
+    {
+      "id": "PC-SOAT-FAC-04",
+      "nombre": "FONSAT: plan de factura ≠ plan de cargo",
+      "nodo": "N2-motor",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Los cargos ADRES se escriben con IDPLANSOAT. La FTR y el PPT de TTEC usan IDPLANFONSAT cuando el tercero es IDNITFONSAT. Si las dos variables no coinciden, el cargo y la factura no llevan el mismo plan.",
+      "validacionSql": "spk_soat_idplanfonsat"
+    },
+    {
+      "id": "PC-SOAT-FAC-05",
+      "nombre": "Reusa factura liberada de la misma admisión",
+      "nodo": "N2-motor",
+      "dimension": ["efecto"],
+      "severidad": "media",
+      "invariante": "Si existe FTR con NOREFERENCIA=admisión, ESTADO=L y TIPOFAC=I, reusa ese número (UPDATE a P) en vez de pedir uno nuevo. Si hay varias liberadas, toma TOP 1.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-FAC-06",
+      "nombre": "HADM.FACTURADA se pone en el primer responsable",
+      "nodo": "N3-efecto",
+      "dimension": ["efecto"],
+      "severidad": "media",
+      "invariante": "Tras cada FTR del cursor, HADM.FACTURADA=1 y N_FACTURA/CNSFCT quedan con esa factura. Si se facturan Aseguradora y luego EPS, la admisión apunta a la última. No espera a que falten responsables.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-FAC-07",
+      "nombre": "HACTRAND solo anota factura QX 1 y 2",
+      "nodo": "N3-efecto",
+      "dimension": ["efecto"],
+      "severidad": "info",
+      "invariante": "N_FCT_ASEG (aseguradora) o N_FCT_FYG (FONSAT) solo si GFACSOAT<3 y la fila es PROCEDENCIA=QX de esta admisión. EPS/ARL y filas CE/CI/EXTERNO no reciben número aquí.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-FAC-08",
+      "nombre": "CUPS de cirugía exige TIPOADM='04'",
+      "nodo": "N1-control-facturar",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "Tras el motor, FACTURAR actualiza HACTRAN.CUPSPPALQX / CUPSSECQX solo si HADM.TIPOADM='04' (literal). No usa IDTARIFASOAT. Si la institución tiene otro código de admisión SOAT, no escribe los CUPS.",
+      "validacionSql": "distri_facturar_tipoadm_04"
+    },
+    {
+      "id": "PC-SOAT-FAC-09",
+      "nombre": "Arreglo vacío factura los cuatro",
+      "nodo": "N2-motor",
+      "dimension": ["logica"],
+      "severidad": "info",
+      "invariante": "GFACSOAT_FACTURAR NULL o '' = 1,2,3,4. Solo se emite FTR de los que tengan ítems abiertos cobrables. Capacitación: Facturar todo no crea factura vacía.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-FAC-10",
+      "nombre": "TTEC o ítem duplicado aborta el lote",
+      "nodo": "N2-motor",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Sin tipo de tercero contable en PPT, o si el temporal repite NOPRESTACION+NOITEM, hay RAISERROR y RETURN. Los responsables ya facturados en esa misma llamada quedan; los siguientes no corren. FACTURAR captura y devuelve KO.",
+      "validacionSql": null
+    }
+  ]
+}

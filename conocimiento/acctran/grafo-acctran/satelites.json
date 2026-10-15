@@ -1,0 +1,177 @@
+{
+  "tramo": "satelites",
+  "nombre": "Satélites (CE, SIRAS, certificados)",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_HACTRAN (CONSULTAR / SIRAS / topes / certificados), SPK_RELIQ_HACTRAN y SPK_MOV_ACTRAN. PREVERSION 2.0.9 idéntica a la liberada.",
+  "pantalla": {
+    "path": "/asis/soat",
+    "vue": "HactranComponent + AutorizadorComponent + useHACTRANPrint",
+    "menu": "Asistencial → SOAT / Autorizador CE",
+    "permisos": ["asis.soat"],
+    "otrasEntradas": [
+      "Autorizador: campo SIRAS y enlace AUT.CNSHACTRAN",
+      "Procesos SOAT: certificado de atención, consumo, formato de reclamación, aviso policial"
+    ]
+  },
+  "documentoOrigen": {
+    "tabla": "HACTRAN",
+    "claves": ["CNSHACTRAN"],
+    "detalle": "HACTRAND se crea o borra desde CE/CI/QX (SPK_MOV_ACTRAN). HACTRANCE = catálogo de certificadores (el SP siembra NA si está vacío). HACTRANR y HACTRANAFI existen y estos SP no las tocan."
+  },
+  "noEs": [
+    "No es SPQ_HACTRAND · RELIQUIDAR (reconstruye el detalle). SPK_RELIQ_HACTRAN solo sincroniza filas y valores.",
+    "No factura ni exporta FURIPS.",
+    "SPQ_HACTRAN no tiene DELETE ni RELIQUIDAR.",
+    "El botón SIRAS del FE abre el portal (login); no llama un METODO de radicación."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "UVT, sede y portal SIRAS",
+      "explicacionCapacitacion": "Los topes UVT salen de IDTARIFAUVT × factores fijos (701,68 y 263,13). DATOSPROPIETARIO=SEDE pinta sede en los certificados. El portal SIRAS es una URL de login, no un webservice del expediente.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-sat",
+          "tabla": "USVGS",
+          "desc": "IDTARIFAUVT, IDNITFONSAT, IDPLANFONSAT, DATOSPROPIETARIO, IDTARIFASOAT (filtro QX de RELIQ), MUESTRAIDMEDICO_POL, IDMEDICOALTA_BLANCO, CONTRA_CONFPRESER.",
+          "obligatorio": true,
+          "usvgs": ["IDTARIFAUVT", "IDNITFONSAT", "IDPLANFONSAT", "DATOSPROPIETARIO", "IDTARIFASOAT"]
+        }
+      ],
+      "llamaSiguiente": ["N1-siras"],
+      "efecto": "Hay variables. Aún no se escribe HACTRAND.",
+      "fichas": []
+    },
+    {
+      "id": "N1-siras",
+      "orden": 1,
+      "nombre": "SIRAS del expediente y de la admisión",
+      "explicacionCapacitacion": "En el modal SOAT el radicado vive en HACTRAN.NOSIRAS. Si se abre desde una admisión, CONSULTARSIRASADMISION copia HADM.SIRAS. En el autorizador el campo SIRAS de la AUT se puede heredar del detalle HACTRAND. Reliquidar el detalle (tramo 2) conserva SIRAS; este tramo no lo pisa.",
+      "sp": "SPQ_HACTRAN",
+      "metodoUi": ["CONSULTARSIRASADMISION"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-ce-reliq"],
+      "efecto": "Solo lectura. Siempre OK. El FE rellena NOSIRAS si la admisión ya lo tenía.",
+      "puntosCriticos": ["PC-SOAT-SAT-06"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "CONSULTARSIRASADMISION",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-ce-reliq",
+      "orden": 2,
+      "nombre": "CE/CI/QX enlazan el detalle",
+      "explicacionCapacitacion": "Al confirmar o guardar una autorización SOAT, CE llama SPK_RELIQ_HACTRAN: crea la fila HACTRAND que falte (SPK_MOV_ACTRAN INGRESO) y copia el valor (AUT.VALORTOTAL, CIT.VALORTOTAL o suma HPRE.VALOREXEDENTE). Al anular la AUT borra esa fila (BORRAR) y vuelve a reliquidar. No es el botón Reliquidar del detalle.",
+      "sp": "SPK_RELIQ_HACTRAN",
+      "metodoUi": [],
+      "llamaAnterior": ["N1-siras"],
+      "llamaSiguiente": ["N3-certificados"],
+      "efecto": "INSERT/DELETE HACTRAND + UPDATE VLRGASTADO / VLRFALTA. No toca SIRAS ni gasto externo.",
+      "puntosCriticos": ["PC-SOAT-SAT-01", "PC-SOAT-SAT-02", "PC-SOAT-SAT-03"],
+      "fichas": [
+        {
+          "sp": "SPK_RELIQ_HACTRAN",
+          "metodo": "EJECUTAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPK_MOV_ACTRAN",
+          "metodo": "EJECUTAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-certificados",
+      "orden": 3,
+      "nombre": "Consultas, topes UVT y PDFs",
+      "explicacionCapacitacion": "CONSULTAR carga el expediente (más AFI). CONSULTARTOPES arma tope máximo y tope 1 con UVT del año. CERTIFICADORES lista HACTRANCE. Atención, consumo, formato de reclamación y aviso policial son solo lectura para el visor PDF. VALIDARACCIDENTEMISMODIA avisa si el mismo afiliado ya tiene accidente ese día (el INSERT también lo bloquea).",
+      "sp": "SPQ_HACTRAN",
+      "metodoUi": ["CONSULTAR", "CONSULTARTOPES", "CERTIFICADORES", "CERTIFICADO_ATENCION", "CERTIFICADO_CONSUMO", "FORMATO_RECLAMACION", "AVISO_AUT_POLICIAL", "VALIDARACCIDENTEMISMODIA"],
+      "llamaAnterior": ["N2-ce-reliq"],
+      "llamaSiguiente": ["N4-cierre"],
+      "efecto": "Solo lectura, salvo semilla NA en HACTRANCE si el catálogo está vacío. Siempre OK (el factor UVT en 0 no KO).",
+      "puntosCriticos": ["PC-SOAT-SAT-04", "PC-SOAT-SAT-05", "PC-SOAT-SAT-07", "PC-SOAT-SAT-08"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "CONSULTAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "CONSULTARTOPES",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "CERTIFICADORES",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "CERTIFICADO_ATENCION",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "CERTIFICADO_CONSUMO",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "FORMATO_RECLAMACION",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "AVISO_AUT_POLICIAL",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "VALIDARACCIDENTEMISMODIA",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-cierre",
+      "orden": 4,
+      "nombre": "Cierra el grafo SOAT",
+      "explicacionCapacitacion": "Este tramo no cobra. La factura sigue siendo el tramo 4 y FURIPS/FURTRAN los 5–7. Con los 8 tramos el mapa de capacitación del accidente de tránsito queda cerrado.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N3-certificados"],
+      "llamaSiguiente": [],
+      "efecto": "Puente de vuelta a detalle/topes o a reclamación. Fase 1 del grafo acctran cerrada.",
+      "puntosCriticos": ["PC-SOAT-SAT-09"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_HACTRAN (9 METODOs de satélite + LLENAR/INSERT/UPDATE ya leídos), SPK_RELIQ_HACTRAN y SPK_MOV_ACTRAN leídos. PREVERSION 2.0.9 idéntica a la liberada. DELETE y RELIQUIDAR no existen en SPQ_HACTRAN.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "tramo": "ordenes-compra",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-INVOP-OC-01",
+      "nombre": "Unitario cero no se confirma",
+      "nodo": "N1-cabecera",
+      "dimension": ["costo"],
+      "severidad": "alta",
+      "invariante": "CONFIRMAR_ORDEN y SPK_INSERT_ITRA_REQ rechazan VLR_UNITARIO ≤ 0. Cruce con CANTISOL recortado en cotizaciones: CANTIDAD puede ser mayor que CANTISOL.",
+      "validacionSql": "fcomd_vlr_unitario"
+    },
+    {
+      "id": "PC-INVOP-OC-02",
+      "nombre": "Confirmar no toca IEXI ni pone FECHAORDEN",
+      "nodo": "N2-confirmar",
+      "dimension": ["existencias", "fechaconf"],
+      "severidad": "alta",
+      "invariante": "Nace ITRA, no IMOV. FECHAORDEN está comentada en el script. No hay FECHACONF de inventario aquí.",
+      "validacionSql": "fcom_p_sin_imov",
+      "fase2": "fechaconf"
+    },
+    {
+      "id": "PC-INVOP-OC-03",
+      "nombre": "Reconfirmar puede duplicar tránsito",
+      "nodo": "N2-confirmar",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "No exige ESTADO=C. Si ya está P, incrementa ORDENCOMPRA y vuelve a EXEC SPK_INSERT_ITRA_REQ. MARCAR_IMPRESA también suma ORDENCOMPRA sin confirmar.",
+      "validacionSql": "itra_duplicado_por_oc",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-OC-04",
+      "nombre": "ITRA.IDTIPOMOV = variable de compras",
+      "nodo": "N3-transito",
+      "dimension": ["existencias"],
+      "severidad": "alta",
+      "invariante": "IDTIPOMOV = IDINVMOV_COMPRAS (o IDINVMOV_PRESTAMOS si Presta). ITAR.MLOTEO=1 marca ITRAH INICIAL=1 sin pantalla de loteo.",
+      "validacionSql": "itra_idtipomov"
+    },
+    {
+      "id": "PC-INVOP-OC-05",
+      "nombre": "ANULAR no mira recepción",
+      "nodo": "N4-abrir-anular",
+      "dimension": ["logica", "existencias"],
+      "severidad": "critica",
+      "invariante": "UPDATE FCOM ESTADO=A sin mirar ITRA ni IMOV. Puede anular una OC ya ingresada a bodega. El tránsito y las existencias quedan.",
+      "validacionSql": "fcom_a_con_imov",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-OC-06",
+      "nombre": "ABRIR actualiza IEXIF aunque falle",
+      "nodo": "N4-abrir-anular",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "Si no puede abrir (ya hay recepción), igual pasa IEXIF/APLIMF a ORDEN REALIZADA.",
+      "validacionSql": null,
+      "fase2": "logica"
+    }
+  ]
+}

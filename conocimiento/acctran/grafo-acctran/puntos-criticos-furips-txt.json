@@ -1,0 +1,87 @@
+{
+  "tramo": "furips-txt",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-SOAT-F1-01",
+      "nombre": "El JSON de CNSHACTRAN lleva un espacio en la ruta",
+      "nodo": "N1-pedir",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "OPENJSON lee '$.CNSHACTRAN ' (espacio al final). Si el FE manda la clave CNSHACTRAN sin espacio, @CNSHACTRAN queda vacío: FURIPS 1 y 2 no cruzan el expediente. Probar el payload real.",
+      "validacionSql": "furips_openjson_cnshactran"
+    },
+    {
+      "id": "PC-SOAT-F1-02",
+      "nombre": "Sin factura no hay error",
+      "nodo": "N1-pedir",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "Si FACTURA viene vacía, VR_FTR=0 y CAMPO03 puede ir vacío. El cruce FTR usa LIKE del valor recibido (vacío no es '%'). No KO. Se puede generar plano sin número de factura.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-F1-03",
+      "nombre": "Procedencia vacía: gana la última",
+      "nodo": "N1-pedir",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Si PROCEDENCIA='', el SP hace tres SELECT TOP 1 seguidos: HADM→QX, CIT→CI, AUT→CE. Cada uno que encuentre pisa al anterior. Un expediente con admisión y autorización queda como CE.",
+      "validacionSql": "furips_procedencia_vacia"
+    },
+    {
+      "id": "PC-SOAT-F1-04",
+      "nombre": "Siempre responde OK",
+      "nodo": "N1-pedir",
+      "dimension": ["efecto"],
+      "severidad": "media",
+      "invariante": "No hay RAISERROR ni KO de negocio. Expediente inexistente, sin factura o sin líneas: OK + recordsets vacíos. El FE puede bajar TXT vacíos.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-F1-05",
+      "nombre": "El TXT es Object.values del recordset",
+      "nodo": "N3-furips2",
+      "dimension": ["efecto"],
+      "severidad": "info",
+      "invariante": "El FE no recorta columnas: vuelca todas las del recordset. En PREVERSION 2.0.9 el SELECT externo de FURIPS 2 (QX resumido y no, CI, CE) proyecta solo CAMPO01–09. Las columnas internas de cirugía quedaron en el subquery y comentadas afuera. El recorte del REQ de la circular ya está en el SP; validar en prueba que el driver no exponga el subquery.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-F1-06",
+      "nombre": "El campo 04 depende de FURIPS_T_RADICADO",
+      "nodo": "N2-furips1",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "CXC = cuenta de cobro (en FURIPS del expediente @CNSCXC suele ir vacío). ADM = admisión/cita/autorización. Otro valor = HACTRAN.NRORADICADO.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-F1-07",
+      "nombre": "Mundial se detecta por NIT fijo",
+      "nodo": "N2-furips1",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "ESMUNDIAL=1 si el NIT de la aseguradora (o el de FCXC) es 860037013. Entonces FURIPS 2 pasa el código por FNK_FURIPS_CODIGOSERVICIO. No usa variable.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-F1-08",
+      "nombre": "TXT no es JSON ni RIPS",
+      "nodo": "N4-txt",
+      "dimension": ["efecto"],
+      "severidad": "info",
+      "invariante": "Este tramo baja FURIPS1*.txt + FURIPS2*.txt. El JSON FUR_/SER_ es el mismo SP con otro armado en el FE (tramo 6). RIPS JSON exige FACTE=2 y otro proceso.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-F1-09",
+      "nombre": "Solo facturas P no nota crédito",
+      "nodo": "N3-furips2",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "El cruce FTR exige ESTADO='P' y TIPOANULACION<>'NC'. Procedencia SALUD (QX), CI o CE. Liberada o anulada no entra. El código de habilitación también sale de esa FTR; si no hay, usa IDALTERNA2 del tercero institución.",
+      "validacionSql": null
+    }
+  ]
+}

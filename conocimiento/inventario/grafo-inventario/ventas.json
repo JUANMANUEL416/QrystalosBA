@@ -1,0 +1,227 @@
+{
+  "tramo": "ventas",
+  "nombre": "Venta al público y Factura INV",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "fuenteSql": "IXONLINE/SQL · SPQ_VENTAFAR · INSERTA_PRESELL / GUARDA_VENTA; SPQ_IMOV_VENTA; SPK_FAC_VENTA_INV / _MASIVA; SPK_CONFIRMARSALIDAS",
+  "caminos": [
+    {
+      "id": "mostrador-ve",
+      "nombre": "Venta de insumos (mostrador)",
+      "tipoMov": "IDINVENTA_PARTICULAR (código habitual VE)",
+      "cuándoTocaIexi": "En GUARDA_VENTA, después de SPK_CONFIRMARSALIDAS (ese SPK no descuenta el lote comercial)"
+    },
+    {
+      "id": "factura-inv-vc",
+      "nombre": "Factura INV",
+      "tipoMov": "IDINVMOVVENTAFACTURA (código habitual VC)",
+      "cuándoTocaIexi": "Antes: al confirmar la salida en Movimientos. Este camino solo factura (FTR)."
+    }
+  ],
+  "pantalla": {
+    "mostrador": {
+      "path": "/inv/venta",
+      "vue": "VentaPage → VentaFarComponent",
+      "menu": "Inventario → Venta a particulares → Venta de insumos"
+    },
+    "facturaInv": {
+      "path": "/inv/facturaInv",
+      "menu": "Inventario → Venta a particulares → Factura INV"
+    },
+    "gesventa": {
+      "path": "/inv/gesventa",
+      "menu": "Inventario → Venta a particulares → Gestión de ventas"
+    }
+  },
+  "documentoOrigen": {
+    "mostrador": "PRESELL / PRESELLR → IMOV + ISAL + FTR + FCJ",
+    "facturaInv": "IMOV ESTADO=1 tipo VC → FTR"
+  },
+  "noEs": [
+    "El precio de mostrador sale de LISTA_TARIFAS, no de la lista de compras ILPRE.",
+    "Factura INV no cobra en caja: el recaudo es otro proceso.",
+    "La nota crédito (GESVENTA · GEN_NC) no reingresa existencias por sí sola."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Caja, tipo de movimiento y tarifa",
+      "explicacionCapacitacion": "Mostrador: caja abierta (apertura ACJ), tipo IDINVENTA_PARTICULAR y tarifa de venta. Factura INV: tipo IDINVMOVVENTAFACTURA; la salida ya se armó y confirmó en Movimientos. Bodega con CCOSTO/IDAREA.",
+      "sp": [],
+      "metodoUi": [
+        "SPQ_CONF_CAJA · ESTADO_CAJA / ABRIR_CAJA (proceso caja)",
+        "SPQ_VENTAFAR · LISTA_TARIFAS"
+      ],
+      "requiresConfig": [
+        {
+          "id": "idinventa-particular",
+          "usvgs": ["IDINVENTA_PARTICULAR"],
+          "desc": "ITMO de salida de mostrador. Sin él GUARDA_VENTA KO «No tiene configurado Tipo de Movimiento para Venta.»",
+          "obligatorio": true
+        },
+        {
+          "id": "idinvmovventafactura",
+          "usvgs": ["IDINVMOVVENTAFACTURA"],
+          "desc": "ITMO de las salidas que se facturan en Factura INV",
+          "obligatorio": "camino VC"
+        },
+        {
+          "id": "caja-abierta",
+          "tabla": "ACJ",
+          "desc": "Caja ABIERTA=1. El SP no lo exige al confirmar: si no hay apertura, CNSACJ queda NULL y el recibo se inserta igual.",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-documento"],
+      "efecto": "Hay tipo, tarifa y (en mostrador) caja. Todavía no hay carrito ni IMOV de venta.",
+      "puntosCriticos": ["PC-INVOP-VTA-01"]
+    },
+    {
+      "id": "N1-documento",
+      "orden": 1,
+      "nombre": "Carrito o salida confirmada",
+      "explicacionCapacitacion": "Mostrador: se lee el código, se agrega al carrito (precio > 0 y stock del lote). El carrito no descuenta existencias. Cliente = tercero. Recaudo por medio de pago hasta igualar el total. Factura INV: el IMOV tipo VC ya está confirmado (ESTADO 1) con entregas ISAL.",
+      "sp": ["SPQ_VENTAFAR", "SPQ_IMOV_VENTA"],
+      "metodoUi": [
+        "BUS_CODBARRA",
+        "INSERTA_PRESELL",
+        "CREA_TERCERO / EDITA_TERCERO",
+        "GUARDA_RECAUDO",
+        "MARCA_FACTURAR (camino VC)"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "presell-abierto",
+          "desc": "PRESELL PROCESADO=0, sin CNSMOV, valor > 0, cantidad ≤ IEXI.EXISLOTE del lote",
+          "obligatorio": "camino VE"
+        },
+        {
+          "id": "imov-vc-confirmado",
+          "desc": "IMOV ESTADO=1, GENFACTURA=1, FACTURADA=0, tipo IDINVMOVVENTAFACTURA",
+          "obligatorio": "camino VC"
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-cerrar"],
+      "erroresKo": [
+        "El valor del Item, esta en 0",
+        "La cantidad ingresada excede el numero de existencias del item (bodega/lote).",
+        "El valor ingresado supera el monto pendiente.",
+        "Movimiento de Inventario no cumple con las condiciones para marcar factura"
+      ],
+      "efecto": "Carrito listo (sin tocar IEXI) o IMOV VC marcado para facturar.",
+      "puntosCriticos": ["PC-INVOP-VTA-02", "PC-INVOP-VTA-06"],
+      "fichas": [
+        {
+          "sp": "SPQ_VENTAFAR",
+          "metodo": "INSERTA_PRESELL",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-cerrar",
+      "orden": 2,
+      "nombre": "Cerrar la venta o facturar",
+      "explicacionCapacitacion": "Mostrador: un solo Guardar arma IMOV + ISAL, confirma, factura y recibo de caja. Factura INV: FACTMASIVO o FACTURAR_IMOV genera FTR; no vuelve a descontar stock. Devolución de venta: entrada tipo IDTIPOMOVDEV_CLIENTE (ANULA_IMOV_SALVENTA / DEVUELVE_ARTICULO).",
+      "sp": ["SPQ_VENTAFAR", "SPQ_IMOV_VENTA", "SPQ_IMOV_3"],
+      "metodoUi": [
+        "GUARDA_VENTA",
+        "FACTMASIVO_INV",
+        "FACTURAR_IMOV",
+        "ANULA_IMOV_SALVENTA",
+        "DEVUELVE_ARTICULO"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "recaudo-igual",
+          "desc": "Suma PRESELLR = total PRESELL + domicilio. Si no, KO Pendiente recaudar / monto mayor.",
+          "obligatorio": "camino VE"
+        },
+        {
+          "id": "stock-al-cerrar",
+          "desc": "Cada línea del carrito tiene IEXI en bodega+lote+pedido con EXISLOTE ≥ cantidad",
+          "obligatorio": "camino VE"
+        }
+      ],
+      "llamaAnterior": ["N1-documento"],
+      "llamaSiguiente": ["N3-iexi"],
+      "llama": [
+        "SPK_CONFIRMARSALIDAS",
+        "SPK_FAC_VENTA_INV",
+        "SPK_FAC_VENTA_INV_MASIVA",
+        "SPK_CIERRERECIBO_CAJA",
+        "SPK_NC_CONTAB_CAJA_ING"
+      ],
+      "erroresKo": [
+        "Pendiente recaudar.",
+        "Esta preselección ya fue procesada.",
+        "Stock insuficiente por lote",
+        "ERROR: Este Movimiento ya se encuentra Facturado."
+      ],
+      "efecto": "IMOV confirmado + FTR. En mostrador también FCJ. FECHACONF = ahora (la pone CONFIRMARSALIDAS).",
+      "puntosCriticos": ["PC-INVOP-VTA-03", "PC-INVOP-VTA-04", "PC-INVOP-VTA-07"],
+      "fichas": [
+        {
+          "sp": "SPQ_VENTAFAR",
+          "metodo": "GUARDA_VENTA",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPK_FAC_VENTA_INV",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-iexi",
+      "orden": 3,
+      "nombre": "Efecto en existencias",
+      "explicacionCapacitacion": "Mostrador: después de confirmar, se resta IEXI.EXISLOTE por cada entrega. Si no actualiza todas las líneas, deshace toda la venta. Luego recalcula totales del artículo (IDXB/IART). Factura INV no vuelve a tocar IEXI. La nota crédito no reingresa el lote: eso es una entrada de devolución aparte.",
+      "sp": ["SPQ_VENTAFAR · GUARDA_VENTA", "SPK_REVISA_EXISTS_INV"],
+      "metodoUi": ["(automático en GUARDA_VENTA)", "ANULA_IMOV_SALVENTA / DEVUELVE_ARTICULO (reingreso)"],
+      "llamaAnterior": ["N2-cerrar"],
+      "llamaSiguiente": ["N4-satelite"],
+      "efecto": "IEXI.EXISLOTE bajó (VE). IDXB/IART al día. VC: existencias ya habían bajado al confirmar la salida.",
+      "puntosCriticos": ["PC-INVOP-VTA-03", "PC-INVOP-VTA-05"],
+      "fichas": [
+        {
+          "sp": "SPK_CONFIRMARSALIDAS",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-satelite",
+      "orden": 4,
+      "nombre": "Factura, caja y nota crédito",
+      "explicacionCapacitacion": "FTR se contabiliza (SPK_NC_CONTAB_FTR; el costo de inventario puede ir en ese asiento). El recibo de mostrador cierra caja y puede contabilizar ingreso. Gestión de ventas: nota crédito (GEN_NC). Impresión desde la misma venta o gestión.",
+      "sp": ["SPK_NC_CONTAB_FTR", "SPQ_GESVENTA · GEN_NC"],
+      "metodoUi": ["IMPRESION_FTR", "GEN_NC"],
+      "llamaAnterior": ["N3-iexi"],
+      "llamaSiguiente": [],
+      "efecto": "FTR (+ FCJ en mostrador). NC no mueve IEXI sola.",
+      "puntosCriticos": ["PC-INVOP-VTA-08"],
+      "fichas": [
+        {
+          "sp": "SPQ_GESVENTA",
+          "metodo": "GEN_NC",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "Se releyó SPQ_VENTAFAR · GUARDA_VENTA / INSERTA_PRESELL y SPQ_IMOV_VENTA · ANEXO_PREVIO (pasó de listado a leido).",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

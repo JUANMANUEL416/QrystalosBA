@@ -1,0 +1,127 @@
+{
+  "tramo": "confirmacion",
+  "nombre": "Confirmación de entrada y salida",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "fuenteSql": "IXONLINE/SQL · SPQ_IZSOL · CONF_ENTRADA; SPQ_IMOV · CONFIRMA_SALIDA; SPK_CONFIRMARENTRADAS; SPK_CONFIRMARSALIDAS",
+  "pantalla": {
+    "path": "/inv/ges",
+    "vue": "IMOVComponetNew",
+    "menu": "Inventario → Movimientos → Confirmar"
+  },
+  "documentoOrigen": {
+    "tabla": "IMOV",
+    "claves": ["CNSMOV"],
+    "estadoPrevio": "0 pendiente"
+  },
+  "noEs": [
+    "Confirmar no es guardar el borrador.",
+    "La fecha que manda el periodo del asiento es FECHACONF (hoy), no FECHAMOV de la grilla."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Periodo, cuentas y farmacia",
+      "explicacionCapacitacion": "CRUD_IMOV sí mira PRI.CERRADO_INV al crear. Confirmar y anular no. KMCOM MOV_INVENTARIO (y CXP_COMPRAS en compra). ESFARMACIA debe valer exactamente SI para costo cero y anulación de confirmados. CONTABIMOV_JOB=SI deja el asiento en cola.",
+      "requiresConfig": [
+        {
+          "id": "pri-inv",
+          "tabla": "PRI",
+          "desc": "CERRADO_INV: lo lee el alta, no la confirmación",
+          "obligatorio": true
+        },
+        {
+          "id": "kmcom",
+          "tabla": "KMCOM",
+          "desc": "MOV_INVENTARIO; CXP_COMPRAS si VALID_CCOSTO_CXP=SI",
+          "obligatorio": true
+        },
+        {
+          "id": "esfarmacia",
+          "usvgs": ["ESFARMACIA"],
+          "desc": "Comparación exacta con SI",
+          "obligatorio": false
+        }
+      ],
+      "llamaSiguiente": ["N1-imov0"],
+      "puntosCriticos": ["PC-INVOP-CNF-01"]
+    },
+    {
+      "id": "N1-imov0",
+      "orden": 1,
+      "nombre": "Movimiento pendiente listo",
+      "explicacionCapacitacion": "Entrada: IMOVH ESTADO=0, cantidad > 0, vencimiento si el tipo lo pide, PCOSTO>0 (salvo producción propia), factura no duplicada. Salida: al menos una ISAL, stock del lote, Pick&Pack terminado si aplica.",
+      "requiresDocumento": [
+        {
+          "id": "entrada-confirmable",
+          "desc": "IMOV ESTADO=0; IMOVH confirmable; PCOSTO>0; FECHAVENCE si MFECHAVENCIMIENTO",
+          "obligatorio": "entrada"
+        },
+        {
+          "id": "salida-confirmable",
+          "desc": "ISAL ≥ 1; IEXI.EXISLOTE ≥ cantidad (menos reservas ajenas)",
+          "obligatorio": "salida"
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-confirmar"],
+      "efecto": "El usuario pulsa Confirmar."
+    },
+    {
+      "id": "N2-confirmar",
+      "orden": 2,
+      "nombre": "Confirmar entrada o salida",
+      "explicacionCapacitacion": "Entrada: CONF_ENTRADA → SPK_CONFIRMARENTRADAS. Recupera líneas ESTADO=9 de un intento fallido. Salida: CONFIRMA_SALIDA usa la bodega del IMOV (no el filtro de pantalla), bloquea la bodega y llama SPK_CONFIRMARSALIDAS.",
+      "sp": ["SPQ_IZSOL · CONF_ENTRADA", "SPQ_IMOV · CONFIRMA_SALIDA"],
+      "llama": ["SPK_CONFIRMARENTRADAS", "SPK_CONFIRMARSALIDAS", "SPK_FCOM_RECALCULA_RECEPCION"],
+      "llamaAnterior": ["N1-imov0"],
+      "llamaSiguiente": ["N3-iexi"],
+      "erroresKo": [
+        "Existen articulos sin Fecha de Vencimiento.",
+        "Uno o Varios Lotes Ingresados no tienen precio de costo…",
+        "No se puede Confirmar el Movimiento. No se realizó entrega…",
+        "Hay artículos en el movimiento sin existencias suficientes…"
+      ],
+      "efecto": "IMOV ESTADO=1; FECHACONF=ahora (sin milisegundos). No mira PRI.",
+      "puntosCriticos": ["PC-INVOP-CNF-02", "PC-INVOP-CNF-03", "PC-INVOP-CNF-04"],
+      "fichas": [
+        {
+          "sp": "SPK_CONFIRMARENTRADAS",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPK_CONFIRMARSALIDAS",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-iexi",
+      "orden": 3,
+      "nombre": "Existencias y totales",
+      "explicacionCapacitacion": "Entrada: crea/suma IEXI (lote, PCOSTO), IDXB e IART.EXISTOTAL. PREVERSION corrige el total cuando hay líneas ESTADO=9 (antes el artículo «desaparecía» con lote en saldo). Salida: descuenta IEXI por lote. Kardex. Compra: FCOM R o I; CxP automática si tipo 02/22/SI con proveedor.",
+      "llamaAnterior": ["N2-confirmar"],
+      "llamaSiguiente": ["N4-satelite"],
+      "efecto": "IEXI al día. FCOM R/I si hay OC. FCXP si aplica.",
+      "puntosCriticos": ["PC-INVOP-CNF-05"]
+    },
+    {
+      "id": "N4-satelite",
+      "orden": 4,
+      "nombre": "CxP y OM Inventario",
+      "explicacionCapacitacion": "Si CONTABIMOV_JOB ≠ SI, el asiento INV sale en línea (SPK_NC_CONTAB_INV) con periodo = FECHACONF. La grilla OM puede mostrar FECHAMOV: no es el periodo del comprobante. KMCOM en confirmación de salida usa modelo '01' fijo (ticket INV-TCK-01).",
+      "llamaAnterior": ["N3-iexi"],
+      "efecto": "Puente al grafo contable INV y a CxP.",
+      "puntosCriticos": ["PC-INVOP-CNF-06", "PC-INVOP-CNF-07"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "Se contrastó CONF_ENTRADA y CONFIRMA_SALIDA con el cuerpo. Fichas leido. Hallazgo de periodo y FECHACONF ya en el libro (SR20260911-001, PC-INV-02).",
+    "fase2Hecha": true
+  }
+}

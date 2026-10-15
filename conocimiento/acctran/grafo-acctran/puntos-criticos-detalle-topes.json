@@ -1,0 +1,60 @@
+{
+  "tramo": "detalle-topes",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-SOAT-DET-01",
+      "nombre": "Duplicado INSERT usa texto del alta",
+      "nodo": "N1-filas-detalle",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "Si ya existe CNSHACTRAN+ITEM, INSERT no inserta. El KO dice «el mismo IDAFILIADO accidentado el mismo día» (copia del alta HACTRAN), no «fila de detalle repetida».",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-DET-02",
+      "nombre": "ITEM nuevo puede nacer en 1",
+      "nodo": "N1-filas-detalle",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "El MAX(ITEM)+1 se calcula con JOIN al ITEM del JSON. Si esa clave no existe, el MAX del join vacío queda 0 y el nuevo ITEM puede ser 1, chocando con una fila ya existente.",
+      "validacionSql": "hactrand_item_max"
+    },
+    {
+      "id": "PC-SOAT-DET-03",
+      "nombre": "Reliquidar no factura",
+      "nodo": "N2-reliquidar",
+      "dimension": ["efecto"],
+      "severidad": "info",
+      "invariante": "RELIQUIDAR reconstruye HACTRAND y suma la cabecera. No INSERT FTR ni cierra HADM. Capacitación: reliquidar no es Facturar.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-DET-04",
+      "nombre": "Pasarse del tope no es KO",
+      "nodo": "N2-reliquidar",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "VLRFALTA = TOPE − suma(VLRGASTADO). Si la suma supera el tope, el faltante queda negativo. No hay RAISERROR.",
+      "validacionSql": "hactran_vlrfalta_tope"
+    },
+    {
+      "id": "PC-SOAT-DET-05",
+      "nombre": "QX exige tipo admisión SOAT y aseguradora",
+      "nodo": "N2-reliquidar",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "Las filas QX solo nacen si HADM.TIPOADM = IDTARIFASOAT y existe algún tercero en TERCATASEGURADORA. Conserva SIRAS previos. Omite FTR anulada y NC cerrada del mismo valor.",
+      "validacionSql": "hactrand_qx_tipoadm"
+    },
+    {
+      "id": "PC-SOAT-DET-06",
+      "nombre": "Solo se borra EXTERNO",
+      "nodo": "N3-externo",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "DELETE exige PROCEDENCIA=EXTERNO. CE/CI/QX se quitan solo al reliquidar (y se vuelven a crear). Tras borrar EXTERNO, la cabecera resuma.",
+      "validacionSql": null
+    }
+  ]
+}

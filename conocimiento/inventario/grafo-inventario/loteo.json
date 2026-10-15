@@ -1,0 +1,109 @@
+{
+  "tramo": "loteo",
+  "nombre": "Loteo / tránsito",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_IZSOL_TRANSITO; SPQ_IZSOL · ON_ACEPTA_TRANSITO; SPK_INSERTENTTRANSITO",
+  "pantalla": {
+    "path": "/inv/ges · Traer del tránsito",
+    "vue": "TraerTransitoTempComponent",
+    "menu": "Inventario → Movimientos → Traer del tránsito"
+  },
+  "documentoOrigen": {
+    "tabla": "ITRA",
+    "claves": ["CNSITRA"],
+    "detalle": "ITRAH; preloteo MOV_TRAN; al aceptar: IMOV ESTADO=0"
+  },
+  "noEs": [
+    "Lotear y aceptar no confirman existencias.",
+    "Recepción masiva Excel es el otro camino (tramo 6)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Orden confirmada y política de lote",
+      "explicacionCapacitacion": "Hace falta ITRA abierto de la OC (o de un traslado 14). INV_CUFE_LOTEO=SI pide Factura (CUFE RADIAN) o Remisión antes de lotear. ITAR.MLOTEO y MFECHAVENCIMIENTO dicen si el artículo exige lote y vencimiento. IDINVDIASPARAVENCER es el mínimo de días.",
+      "requiresConfig": [
+        {
+          "id": "inv-cufe-loteo",
+          "usvgs": ["INV_CUFE_LOTEO", "IDINVDIASPARAVENCER"],
+          "obligatorio": "si la institución usa factura electrónica de compra"
+        }
+      ],
+      "llamaSiguiente": ["N1-documento"],
+      "efecto": "Hay tránsito que recibir."
+    },
+    {
+      "id": "N1-documento",
+      "orden": 1,
+      "nombre": "Abrir el tránsito y (si aplica) el CUFE",
+      "explicacionCapacitacion": "Una estación a la vez. Con factura: lista RADIAN del proveedor; el CUFE puede estar repetido y se usa la fila elegida. Remisión no usa RADIAN.",
+      "sp": "SPQ_IZSOL_TRANSITO",
+      "metodoUi": ["VALIDA_TRAN", "LEER_CUFE_LOTEO", "BUSCAR_RADIAN_LOTEO", "GUARDAR_CUFE_LOTEO"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-lotear"],
+      "erroresKo": [
+        "No cuenta con registros para Lotear.",
+        "El CUFE no está en RADIAN. No se puede continuar."
+      ],
+      "efecto": "ITRA con tipo F/R y CUFE si aplica."
+    },
+    {
+      "id": "N2-lotear",
+      "orden": 2,
+      "nombre": "Lotes, vencimiento y Totales",
+      "explicacionCapacitacion": "Cada artículo: lote, vencimiento, cantidad, costo. Producto vencido no entra. Todos completa CUM que coinciden; el faltante queda pendiente. En factura, bruto/IVA/total deben igualar RADIAN. ON_PROCESAR deja ITRAH INICIAL=1.",
+      "sp": "SPQ_IZSOL_TRANSITO",
+      "metodoUi": ["AGREGAR_IART", "EDITAR_LOTE_LOTEO", "ON_PROCESAR", "ON_ELIMINAR", "ELIMINA_PREGUARDADO"],
+      "llamaAnterior": ["N1-documento"],
+      "llamaSiguiente": ["N3-aceptar"],
+      "erroresKo": [
+        "Debe de ingresar un NOLOTE.",
+        "Producto Vencido no se puede Ingresar a la Bodega.",
+        "La cantidad supera lo pendiente de la orden."
+      ],
+      "efecto": "ITRAH loteado. MOV_TRAN es preguardado. No IEXI.",
+      "puntosCriticos": ["PC-INVOP-LOT-01", "PC-INVOP-LOT-02"]
+    },
+    {
+      "id": "N3-aceptar",
+      "orden": 3,
+      "nombre": "Aceptar: nace el IMOV en 0",
+      "explicacionCapacitacion": "ON_ACEPTA_TRANSITO exige todo loteado o con causa. Crea IMOV pendiente (SPK_INSERTENTTRANSITO). Si es factura, copia CUFE, número y fechas de RADIAN y en la entrada no se editan.",
+      "sp": "SPQ_IZSOL",
+      "metodoUi": ["ON_ACEPTA_TRANSITO", "GUARDA_CAUSA"],
+      "llama": ["SPK_INSERTENTTRANSITO"],
+      "llamaAnterior": ["N2-lotear"],
+      "llamaSiguiente": ["N4-pendiente-confirmar"],
+      "erroresKo": [
+        "Existen artículos pendientes por no loteo sin causa asignada…",
+        "No se ha realizado la distribución de lotes…"
+      ],
+      "efecto": "IMOV ESTADO=0. ITRA procesado. Sin IEXI hasta confirmar.",
+      "puntosCriticos": ["PC-INVOP-LOT-03"],
+      "fichas": [
+        {
+          "sp": "SPK_INSERTENTTRANSITO",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-pendiente-confirmar",
+      "orden": 4,
+      "nombre": "Siguiente: confirmar la entrada",
+      "explicacionCapacitacion": "El movimiento queda en Movimientos, estado pendiente. Confirmar es el tramo 7.",
+      "llamaAnterior": ["N3-aceptar"],
+      "efecto": "Puente a confirmación.",
+      "puntosCriticos": ["PC-INVOP-LOT-04"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "ON_ELIMINAR y ELIMINA_PREGUARDADO pasaron de parcial a leido.",
+    "fase2Hecha": true
+  }
+}

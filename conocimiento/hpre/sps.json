@@ -1,47 +1,239 @@
 {
   "procesoId": "hpre",
-  "actualizado": "2026-09-12T21:15:18",
-  "nota": "2026-09-12: SPQ_HPRE cabecera PEDIR_INV/DESHACER/RELIQUIDAR/AGREGAR_HPRE leídos.",
+  "actualizado": "2026-10-14",
+  "nota": "2026-10-14: DISTRI cargos + FACTURAR leídos (PREVERSION 2.0.9). Motor SPK_FACTURA_SOAT_TODO en acctran. 2026-09-12: SPQ_HPRE cabecera PEDIR_INV/DESHACER/RELIQUIDAR/AGREGAR_HPRE leídos.",
   "sps": [
     {
+      "nombre": "SPQ_DISTRIHPRED_SOAT",
       "sp": "SPQ_DISTRIHPRED_SOAT",
+      "estado": "leido",
       "metodos": [
         {
+          "id": "CARGAR_DATOS",
+          "metodo": "CARGAR_DATOS",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Abre Cargos SOAT: calcula topes usables (descuenta gasto externo + HACTRAND de otras atenciones), asigna GFACSOAT a ítems NULL y, si los abiertos de Aseguradora no caben, los pasa a ADRES/EPS salvo SIN_REDISTRIBUIR=1. Devuelve topes configurados, consumido, nombres de responsables y terceros ya facturados.",
+          "valida": "HADM.NOADMISION existe. Si CNSHACTRAN viene vacío, lo toma de HADM.",
+          "noValida": "HADM.CERRADA. PEDIDOINV. Que el tope alcance (el excedente se mueve, no hay KO). Integridad de HACTRAN.",
+          "errores": [
+            "La admisión no existe"
+          ],
+          "llama": [],
+          "efecto": "UPDATE HPRED.GFACSOAT en NULL (1/2/3 según tope). Si redistribuye: UPDATE GFACSOAT + IDTERCEROCA + IDPLAN de abiertos GFACSOAT=1 que superan el disponible. No llama SPK. No crea FTR.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ],
+          "notas": "ADRESS=1 si no hay aseguradora, NIT=IDNITFONSAT o TOPE1<TOPE. MOSTRAR_ADRES del recordset 1 queda 0 si FONSAT, sin aseguradora o TOPE2>0 (no coincide con DISTRIBUIR)."
+        },
+        {
+          "id": "HPRED_SOATSER",
           "metodo": "HPRED_SOATSER",
           "estado": "leido",
-          "leidoEn": "2026-09-03",
-          "hace": "Lista ítems HPRED de una admisión SOAT filtrados por GFACSOAT y opcionalmente PREFIJO, cirugía o WHERE_ADICIONAL dinámico.",
-          "valida": "Parámetros NOADMISION, GFACSOAT desde JSON.",
-          "noValida": "Contenido de WHERE_ADICIONAL (SQL dinámico concatenado).",
+          "leidoEn": "2026-10-14",
+          "hace": "Lista ítems HPRED de una admisión SOAT filtrados por GFACSOAT y, si vienen, PREFIJO, cirugía (IDCIRUGIA+ITEMCIRUGIA+CONSECUTIVOCX) o WHERE_ADICIONAL.",
+          "valida": "Lee NOADMISION y GFACSOAT del JSON.",
+          "noValida": "Existencia de la admisión. Contenido de WHERE_ADICIONAL (SQL dinámico concatenado). NOCOBRABLE / FACTURADA (los incluye).",
           "errores": [],
           "llama": [],
-          "efecto": "Solo lectura. SELECT sobre HPRED/HPRE/SER/PRE con EXEC(@SQL). Si PREFIJO vacío no filtra por prefijo.",
+          "efecto": "Solo lectura. EXEC(@SQL) sobre HPRED/HPRE/SER/PRE. Si PREFIJO vacío no filtra por prefijo.",
           "vue": [
             "ServiciosPrefijoComponent.vue",
             "HPRESOATComponent.vue"
           ],
-          "notas": "Modo Detalle FE envía PREFIJO='' y GFACSOAT del responsable. WHERE_ADICIONAL opcional desde whereHPRE."
+          "notas": "Modo Detalle FE envía PREFIJO='' y GFACSOAT del responsable."
         },
         {
-          "metodo": "CARGAR_DATOS",
+          "id": "HPRED_SOATPRE",
+          "metodo": "HPRED_SOATPRE",
           "estado": "leido",
-          "leidoEn": "2026-09-03",
-          "hace": "Carga topes HACTRAN, consumido por GFACSOAT, responsables y terceros facturados para pantalla Cargos SOAT.",
-          "valida": "Existencia admisión; reglas ADRES/FONSAT.",
-          "noValida": "—",
-          "errores": [
-            "La admisión no existe"
-          ],
-          "llama": [
-            "SPQ_JSON (RELIQUIDAR)",
-            "SPK_COPAGOQX",
-            "SPK_RELIQUIDACOPAGOQX",
-            "SPK_FACTURA_SOAT_TODO"
-          ],
-          "efecto": "Lectura + redistribución GFACSOAT en CARGAR_DATOS; otros METODOs actualizan HPRED.",
+          "leidoEn": "2026-10-14",
+          "hace": "Resume por prefijo los cargos cobrables de un GFACSOAT (cantidad y valor). Marca si el prefijo es cirugía (IDCIRPREFIJO).",
+          "valida": "NOADMISION y GFACSOAT del JSON.",
+          "noValida": "Existencia de la admisión.",
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura. GROUP BY prefijo. Excluye NOCOBRABLE=1.",
           "vue": [
             "HPRESOATComponent.vue"
           ]
+        },
+        {
+          "id": "FECHAS_CARGOS",
+          "metodo": "FECHAS_CARGOS",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Devuelve MIN/MAX de HPRE.FECHA de los cargos cobrables de un GFACSOAT (rango para mover masivo).",
+          "valida": "NOADMISION y GFACSOAT del JSON.",
+          "noValida": "Existencia de la admisión.",
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ]
+        },
+        {
+          "id": "DISTRIBUIR_HACTRAN",
+          "metodo": "DISTRIBUIR_HACTRAN",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Asigna GFACSOAT solo a ítems abiertos cobrables sin responsable (NULL o fuera de 1–4). Cascada: Aseguradora hasta tope usable, luego ADRES si se muestra, resto EPS. Ordena por valor descendente. Alias: DISTRIBUCION_AUTOMATICA.",
+          "valida": "NOADMISION. CNSHACTRAN vacío se toma de HADM.",
+          "noValida": "PEDIDOINV (KO comentado). Que el ítem quepa sin partir cantidad (si no cabe en ASE/ADRES va a EPS). IDTERCEROCA/IDPLAN destino (los calcula y no los escribe).",
+          "errores": [],
+          "llama": [
+            "SPK_RELIQUIDACOPAGOQX"
+          ],
+          "efecto": "UPDATE HPRED.GFACSOAT. No toca IDTERCEROCA ni IDPLAN. ARL no se asigna.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ],
+          "notas": "Mismo cuerpo que DISTRIBUCION_AUTOMATICA. MOSTRAR_ADRES=0 si aseguradora FONSAT o vacía."
+        },
+        {
+          "id": "DISTRIBUCION_AUTOMATICA",
+          "metodo": "DISTRIBUCION_AUTOMATICA",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Alias de DISTRIBUIR_HACTRAN: mismo IF @METODO IN.",
+          "valida": "Igual que DISTRIBUIR_HACTRAN.",
+          "noValida": "Igual que DISTRIBUIR_HACTRAN.",
+          "errores": [],
+          "llama": [
+            "SPK_RELIQUIDACOPAGOQX"
+          ],
+          "efecto": "Igual que DISTRIBUIR_HACTRAN.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ]
+        },
+        {
+          "id": "REORGANIZAR_TODO",
+          "metodo": "REORGANIZAR_TODO",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Pone GFACSOAT=0 a todos los abiertos cobrables y los vuelve a asignar por fecha: Aseguradora, ADRES si MOSTRAR, resto EPS. Sí escribe tercero y plan.",
+          "valida": "NOADMISION. Toma CNSHACTRAN de HADM.",
+          "noValida": "PEDIDOINV (KO comentado). ARL. Coherencia de MOSTRAR_ADRES con DISTRIBUIR (FONSAT/vacío queda en 1).",
+          "errores": [],
+          "llama": [
+            "SPK_RELIQUIDACOPAGOQX"
+          ],
+          "efecto": "UPDATE HPRED.GFACSOAT + IDTERCEROCA + IDPLAN de no facturados cobrables. No crea FTR.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ],
+          "notas": "PC-SOAT-CAR-05: con FONSAT puede nacer GFACSOAT=2."
+        },
+        {
+          "id": "GUARDAR_DISTRIBUCION",
+          "metodo": "GUARDAR_DISTRIBUCION",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Escribe el GFACSOAT (y tercero/plan) que manda el FE en ITEMS. Los NULL restantes abiertos cobrables quedan en Aseguradora. Reliquida la admisión por SPQ_JSON HPRE.",
+          "valida": "Hay filas en ITEMS. ADRES no si HADM.IDTERCERO=IDNITFONSAT. EPS no si AFI.IDADMINISTRADORA=HADM.IDTERCERO.",
+          "noValida": "PEDIDOINV (KO comentado). FACTURADA del ítem (actualiza el cruce aunque esté facturado). Tope.",
+          "errores": [
+            "No se recibieron items para actualizar",
+            "ADRES no puede tener el mismo responsable que la Aseguradora. No se pueden hacer cambios hasta que se corrija esta situación.",
+            "La EPS no puede ser igual al responsable del accidente de tránsito. Debe corregir esta situación antes de continuar."
+          ],
+          "llama": [
+            "SPQ_JSON (MODELO HPRE · RELIQUIDAR_ADMISION)"
+          ],
+          "efecto": "UPDATE HPRED.GFACSOAT/IDTERCEROCA/IDPLAN. Luego reliquidación vía HPRE, no el METODO DISTRI del mismo nombre.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ]
+        },
+        {
+          "id": "RELIQUIDAR_ADMISION",
+          "metodo": "RELIQUIDAR_ADMISION",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Reliquidación controlada desde Cargos SOAT. Si CCONTRATANTE=1, pasa abiertos ADRES/EPS a Aseguradora (tercero/plan de HADM) y reafirma tras SPK_RELIQUIDAR_HADM. Opcional: elimina HPRE sin detalle; incluye prefijos de cirugía.",
+          "valida": "Admisión tipo IDTARIFASOAT. Hay HPRED no facturado. Toda HPRE tiene IDAREA. Si CCONTRATANTE=1: tercero/plan de HADM y fila PPT; no hay ADRES/EPS ya facturados en el filtro.",
+          "noValida": "Tope HACTRAN. GFACSOAT=4 (ARL no se mueve a Aseguradora en el UPDATE de 1/2/3).",
+          "errores": [
+            "La admision indicada no existe o no corresponde a una admision SOAT.",
+            "La admision no tiene prestaciones pendientes para reliquidar.",
+            "Existen prestaciones sin area funcional en esta admision. No es posible reliquidar.",
+            "La admision no tiene configurados el tercero y plan de la aseguradora.",
+            "El tercero y plan de la aseguradora no tienen una relacion contractual configurada.",
+            "No es posible trasladar todo a la aseguradora porque existen cargos ADRES o EPS facturados.",
+            "Error al reliquidar la admision SOAT: …"
+          ],
+          "llama": [
+            "SPK_RELIQUIDAR_HADM",
+            "SPK_RELIQUIDAR_HADM_PE (si IXCOUNTRY=PERU)"
+          ],
+          "efecto": "UPDATE HPRE/HPRED a Aseguradora si CCONTRATANTE=1. DELETE HPRE huérfanas si ELIMINA=1. Reliquidación de tarifas. No crea FTR.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ]
+        },
+        {
+          "id": "MOVER_ITEM_PARCIAL",
+          "metodo": "MOVER_ITEM_PARCIAL",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Mueve un ítem a otro GFACSOAT. Si la cantidad es total, solo cambia responsable. Si es parcial, reduce el original e inserta uno nuevo. Cirugía (prefijo IDCIRPREFIJO + ITEMCIRUGIA): mueve todo el grupo. VALIDAR_SOLAMENTE=1 solo devuelve destino.",
+          "valida": "CANTIDAD_MOVER ≤ cantidad del ítem. Mismas reglas ADRES/EPS que GUARDAR. En solo validar: destino con tercero y plan.",
+          "noValida": "PEDIDOINV (KO comentado). FACTURADA. Tope.",
+          "errores": [
+            "La cantidad a mover supera la cantidad disponible",
+            "ADRES no puede tener el mismo responsable que la Aseguradora. No se pueden hacer cambios hasta que se corrija esta situación.",
+            "La EPS no puede ser igual al responsable del accidente de tránsito. Debe corregir esta situación antes de continuar.",
+            "El responsable destino no tiene tercero y plan configurados."
+          ],
+          "llama": [
+            "SPK_COPAGOQX"
+          ],
+          "efecto": "UPDATE HPRED y, si parcial, INSERT HPRED (FACTURADA=0). En cirugía no parte cantidad. SPK_COPAGOQX solo en rama no-cirugía.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ]
+        },
+        {
+          "id": "MOVER_MASIVO",
+          "metodo": "MOVER_MASIVO",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Cambia GFACSOAT, tercero y plan de todos los cargos del rango de fechas (prefijo y usuario opcionales; origen opcional).",
+          "valida": "Lee NOADMISION, destino, fechas. Resuelve tercero/plan del destino (1=HADM, 2=FONSAT/IDPLANSOAT, 3=AFI, 4=HADM ARL).",
+          "noValida": "FACTURADA. NOCOBRABLE. ADRES≠Aseguradora y EPS≠responsable. PEDIDOINV (KO comentado). ARL: el SELECT de destino no filtra NOADMISION.",
+          "errores": [],
+          "llama": [
+            "SPK_RELIQUIDACOPAGOQX"
+          ],
+          "efecto": "UPDATE HPRED.GFACSOAT/IDTERCEROCA/IDPLAN del filtro. Devuelve prefijos tocados.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ],
+          "notas": "PC-SOAT-CAR-09: no excluye facturados."
+        },
+        {
+          "id": "FACTURAR",
+          "metodo": "FACTURAR",
+          "estado": "leido",
+          "leidoEn": "2026-10-14",
+          "hace": "Control de Facturar SOAT: valida admisión y, si SOATVALDECFACT=SI y TIPOADM=IDTARIFASOAT, que los ítems abiertos cobrables no tengan decimales. Llama SPK_FACTURA_SOAT_TODO. Si TIPOADM='04', escribe CUPSPPALQX/CUPSSECQX del QX más reciente con tarifa SERTOT.",
+          "valida": "HADM.NOADMISION existe. Con SOATVALDECFACT=SI: VALOR, VALORCOPAGO y VALOREXCEDENTE de abiertos no anulados cobrables son enteros.",
+          "noValida": "HADM.CERRADA. Tope HACTRAN. Que existan ítems del GFACSOAT pedido. TIPOADM contra IDTARIFASOAT al escribir CUPS (usa literal '04').",
+          "errores": [
+            "La admisión no existe",
+            "SOAT: no se permite facturar. El servicio … tiene decimales en: …",
+            "(CATCH) ERROR_MESSAGE del motor"
+          ],
+          "llama": [
+            "SPK_FACTURA_SOAT_TODO"
+          ],
+          "efecto": "Si OK: nace una o más FTR (el motor). UPDATE HACTRAN.CUPSPPALQX / CUPSSECQX solo si TIPOADM='04'. No cierra HADM.",
+          "vue": [
+            "HPRESOATComponent.vue"
+          ],
+          "notas": "PC-SOAT-FAC-01 y FAC-08. El FE exige CERRADA=1."
         }
       ]
     },

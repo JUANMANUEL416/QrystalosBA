@@ -36,7 +36,7 @@ Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, 
 
 Título: {meta.get("titulo") or ""}
 Cliente: {meta.get("cliente") or ""}
-"""
+{_bloque_capturas(sid, meta)}"""
 
 
 def escribir_instruccion(sid: str) -> None:
@@ -161,13 +161,170 @@ def leer_chat(sid: str) -> dict:
     return _read_json(carpeta_consulta(sid) / "chat.json", {"mensajes": []})
 
 
-def append_chat(sid: str, autor: str, texto: str) -> dict:
+_IMG_MIME = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+_IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_IMG_MAX = 8 * 1024 * 1024
+
+
+def _bloque_capturas(sid: str, meta: dict) -> str:
+    imgs = meta.get("imagenes") or []
+    if not imgs:
+        return ""
+    lines = "\n".join(
+        f"- data/soporte-consultas/{sid}/imagenes/{i.get('nombre')}"
+        for i in imgs
+        if i.get("nombre")
+    )
+    if not lines:
+        return ""
+    return (
+        "\n## Capturas\n"
+        "La consulta incluye imágenes. Léalas y contrástelas con la pregunta:\n"
+        f"{lines}\n"
+    )
+
+
+def _nombre_imagen(nombre: str, ext: str) -> str:
+    base = re.sub(r"[^\w.\-]", "_", Path(nombre or "").name)[:140]
+    stem = Path(base).stem if base else ""
+    if not stem or stem.startswith("."):
+        stem = f"captura-{datetime.now().strftime('%H%M%S')}"
+    got = Path(base).suffix.lower() if base else ""
+    if got not in _IMG_EXT:
+        got = ext
+    return f"{stem}{got}"[:180]
+
+
+def _ruta_imagen(sid: str, nombre: str) -> Path:
+    fname = Path(nombre or "").name
+    if not fname or fname != (nombre or "") or ".." in (nombre or ""):
+        raise ValueError("Nombre de imagen no válido.")
+    if Path(fname).suffix.lower() not in _IMG_EXT:
+        raise ValueError("Formato no admitido. Use PNG, JPG, WebP o GIF.")
+    return carpeta_consulta(sid) / "imagenes" / fname
+
+
+def _ficha_imagen(sid: str, nombre: str) -> dict:
+    return {
+        "nombre": nombre,
+        "url": f"/api/soporte-consultas/{sid}/imagen/{nombre}",
+    }
+
+
+def _imagenes_validas(sid: str, imagenes: list | None) -> list[dict]:
+    out: list[dict] = []
+    vistos: set[str] = set()
+    for item in imagenes or []:
+        nombre = item.get("nombre") if isinstance(item, dict) else item
+        try:
+            path = _ruta_imagen(sid, str(nombre or ""))
+        except ValueError:
+            continue
+        if not path.is_file() or path.name in vistos:
+            continue
+        vistos.add(path.name)
+        out.append(_ficha_imagen(sid, path.name))
+    return out
+
+
+def guardar_imagen(sid: str, data_url: str, nombre: str = "") -> dict:
+    raw = (data_url or "").strip()
+    match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", raw, re.S)
+    if not match:
+        raise ValueError("Se espera una imagen (PNG, JPG, WebP o GIF).")
+    ext = _IMG_MIME.get(match.group(1).lower())
+    if not ext:
+        raise ValueError("Formato no admitido. Use PNG, JPG, WebP o GIF.")
+    try:
+        blob = base64.b64decode(match.group(2), validate=False)
+    except Exception as exc:
+        raise ValueError("La imagen no se pudo leer.") from exc
+    if not blob or len(blob) > _IMG_MAX:
+        raise ValueError("La imagen supera 8 MB.")
+    carp = carpeta_consulta(sid)
+    dest_dir = carp / "imagenes"
+    dest_dir.mkdir(exist_ok=True)
+    fname = _nombre_imagen(nombre, ext)
+    path = dest_dir / fname
+    n = 2
+    while path.exists():
+        path = dest_dir / f"{Path(fname).stem}-{n}{path.suffix}"
+        fname = path.name
+        n += 1
+    path.write_bytes(blob)
+    meta = leer_meta(sid)
+    item = {
+        **_ficha_imagen(sid, fname),
+        "subidaEn": datetime.now().isoformat(timespec="seconds"),
+    }
+    imgs = [i for i in (meta.get("imagenes") or []) if i.get("nombre") != fname]
+    imgs.append(item)
+    meta["imagenes"] = imgs
+    _write_json(carp / "meta.json", meta)
+    escribir_instruccion(sid)
+    return item
+
+
+def quitar_imagen(sid: str, nombre: str) -> dict:
+    path = _ruta_imagen(sid, nombre)
+    if path.is_file():
+        path.unlink()
+    meta = leer_meta(sid)
+    meta["imagenes"] = [i for i in (meta.get("imagenes") or []) if i.get("nombre") != path.name]
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    chat = leer_chat(sid)
+    for msg in chat.get("mensajes") or []:
+        if isinstance(msg.get("imagenes"), list):
+            msg["imagenes"] = [i for i in msg["imagenes"] if i.get("nombre") != path.name]
+    _write_json(carpeta_consulta(sid) / "chat.json", chat)
+    escribir_instruccion(sid)
+    return meta
+
+
+def html_capturas(sid: str) -> str:
+    """Incrusta las capturas en el HTML: el PDF se arma desde archivo local."""
+    meta = leer_meta(sid)
+    carp = carpeta_consulta(sid) / "imagenes"
+    partes: list[str] = []
+    mime = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }
+    for img in meta.get("imagenes") or []:
+        nombre = Path(str(img.get("nombre") or "")).name
+        path = carp / nombre
+        if not path.is_file() or path.suffix.lower() not in _IMG_EXT:
+            continue
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        src = f"data:{mime.get(path.suffix.lower(), 'image/png')};base64,{encoded}"
+        partes.append(
+            f'<figure class="doc-captura"><img src="{src}" alt="{_esc(nombre)}">'
+            f"<figcaption>{_esc(nombre)}</figcaption></figure>"
+        )
+    if not partes:
+        return ""
+    return '<div class="doc-capturas">' + "".join(partes) + "</div>"
+
+
+def append_chat(sid: str, autor: str, texto: str, imagenes: list | None = None) -> dict:
     autor = (autor or "soporte").strip().lower()
     if autor not in _AUTORES:
         autor = "soporte"
     texto = (texto or "").strip()
-    if not texto:
+    imgs = _imagenes_validas(sid, imagenes)
+    if not texto and not imgs:
         raise ValueError("Mensaje vacío.")
+    if not texto:
+        texto = "Captura adjunta."
     chat = leer_chat(sid)
     msg = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
@@ -175,6 +332,8 @@ def append_chat(sid: str, autor: str, texto: str) -> dict:
         "texto": texto,
         "en": datetime.now().isoformat(timespec="seconds"),
     }
+    if imgs:
+        msg["imagenes"] = imgs
     chat.setdefault("mensajes", []).append(msg)
     _write_json(carpeta_consulta(sid) / "chat.json", chat)
     return msg
@@ -628,6 +787,10 @@ def generar_html_documento(sid: str, logo_href: str = "/app/assets/logo-ixcolomb
     .question-card h2 {{ margin:0 0 5px; padding:0; border:0; font-size:8pt; color:var(--muted);
       text-transform:uppercase; letter-spacing:.08em; }}
     .question-card p {{ margin:.15rem 0; font-size:9.5pt; }}
+    .doc-capturas {{ display:flex; flex-direction:column; gap:12px; margin:12px 0 0; }}
+    .doc-captura {{ margin:0; break-inside:avoid; page-break-inside:avoid; }}
+    .doc-captura img {{ max-width:100%; height:auto; border:1px solid var(--line); border-radius:8px; }}
+    .doc-captura figcaption {{ margin-top:4px; color:var(--muted); font-size:8pt; }}
     .manual-title {{ display:flex; align-items:center; gap:10px; margin:0 0 16px; color:var(--ink);
       font-size:15pt; border-bottom:2px solid var(--ink); padding-bottom:8px; }}
     .manual-title span {{ display:grid; place-items:center; width:25px; height:25px; border-radius:6px;
@@ -738,6 +901,7 @@ def generar_html_documento(sid: str, logo_href: str = "/app/assets/logo-ixcolomb
       <section class="question-card">
         <h2>Necesidad planteada</h2>
         {_parrafos(meta.get('preguntaInicial') or '')}
+        {html_capturas(sid)}
       </section>
       <h2 class="manual-title"><span>✓</span> Guía de solución</h2>
       <main class="manual-content">

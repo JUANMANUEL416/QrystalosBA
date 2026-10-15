@@ -1,0 +1,84 @@
+{
+  "tramo": "custodia",
+  "nombre": "Custodia de medicamentos (entrada propia)",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "procesoHermano": "custodia-medicamentos",
+  "fuenteSql": "IXONLINE/SQL · SPQ_IZSOL · AGREGA_CUSTODIA / SUBIR_CUSTODIA_MASIVA; SPQ_IZSOL · CONF_ENTRADA (parte custodia); SPK_CONFIRMARENTRADAS",
+  "pantalla": {
+    "path": "/inv/ges",
+    "vue": "IMOVPage → IMOVComponetNew",
+    "menu": "Inventario → Movimientos · Ingresar Custodia"
+  },
+  "documentoOrigen": {
+    "tabla": "ITRA",
+    "claves": ["CNSITRA"],
+    "detalle": "CNSMOVORI = CUSTODIA; IMOV tipo IDINVTPROPIA (código habitual PR); una unidad por línea"
+  },
+  "noEs": [
+    "No es una compra: no hay factura ni CxP.",
+    "No es la dispensación de la solicitud ni la aplicación del medicamento.",
+    "Sin la marca Es de Custodia en la bodega no corre el Excel ni el informe."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Variable, bodega y permisos",
+      "explicacionCapacitacion": "IDINVTPROPIA apunta a un tipo de entrada distinta de compras. IBOD.ESDECUSTODIA=1 y tipos permitidos en IBODS. Permisos BrwTransito · Bcustodia y Masivo_cus.",
+      "requiresConfig": [
+        {
+          "id": "tipo-pr",
+          "usvgs": ["IDINVTPROPIA"],
+          "desc": "Entrada propia / custodia",
+          "obligatorio": true
+        },
+        {
+          "id": "bodega-custodia",
+          "tabla": "IBOD",
+          "desc": "ESDECUSTODIA = 1",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-itra"],
+      "puntosCriticos": ["PC-INVOP-CUS-01"]
+    },
+    {
+      "id": "N1-itra",
+      "orden": 1,
+      "nombre": "Abrir tránsito de custodia",
+      "explicacionCapacitacion": "AGREGA_CUSTODIA crea ITRA. A mano: artículos al tránsito. Excel: SUBIR_CUSTODIA_MASIVA valida NIT, artículos no principales y tipos de la bodega.",
+      "sp": ["SPQ_IZSOL · AGREGA_CUSTODIA", "SPQ_IZSOL · SUBIR_CUSTODIA_MASIVA"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-entrada"],
+      "efecto": "ITRA/ITRAH (y IMOV 0 en masivo). Sin factura.",
+      "puntosCriticos": ["PC-INVOP-CUS-02"]
+    },
+    {
+      "id": "N2-entrada",
+      "orden": 2,
+      "nombre": "Entrada por paciente y confirmar",
+      "explicacionCapacitacion": "Se arma IMOV del paciente (CNSTRAN) y se confirma con CONF_ENTRADA. PCOSTO>0 no aplica (producción propia / custodia). Enlace automático con la aplicación pendiente del paciente si APLIM_USA_MEDCUSTOD.",
+      "sp": ["SPQ_IZSOL · CONF_ENTRADA"],
+      "llama": ["SPK_CONFIRMARENTRADAS"],
+      "llamaAnterior": ["N1-itra"],
+      "llamaSiguiente": ["N3-acta"],
+      "efecto": "IEXI por unidad en la bodega de custodia.",
+      "puntosCriticos": ["PC-INVOP-CUS-03"]
+    },
+    {
+      "id": "N3-acta",
+      "orden": 3,
+      "nombre": "Acta e informe",
+      "explicacionCapacitacion": "Actas en SPQ_IMOV_3 (clic derecho / por tercero). Informe en Existencias, solo bodegas de custodia. El consumo es la aplicación (/ce/apli), no esta pantalla.",
+      "llamaAnterior": ["N2-entrada"],
+      "efecto": "Documento de recepción. Stock ya está."
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "AGREGA_CUSTODIA y SUBIR_CUSTODIA_MASIVA leido. Libro hermano custodia-medicamentos.",
+    "fase2Hecha": true
+  }
+}

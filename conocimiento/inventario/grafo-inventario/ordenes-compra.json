@@ -1,0 +1,136 @@
+{
+  "tramo": "ordenes-compra",
+  "nombre": "Orden de compra",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_FCOM · GUARDAR / CONFIRMAR_ORDEN / ABRIR / ANULAR; SPK_INSERT_ITRA_REQ",
+  "pantalla": {
+    "path": "/inv/ordcom",
+    "vue": "OrdComPage → FComComponent / FCOMDComponent",
+    "menu": "Inventario → Procesos → Orden de compra"
+  },
+  "documentoOrigen": {
+    "tabla": "FCOM",
+    "claves": ["CNSFCOM"],
+    "detalle": "FCOMD; al confirmar: ITRA/ITRAH ESTADO=0"
+  },
+  "estadosFcom": ["C abierta", "P confirmada (tránsito)", "R recepción parcial", "I recepción total", "A anulada"],
+  "noEs": [
+    "Confirmar la orden no crea existencias ni IMOV.",
+    "Generar OC desde cotización o solicitud deja la orden en C: hay que confirmarla aquí."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Bodega, proveedor y tipo de compras",
+      "explicacionCapacitacion": "La orden lleva proveedor, bodega destino (CCOSTO/IDAREA) y artículos activos. El tipo de tránsito sale de IDINVMOV_COMPRAS (o préstamo si IDTIPOSER=Presta). Solicitud de compra exige IBOD.COMPRASOL e IDBODEGAPIDE.",
+      "requiresConfig": [
+        {
+          "id": "idinvmov-compras",
+          "usvgs": ["IDINVMOV_COMPRAS", "IDINVMOV_PRESTAMOS"],
+          "obligatorio": true
+        },
+        {
+          "id": "ibod-oc",
+          "tabla": "IBOD",
+          "desc": "Bodega activa; COMPRASOL e IDBODEGAPIDE si nace de solicitud",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-cabecera"],
+      "efecto": "Hay a quién comprar y a qué bodega. Todavía no hay orden."
+    },
+    {
+      "id": "N1-cabecera",
+      "orden": 1,
+      "nombre": "Crear o completar la orden abierta",
+      "explicacionCapacitacion": "La orden nace en C (directa, desde cotización o desde solicitud). Detalle con cantidad y valor unitario. Fecha de factura no futura; vencimiento no anterior a la factura.",
+      "sp": "SPQ_FCOM",
+      "metodoUi": ["GUARDAR", "GENERA_OC", "SPQ_FCOMD · GUARDAR"],
+      "requiresDocumento": [
+        {
+          "id": "fcom-c",
+          "desc": "FCOM ESTADO=C, al menos una FCOMD, VLR_UNITARIO > 0 para poder confirmar",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-confirmar"],
+      "efecto": "FCOM C, ORDENCOMPRA=0. Sin ITRA.",
+      "puntosCriticos": ["PC-INVOP-OC-01"]
+    },
+    {
+      "id": "N2-confirmar",
+      "orden": 2,
+      "nombre": "Confirmar: nace el tránsito, no el stock",
+      "explicacionCapacitacion": "Confirmar exige detalle y ningún unitario en cero. Pasa a P y crea ITRA/ITRAH. Si el tipo de artículo no exige loteo (ITAR.MLOTEO=1), el tránsito ya queda loteado. Recibir es el siguiente tramo.",
+      "sp": "SPQ_FCOM",
+      "metodoUi": ["CONFIRMAR_ORDEN"],
+      "llama": ["SPK_INSERT_ITRA_REQ"],
+      "llamaAnterior": ["N1-cabecera"],
+      "llamaSiguiente": ["N3-transito"],
+      "erroresKo": [
+        "No cuenta con detalle.",
+        "No se puede procesar la orden. Hay líneas con valor unitario en cero"
+      ],
+      "efecto": "FCOM P; ITRA ESTADO=0. No IMOV ni IEXI. FECHAORDEN no se graba (queda comentada).",
+      "puntosCriticos": ["PC-INVOP-OC-02", "PC-INVOP-OC-03"],
+      "fichas": [
+        {
+          "sp": "SPQ_FCOM",
+          "metodo": "CONFIRMAR_ORDEN",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPK_INSERT_ITRA_REQ",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-transito",
+      "orden": 3,
+      "nombre": "Tránsito abierto (aún sin existencias)",
+      "explicacionCapacitacion": "ITRA ligado a la OC, bodega destino = FCOM.IDBODEGA, tipo = variable de compras. ITRAH INICIAL=0 salvo MLOTEO=1. Abrir la orden borra ese tránsito si todavía no se recibió.",
+      "sp": "SPK_INSERT_ITRA_REQ",
+      "llamaAnterior": ["N2-confirmar"],
+      "llamaSiguiente": ["N4-abrir-anular"],
+      "efecto": "Listo para loteo o recepción masiva.",
+      "puntosCriticos": ["PC-INVOP-OC-04"]
+    },
+    {
+      "id": "N4-abrir-anular",
+      "orden": 4,
+      "nombre": "Reabrir o anular",
+      "explicacionCapacitacion": "Abrir: solo si no hay recepción (tránsito no recibido ni IMOV confirmado). Vuelve a C y borra ITRA. Anular: deja A y libera la cotización. El siguiente tramo es loteo o Excel.",
+      "sp": "SPQ_FCOM",
+      "metodoUi": ["ABRIR", "ANULAR", "CLONAR"],
+      "llamaAnterior": ["N3-transito"],
+      "efecto": "C (reabierta) o A (anulada). Capacitación: anular no debería usarse si ya se recibió.",
+      "puntosCriticos": ["PC-INVOP-OC-05", "PC-INVOP-OC-06"],
+      "fichas": [
+        {
+          "sp": "SPQ_FCOM",
+          "metodo": "ABRIR",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPQ_FCOM",
+          "metodo": "ANULAR",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "Se releyó SPQ_FCOM · CONFIRMAR_ORDEN / ABRIR / ANULAR (PREVERSION).",
+    "fase2Hecha": true
+  }
+}

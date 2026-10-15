@@ -1,0 +1,144 @@
+{
+  "tramo": "furips-txt",
+  "nombre": "FURIPS plano TXT",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_FURIPS · FURIPS / FURIPSCXC (PREVERSION 2.0.9 idéntica a la liberada)",
+  "pantalla": {
+    "path": "/asis/soat",
+    "vue": "HactranComponent → useHactranPlanosExport (formato TXT)",
+    "menu": "Asistencial → SOAT → exportar planos",
+    "permisos": ["asis.soat"]
+  },
+  "documentoOrigen": {
+    "tabla": "HACTRAN",
+    "claves": ["CNSHACTRAN"],
+    "detalle": "FURIPS 1 = una fila cabecera (víctima, sitio, vehículo, póliza, atención). FURIPS 2 = líneas de servicio desde FTR/FTRD (QX=SALUD, CI, CE). Cartera: FURIPSCXC por CNSCXC/FCXC."
+  },
+  "noEs": [
+    "No genera FTR: lee facturas ya emitidas (ESTADO P, no NC).",
+    "No es FURIPS JSON (mismo SP; el FE remapea en el tramo 6).",
+    "No es RIPS JSON / FEVRIPS (FACTE=2).",
+    "No es FURTRAN, FUCTAS ni PDF (eso va a V2/V3, tramo 7)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Variables de reclamación",
+      "explicacionCapacitacion": "El código de habilitación sale de la sede de la factura o, si no hay, del tercero de la institución. El consecutivo de reclamación (campo 04) lo define FURIPS_T_RADICADO: cuenta de cobro, admisión o el radicado del expediente. FURIPSRESUMIDO agrupa o no las líneas QX; en ambos casos el SELECT externo ya deja solo los nueve campos oficiales.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-furips",
+          "tabla": "USVGS",
+          "desc": "IDTERCEROINSTALADO (código habilitación de respaldo), FURIPS_T_RADICADO (CXC / ADM / radicado), FURIPSRESUMIDO, IDNITFONSAT",
+          "obligatorio": true,
+          "usvgs": ["IDTERCEROINSTALADO", "FURIPS_T_RADICADO", "FURIPSRESUMIDO", "IDNITFONSAT"]
+        },
+        {
+          "id": "hactran-ftr",
+          "tabla": "HACTRAN",
+          "desc": "Expediente creado. Para líneas con valor, FTR de esa atención en ESTADO=P.",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-pedir"],
+      "efecto": "Hay expediente y variables. Todavía no hay archivo.",
+      "fichas": []
+    },
+    {
+      "id": "N1-pedir",
+      "orden": 1,
+      "nombre": "Pedir FURIPS 1 y 2",
+      "explicacionCapacitacion": "Desde el expediente: METODO FURIPS con CNSHACTRAN, procedencia (QX / CI / CE), referencia (admisión, cita o autorización) y, si se conoce, el número de factura. Desde cartera: FURIPSCXC con la cuenta de cobro. Si no manda procedencia, el SP intenta QX, luego CI, luego CE: se queda con la última que encuentre. Si no manda factura, el valor va en cero y las líneas dependen del cruce.",
+      "sp": "SPQ_FURIPS",
+      "metodoUi": ["FURIPS", "FURIPSCXC"],
+      "requiresDocumento": [
+        {
+          "id": "cnshactran-o-cnscxc",
+          "desc": "FURIPS: CNSHACTRAN. FURIPSCXC: CNSCXC.",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-furips1"],
+      "efecto": "Siempre responde OK (no hay KO de negocio). El resto de METODOs (PDF, FURTRAN) se van a SPQ_FURIPS_V2.",
+      "puntosCriticos": ["PC-SOAT-F1-01", "PC-SOAT-F1-02", "PC-SOAT-F1-03", "PC-SOAT-F1-04"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS",
+          "metodo": "FURIPS",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_FURIPS",
+          "metodo": "FURIPSCXC",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-furips1",
+      "orden": 2,
+      "nombre": "Cabecera FURIPS 1",
+      "explicacionCapacitacion": "Una fila: radicado, factura, código de habilitación, datos de la víctima (AFI), condición, naturaleza del evento, sitio, vehículo, conductor, propietario, póliza, atención y remisión. Según el tipo de póliza (fuga, fantasma, no asegurado) deja en blanco conductor, propietario, póliza, vehículo o placa. El NIT 860037013 se trata como Mundial (codifica servicios distinto en FURIPS 2).",
+      "sp": "SPQ_FURIPS",
+      "metodoUi": ["FURIPS"],
+      "llamaAnterior": ["N1-pedir"],
+      "llamaSiguiente": ["N3-furips2"],
+      "efecto": "Recordset 1. Solo lectura. No escribe HACTRAN ni FTR.",
+      "puntosCriticos": ["PC-SOAT-F1-06", "PC-SOAT-F1-07"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS",
+          "metodo": "FURIPS",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-furips2",
+      "orden": 3,
+      "nombre": "Líneas FURIPS 2",
+      "explicacionCapacitacion": "Una línea por servicio facturado: factura, consecutivo de reclamación, tipo, código, nombre, cantidad, unitario, total y valor reclamado. QX lee FTR SALUD; CI la cita; CE la autorización (o VARIOS en masiva). Cirugía parte encabezado y detalle. CODFURIPS 1 y 2 dejan el nombre vacío. El SELECT que ve el FE ya no manda columnas internas de cirugía.",
+      "sp": "SPQ_FURIPS",
+      "metodoUi": ["FURIPS", "FURIPSCXC"],
+      "llamaAnterior": ["N2-furips1"],
+      "llamaSiguiente": ["N4-txt"],
+      "efecto": "Recordset 2. Solo lectura. Filas con valor 0 se omiten en QX/CE.",
+      "puntosCriticos": ["PC-SOAT-F1-05", "PC-SOAT-F1-09"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS",
+          "metodo": "FURIPS",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-txt",
+      "orden": 4,
+      "nombre": "El FE arma los .txt",
+      "explicacionCapacitacion": "El SP no escribe archivo. En formato TXT el FE toma Object.values de cada fila y baja FURIPS1*.txt y FURIPS2*.txt (o el par de cartera). El formato JSON es el tramo siguiente: mismos recordsets, otros nombres de archivo. FURTRAN/PDF no salen de este SP.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N3-furips2"],
+      "llamaSiguiente": [],
+      "efecto": "Archivos TXT en el equipo del usuario. El SP no cambia.",
+      "puntosCriticos": ["PC-SOAT-F1-08"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_FURIPS PREVERSION 2.0.9 idéntica a la liberada. FURIPS y FURIPSCXC releídos. V2/V3 quedan para el tramo 7.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

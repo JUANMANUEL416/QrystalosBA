@@ -1,0 +1,60 @@
+{
+  "tramo": "ajustes",
+  "nombre": "Ajustes de costo y recálculo de existencias",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "notaTocaIexi": "No mueve cantidades. Corrige IART.PCOSTO o recalcula totales IDXB/IART desde los lotes. SPK_AJUSTE_IDXB_IART puede poner en cero lotes negativos.",
+  "fuenteSql": "IXONLINE/SQL · SPQ_INFOMRES_INV · AJUSTA_PCOSTO / ACTUALIZAR_EXISTENCIAS; SPK_AJUSTE_IDXB_IART",
+  "pantalla": {
+    "path": "/inv/AjustesInv",
+    "vue": "Procesos/AjustesInvPage → AjusPcostoComponent",
+    "menu": "Inventario → Procesos → Ajustes de inventario"
+  },
+  "documentoOrigen": {
+    "tabla": "IART",
+    "claves": ["IDARTICULO"],
+    "detalle": "PCOSTO; totales IDXB / IART.EXISTOTAL; rastro USLOG"
+  },
+  "noEs": [
+    "No es el conteo físico (eso sí genera IMOV).",
+    "No es trasladar lote (24+25 desde Informes).",
+    "Actualizar existencias corre sobre todo el inventario, no por bodega."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Permiso al grupo Procesos",
+      "explicacionCapacitacion": "Solo usuarios con acceso al grupo. No pide tipo de movimiento.",
+      "llamaSiguiente": ["N1-pcosto"]
+    },
+    {
+      "id": "N1-pcosto",
+      "orden": 1,
+      "nombre": "Ajustar precio de costo",
+      "explicacionCapacitacion": "AJUSTA_PCOSTO cambia IART.PCOSTO y deja rastro en USLOG/USLOGH. No toca IEXI.",
+      "sp": ["SPQ_INFOMRES_INV · AJUSTA_PCOSTO"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-recalculo"],
+      "efecto": "Costo del artículo. Sin movimiento.",
+      "puntosCriticos": ["PC-INVOP-AJU-01"]
+    },
+    {
+      "id": "N2-recalculo",
+      "orden": 2,
+      "nombre": "Actualizar existencias (totales)",
+      "explicacionCapacitacion": "SPK_AJUSTE_IDXB_IART: pone en cero lotes negativos, crea IDXB faltante y recalcula totales. Úselo cuando un artículo «no aparece» aunque el lote tenga saldo. Conviene fuera de horario.",
+      "sp": ["SPQ_INFOMRES_INV · ACTUALIZAR_EXISTENCIAS"],
+      "llama": ["SPK_AJUSTE_IDXB_IART"],
+      "llamaAnterior": ["N1-pcosto"],
+      "efecto": "IDXB e IART alineados a IEXI.",
+      "puntosCriticos": ["PC-INVOP-AJU-02"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "AJUSTA_PCOSTO y ACTUALIZAR_EXISTENCIAS leido. Fichas sin errores KO (el FE no muestra textos del SP).",
+    "fase2Hecha": true
+  }
+}

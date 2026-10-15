@@ -1,0 +1,115 @@
+{
+  "tramo": "furips-json",
+  "nombre": "FURIPS tipo JSON",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_FURIPS · FURIPS / FURIPSCXC (mismo cuerpo que el TXT). El armado JSON es el FE useHactranPlanosExport.",
+  "pantalla": {
+    "path": "/asis/soat",
+    "vue": "HactranComponent → useHactranPlanosExport (formato JSON)",
+    "menu": "Asistencial → SOAT → exportar planos (JSON)",
+    "permisos": ["asis.soat"]
+  },
+  "documentoOrigen": {
+    "tabla": "HACTRAN",
+    "claves": ["CNSHACTRAN"],
+    "detalle": "Mismos recordsets que el TXT. El FE arma FUR_{NIT}.json (cabecera en grupos) y SER_{NIT}.json (servicios). Cartera: FURIPSCXC, mismos archivos."
+  },
+  "noEs": [
+    "No es RIPS JSON / FEVRIPS (proceso rips-json; exige FACTE=2).",
+    "No es un METODO distinto: el SP es FURIPS / FURIPSCXC.",
+    "No genera FTR.",
+    "FURTRAN / FUCTAS en JSON no usan estos grupos: envuelven la línea TXT (tramo 7)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Formato JSON y NIT del prestador",
+      "explicacionCapacitacion": "En la pantalla se elige formato JSON. El NIT del archivo no sale del código de habilitación: el FE toma el NIT del usuario o el del tercero IDTERCEROINSTALADO (sin dígito de verificación). Sin ese NIT no baja el JSON.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-nit",
+          "tabla": "TER",
+          "desc": "IDTERCEROINSTALADO con NIT. El FE lo consulta si el usuario no trae NIT.",
+          "obligatorio": true,
+          "usvgs": ["IDTERCEROINSTALADO"]
+        }
+      ],
+      "llamaSiguiente": ["N1-mismo-sp"],
+      "efecto": "Hay NIT de prestador. El SP aún no se llama distinto.",
+      "fichas": []
+    },
+    {
+      "id": "N1-mismo-sp",
+      "orden": 1,
+      "nombre": "Misma llamada que el TXT",
+      "explicacionCapacitacion": "El FE manda MODELO FURIPS, METODO FURIPS (o FURIPSCXC) con CNSHACTRAN, procedencia, referencia y factura. Recibe OK + cabecera + líneas. Si no hay cabecera, aquí sí avisa error (el TXT llegaba a bajar vacío). Valen los mismos huecos del tramo 5: ruta CNSHACTRAN con espacio, procedencia que pisa.",
+      "sp": "SPQ_FURIPS",
+      "metodoUi": ["FURIPS", "FURIPSCXC"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-fur"],
+      "efecto": "Mismos recordsets que el TXT. No escribe tablas.",
+      "puntosCriticos": ["PC-SOAT-FJ-01", "PC-SOAT-FJ-10"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS",
+          "metodo": "FURIPS",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_FURIPS",
+          "metodo": "FURIPSCXC",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-fur",
+      "orden": 2,
+      "nombre": "Armar FUR_{NIT}.json",
+      "explicacionCapacitacion": "El FE no vuelca la fila completa. Toma campos con nombre CAMPO… y los mete en ocho grupos: víctima, sitio del evento, vehículo, propietario, conductor, atención, remisión y transporte. Encima van NIT_PRESTADOR y NUM_FACTURA. Las fechas pasan a AAAA-MM-DD. La zona U/R del SP se convierte a 01/02. Condición y naturaleza se rellenan a dos dígitos. Sin número de factura no genera el archivo.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N1-mismo-sp"],
+      "llamaSiguiente": ["N3-ser"],
+      "efecto": "Objeto [{ Datos_IPS, Datos_reclamacion: [factura + 8 grupos] }]. No es el plano TXT.",
+      "puntosCriticos": ["PC-SOAT-FJ-02", "PC-SOAT-FJ-03", "PC-SOAT-FJ-04", "PC-SOAT-FJ-05"]
+    },
+    {
+      "id": "N3-ser",
+      "orden": 3,
+      "nombre": "Armar SER_{NIT}.json",
+      "explicacionCapacitacion": "Cada línea de FURIPS 2 pasa a un servicio: factura, NIT, tipo, código, CUPS (solo tipo 2), descripción, cantidades y valores. El valor unitario reclamado se copia del facturado. Si el SP no trajo descripción (tipos 1 y 2 la dejan vacía), el FE busca SER. Si falta el código del servicio, avisa y igual baja el archivo. La cirugía (tipo 2) arma un consecutivo en el FE si el recordset no lo trae.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N2-fur"],
+      "llamaSiguiente": ["N4-bajar"],
+      "efecto": "Arreglo de servicios. Lectura extra de SER si falta descripción. No escribe FTR.",
+      "puntosCriticos": ["PC-SOAT-FJ-06", "PC-SOAT-FJ-07", "PC-SOAT-FJ-08"]
+    },
+    {
+      "id": "N4-bajar",
+      "orden": 4,
+      "nombre": "Bajar los dos JSON",
+      "explicacionCapacitacion": "Bajan FUR_{NIT}.json y SER_{NIT}.json. El NIT del nombre es el del prestador (dígitos, sin DV). FURTRAN y FUCTAS, aunque el usuario tenga formato JSON, no usan estos grupos: bajan un JSON que envuelve las líneas del plano (tramo 7).",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N3-ser"],
+      "llamaSiguiente": [],
+      "efecto": "Dos archivos en el equipo del usuario. El SP no cambia.",
+      "puntosCriticos": ["PC-SOAT-FJ-09"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "Mismo SPQ_FURIPS ya leído en el tramo 5. Este tramo documenta el remap del FE. No hay METODO nuevo.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

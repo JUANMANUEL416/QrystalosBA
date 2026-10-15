@@ -1,0 +1,88 @@
+{
+  "tramo": "entradas-salidas",
+  "nombre": "Entradas y salidas (armar el movimiento)",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "notaTocaIexi": "El armado no toca IEXI. El descuento/alta es el tramo confirmación. Aquí se documenta el borrador y los caminos que sí confirman en el acto (traslado de lote, algunos ajustes).",
+  "fuenteSql": "IXONLINE/SQL · SPQ_IMOV · CRUD_IMOV / CRUD_IMOV_SAL / ENTREGA_ISAL / CONFIRMA_ENTREGA",
+  "pantalla": {
+    "path": "/inv/ges",
+    "vue": "IMOVComponetNew",
+    "menu": "Inventario → Movimientos"
+  },
+  "documentoOrigen": {
+    "tabla": "IMOV",
+    "claves": ["CNSMOV"],
+    "detalle": "Entrada IMOVH; salida ISAL por lote"
+  },
+  "noEs": [
+    "Guardar el movimiento no confirma.",
+    "El traslado entre bodegas es salida 14 + tránsito + entrada 13, no un solo botón."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Tipo, bodega, periodo y permiso",
+      "explicacionCapacitacion": "ITMO Débito=salida / Crédito=entrada. Permiso sobre tipo y bodega (IBODS). CRUD_IMOV: no fecha futura; PRI.CERRADO_INV al insertar; meses anteriores si MOV_PERIODOS_ANT≠SI. CRUD_IMOV_SAL valida PRI.CERRADO (contable) y bodega destino distinta en traslado.",
+      "requiresConfig": [
+        {
+          "id": "pri-alta",
+          "tabla": "PRI",
+          "desc": "CERRADO_INV al crear entrada; CERRADO al crear salida",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-cabecera"],
+      "puntosCriticos": ["PC-INVOP-MOV-01"]
+    },
+    {
+      "id": "N1-cabecera",
+      "orden": 1,
+      "nombre": "Crear el IMOV en 0",
+      "explicacionCapacitacion": "Entrada: CRUD_IMOV. Salida: CRUD_IMOV_SAL (único que valida permiso por grupo). Producción propia exige paciente. Compras: factura no duplicada si ya hay IMOV confirmado. ASI_VAL_CCAF_CARGOS=SI exige KMCOM al crear.",
+      "sp": "SPQ_IMOV",
+      "metodoUi": ["CRUD_IMOV", "CRUD_IMOV_SAL"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-detalle"],
+      "efecto": "IMOV ESTADO=0. No IEXI.",
+      "puntosCriticos": ["PC-INVOP-MOV-02"]
+    },
+    {
+      "id": "N2-detalle",
+      "orden": 2,
+      "nombre": "Líneas de entrada o entregas de salida",
+      "explicacionCapacitacion": "Entrada: CRUD_IMOVH (lote, vencimiento, costo). Salida: ENTREGA_ISAL / CRUD_IART / código de barras / Excel; CONFIRMA_ENTREGA copia IVA del lote a ISAL. Sin entregas no hay confirmación. Movimiento confirmado o anulado no admite cambios de detalle.",
+      "sp": "SPQ_IMOV",
+      "metodoUi": ["CRUD_IMOVH", "ENTREGA_ISAL", "CONFIRMA_ENTREGA", "CANCELAR_ENTREGA", "IMOV_DESCARTAR"],
+      "llamaAnterior": ["N1-cabecera"],
+      "llamaSiguiente": ["N3-caminos"],
+      "efecto": "IMOVH o ISAL listos. Stock aún no se movió.",
+      "puntosCriticos": ["PC-INVOP-MOV-03"]
+    },
+    {
+      "id": "N3-caminos",
+      "orden": 3,
+      "nombre": "Traslado, compra y excepciones que confirman solas",
+      "explicacionCapacitacion": "Traslado 14: al confirmar la salida nace ITRA; el destino acepta y confirma entrada 13. Compra: el IMOV 0 suele venir del tránsito, no de CRUD. Traslado entre lotes (Informes) genera 24+25 confirmados en el acto. Conteo: la salida de ajuste se confirma; la entrada queda en 0 (hay que confirmarla). Anular confirmado en farmacia exige ESFARMACIA=SI y crea el movimiento contrario.",
+      "llamaAnterior": ["N2-detalle"],
+      "llamaSiguiente": ["N4-confirmar"],
+      "efecto": "Según el tipo, el siguiente control es confirmar o ya quedó confirmado.",
+      "puntosCriticos": ["PC-INVOP-MOV-04", "PC-INVOP-MOV-05"]
+    },
+    {
+      "id": "N4-confirmar",
+      "orden": 4,
+      "nombre": "Siguiente: confirmar (tramo 7)",
+      "explicacionCapacitacion": "Ahí se mueven existencias y se graba FECHACONF. Este tramo termina en el borrador listo.",
+      "llamaAnterior": ["N3-caminos"],
+      "efecto": "Puente a confirmación."
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "CRUD_IMOV / CRUD_IMOV_SAL / CONFIRMA_SALIDA ya leido. El efecto IEXI está en el grafo de confirmación.",
+    "fase2Hecha": true
+  }
+}

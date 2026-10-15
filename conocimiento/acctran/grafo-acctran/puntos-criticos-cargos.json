@@ -1,0 +1,96 @@
+{
+  "tramo": "cargos",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-SOAT-CAR-01",
+      "nombre": "Abrir la pantalla escribe responsables",
+      "nodo": "N1-cargar",
+      "dimension": ["efecto"],
+      "severidad": "alta",
+      "invariante": "CARGAR_DATOS no es solo lectura. Asigna GFACSOAT a ítems NULL (Aseguradora si queda tope, si no ADRES, si no EPS). Si los abiertos de Aseguradora superan el disponible y SIN_REDISTRIBUIR=0, los pasa a ADRES/EPS y cambia tercero/plan.",
+      "validacionSql": "distri_cargar_datos_escribe"
+    },
+    {
+      "id": "PC-SOAT-CAR-02",
+      "nombre": "Cascada descuenta gasto anterior y externo",
+      "nodo": "N1-cargar",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "El tope usable de esta admisión = TOPE/TOPE1 menos (VLRGASTOEXTERNO + suma HACTRAND.VLRGASTADO de otras atenciones no EXTERNO). Pasarse del tope no es KO: el excedente va a EPS. Los topes de pantalla son los configurados, no el saldo.",
+      "validacionSql": "distri_cascada_tope"
+    },
+    {
+      "id": "PC-SOAT-CAR-03",
+      "nombre": "Listado concatena WHERE_ADICIONAL",
+      "nodo": "N2-listar",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "HPRED_SOATSER arma EXEC(@SQL). NOADMISION, GFACSOAT, PREFIJO e IDCIRUGIA se concatenan. WHERE_ADICIONAL se pega tal cual. No valida el texto del filtro.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-CAR-04",
+      "nombre": "Distribuir automático no escribe tercero ni plan",
+      "nodo": "N3-distribuir",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "DISTRIBUIR_HACTRAN / DISTRIBUCION_AUTOMATICA calculan IDTERCEROCA e IDPLAN según el destino y solo hacen UPDATE GFACSOAT. El tercero/plan del ítem quedan los de antes. Reorganizar sí los escribe.",
+      "validacionSql": "distri_automatica_sin_tercero"
+    },
+    {
+      "id": "PC-SOAT-CAR-05",
+      "nombre": "Reorganizar trata FONSAT como si hubiera ADRES",
+      "nodo": "N3-distribuir",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "DISTRIBUIR pone MOSTRAR_ADRES=0 si la aseguradora es FONSAT o viene vacía. REORGANIZAR_TODO pone MOSTRAR_ADRES=1 en esos mismos casos (el comentario del SP dice lo contrario) y usa TOPE_ADRES=TOPE1: puede nacer GFACSOAT=2 cuando no debería haber ADRES.",
+      "validacionSql": "distri_reorg_mostrar_adres"
+    },
+    {
+      "id": "PC-SOAT-CAR-06",
+      "nombre": "ARL solo a mano",
+      "nodo": "N3-distribuir",
+      "dimension": ["efecto"],
+      "severidad": "info",
+      "invariante": "La cascada automática es Aseguradora → ADRES → EPS. GFACSOAT=4 (ARL) no se asigna en DISTRIBUIR ni en REORGANIZAR. El usuario lo elige en Guardar o Mover.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-CAR-07",
+      "nombre": "ADRES ≠ Aseguradora y EPS ≠ responsable",
+      "nodo": "N3-distribuir",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "GUARDAR_DISTRIBUCION y MOVER_ITEM_PARCIAL rechazan ADRES si HADM.IDTERCERO es FONSAT, y EPS si AFI.IDADMINISTRADORA = HADM.IDTERCERO. MOVER_MASIVO no replica esas validaciones.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-CAR-08",
+      "nombre": "Cirugía se mueve completa",
+      "nodo": "N4-mover",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "Si el prefijo es IDCIRPREFIJO e ITEMCIRUGIA>0, MOVER_ITEM_PARCIAL actualiza todos los ítems de ese ITEMCIRUGIA. No parte cantidad. Sin cirugía: cantidad total cambia responsable; cantidad menor inserta un ítem nuevo.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-SOAT-CAR-09",
+      "nombre": "Mover masivo no excluye facturados",
+      "nodo": "N4-mover",
+      "dimension": ["logica"],
+      "severidad": "alta",
+      "invariante": "MOVER_MASIVO filtra admisión, fechas, GFACSOAT origen, prefijo y usuario. No exige FACTURADA=0 ni NOCOBRABLE=0. Puede cambiar responsable de un ítem ya facturado.",
+      "validacionSql": "distri_mover_masivo_facturada"
+    },
+    {
+      "id": "PC-SOAT-CAR-10",
+      "nombre": "Pedido a inventario no bloquea",
+      "nodo": "N4-mover",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "El KO «Prestación con pedido a inventario: primero deshaga el pedido» está comentado en GUARDAR, DISTRIBUIR, REORGANIZAR, MOVER_ITEM_PARCIAL y MOVER_MASIVO. Hoy se puede redistribuir con PEDIDOINV=1.",
+      "validacionSql": null
+    }
+  ]
+}

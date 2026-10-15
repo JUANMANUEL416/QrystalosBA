@@ -1,0 +1,189 @@
+{
+  "tramo": "cargos",
+  "nombre": "Cargos SOAT",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_DISTRIHPRED_SOAT (PREVERSION 2.0.9 idéntica a la liberada)",
+  "pantalla": {
+    "path": "Admisión → Cargos SOAT",
+    "vue": "HPRESOATComponent",
+    "menu": "Asistencial → Admisión (cargos del expediente SOAT)",
+    "permisos": ["asis.hadm", "asis.soat"]
+  },
+  "documentoOrigen": {
+    "tabla": "HPRED",
+    "claves": ["NOPRESTACION", "NOITEM"],
+    "detalle": "Cabecera HPRE. Responsable GFACSOAT: 1=Aseguradora, 2=ADRES, 3=EPS, 4=ARL. Topes salen de HACTRAN / HACTRAND (tramo 2)."
+  },
+  "noEs": [
+    "No factura ni cierra la admisión (eso es el tramo 4 · FACTURAR).",
+    "No exporta FURIPS.",
+    "No es el cargo HPREComponent sin GFACSOAT (atención no SOAT).",
+    "ARL no entra en la distribución automática: solo a mano."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Expediente, admisión y responsables",
+      "explicacionCapacitacion": "La admisión ya está ligada al expediente (HADM.CNSHACTRAN). Cada cargo lleva un responsable de cobro: Aseguradora, ADRES (FONSAT), EPS del afiliado o ARL. Los topes de Aseguradora y ADRES salen de la cabecera del accidente; el gasto de atenciones anteriores y el gasto externo se descuentan antes de esta admisión.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-cargos",
+          "tabla": "USVGS",
+          "desc": "IDNITFONSAT (tercero ADRES), IDPLANSOAT (plan ADRES), IDTARIFASOAT (tipo de admisión SOAT), IDCIRPREFIJO (prefijo de cirugía al mover)",
+          "obligatorio": true,
+          "usvgs": ["IDNITFONSAT", "IDPLANSOAT", "IDTARIFASOAT", "IDCIRPREFIJO"]
+        },
+        {
+          "id": "hadm-hactran",
+          "tabla": "HADM",
+          "desc": "Admisión con CNSHACTRAN informado y HACTRAN con TOPE / TOPE1",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-cargar"],
+      "efecto": "Hay expediente, admisión y variables. Todavía no se tocan los cargos.",
+      "fichas": []
+    },
+    {
+      "id": "N1-cargar",
+      "orden": 1,
+      "nombre": "Abrir Cargos SOAT",
+      "explicacionCapacitacion": "Al abrir la pantalla, CARGAR_DATOS no solo lee: asigna responsable a los ítems que no tienen GFACSOAT y, si los abiertos de Aseguradora ya no caben en el tope, los pasa a ADRES o EPS. Si el usuario acaba de mover a Aseguradora, el FE manda SIN_REDISTRIBUIR para que no se deshaga. Los topes que pinta son los configurados (no el saldo restante).",
+      "sp": "SPQ_DISTRIHPRED_SOAT",
+      "metodoUi": ["CARGAR_DATOS"],
+      "requiresDocumento": [
+        {
+          "id": "noadmision",
+          "desc": "NOADMISION existente. Si no manda CNSHACTRAN, lo toma de HADM.",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-listar"],
+      "efecto": "UPDATE HPRED.GFACSOAT (y tercero/plan al redistribuir). Varios recordsets para la pantalla. No crea FTR.",
+      "puntosCriticos": ["PC-SOAT-CAR-01", "PC-SOAT-CAR-02"],
+      "fichas": [
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "CARGAR_DATOS",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-listar",
+      "orden": 2,
+      "nombre": "Ver ítems por responsable",
+      "explicacionCapacitacion": "La grilla lista los cargos de un responsable (HPRED_SOATSER). El resumen por prefijo es HPRED_SOATPRE. Las fechas del rango para el traslado masivo salen de FECHAS_CARGOS. Esto es lectura: no cambia el responsable.",
+      "sp": "SPQ_DISTRIHPRED_SOAT",
+      "metodoUi": ["HPRED_SOATSER", "HPRED_SOATPRE", "FECHAS_CARGOS", "CONSULTA_HPRE"],
+      "llamaAnterior": ["N1-cargar"],
+      "llamaSiguiente": ["N3-distribuir"],
+      "efecto": "Solo lectura. HPRED_SOATSER arma SQL dinámico (WHERE_ADICIONAL se concatena).",
+      "puntosCriticos": ["PC-SOAT-CAR-03"],
+      "fichas": [
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "HPRED_SOATSER",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        },
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "HPRED_SOATPRE",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        },
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "FECHAS_CARGOS",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-distribuir",
+      "orden": 3,
+      "nombre": "Distribuir, reorganizar o guardar a mano",
+      "explicacionCapacitacion": "Distribuir automático solo llena los ítems sin responsable: Aseguradora hasta el tope, luego ADRES, el resto a EPS. Reorganizar todo parte de cero (pone GFACSOAT=0 a los abiertos) y vuelve a asignar por fecha. Guardar a mano escribe el responsable que eligió el usuario y reliquida la admisión. ARL no se asigna solo.",
+      "sp": "SPQ_DISTRIHPRED_SOAT",
+      "metodoUi": ["DISTRIBUIR_HACTRAN", "DISTRIBUCION_AUTOMATICA", "REORGANIZAR_TODO", "GUARDAR_DISTRIBUCION", "RELIQUIDAR_ADMISION"],
+      "requiresDocumento": [
+        {
+          "id": "items-abiertos",
+          "desc": "Ítems no facturados y cobrables. Guardar exige arreglo ITEMS.",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N2-listar"],
+      "llamaSiguiente": ["N4-mover"],
+      "efecto": "UPDATE HPRED.GFACSOAT (Reorganizar y Guardar también IDTERCEROCA/IDPLAN). Distribuir automático no escribe tercero/plan. Reliquida copago QX o llama SPQ_JSON HPRE · RELIQUIDAR_ADMISION. No crea FTR.",
+      "puntosCriticos": ["PC-SOAT-CAR-04", "PC-SOAT-CAR-05", "PC-SOAT-CAR-06", "PC-SOAT-CAR-07"],
+      "fichas": [
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "DISTRIBUIR_HACTRAN",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        },
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "REORGANIZAR_TODO",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        },
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "GUARDAR_DISTRIBUCION",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        },
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "RELIQUIDAR_ADMISION",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-mover",
+      "orden": 4,
+      "nombre": "Mover ítems y puente a facturar",
+      "explicacionCapacitacion": "Mover uno: si mueve toda la cantidad, cambia el responsable; si mueve una parte, parte el ítem. En cirugía (prefijo de QX) mueve todo el grupo, no una cantidad. Mover masivo cambia todos los cargos de un rango de fechas (prefijo/usuario opcionales). Facturar es el tramo siguiente: aquí no nace FTR. El FE pide admisión cerrada; este SP de cargos no la cierra.",
+      "sp": "SPQ_DISTRIHPRED_SOAT",
+      "metodoUi": ["MOVER_ITEM_PARCIAL", "MOVER_MASIVO"],
+      "llamaAnterior": ["N3-distribuir"],
+      "llamaSiguiente": [],
+      "efecto": "UPDATE/INSERT HPRED. Copago QX en movimiento unitario. Reliquidación de copago en masivo. Puente a FACTURAR (tramo 4).",
+      "puntosCriticos": ["PC-SOAT-CAR-08", "PC-SOAT-CAR-09", "PC-SOAT-CAR-10"],
+      "fichas": [
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "MOVER_ITEM_PARCIAL",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        },
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "MOVER_MASIVO",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_DISTRIHPRED_SOAT PREVERSION 2.0.9 idéntica a la liberada. METODOs de cargos leidos. FACTURAR queda para el tramo 4 (listado).",
+    "parcialesDelTramo": ["SPQ_DISTRIHPRED_SOAT/FACTURAR"],
+    "fase2Hecha": true
+  }
+}

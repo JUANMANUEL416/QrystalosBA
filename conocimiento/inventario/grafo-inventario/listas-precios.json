@@ -1,0 +1,213 @@
+{
+  "tramo": "listas-precios",
+  "nombre": "Lista de precios de compras",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_ILPRE (PREVERSION = 2.0.7); SPQ_FCOM · GET_PRECIO_ILPRE",
+  "pantalla": {
+    "path": "/inv/listprecio",
+    "vue": "ListaPrecioPage → ListaPrecioComponent",
+    "menu": "Inventario → Venta a particulares → Lista de precios",
+    "permisos": ["MENUQ_INVENTARIO"]
+  },
+  "documentoOrigen": {
+    "tabla": "ILPRE",
+    "claves": ["CNSILPRE"],
+    "detalle": "ILPRED (artículo + precio); histórico ILPRED_HIST; homologación IHOMOSER"
+  },
+  "noEs": [
+    "No es la tarifa de mostrador (LISTA_TARIFAS en Venta de insumos).",
+    "No es la cotización ICTZ ni la cotización comercial ICTZG.",
+    "No confirma órdenes ni crea tránsito ni toca IEXI."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Proveedor y artículo listos",
+      "explicacionCapacitacion": "Antes de cargar precios: el proveedor es un tercero y el artículo existe y está activo. Si el proveedor no está, la misma pantalla lo crea (GUARDA_TERCERO). El artículo se crea en Configuración → Artículos, no aquí.",
+      "sp": [],
+      "metodoUi": [
+        "SPQ_ILPRE · GUARDA_TERCERO",
+        "SPQ_IART · GUARDAR (catálogo, otra pantalla)"
+      ],
+      "requiresConfig": [
+        {
+          "id": "ter-proveedor",
+          "tabla": "TER",
+          "desc": "Proveedor con documento numérico, sin espacios, ≤ 11 dígitos, no repetido",
+          "obligatorio": true,
+          "usvgs": ["TERCATPROVEEDOR", "TERCATIFART", "TERCATCLIENTE", "DEFAULT_PART_AEC", "DEFAULT_PART_RF"]
+        },
+        {
+          "id": "iart-activo",
+          "tabla": "IART",
+          "desc": "Artículo activo; el precio se guarda por IDARTICULO / servicio",
+          "obligatorio": true
+        }
+      ],
+      "requiresDocumento": [],
+      "llamaSiguiente": ["N1-cabecera-ilpre"],
+      "efecto": "Hay a quién y a qué ponerle precio. Todavía no hay lista.",
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GUARDA_TERCERO",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N1-cabecera-ilpre",
+      "orden": 1,
+      "nombre": "Crear la lista del proveedor",
+      "explicacionCapacitacion": "Una lista por proveedor: vigencia (fecha inicial y final), prioridad y valor mínimo aceptado (mayor que cero). Ese mínimo después bloquea GENERAR_OC si el total de la cotización para ese proveedor queda por debajo.",
+      "sp": "SPQ_ILPRE",
+      "metodoUi": ["GUARDA_ILPRE", "ELIMINA_ILPRE", "GUARDA_UNIFICADO_LISTA"],
+      "requiresDocumento": [
+        {
+          "id": "ilpre-unica",
+          "desc": "No existe otra ILPRE para el mismo IDTERCERO",
+          "obligatorio": true
+        },
+        {
+          "id": "ilpre-vigencia",
+          "desc": "FINICIAL y FFINAL informadas; VLR_MIN_ACEPT > 0",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-detalle-precios"],
+      "erroresKo": [
+        "Debe de seleccionar un Proveedor.",
+        "Ingrese una Fecha Inicial",
+        "Ingrese una Fecha Final",
+        "El valor mnimo aceptado debe ser mayor que cero.",
+        "Ya existe una Lista de Precios registrada para este Proveedor.",
+        "No se puede eliminar la Lista de Precios porque tiene artculos registrados."
+      ],
+      "efecto": "Nace ILPRE (CNSILPRE). Sin artículos todavía. ELIMINA_ILPRE solo si no hay ILPRED.",
+      "puntosCriticos": ["PC-INVOP-ILPRE-01", "PC-INVOP-ILPRE-02", "PC-INVOP-ILPRE-07"],
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GUARDA_ILPRE",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-detalle-precios",
+      "orden": 2,
+      "nombre": "Cargar artículos y precios",
+      "explicacionCapacitacion": "Línea a línea (GUARDA_ILPRED) o Excel (IMPORTAR_PRECIO_1 valida, IMPORTAR_PRECIO_2 guarda). Un artículo una sola vez por lista. Valor distinto de cero. Queda histórico en ILPRED_HIST. La homologación de códigos del proveedor (IMPORTAR_HOMOLOGACION_2 → IHOMOSER) es independiente: sirve para reconocer el código del Excel, no cambia existencias.",
+      "sp": "SPQ_ILPRE",
+      "metodoUi": [
+        "GUARDA_ILPRED",
+        "ELIMINA_ILPRED",
+        "IMPORTAR_PRECIO_1",
+        "IMPORTAR_PRECIO_2",
+        "IMPORTAR_HOMOLOGACION_1",
+        "IMPORTAR_HOMOLOGACION_2",
+        "VALIDAR_ARTICULOS"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "cnsilpre",
+          "desc": "CNSILPRE existe (KO «No existe CNSILPRE» en importación)",
+          "obligatorio": true
+        },
+        {
+          "id": "articulo-unico-precio",
+          "desc": "Artículo no repetido en la lista; valor ≠ 0",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N1-cabecera-ilpre"],
+      "llamaSiguiente": ["N3-precio-disponible"],
+      "erroresKo": [
+        "El artculo ya se encuentra registrado en la Lista de Precios de este Proveedor.",
+        "Debe de Seleccionar un Servicio.",
+        "El valor no puede ser 0.",
+        "La prioridad",
+        "No cuenta con registros a Importar",
+        "No existe CNSILPRE",
+        "No existe el artculo en ILPRED:"
+      ],
+      "efecto": "ILPRED + ILPRED_HIST. La lista ya se puede usar al armar la OC o al generar OC desde cotización.",
+      "puntosCriticos": ["PC-INVOP-ILPRE-03", "PC-INVOP-ILPRE-07"],
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GUARDA_ILPRED",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "IMPORTAR_PRECIO_2",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-precio-disponible",
+      "orden": 3,
+      "nombre": "El precio queda consultable (no mueve inventario)",
+      "explicacionCapacitacion": "A partir de aquí el precio vigente (lista del proveedor entre FINICIAL y FFINAL) se lee con GET_PRECIO_ILPRE / GET_PRECIO_PROVEEDOR al armar la orden. No hay lote, no hay existencia, no hay FECHACONF.",
+      "sp": "SPQ_FCOM",
+      "metodoUi": ["GET_PRECIO_ILPRE"],
+      "requiresDocumento": [
+        {
+          "id": "ilpre-vigente",
+          "desc": "ILPRE con FINICIAL ≤ hoy ≤ FFINAL y línea ILPRED del artículo",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N2-detalle-precios"],
+      "llamaSiguiente": ["N4-aguas-abajo"],
+      "efecto": "Devuelve el precio. No escribe FCOM ni IEXI.",
+      "noValidaFicha": "GET_PRECIO_ILPRE está leido pero valida[] vacío: no documentó KO si no hay lista vigente. Completar en el tramo cotizaciones/OC si el .sql de hoy lo muestra.",
+      "puntosCriticos": ["PC-INVOP-ILPRE-04", "PC-INVOP-ILPRE-08"],
+      "fichas": [
+        {
+          "sp": "SPQ_FCOM",
+          "metodo": "GET_PRECIO_ILPRE",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-aguas-abajo",
+      "orden": 4,
+      "nombre": "Quién consume la lista",
+      "explicacionCapacitacion": "Siguiente tramo: cotización (ICTZ) → GENERAR_OC (usa VLR_MIN_ACEPT). La orden nace en C; confirmarla es otro control. La venta al público no lee esta lista.",
+      "sp": ["SPQ_ILPRE · GENERAR_OC"],
+      "metodoUi": ["GENERAR_OC (tramo cotizaciones)"],
+      "llamaAnterior": ["N3-precio-disponible"],
+      "llamaSiguiente": [],
+      "efecto": "Puente al grafo de cotizaciones. Este tramo termina aquí.",
+      "puntosCriticos": ["PC-INVOP-ILPRE-05", "PC-INVOP-ILPRE-06"],
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GENERAR_OC",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_ILPRE estado leido (PREVERSION = 2.0.7). GET_PRECIO_ILPRE leido con valida vacía: se profundiza al grafar cotizaciones/OC, no bloquea este tramo.",
+    "parcialesDelTramo": ["SPQ_ILPRE/LEER_DETALLE_OC"],
+    "fase2Hecha": true
+  }
+}

@@ -345,6 +345,9 @@
             "F_FACTURA mismo día si FACTE<>2",
             "Capita con FTRDC"
           ],
+          "noValida": [
+            "FTRAUD / visto bueno de auditoría (REQ 0100016723)"
+          ],
           "errores": [
             "No existe el Documento",
             "Factura ya fue encolada",
@@ -361,6 +364,9 @@
           "valida": [
             "TIPODOC obligatorio",
             "Capita/PGP con FTRDC si FACTURA"
+          ],
+          "noValida": [
+            "FTRAUD / visto bueno (rama FACTURA; las notas NC/ND quedan fuera del REQ)"
           ],
           "errores": [
             "No se ha Espeficiado el Tipo de Documento",
@@ -392,6 +398,9 @@
           "valida": [
             "Rango F_INICIAL/F_FINAL",
             "TIPODOC Todas|FACTURA|NOTACR|NOTADB"
+          ],
+          "noValida": [
+            "FTRAUD / visto bueno al encolar (ACCION=1)"
           ]
         },
         {
@@ -959,6 +968,9 @@
           "valida": [
             "N_FACTURA",
             "F_FACTURA mismo día"
+          ],
+          "noValida": [
+            "FTRAUD / visto bueno de auditoría (REQ 0100016723)"
           ],
           "errores": [
             "La fecha de la Factura debe ser la Misma de la Actual, Verifique e intente de Nuevo"
@@ -4291,6 +4303,113 @@
           ],
           "observaciones": [
             "Rama Perú (sql:151-155) asigna 'DNI'/'RUC'/'PS' a TER.NIT en lugar de TIPO_ID, y @TIPO_ID nunca se carga (sql:258)."
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FTRAUD",
+      "tipo": "SPQ",
+      "modelo": "FTRAUD",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.9, idéntica a liberada)",
+      "cola": "Notas de auditoría de facturas. Leído 2026-10-14 para REQ 0100016723. No existe METODO FACTURA_OK (el FE no lo llama). No toca FTR.FACTE.",
+      "actualizado": "2026-10-14T10:20:00",
+      "tablas": [
+        "FTRAUD",
+        "FTR",
+        "TER",
+        "USUSU"
+      ],
+      "metodos": [
+        {
+          "id": "GET_FTRAUD",
+          "estado": "leido",
+          "hace": "Lista las notas de la factura (SELECT * FTRAUD WHERE N_FACTURA, FTRAUD_ID DESC).",
+          "valida": [
+            "N_FACTURA en parámetros"
+          ],
+          "noValida": [],
+          "errores": [],
+          "efecto": "Solo lectura.",
+          "tablas": [
+            "FTRAUD"
+          ]
+        },
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "Crea nota (FTRAUD_ID=0): INSERT N_FACTURA, FECHA=GETDATE(), USUARIO_AUD, OBSERVACION, ESTADO=0. Si FTRAUD_ID≠0 no actualiza (no hay UPDATE).",
+          "valida": [],
+          "noValida": [
+            "Que la factura FTR exista",
+            "OBSERVACION obligatoria",
+            "No hay camino Factura OK / visto bueno directo"
+          ],
+          "errores": [
+            "ERROR_MESSAGE() de CATCH"
+          ],
+          "efecto": "Nueva nota pendiente. No cambia FTR.FACTE.",
+          "tablas": [
+            "FTRAUD"
+          ]
+        },
+        {
+          "id": "RESPONDER",
+          "estado": "leido",
+          "hace": "Contesta la nota: ESTADO 0→1, OBSRESPTA, F_RESPTA, USUARIO=@USURESPTA.",
+          "valida": [
+            "Quien contesta ≠ USUARIO_AUD",
+            "ESTADO=0"
+          ],
+          "noValida": [
+            "No escribe la columna USURESPTA (solo USUARIO). APROBAR e INFORME leen USURESPTA: el bloqueo «no apruebe lo que contestó» puede no disparar."
+          ],
+          "errores": [
+            "No puede contestar una nota que usted mismo creó",
+            "La nota no está en estado pendiente de respuesta"
+          ],
+          "efecto": "Nota contestada. Sin APRUEBA.",
+          "tablas": [
+            "FTRAUD"
+          ]
+        },
+        {
+          "id": "APROBAR",
+          "estado": "leido",
+          "hace": "Cierra la nota: ESTADO 1→2, APRUEBA SI/NO, USUAPRUEBA, F_APRUEBA. Si APRUEBA=NO y hay MOTIVO_RECHAZO, inserta una nota nueva ESTADO=0.",
+          "valida": [
+            "Quien aprueba ≠ USURESPTA (columna; ver RESPONDER)",
+            "ESTADO=1"
+          ],
+          "noValida": [
+            "No exige que APRUEBA sea solo SI o NO",
+            "No toca FTR ni FACTE"
+          ],
+          "errores": [
+            "No puede aprobar una nota que usted mismo contestó",
+            "La nota no está en estado pendiente de aprobación"
+          ],
+          "efecto": "Visto bueno o rechazo en la nota. Rechazo con motivo reabre el ciclo (nueva nota 0).",
+          "tablas": [
+            "FTRAUD"
+          ]
+        },
+        {
+          "id": "INFORME",
+          "estado": "leido",
+          "hace": "Listado con filtros (fecha, auditor, quien contesta, estado, con respuesta, APRUEBA). JOIN FTR, TER, USUSU. SQL dinámico.",
+          "valida": [],
+          "noValida": [
+            "Concatena filtros en SQL dinámico (no usa parámetros en el WHERE construido)"
+          ],
+          "errores": [],
+          "efecto": "Solo lectura.",
+          "tablas": [
+            "FTRAUD",
+            "FTR",
+            "TER",
+            "USUSU"
           ]
         }
       ]

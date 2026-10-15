@@ -9,6 +9,8 @@ window.QrysSoporteConsultas = (function () {
   let esperandoDocTrasAgente = false;
   let botEstabaTrabajando = false;
   let ultimoAvisoMsgAgente = "";
+  let pendingNueva = [];
+  let pendingChat = [];
 
   const PANELS = {
     historial: "scPanelHistorial",
@@ -20,7 +22,110 @@ window.QrysSoporteConsultas = (function () {
     return String(s || "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function urlImagen(nombre, dataUrl) {
+    if (dataUrl) return dataUrl;
+    if (!consultaId || !nombre) return "";
+    return `/api/soporte-consultas/${encodeURIComponent(consultaId)}/imagen/${encodeURIComponent(nombre)}`;
+  }
+
+  function htmlMiniaturas(imagenes, conQuitar) {
+    return (imagenes || [])
+      .map((img) => {
+        const nombre = img.nombre || "captura";
+        const src = urlImagen(nombre, img.dataUrl);
+        if (!src) return "";
+        const quitar = conQuitar
+          ? `<button type="button" class="sc-captura-x" data-nombre="${esc(nombre)}" data-local="${esc(img.localId || "")}" title="Quitar">×</button>`
+          : "";
+        return `<li class="sc-captura-item">${quitar}<a href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="${esc(nombre)}"></a><span>${esc(nombre)}</span></li>`;
+      })
+      .join("");
+  }
+
+  function pintarPendientesNueva() {
+    const ul = $("scImagenLista");
+    const empty = $("scImagenEmpty");
+    if (ul) ul.innerHTML = htmlMiniaturas(pendingNueva, true);
+    if (empty) empty.hidden = pendingNueva.length > 0;
+  }
+
+  function pintarPendientesChat() {
+    const ul = $("scChatPendientes");
+    if (!ul) return;
+    ul.innerHTML = htmlMiniaturas(pendingChat, true);
+  }
+
+  function pintarImagenesConsulta(meta) {
+    const box = $("scHeadImagenes");
+    if (!box) return;
+    box.innerHTML = htmlMiniaturas(meta?.imagenes || [], true);
+  }
+
+  function leerDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      if (!file || !String(file.type || "").startsWith("image/")) {
+        reject(new Error("Solo se admiten imágenes (PNG, JPG, WebP, GIF)."));
+        return;
+      }
+      if (!/png|jpeg|jpg|webp|gif/i.test(file.type)) {
+        reject(new Error("Formato no admitido. Use PNG, JPG, WebP o GIF."));
+        return;
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        reject(new Error("La imagen supera 8 MB."));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function archivosImagen(data) {
+    const files = [];
+    const items = data?.items ? [...data.items] : [];
+    items.forEach((it) => {
+      if (it.kind === "file" && String(it.type || "").startsWith("image/")) {
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      }
+    });
+    if (!files.length && data?.files) {
+      [...data.files].forEach((f) => {
+        if (String(f.type || "").startsWith("image/")) files.push(f);
+      });
+    }
+    return files;
+  }
+
+  async function agregarPendientesNueva(files) {
+    for (const file of files) {
+      const dataUrl = await leerDataUrl(file);
+      pendingNueva.push({
+        localId: `${Date.now()}-${pendingNueva.length}`,
+        nombre: file.name || `captura-${pendingNueva.length + 1}.png`,
+        dataUrl,
+      });
+    }
+    pintarPendientesNueva();
+  }
+
+  async function subirImagenConsulta(file) {
+    if (!consultaId) throw new Error("Abra la consulta antes de adjuntar la captura.");
+    const dataUrl = await leerDataUrl(file);
+    const data = await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/imagen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre: file.name || "", dataUrl }),
+    });
+    pendingChat.push(data.imagen);
+    pintarPendientesChat();
+    return data.imagen;
   }
 
   async function fetchJson(url, opts) {
@@ -127,7 +232,7 @@ window.QrysSoporteConsultas = (function () {
     if (!box) return;
     const list = mensajes || [];
     const ult = list[list.length - 1];
-    const firma = `${consultaId}|${list.length}|${ult ? ult.id || ult.en || "" : ""}|${ult ? (ult.texto || "").length : 0}`;
+    const firma = `${consultaId}|${list.length}|${ult ? ult.id || ult.en || "" : ""}|${ult ? (ult.texto || "").length : 0}|${ult && ult.imagenes ? ult.imagenes.length : 0}`;
     if (firma === firmaChat && !forzarAbajo) return;
     const primeraVez = !firmaChat.startsWith(`${consultaId}|`);
     const estabaAbajo = cercaDelFinal(box);
@@ -152,6 +257,7 @@ window.QrysSoporteConsultas = (function () {
         return `<article class="scw-msg scw-msg-${lado}${largo ? " is-long" : ""}${abierto ? " is-open" : ""}" data-key="${esc(key)}">
           <header><strong>${esc(autor)}</strong><time>${hora}</time></header>
           <div class="scw-msg-body chat-body">${formatChatBody(texto)}</div>
+          ${m.imagenes && m.imagenes.length ? `<ul class="sc-captura-lista">${htmlMiniaturas(m.imagenes, false)}</ul>` : ""}
           ${largo ? `<button type="button" class="scw-more">${abierto ? "Ver menos" : "Ver completo"}</button>` : ""}
         </article>`;
       })
@@ -195,6 +301,7 @@ window.QrysSoporteConsultas = (function () {
     if (sol) sol.textContent = meta.solicitante || "—";
     const preg = $("scHeadPregunta");
     if (preg) preg.textContent = meta.preguntaInicial || "";
+    pintarImagenesConsulta(meta);
     const prop = $("scHeadProposito");
     if (prop) {
       const t = textoProposito(data);
@@ -331,22 +438,35 @@ window.QrysSoporteConsultas = (function () {
     const titulo = ($("scTitulo")?.value || "").trim();
     const solicitante = ($("scSolicitante")?.value || "").trim();
     const cliente = ($("scCliente")?.value || "").trim();
-    const pregunta = ($("scPregunta")?.value || "").trim();
-    if (!titulo || !pregunta) {
-      aviso("Título y pregunta inicial son obligatorios.", true);
+    let pregunta = ($("scPregunta")?.value || "").trim();
+    if (!titulo || (!pregunta && !pendingNueva.length)) {
+      aviso("Indique el título y la pregunta, o pegue una captura.", true);
       showPanel("nueva");
       return;
     }
+    if (!pregunta) pregunta = "Ver captura adjunta.";
     aviso("Creando consulta…");
     const data = await fetchJson("/api/soporte-consultas/consulta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titulo, solicitante, cliente, pregunta }),
     });
+    const sid = data.meta.id;
+    const porSubir = pendingNueva.slice();
+    pendingNueva = [];
+    pintarPendientesNueva();
     if ($("scPregunta")) $("scPregunta").value = "";
+    if ($("scTitulo")) $("scTitulo").value = "";
+    for (const img of porSubir) {
+      await fetchJson(`/api/soporte-consultas/${encodeURIComponent(sid)}/imagen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: img.nombre, dataUrl: img.dataUrl }),
+      });
+    }
     await cargarLista();
-    await abrirConsulta(data.meta.id);
-    aviso("Consulta creada. Pulse «Analizar».");
+    await abrirConsulta(sid);
+    aviso(porSubir.length ? "Consulta creada con la captura. Pulse el análisis." : "Consulta creada. Pulse el análisis.");
   }
 
   async function enviarChat() {
@@ -354,15 +474,19 @@ window.QrysSoporteConsultas = (function () {
     const input = $("scChatInput");
     const autor = ($("scChatAutor")?.value || "soporte").trim();
     const texto = (input?.value || "").trim();
-    if (!texto) return;
+    const imagenes = pendingChat.map((img) => ({ nombre: img.nombre }));
+    if (!texto && !imagenes.length) return;
     const data = await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto, autor }),
+      body: JSON.stringify({ texto, autor, imagenes }),
     });
     if (input) input.value = "";
+    pendingChat = [];
+    pintarPendientesChat();
     autoAltoInput();
     pintarChat(data.mensajes, true);
+    await refrescarPanel();
   }
 
   async function lanzarAnalisis() {
@@ -394,8 +518,9 @@ window.QrysSoporteConsultas = (function () {
     if (!consultaId) return;
     const input = $("scChatInput");
     const texto = (input?.value || "").trim();
-    if (!texto) {
-      aviso("Escriba qué debe ajustar el agente.", true);
+    const imagenes = pendingChat.map((img) => ({ nombre: img.nombre }));
+    if (!texto && !imagenes.length) {
+      aviso("Escriba qué debe ajustar el agente o adjunte una captura.", true);
       return;
     }
     esperandoDocTrasAgente = true;
@@ -405,9 +530,11 @@ window.QrysSoporteConsultas = (function () {
       await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/agente`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto }),
+        body: JSON.stringify({ texto, imagenes }),
       });
       if (input) input.value = "";
+      pendingChat = [];
+      pintarPendientesChat();
       autoAltoInput();
       firmaChat = "";
       await refrescarPanel();
@@ -535,6 +662,85 @@ window.QrysSoporteConsultas = (function () {
       if (consultaId) window.open(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/html`, "_blank", "noopener");
     });
     $("scBtnCerrar")?.addEventListener("click", () => cerrarConsulta().catch((e) => aviso(e.message, true)));
+
+    async function tomarArchivos(files, destino) {
+      try {
+        if (destino === "nueva") await agregarPendientesNueva(files);
+        else {
+          for (const file of files) await subirImagenConsulta(file);
+          await refrescarPanel();
+        }
+      } catch (e) {
+        aviso(e.message, true);
+      }
+    }
+
+    function onPegar(ev, destino) {
+      const files = archivosImagen(ev.clipboardData);
+      if (!files.length) return;
+      ev.preventDefault();
+      tomarArchivos(files, destino);
+    }
+
+    $("scPregunta")?.addEventListener("paste", (ev) => onPegar(ev, "nueva"));
+    $("scImagenDrop")?.addEventListener("paste", (ev) => onPegar(ev, "nueva"));
+    $("scChatInput")?.addEventListener("paste", (ev) => onPegar(ev, "chat"));
+    ["scImagenDrop", "scPregunta"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        el.classList.add("is-dragover");
+      });
+      el.addEventListener("dragleave", () => el.classList.remove("is-dragover"));
+      el.addEventListener("drop", (ev) => {
+        el.classList.remove("is-dragover");
+        const files = archivosImagen(ev.dataTransfer);
+        if (!files.length) return;
+        ev.preventDefault();
+        tomarArchivos(files, "nueva");
+      });
+    });
+    $("scBtnElegirImagen")?.addEventListener("click", () => $("scInputImagen")?.click());
+    $("scInputImagen")?.addEventListener("change", () => {
+      const input = $("scInputImagen");
+      const files = [...(input?.files || [])];
+      if (input) input.value = "";
+      if (files.length) tomarArchivos(files, "nueva");
+    });
+    $("scBtnAdjuntar")?.addEventListener("click", () => $("scChatInputImagen")?.click());
+    $("scChatInputImagen")?.addEventListener("change", () => {
+      const input = $("scChatInputImagen");
+      const files = [...(input?.files || [])];
+      if (input) input.value = "";
+      if (files.length) tomarArchivos(files, "chat");
+    });
+    document.addEventListener("click", (ev) => {
+      const btn = ev.target.closest?.(".sc-captura-x");
+      if (!btn || !btn.closest("#view-soporte-consultas")) return;
+      ev.preventDefault();
+      const local = btn.dataset.local || "";
+      const nombre = btn.dataset.nombre || "";
+      if (local) {
+        pendingNueva = pendingNueva.filter((img) => img.localId !== local);
+        pintarPendientesNueva();
+        return;
+      }
+      if (!nombre || !consultaId) return;
+      if (!confirm(`¿Quitar la captura «${nombre}»?`)) return;
+      fetchJson(
+        `/api/soporte-consultas/${encodeURIComponent(consultaId)}/imagen/${encodeURIComponent(nombre)}`,
+        { method: "DELETE" },
+      )
+        .then((data) => {
+          pendingChat = pendingChat.filter((img) => img.nombre !== nombre);
+          pintarPendientesChat();
+          pintarImagenesConsulta(data.meta || {});
+          if (data.mensajes) pintarChat(data.mensajes, false);
+        })
+        .catch((e) => aviso(e.message, true));
+    });
+    pintarPendientesNueva();
   }
 
   function enter() {

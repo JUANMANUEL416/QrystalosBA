@@ -577,8 +577,9 @@ Lea del disco, en este orden:
 1. data/soporte-consultas/{id_caso}/INSTRUCCION-AGENTE.md
 2. data/soporte-consultas/{id_caso}/meta.json
 3. data/soporte-consultas/{id_caso}/chat.json
-4. La base vía conocimiento/_indice_busqueda.json: solo las fichas que apliquen (y grafos en contabilidad/ si es contable). Nunca un sps.json entero.
-5. Solo si la ficha no alcanza: Qrystalos2 y luego qrystalos.documentacion (config/rutas.json). Cada hueco también va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
+4. Si hay capturas, léalas en data/soporte-consultas/{id_caso}/imagenes/ y contrástelas con la pregunta.
+5. La base vía conocimiento/_indice_busqueda.json: solo las fichas que apliquen (y grafos en contabilidad/ si es contable). Nunca un sps.json entero.
+6. Solo si la ficha no alcanza: Qrystalos2 y luego qrystalos.documentacion (config/rutas.json). Cada hueco también va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
 
 {BUSQUEDA_KB}
 {_bloque_handoffs(id_caso, motivo)}
