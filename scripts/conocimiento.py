@@ -6,7 +6,9 @@ import json
 import os
 import re
 import time
+import threading
 import uuid
+from contextlib import contextmanager
 import copy
 from datetime import datetime
 
@@ -88,7 +90,8 @@ def _read_json(path: str, default):
 def _write_json(path: str, data) -> None:
     """Escritura atómica: evita chat.json truncado si el proceso muere a mitad."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    tmp = f"{path}.{os.getpid()}.tmp"
+    # pid + hilo + azar: el servidor es multihilo y varios bots escriben a la vez.
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:6]}.tmp"
     try:
         with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
@@ -141,8 +144,72 @@ BOT_IDS = {
 }
 
 
-def bot_id(canal: str) -> str:
-    return BOT_IDS.get(_norm_canal(canal), BOT_IDS["documentar"])
+KB_SEP = "~"
+_SID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def bot_id(canal: str, sid: str = "") -> str:
+    """Id del bot. Con sid: un bot (y una sesión Cursor) por chat, para chats en paralelo."""
+    base = BOT_IDS.get(_norm_canal(canal), BOT_IDS["documentar"])
+    sid = (sid or "").strip()
+    if sid and _SID_RE.match(sid):
+        return f"{base}{KB_SEP}{sid}"
+    return base
+
+
+def sesion_run_dir(canal: str, sid: str) -> str:
+    """Carpeta de trabajo de un chat: bot.json, agente.json, bot.log y chat.json propio."""
+    if not _SID_RE.match(sid or ""):
+        raise ValueError("id de chat inválido")
+    d = os.path.join(canal_live_dir(canal), "sesiones", sid)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+_LOCK_LOCAL = threading.RLock()
+_LOCK_TLS = threading.local()
+
+
+@contextmanager
+def _lock_chats(canal: str, espera_sec: float = 15.0):
+    """Exclusión entre hilos del servidor y procesos bot al tocar index.json / sesiones."""
+    with _LOCK_LOCAL:
+        depth = getattr(_LOCK_TLS, "depth", 0)
+        if depth:
+            _LOCK_TLS.depth = depth + 1
+            try:
+                yield
+            finally:
+                _LOCK_TLS.depth -= 1
+            return
+        os.makedirs(chats_dir(canal), exist_ok=True)
+        path = os.path.join(chats_dir(canal), ".lock")
+        fin = time.time() + espera_sec
+        fd = None
+        while fd is None:
+            try:
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                try:
+                    if time.time() - os.path.getmtime(path) > 30:
+                        os.remove(path)  # lock huérfano de un proceso caído
+                        continue
+                except OSError:
+                    pass
+                if time.time() > fin:
+                    break  # mejor escribir sin lock que colgar el chat
+                time.sleep(0.05)
+        _LOCK_TLS.depth = 1
+        try:
+            yield
+        finally:
+            _LOCK_TLS.depth = 0
+            if fd is not None:
+                os.close(fd)
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
 def _norm_canal(canal: str) -> str:
@@ -444,6 +511,11 @@ def _limpiar_activo_archivado(idx: dict) -> None:
 
 
 def asegurar_chat_proceso(canal: str, proceso_id: str) -> dict:
+    with _lock_chats(canal):
+        return _asegurar_chat_proceso_sin_lock(canal, proceso_id)
+
+
+def _asegurar_chat_proceso_sin_lock(canal: str, proceso_id: str) -> dict:
     """Chat activo (escribible) de un módulo. Crea uno vacío si no hay."""
     canal = _norm_canal(canal)
     pid = (proceso_id or "").strip()
@@ -578,6 +650,11 @@ def _touch_item(idx: dict, chat: dict) -> None:
 
 
 def append_chat(autor: str, texto: str, proceso_id: str = "", canal: str = "documentar") -> dict:
+    with _lock_chats(canal):
+        return _append_chat_sin_lock(autor, texto, proceso_id, canal)
+
+
+def _append_chat_sin_lock(autor: str, texto: str, proceso_id: str = "", canal: str = "documentar") -> dict:
     canal = _norm_canal(canal)
     idx = _ensure_canal(canal)
     pid = (proceso_id or "").strip()
@@ -611,6 +688,11 @@ def append_chat(autor: str, texto: str, proceso_id: str = "", canal: str = "docu
 
 
 def archivar_chat(canal: str, titulo: str = "", proceso_id: str = "") -> dict:
+    with _lock_chats(canal):
+        return _archivar_chat_sin_lock(canal, titulo, proceso_id)
+
+
+def _archivar_chat_sin_lock(canal: str, titulo: str = "", proceso_id: str = "") -> dict:
     canal = _norm_canal(canal)
     idx = _ensure_canal(canal)
     pid = (proceso_id or "").strip()
@@ -638,6 +720,65 @@ def archivar_chat(canal: str, titulo: str = "", proceso_id: str = "") -> dict:
     _save_index(canal, idx)
     _sync_live(canal, nuevo)
     return {"ok": True, "archivado": actual, "activo": nuevo, "chats": idx["items"]}
+
+
+def append_chat_sesion(canal: str, sid: str, autor: str, texto: str) -> dict:
+    """Agrega un mensaje a UN chat concreto sin cambiar cuál está activo o a la vista."""
+    canal = _norm_canal(canal)
+    with _lock_chats(canal):
+        path = _sesion_path(canal, sid)
+        chat = _read_json(path, None)
+        if not chat:
+            return {}
+        chat.setdefault("mensajes", []).append(
+            {"id": str(uuid.uuid4())[:8], "autor": autor, "texto": (texto or "").strip(), "en": _now()}
+        )
+        _write_json(path, chat)
+        idx = _ensure_canal(canal)
+        _touch_item(idx, chat)
+        _save_index(canal, idx)
+        if idx.get("activoId") == sid:
+            _sync_live(canal, chat)
+        return chat
+
+
+def preparar_sesion_run(canal: str, sid: str) -> str:
+    """Copia el chat a su carpeta de trabajo; el agente responde ahí, no en el chat.json global."""
+    canal = _norm_canal(canal)
+    d = sesion_run_dir(canal, sid)
+    with _lock_chats(canal):
+        chat = _read_json(_sesion_path(canal, sid), None) or _empty_chat(canal, sid, _titulo_default(canal))
+        _write_json(os.path.join(d, "chat.json"), chat)
+        _write_json(os.path.join(d, "base.json"), {"n": len(chat.get("mensajes") or [])})
+    return os.path.join(d, "chat.json")
+
+
+def absorber_sesion_run(canal: str, sid: str) -> int:
+    """Pasa al chat real los mensajes que el agente escribió en su copia. Idempotente."""
+    canal = _norm_canal(canal)
+    d = sesion_run_dir(canal, sid)
+    run = _read_json(os.path.join(d, "chat.json"), None) or {}
+    base = int((_read_json(os.path.join(d, "base.json"), {}) or {}).get("n") or 0)
+    nuevos = [m for m in (run.get("mensajes") or [])[base:] if isinstance(m, dict) and m.get("autor") != "coordinador"]
+    if not nuevos:
+        return 0
+    with _lock_chats(canal):
+        path = _sesion_path(canal, sid)
+        chat = _read_json(path, None)
+        if not chat:
+            return 0
+        for m in nuevos:
+            m.setdefault("id", str(uuid.uuid4())[:8])
+            m.setdefault("en", _now())
+            chat.setdefault("mensajes", []).append(m)
+        _write_json(path, chat)
+        _write_json(os.path.join(d, "base.json"), {"n": len(run.get("mensajes") or [])})
+        idx = _ensure_canal(canal)
+        _touch_item(idx, chat)
+        _save_index(canal, idx)
+        if idx.get("activoId") == sid:
+            _sync_live(canal, chat)
+    return len(nuevos)
 
 
 def nuevo_chat(canal: str, titulo: str = "", proceso_id: str = "") -> dict:

@@ -1040,7 +1040,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             canal = (qs.get("canal") or ["documentar"])[0]
             proceso = (qs.get("procesoId") or [""])[0]
             data = kb.resumen(canal, proceso)
-            data["bot"] = leer_estado_bot(kb.bot_id(canal))
+            sid = ((data.get("chat") or {}).get("id") or "").strip()
+            # Estado del bot de ESTE chat (no el del canal: eso cruzaba chats).
+            data["bot"] = leer_estado_bot(kb.bot_id(canal, sid) if sid else kb.bot_id(canal))
             return self._json(data)
 
         if len(parts) >= 4 and parts[0] == "api" and parts[1] == "conocimiento" and parts[2] == "proceso":
@@ -2217,17 +2219,30 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         chat_info = kb.resumen(canal, proceso_id)
         if chat_info.get("chatSoloLectura"):
             return self._json({"error": "Este chat está archivado. Cree uno nuevo o ábralo solo para leer."}, 409)
-        kb.append_chat(autor, texto, proceso_id, canal)
-        kb.append_chat(
-            "sistema",
-            "El agente está trabajando. En unos segundos responde aquí (autor agente).",
-            proceso_id,
-            canal,
+        chat_id = (body.get("chatId") or "").strip()
+        destino = (
+            kb.load_sesion(canal, chat_id)
+            if chat_id and kb._SID_RE.match(chat_id) and os.path.isfile(kb._sesion_path(canal, chat_id))
+            else {}
         )
-        bot = agentes_panel.lanzar(canal if canal in ("consultas", "documentar") else "documentar", kb.bot_id(canal), canal)
+        if chat_id and destino.get("id") == chat_id and destino.get("estado") != "archivado" and (
+            not proceso_id or (destino.get("procesoId") or "") in ("", proceso_id)
+        ):
+            # Chat concreto: no depende de cuál está "activo" (otra pestaña pudo cambiarlo).
+            kb.append_chat_sesion(canal, chat_id, autor, texto)
+            sid = chat_id
+        else:
+            sid = (kb.append_chat(autor, texto, proceso_id, canal) or {}).get("id") or ""
+        if sid:
+            kb.append_chat_sesion(canal, sid, "sistema", "El agente está trabajando. En unos segundos responde aquí (autor agente).")
+        else:
+            kb.append_chat("sistema", "El agente está trabajando. En unos segundos responde aquí (autor agente).", proceso_id, canal)
+        # Un bot y una sesión Cursor por chat: dos chats ya no comparten bot.json ni agentId.
+        bid = kb.bot_id(canal, sid)
+        bot = agentes_panel.lanzar(canal if canal in ("consultas", "documentar") else "documentar", bid, canal)
         if not bot.get("ok"):
             time.sleep(2)
-            st = leer_estado_bot(kb.bot_id(canal))
+            st = leer_estado_bot(bid)
             if st.get("estado") == "trabajando" and st.get("pidVivo"):
                 bot = {"ok": True, "pid": st.get("pid"), "yaCorria": True}
             else:
@@ -2239,8 +2254,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     proceso_id,
                     canal,
                 )
-        chat = kb.load_chat(canal)
-        return self._json({"ok": True, "chat": chat, "bot": bot, "canal": canal})
+        chat = kb.load_sesion(canal, sid) if sid else kb.load_chat(canal)
+        return self._json({"ok": True, "chat": chat, "bot": bot, "canal": canal, "chatId": sid})
 
     def _post_conocimiento_chat_accion(self, accion: str):
         try:
