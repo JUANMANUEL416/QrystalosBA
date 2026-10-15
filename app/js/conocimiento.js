@@ -1414,6 +1414,8 @@ window.QrysConocimiento = (function () {
           texto,
           canal: dest,
           procesoId: procesoChatDe(dest) || procesoActual?.id || caches[dest]?.chatProcesoId || "",
+          // Chat exacto: cada chat tiene su propio bot y no se cruza con otro abierto en paralelo.
+          chatId: (!caches[dest]?.chatSoloLectura && caches[dest]?.chat?.id) || "",
         }),
       });
       await loadResumen(dest);

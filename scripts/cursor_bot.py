@@ -193,7 +193,21 @@ def cursor_key_status() -> dict:
     }
 
 
+KB_SEP = "~"
+
+
+def kb_base(id_caso: str) -> str:
+    """'__consultas__~c2026…' → '__consultas__' (un bot por chat)."""
+    return str(id_caso or "").split(KB_SEP, 1)[0]
+
+
+def kb_sid(id_caso: str) -> str:
+    partes = str(id_caso or "").split(KB_SEP, 1)
+    return partes[1] if len(partes) == 2 and partes[0] in CONOCIMIENTO_IDS else ""
+
+
 def canal_de(id_caso: str, motivo: str = "") -> str:
+    id_caso = kb_base(id_caso)
     if id_caso == CONSULTAS_ID or motivo == "consultas":
         return "consultas"
     if id_caso == DOCUMENTAR_ID or motivo in ("documentar", "documentar-auto"):
@@ -202,7 +216,7 @@ def canal_de(id_caso: str, motivo: str = "") -> str:
 
 
 def es_conocimiento(id_caso: str, motivo: str = "") -> bool:
-    return motivo in ("conocimiento", "consultas", "documentar", "documentar-auto") or id_caso in CONOCIMIENTO_IDS
+    return motivo in ("conocimiento", "consultas", "documentar", "documentar-auto") or kb_base(id_caso) in CONOCIMIENTO_IDS
 
 
 def es_solicitar(id_caso: str, motivo: str = "") -> bool:
@@ -224,11 +238,14 @@ def caso_dir(id_caso: str) -> str:
         return os.path.join(REVISIONES, id_caso)
     if es_soporte_consulta(id_caso):
         return os.path.join(ROOT, "data", "soporte-consultas", id_caso)
-    if id_caso in CONOCIMIENTO_IDS:
+    if kb_base(id_caso) in CONOCIMIENTO_IDS:
         import conocimiento as kb
 
         canal = canal_de(id_caso)
         kb._ensure_canal(canal)
+        sid = kb_sid(id_caso)
+        if sid:
+            return kb.sesion_run_dir(canal, sid)
         return kb.canal_live_dir(canal)
     if es_solicitar(id_caso):
         return os.path.join(SOLICITUDES, id_caso)
@@ -279,6 +296,10 @@ def append_chat(id_caso: str, autor: str, texto: str) -> None:
         import conocimiento as kb
 
         canal = canal_de(id_caso)
+        sid = kb_sid(id_caso)
+        if sid:
+            kb.append_chat_sesion(canal, sid, autor, texto)
+            return
         proceso = ""
         try:
             proceso = (kb.load_chat(canal) or {}).get("procesoId") or ""
@@ -437,7 +458,12 @@ def prompt_turno(id_caso: str, motivo: str) -> str:
 def _prompt_base(id_caso: str, motivo: str) -> str:
     if es_conocimiento(id_caso, motivo):
         canal = canal_de(id_caso, motivo)
-        ruta = f"conocimiento/canales/{canal}/chat.json"
+        sid = kb_sid(id_caso)
+        ruta = (
+            f"conocimiento/canales/{canal}/sesiones/{sid}/chat.json"
+            if sid
+            else f"conocimiento/canales/{canal}/chat.json"
+        )
         recorte = recorte_chat_kb(id_caso)
         tarea = recorte_tarea_kb()
         prohibido = (
@@ -789,6 +815,23 @@ async def _soltar_turnos_vivos(client, agent_id: str) -> int:
 
 
 def run_caso(id_caso: str, motivo: str) -> int:
+    sid = kb_sid(id_caso)
+    if not sid:
+        return _run_caso_impl(id_caso, motivo)
+    import conocimiento as kb
+
+    canal = canal_de(id_caso, motivo)
+    kb.preparar_sesion_run(canal, sid)
+    try:
+        return _run_caso_impl(id_caso, motivo)
+    finally:
+        try:
+            kb.absorber_sesion_run(canal, sid)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[absorber_sesion_run] {exc}", flush=True)
+
+
+def _run_caso_impl(id_caso: str, motivo: str) -> int:
     if motivo == "documentar-auto":
         write_bot(
             id_caso,
