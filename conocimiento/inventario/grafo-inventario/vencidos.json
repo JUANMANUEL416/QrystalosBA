@@ -1,0 +1,82 @@
+{
+  "tramo": "vencidos",
+  "nombre": "Semáforo de vencimientos y salida de vencidos",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "notaTocaIexi": "Pintar el semáforo no mueve stock. GEN_MOVIMIENTO confirma la salida en el acto.",
+  "fuenteSql": "IXONLINE/SQL · SPQ_SEMAFORO · SEMAFORO_STOCK / CONFIG_SEMAFORO_GUARDAR / GEN_MOVIMIENTO; SPK_MOVSALIDAVENCIDOS (PREVERSION = 2.0.7)",
+  "pantalla": {
+    "path": "/inv/sema",
+    "vue": "SemaforoPage",
+    "menu": "Inventario → Semáforo"
+  },
+  "documentoOrigen": {
+    "tabla": "IEXI",
+    "claves": ["IDBODEGA", "IDARTICULO", "NOLOTE"],
+    "detalle": "Lotes con FNK_SEMAFOROIEXI = 1 y EXISLOTE > 0; IMOV tipo IDINVSALVENCIDOS (código habitual 07)"
+  },
+  "noEs": [
+    "El semáforo no es un conteo ni una anulación.",
+    "No espera confirmación en Movimientos: la salida nace confirmada.",
+    "No es la devolución a proveedor."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Rangos, tipo 07 y cuentas",
+      "explicacionCapacitacion": "Rangos Rojo / Naranja / Amarillo en TGEN (días crecientes). IDINVSALVENCIDOS configurada. Bodega con permiso para ese movimiento y centro de costo activo. Si el tipo contabiliza, KMCOM MOV_INVENTARIO débito y crédito.",
+      "requiresConfig": [
+        {
+          "id": "tipo-07",
+          "usvgs": ["IDINVSALVENCIDOS"],
+          "desc": "Salida a destrucción",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-semaforo"],
+      "puntosCriticos": ["PC-INVOP-VEN-01"]
+    },
+    {
+      "id": "N1-semaforo",
+      "orden": 1,
+      "nombre": "Pintar lotes por días a vencer",
+      "explicacionCapacitacion": "SEMAFORO_STOCK llena RPDX. Permiso «Filtro todas las bodegas» abre la vista global. Exportar no escribe inventario.",
+      "sp": ["SPQ_SEMAFORO · SEMAFORO_STOCK", "SPQ_SEMAFORO · CONFIG_SEMAFORO_GUARDAR"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-salida"],
+      "efecto": "Consulta. No IEXI."
+    },
+    {
+      "id": "N2-salida",
+      "orden": 2,
+      "nombre": "Salida de un artículo o de todos",
+      "explicacionCapacitacion": "GEN_MOVIMIENTO → SPK_MOVSALIDAVENCIDOS. Crea IMOV + IMOVH + ISAL, descuenta IEXI y confirma en la misma transacción. Si falta centro o cuentas, no genera nada. Si falla, ROLLBACK completo.",
+      "sp": ["SPQ_SEMAFORO · GEN_MOVIMIENTO"],
+      "llama": ["SPK_MOVSALIDAVENCIDOS", "SPK_CONFIRMARSALIDAS"],
+      "llamaAnterior": ["N1-semaforo"],
+      "llamaSiguiente": ["N3-iexi"],
+      "efecto": "Salida 07 confirmada.",
+      "erroresKo": [
+        "No Existe Configuracin Para Realizar Este movimiento.",
+        "No hay artículos vencidos con existencia para generar la salida."
+      ],
+      "puntosCriticos": ["PC-INVOP-VEN-02", "PC-INVOP-VEN-03"]
+    },
+    {
+      "id": "N3-iexi",
+      "orden": 3,
+      "nombre": "Existencia y asiento",
+      "explicacionCapacitacion": "IEXI descontado. Kardex y OM según CONFIRMARSALIDAS (FECHACONF=hoy, KMCOM modelo 01). No mira reservas Pick & Pack.",
+      "llamaAnterior": ["N2-salida"],
+      "efecto": "Lote vencido en cero o reducido.",
+      "puntosCriticos": ["PC-INVOP-VEN-04"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPK_MOVSALIDAVENCIDOS leido: valida KMCOM antes de tocar IEXI; no PRI; no reservas P&P.",
+    "fase2Hecha": true
+  }
+}

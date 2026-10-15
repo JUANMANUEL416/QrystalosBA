@@ -1130,6 +1130,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             except FileNotFoundError:
                 return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
 
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "imagen":
+            return self._serve_soporte_consulta_imagen(unquote(parts[2]), unquote(parts[4]))
+
         if parts == ["api", "informe-contab", "clinica"]:
             qs = parse_qs(parsed.query or "")
             servidor_id = (qs.get("servidorId") or [""])[0].strip()
@@ -1401,6 +1404,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "chat":
             return self._post_soporte_consulta_chat(unquote(parts[2]))
 
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "imagen":
+            return self._post_soporte_consulta_imagen(unquote(parts[2]))
+
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "respuesta":
             return self._post_soporte_consulta_respuesta(unquote(parts[2]))
 
@@ -1495,6 +1501,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         parts = [p for p in parsed.path.split("/") if p]
         if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "imagen":
             return self._delete_imagen(unquote(parts[2]), unquote(parts[4]))
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "imagen":
+            return self._delete_soporte_consulta_imagen(unquote(parts[2]), unquote(parts[4]))
         if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "archivo":
             return self._delete_archivo(unquote(parts[2]), unquote(parts[4]))
         if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("diagrama", "diagramas"):
@@ -1855,6 +1863,54 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         except Exception:
             return f"soporte-respuesta-{sid}.pdf"
 
+    def _serve_soporte_consulta_imagen(self, sid, nombre):
+        try:
+            path = scconsulta._ruta_imagen(sid, nombre)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        if not path.is_file():
+            return self._json({"ok": False, "error": "Imagen no encontrada."}, 404)
+        ext = path.suffix.lower()
+        ctype = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }.get(ext, "application/octet-stream")
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _post_soporte_consulta_imagen(self, sid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            imagen = scconsulta.guardar_imagen(sid, body.get("dataUrl") or "", body.get("nombre") or "")
+            return self._json({"ok": True, "imagen": imagen, "meta": scconsulta.leer_meta(sid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _delete_soporte_consulta_imagen(self, sid, nombre):
+        try:
+            meta = scconsulta.quitar_imagen(sid, nombre)
+            return self._json({"ok": True, "meta": meta, "mensajes": scconsulta.leer_chat(sid).get("mensajes", [])})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
     def _post_soporte_consulta_nueva(self):
         try:
             body = self._read_json_body()
@@ -1880,8 +1936,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"error": "JSON inválido"}, 400)
         texto = (body.get("texto") or "").strip()
         autor = (body.get("autor") or "soporte").strip().lower()
+        imagenes = body.get("imagenes") if isinstance(body.get("imagenes"), list) else None
         try:
-            msg = scconsulta.append_chat(sid, autor, texto)
+            msg = scconsulta.append_chat(sid, autor, texto, imagenes)
             chat = scconsulta.leer_chat(sid)
             return self._json({"ok": True, "mensaje": msg, "mensajes": chat.get("mensajes", [])})
         except FileNotFoundError:
@@ -2014,8 +2071,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             except json.JSONDecodeError:
                 return self._json({"ok": False, "error": "JSON inválido"}, 400)
             nota = (body.get("texto") or "").strip()
-            if nota:
-                scconsulta.append_chat(sid, "coordinador", nota)
+            imagenes = body.get("imagenes") if isinstance(body.get("imagenes"), list) else None
+            if nota or imagenes:
+                scconsulta.append_chat(sid, "coordinador", nota, imagenes)
             scconsulta.append_chat(
                 sid,
                 "sistema",

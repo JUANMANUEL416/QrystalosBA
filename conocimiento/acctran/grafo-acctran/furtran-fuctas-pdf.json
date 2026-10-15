@@ -1,0 +1,143 @@
+{
+  "tramo": "furtran-fuctas-pdf",
+  "nombre": "FURTRAN, FUCTAS y PDF",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_FURIPS_V2 (FURTRAN / FUCTAS / PDF FURTRAN) y SPQ_FURIPS_V3 (PDFFURIPS). PREVERSION 2.0.9 idéntica a la liberada.",
+  "pantalla": {
+    "path": "/asis/soat",
+    "vue": "HactranComponent → useHactranPlanosExport + PDF FURIPS",
+    "menu": "Asistencial → SOAT → FURTRAN / FUCTAS / imprimir FURIPS",
+    "permisos": ["asis.soat"]
+  },
+  "documentoOrigen": {
+    "tabla": "HACTRAN",
+    "claves": ["CNSHACTRAN"],
+    "detalle": "FURTRAN = plano de traslado (una fila). FUCTAS = certificación de servicios (líneas). PDF = mismos datos para imprimir, con firma del representante. Cartera: FURTRANCXC / FUCTASCXC. HACTRANFURT existe en el diccionario; estos SP de exportación no la escriben."
+  },
+  "noEs": [
+    "No es FURIPS 1+2 (tramos 5 y 6).",
+    "No es RIPS JSON.",
+    "No genera FTR.",
+    "El JSON de FURTRAN/FUCTAS no usa grupos FUR/SER: envuelve las líneas del plano."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Firma y representante (PDF)",
+      "explicacionCapacitacion": "Los planos FURTRAN y FUCTAS no piden firma. El PDF sí: variable IDFIRMA_FURRIPS (usuario con archivo de firma) y representante legal del tercero institución (NIT_R en TER). Sin detalle HACTRAND el PDF se niega: hay que reliquidar topes primero.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-pdf",
+          "tabla": "USVGS",
+          "desc": "IDFIRMA_FURRIPS, IDTERCEROINSTALADO. FURIPSRESUMIDO agrupa FUCTAS QX.",
+          "obligatorio": true,
+          "usvgs": ["IDFIRMA_FURRIPS", "IDTERCEROINSTALADO", "FURIPSRESUMIDO"]
+        }
+      ],
+      "llamaSiguiente": ["N1-furtran"],
+      "efecto": "Hay variables. Los planos aún no se piden.",
+      "fichas": []
+    },
+    {
+      "id": "N1-furtran",
+      "orden": 1,
+      "nombre": "Plano FURTRAN (traslado)",
+      "explicacionCapacitacion": "Una fila: quién reclama, tipo y placa del vehículo de traslado (Amparo), víctima, sitio de recojo, IPS que recibe, póliza. En admisión (QX) el nombre del reclamante sale del conductor (COND_* ) y el documento de la víctima. En cita, autorización, cartera y PDF sale de Amparo. El FE baja FURTRAN{habilitación}{fecha}.txt o un JSON que envuelve esa línea.",
+      "sp": "SPQ_FURIPS_V2",
+      "metodoUi": ["FURTRAN", "FURTRANCXC"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-fuctas"],
+      "efecto": "Siempre OK. Solo lectura. Cadena: SPQ_FURIPS delega a V2.",
+      "puntosCriticos": ["PC-SOAT-FT-01", "PC-SOAT-FT-02", "PC-SOAT-FT-03", "PC-SOAT-FT-09"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS_V2",
+          "metodo": "FURTRAN",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_FURIPS_V2",
+          "metodo": "FURTRANCXC",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-fuctas",
+      "orden": 2,
+      "nombre": "Plano FUCTAS (certificación)",
+      "explicacionCapacitacion": "Líneas de servicio para certificar la cuenta: aseguradora, fecha de certificación, habilitación, víctima, póliza, factura, tipo/código/nombre, cantidad y valores. QX respeta FURIPSRESUMIDO. Cartera: FUCTASCXC.",
+      "sp": "SPQ_FURIPS_V2",
+      "metodoUi": ["FUCTAS", "FUCTASCXC"],
+      "llamaAnterior": ["N1-furtran"],
+      "llamaSiguiente": ["N3-pdf"],
+      "efecto": "Siempre OK. Solo lectura. El FE baja FUCTAS{habilitación}{fecha}.txt (o JSON envoltorio).",
+      "puntosCriticos": ["PC-SOAT-FT-04"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS_V2",
+          "metodo": "FUCTAS",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_FURIPS_V2",
+          "metodo": "FUCTASCXC",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-pdf",
+      "orden": 3,
+      "nombre": "PDF FURIPS y PDF FURTRAN",
+      "explicacionCapacitacion": "Imprimir FURIPS (V3) o el PDF de traslado (V2 · PDFFURTRAN) usa los mismos datos del plano más firma y representante. Si falta la firma, el representante o el detalle de topes, responde KO y no arma el reporte.",
+      "sp": "SPQ_FURIPS_V3",
+      "metodoUi": ["PDFFURIPS", "PDFFURTRAN"],
+      "llamaAnterior": ["N2-fuctas"],
+      "llamaSiguiente": ["N4-fe"],
+      "efecto": "OK + recordsets para el visor PDF, o KO con mensaje. No escribe HACTRANFURT.",
+      "puntosCriticos": ["PC-SOAT-FT-05", "PC-SOAT-FT-08"],
+      "fichas": [
+        {
+          "sp": "SPQ_FURIPS_V3",
+          "metodo": "PDFFURIPS",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_FURIPS_V2",
+          "metodo": "PDFFURTRAN",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-fe",
+      "orden": 4,
+      "nombre": "El FE baja TXT o envuelve JSON",
+      "explicacionCapacitacion": "Con formato TXT baja el plano. Con JSON, FURTRAN y FUCTAS no remapean a FUR_/SER_: guardan { formatoOrigen: TXT, archivo, lineas }. Certificados y SIRAS del expediente son el tramo 8.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N3-pdf"],
+      "llamaSiguiente": [],
+      "efecto": "Archivos en el equipo del usuario. Puente a satélites.",
+      "puntosCriticos": ["PC-SOAT-FT-06", "PC-SOAT-FT-07"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_FURIPS_V2 (5 METODOs) y SPQ_FURIPS_V3 · PDFFURIPS leídos. PREVERSION 2.0.9 idéntica a la liberada.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

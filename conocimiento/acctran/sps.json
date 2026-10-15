@@ -1,15 +1,16 @@
 {
   "procesoId": "acctran",
-  "actualizado": "2026-09-12T21:15:18",
-  "nota": "SPQ_FURIPS · FURIPS/FURIPSCXC leídos en sql/SPQ_FURIPS.sql (REQ 0100016340). Detalle FURIPS 2 es SELECT inline por @PROCEDENCIA (QX/CI/CE); no invoca FNK_SOAT_FURIPS2 en este script.",
+  "actualizado": "2026-10-14T15:10:00",
+  "nota": "2026-10-14: grafo 8/8. HACTRAN 12/12, HACTRAND 9/9, FURIPS+V2+V3, DISTRI FACTURAR, SPK_FACTURA_SOAT_TODO, SPK_RELIQ_HACTRAN y SPK_MOV_ACTRAN leídos PREVERSION=2.0.9.",
   "sps": [
     {
       "nombre": "SPQ_HACTRAN",
       "tipo": "SPQ",
       "modelo": "HACTRAN",
-      "estado": "parcial",
-      "fuente": "sql/SPQ_HACTRAN.sql",
-      "cola": "Resto visto en FE y no fichado: CONSULTAR, DELETE, RELIQUIDAR, CONSULTARTOPES, CERTIFICADORES, CONSULTARSIRASADMISION, VALIDARACCIDENTEMISMODIA, CERTIFICADO_ATENCION, CERTIFICADO_CONSUMO, FORMATO_RECLAMACION, AVISO_AUT_POLICIAL.",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "cola": "No existen METODO DELETE ni RELIQUIDAR en este SP. Reliquidar detalle = SPQ_HACTRAND. Sincronizar CE = SPK_RELIQ_HACTRAN.",
+      "actualizado": "2026-10-14T15:10:00",
       "metodos": [
         {
           "id": "LLENAR",
@@ -62,6 +63,182 @@
           "capaId": "02-operacion",
           "gateId": "amparo-traer-afi",
           "estado": "leido"
+        },
+        {
+          "id": "CONSULTAR",
+          "nombre": "CONSULTAR",
+          "hace": "Devuelve el expediente HACTRAN + AFI + ciudad + aseguradora (incluye *_AMPARO y NOSIRAS como está guardado).",
+          "valida": [
+            "CNSHACTRAN en PARAMETROS"
+          ],
+          "noValida": [
+            "Existencia del expediente (no KO si no hay fila)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Solo lectura del expediente. Antes, si HACTRANCE está vacía, inserta la semilla NA.",
+          "tablas": ["HACTRAN", "AFI", "TER", "CIU", "HACTRANCE"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTARSIRASADMISION",
+          "nombre": "CONSULTARSIRASADMISION",
+          "hace": "Lee HADM.SIRAS (20 caracteres) de la admisión + afiliado y lo devuelve como NOSIRAS para precargar el modal.",
+          "valida": [
+            "NOADMISION e IDAFILIADO"
+          ],
+          "noValida": [
+            "Existencia de HADM (no KO). No lee HACTRAN.NOSIRAS"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Siempre OK. Solo lectura. RETURN antes de sembrar HACTRANCE.",
+          "tablas": ["HADM"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "CONSULTARTOPES",
+          "nombre": "CONSULTARTOPES",
+          "hace": "Arma tope UVT del año: TOPEMAX = FACTORDINERO×701,68 y TOPE1×263,13. Si hay PPT FONSAT (IDNITFONSAT+IDPLANFONSAT+IDTARIFAUVT) trae tercero; si no, solo la tarifa.",
+          "valida": [
+            "Variable IDTARIFAUVT"
+          ],
+          "noValida": [
+            "El KO de tarifa mal configurada está comentado. Factor 0 del año en curso no aborta"
+          ],
+          "errores": [
+            "EL FATOR DEL DINERO ES 0 O NO EXISTE PARA EL PRESENTE AÑO DE LA TARIFA: {IDTARIFAUVT} (se escribe al temporal; igual responde OK)"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE (IDTARIFAUVT, IDNITFONSAT, IDPLANFONSAT)"
+          ],
+          "efecto": "Siempre OK + filas de @PARAMETROSTOPES. RETURN antes de sembrar HACTRANCE.",
+          "tablas": ["TARF", "PPT", "TER"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "CERTIFICADORES",
+          "nombre": "CERTIFICADORES",
+          "hace": "Lista HACTRANCE (documento + nombre) para el combo de certificadores. Si no hay fila NA, la inserta.",
+          "valida": [],
+          "noValida": [
+            "Que el certificador exista como tercero o usuario"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Puede INSERT HACTRANCE semilla NA. Luego SELECT value/label.",
+          "tablas": ["HACTRANCE"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "CERTIFICADO_ATENCION",
+          "nombre": "CERTIFICADO_ATENCION",
+          "hace": "Recordset para el PDF de atención (médico, clínica, signos, Glasgow, embriaguez). Cruza HACTRAND por procedencia+referencia. QX: médico de HCA HURG=8 o HADM.IDMEDICOING.",
+          "valida": [
+            "PROCEDENCIA y NOREFERENCIA"
+          ],
+          "noValida": [
+            "Existencia de HACTRAND (no KO). ESTADOCONC se compara en mayúsculas (Alerta de MOV no marca casilla)"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE (IDTERCEROINSTALADO, DATOSPROPIETARIO)"
+          ],
+          "efecto": "Siempre OK. Solo lectura.",
+          "tablas": ["HACTRAND", "HACTRAN", "AFI", "HADM", "AUT", "CIT", "MED", "ARCHIVOS", "HCA", "MPL"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "CERTIFICADO_CONSUMO",
+          "nombre": "CERTIFICADO_CONSUMO",
+          "hace": "Cabecera del comprobante de consumo + listado de HACTRAND del expediente (procedencia, valor, factura, tercero externo). Nota: EXTERNO = gasto fuera de la IPS.",
+          "valida": [
+            "CNSHACTRAN, PROCEDENCIA, NOREFERENCIA"
+          ],
+          "noValida": [
+            "El segundo SELECT no filtra por NOREFERENCIA: lista todo el detalle del expediente"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE (CONTRA_CONFPRESER, DATOSPROPIETARIO, IDTERCEROINSTALADO)"
+          ],
+          "efecto": "Siempre OK. Solo lectura. Recordset 0=OK, 1=cabecera, 2=líneas.",
+          "tablas": ["HACTRAN", "HACTRAND", "AFI", "HADM", "CIT", "AUT", "TER", "SED", "IPSHAB"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "FORMATO_RECLAMACION",
+          "nombre": "FORMATO_RECLAMACION",
+          "hace": "Recordset para el formato de reclamación (declaración, clínica, conductor, póliza, DX ingreso/egreso, acta de defunción). IDMEDICOALTA_BLANCO=SI oculta médico del acta.",
+          "valida": [
+            "PROCEDENCIA y NOREFERENCIA"
+          ],
+          "noValida": [
+            "HADM se une solo por CNSHACTRAN (varias admisiones). El CATCH no devuelve KO (ya mandó OK)"
+          ],
+          "errores": [
+            "NO PUEDO  OBTENER INFORMACION DE LA ADMISION : {NOREFERENCIA} (solo al temporal; no hay SELECT KO)"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE (IDTERCEROINSTALADO, DATOSPROPIETARIO, IDMEDICOALTA_BLANCO)"
+          ],
+          "efecto": "Siempre OK. Solo lectura.",
+          "tablas": ["HACTRAND", "HACTRAN", "AFI", "HADM", "AUT", "CIT", "MED", "ARCHIVOS"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "AVISO_AUT_POLICIAL",
+          "nombre": "AVISO_AUT_POLICIAL",
+          "hace": "Recordset para el aviso a autoridad policial (misma clínica + remisión IPS + tipo vehículo). FIRMA = archivo del médico de la atención. MUESTRAIDMEDICO_POL=SI deja vacío el nombre del médico.",
+          "valida": [
+            "PROCEDENCIA y NOREFERENCIA"
+          ],
+          "noValida": [
+            "Firma del usuario creador (HACTRAN.USUARIO). Representante legal. Sello IPS. JOIN HADM solo por CNSHACTRAN"
+          ],
+          "errores": [
+            "NO PUEDO  OBTENER INFORMACION DE LA ADMISION : {NOREFERENCIA} (solo al temporal; no hay SELECT KO)"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE (IDTERCEROINSTALADO, DATOSPROPIETARIO, MUESTRAIDMEDICO_POL)"
+          ],
+          "efecto": "Siempre OK. Solo lectura.",
+          "tablas": ["HACTRAND", "HACTRAN", "AFI", "HADM", "AUT", "CIT", "MED", "ARCHIVOS", "IPSHAB"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        },
+        {
+          "id": "VALIDARACCIDENTEMISMODIA",
+          "nombre": "VALIDARACCIDENTEMISMODIA",
+          "hace": "Avisa si el mismo IDAFILIADO ya tiene otro HACTRAN el mismo día (excluye el CNSHACTRAN actual). El FE lo usa antes de guardar.",
+          "valida": [
+            "IDAFILIADO y FECHAACC"
+          ],
+          "noValida": [
+            "No bloquea: siempre OK + EXISTE 0/1. El bloqueo real es INSERT"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "Siempre OK. Recordset 1 = EXISTE, CNSHACTRAN, FECHAACC.",
+          "tablas": ["HACTRAN"],
+          "capaId": "02-operacion",
+          "gateId": "amparo-traer-afi",
+          "estado": "leido"
         }
       ]
     },
@@ -95,49 +272,51 @@
       "nombre": "SPQ_FURIPS",
       "tipo": "SPQ",
       "modelo": "FURIPS",
-      "estado": "parcial",
-      "fuente": "sql/SPQ_FURIPS.sql",
-      "cola": "Resto en SPQ_FURIPS_V2/V3 (PDFFURIPS, FURTRAN, FUCTAS, etc.). Fuera de alcance REQ 0100016340.",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "cola": "Cualquier METODO distinto de FURIPS/FURIPSCXC se delega a SPQ_FURIPS_V2 (tramo 7).",
+      "actualizado": "2026-10-14T14:30:00",
       "metodos": [
         {
           "id": "FURIPS",
-          "hace": "Devuelve OK + recordset[1] cabecera FURIPS 1 + recordset[2] líneas FURIPS 2 para CNSHACTRAN, @PROCEDENCIA, @NOREFERENCIA, @FTR.",
+          "hace": "Exporta FURIPS 1 (cabecera del expediente) y FURIPS 2 (líneas FTR/FTRD) para CNSHACTRAN + PROCEDENCIA + NOREFERENCIA + FACTURA. Siempre OK. QX/CI/CE. ESMUNDIAL si NIT aseguradora=860037013.",
           "valida": [
-            "CNSHACTRAN en PARAMETROS",
-            "CODHABILITA vía TER/IDTERCEROINSTALADO"
+            "Lee PARAMETROS (ruta CNSHACTRAN con espacio). CODHABILITA de FTR/SED o IDTERCEROINSTALADO.IDALTERNA2"
           ],
           "noValida": [
-            "No recorta columnas FURIPS 2 por tipo de servicio asistencial vs circular"
+            "Existencia de HACTRAN o FTR (no KO). HADM.CERRADA. Tope. Recorte extra en el FE (el SELECT externo ya es CAMPO01–09)"
           ],
           "errores": [],
           "llama": [
-            "FNK_VALORVARIABLE",
+            "FNK_VALORVARIABLE (FURIPS_T_RADICADO, FURIPSRESUMIDO, IDTERCEROINSTALADO, IDNITFONSAT)",
             "FNK_LIMPIATEXTO",
-            "FNK_FURIPS_CODIGOSERVICIO (si @ESMUNDIAL)"
+            "FNK_FURIPS_CODIGOSERVICIO (si ESMUNDIAL)",
+            "SPQ_FURIPS_V2 (si el METODO no es FURIPS ni FURIPSCXC)"
           ],
-          "efecto": "FURIPS 2: ramas @PROCEDENCIA QX (SALUD/HPRE), CI, CE. Si FURIPSRESUMIDO=NO y QX, el SELECT externo proyecta CAMPO_ITEMCIRUGIA, CAMPO_ESCIRUGIA, CAMPO_CODCUPS además de CAMPO01–09 (y duplicado CAMPO_VALORTOTALRECLAMADO). El FE serializa Object.values → columnas de más en TXT.",
+          "efecto": "Solo lectura. Recordset 0=OK, 1=FURIPS 1, 2=FURIPS 2. No escribe archivo. FE TXT: Object.values. FE JSON: remap a FUR_{NIT}.json + SER_{NIT}.json (useHactranPlanosExport).",
+          "notas": "JSON no es METODO nuevo. El FE exige NUM_FACTURA y NIT institución. Grupos: víctima, sitio, vehículo, propietario, conductor, atención, remisión, transporte.",
           "capaId": "04-unido",
-          "gateId": "furips2-asistencial-circular-0022",
+          "controlId": "furips2-asistencial-circular-0022",
           "estado": "leido"
         },
         {
           "id": "FURIPSCXC",
-          "hace": "Igual estructura por cuenta de cobro: OK + FURIPS 1 + FURIPS 2 desde FCXC/CNSCXC.",
+          "hace": "Igual par FURIPS 1+2 por cuenta de cobro FCXC.CNSCXC. Cruza las FTR de la cuenta con HACTRAN del afiliado (HADM/CIT/AUT).",
           "valida": [
             "CNSCXC en PARAMETROS"
           ],
           "noValida": [
-            "Misma lógica de proyección FURIPS 2; líneas no quirúrgicas vía HPRE sin qxpcxd"
+            "Existencia de la CXC (no KO). Misma proyección CAMPO01–09"
           ],
           "errores": [],
           "llama": [
             "FNK_VALORVARIABLE",
             "FNK_LIMPIATEXTO",
-            "FNK_FURIPS_CODIGOSERVICIO (si @ESMUNDIAL)"
+            "FNK_FURIPS_CODIGOSERVICIO (si ESMUNDIAL)"
           ],
-          "efecto": "Recordset[2] con UNION (HPRE asistencial + bloques cirugía). SELECT final FURIPS 2 lista CAMPO01–09; riesgo residual en FE si el driver expone columnas internas del subquery — validar en prueba.",
+          "efecto": "Solo lectura. Recordset 0=OK, 1=FURIPS 1, 2=FURIPS 2 desde FCXC. CODHABILITA usa IDTERCEROINSTALADO (rama ELSE del IF). FE JSON: mismos FUR_/SER_ agrupando todas las cabeceras de la cuenta.",
           "capaId": "04-unido",
-          "gateId": "furips2-asistencial-circular-0022",
+          "controlId": "furips2-asistencial-circular-0022",
           "estado": "leido"
         }
       ]
@@ -148,16 +327,35 @@
       "modelo": "HACTRAND",
       "estado": "leido",
       "fuente": "sql/SPQ_HACTRAND.sql",
-      "actualizado": "2026-09-12T21:15:18",
+      "actualizado": "2026-10-14T14:00:00",
+      "cola": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a la liberada. CONSULTAR aparece en el comentario del SP y no tiene IF.",
       "metodos": [
         {
+          "id": "LLENAR",
+          "hace": "Carga una fila HACTRAND (clínica, facturas, SIRAS, VLRGASTADO) por CNSHACTRAN+ITEM.",
+          "valida": [],
+          "noValida": [
+            "CNSHACTRAN/ITEM vacíos: no KO, lista vacía"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "no aplica (solo lectura). No toca IEXI ni FTR.",
+          "tablas": [
+            "HACTRAND"
+          ],
+          "capaId": "02-operacion",
+          "estado": "leido"
+        },
+        {
           "id": "INSERT",
-          "hace": "Inserta detalle HACTRAND (clínica/valores/SIRAS) con columnas dinámicas FNK_COLUMNAS_TABLAS.",
+          "hace": "Inserta detalle HACTRAND (clínica, SIRAS, valores, tercero) con columnas dinámicas FNK_COLUMNAS_TABLAS.",
           "valida": [
-            "No duplicar CNSHACTRAN+ITEM"
+            "No existe ya la misma clave CNSHACTRAN+ITEM del JSON"
           ],
           "noValida": [
-            "SQL dinámico; no valida tope SOAT aquí"
+            "Tope SOAT",
+            "El MAX(ITEM) se calcula con JOIN al ITEM del JSON: si el ítem no existe, puede nacer ITEM=1 y chocar",
+            "El KO de duplicado copia el texto del alta HACTRAN (afiliado/día), no el de la fila"
           ],
           "errores": [
             "YA ESTA CREADO EL ACCIDENTE NO PUEDO INSERTARLO EL MISMO IDAFILIADO ACCIDENTADO EL MISMO DIA",
@@ -166,62 +364,522 @@
           "llama": [
             "FNK_COLUMNAS_TABLAS"
           ],
-          "efecto": "INSERT HACTRAND.",
+          "efecto": "INSERT HACTRAND. No recalcula HACTRAN.TOPE/VLRFALTA.",
+          "tablas": [
+            "HACTRAND"
+          ],
           "capaId": "02-operacion",
           "estado": "leido"
         },
         {
           "id": "UPDATE",
-          "hace": "Actualiza fila HACTRAND.",
-          "estado": "parcial"
+          "hace": "Actualiza la fila HACTRAND (clínica, facturas, SIRAS, VLRGASTADO, tercero) por CNSHACTRAN+ITEM.",
+          "valida": [
+            "Existe la fila CNSHACTRAN+ITEM"
+          ],
+          "noValida": [
+            "Tope SOAT",
+            "No recalcula cabecera HACTRAN"
+          ],
+          "errores": [
+            "NO EXISTE EL HACTRAN PARA ACTUALIZARLO",
+            "NO PUEDO  ACTUALIZAR EL HACTRAN: …"
+          ],
+          "llama": [],
+          "efecto": "UPDATE HACTRAND. No toca FTR ni HPRE.",
+          "tablas": [
+            "HACTRAND"
+          ],
+          "capaId": "02-operacion",
+          "estado": "leido"
         },
         {
           "id": "DELETE",
-          "hace": "Elimina detalle.",
-          "estado": "parcial"
+          "hace": "Borra solo una fila de procedencia EXTERNO y recalcula VLRGASTADO / VLRGASTOEXTERNO / VLRFALTA de la cabecera.",
+          "valida": [
+            "CNSHACTRAN e ITEM informados",
+            "Existe la fila",
+            "PROCEDENCIA = EXTERNO"
+          ],
+          "noValida": [
+            "No deja borrar CE/CI/QX (esas las arma RELIQUIDAR)"
+          ],
+          "errores": [
+            "Debe indicar CNSHACTRAN e ITEM para eliminar el registro.",
+            "No existe el registro de HACTRAND que se intenta eliminar.",
+            "Solo se pueden eliminar registros de procedencia EXTERNO.",
+            "NO SE PUDO ELIMINAR EL REGISTRO HACTRAND: …"
+          ],
+          "llama": [],
+          "efecto": "DELETE HACTRAND EXTERNO. UPDATE HACTRAN.VLRGASTADO, VLRGASTOEXTERNO, VLRFALTA=TOPE−suma.",
+          "tablas": [
+            "HACTRAND",
+            "HACTRAN"
+          ],
+          "capaId": "02-operacion",
+          "estado": "leido"
         },
         {
           "id": "FTRVLR",
-          "hace": "Lee VR_TOTAL de FTR con WHERE dinámico (@WHERES).",
+          "hace": "Lee VR_TOTAL de FTR con WHERE dinámico (WHERES) para pintar el gastado de una factura.",
           "valida": [
             "WHERES no vacío"
           ],
           "noValida": [
-            "WHERE concatenado"
+            "WHERE concatenado (SQL dinámico)"
           ],
           "errores": [
             "NO ENCONTRE LA FACTURA …"
           ],
           "llama": [],
-          "efecto": "Solo lectura.",
+          "efecto": "no aplica (solo lectura).",
+          "tablas": [
+            "FTR"
+          ],
           "estado": "leido"
         },
         {
           "id": "RELIQUIDAR",
-          "hace": "Recalcula gastado/faltante del expediente HACTRAN (SIRAS, FONSAT, tope).",
+          "hace": "Reconstruye el detalle interno del expediente: guarda SIRAS previos, borra HACTRAND que no sea EXTERNO y vuelve a armar filas desde CE (AUT), CI (CIT/FTR) y QX (HADM+HPRE). Actualiza gastado, gasto externo y faltante de la cabecera.",
           "valida": [
-            "CNSHACTRAN informado"
+            "CNSHACTRAN informado",
+            "HACTRAN existe (lee IDAFILIADO)",
+            "QX: HADM.TIPOADM = IDTARIFASOAT y hay tercero en TERCATASEGURADORA",
+            "Omite FTR anulada / NC cerrada del mismo valor"
           ],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "HACTRAN/HACTRAND de valores actualizados.",
+          "noValida": [
+            "No KO si VLRGASTADO supera TOPE (solo deja VLRFALTA negativo)",
+            "No factura ni confirma HADM",
+            "No toca filas EXTERNO"
+          ],
+          "errores": [
+            "NO ENCONTRE EL CONSECUTIVO DE HACTRAN …",
+            "PROBLEMAS DURANTE LA RELIQUIDACION …"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE (IDNITFONSAT, IDTARIFASOAT, TERCATASEGURADORA)"
+          ],
+          "efecto": "DELETE HACTRAND no-EXTERNO; INSERT filas CE/CI/QX; UPDATE HACTRAN.VLRGASTADO, VLRGASTOEXTERNO, VLRFALTA=TOPE−suma. Conserva SIRAS.",
+          "tablas": [
+            "HACTRAN",
+            "HACTRAND",
+            "AUT",
+            "CIT",
+            "HADM",
+            "HPRE",
+            "HPRED",
+            "FTR",
+            "FTRD",
+            "FNOT",
+            "TER",
+            "TEXCA"
+          ],
+          "capaId": "02-operacion",
           "estado": "leido"
         },
         {
           "id": "DATOSAFI",
-          "hace": "Datos afiliado para el expediente.",
-          "estado": "parcial"
+          "hace": "Devuelve tipo doc, documento y nombres del afiliado del expediente (HACTRAN→AFI).",
+          "valida": [
+            "CNSHACTRAN informado"
+          ],
+          "noValida": [
+            "No escribe HACTRAND"
+          ],
+          "errores": [
+            "NO ENCONTRE EL CONSECUTIVO DE HACTRAN …"
+          ],
+          "llama": [],
+          "efecto": "no aplica (solo lectura).",
+          "tablas": [
+            "HACTRAN",
+            "AFI"
+          ],
+          "estado": "leido"
         },
         {
-          "id": "LLENAR",
-          "hace": "Carga detalle del expediente.",
-          "estado": "parcial"
+          "id": "COMPROBANTE_SERVICIOS_RECIBIDOS",
+          "hace": "Arma el comprobante de servicios recibidos (QX/CI/CE) o, si PARAMETROS.METODO=FIRMAR, guarda firma del paciente/acudiente en HADM.",
+          "valida": [
+            "NOREFERENCIA según procedencia"
+          ],
+          "noValida": [
+            "CI/CE filtran HADM.NOADMISION en el WHERE (copia QX); puede no hallar la cita/autorización"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE (CONTRA_CONFPRESER)"
+          ],
+          "efecto": "Solo lectura salvo FIRMAR: UPDATE HADM.IDFIRMAPTE / IDFIRMARESP. No toca HACTRAND.",
+          "tablas": [
+            "HADM",
+            "CIT",
+            "AUT",
+            "AFI",
+            "TER",
+            "DOCS",
+            "USUSU",
+            "ARCHIVOS"
+          ],
+          "estado": "leido"
         },
         {
           "id": "CRUDHACTRAND",
-          "hace": "CRUD unificado.",
-          "estado": "listado"
+          "hace": "CRUD unificado del detalle: TRAERDX (diagnóstico y signos vitales desde HC), leer, insertar o actualizar fila (clínica + SIRAS).",
+          "valida": [
+            "TRAERDX: hay diagnóstico en HCA (plantilla HURG / HCPLANTILLAHURG)"
+          ],
+          "noValida": [
+            "Tope SOAT"
+          ],
+          "errores": [
+            "ERROR NO ENCONTRÉ UN DIAGNOSTICO"
+          ],
+          "llama": [
+            "FNK_DATOHC (ACTRANQX)",
+            "FNK_VALORVARIABLE (HCPLANTILLAHURG, SVITALSOAT_*)"
+          ],
+          "efecto": "Lectura HC o INSERT/UPDATE HACTRAND (clínica). No reliquida topes.",
+          "tablas": [
+            "HACTRAND",
+            "HCA",
+            "HCASV",
+            "MDX"
+          ],
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_FACTURA_SOAT_TODO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "llamadoDesde": [
+        "SPQ_DISTRIHPRED_SOAT · FACTURAR"
+      ],
+      "metodos": [
+        {
+          "id": "EJECUTAR",
+          "hace": "Emite una FTR por cada GFACSOAT pedido que tenga ítems HPRED abiertos cobrables. Reescribe tercero/plan, numera (o reusa FTR liberada), arma FTRD, redondea total, impuestos, marca cargos, HADMF, HADM.FACTURADA y HACTRAND QX 1/2. Contabiliza o encola.",
+          "valida": [
+            "IDTERCERO e IDPLAN del responsable (si faltan, PRINT y sigue)",
+            "PPT.TIPOTERCONTABLE distinto de NO (si no, RAISERROR y aborta)",
+            "No repetir NOPRESTACION+NOITEM en el temporal"
+          ],
+          "noValida": [
+            "HADM.CERRADA (la lee y no la usa)",
+            "Tope HACTRAN",
+            "Que GFACSOAT de HPRED coincida con el tercero ya guardado (los pisa)"
+          ],
+          "errores": [
+            "No Existe el Tipo de Tercero Contable... No se puede Continuar",
+            "MULTIPLE VEZ FACTURADA UN ITEM DE UNA PRESTACION."
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO (@CNSFTR)",
+            "SPK_GENNUMEROFACTURA",
+            "SPK_PREFIJOFACTURA",
+            "SPK_FAC_IMPDEDUC",
+            "SPK_NC_CONTAB_FTR (si CONTAB_FTR_JOB≠SI)",
+            "SPK_CREACXP_ASIS",
+            "SPK_ENTREGA_FACTURA_PTTO (si PRESUP_CXC_ACTIVADO=SI y PRESUP_TIPORECO=DESDEFTR)"
+          ],
+          "efecto": "INSERT/UPDATE FTR (SALUD, I, P) + INSERT FTRD. UPDATE HPRED.FACTURADA/N_FACTURA/UTISOAT. INSERT/UPDATE HADMF. UPDATE HADM.FACTURADA. UPDATE HACTRAND.N_FCT_ASEG o N_FCT_FYG (solo QX y GFACSOAT<3). FTRCO o asiento. CXP asistencial.",
+          "tablas": [
+            "HPRED",
+            "HPRE",
+            "HADM",
+            "HADMF",
+            "FTR",
+            "FTRD",
+            "FTRCO",
+            "HACTRAND",
+            "PPT",
+            "TTEC",
+            "AFI"
+          ],
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FURIPS_V2",
+      "tipo": "SPQ",
+      "modelo": "FURIPS",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "cola": "METODOs de este SP: FURTRAN, FURTRANCXC, PDFFURTRAN, FUCTAS, FUCTASCXC. Cualquier otro se delega a SPQ_FURIPS_V3.",
+      "actualizado": "2026-10-14T14:55:00",
+      "llamadoDesde": [
+        "SPQ_FURIPS (si el METODO no es FURIPS ni FURIPSCXC)"
+      ],
+      "metodos": [
+        {
+          "id": "FURTRAN",
+          "nombre": "FURTRAN",
+          "hace": "Plano de traslado: una fila (reclamante, vehículo Amparo, víctima, sitio de recojo, IPS que recibe, póliza). QX/CI/CE. Reclamante en QX = COND_* (conductor); en CI/CE = *_AMPARO. Naturaleza del evento se aplana a 1/2/3.",
+          "valida": [
+            "Lee PARAMETROS (ruta CNSHACTRAN con espacio, igual que FURIPS)"
+          ],
+          "noValida": [
+            "Existencia de HACTRAN (no KO). Firma. Representante legal. HACTRAND no vacío"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE (IDTERCEROINSTALADO)",
+            "FNK_LIMPIATEXTO",
+            "SPQ_FURIPS_V3 (si el METODO no es FURTRAN / FURTRANCXC / PDFFURTRAN / FUCTAS / FUCTASCXC)"
+          ],
+          "efecto": "Siempre OK. Solo lectura. Recordset 0=OK, 1=una fila. No escribe HACTRANFURT ni archivo. FE TXT: FURTRAN{habilitación}{fecha}.txt. FE JSON: {formatoOrigen:TXT, archivo, lineas}.",
+          "tablas": [
+            "HACTRAN",
+            "AFI",
+            "FTR",
+            "HADM",
+            "CIT",
+            "AUT",
+            "TER",
+            "SED"
+          ],
+          "capaId": "04-unido",
+          "controlId": "furtran-fuctas-pdf",
+          "estado": "leido"
+        },
+        {
+          "id": "FURTRANCXC",
+          "nombre": "FURTRANCXC",
+          "hace": "Mismo plano FURTRAN por cuenta de cobro (FCXC). Reclamante = *_AMPARO (no conductor).",
+          "valida": [
+            "CNSCXC en PARAMETROS"
+          ],
+          "noValida": [
+            "Existencia de la CXC (no KO). Firma"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE",
+            "FNK_LIMPIATEXTO"
+          ],
+          "efecto": "Siempre OK. Solo lectura. Una fila. No escribe HACTRANFURT.",
+          "tablas": [
+            "FCXC",
+            "FTR",
+            "HACTRAN",
+            "AFI",
+            "TER"
+          ],
+          "capaId": "04-unido",
+          "controlId": "furtran-fuctas-pdf",
+          "estado": "leido"
+        },
+        {
+          "id": "PDFFURTRAN",
+          "nombre": "PDFFURTRAN",
+          "hace": "Mismos datos del plano FURTRAN para el visor PDF. Reclamante = *_AMPARO. Exige firma IDFIRMA_FURRIPS, representante legal (NIT_R) y filas HACTRAND.",
+          "valida": [
+            "USVGS IDFIRMA_FURRIPS con archivo de firma",
+            "Representante legal del tercero institución (TER.NIT_R)",
+            "HACTRAND del expediente no vacío"
+          ],
+          "noValida": [
+            "Que Amparo coincida con el conductor del plano FURTRAN"
+          ],
+          "errores": [
+            "NO TIENE FIRMA O NO TIENE CONFIGURADO EL USUARIO DEL REPRESENTANTE LEGAL EN LA VARIABLE \"IDFIRMA_FURRIPS\"",
+            "NO TIENE CONFIGURADO REPRESENTANTE LEGAL PARA EL TERCERO INSTALADO O EL DOCUMENTO … NO EXISTE EN LA TABLA DE TERCEROS",
+            "NO TIENE DETALLE DE CONSUMO ESTE ACCIDENTE, DEBE RELIQUIDARLO {CNSHACTRAN}"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE (IDFIRMA_FURRIPS, IDTERCEROINSTALADO)"
+          ],
+          "efecto": "OK + recordsets para el PDF, o KO. No escribe HACTRANFURT.",
+          "tablas": [
+            "HACTRAN",
+            "HACTRAND",
+            "AFI",
+            "TER",
+            "USUSU",
+            "ARCHIVOS"
+          ],
+          "capaId": "04-unido",
+          "controlId": "furtran-fuctas-pdf",
+          "estado": "leido"
+        },
+        {
+          "id": "FUCTAS",
+          "nombre": "FUCTAS",
+          "hace": "Certificación de cuentas/servicios: una línea por servicio (aseguradora, fecha, habilitación, víctima, póliza, factura, tipo/código/nombre, cantidad y valores). QX agrupa si FURIPSRESUMIDO. Proyecta dos CAMPO03 (habilitación y tipo doc; el tipo salta a CAMPO05).",
+          "valida": [
+            "Lee PARAMETROS (CNSHACTRAN con espacio)"
+          ],
+          "noValida": [
+            "Existencia de factura (no KO). Firma"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE (FURIPSRESUMIDO, IDTERCEROINSTALADO)",
+            "FNK_LIMPIATEXTO"
+          ],
+          "efecto": "Siempre OK. Solo lectura. FE TXT: FUCTAS{habilitación}{fecha}.txt. FE JSON: envoltorio del plano.",
+          "tablas": [
+            "HACTRAN",
+            "AFI",
+            "FTR",
+            "FTRD",
+            "HPRE",
+            "HPRED",
+            "HADM",
+            "CIT",
+            "AUT"
+          ],
+          "capaId": "04-unido",
+          "controlId": "furtran-fuctas-pdf",
+          "estado": "leido"
+        },
+        {
+          "id": "FUCTASCXC",
+          "nombre": "FUCTASCXC",
+          "hace": "Misma certificación FUCTAS por cuenta de cobro FCXC.",
+          "valida": [
+            "CNSCXC en PARAMETROS"
+          ],
+          "noValida": [
+            "Existencia de la CXC (no KO)"
+          ],
+          "errores": [],
+          "llama": [
+            "FNK_VALORVARIABLE",
+            "FNK_LIMPIATEXTO"
+          ],
+          "efecto": "Siempre OK. Solo lectura. Líneas de servicio de la cuenta.",
+          "tablas": [
+            "FCXC",
+            "FTR",
+            "FTRD",
+            "HACTRAN",
+            "AFI"
+          ],
+          "capaId": "04-unido",
+          "controlId": "furtran-fuctas-pdf",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_FURIPS_V3",
+      "tipo": "SPQ",
+      "modelo": "FURIPS",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "cola": "PDFFURIPS es el METODO de este SP. Lo llama V2 cuando el pedido no es FURTRAN/FUCTAS.",
+      "actualizado": "2026-10-14T14:55:00",
+      "llamadoDesde": [
+        "SPQ_FURIPS_V2 (si el METODO no es FURTRAN / FURTRANCXC / PDFFURTRAN / FUCTAS / FUCTASCXC)"
+      ],
+      "metodos": [
+        {
+          "id": "PDFFURIPS",
+          "nombre": "PDFFURIPS",
+          "hace": "Arma los recordsets para imprimir FURIPS (cabecera + servicios + firma). Misma cadena de procedencia QX/CI/CE y misma ruta CNSHACTRAN con espacio.",
+          "valida": [
+            "USVGS IDFIRMA_FURRIPS con archivo de firma",
+            "Representante legal del tercero institución (TER.NIT_R)",
+            "HACTRAND del expediente no vacío"
+          ],
+          "noValida": [
+            "Que el FE haya facturado. HADM.CERRADA"
+          ],
+          "errores": [
+            "NO TIENE FIRMA O NO TIENE CONFIGURADO EL USUARIO DEL REPRESENTANTE LEGAL EN LA VARIABLE \"IDFIRMA_FURRIPS\"",
+            "NO TIENE CONFIGURADO REPRESENTANTE LEGAL PARA EL TERCERO INSTALADO O EL DOCUMENTO … NO EXISTE EN LA TABLA DE TERCEROS",
+            "NO TIENE DETALLE DE CONSUMO ESTE ACCIDENTE, DEBE RELIQUIDARLO {CNSHACTRAN}"
+          ],
+          "llama": [
+            "FNK_VALORVARIABLE (IDFIRMA_FURRIPS, IDTERCEROINSTALADO, FURIPSRESUMIDO, FURIPS_T_RADICADO)"
+          ],
+          "efecto": "OK + recordsets para el visor PDF, o KO. No escribe archivo ni HACTRANFURT.",
+          "tablas": [
+            "HACTRAN",
+            "HACTRAND",
+            "AFI",
+            "FTR",
+            "FTRD",
+            "HADM",
+            "CIT",
+            "AUT",
+            "TER",
+            "USUSU",
+            "ARCHIVOS"
+          ],
+          "capaId": "04-unido",
+          "controlId": "furtran-fuctas-pdf",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_RELIQ_HACTRAN",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "llamadoDesde": [
+        "SPQ_AUT_COL · CRUDAUT / ANULAR_AUT",
+        "SPK_CONFIRMAR_AUT"
+      ],
+      "actualizado": "2026-10-14T15:10:00",
+      "metodos": [
+        {
+          "id": "EJECUTAR",
+          "nombre": "EJECUTAR",
+          "hace": "Sincroniza HACTRAND del expediente: QX (HADM.TIPOADM=IDTARIFASOAT), CI (CIT.SOAT=1), CE (AUT.SOAT=1). Si falta la fila, llama SPK_MOV_ACTRAN INGRESO. Copia VLRGASTADO (AUT.VALORTOTAL / CIT.VALORTOTAL / SUM HPRE.VALOREXEDENTE) y deja HACTRAN.VLRGASTADO y VLRFALTA=TOPE−gastado.",
+          "valida": [
+            "CNSHACTRAN informado"
+          ],
+          "noValida": [
+            "No reconstruye desde HPRED. No toca SIRAS ni EXTERNO ni VLRGASTOEXTERNO. No exige TERCATASEGURADORA"
+          ],
+          "errores": [],
+          "llama": [
+            "SPK_MOV_ACTRAN (INGRESO)",
+            "FNK_VALORVARIABLE (IDTARIFASOAT)"
+          ],
+          "efecto": "INSERT HACTRAND faltantes. UPDATE HACTRAND.VLRGASTADO. UPDATE HACTRAN.VLRGASTADO / VLRFALTA (puede quedar negativo).",
+          "tablas": ["HACTRAN", "HACTRAND", "HADM", "CIT", "AUT", "HPRE"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_MOV_ACTRAN",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.9 idéntica a liberada",
+      "llamadoDesde": [
+        "SPK_RELIQ_HACTRAN (INGRESO)",
+        "SPQ_AUT_COL · ANULAR_AUT (BORRAR)"
+      ],
+      "actualizado": "2026-10-14T15:10:00",
+      "metodos": [
+        {
+          "id": "EJECUTAR",
+          "nombre": "EJECUTAR",
+          "hace": "INGRESO: inserta HACTRAND (VLRGASTADO=0, ESTADOCONC=Alerta, ESTADOEMBRIAGUEZ=No) si no existe esa procedencia+referencia. BORRAR: DELETE esa fila. Resuelve CNSHACTRAN desde HADM/CIT/AUT.",
+          "valida": [
+            "NOREFERENCIA existe en la procedencia"
+          ],
+          "noValida": [
+            "CNSHACTRAN nulo (si la atención no está ligada). Tope. ITEM con MAX+1 (misma carrera que HACTRAND · INSERT)"
+          ],
+          "errores": [],
+          "llama": [],
+          "efecto": "INSERT o DELETE HACTRAND. No recalcula cabecera (lo hace RELIQ después).",
+          "tablas": ["HACTRAND", "HADM", "CIT", "AUT"],
+          "capaId": "04-unido",
+          "controlId": "satelites-soat",
+          "estado": "leido"
         }
       ]
     }

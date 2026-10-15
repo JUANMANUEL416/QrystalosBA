@@ -1,0 +1,90 @@
+{
+  "tramo": "conteo",
+  "nombre": "Conteo físico y aplicación de ajustes",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "notaTocaIexi": "Digitar no mueve stock. Aplicar confirma la salida de ajuste; la entrada queda en 0 y hay que confirmarla en Movimientos.",
+  "fuenteSql": "IXONLINE/SQL · SPQ_CONTEOFISICO · CRUD / GUARDA_REGISTRO / APLICAR; SPK_APLICARCONTEO (PREVERSION = 2.0.7)",
+  "pantalla": {
+    "path": "/inv/conteo",
+    "vue": "Procesos/ConteoFisicoPage",
+    "menu": "Inventario → Procesos → Conteo físico"
+  },
+  "documentoOrigen": {
+    "tabla": "IFIS",
+    "claves": ["CNSIFIS"],
+    "detalle": "IFISH existencia congelada; IFISHU listados por contador (hasta 3 conteos)"
+  },
+  "noEs": [
+    "Aplicar no es solo un reporte: genera IMOV de ajuste.",
+    "La entrada de ajuste no queda confirmada: hay que ir a Movimientos.",
+    "No es el ajuste de costo (IART.PCOSTO) ni Actualizar existencias."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Variables de ajuste y centro de costo",
+      "explicacionCapacitacion": "IDINVSIENT e IDINVSISAL se usan en todo conteo (no solo saldo inicial). IDINV_AJUSXITAR se lee pero no cambia la lógica. La bodega necesita un centro de costo activo.",
+      "requiresConfig": [
+        {
+          "id": "vars-ajuste",
+          "usvgs": ["IDINVSIENT", "IDINVSISAL", "IDINV_AJUSXITAR"],
+          "desc": "Tipos de entrada y salida de ajuste",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-ifis"],
+      "puntosCriticos": ["PC-INVOP-CNT-01"]
+    },
+    {
+      "id": "N1-ifis",
+      "orden": 1,
+      "nombre": "Crear conteo y listados",
+      "explicacionCapacitacion": "CRUD congela la existencia en IFISH. CREA_LISTADO reparte por contador. CREA_NUEVO_LOTE agrega un lote que no estaba. Cerrar / abrir / clonar / borrar actúan por contador; el conteo por bodega manda.",
+      "sp": ["SPQ_CONTEOFISICO · CRUD", "SPQ_CONTEOFISICO · CREA_LISTADO", "SPQ_CONTEOFISICO · CREA_NUEVO_LOTE"],
+      "llama": ["SPK_GENERARFISICO_U"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-digitar"],
+      "efecto": "IFIS + IFISH + IFISHU. No IEXI (salvo lote nuevo en el conteo).",
+      "puntosCriticos": ["PC-INVOP-CNT-02"]
+    },
+    {
+      "id": "N2-digitar",
+      "orden": 2,
+      "nombre": "Tres conteos y cerrar",
+      "explicacionCapacitacion": "GUARDA_REGISTRO digita cantidad ≥ 0 y vencimiento. Hay que cerrar los tres conteos. Clonar solo de conteos cerrados. ANULA_MASIVO anula pendientes de la bodega antes de aplicar.",
+      "sp": ["SPQ_CONTEOFISICO · GUARDA_REGISTRO", "SPQ_CONTEOFISICO · CERRAR_CONTEO", "SPQ_CONTEOFISICO · ANULA_MASIVO"],
+      "llamaAnterior": ["N1-ifis"],
+      "llamaSiguiente": ["N3-aplicar"],
+      "efecto": "Listados cerrados. Stock del kardex aún no cambió."
+    },
+    {
+      "id": "N3-aplicar",
+      "orden": 3,
+      "nombre": "Aplicar: salida confirmada + entrada pendiente",
+      "explicacionCapacitacion": "APLICAR exige tres conteos cerrados, sin negativos y sin IMOV pendientes sobre esos artículos. SPK_APLICARCONTEO arma salida IDINVSISAL y entrada IDINVSIENT (NODOCUMENTO = CNSIFIS). Luego confirma solo la salida. Si falla, revierte todo.",
+      "sp": ["SPQ_CONTEOFISICO · APLICAR"],
+      "llama": ["SPK_APLICARCONTEO", "SPK_CONFIRMARSALIDAS"],
+      "llamaAnterior": ["N2-digitar"],
+      "llamaSiguiente": ["N4-entrada"],
+      "efecto": "Salida de ajuste ESTADO=1 (IEXI baja). Entrada ESTADO=0. IFIS cerrado.",
+      "puntosCriticos": ["PC-INVOP-CNT-03", "PC-INVOP-CNT-04"]
+    },
+    {
+      "id": "N4-entrada",
+      "orden": 4,
+      "nombre": "Confirmar la entrada de ajuste (tramo 7)",
+      "explicacionCapacitacion": "Ahí se exige KMCOM. Hasta confirmar, el sobrante no está en IEXI. Saldo inicial por Excel: PROCESAR_SALDO_INICIAL / ALMACENAR_SALDO_INICIAL y luego el mismo aplicar.",
+      "llamaAnterior": ["N3-aplicar"],
+      "efecto": "Puente a confirmación de entrada.",
+      "puntosCriticos": ["PC-INVOP-CNT-05"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_CONTEOFISICO · APLICAR y SPK_APLICARCONTEO leido 2026-10-04. IDINVSIENT/IDINVSISAL para todo conteo.",
+    "fase2Hecha": true
+  }
+}

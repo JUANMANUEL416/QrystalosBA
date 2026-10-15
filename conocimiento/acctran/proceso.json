@@ -3,10 +3,26 @@
   "nombre": "Accidentes de tránsito SOAT",
   "modulo": "ACCTRAN",
   "estado": "esqueleto",
-  "resumen": "Expediente HACTRAN (modal SOAT): accidente, paciente, vehículo, conductor, remisión, amparo. Gate de este REQ: botón en pestaña Amparo para copiar datos básicos del paciente. Resto de capas incompleto.",
-  "actualizado": "2026-09-03",
-  "notaSql": "SPQ_HACTRAN leído hoy (LLENAR/INSERT/UPDATE). DATOSAFI no se bajó. Gate amparo-traer-afi: botón FE, sin cambio de SP.",
-  "alcanceHasta": "Botón en Amparo que copia tipo doc, documento y cuatro nombres desde AFI (IDAFILIADO). Sin fecha de nacimiento en Amparo. Sin FURIPS, topes ni facturación.",
+  "resumen": "Expediente HACTRAN → detalle/topes → cargos GFACSOAT → factura SOAT → FURIPS / FURTRAN / PDF. Satélites: SIRAS, CE (RELIQ/MOV) y certificados. Grafo 2026-10-14: 8/8 cerrado.",
+  "actualizado": "2026-10-14",
+  "notaSql": "Grafo 8/8. HACTRAN 12/12, HACTRAND 9/9, FURIPS+V2+V3, RELIQ/MOV leídos PREVERSION=2.0.9. JSON FURIPS es remap FE.",
+  "alcanceHasta": "Grafo Fase 1 cerrada (8/8). Libro de capas sigue en esqueleto. Tablas HACTRANF/FD, HACTRANAFI, HACTRANR sin ficha de campos.",
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "Bajar FURTRAN / certificación de cuentas / imprimir FURIPS",
+      "donde": "Asistencial → SOAT → botones FURTRAN, FUCTAS, PDF FURIPS (y cartera CXC)",
+      "condicion": "Hay expediente. El PDF pide firma IDFIRMA_FURRIPS, representante legal del tercero institución y detalle HACTRAND (reliquidar). Los planos no piden firma.",
+      "metodo": "SPQ_FURIPS_V2 · FURTRAN / FUCTAS / PDFFURTRAN; SPQ_FURIPS_V3 · PDFFURIPS. JSON de FURTRAN/FUCTAS envuelve el plano.",
+      "noEs": "FURIPS 1+2 (TXT o JSON FUR_/SER_). No es RIPS JSON. No escribe HACTRANFURT."
+    },
+    {
+      "necesidad": "SIRAS, certificados y aviso policial del expediente",
+      "donde": "Asistencial → SOAT (radicado SIRAS, PDFs) y Autorizador CE (campo SIRAS / CNSHACTRAN)",
+      "condicion": "Hay expediente. El portal SIRAS es login, no webservice. Los certificados piden una fila HACTRAND (reliquidar o confirmar la AUT).",
+      "metodo": "SPQ_HACTRAN · CONSULTARSIRASADMISION / CERTIFICADO_* / FORMATO_RECLAMACION / AVISO_AUT_POLICIAL. CE: SPK_RELIQ_HACTRAN + SPK_MOV_ACTRAN.",
+      "noEs": "No es Reliquidar el detalle (HACTRAND · RELIQUIDAR). SPQ_HACTRAN no borra el expediente."
+    }
+  ],
   "ventanas": [
     {
       "uso": "Lista y modal SOAT (menú)",
@@ -28,6 +44,34 @@
       "path": "AgendarCita / AgendaNueva / Autorizador / EditaCita",
       "vue": "HactranComponent.vue embebido",
       "entrada": "Agenda o autorizador: mismo modal HACTRAN."
+    },
+    {
+      "uso": "Cargos SOAT",
+      "ruta": "asis.hadm (Cargos SOAT)",
+      "path": "HPRESOATComponent",
+      "vue": "HPRESOATComponent.vue",
+      "entrada": "Admisión ligada a HACTRAN → Cargos SOAT. Responsable GFACSOAT."
+    },
+    {
+      "uso": "Exportar planos FURIPS",
+      "ruta": "asis.soat (exportar)",
+      "path": "HactranComponent / useHactranPlanosExport",
+      "vue": "useHactranPlanosExport (formato TXT o JSON)",
+      "entrada": "SOAT → exportar planos. TXT = FURIPS1 + FURIPS2. JSON = FUR_{NIT} + SER_{NIT}."
+    },
+    {
+      "uso": "FURTRAN, FUCTAS e imprimir FURIPS",
+      "ruta": "asis.soat (FURTRAN / FUCTAS / PDF)",
+      "path": "HactranComponent / useHactranPlanosExport",
+      "vue": "txtFURTRAN, txtFUCTAS, txtFURTRANCXC, txtFUCTASCXC, PDFFURIPS",
+      "entrada": "SOAT → FURTRAN / certificación / PDF. JSON de esos botones envuelve el plano TXT."
+    },
+    {
+      "uso": "SIRAS, certificados y aviso policial",
+      "ruta": "asis.soat / autorizador",
+      "path": "HactranComponent / AutorizadorComponent / useHACTRANPrint",
+      "vue": "HactranComponent.vue + ProcesosSoat / AutorizadorComponent",
+      "entrada": "SOAT: radicado SIRAS y PDFs. Autorizador: campo SIRAS y enlace al expediente."
     }
   ],
   "capas": [
@@ -68,7 +112,61 @@
             {
               "nombre": "SPQ_HACTRAN",
               "metodo": "INSERT / UPDATE",
-              "rol": "Persisten campos *_AMPARO. No leídos. Pedir .sql solo si el alcance sale de copiar AFI en FE."
+              "rol": "Persisten campos *_AMPARO."
+            }
+          ]
+        },
+        {
+          "id": "reliquidar-topes-hactrand",
+          "nombre": "Reliquidar detalle y tope",
+          "explicacion": "HactrandComponent · RELIQUIDAR reconstruye HACTRAND (CE/CI/QX), conserva EXTERNO y SIRAS, y deja VLRFALTA = TOPE − gastado. No factura.",
+          "invariante": "Filas internas se regeneran; EXTERNO solo se borra a mano. Pasarse del tope no es KO.",
+          "sps": [
+            {
+              "nombre": "SPQ_HACTRAND",
+              "metodo": "RELIQUIDAR",
+              "rol": "Reconstruye detalle y suma cabecera (leído PREVERSION 2.0.9)."
+            },
+            {
+              "nombre": "SPQ_HACTRAND",
+              "metodo": "DELETE",
+              "rol": "Solo EXTERNO; recalcula cabecera."
+            }
+          ]
+        },
+        {
+          "id": "cargos-soat-gfacsoat",
+          "nombre": "Cargos SOAT por responsable",
+          "explicacion": "HPRESOATComponent · CARGAR_DATOS abre y puede redistribuir. Distribuir automático solo llena ítems sin responsable (no escribe tercero/plan). Reorganizar parte de cero. Mover masivo no excluye facturados. ARL solo a mano. Facturar es el tramo siguiente.",
+          "invariante": "GFACSOAT 1=Aseguradora 2=ADRES 3=EPS 4=ARL. La cascada descuenta gasto anterior y externo. ADRES no puede ser el mismo tercero que la Aseguradora; EPS no puede ser el responsable del accidente (Guardar y Mover uno; el masivo no lo valida).",
+          "sps": [
+            {
+              "nombre": "SPQ_DISTRIHPRED_SOAT",
+              "metodo": "CARGAR_DATOS",
+              "rol": "Carga topes y escribe GFACSOAT nulos / exceso Aseguradora (leído PREVERSION 2.0.9)."
+            },
+            {
+              "nombre": "SPQ_DISTRIHPRED_SOAT",
+              "metodo": "DISTRIBUIR_HACTRAN / REORGANIZAR_TODO / GUARDAR_DISTRIBUCION / MOVER_*",
+              "rol": "Asignan o mueven responsable. No facturan."
+            }
+          ]
+        },
+        {
+          "id": "facturar-soat-por-responsable",
+          "nombre": "Facturar SOAT (una FTR por GFACSOAT)",
+          "explicacion": "Cargos SOAT · FACTURAR llama SPK_FACTURA_SOAT_TODO. El FE pide admisión cerrada; el SP no. Una factura por responsable con ítems abiertos. FONSAT usa IDPLANFONSAT en la FTR.",
+          "invariante": "Sin CERRADA el motor igual factura. Sin tercero/plan de un responsable lo salta y FACTURAR queda OK. HADM.FACTURADA se pone en el primer responsable.",
+          "sps": [
+            {
+              "nombre": "SPQ_DISTRIHPRED_SOAT",
+              "metodo": "FACTURAR",
+              "rol": "Valida admisión y decimales; llama el motor; CUPS QX si TIPOADM='04'."
+            },
+            {
+              "nombre": "SPK_FACTURA_SOAT_TODO",
+              "metodo": "EJECUTAR",
+              "rol": "Inserta FTR/FTRD/HADMF y marca HPRED (leído PREVERSION 2.0.9)."
             }
           ]
         }
@@ -91,7 +189,7 @@
       "numero": 4,
       "nombre": "Subproceso unido",
       "estado": "esqueleto",
-      "explicacion": "AUT.CNSHACTRAN, FURIPS, topes. Gate de este REQ: máscara de FURIPS 2 para cargos asistenciales (Circular 0022/2023).",
+      "explicacion": "AUT.CNSHACTRAN. FURIPS 1+2 (TXT o JSON, mismo SP). FURTRAN / FUCTAS / PDF por V2/V3. CE sincroniza detalle con SPK_RELIQ_HACTRAN. Certificados y SIRAS en SPQ_HACTRAN.",
       "tablasClave": [
         "AUT",
         "HACTRAN",
@@ -101,18 +199,72 @@
         {
           "id": "furips2-asistencial-circular-0022",
           "nombre": "FURIPS 2 asistencial — máscara Circular 0022/2023",
-          "explicacion": "Al exportar el plano FURIPS 2, si el cargo/procedencia es asistencial, solo deben ir los campos del Anexo Técnico (Circular 0022/2023, desde p. 22). Hoy el FE vuelca Object.values del recordset completo.",
-          "invariante": "Línea FURIPS 2 asistencial = columnas oficiales de la circular; sin campos de transporte u otras categorías.",
+          "explicacion": "Al exportar el plano FURIPS 2, si el cargo/procedencia es asistencial, solo deben ir los campos del Anexo Técnico (Circular 0022/2023, desde p. 22). El FE sigue volcando Object.values. En PREVERSION 2.0.9 el SELECT externo ya proyecta solo CAMPO01–09.",
+          "invariante": "Línea FURIPS 2 = CAMPO01–09. Validar en prueba que el driver no exponga columnas del subquery.",
           "sps": [
             {
               "nombre": "SPQ_FURIPS",
               "metodo": "FURIPS",
-              "rol": "Recordset[2] = detalle FURIPS 2 (leído sql/SPQ_FURIPS.sql). Recorte asistencial pendiente desarrollo."
+              "rol": "Recordset[2] = FURIPS 2 (releído PREVERSION 2.0.9). Outer = 9 campos."
             },
             {
               "nombre": "SPQ_FURIPS",
               "metodo": "FURIPSCXC",
-              "rol": "FURIPS 2 desde cartera CNSCXC (leído). Misma máscara asistencial que FURIPS."
+              "rol": "FURIPS 2 desde cartera CNSCXC. Misma proyección."
+            }
+          ]
+        },
+        {
+          "id": "furips-json-fe-grupos",
+          "nombre": "FURIPS JSON — remap del FE",
+          "explicacion": "Con formato JSON el FE (useHactranPlanosExport) no vuelca Object.values. Arma FUR_{NIT}.json (8 grupos) y SER_{NIT}.json. El NIT es el de la institución. Exige número de factura. No es RIPS JSON.",
+          "invariante": "Mismo SP FURIPS/FURIPSCXC. Sin NUM_FACTURA no baja. FURTRAN/FUCTAS JSON envuelven el plano TXT.",
+          "sps": [
+            {
+              "nombre": "SPQ_FURIPS",
+              "metodo": "FURIPS",
+              "rol": "Mismos recordsets que el TXT. El remap es solo FE."
+            }
+          ]
+        },
+        {
+          "id": "furtran-fuctas-pdf",
+          "nombre": "FURTRAN, FUCTAS y PDF FURIPS",
+          "explicacion": "SPQ_FURIPS delega a V2 (FURTRAN/FUCTAS/PDFFURTRAN) y V2 a V3 (PDFFURIPS). Los planos siempre OK. El PDF KO si falta firma, representante legal o detalle HACTRAND. El JSON de FURTRAN/FUCTAS envuelve el plano; no usa grupos FUR_/SER_. HACTRANFURT no se escribe aquí.",
+          "invariante": "FURTRAN QX: nombres del conductor y documento de la víctima. CI/CE/CXC/PDF: Amparo. FUCTAS proyecta dos CAMPO03. Zona inválida = «ERROR ZONA».",
+          "sps": [
+            {
+              "nombre": "SPQ_FURIPS_V2",
+              "metodo": "FURTRAN / FURTRANCXC / PDFFURTRAN / FUCTAS / FUCTASCXC",
+              "rol": "Planos de traslado y certificación; PDF FURTRAN (leído PREVERSION 2.0.9)."
+            },
+            {
+              "nombre": "SPQ_FURIPS_V3",
+              "metodo": "PDFFURIPS",
+              "rol": "Recordsets para imprimir FURIPS (leído PREVERSION 2.0.9)."
+            }
+          ]
+        },
+        {
+          "id": "satelites-soat",
+          "nombre": "SIRAS, CE y certificados",
+          "explicacion": "CE confirma AUT SOAT → SPK_RELIQ_HACTRAN (crea fila y copia valor). Anular → MOV BORRAR. SIRAS del modal es NOSIRAS; el de la admisión se precarga. Certificados y aviso policial son solo lectura para PDF. CONSULTARTOPES calcula UVT con factores fijos.",
+          "invariante": "RELIQ no es Reliquidar el detalle. SPQ_HACTRAN no tiene DELETE ni RELIQUIDAR. Factor UVT 0 no KO. ESTADOCONC Alerta no marca la casilla ALERTA del certificado.",
+          "sps": [
+            {
+              "nombre": "SPK_RELIQ_HACTRAN",
+              "metodo": "EJECUTAR",
+              "rol": "Sincroniza HACTRAND desde HADM/CIT/AUT (leído PREVERSION 2.0.9)."
+            },
+            {
+              "nombre": "SPK_MOV_ACTRAN",
+              "metodo": "EJECUTAR",
+              "rol": "INGRESO o BORRAR una fila HACTRAND."
+            },
+            {
+              "nombre": "SPQ_HACTRAN",
+              "metodo": "CONSULTARSIRASADMISION / CERTIFICADO_* / AVISO_AUT_POLICIAL / CONSULTARTOPES",
+              "rol": "Lecturas y PDFs del expediente."
             }
           ]
         }
@@ -123,7 +275,7 @@
       "numero": 5,
       "nombre": "Contabilidad",
       "estado": "esqueleto",
-      "explicacion": "Este REQ no toca MCUE/CON. Facturación SOAT queda fuera.",
+      "explicacion": "FACTURAR llama SPK_NC_CONTAB_FTR (o encola FTRCO si CONTAB_FTR_JOB=SI) y SPK_CREACXP_ASIS. No se documentó el asiento en este tramo.",
       "tablasClave": [],
       "controles": []
     }

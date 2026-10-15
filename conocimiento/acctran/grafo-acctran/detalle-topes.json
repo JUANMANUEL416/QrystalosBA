@@ -1,0 +1,163 @@
+{
+  "tramo": "detalle-topes",
+  "nombre": "Detalle, SIRAS y topes",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_HACTRAND (PREVERSION 2.0.9 idéntica a la liberada)",
+  "pantalla": {
+    "path": "/asis/soat",
+    "vue": "HactranComponent → HactrandComponent",
+    "menu": "Asistencial → SOAT (detalle del expediente)",
+    "permisos": ["asis.soat"]
+  },
+  "documentoOrigen": {
+    "tabla": "HACTRAND",
+    "claves": ["CNSHACTRAN", "ITEM"],
+    "detalle": "PROCEDENCIA CE / CI / QX / EXTERNO. SIRAS, N_FCT_ASEG, N_FCT_FYG, VLRGASTADO. Cabecera HACTRAN.TOPE / VLRGASTADO / VLRFALTA."
+  },
+  "noEs": [
+    "No es el cargo HPRE (eso es Cargos SOAT).",
+    "Reliquidar no factura ni cierra la admisión.",
+    "No exporta FURIPS.",
+    "Borrar solo aplica a gasto EXTERNO; CE/CI/QX se reconstruyen."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Tope y terceros SOAT",
+      "explicacionCapacitacion": "El tope vive en la cabecera (HACTRAN.TOPE). Reliquidar usa la tarifa SOAT, el NIT FONSAT y la categoría de aseguradoras. Sin aseguradora parametrizada no arma filas QX.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-topes",
+          "tabla": "USVGS",
+          "desc": "IDTARIFASOAT (tipo admisión QX), IDNITFONSAT (factura ADRES/FONSAT), TERCATASEGURADORA",
+          "obligatorio": true,
+          "usvgs": ["IDTARIFASOAT", "IDNITFONSAT", "TERCATASEGURADORA"]
+        },
+        {
+          "id": "hactran-existe",
+          "tabla": "HACTRAN",
+          "desc": "Expediente ya creado (tramo 1) con TOPE informado",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-filas-detalle"],
+      "efecto": "Hay expediente y variables. Todavía no hay detalle interno.",
+      "fichas": []
+    },
+    {
+      "id": "N1-filas-detalle",
+      "orden": 1,
+      "nombre": "Cargar, agregar o editar una fila",
+      "explicacionCapacitacion": "El detalle es una fila por atención (autorización CE, cita CI, admisión QX) o un gasto EXTERNO. Guardar nuevo/editar: INSERT o UPDATE. Traer paciente: DATOSAFI. Traer valor de una factura: FTRVLR. La clínica (signos, DX) también puede venir de historia (CRUDHACTRAND · TRAERDX).",
+      "sp": "SPQ_HACTRAND",
+      "metodoUi": ["LLENAR", "INSERT", "UPDATE", "DATOSAFI", "FTRVLR", "CRUDHACTRAND"],
+      "requiresDocumento": [
+        {
+          "id": "cnshactran-item",
+          "desc": "UPDATE exige CNSHACTRAN+ITEM existentes. INSERT no debe repetir esa clave.",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-reliquidar"],
+      "efecto": "INSERT/UPDATE HACTRAND. No recalcula TOPE/VLRFALTA (salvo DELETE EXTERNO).",
+      "puntosCriticos": ["PC-SOAT-DET-01", "PC-SOAT-DET-02"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAND",
+          "metodo": "INSERT",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAND",
+          "metodo": "UPDATE",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAND",
+          "metodo": "LLENAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-reliquidar",
+      "orden": 2,
+      "nombre": "Reliquidar gastado y faltante",
+      "explicacionCapacitacion": "Reliquidar borra el detalle interno (no el EXTERNO) y lo vuelve a armar desde lo ya atendido: autorizaciones CE, citas CI y admisión QX con cargos. Conserva el SIRAS que ya estaba. Al final suma en la cabecera: gastado, gasto externo y faltante (tope menos gastado). Si se pasó del tope, el faltante queda negativo: no hay error.",
+      "sp": "SPQ_HACTRAND",
+      "metodoUi": ["RELIQUIDAR"],
+      "requiresDocumento": [
+        {
+          "id": "cnshactran",
+          "desc": "CNSHACTRAN informado y HACTRAN existente",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N1-filas-detalle"],
+      "llamaSiguiente": ["N3-externo"],
+      "efecto": "DELETE HACTRAND no-EXTERNO; INSERT CE/CI/QX; UPDATE HACTRAN.VLRGASTADO, VLRGASTOEXTERNO, VLRFALTA. No crea FTR.",
+      "puntosCriticos": ["PC-SOAT-DET-03", "PC-SOAT-DET-04", "PC-SOAT-DET-05"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAND",
+          "metodo": "RELIQUIDAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-externo",
+      "orden": 3,
+      "nombre": "Gasto EXTERNO",
+      "explicacionCapacitacion": "El gasto de otra IPS se carga a mano (EXTERNO). Reliquidar no lo toca. Solo esas filas se pueden borrar: al borrar, la cabecera vuelve a sumar.",
+      "sp": "SPQ_HACTRAND",
+      "metodoUi": ["DELETE"],
+      "requiresDocumento": [
+        {
+          "id": "solo-externo",
+          "desc": "DELETE exige PROCEDENCIA=EXTERNO",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N2-reliquidar"],
+      "llamaSiguiente": ["N4-aguas-abajo"],
+      "efecto": "DELETE HACTRAND EXTERNO + recálculo de cabecera. CE/CI/QX no se borran por este botón.",
+      "puntosCriticos": ["PC-SOAT-DET-06"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAND",
+          "metodo": "DELETE",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-aguas-abajo",
+      "orden": 4,
+      "nombre": "Quién consume el detalle",
+      "explicacionCapacitacion": "Cargos SOAT lee estos topes (CARGAR_DATOS). Facturar es el tramo siguiente. FURIPS lee el expediente y las facturas, no este botón. El comprobante de servicios recibidos (FIRMAR) es satélite: firma en HADM.",
+      "sp": [],
+      "metodoUi": ["COMPROBANTE_SERVICIOS_RECIBIDOS"],
+      "llamaAnterior": ["N3-externo"],
+      "llamaSiguiente": [],
+      "efecto": "Puente a cargos SOAT. Este tramo no factura."
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_HACTRAND PREVERSION 2.0.9 idéntica a la liberada. Los 9 METODOs del SP quedaron leidos. CONSULTAR no existe en el cuerpo.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

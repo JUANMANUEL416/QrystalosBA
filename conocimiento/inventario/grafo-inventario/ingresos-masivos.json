@@ -1,0 +1,76 @@
+{
+  "tramo": "ingresos-masivos",
+  "nombre": "Recepción masiva (Excel)",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_FCOM · RECEPCION_MASIVA → SPQ_FCOM_RECEPCION_MASIVA",
+  "pantalla": {
+    "path": "/inv/ordcom",
+    "permiso": "btnRecepcion_masiva_OC",
+    "menu": "Inventario → Procesos → Orden de compra → Recepción masiva"
+  },
+  "documentoOrigen": {
+    "tabla": "Excel proveedor",
+    "detalle": "Puede crear FCOM+FCOMD+ITRA+IMOV ESTADO=0; o alimentar una OC ya confirmada"
+  },
+  "noEs": [
+    "No confirma la entrada: IEXI nace en CONF_ENTRADA.",
+    "No sustituye el loteo de pantalla si la institución exige CUFE/RADIAN a mano; con INV_CUFE_LOTEO=SI el preview busca RADIAN por número y NIT."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "OC o factura Excel y CUFE",
+      "explicacionCapacitacion": "Permiso de recepción masiva. Con INV_CUFE_LOTEO=SI cada factura del Excel debe existir en RADIAN (una sola, sin CxP y sin otra OC/IMOV vigente). Cantidades y precios en decimal(19,6).",
+      "requiresConfig": [
+        {
+          "id": "inv-cufe-loteo",
+          "usvgs": ["INV_CUFE_LOTEO", "IMPUESTO_OBL"],
+          "obligatorio": false
+        }
+      ],
+      "llamaSiguiente": ["N1-excel"],
+      "efecto": "Hay archivo y política de factura."
+    },
+    {
+      "id": "N1-excel",
+      "orden": 1,
+      "nombre": "Validar el Excel",
+      "explicacionCapacitacion": "SKU+lote no duplicado en la factura. Precios/IVA vs convención base+IVA. Si hay IVA y no resuelve impuesto, el error cita IMPUESTO_OBL cuando esa variable está en SI. Preview no inserta.",
+      "sp": "SPQ_FCOM_RECEPCION_MASIVA",
+      "metodoUi": ["RECEPCION_MASIVA / PREVIEW"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-insertar"],
+      "efecto": "Filas válidas o KO. Sin IMOV todavía si es solo preview."
+    },
+    {
+      "id": "N2-insertar",
+      "orden": 2,
+      "nombre": "Crear tránsito e IMOV pendiente",
+      "explicacionCapacitacion": "Inserta (o completa) FCOM/FCOMD, ITRA con ITRAH INICIAL=1 (sin UI de loteo) y SPK_INSERTENTTRANSITO → IMOV ESTADO=0. Restaura IMOVH.PCOSTO base. Si hay CUFE, lo copia al tránsito y a la entrada (no editable en Movimientos).",
+      "sp": "SPQ_FCOM_RECEPCION_MASIVA",
+      "llama": ["SPK_INSERTENTTRANSITO", "SPK_FCOM_RECALCULA_RECEPCION"],
+      "llamaAnterior": ["N1-excel"],
+      "llamaSiguiente": ["N3-pendiente"],
+      "efecto": "IMOV 0 + ITRA loteado. No IEXI.",
+      "puntosCriticos": ["PC-INVOP-MAS-01", "PC-INVOP-MAS-02"]
+    },
+    {
+      "id": "N3-pendiente",
+      "orden": 3,
+      "nombre": "Siguiente: confirmar en Movimientos",
+      "explicacionCapacitacion": "Igual que el loteo manual: hay que CONF_ENTRADA. El Excel no mira PRI ni compara la fecha de factura con la de la orden.",
+      "llamaAnterior": ["N2-insertar"],
+      "llamaSiguiente": [],
+      "efecto": "Puente a confirmación.",
+      "puntosCriticos": ["PC-INVOP-MAS-03"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_FCOM_RECEPCION_MASIVA ya leido (decimal 19,6; CUFE; no confirma).",
+    "fase2Hecha": true
+  }
+}

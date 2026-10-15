@@ -1,0 +1,218 @@
+{
+  "tramo": "cotizaciones",
+  "nombre": "Cotización de compras",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_ILPRE · GUARDA_COTIZACION / GUARDA_ICTZD / IMPORTAR_MASIVO_ICTZD / GENERAR_OC / LEER_DETALLE_OC (PREVERSION = 2.0.7)",
+  "pantalla": {
+    "path": "/inv/cotizacion",
+    "vue": "CotizacionPage → CotizacionComponent",
+    "menu": "Inventario → Venta a particulares → Cotización de compras",
+    "permisos": ["MENUQ_INVENTARIO", "BTN_ELIMINAR_ICTZD"]
+  },
+  "documentoOrigen": {
+    "tabla": "ICTZ",
+    "claves": ["CNSICTZ"],
+    "detalle": "ICTZD (artículo, proveedor, cantidad, VLR_TOTAL, IVA); al generar: FCOM/FCOMD ESTADO=C"
+  },
+  "noEs": [
+    "No es la cotización comercial (Inventario → Cotización comercial, ICTZG): esa no genera orden.",
+    "No es la lista de precios (ILPRE): la lista solo alimenta el valor y el mínimo.",
+    "GENERAR_OC no confirma la orden ni crea tránsito ni toca IEXI."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Lista de precios y bodega",
+      "explicacionCapacitacion": "La cotización pide artículos con un proveedor de la lista. El valor se puede traer de ILPRED vigente en la fecha de la cotización (prioridad, luego menor precio). El valor mínimo de esa lista bloquea GENERAR_OC. La bodega se elige al generar la orden (CCOSTO/IDAREA salen de IBOD).",
+      "sp": [],
+      "metodoUi": ["Tramo listas-precios (ILPRE/ILPRED)", "IBOD de la bodega destino"],
+      "requiresConfig": [
+        {
+          "id": "ilpre-opcional-minimo",
+          "tabla": "ILPRE",
+          "desc": "Si hay ILPRE Activo vigente en ICTZ.FECHA, GENERAR_OC exige total por proveedor ≥ VLR_MIN_ACEPT. Sin lista, el mínimo no se aplica.",
+          "obligatorio": false
+        },
+        {
+          "id": "ibod-al-generar",
+          "tabla": "IBOD",
+          "desc": "IDBODEGA que llega a GENERAR_OC; de ahí CCOSTO e IDAREA de la FCOM. El SP no comprueba que la bodega exista.",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-cabecera-ictz"],
+      "efecto": "Hay de dónde sacar precio y a qué bodega irá la orden. Todavía no hay cotización.",
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GUARDA_ILPRE",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N1-cabecera-ictz",
+      "orden": 1,
+      "nombre": "Crear la cotización",
+      "explicacionCapacitacion": "Nueva cotización: estado (habitual Ingresado) y observación. No se edita si ya está en Compra o Cerrado. La fecha la pone el servidor.",
+      "sp": "SPQ_ILPRE",
+      "metodoUi": ["GUARDA_COTIZACION"],
+      "requiresDocumento": [
+        {
+          "id": "estado-editable",
+          "desc": "ESTADO informado y distinto de Compra y Cerrado",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-detalle-ictzd"],
+      "erroresKo": [
+        "Se debe seleccionar un estado.",
+        "El registro ya cuenta con Orden de Compra.",
+        "El registro ya se encuentra Cerrado."
+      ],
+      "efecto": "Nace ICTZ (CNSICTZ) en el estado elegido. Sin líneas todavía.",
+      "puntosCriticos": ["PC-INVOP-ICTZ-01"],
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GUARDA_COTIZACION",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-detalle-ictzd",
+      "orden": 2,
+      "nombre": "Artículos, proveedor y valor",
+      "explicacionCapacitacion": "Cada línea (GUARDA_ICTZD) o Excel (VALIDAR_MASIVO_ICTZD → IMPORTAR_MASIVO_ICTZD): artículo, cantidad, proveedor de la lista y valor total. Un artículo una vez. No se borra ni se cambia el proveedor si la cotización ya está en Compra. Al asignar proveedor, si no mandan valor, se calcula desde ILPRED vigente (prioridad, luego menor precio) con IVA si la línea lo tiene. El artículo principal no se cotiza en la carga masiva.",
+      "sp": "SPQ_ILPRE",
+      "metodoUi": [
+        "GUARDA_ICTZD",
+        "ACTUALIZA_PROVEEDORES",
+        "ACTUALIZA_VLR_TOTAL",
+        "VALIDAR_MASIVO_ICTZD",
+        "IMPORTAR_MASIVO_ICTZD"
+      ],
+      "requiresDocumento": [
+        {
+          "id": "cnsictz",
+          "desc": "CNSICTZ existe y ESTADO ≠ Compra",
+          "obligatorio": true
+        },
+        {
+          "id": "linea-valida",
+          "desc": "Proveedor en TER; VLR_TOTAL > 0; artículo no repetido",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N1-cabecera-ictz"],
+      "llamaSiguiente": ["N3-generar-oc"],
+      "erroresKo": [
+        "Debe indicar el proveedor (IDTERCERO) de la lista de precios.",
+        "El proveedor indicado no existe en TER.",
+        "El valor total de la línea (VLR_TOTAL) debe ser mayor a cero.",
+        "El artículo ingresado ya existe.",
+        "La cotización tiene orden de compra. No se puede eliminar el detalle.",
+        "El artículo es principal y no se puede cotizar"
+      ],
+      "efecto": "ICTZD listo. Aún no hay FCOM ni existencias.",
+      "puntosCriticos": ["PC-INVOP-ICTZ-02", "PC-INVOP-ICTZ-07"],
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GUARDA_ICTZD",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "IMPORTAR_MASIVO_ICTZD",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-generar-oc",
+      "orden": 3,
+      "nombre": "Generar la orden (queda abierta)",
+      "explicacionCapacitacion": "Generar OC crea una FCOM estado C por cada proveedor de las líneas pendientes (cantidad > 0, valor ≠ 0, proveedor informado). Procedencia ILPRE. Marca la cotización en Compra y guarda la lista de números en CNSFCOM_LIST. Hay que ir a Orden de compra y confirmar: sin eso no hay tránsito ni existencias.",
+      "sp": "SPQ_ILPRE",
+      "metodoUi": ["GENERAR_OC", "LEER_DETALLE_OC"],
+      "requiresDocumento": [
+        {
+          "id": "ictz-no-cerrada",
+          "desc": "ICTZ no Cerrado ni Compra",
+          "obligatorio": true
+        },
+        {
+          "id": "minimo-si-hay-lista",
+          "desc": "Suma VLR_TOTAL por proveedor ≥ VLR_MIN_ACEPT de ILPRE Activo vigente en ICTZ.FECHA (si no hay lista, no se valida)",
+          "obligatorio": "si hay ILPRE vigente"
+        }
+      ],
+      "llamaAnterior": ["N2-detalle-ictzd"],
+      "llamaSiguiente": ["N4-aguas-abajo"],
+      "llama": ["SPK_GENCONSECUTIVO", "SPK_UPDATE_VLRS_FCOM"],
+      "erroresKo": [
+        "El registro se encuentra cerrado.",
+        "El registro se encuentra con Orden de Compra.",
+        "El total de la orden de compra para el proveedor … es inferior al valor mínimo aceptado…"
+      ],
+      "efecto": "Una o más FCOM ESTADO=C, ORDENCOMPRA=0; FCOMD; ICTZD.PROCESADO=1; ICTZ.ESTADO=Compra. No ITRA ni IEXI.",
+      "puntosCriticos": ["PC-INVOP-ICTZ-03", "PC-INVOP-ICTZ-04", "PC-INVOP-ICTZ-05", "PC-INVOP-ICTZ-06"],
+      "fichas": [
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "GENERAR_OC",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        },
+        {
+          "sp": "SPQ_ILPRE",
+          "metodo": "LEER_DETALLE_OC",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-aguas-abajo",
+      "orden": 4,
+      "nombre": "Siguiente: confirmar la orden",
+      "explicacionCapacitacion": "La orden abierta se confirma en Procesos → Orden de compra. La otra pantalla «Cotización comercial» (ICTZG) no entra aquí: no crea FCOM.",
+      "sp": ["SPQ_FCOM · CONFIRMAR_ORDEN (tramo órdenes de compra)"],
+      "metodoUi": ["CONFIRMAR_ORDEN"],
+      "llamaAnterior": ["N3-generar-oc"],
+      "llamaSiguiente": [],
+      "efecto": "Puente al grafo de órdenes de compra. Este tramo termina aquí.",
+      "hermanoExcluido": {
+        "id": "ictzg",
+        "pantalla": "inventario.ic / Cotización comercial",
+        "sp": "SPQ_ICTZG · COTIZA_CRUD / CERRAR_COTIZACION / ANULAR_COTIZACION",
+        "efecto": "Solo cambia estado de ICTZG. No crea FCOM ni IMOV."
+      },
+      "puntosCriticos": ["PC-INVOP-ICTZ-08"],
+      "fichas": [
+        {
+          "sp": "SPQ_ICTZG",
+          "metodo": "COTIZA_CRUD",
+          "proceso": "inventario",
+          "archivo": "conocimiento/inventario/sps.json"
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "Se releyó SPQ_ILPRE (PREVERSION = 2.0.7) para GENERAR_OC, GUARDA_COTIZACION, IMPORTAR_MASIVO y LEER_DETALLE_OC. LEER_DETALLE_OC pasó de parcial a leido.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}

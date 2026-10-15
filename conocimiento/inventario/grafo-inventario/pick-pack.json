@@ -1,0 +1,99 @@
+{
+  "tramo": "pick-pack",
+  "nombre": "Pick & Pack (preparación de pedidos)",
+  "actualizado": "2026-10-14",
+  "tocaIexi": false,
+  "notaTocaIexi": "Reservar lote no descuenta. IEXI baja al Confirmar salida (tramo 7) cuando el packing está finalizado.",
+  "fuenteSql": "IXONLINE/SQL · SPQ_IMOV_4 · CREAR_ORDEN_PICKING / AGREGAR_LOTE_PICKING / CONFIRMA_PICKING / FINALIZAR_PACKING (PREVERSION = 2.0.7)",
+  "pantalla": {
+    "path": "/inv/packing",
+    "vue": "PackingPage",
+    "menu": "Inventario → Packing"
+  },
+  "documentoOrigen": {
+    "tabla": "IMOV",
+    "claves": ["CNSMOV"],
+    "detalle": "IMOVH líneas; ISAL reserva soft por lote (ES_PICKPACK)"
+  },
+  "noEs": [
+    "Finalizar packing no confirma la salida.",
+    "No aplica a todas las bodegas: solo MANEJA_PICKPACK y tipos en IDMOVPICKPACK.",
+    "No es el picking de la dispensación (IZSOLDT)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Bodega P&P, tipos y roles",
+      "explicacionCapacitacion": "IBOD.MANEJA_PICKPACK. Tipos permitidos en IDMOVPICKPACK (habitual: traslado 14 y venta VC). Roles picker/packer en el usuario. Permisos ASIG_LOTES_PICK, QUITAR_ART_PICK, VAL_PICKING, CONF_PICKING.",
+      "requiresConfig": [
+        {
+          "id": "maneja-pp",
+          "tabla": "IBOD",
+          "desc": "MANEJA_PICKPACK",
+          "obligatorio": true
+        },
+        {
+          "id": "tipos",
+          "usvgs": ["IDMOVPICKPACK"],
+          "desc": "Lista de tipos que pasan por packing",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-orden"],
+      "puntosCriticos": ["PC-INVOP-PPK-01"]
+    },
+    {
+      "id": "N1-orden",
+      "orden": 1,
+      "nombre": "Crear orden y reservar lotes",
+      "explicacionCapacitacion": "CREAR_ORDEN_PICKING arma IMOV+IMOVH. AGREGAR_LOTE_PICKING inserta ISAL y bloquea el disponible frente a otras reservas. IMOV sigue en 0.",
+      "sp": ["SPQ_IMOV_4 · CREAR_ORDEN_PICKING", "SPQ_IMOV_4 · AGREGAR_LOTE_PICKING"],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-picking"],
+      "efecto": "Reserva soft. IEXI no baja.",
+      "puntosCriticos": ["PC-INVOP-PPK-02"]
+    },
+    {
+      "id": "N2-picking",
+      "orden": 2,
+      "nombre": "Confirmar picking → packing",
+      "explicacionCapacitacion": "CONFIRMA_PICKING valida rol, permiso y tipo. En venta puede aplicar tarifa si PVENTA_AUTO_TARIFA=SI. DEVOLVER_PICKING regresa a corregir. Descartar una línea con picking confirmado no se permite.",
+      "sp": ["SPQ_IMOV_4 · CONFIRMA_PICKING", "SPQ_IMOV_4 · DEVOLVER_PICKING"],
+      "llamaAnterior": ["N1-orden"],
+      "llamaSiguiente": ["N3-packing"],
+      "efecto": "Pasa a packing. Sigue sin descontar.",
+      "erroresKo": [
+        "El usuario no tiene rol de Picking.",
+        "No tiene permiso para confirmar picking a packing (CONF_PICKING)."
+      ]
+    },
+    {
+      "id": "N3-packing",
+      "orden": 3,
+      "nombre": "Finalizar packing",
+      "explicacionCapacitacion": "FINALIZAR_PACKING marca el empaque. Bloquea si el lote ya no alcanza (incluye reservas ajenas). Listo para Confirmar salida en Movimientos.",
+      "sp": ["SPQ_IMOV_4 · FINALIZAR_PACKING"],
+      "llamaAnterior": ["N2-picking"],
+      "llamaSiguiente": ["N4-confirmar"],
+      "efecto": "IMOV listo. No OM ni IEXI.",
+      "puntosCriticos": ["PC-INVOP-PPK-03"]
+    },
+    {
+      "id": "N4-confirmar",
+      "orden": 4,
+      "nombre": "Confirmar salida (tramo 7)",
+      "explicacionCapacitacion": "CONFIRMA_SALIDA rechaza si el packing no terminó o si invade existencias reservadas por otros pedidos.",
+      "sp": ["SPQ_IMOV · CONFIRMA_SALIDA"],
+      "llamaAnterior": ["N3-packing"],
+      "efecto": "Ahí sí descuenta IEXI.",
+      "puntosCriticos": ["PC-INVOP-PPK-04"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_IMOV_4 leido. INV-TCK-03 es listados UI, no el flujo.",
+    "fase2Hecha": true
+  }
+}

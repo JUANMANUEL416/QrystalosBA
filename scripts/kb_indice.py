@@ -187,17 +187,24 @@ def generar() -> dict:
                     if isinstance(t, str):
                         _add(tabla_map, t.strip().upper(), {"proceso": pid, "sp": nombre, "metodo": met["id"], "archivo": archivo_s, "ruta": ruta})
     grafo_map: dict = {}
-    gdir = KB / "contabilidad" / "grafo-contabilizacion"
-    if gdir.is_dir():
+    for rel, clave_extra in (
+        ("contabilidad/grafo-contabilizacion", "procedencia"),
+        ("inventario/grafo-inventario", "tramo"),
+        ("acctran/grafo-acctran", "tramo"),
+    ):
+        gdir = KB / Path(rel)
+        if not gdir.is_dir():
+            continue
         for gpath in sorted(gdir.glob("*.json")):
-            if gpath.name.startswith(("puntos-criticos", "VALIDACION")):
+            if gpath.name.startswith(("puntos-criticos", "VALIDACION", "PLAN")):
                 continue
             g = _leer(gpath, {}) or {}
-            arch = f"conocimiento/contabilidad/grafo-contabilizacion/{gpath.name}"
+            arch = f"conocimiento/{rel}/{gpath.name}"
+            extra = g.get(clave_extra) or g.get("procedencia") or g.get("tramo") or ""
             for ni, nodo in enumerate(g.get("nodos") or []):
                 if not isinstance(nodo, dict) or not nodo.get("id"):
                     continue
-                ref = {"grafo": gpath.stem, "procedencia": g.get("procedencia") or "", "archivo": arch, "ruta": f"nodos[{ni}]", "nodo": nodo["id"]}
+                ref = {"grafo": gpath.stem, "procedencia": extra, "archivo": arch, "ruta": f"nodos[{ni}]", "nodo": nodo["id"]}
                 _add(grafo_map, f"{gpath.stem}/{nodo['id']}", ref)
                 sps_n = nodo.get("sp") if isinstance(nodo.get("sp"), list) else [nodo.get("sp")]
                 for sp in sps_n:

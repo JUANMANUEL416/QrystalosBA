@@ -1,0 +1,110 @@
+{
+  "tramo": "dispensacion",
+  "nombre": "Dispensación (solicitudes de farmacia)",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "procesoHermano": "dispensacion",
+  "fuenteSql": "IXONLINE/SQL · SPQ_IZSOL · AGREGAR / ENTREGAR / PROCESAR / CONF_MOVIMIENTO; SPQ_IZSOL_2 · PROCESAR_DEVOLUCION; SPK_CONFIRMASAL_CM (PREVERSION ≠ 2.0.7)",
+  "pantalla": {
+    "path": "/inv/sol_2",
+    "vue": "SolicitudesPage → IndexComponent / IMOVComponent",
+    "menu": "Inventario → Solicitudes"
+  },
+  "documentoOrigen": {
+    "tabla": "IZSOL",
+    "claves": ["CNSIZSOL"],
+    "detalle": "IZSOLD líneas; IZSOLDT picking por lote; IMOV salida tipo habitual 06"
+  },
+  "noEs": [
+    "No es la venta de mostrador (VE) ni la Factura INV (VC).",
+    "Tomar o entregar no descuenta existencias.",
+    "Devolver una dispensación no es la devolución a proveedor (tipo 05)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Bodega, vigencia y tipo de salida",
+      "explicacionCapacitacion": "Hay que elegir bodega. La vigencia (MVIGENCIAIZSOL / HVIGENCIAIZSOL) y el cierre de admisión (ALTAS_QUE_VALIDA_INV) bloquean según la clase. El tipo de movimiento lo fija la institución; no es VE ni custodia. IZSOL.CLASE decide paciente, tercero y cobro.",
+      "requiresConfig": [
+        {
+          "id": "bodega-activa",
+          "tabla": "IBOD",
+          "desc": "Bodega de farmacia con permiso y stock",
+          "obligatorio": true
+        },
+        {
+          "id": "vigencia",
+          "usvgs": ["MVIGENCIAIZSOL", "HVIGENCIAIZSOL", "ALTAS_QUE_VALIDA_INV"],
+          "desc": "Horas de vigencia y altas que validan",
+          "obligatorio": false
+        }
+      ],
+      "llamaSiguiente": ["N1-solicitud"],
+      "puntosCriticos": ["PC-INVOP-DIS-01"]
+    },
+    {
+      "id": "N1-solicitud",
+      "orden": 1,
+      "nombre": "Solicitud IZSOL según procedencia",
+      "explicacionCapacitacion": "Nace en enfermería, orden médica, 24 horas, consulta externa, cirugía, aplicación, consumo, prestaciones, etc. Cada clase cambia validaciones. Manual CE (TRANS_CE, FORMEDCE) salta vigencia, cierre y copago. Canastas y gasto por consumo son el mismo menú con otro tipo.",
+      "requiresDocumento": [
+        {
+          "id": "izsol-abierta",
+          "desc": "IZSOL abierta; AUT no anulada si es CE; copago recaudado si GENEROCAJA=1",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-agregar"],
+      "efecto": "Hay una solicitud para tomar."
+    },
+    {
+      "id": "N2-agregar",
+      "orden": 2,
+      "nombre": "Tomar → entregar → procesar (aún sin stock)",
+      "explicacionCapacitacion": "AGREGAR toma la solicitud (un equipo a la vez) y crea IMOV 0. ENTREGAR elige lote: stock, cantidad, PROA y medicamento no suspendido. PROCESAR pasa el picking a IMOVH. Hasta aquí el movimiento sigue pendiente.",
+      "sp": ["SPQ_IZSOL · AGREGAR", "SPQ_IZSOL · ENTREGAR", "SPQ_IZSOL · PROCESAR"],
+      "llama": ["SPK_CM_GENIMOV_SOL", "SPK_IZSOLDT_PROCESOS", "SPK_PROCESA_IZSOLDT"],
+      "llamaAnterior": ["N1-solicitud"],
+      "llamaSiguiente": ["N3-confirmar"],
+      "efecto": "IMOV ESTADO=0; IZSOLDT/IMOVH listos. No IEXI.",
+      "erroresKo": [
+        "La Admision se encuentra cerrada. No se puede generar movimientos",
+        "La Solicitud se encuentra Vencida.... Ya no es posible su Entrega",
+        "Este medicamento está suspendido en la orden médica. No se puede dispensar.",
+        "Se tiene menos articulos en Stock."
+      ],
+      "puntosCriticos": ["PC-INVOP-DIS-02"]
+    },
+    {
+      "id": "N3-confirmar",
+      "orden": 3,
+      "nombre": "Confirmar movimiento (aquí se descuenta)",
+      "explicacionCapacitacion": "CONF_MOVIMIENTO llama SPK_CONFIRMASAL_CM (no SPK_CONFIRMARSALIDAS). Cobra si aplica, cierra la solicitud si no queda pendiente y marca APLIM dispensada. No mira PRI.CERRADO_INV. El presupuesto de materiales está apagado (INV-TCK-04).",
+      "sp": ["SPQ_IZSOL · CONF_MOVIMIENTO"],
+      "llama": ["SPK_CONFIRMASAL_CM", "SPK_GENCOBRO_INSCENTRAL", "SPK_NC_CONTAB_INV"],
+      "llamaAnterior": ["N2-agregar"],
+      "llamaSiguiente": ["N4-despues"],
+      "efecto": "IMOV ESTADO=1; totales IDXB/IART; IZSOL puede quedar cerrada.",
+      "puntosCriticos": ["PC-INVOP-DIS-03", "PC-INVOP-DIS-04"]
+    },
+    {
+      "id": "N4-despues",
+      "orden": 4,
+      "nombre": "Devolver, cerrar y variantes",
+      "explicacionCapacitacion": "PROCESAR_DEVOLUCION crea una entrada con IDINVMOV_DEVOLUCION, la confirma y puede abrir una nueva solicitud. Deshacer entrega no procede si enfermería ya recibió. Lista de trabajo (LISTA_AUT) arma y confirma como una solicitud más.",
+      "sp": ["SPQ_IZSOL_2 · PROCESAR_DEVOLUCION", "SPQ_IZSOL · CERRAR_IZSOL"],
+      "llama": ["SPK_CONFIRMARENTRADAS"],
+      "llamaAnterior": ["N3-confirmar"],
+      "efecto": "Reingreso por devolución de dispensación, no por nota crédito.",
+      "puntosCriticos": ["PC-INVOP-DIS-05", "PC-INVOP-DIS-06"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "AGREGAR / ENTREGAR / PROCESAR / CONF_MOVIMIENTO y SPK_CONFIRMASAL_CM ya leido. PREVERSION de CONFIRMASAL_CM va por delante (CCOSTO TRANS_CE).",
+    "fase2Hecha": true
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "tramo": "ventas",
+  "actualizado": "2026-10-14",
+  "puntos": [
+    {
+      "id": "PC-INVOP-VTA-01",
+      "nombre": "Caja abierta no se exige al guardar",
+      "nodo": "N0-config",
+      "dimension": ["logica", "null"],
+      "severidad": "alta",
+      "invariante": "GUARDA_VENTA busca ACJ ABIERTA=1 para CNSACJ. Si no hay, CNSACJ queda NULL y el FCJ se inserta igual. Capacitación: abrir caja antes. Desarrollo: el SP debería KO.",
+      "validacionSql": "venta_acj_abierta",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-VTA-02",
+      "nombre": "El carrito no descuenta; el cierre sí",
+      "nodo": "N1-documento",
+      "dimension": ["existencias"],
+      "severidad": "alta",
+      "invariante": "INSERTA_PRESELL solo comprueba IEXI.EXISLOTE ≥ cantidad. IEXI se resta en GUARDA_VENTA, después de SPK_CONFIRMARSALIDAS (ese SPK no descuenta el lote comercial). Si el UPDATE no cubre todas las ISAL, se revierte toda la transacción.",
+      "validacionSql": "venta_iexi_vs_isal"
+    },
+    {
+      "id": "PC-INVOP-VTA-03",
+      "nombre": "FECHACONF = ahora; no mira periodo inventario",
+      "nodo": "N2-cerrar",
+      "dimension": ["fechaconf"],
+      "severidad": "alta",
+      "invariante": "IMOV nace con FECHAMOV=hoy, ESTADO=0. CONFIRMARSALIDAS pone ESTADO=1 y FECHACONF=hoy (sin milisegundos). No consulta PRI.CERRADO_INV. Una venta con periodo de inventario cerrado igual confirma y descuenta.",
+      "validacionSql": "venta_fechaconf_pri",
+      "fase2": "fechaconf"
+    },
+    {
+      "id": "PC-INVOP-VTA-04",
+      "nombre": "Factura INV no vuelve a tocar IEXI",
+      "nodo": "N2-cerrar",
+      "dimension": ["existencias"],
+      "severidad": "media",
+      "invariante": "FACTMASIVO / FACTURAR_IMOV exigen IMOV ya confirmado. El stock salió en CONFIRMA_SALIDA. FACTURAR_IMOV KO si hay ISAL sin IEXI asociada (el lote ya no está).",
+      "validacionSql": "vc_isal_sin_iexi"
+    },
+    {
+      "id": "PC-INVOP-VTA-05",
+      "nombre": "Nota crédito no reingresa lote",
+      "nodo": "N3-iexi",
+      "dimension": ["existencias"],
+      "severidad": "alta",
+      "invariante": "GESVENTA · GEN_NC crea FNOT y puede anular FTR. El reingreso es ANULA_IMOV_SALVENTA / DEVUELVE_ARTICULO (entrada IDTIPOMOVDEV_CLIENTE → SPK_CONFIRMARENTRADAS). Capacitación: NC ≠ devolver a bodega.",
+      "validacionSql": null
+    },
+    {
+      "id": "PC-INVOP-VTA-06",
+      "nombre": "IDARTICULO recortado a 10 en el carrito",
+      "nodo": "N1-documento",
+      "dimension": ["truncamiento", "existencias"],
+      "severidad": "alta",
+      "invariante": "INSERTA_PRESELL declara IDARTICULO VARCHAR(10). Si el código tiene más de 10 caracteres, el carrito guarda un código corto y el cruce con IEXI puede fallar o descontar otro lote. GUARDA_VENTA sí usa VARCHAR(20).",
+      "validacionSql": null,
+      "fase2": "truncamiento"
+    },
+    {
+      "id": "PC-INVOP-VTA-07",
+      "nombre": "IDITAR fijo '01' en la cabecera",
+      "nodo": "N2-cerrar",
+      "dimension": ["logica"],
+      "severidad": "media",
+      "invariante": "GUARDA_VENTA inserta IMOV.IDITAR='01' aunque el artículo tenga otro tipo. Puede desviar cuentas o informes que leen IDITAR del movimiento.",
+      "validacionSql": "venta_iditar_01",
+      "fase2": "logica"
+    },
+    {
+      "id": "PC-INVOP-VTA-08",
+      "nombre": "Textos KO y tildes",
+      "nodo": "N2-cerrar",
+      "dimension": ["programacion"],
+      "severidad": "baja",
+      "invariante": "«Respomsable», «el mayor al valor total», «preselección» con tilde rota, GEN_NC con tildes rotas. No afectan existencias.",
+      "validacionSql": null,
+      "fase2": "truncamiento"
+    }
+  ]
+}

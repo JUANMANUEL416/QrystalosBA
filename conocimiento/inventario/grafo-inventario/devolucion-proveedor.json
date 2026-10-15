@@ -1,0 +1,102 @@
+{
+  "tramo": "devolucion-proveedor",
+  "nombre": "Devolución a proveedor",
+  "actualizado": "2026-10-14",
+  "tocaIexi": true,
+  "fuenteSql": "IXONLINE/SQL · SPQ_DEVOLU_PROVEEDOR · GUARDA_REGISTRO / GUARDA_REGISTRO_IMOVH / DEVOLUCION_TOTAL / CONFIRMAR_DEVOLUCION (PREVERSION = 2.0.7)",
+  "pantalla": {
+    "path": "/inv/devpro",
+    "vue": "Procesos/DevProPage",
+    "menu": "Inventario → Procesos → Devolución a proveedor"
+  },
+  "documentoOrigen": {
+    "tabla": "FCOM",
+    "claves": ["CNSFCOM"],
+    "detalle": "IMOV salida tipo IDINVDEVPROVEEDOR (código habitual 05); IMOVH / ISAL por lote"
+  },
+  "noEs": [
+    "No parte de una entrada suelta: parte de la orden ya ingresada.",
+    "No es la devolución de una dispensación (IDINVMOV_DEVOLUCION).",
+    "La nota a la CxP se gestiona en Cuentas por pagar, no en esta pantalla."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Tipo 05 y CxP de la orden",
+      "explicacionCapacitacion": "IDINVDEVPROVEEDOR debe apuntar a un tipo con proveedor y que se contabiliza. La CxP de la orden tiene que existir y su comprobante debe permitir el cambio.",
+      "requiresConfig": [
+        {
+          "id": "tipo-05",
+          "usvgs": ["IDINVDEVPROVEEDOR"],
+          "desc": "Tipo de salida a proveedor",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-oc"],
+      "puntosCriticos": ["PC-INVOP-DEV-01"]
+    },
+    {
+      "id": "N1-oc",
+      "orden": 1,
+      "nombre": "Orden ya ingresada",
+      "explicacionCapacitacion": "GUARDA_REGISTRO crea el IMOV de devolución si la OC existe, no está ya devuelta y la CxP lo permite.",
+      "sp": ["SPQ_DEVOLU_PROVEEDOR · GUARDA_REGISTRO"],
+      "requiresDocumento": [
+        {
+          "id": "fcom-ingresada",
+          "desc": "Orden existe; no Devuelta; CxP y comprobante permiten",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-lineas"],
+      "efecto": "IMOV salida 05 en 0. No IEXI.",
+      "erroresKo": [
+        "El registro ya se encuentra Devuleto",
+        "NO EXISTE LA ORDEN DE COMPRA"
+      ]
+    },
+    {
+      "id": "N2-lineas",
+      "orden": 2,
+      "nombre": "Marcar artículos y lotes",
+      "explicacionCapacitacion": "Uno a uno (GUARDA_REGISTRO_IMOVH) o DEVOLUCION_TOTAL. No se repite el artículo: hay que editarlo.",
+      "sp": ["SPQ_DEVOLU_PROVEEDOR · GUARDA_REGISTRO_IMOVH", "SPQ_DEVOLU_PROVEEDOR · DEVOLUCION_TOTAL"],
+      "llamaAnterior": ["N1-oc"],
+      "llamaSiguiente": ["N3-confirmar"],
+      "efecto": "IMOVH marcado. Stock aún en bodega."
+    },
+    {
+      "id": "N3-confirmar",
+      "orden": 3,
+      "nombre": "Confirmar devolución (descuenta)",
+      "explicacionCapacitacion": "Arma ISAL y llama SPK_CONFIRMARSALIDAS. Exige existencia suficiente. El tipo 05 se contabiliza como movimiento; la nota al proveedor vive en CxP.",
+      "sp": ["SPQ_DEVOLU_PROVEEDOR · CONFIRMAR_DEVOLUCION"],
+      "llama": ["SPK_CONFIRMARSALIDAS"],
+      "llamaAnterior": ["N2-lineas"],
+      "llamaSiguiente": ["N4-cxp"],
+      "efecto": "Salida confirmada; IEXI baja.",
+      "erroresKo": [
+        "No Ha Ingresado Ningn Articulo Para Devolucin",
+        "Existencias Insuficientes, Revise"
+      ],
+      "puntosCriticos": ["PC-INVOP-DEV-02", "PC-INVOP-DEV-03"]
+    },
+    {
+      "id": "N4-cxp",
+      "orden": 4,
+      "nombre": "Efecto en la cuenta por pagar",
+      "explicacionCapacitacion": "Puente al proceso cxp-fcxp (nota a proveedor). ABRIR_CUENTA / CERRAR_CUENTA no están fichados en este libro.",
+      "llamaAnterior": ["N3-confirmar"],
+      "efecto": "Stock ya salió. La CxP se ajusta en el otro módulo.",
+      "puntosCriticos": ["PC-INVOP-DEV-04"]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "SPQ_DEVOLU_PROVEEDOR leido. CONFIRMAR_DEVOLUCION no declara noValida de PRI; hereda el hueco de CONFIRMARSALIDAS.",
+    "fase2Hecha": true
+  }
+}

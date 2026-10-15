@@ -1,0 +1,155 @@
+{
+  "tramo": "creacion",
+  "nombre": "Creación del expediente SOAT",
+  "actualizado": "2026-10-14",
+  "generaFtr": false,
+  "fuenteSql": "IXONLINE/SQL · SPQ_HACTRAN (LLENAR / INSERT / UPDATE leídos). DATOSAFI no se bajó.",
+  "pantalla": {
+    "path": "/asis/soat",
+    "vue": "AccidentesPage → HactranComponent",
+    "menu": "Asistencial → SOAT",
+    "permisos": ["asis.soat"],
+    "otrasEntradas": [
+      "Admisión / triage: diálogo Accidentes del paciente (idafiliado, noadmision)",
+      "Agenda CE / autorizador: mismo modal embebido"
+    ]
+  },
+  "documentoOrigen": {
+    "tabla": "HACTRAN",
+    "claves": ["CNSHACTRAN"],
+    "detalle": "HACTRAND (tramo 2). Pestañas: Accidente, Paciente, Vehículo, Conductor, Remisión, Amparo."
+  },
+  "noEs": [
+    "No es el cargo HPRE ni la factura.",
+    "No genera FURIPS: el expediente solo guarda datos del accidente.",
+    "No es RIPS JSON.",
+    "Crear el expediente el mismo día para el mismo accidentado está bloqueado."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Plan, tarifa y afiliado",
+      "explicacionCapacitacion": "Antes de abrir el expediente: el paciente existe (AFI) y hay variables de plan/tarifa SOAT. Los catálogos de tipo documento y tipo transporte los pinta el FE.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-soat",
+          "tabla": "USVGS",
+          "desc": "IDTARIFASOAT e IDPLANSOAT (código habitual; el valor lo define cada institución)",
+          "obligatorio": true,
+          "usvgs": ["IDTARIFASOAT", "IDPLANSOAT"]
+        },
+        {
+          "id": "afi-paciente",
+          "tabla": "AFI",
+          "desc": "Afiliado del expediente (IDAFILIADO). Vehículo y Conductor ya pueden copiar AFI (DATOSAFI).",
+          "obligatorio": true
+        }
+      ],
+      "requiresDocumento": [],
+      "llamaSiguiente": ["N1-alta-hactran"],
+      "efecto": "Hay paciente y parametrización. Todavía no hay expediente.",
+      "fichas": []
+    },
+    {
+      "id": "N1-alta-hactran",
+      "orden": 1,
+      "nombre": "Crear el expediente",
+      "explicacionCapacitacion": "Guardar nuevo: el FE manda JSON (accidente, paciente, vehículo, conductor, remisión, amparo). Nace HACTRAN con consecutivo. Un mismo afiliado no puede tener dos accidentes el mismo día.",
+      "sp": "SPQ_HACTRAN",
+      "metodoUi": ["INSERT"],
+      "requiresDocumento": [
+        {
+          "id": "no-duplicar-dia",
+          "desc": "No existe otro HACTRAN del mismo IDAFILIADO accidentado en el mismo día",
+          "obligatorio": true
+        }
+      ],
+      "requiresConfig": [],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-editar-cargar"],
+      "efecto": "Nueva fila HACTRAN. Consecutivo con SPK_GENCONSECUTIVO. No toca HPRE ni FTR.",
+      "puntosCriticos": ["PC-SOAT-CRE-01", "PC-SOAT-CRE-02"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "INSERT",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-editar-cargar",
+      "orden": 2,
+      "nombre": "Cargar y editar pestañas",
+      "explicacionCapacitacion": "Abrir el modal: LLENAR trae el expediente tal como está (incluido Amparo). Guardar cambios: UPDATE. Amparo se puede copiar del paciente (botón; DATOSAFI). El SP no obliga a que Amparo coincida con AFI.",
+      "sp": "SPQ_HACTRAN",
+      "metodoUi": ["LLENAR", "UPDATE"],
+      "requiresDocumento": [
+        {
+          "id": "cnshactran",
+          "desc": "CNSHACTRAN informado",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N1-alta-hactran"],
+      "llamaSiguiente": ["N3-sin-factura"],
+      "efecto": "UPDATE de columnas existentes. LLENAR es solo lectura. Amparo vacío se queda vacío si nadie lo llena.",
+      "puntosCriticos": ["PC-SOAT-CRE-03"],
+      "fichas": [
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "LLENAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_HACTRAN",
+          "metodo": "UPDATE",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        },
+        {
+          "sp": "SPQ_PACIENTE_COL",
+          "metodo": "DATOSAFI",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json",
+          "estado": "listado"
+        }
+      ]
+    },
+    {
+      "id": "N3-sin-factura",
+      "orden": 3,
+      "nombre": "El expediente aún no cobra",
+      "explicacionCapacitacion": "Con el HACTRAN creado ya se puede ligar la admisión (HADM.CNSHACTRAN) y abrir Cargos SOAT. Este tramo no factura ni exporta FURIPS.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N2-editar-cargar"],
+      "llamaSiguiente": ["N4-aguas-abajo"],
+      "efecto": "no aplica (no escribe IEXI ni FTR). Puente a detalle/topes y a HADM.",
+      "puntosCriticos": ["PC-SOAT-CRE-04"]
+    },
+    {
+      "id": "N4-aguas-abajo",
+      "orden": 4,
+      "nombre": "Quién consume el expediente",
+      "explicacionCapacitacion": "Siguiente: detalle HACTRAND (topes/SIRAS). Luego cargos con GFACSOAT. La factura y el FURIPS (TXT o JSON) vienen después. Desde CE, el autorizador también enlaza AUT.CNSHACTRAN.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N3-sin-factura"],
+      "llamaSiguiente": [],
+      "efecto": "Puente a tramos 2–8. Este tramo termina aquí."
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "LLENAR / INSERT / UPDATE ya leidos. El resto de SPQ_HACTRAN (CONSULTAR, DELETE, topes, SIRAS, certificados) está en cola del SP: se ficha en tramos 2 y 8, no bloquea el alta.",
+    "parcialesDelTramo": ["SPQ_PACIENTE_COL/DATOSAFI"],
+    "fase2Hecha": true
+  }
+}

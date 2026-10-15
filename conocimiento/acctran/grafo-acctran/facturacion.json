@@ -1,0 +1,137 @@
+{
+  "tramo": "facturacion",
+  "nombre": "Facturación SOAT",
+  "actualizado": "2026-10-14",
+  "generaFtr": true,
+  "fuenteSql": "IXONLINE/SQL · SPQ_DISTRIHPRED_SOAT · FACTURAR y SPK_FACTURA_SOAT_TODO (PREVERSION 2.0.9 idéntica a la liberada)",
+  "pantalla": {
+    "path": "Admisión → Cargos SOAT → Facturar / Facturar todo",
+    "vue": "HPRESOATComponent",
+    "menu": "Asistencial → Admisión (Cargos SOAT)",
+    "permisos": ["asis.hadm"]
+  },
+  "documentoOrigen": {
+    "tabla": "FTR",
+    "claves": ["N_FACTURA", "CNSFCT"],
+    "detalle": "Una FTR por GFACSOAT con ítems abiertos cobrables. HADMF liga admisión↔factura. HPRED.FACTURADA=1 y N_FACTURA. PROCEDENCIA=SALUD, TIPOFAC=I, ESTADO=P."
+  },
+  "noEs": [
+    "No es la factura financiera (PROCEDENCIA FINANCIERO).",
+    "No es RIPS JSON ni XML DIAN (salen después, FACTE=2).",
+    "No exporta FURIPS: solo deja FTR para el tramo 5.",
+    "No cierra la admisión: el FE pide CERRADA=1; el SP no la valida ni la pone."
+  ],
+  "nodos": [
+    {
+      "id": "N0-config",
+      "orden": 0,
+      "nombre": "Contrato, resolución y variables",
+      "explicacionCapacitacion": "Cada responsable debe tener tercero y plan (Aseguradora en HADM, ADRES = FONSAT, EPS del afiliado, ARL de la admisión) y una fila PPT con tipo de tercero contable. Si FONSAT, la factura y el PPT usan el plan FONSAT, no el plan SOAT de los cargos. La resolución DIAN (si BLOQUEADIAN=SI) y la sede (FACTSEDE) definen el número.",
+      "sp": [],
+      "metodoUi": [],
+      "requiresConfig": [
+        {
+          "id": "usvgs-fact-soat",
+          "tabla": "USVGS",
+          "desc": "IDNITFONSAT, IDPLANSOAT, IDPLANFONSAT, IDTARIFASOAT, SOATVALDECFACT, IDFORMATOFTR, BLOQUEADIAN, FACTSEDE, CONTAB_FTR_JOB",
+          "obligatorio": true,
+          "usvgs": ["IDNITFONSAT", "IDPLANSOAT", "IDPLANFONSAT", "IDTARIFASOAT", "SOATVALDECFACT", "IDFORMATOFTR", "BLOQUEADIAN", "FACTSEDE", "CONTAB_FTR_JOB"]
+        },
+        {
+          "id": "ppt-ttec",
+          "tabla": "PPT",
+          "desc": "PPT del tercero/plan con TIPOTERCONTABLE distinto de NO. Sin eso RAISERROR y no factura nadie más de esa llamada.",
+          "obligatorio": true
+        }
+      ],
+      "llamaSiguiente": ["N1-control-facturar"],
+      "efecto": "Hay contrato y numeración. Todavía no hay FTR de este clic.",
+      "fichas": []
+    },
+    {
+      "id": "N1-control-facturar",
+      "orden": 1,
+      "nombre": "Botón Facturar",
+      "explicacionCapacitacion": "El FE solo habilita Facturar si la admisión está cerrada. El SP no mira CERRADA. Antes de crear facturas, si SOATVALDECFACT=SI y la admisión es tipo SOAT, rechaza ítems abiertos con decimales en valor, copago o excedente. Luego llama al motor con el arreglo de responsables (o todos si viene vacío).",
+      "sp": "SPQ_DISTRIHPRED_SOAT",
+      "metodoUi": ["FACTURAR"],
+      "requiresDocumento": [
+        {
+          "id": "noadmision",
+          "desc": "NOADMISION existente. GFACSOAT_FACTURAR opcional ([1,2,3,4] o vacío = los cuatro).",
+          "obligatorio": true
+        }
+      ],
+      "llamaAnterior": ["N0-config"],
+      "llamaSiguiente": ["N2-motor"],
+      "efecto": "Si KO, no llama al motor. Si OK, EXEC SPK_FACTURA_SOAT_TODO. Después, si TIPOADM='04', puede escribir CUPSPPALQX / CUPSSECQX en HACTRAN.",
+      "puntosCriticos": ["PC-SOAT-FAC-01", "PC-SOAT-FAC-02", "PC-SOAT-FAC-08"],
+      "fichas": [
+        {
+          "sp": "SPQ_DISTRIHPRED_SOAT",
+          "metodo": "FACTURAR",
+          "proceso": "hpre",
+          "archivo": "conocimiento/hpre/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N2-motor",
+      "orden": 2,
+      "nombre": "Una factura por responsable",
+      "explicacionCapacitacion": "El motor recorre los GFACSOAT pedidos que aún tienen ítems abiertos cobrables. Reescribe tercero y plan de esos ítems (corrige lo que Distribuir automático no escribió). Si un responsable no tiene tercero o plan, lo salta y sigue. Por cada uno: numera FTR (o reusa una liberada de la misma admisión), arma FTRD, redondea el total, impuestos y contabiliza.",
+      "sp": "SPK_FACTURA_SOAT_TODO",
+      "metodoUi": [],
+      "llamaAnterior": ["N1-control-facturar"],
+      "llamaSiguiente": ["N3-efecto"],
+      "efecto": "INSERT FTR (PROCEDENCIA SALUD, TIPOFAC I, ESTADO P) + FTRD. Si CONTAB_FTR_JOB=SI encola FTRCO; si no, SPK_NC_CONTAB_FTR. Puede RAISERROR (TTEC o ítem duplicado) y abortar el resto.",
+      "puntosCriticos": ["PC-SOAT-FAC-03", "PC-SOAT-FAC-04", "PC-SOAT-FAC-05", "PC-SOAT-FAC-09", "PC-SOAT-FAC-10"],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURA_SOAT_TODO",
+          "metodo": "EJECUTAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N3-efecto",
+      "orden": 3,
+      "nombre": "Marcar cargos y admisión",
+      "explicacionCapacitacion": "Los ítems de esa factura quedan FACTURADA=1, N_FACTURA y UTISOAT=1. Se crea (o reactiva) HADMF. La admisión se marca FACTURADA=1 con el número de esa factura, aunque falten otros responsables. En el detalle SOAT, solo las filas QX de esta admisión reciben N_FCT_ASEG (aseguradora) o N_FCT_FYG (FONSAT), y solo si el responsable fue 1 o 2.",
+      "sp": "SPK_FACTURA_SOAT_TODO",
+      "metodoUi": [],
+      "llamaAnterior": ["N2-motor"],
+      "llamaSiguiente": ["N4-aguas-abajo"],
+      "efecto": "UPDATE HPRED, HADM, HACTRAND (QX 1/2). INSERT/UPDATE HADMF. EXEC SPK_CREACXP_ASIS. Opcional presupuesto.",
+      "puntosCriticos": ["PC-SOAT-FAC-06", "PC-SOAT-FAC-07"],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURA_SOAT_TODO",
+          "metodo": "EJECUTAR",
+          "proceso": "acctran",
+          "archivo": "conocimiento/acctran/sps.json"
+        }
+      ]
+    },
+    {
+      "id": "N4-aguas-abajo",
+      "orden": 4,
+      "nombre": "Quién consume la factura",
+      "explicacionCapacitacion": "FURIPS (TXT o JSON) lee el expediente y estas FTR. RIPS JSON y el XML DIAN no salen de este botón: piden la factura ya notificada. Reliquidar topes no vuelve a facturar.",
+      "sp": [],
+      "metodoUi": [],
+      "llamaAnterior": ["N3-efecto"],
+      "llamaSiguiente": [],
+      "efecto": "Puente a FURIPS. Este tramo termina en FTR ESTADO=P."
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "FACTURAR y SPK_FACTURA_SOAT_TODO PREVERSION 2.0.9 idéntica a la liberada. Ambos leidos.",
+    "parcialesDelTramo": [],
+    "fase2Hecha": true
+  }
+}
