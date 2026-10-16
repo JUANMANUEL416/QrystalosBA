@@ -973,7 +973,19 @@ async def _esperar_turno_previo(client, agent_id: str, id_caso: str) -> bool:
             await asyncio.wait_for(client.wait_live_run(r.id), timeout=resto)
         except Exception:  # noqa: BLE001
             pass
-    libre = not await _runs_vivos(client, agent_id)
+    restantes = await _runs_vivos(client, agent_id)
+    if restantes and time.time() - t0 < 10:
+        # wait_live_run volvio enseguida: nadie esta ejecutando ese turno (quedo huerfano
+        # por un proceso caido). Solo esos se cancelan; un turno real si se espera.
+        for r in restantes:
+            try:
+                await client.cancel_run(r.id)
+                print(f"[turno] turno huerfano {r.id} cancelado", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[turno] no pude cancelar huerfano {r.id}: {type(exc).__name__}", flush=True)
+        await asyncio.sleep(2)
+        restantes = await _runs_vivos(client, agent_id)
+    libre = not restantes
     print(f"[turno] espera {time.time() - t0:.1f}s libre={libre}", flush=True)
     write_bot(id_caso, fase="")
     return libre
