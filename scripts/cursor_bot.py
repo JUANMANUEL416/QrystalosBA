@@ -532,7 +532,7 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
             "  2) Contrastar con conocimiento/: INDICE → proceso → proceso.json + sps.json "
             "vía conocimiento/_indice_busqueda.json (solo las fichas del control; y sql_refe si hace falta la línea exacta). "
-            "SOLO DESPUÉS, y únicamente para huecos de la base: Qrystalos2, luego qrystalos.documentacion, luego DESAIX; "
+            "SOLO DESPUÉS, y únicamente para huecos de la base: SQL → DESAIX; código fuente → Qrystalos2; al final qrystalos.documentacion; "
             "cada hueco va como handoff a Conocimiento (conocimiento/handoffs/cola.json).\n"
             "  2b) PASO 0 ¿YA EXISTE?: texto del REQ ≠ captura. Inventariar TODOS los "
             "caminos del control (botones v-if, Help*, necesidadesYaCubiertas, no solo "
@@ -651,7 +651,7 @@ Lea del disco, en este orden:
 3. data/soporte-consultas/{id_caso}/chat.json
 4. Si hay capturas, léalas en data/soporte-consultas/{id_caso}/imagenes/ y contrástelas con la pregunta.
 5. La base vía conocimiento/_indice_busqueda.json: solo las fichas que apliquen (y grafos en contabilidad/ si es contable). Nunca un sps.json entero.
-6. Solo si la ficha no alcanza: Qrystalos2 y luego qrystalos.documentacion (config/rutas.json). Cada hueco también va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
+6. Solo si la ficha no alcanza: SQL → DESAIX; código → Qrystalos2; al final qrystalos.documentacion (config/rutas.json). Cada hueco también va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
 
 {BUSQUEDA_KB}
 {_bloque_handoffs(id_caso, motivo)}
@@ -679,9 +679,9 @@ ID: {id_caso}
 Lea del disco:
 1. solicitudes/{id_caso}/INSTRUCCION-AGENTE.md
 2. solicitudes/{id_caso}/solicitud.json
-3. solicitudes/{id_caso}/chat.json
+3. solicitudes/{id_caso}/chat.json — solo los últimos mensajes; si esta sesión ya leyó 1-2 y no cambiaron, no los relea.
 4. solicitudes/{id_caso}/archivos/ (PDF, imágenes, .md/.txt y *.extracto.txt). Si la necesidad llegó en .md, ese archivo es la fuente principal del requerimiento: léalo completo.
-5. La base vía conocimiento/_indice_busqueda.json (proceso, control y solo sus fichas). Después, solo para huecos: Qrystalos2 → qrystalos.documentacion → DESAIX. Huecos: handoff a Conocimiento.
+5. La base vía conocimiento/_indice_busqueda.json (proceso, control y solo sus fichas). Después, solo para huecos: SQL → DESAIX; código → Qrystalos2; al final qrystalos.documentacion. Huecos: handoff a Conocimiento.
 
 {BUSQUEDA_KB}
 {_bloque_handoffs(id_caso, motivo)}
@@ -708,10 +708,11 @@ Motivo: {motivo}
 Lea del disco, en este orden:
 1. activo/{id_caso}/INSTRUCCION-AGENTE.md
 2. activo/{id_caso}/solicitud.json
-3. activo/{id_caso}/chat.json
+3. activo/{id_caso}/chat.json — solo los últimos mensajes (el pedido nuevo está al final); no relea el historial entero.
+   Si esta sesión ya leyó 1-2 en un turno anterior y el Chat no dice que cambiaron, no los relea.
 4. BASE DE CONOCIMIENTO, SIEMPRE ANTES DEL CÓDIGO: conocimiento/_indice_busqueda.json → solo las fichas del control (ver BÚSQUEDA EN LA BASE). Nunca un sps.json entero.
 5. cola/ y activo/{id_caso}/sql/ si aplican
-6. SOLO si la base no cubre el punto, en este orden: Qrystalos2, luego qrystalos.documentacion (config/rutas.json), luego DESAIX. Diga en el Chat qué hueco lo obligó y deje handoff a Conocimiento en conocimiento/handoffs/cola.json (de requerimientos, idCaso {id_caso}).
+6. SOLO si la base no cubre el punto: si es SQL → DESAIX; si es código fuente → Qrystalos2; al final qrystalos.documentacion (config/rutas.json). Diga en el Chat qué hueco lo obligó y deje handoff a Conocimiento en conocimiento/handoffs/cola.json (de requerimientos, idCaso {id_caso}).
 
 {BUSQUEDA_KB}
 {_bloque_handoffs(id_caso, motivo)}
@@ -727,7 +728,7 @@ Reglas:
 - Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → ¿ya existe? (capacitación|defecto|hueco) → solución**. No trate por defecto un REQ como desarrollo. Inventarie todos los caminos del control, no solo las casillas SQL. No convierta el Chat en un cuestionario de «qué falta del coordinador». En textos al coordinador y al desarrollador diga **control**, no «gate».
 - Mockup UX: la ventana debe ser la **propuesta de desarrollo**, no el problema ni la captura. No reutilice HTML de otro REQ.
 - OpenAI no interviene. Usted escribe criterios, análisis organizado y recomendación en solicitud.json cuando falten o vengan de GPT.
-- Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra Qrystalos2 (MCUE, CON, MCPE, asientos, comprobantes) y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}. Si afecta=false, en el dictamen HTML deje solo «Afecta contabilidad: No»; no agregue Cómo lo afecta, Desarrollo contable ni Validación del agente.
+- Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra la base (MCUE, CON, MCPE, asientos, comprobantes); si falta, DESAIX/Qrystalos2 y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}. Si afecta=false, en el dictamen HTML deje solo «Afecta contabilidad: No»; no agregue Cómo lo afecta, Desarrollo contable ni Validación del agente.
 {extra}
 
 Al terminar, el último mensaje relevante de chat.json debe ser suyo (autor: agente).
@@ -878,6 +879,127 @@ def _limpiar_bridges_huerfanos() -> int:
     if n:
         print(f"[bridge] {n} puente(s) huérfano(s) cerrados", flush=True)
     return n
+
+
+# --- Turno: tiempos y turno anterior en curso ----------------------------------------
+ESPERA_TURNO_PREVIO_SEC = float(os.environ.get("CURSOR_BOT_ESPERA_TURNO_SEC") or 15 * 60)
+_ESTADOS_VIVOS = ("running", "queued", "creating")
+
+
+class _Tiempos:
+    """Mide cada fase del turno y deja una línea [tiempos] en bot.log."""
+
+    def __init__(self, id_caso: str, motivo: str) -> None:
+        self.id_caso, self.motivo = id_caso, motivo
+        self.t0 = self.ult = time.time()
+        self.fases: list[tuple[str, float]] = []
+        self.extra: dict = {}
+        self.primer_evento: float | None = None
+        self.herramientas: dict[str, int] = {}
+        self.archivos: dict[str, int] = {}
+
+    def marca(self, fase: str, **extra) -> None:
+        ahora = time.time()
+        self.fases.append((fase, ahora - self.ult))
+        self.ult = ahora
+        self.extra.update(extra)
+
+    def evento(self, msg) -> None:
+        if self.primer_evento is None:
+            self.primer_evento = time.time() - self.t0
+        if getattr(msg, "type", "") != "tool_call" or getattr(msg, "status", "") == "running":
+            return
+        nombre = getattr(msg, "name", "") or "?"
+        self.herramientas[nombre] = self.herramientas.get(nombre, 0) + 1
+        args = getattr(msg, "args", None)
+        if isinstance(args, dict):
+            ruta = args.get("path") or args.get("file_path") or args.get("target_file") or args.get("pattern")
+            if ruta:
+                ruta = str(ruta).replace("\\", "/")[-80:]
+                self.archivos[ruta] = self.archivos.get(ruta, 0) + 1
+
+    def resumen(self) -> None:
+        total = time.time() - self.t0
+        fases = " ".join(f"{f}={d:.1f}s" for f, d in self.fases)
+        pe = f"{self.primer_evento:.1f}s" if self.primer_evento is not None else "-"
+        herr = ", ".join(f"{k}×{v}" for k, v in sorted(self.herramientas.items(), key=lambda x: -x[1])[:6])
+        top = ", ".join(f"{k}×{v}" for k, v in sorted(self.archivos.items(), key=lambda x: -x[1])[:6])
+        print(
+            f"[tiempos] {self.motivo} total={total:.1f}s {fases} primer_evento={pe} "
+            f"herramientas={sum(self.herramientas.values())} ({herr or '-'}) "
+            f"prompt_chars={self.extra.get('chars', '-')} archivos: {top or '-'}",
+            flush=True,
+        )
+
+
+async def _consumir_run(run, t: "_Tiempos"):
+    """Lee el stream (para medir) y devuelve el resultado final como run.wait()."""
+    try:
+        async for msg in run.stream():
+            t.evento(msg)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[tiempos] stream no disponible: {type(exc).__name__}: {exc}", flush=True)
+    t.marca("run")
+    return await run.wait()
+
+
+async def _runs_vivos(client, agent_id: str) -> list:
+    try:
+        pagina = await client.list_runs(agent_id, limit=8)
+    except Exception:
+        return []
+    return [
+        r for r in (getattr(pagina, "items", None) or [])
+        if str(getattr(r, "status", "") or "").lower().split(".")[-1] in _ESTADOS_VIVOS
+    ]
+
+
+async def _esperar_turno_previo(client, agent_id: str, id_caso: str) -> bool:
+    """Si la sesión tiene un turno vivo, espera a que termine (sin cancelarlo). True si quedó libre."""
+    import asyncio
+
+    vivos = await _runs_vivos(client, agent_id)
+    if not vivos:
+        return True
+    t0 = time.time()
+    print(f"[turno] esperando {len(vivos)} turno(s) anterior(es) de {agent_id}", flush=True)
+    write_bot(id_caso, fase="esperando turno anterior", heartbeatEn=_now())
+    append_chat(id_caso, "sistema", "Esperando que termine el turno anterior de este chat; luego sigo con su mensaje.")
+    for r in vivos:
+        resto = ESPERA_TURNO_PREVIO_SEC - (time.time() - t0)
+        if resto <= 0:
+            break
+        try:
+            await asyncio.wait_for(client.wait_live_run(r.id), timeout=resto)
+        except Exception:  # noqa: BLE001
+            pass
+    libre = not await _runs_vivos(client, agent_id)
+    print(f"[turno] espera {time.time() - t0:.1f}s libre={libre}", flush=True)
+    write_bot(id_caso, fase="")
+    return libre
+
+
+def _es_turno_activo(exc: Exception) -> bool:
+    from cursor_sdk import AgentBusyError
+
+    return isinstance(exc, AgentBusyError) or "already has active run" in str(exc).lower()
+
+
+async def _send_esperando_turno(client, agent, prompt: str, id_caso: str, intentos: int = 4):
+    """agent.send que, si la sesión tiene otro turno activo, espera y reintenta. No cancela nada."""
+    import asyncio
+
+    aid = getattr(agent, "agent_id", "") or ""
+    await _esperar_turno_previo(client, aid, id_caso)
+    for i in range(1, intentos + 1):
+        try:
+            return await agent.send(prompt)
+        except Exception as exc:  # noqa: BLE001
+            if not _es_turno_activo(exc) or i == intentos:
+                raise
+            print(f"[turno] send {i}: sesión ocupada ({type(exc).__name__}); espero y reintento", flush=True)
+            if not await _esperar_turno_previo(client, aid, id_caso):
+                await asyncio.sleep(min(30, 5 * i))
 
 
 async def _check_key_async(key: str) -> int:
@@ -1135,18 +1257,27 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
         agent_id = ""
     timeout_sec = TIMEOUT_KB_SEC if es_kb else TIMEOUT_CASO_SEC
 
+    t = _Tiempos(id_caso, motivo)
     async with await abrir_bridge() as client:
+        t.marca("bridge")
         agent = None
         if agent_id:
             try:
                 agent = await AsyncAgent.resume(agent_id, options, client=client)
+                t.marca("resume")
             except AgentBusyError:
-                await _soltar_turnos_vivos(client, agent_id)
-                agent = None
+                # La sesión tiene un turno en curso: esperarlo (nunca cancelarlo) y reanudar.
+                await _esperar_turno_previo(client, agent_id, id_caso)
+                try:
+                    agent = await AsyncAgent.resume(agent_id, options, client=client)
+                    t.marca("resume")
+                except Exception:
+                    agent = None
             except Exception:
                 agent = None
         if agent is None:
             agent = await AsyncAgent.create(options, client=client)
+            t.marca("create")
 
         try:
             meta_out = {
@@ -1160,14 +1291,25 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             write_json(agente_path(id_caso), meta_out)
             write_bot(id_caso, agentId=agent.agent_id, modelo=modelo_id(motivo), fast=usa_fast(motivo))
 
+            prompt = prompt_turno(id_caso, motivo)
+            t.marca("prompt", chars=len(prompt))
             try:
-                run = await agent.send(prompt_turno(id_caso, motivo))
-            except AgentBusyError:
-                await _soltar_turnos_vivos(client, agent.agent_id)
-                run = await agent.send(prompt_turno(id_caso, motivo))
+                run = await _send_esperando_turno(client, agent, prompt, id_caso)
+            except Exception as exc:  # noqa: BLE001
+                if not _es_turno_activo(exc):
+                    raise
+                write_bot(id_caso, estado="error", error="Turno anterior aún activo", terminadoEn=_now())
+                append_chat(
+                    id_caso,
+                    "sistema",
+                    "El turno anterior de este chat sigue trabajando. Su mensaje quedó guardado: "
+                    "vuelva a enviarlo cuando ese turno termine.",
+                )
+                return 2
+            t.marca("send")
             write_bot(id_caso, runId=getattr(run, "id", None) or getattr(run, "run_id", None))
             try:
-                result = await asyncio.wait_for(run.wait(), timeout=timeout_sec)
+                result = await asyncio.wait_for(_consumir_run(run, t), timeout=timeout_sec)
             except CursorAgentError as exc:
                 print(_aviso_fallo_cursor(exc), flush=True)
                 try:
@@ -1222,6 +1364,7 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             write_bot(id_caso, estado="listo", error="", terminadoEn=_now())
             return 0
         finally:
+            t.resumen()
             if es_kb:
                 try:
                     await asyncio.wait_for(agent.archive(), timeout=20)

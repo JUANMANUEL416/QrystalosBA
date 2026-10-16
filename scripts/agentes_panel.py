@@ -35,7 +35,7 @@ DEFINIDOS = [
     {
         "id": "requerimientos",
         "nombre": "Requerimientos",
-        "hace": "REQ o necesidad: base primero, luego Qrystalos2 y documentación; dudas, cambio propuesto e impactos.",
+        "hace": "REQ o necesidad: base primero; SQL → DESAIX, código → Qrystalos2, al final documentación; dudas, cambio propuesto e impactos.",
         "motor": "cursor",
         "motores": ["local", "cursor"],
         "modeloLocal": "",
@@ -258,7 +258,7 @@ def publicar_plan(agente_id: str, id_caso: str, modo: str | None = None) -> str:
     subs = subagentes_de(rol, modo or modo_def)
     lineas = [
         f"Plan de este turno. Agente: {rol} · modo: {modo or modo_def}.",
-        "Orden de fuentes: base (índice → ficha puntual) → Qrystalos2 → qrystalos.documentacion → DESAIX. Hueco → handoff a Conocimiento.",
+        "Orden de fuentes: base (índice → ficha puntual) → SQL: DESAIX · código: Qrystalos2 → al final qrystalos.documentacion. Hueco → handoff a Conocimiento.",
         "Haga solo los pasos marcados en Cursor.",
         "Un paso en local lo resuelve la oficina o se limita a la ficha de ese proceso: no lo rehaga ni reescriba sus campos.",
         "",
