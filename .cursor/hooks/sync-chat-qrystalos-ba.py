@@ -28,6 +28,43 @@ def _out(payload: dict) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False))
 
 
+def pruebas_abiertas() -> list:
+    base = ROOT / "data" / "pruebas-req"
+    if not base.is_dir():
+        return []
+    out = []
+    for carpeta in base.iterdir():
+        if not carpeta.is_dir() or not carpeta.name.startswith("pr"):
+            continue
+        meta = _read(carpeta / "meta.json")
+        if meta.get("estado") == "cerrada":
+            continue
+        chat = _read(carpeta / "chat.json")
+        out.append((carpeta.name, meta, chat.get("mensajes") or []))
+    out.sort(key=lambda item: item[0], reverse=True)
+    return out
+
+
+def contexto_pruebas() -> str:
+    abiertas = pruebas_abiertas()
+    if not abiertas:
+        return ""
+    lineas = [
+        "Pruebas de requerimiento abiertas (Soporte → Prueba req).",
+        "Orden: base de conocimiento, Qrystalos2, IXONLINE/SQL, base de pruebas en solo lectura.",
+        "Responda en data/pruebas-req/{id}/chat.json (autor agente) y deje veredicto y veredictoTexto en meta.json.",
+        "",
+    ]
+    for pid, meta, mensajes in abiertas[:4]:
+        lineas.append(
+            f"- {pid} · {meta.get('servidorNombre') or meta.get('servidorId') or ''} · {meta.get('baseDatos') or ''}"
+        )
+        ultimo = ultimo_relevante(mensajes)
+        if ultimo and ultimo.get("autor") == "coordinador":
+            lineas.append(f"  Coordinador: {ultimo.get('texto')}")
+    return "\n".join(lineas)
+
+
 def casos_abiertos() -> list:
     if not ACTIVO.is_dir():
         return []
@@ -113,10 +150,15 @@ def main() -> None:
         )
         return
 
+    extra = contexto_pruebas()
+
     if pend:
+        texto = contexto(pend)
+        if extra:
+            texto += "\n\n" + extra
         _out(
             {
-                "additional_context": contexto(pend),
+                "additional_context": texto,
                 "agent_message": (
                     f"{len(pend)} mensaje(s) pendiente(s) en el Chat de la app. "
                     "Responda en chat.json; no pida que los peguen."
@@ -127,14 +169,17 @@ def main() -> None:
 
     if casos:
         ids = ", ".join(item[0] for item in casos[:3])
-        _out(
-            {
-                "additional_context": (
-                    f"Caso(s) activo(s): {ids}. El coordinador escribe solo en el Chat de la app. "
-                    "Si responde en Cursor, deje el mismo resumen en activo/{id-caso}/chat.json (autor: agente)."
-                )
-            }
+        texto = (
+            f"Caso(s) activo(s): {ids}. El coordinador escribe solo en el Chat de la app. "
+            "Si responde en Cursor, deje el mismo resumen en activo/{id-caso}/chat.json (autor: agente)."
         )
+        if extra:
+            texto += "\n\n" + extra
+        _out({"additional_context": texto})
+        return
+
+    if extra:
+        _out({"additional_context": extra})
         return
 
     _out({})

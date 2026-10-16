@@ -31,11 +31,15 @@ Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, 
 1. Mensaje en **chat.json** (autor: `agente`).
 2. Borrador en **meta.json** → `respuestaOficial` (texto para PDF).
 3. **meta.json** → `proposito` (2–4 frases): nace de la **necesidad** (`preguntaInicial`) y resume qué entrega el documento según su **análisis** (no texto genérico).
-4. Cada **consulta SQL** en bloque ```sql … ``` o sección «BLOQUE N» con líneas ═══ (como dictámenes); la app la muestra en formato copiar/pegar.
-5. No ejecutar SQL ni implementar en Qrystalos2.
+4. Cada **consulta SQL** en bloque ```sql … ``` o sección «BLOQUE N» con líneas ═══ (como dictámenes); la app la muestra en formato copiar/pegar. Esas consultas son para soporte interno.
+5. No implementar en Qrystalos2. No escribir en la base ni ejecutar procedimientos.
+6. Si hay servidor abajo, medir con SELECT de solo lectura (`scripts/auditoria_procesos.py`, `_resolve_server_db` y `_sqlcmd_query`) e incorporar conteos a la respuesta. No pedir al coordinador que los corra. No imprimir credenciales.
+7. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento).
 
 Título: {meta.get("titulo") or ""}
 Cliente: {meta.get("cliente") or ""}
+Validar en base: {"sí, solo lectura" if meta.get("validarEnBase") else "no"}
+Servidor: {meta.get("servidorId") or "—"} · base {meta.get("baseDatos") or "—"}
 {_bloque_capturas(sid, meta)}"""
 
 
@@ -92,6 +96,9 @@ def crear_consulta(
     pregunta: str,
     solicitante: str = "",
     cliente: str = "",
+    servidor_id: str = "",
+    base_datos: str = "",
+    validar_en_base: bool = False,
 ) -> dict:
     _ensure_dir()
     titulo = (titulo or "").strip()
@@ -100,6 +107,8 @@ def crear_consulta(
         raise ValueError("Indique un título breve para la consulta.")
     if not pregunta:
         raise ValueError("Indique la pregunta o contexto inicial.")
+    if validar_en_base and (not (servidor_id or "").strip() or not (base_datos or "").strip()):
+        raise ValueError("Indique el servidor y la base. La validación es solo lectura.")
     sid = nueva_id()
     carp = DATA_DIR / sid
     carp.mkdir(parents=True, exist_ok=True)
@@ -109,6 +118,9 @@ def crear_consulta(
         "solicitante": (solicitante or "").strip(),
         "cliente": (cliente or "").strip(),
         "preguntaInicial": pregunta,
+        "validarEnBase": bool(validar_en_base),
+        "servidorId": (servidor_id or "").strip() if validar_en_base else "",
+        "baseDatos": (base_datos or "").strip() if validar_en_base else "",
         "respuestaOficial": "",
         "proposito": "",
         "creado": datetime.now().isoformat(timespec="seconds"),

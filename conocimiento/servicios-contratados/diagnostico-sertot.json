@@ -1,0 +1,352 @@
+{
+  "id": "diagnostico-sertot",
+  "procesoId": "servicios-contratados",
+  "actualizado": "2026-10-15T12:05:00",
+  "comoUsar": "Parta del síntoma. Recorra los controles en orden. El primero que falle es la causa: no siga al siguiente eslabón.",
+  "fuente": "Vistas PREVERSION idénticas a la Cerrada 2.0.9. La vista no filtra por la fecha: la fecha la aplican la pantalla Servicios contratados, el selector SERTOT1 y FNK_VLR_SERTOT.",
+  "noExplicanUnHuecoEnSERTOT": [
+    {
+      "tabla": "CNT",
+      "porque": "El contrato IPS no entra al join del precio. Puede faltar el contrato y SERTOT igual mostrar el valor. Si la admisión o la factura rechazan el caso, la falla está en ese proceso, no en el precio."
+    },
+    {
+      "tabla": "TEXCA",
+      "porque": "La categoría CON abre el combo de contratos. La vista del precio no la lee. Sin CON puede haber PPT y haber precio."
+    },
+    {
+      "tabla": "TER",
+      "porque": "La vista usa el id que está en PPT. No comprueba que la ficha del tercero exista."
+    },
+    {
+      "tabla": "PLN",
+      "porque": "SERTOT no lee el maestro del plan. SERTOT1 lee CPPAF, que se carga desde Planes."
+    }
+  ],
+  "eslabonesCaptura": [
+    {
+      "orden": 1,
+      "tabla": "TER",
+      "paraQue": "Poder colgar el plan contratado.",
+      "pantalla": "Configuración → Generales → Terceros → Terceros",
+      "proceso": "SPQ_TER_COL · GUARDAR (libro configuracion-generales)",
+      "siFalta": "No hay dónde crear PPT. No es, por sí solo, la causa de una fila ausente si PPT ya existe."
+    },
+    {
+      "orden": 2,
+      "tabla": "PLN",
+      "paraQue": "Maestro del plan y, desde ahí, la cobertura CPPAF.",
+      "pantalla": "Configuración → Generales → Planes",
+      "proceso": "SPQ_CONF_PLANES · GUARDAR",
+      "siFalta": "No se pueden cargar servicios del plan. SERTOT puede existir igual si PPT ya tiene el código."
+    },
+    {
+      "orden": 3,
+      "tabla": "SER",
+      "paraQue": "El código que se tarifa y se vende (prefijo, nivel de atención, estado, cirugía, cups).",
+      "pantalla": "Configuración → Generales → Servicios → Servicios",
+      "proceso": "MODELO SER (SPQ_SER por leer)",
+      "siFalta": "Ninguna rama del precio arma fila."
+    },
+    {
+      "orden": 4,
+      "tabla": "TAR",
+      "paraQue": "Cabecera de la tarifa y su codificación.",
+      "pantalla": "Configuración → Generales → Tarifas → Tarifas",
+      "proceso": "CONFI_GRAL · CRUD_TARIFA (procedimiento no leído). La pantalla también llama MODELO TAR; SPQ_TAR no está en el catálogo.",
+      "siFalta": "El join de la vista exige la cabecera. Sin TAR no hay precio de tarifa."
+    },
+    {
+      "orden": 5,
+      "tabla": "TARF",
+      "paraQue": "Factor dinero, redondeo y vigencia del factor. En SERTOT esa vigencia es FECHAINIFD–FECHAFINFD.",
+      "pantalla": "Tarifas → factor de tarifa (detalle del factor)",
+      "proceso": "CONFI_GRAL · CRUD_TARF (procedimiento no leído)",
+      "siFalta": "Aunque el servicio esté en la tarifa y tenga valor, el join elimina la fila. Esta es una falla típica: hay TARDV y no hay factor."
+    },
+    {
+      "orden": 6,
+      "tabla": "TARD",
+      "paraQue": "El servicio dentro de la tarifa. Si la línea es cirugía, el valor de venta es el del tarifario, sin factores.",
+      "pantalla": "Tarifas → detalle de la tarifa",
+      "proceso": "Lectura TARD. Carga masiva: CONFI_GRAL · IMPORTAR_TARIFA y CREAR_ITEMSTARI; copia: COPIAR_TARIFA (no leídos).",
+      "siFalta": "El servicio no está tarifado en la tarifa del plan."
+    },
+    {
+      "orden": 7,
+      "tabla": "TARDV",
+      "paraQue": "Valor del servicio y su vigencia. En SERTOT esa vigencia es FECHAINI–FECHAFIN.",
+      "pantalla": "Tarifas → vigencias del servicio",
+      "proceso": "La misma carga de ítems escribe TARDV. La pantalla avisa si el Excel pisa vigencias ya guardadas.",
+      "siFalta": "Servicio tarifado sin precio. No entra a SERTOT."
+    },
+    {
+      "orden": 8,
+      "tabla": "PPT",
+      "paraQue": "Une tercero + plan + tarifa + factor. El factor tiene que ser mayor que cero. CAPITADO = 1 marca el tipo Capitado; si no, Evento.",
+      "pantalla": "Terceros → ficha del contratante → plan",
+      "proceso": "SPQ_PPT (existe en PREVERSION, no leído)",
+      "siFalta": "No hay precio base. Factor 0 o vacío también lo saca, aunque la tarifa esté completa."
+    },
+    {
+      "orden": 9,
+      "tabla": "CPPAF",
+      "paraQue": "Cobertura del plan: área, servicio y quién cobra. Solo la exige SERTOT1.",
+      "pantalla": "Configuración → Generales → Planes → servicios del plan",
+      "proceso": "SPQ_CONF_CPPAF · GUARDAR / SUBIR_PLANO / QUITAR_SERVICIOS",
+      "siFalta": "SERTOT puede mostrar el valor y el selector de la venta no ofrecer el servicio."
+    },
+    {
+      "orden": 10,
+      "tabla": "ESP",
+      "paraQue": "Excepción de un servicio. Gana sobre el base y sobre el prefijo: por existir, saca el servicio de esas ramas.",
+      "pantalla": "Terceros → plan → Excepción Servicios",
+      "proceso": "MODELO ESP (procedimiento no confirmado en el catálogo)",
+      "siFalta": "No es una falla. Si existe y su rama no arma precio, el servicio desaparece por completo."
+    },
+    {
+      "orden": 11,
+      "tabla": "ETP",
+      "paraQue": "Excepción de un prefijo y un nivel de atención. Tarifa o PCosto.",
+      "pantalla": "Terceros → plan → Excepción Tarifas (prefijo)",
+      "proceso": "MODELO ETP (procedimiento no confirmado en el catálogo)",
+      "siFalta": "No es una falla. Si el prefijo y el nivel coinciden y la rama no arma precio, el base ya no cubre esos servicios."
+    },
+    {
+      "orden": 12,
+      "tabla": "IARTPCOSTO",
+      "paraQue": "Costo del servicio. Solo lo usan las ramas PCosto.",
+      "pantalla": "No está en este libro. La vista lo lee por IDSERVICIO.",
+      "proceso": "Por ubicar",
+      "siFalta": "La excepción a costo no arma fila. En el prefijo, si el costo no está en el rango, el base sigue vigente."
+    }
+  ],
+  "sintomas": [
+    {
+      "id": "no-sale-en-consulta",
+      "sintoma": "Servicios contratados no muestra el servicio para ese tercero y plan, hoy.",
+      "primeraPregunta": "¿La vista SERTOT tiene fila sin filtrar fechas?",
+      "ramas": [
+        {
+          "cuando": "No hay fila",
+          "recorrido": "excepcion-luego-base"
+        },
+        {
+          "cuando": "Hay fila y la fecha de hoy no cae en las dos vigencias",
+          "recorrido": "vigencias",
+          "falla": "El precio existe para otras fechas. La consulta de hoy lo oculta. Mire FECHAINI–FECHAFIN (TARDV) y FECHAINIFD–FECHAFINFD (TARF)."
+        }
+      ]
+    },
+    {
+      "id": "sale-en-sertot-no-en-venta",
+      "sintoma": "Servicios contratados lo muestra y el selector de la venta no.",
+      "recorrido": "sertot1",
+      "falla": "El precio está. Falla la cobertura o el filtro del selector, no la tarifa."
+    },
+    {
+      "id": "liquidacion-vacia",
+      "sintoma": "La venta liquida en cero o vacío.",
+      "recorrido": "liquidacion",
+      "falla": "FNK_VLR_SERTOT devuelve NULL cuando la fecha del cargo no cae en las dos vigencias. Quien llama suele grabar 0. En presupuesto Perú, FNQ_VAL_SERTOT_PERU hace lo mismo con COALESCE a 0."
+    },
+    {
+      "id": "valor-distinto",
+      "sintoma": "Hay precio y el número no es el de la tarifa.",
+      "recorrido": "valor-distinto"
+    }
+  ],
+  "recorridos": {
+    "excepcion-luego-base": [
+      {
+        "orden": 1,
+        "tabla": "ESP",
+        "pregunta": "¿Hay excepción de este servicio para este tercero y este plan?",
+        "siSi": "El precio base ya no aplica, ni la excepción por prefijo. Siga al tipo de restricción. Si esa rama no arma fila, ahí está la falla: el servicio quedó sin ninguna rama.",
+        "siNo": "Pase a ETP.",
+        "tipos": [
+          {
+            "tipo": "Tarifa",
+            "exige": "Tarifa de la excepción con TAR, TARF, TARD y TARDV de este servicio. El factor y la tarifa son los de ESP, no los del plan.",
+            "vigencia": "Las de TARF y TARDV. Las fechas de la pantalla de la excepción no entran al precio.",
+            "falla": "Falta el servicio en la tarifa de la excepción, falta el factor TARF o falta el valor TARDV."
+          },
+          {
+            "tipo": "Valor",
+            "exige": "El número escrito en ESP. No usa tarifa.",
+            "vigencia": "Fija en la vista: 01/01/2002 a 31/12/2025. Una venta posterior no tiene precio.",
+            "falla": "Fecha del cargo posterior al 31/12/2025, o valor vacío. Si Paquete está marcado, la fila queda como cirugía y el selector de la venta (cirugía 0) no la ofrece."
+          },
+          {
+            "tipo": "PCosto",
+            "exige": "PPT del mismo tercero y plan, factor de la excepción mayor que cero, y costo en IARTPCOSTO. La pantalla de servicio envía el texto Pcosto; la vista compara PCosto.",
+            "vigencia": "Del 01/01/2000 hasta el día siguiente.",
+            "falla": "Sin costo, factor 0, sin PPT, o el texto de la restricción no coincide con PCosto."
+          }
+        ]
+      },
+      {
+        "orden": 2,
+        "tabla": "ETP",
+        "pregunta": "¿Hay excepción de prefijo para este tercero y plan, con el mismo prefijo y el mismo nivel de atención del servicio?",
+        "siSi": "Tarifa: el base queda fuera. PCosto: el base queda fuera solo si hay costo y cae entre valor inicial y valor final.",
+        "siNo": "El nivel distinto deja el precio base vigente. Pase al base.",
+        "tipos": [
+          {
+            "tipo": "Tarifa",
+            "exige": "Factor de la excepción mayor que cero, el plan en PPT, y la tarifa de ETP con TAR, TARF, TARD y TARDV.",
+            "falla": "Nivel de atención distinto (entonces no era esta rama), factor 0, o la tarifa de la excepción sin detalle o sin valor."
+          },
+          {
+            "tipo": "PCosto",
+            "exige": "Factor mayor que cero, PPT, costo entre VALORINI y VALORFIN.",
+            "falla": "Costo fuera del rango: en ese caso el base sigue. Costo ausente con rango que lo incluiría: no hay fila de costo y el base puede seguir si la lista de exclusión tampoco trae el servicio."
+          }
+        ]
+      },
+      {
+        "orden": 3,
+        "tabla": "SER → TARD → TARDV → TAR → TARF → PPT",
+        "pregunta": "Sin excepción que lo saque, ¿el base cumple los seis joins y el factor del plan es mayor que cero?",
+        "pasos": [
+          "SER: existe el servicio.",
+          "PPT: mismo tercero, mismo plan, trae IDTARIFA y FACTOR > 0.",
+          "TAR: existe esa tarifa.",
+          "TARD: el servicio está en esa tarifa.",
+          "TARDV: ese servicio tiene valor en esa tarifa.",
+          "TARF: esa tarifa tiene al menos un factor dinero."
+        ],
+        "falla": "El primer ítem que falte es la causa. El más frecuente después de una excepción mal cerrada: TARDV sin TARF, o PPT con factor 0."
+      }
+    ],
+    "vigencias": [
+      {
+        "orden": 1,
+        "tabla": "TARDV",
+        "pregunta": "¿FECHAINI–FECHAFIN cubre la fecha del cargo?",
+        "siNo": "Falla la vigencia del valor. Se corrige en Tarifas → vigencias del servicio.",
+        "siSi": "Siga al factor."
+      },
+      {
+        "orden": 2,
+        "tabla": "TARF",
+        "pregunta": "¿FECHAINIFD–FECHAFINFD (las fechas del factor) cubren la misma fecha?",
+        "siNo": "El valor está vigente y el factor no. La venta exige las dos. Se corrige en el factor de tarifa.",
+        "siSi": "Hay más de una pareja valor×factor que cubre la fecha: la liquidación puede tomar cualquiera."
+      }
+    ],
+    "sertot1": [
+      {
+        "orden": 1,
+        "tabla": "CPPAF",
+        "pregunta": "¿Hay fila con el mismo IDPLAN y el mismo IDSERVICIO?",
+        "siNo": "Falla la cobertura del plan. Planes → servicios. SERTOT sigue mostrando el precio.",
+        "siSi": "Siga a los filtros del selector."
+      },
+      {
+        "orden": 2,
+        "tabla": "SER",
+        "pregunta": "¿ESTADO es Activo y CIRUGIA del precio es 0?",
+        "siNo": "El selector oculta inactivos y líneas de cirugía. La consulta SERTOT y la función de liquidación no aplican ese filtro: pueden mostrar o cobrar lo que el selector esconde.",
+        "siSi": "Revise prefijo y que la fecha de la pantalla caiga en las dos vigencias."
+      }
+    ],
+    "liquidacion": [
+      {
+        "orden": 1,
+        "tabla": "SERTOT",
+        "pregunta": "Con la fecha del cargo (no la de hoy), ¿hay fila del tercero, plan y servicio dentro de las dos vigencias?",
+        "siNo": "Ahí está la falla. Vuelva a vigencias con esa fecha. En valor fijo, la fecha tope es el 31/12/2025.",
+        "siSi": "Si hay varias filas, FNK_VLR_SERTOT se queda con una, sin MAX ni TOP. El número puede no ser el que usted miró en pantalla."
+      },
+      {
+        "orden": 2,
+        "tabla": "SERTOT1",
+        "pregunta": "¿La liquidación pasó por la función o por el selector?",
+        "nota": "La función no exige CPPAF ni estado Activo. El selector sí. Un cargo armado por la función puede valorar un servicio que el selector no ofrece."
+      }
+    ],
+    "copago": [
+      {
+        "orden": 1,
+        "tabla": "SERTOT",
+        "pregunta": "¿El valor del servicio ya está bien y lo que falla es lo que paga el paciente o lo que queda en la factura?",
+        "siSi": "No corrija TAR ni TARF. Siga el modelo y la marca del plan.",
+        "siNo": "Vuelva al árbol del precio."
+      },
+      {
+        "orden": 2,
+        "tabla": "PPT",
+        "pregunta": "¿El plan del tercero tiene modelo de consulta externa (IDMODELOPCA)?",
+        "siNo": "El motor no encuentra tipo de pago y deja el copago de la línea en 0.",
+        "siSi": "MOCPS de ese servicio, o si no existe MOCP del prefijo y del nivel del servicio (SER). Sin regla en MOCC, el copago queda en 0."
+      },
+      {
+        "orden": 3,
+        "tabla": "PPTCNT",
+        "pregunta": "¿Hay modelo de contratación para ese tercero, plan y prefijo?",
+        "siSi": "Al confirmar, la cabecera de la autorización recibe el copago fijo y el porcentaje de cobertura. Las líneas ya traen el copago del modelo. La movilidad solo entra si está marcada y hay zona.",
+        "siNo": "La cabecera no recibe fijo ni porcentaje. El copago de línea sigue siendo el del modelo."
+      },
+      {
+        "orden": 4,
+        "tabla": "PPT",
+        "pregunta": "¿No descuenta copago en factura está marcado?",
+        "siSi": "En factura de evento por paquete y en autorización de pago, la línea al contratante conserva el valor y el copago facturado queda en 0. En la factura individual de consulta externa el cuerpo leído no carga esa marca y resta el copago igual.",
+        "siNo": "La línea facturada es el valor del servicio menos el copago."
+      }
+    ],
+    "valor-distinto": [
+      {
+        "orden": 1,
+        "causa": "Hay excepción por servicio o por prefijo",
+        "efecto": "El valor no es el del plan. Mire ESP o ETP antes de corregir la tarifa general."
+      },
+      {
+        "orden": 2,
+        "causa": "La línea TARD está marcada cirugía",
+        "efecto": "Se cobra el valor del tarifario, sin factor del plan ni factor dinero."
+      },
+      {
+        "orden": 3,
+        "causa": "Redondeo",
+        "efecto": "La vista reconoce Unidad, Decena, Centena, Millar, Dos Dec. (con punto), SIN y 05. La pantalla del factor envía Dos Dec (sin punto) y no ofrece 05. Un redondeo que la vista no reconoce cae al entero."
+      },
+      {
+        "orden": 4,
+        "causa": "Redondeo 05 en excepción por prefijo",
+        "efecto": "Esa rama multiplica por el factor del plan (PPT), no por el de la excepción."
+      },
+      {
+        "orden": 5,
+        "causa": "Varias vigencias se cruzan",
+        "efecto": "Cada factor TARF se combina con cada valor TARDV. Dos factores vigentes el mismo día dejan dos precios y la función elige uno."
+      }
+    ],
+    "paquete-y-pgp": [
+      {
+        "orden": 1,
+        "marca": "ESP.PAQUETE",
+        "pregunta": "¿La excepción del servicio tiene Paquete marcado?",
+        "efecto": "El precio de venta sale por la rama de la excepción, no por el base. El detalle de componentes está en EPQ y no se abre en SERTOT. En Valor, además, la fila queda como cirugía."
+      },
+      {
+        "orden": 2,
+        "marca": "SERTOT_PAQNOR",
+        "pregunta": "¿Se busca el valor de tarifario de un servicio que la excepción marcó como paquete?",
+        "efecto": "Esa vista lo deja en la fórmula del plan. La venta no liquida con ella. Su valor fijo (excepciones que no son paquete) cierra el 31/12/2022."
+      },
+      {
+        "orden": 3,
+        "marca": "PPT.PAQUETIZADO",
+        "pregunta": "¿El plan tiene Contrato paquetizado?",
+        "efecto": "No cambia SERTOT. Cambia el reporte de la factura: componentes del paquete en cero. El tipo de cobro (Mes o Día) solo aparece con esta casilla."
+      },
+      {
+        "orden": 4,
+        "marca": "PPT.PGP",
+        "pregunta": "¿El plan tiene PGP y Capitado?",
+        "efecto": "La factura financiera es pago global prospectivo. El precio del servicio sigue siendo SERTOT. Rips Pgp (Evento o Resumen) es el formato del RIPS, no esta casilla."
+      }
+    ]
+  }
+}

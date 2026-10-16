@@ -1,0 +1,47 @@
+{
+  "id": "c202610151130sertot",
+  "canal": "documentar",
+  "titulo": "Servicios contratados · SERTOT · 2026-10-15",
+  "estado": "activo",
+  "procesoId": "servicios-contratados",
+  "creadoEn": "2026-10-15T11:30:00",
+  "archivadoEn": null,
+  "mensajes": [
+    {
+      "id": "a202610151130s0",
+      "autor": "coordinador",
+      "texto": "vamos a documentar el proceso de sertot y sertot1, es decir toda la contratacion, terceros, tarifas, valores, servicios y todo lo que tiene que ver con ventas",
+      "en": "2026-10-15T11:30:00"
+    },
+    {
+      "id": "a202610151145s1",
+      "autor": "agente",
+      "texto": "## Servicios contratados — el precio de la venta\n\nLibro nuevo: **servicios-contratados** (parcial). Terceros, categorías, contrato IPS y plan siguen en Planes y Terceros. Aquí empieza el valor.\n\n**SERTOT** no se captura. Es la vista del precio para un tercero y un plan. Junta:\n\n1. **Base** — plan del tercero (tarifa + factor) × valor del tarifario × factor dinero.\n2. **Excepción por prefijo** (Tarifa o PCosto), mismo nivel de atención.\n3. **Excepción por servicio** (Tarifa, Valor o Pcosto). Esta gana: saca el servicio del base y del prefijo.\n\n**SERTOT1** cruza ese precio con la cobertura del plan. Agrega quién cobra. Sin cobertura, el selector de la venta no muestra el servicio.\n\n**Dos vigencias, las dos obligatorias.** La del valor (detalle del tarifario) y la del factor dinero. La fecha del cargo tiene que caer en las dos.\n\n**Dónde se arma:** Configuración → Generales → Servicios, Tarifas, y en el tercero el plan → Excepción Servicios / Excepción Tarifas → Servicios contratados (consulta y Excel).\n\n**La venta** elige con SERTOT1 (activo, no cirugía) y liquida con FNK_VLR_SERTOT. Cita, autorización, presupuesto y factura usan ese valor; el documento sigue en sus libros.\n\n### Hallazgo que ya afecta ventas\n\nLa excepción por servicio de tipo **Valor** tiene las vigencias escritas en la vista del **01/01/2002 al 31/12/2025**. No usa las fechas de la pantalla. Como además saca el servicio del precio base, una venta de hoy puede quedar sin valor (la función devuelve NULL).\n\nTambién: el redondeo **05** de la excepción por prefijo usa el factor del plan, no el de la excepción. Y **SPQ_TAR** no está en PREVERSION ni en la liberada 2.0.9 (la pantalla de tarifas igual llama MODELO TAR).\n\nPREVERSION y la Cerrada 2.0.9 quedaron idénticas en estas vistas.\n\n**Siguiente tramo:** leer el alta (SPQ_SER, plan del tercero, excepciones) y ubicar el procedimiento de tarifas. Confirme y sigo por Servicios.",
+      "en": "2026-10-15T11:45:00"
+    },
+    {
+      "id": "a202610151205s2",
+      "autor": "agente",
+      "texto": "## Árbol al revés — dónde se cae el precio\n\nQuedó el recorrido para ubicar la falla. Se parte del síntoma. El primer eslabón que no cumple es la causa.\n\n**No hay fila en SERTOT.** Primero la excepción: si existe, se comió el precio base.\n- Excepción del servicio (ESP): Tarifa exige la tarifa de la excepción completa; Valor solo vive hasta el 31/12/2025; PCosto exige costo y factor. Si esa rama no arma precio, el servicio desaparece.\n- Excepción del prefijo (ETP): mismo prefijo y mismo nivel. Tarifa saca el base. PCosto lo saca solo si el costo cae en el rango.\n- Si no hay excepción, el base pide los seis, en orden: servicio (SER), plan del tercero con factor mayor que cero (PPT), cabecera de tarifa (TAR), servicio dentro de la tarifa (TARD), valor (TARDV) y factor dinero (TARF). El primero que falte es la causa.\n\n**Hay fila y hoy no se ve.** Una de las dos vigencias no cubre el día: la del valor (TARDV) o la del factor (TARF).\n\n**Se ve en Servicios contratados y no en la venta.** Falta la cobertura del plan (CPPAF), o el selector lo oculta porque el servicio está inactivo o la línea es cirugía.\n\n**Liquida en cero.** La función mira la fecha del cargo. Sin las dos vigencias devuelve vacío.\n\n**El número no cuadra.** Hay excepción, la línea es cirugía (cobra el valor sin factores), o el redondeo guardado es «Dos Dec» sin punto y la vista reconoce «Dos Dec.» con punto: en ese caso redondea a entero.\n\nContrato IPS, categoría y ficha del tercero no entran al join del precio. Sirven para capturar lo demás. Si el plan del tercero ya existe, un contrato vacío no borra SERTOT.\n\nTercero y plan maestro quedan como eslabones de captura (libro de Planes y Terceros). El procedimiento que guarda tarifa, factor y vigencias (CONFI_GRAL) sigue sin leer.",
+      "en": "2026-10-15T12:05:00"
+    },
+    {
+      "id": "a202610151210s3",
+      "autor": "agente",
+      "texto": "## Qué queda cubierto hacia la factura\n\n**TARD.** El servicio dentro de la tarifa. Si no está, SERTOT no arma fila. Si la línea es cirugía, la factura cobra el valor del tarifario, sin factor del plan ni factor dinero.\n\n**TARDV.** El valor y su vigencia (FECHAINI–FECHAFIN). Sin valor no hay precio. Si la fecha del cargo cae fuera, la liquidación queda en cero aunque el servicio exista.\n\n**CPPAF.** No calcula el valor. Cruza el precio con la cobertura del plan y arma SERTOT1: quién cobra, si esa cobertura pide autorización y el área. Sin CPPAF, Servicios contratados muestra el precio y el selector de la factura no ofrece el servicio.\n\nEl enfoque de facturación cubierto es ese: de dónde sale el valor y por qué la factura no lo ve o lo deja en cero. El armado del documento (procedencia, copago, emisión) sigue en el libro de facturación. El procedimiento que graba TARD y TARDV (CONFI_GRAL) no está leído.",
+      "en": "2026-10-15T12:10:00"
+    },
+    {
+      "id": "a202610151230s4",
+      "autor": "agente",
+      "texto": "## Centro: servicio, TAR, TARF y copago\n\n**SER** es lo que se vende. Prefijo y nivel de atención, además, eligen la regla de copago cuando el modelo no tiene una del servicio.\n\n**TAR** es la tarifa (código y codificación). Sin cabecera no hay precio.\n\n**TARF** es el factor dinero, el redondeo y la vigencia del factor. Sin factor hay valor en TARDV y aun así no hay precio. Esa vigencia es la segunda que la factura exige.\n\nTARD, TARDV y CPPAF siguen como ya quedaron: detalle, valor y quién cobra.\n\nEl copago **no cambia** SERTOT. Parte el precio entre el paciente y el contratante.\n\n1. El plan del tercero apunta al modelo de pago compartido (IDMODELOPCA).\n2. El modelo mira el servicio (MOCPS) o, si no hay, el prefijo y el nivel (MOCP). La cuenta está en MOCC. Sin regla, o con valor 0, el copago de la línea queda en 0.\n3. Contratos especiales (PPTCNT), por tercero, plan y prefijo: copago fijo y porcentaje de cobertura. Al confirmar la autorización se copian a la cabecera. No reemplazan el valor de la tarifa. Si marca movilidad y hay zona, agrega esa línea.\n4. En el plan, «No descuenta copago en factura»: marcado, la línea al contratante conserva el valor del servicio. Lo respetan la factura de evento por paquete y la de autorización de pago. La factura individual de consulta externa usa la resta, pero el cuerpo leído no trae esa marca desde el plan: descuenta el copago aunque el plan diga que no.",
+      "en": "2026-10-15T12:30:00"
+    },
+    {
+      "id": "a202610151415s5",
+      "autor": "agente",
+      "texto": "## Excepciones, paquetes, PGP y el plan del tercero\n\n**Excepción por prefijo (ETP).** Tercero, plan, prefijo y el mismo nivel de atención del servicio.\n- Tarifa: cobra con la tarifa y el factor de la excepción. Saca el precio base solo si esa rama arma el servicio (factor mayor que cero y tarifa completa). Factor 0 o nivel distinto: el base sigue. El redondeo 05 multiplica por el factor del plan.\n- PCosto: costo por factor, si el costo cae entre valor inicial y final. Fuera del rango, el base sigue.\nLos porcentajes de cubrimiento y el tipo de recobro van en la fila y no cambian el número.\n\n**Excepción por servicio (ESP).** Una fila cualquiera saca el base y también la excepción por prefijo.\n- Tarifa: usa la tarifa de la excepción y las vigencias de TARF y TARDV, no las fechas de la pantalla.\n- Valor: el número escrito, vigente en la vista hasta el 31/12/2025.\n- Pcosto en pantalla, PCosto en la vista.\nSi la rama no arma precio, el servicio desaparece.\n\n**Paquete, tres marcas.**\n1. Paquete en la excepción. El precio de venta sale por la rama de la excepción. El detalle (componentes, cantidad, pre o posquirúrgico) está en EPQ y SERTOT no lo abre: cobra el paquete como una fila. En Valor, Paquete marcado deja la fila como cirugía y el selector de la venta no la ofrece.\n2. SERTOT_PAQNOR. Es el valor de tarifario de lo que la excepción marcó como paquete. La venta no liquida con esta vista. Su valor fijo (excepciones que no son paquete) cierra el 31/12/2022.\n3. Contrato paquetizado, en el plan. No cambia SERTOT. Con la casilla aparece el tipo de cobro Mes o Día. En la factura y en el RIPS los componentes del paquete se reportan en cero.\n\n**PGP.** La casilla del plan, junto con Capitado, define la factura financiera: cápita si PGP está apagado, pago global prospectivo si está encendido (valor del período más la relación de prestaciones). El precio del servicio sigue siendo SERTOT. Rips Pgp (Evento o Resumen) es el formato del RIPS, no la casilla PGP.\n\n**Del plan, el precio solo usa** tarifa, factor mayor que cero y la marca Capitado (para el tipo, no para el número). Estado, vencimiento, tope y carencia no entran al join. El copago sigue partido como quedó: modelo, contratos especiales y «No descuenta copago en factura».",
+      "en": "2026-10-15T14:15:00"
+    }
+  ]
+}

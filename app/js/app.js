@@ -33,6 +33,8 @@
   let mockupsFormDirty = false;
   let mockupsFormPreviewRuta = "";
   let mockupsFormCasoId = "";
+  let solicitudOrigen = null;
+  let solicitudesCache = null;
 
   function mockupBelongsToCaso(ruta, idCaso) {
     const rel = String(ruta || "")
@@ -1140,6 +1142,8 @@
     brechaAnalisis = null;
     imagenesAnalisis = [];
     archivosAnalisis = [];
+    solicitudOrigen = null;
+    pintarSolicitudOrigen();
     diagramaFlujo = null;
     mockupsFormDraft = [];
     mockupsFormMeta = { mockups: [], sugeridos: [], plantillas: [], correoHint: "" };
@@ -1227,6 +1231,254 @@
     refreshCorreoEstado();
   }
 
+  function pintarSolicitudOrigen() {
+    const el = $("#solicitudOrigenEstado");
+    if (!el) return;
+    if (!solicitudOrigen?.id) {
+      el.textContent = "Ninguna solicitud asociada.";
+      return;
+    }
+    const tit = solicitudOrigen.titulo ? ` — ${solicitudOrigen.titulo}` : "";
+    el.textContent = `Asociada ${solicitudOrigen.id}${tit}`;
+  }
+
+  function prioridadDesdeSolicitud(p) {
+    const t = String(p || "").toLowerCase();
+    if (t.includes("crit") || t.includes("alta")) return "1 - Alta";
+    if (t.includes("baja")) return "3 - Baja";
+    return "2 - Media";
+  }
+
+  function textoRequerimientoDesdeSolicitud(sol) {
+    const bloques = [];
+    if ((sol.necesidad || "").trim()) bloques.push(sol.necesidad.trim());
+    if ((sol.hoy || "").trim()) bloques.push(`Cómo opera hoy\n${sol.hoy.trim()}`);
+    if ((sol.propuesta || "").trim()) bloques.push(`Qué se espera\n${sol.propuesta.trim()}`);
+    if ((sol.justificacion || "").trim()) bloques.push(`Por qué el camino actual no alcanza\n${sol.justificacion.trim()}`);
+    return bloques.join("\n\n");
+  }
+
+  function cambioSimpleDesdeSolicitud(sol) {
+    const hoy = (sol.hoy || "").trim();
+    const prop = (sol.propuesta || "").trim();
+    if (hoy && prop) return `Hoy: ${hoy}\n\nPropuesta: ${prop}`;
+    return prop || hoy;
+  }
+
+  function sugerirIdCaso(sol) {
+    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const base = String(sol.titulo || "caso")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 36);
+    const corte = base.lastIndexOf("-");
+    if (corte > 12) base = base.slice(0, corte);
+    return `${fecha}-${base || "caso"}`;
+  }
+
+  function setSiTexto(sel, valor) {
+    const t = String(valor || "").trim();
+    if (t) setVal(sel, t);
+  }
+
+  async function cargarListaSolicitudes() {
+    if (solicitudesCache) return solicitudesCache;
+    const resp = await fetch("/api/solicitar", { cache: "no-store" });
+    const data = await resp.json();
+    solicitudesCache = data.items || [];
+    return solicitudesCache;
+  }
+
+  function solicitudCerradaSinReq(it) {
+    const cerrada = it.cerrado === true || String(it.estado || "").toLowerCase() === "cerrado";
+    return cerrada && !String(it.avalReq || "").trim();
+  }
+
+  function filtrarSolicitudes(q, items) {
+    const base = (items || []).filter(solicitudCerradaSinReq);
+    const n = String(q || "").trim().toLowerCase();
+    const lista = n
+      ? base.filter((it) => {
+          const blob = `${it.id || ""} ${it.titulo || ""} ${it.proyecto || ""} ${it.procesoId || ""}`.toLowerCase();
+          return blob.includes(n);
+        })
+      : base;
+    return lista.slice(0, n ? 12 : 8);
+  }
+
+  function pintarResultadosSolicitud(items) {
+    const box = $("#buscarSolicitudResultados");
+    if (!box) return;
+    box.hidden = false;
+    if (!items.length) {
+      const vacio = String($("#buscarSolicitudReq")?.value || "").trim()
+        ? "Ninguna solicitud cerrada sin requerimiento coincide."
+        : "No hay solicitudes cerradas sin requerimiento.";
+      box.innerHTML = `<p class="hint compact" style="margin:0.4rem 0.65rem;">${vacio}</p>`;
+      return;
+    }
+    box.innerHTML = items.map((it) => {
+      const meta = [it.id, it.proyecto, it.estado].filter(Boolean).join(" · ");
+      return `<button type="button" class="sr-asociar-item" data-id="${escAttr(it.id)}"><strong>${esc(it.titulo || it.id)}</strong><span>${esc(meta)}</span></button>`;
+    }).join("");
+    box.querySelectorAll(".sr-asociar-item").forEach((btn) => {
+      btn.addEventListener("click", () => asociarSolicitud(btn.dataset.id));
+    });
+  }
+
+  async function asociarSolicitud(id) {
+    const box = $("#buscarSolicitudResultados");
+    if (box) box.hidden = true;
+    const estado = $("#solicitudOrigenEstado");
+    if (estado) estado.textContent = "Trayendo la solicitud…";
+    let data = {};
+    let resp;
+    try {
+      resp = await fetch(`/api/solicitar/${encodeURIComponent(id)}`, { cache: "no-store" });
+      data = await resp.json();
+    } catch {
+      if (estado) estado.textContent = "No se pudo leer la solicitud.";
+      return;
+    }
+    const sol = data.solicitud || data;
+    if (!resp.ok || !sol?.id) {
+      if (estado) estado.textContent = data.error || "No se pudo leer la solicitud.";
+      return;
+    }
+    if (val("#requerimiento").trim()) {
+      const ok = confirm(`¿Traer ${sol.id}?\n\nSe reemplazan título, requerimiento, criterios, análisis y documentos con los de esa solicitud.`);
+      if (!ok) {
+        pintarSolicitudOrigen();
+        return;
+      }
+    }
+    if (!val("#idCaso")) setVal("#idCaso", sugerirIdCaso(sol));
+    if (!val("#idReq") && sol.aval?.idReq) setVal("#idReq", sol.aval.idReq);
+    setSiTexto("#titulo", sol.titulo);
+    setSiTexto("#proyecto", sol.proyecto);
+    setSiTexto("#moduloNombre", sol.modulo);
+    if ((sol.prioridad || "").trim()) setVal("#prioridad", prioridadDesdeSolicitud(sol.prioridad));
+    setSiTexto("#requerimiento", textoRequerimientoDesdeSolicitud(sol));
+    setSiTexto("#criteriosAceptacion", sol.criterios);
+    setSiTexto("#alcance", sol.alcance);
+    setSiTexto("#restricciones", sol.restricciones);
+    setSiTexto("#analisis", sol.analisis);
+    setSiTexto("#recomendacion", sol.recomendacion);
+    setSiTexto("#cambioPropuestoSimple", cambioSimpleDesdeSolicitud(sol));
+    setSiTexto("#cambioPropuestoSql", sol.cambioPropuestoSql);
+    if (sol.procesoId) {
+      metodosKbState.procesoId = sol.procesoId;
+      const sel = $("#sqlProcesoId");
+      if (sel) sel.value = sol.procesoId;
+    }
+    renderAnCriteriosDinamicosDesdeTexto(true);
+    solicitudOrigen = { id: sol.id, titulo: sol.titulo || "" };
+    const idCaso = val("#idCaso");
+    let nArch = 0;
+    let avisoArch = "";
+    try {
+      const traidos = await copiarDocumentosSolicitud(idCaso, sol);
+      const nombres = new Set(traidos.map((a) => a.nombre));
+      archivosAnalisis = archivosAnalisis.filter((a) => !nombres.has(a.nombre)).concat(traidos);
+      renderArchivosAnalisis();
+      nArch = traidos.length;
+      if (traidos.length) {
+        const fold = $("#foldCapturasReq");
+        if (fold) fold.open = true;
+      }
+    } catch (err) {
+      avisoArch = err?.message || "No se copiaron los documentos.";
+    }
+    const idReqForm = val("#idReq");
+    if (solicitudesCache && idReqForm) {
+      const row = solicitudesCache.find((i) => i.id === sol.id);
+      if (row) row.avalReq = idReqForm;
+    }
+    updateSqlPath();
+    saveToStorage();
+    updateAll();
+    const partes = [`Asociada ${sol.id}. Los textos quedaron en el caso.`];
+    if (!avisoArch && nArch) partes.push(`${nArch} documento(s) en normativa.`);
+    if (!avisoArch && !nArch) partes.push("Esta solicitud no tenía documentos.");
+    if (avisoArch) partes.push(avisoArch);
+    if (estado) estado.textContent = partes.join(" ");
+    const input = $("#buscarSolicitudReq");
+    if (input) input.value = "";
+  }
+
+  async function blobADataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("No se pudo leer un documento"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function copiarDocumentosSolicitud(idCaso, sol) {
+    const lista = (sol.archivos || []).filter((a) => a?.nombre && !String(a.nombre).endsWith(".extracto.txt"));
+    const body = {
+      idSolicitud: sol.id,
+      idReq: val("#idReq"),
+      titulo: val("#titulo"),
+    };
+    const r2 = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/desde-solicitud`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let out = {};
+    try { out = await r2.json(); } catch { out = {}; }
+    if (r2.ok && out.ok) return out.archivos || [];
+    if (r2.status !== 404) {
+      throw new Error(out.error || "No se copiaron los documentos.");
+    }
+    const traidos = [];
+    for (const a of lista) {
+      const url = a.url || `/api/solicitar/${encodeURIComponent(sol.id)}/archivo/${encodeURIComponent(a.nombre)}`;
+      const fr = await fetch(url);
+      if (!fr.ok) continue;
+      const dataUrl = await blobADataUrl(await fr.blob());
+      const up = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/archivo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: a.nombre, dataUrl, tipo: a.tipo || "normativa" }),
+      });
+      const meta = await up.json().catch(() => ({}));
+      if (up.ok && meta.archivo) traidos.push(meta.archivo);
+    }
+    return traidos;
+  }
+
+  function bindBuscarSolicitud() {
+    const input = $("#buscarSolicitudReq");
+    const box = $("#buscarSolicitudResultados");
+    if (!input || !box) return;
+    let timer = null;
+    const buscar = async () => {
+      try {
+        const items = await cargarListaSolicitudes();
+        pintarResultadosSolicitud(filtrarSolicitudes(input.value, items));
+      } catch {
+        box.hidden = false;
+        box.innerHTML = `<p class="hint compact" style="margin:0.4rem 0.65rem;">No se pudo leer la lista de solicitudes.</p>`;
+      }
+    };
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(buscar, 180);
+    });
+    input.addEventListener("focus", () => {
+      if (!input.value.trim() && box.hidden) buscar();
+    });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("#cardSolicitudOrigen")) box.hidden = true;
+    });
+  }
+
   function bindForm() {
     $("#btnNext").addEventListener("click", () => goStep(currentStep + 1));
     $("#btnPrev").addEventListener("click", () => goStep(currentStep - 1));
@@ -1239,6 +1491,7 @@
       updateAll();
     });
     $("#btnLeerCarpetaSql").addEventListener("click", () => leerCarpetaSql());
+    bindBuscarSolicitud();
     const btnTraerKb = $("#btnTraerMetodosKb");
     if (btnTraerKb) btnTraerKb.addEventListener("click", () => traerMetodosKb(false));
     const selProc = $("#sqlProcesoId");
@@ -4001,6 +4254,9 @@
         recomendacion: val("#recomendacion"),
         cambioPropuestoSimple: val("#cambioPropuestoSimple"),
         cambioPropuestoSql: val("#cambioPropuestoSql"),
+        solicitudOrigen: solicitudOrigen && solicitudOrigen.id
+          ? { id: solicitudOrigen.id, titulo: solicitudOrigen.titulo || "" }
+          : null,
         impactoFe: val("#impactoFe"),
         impactoApi: val("#impactoApi"),
         impactoSql: val("#impactoSql"),
@@ -4569,6 +4825,8 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
       set("#recomendacion", data.contenido?.recomendacion);
       set("#cambioPropuestoSimple", data.contenido?.cambioPropuestoSimple);
       set("#cambioPropuestoSql", data.contenido?.cambioPropuestoSql);
+      solicitudOrigen = data.contenido?.solicitudOrigen?.id ? data.contenido.solicitudOrigen : null;
+      pintarSolicitudOrigen();
       set("#impactoFe", data.contenido?.impactoFe);
       set("#impactoApi", data.contenido?.impactoApi);
       set("#impactoSql", data.contenido?.impactoSql);

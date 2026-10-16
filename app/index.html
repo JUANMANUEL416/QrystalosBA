@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=55">
+  <link rel="stylesheet" href="css/app.css?v=56">
   <link rel="stylesheet" href="css/soporte-consultas.css?v=2">
   <link rel="stylesheet" href="css/theme-quasar.css?v=8">
 </head>
@@ -80,6 +80,10 @@
           <button type="button" class="hub-nav-item" id="btnHubSoporteConsultas" data-hub-mode="soporte-consultas" onclick="window.QrysConocimiento&&window.QrysConocimiento.enterMode('soporte-consultas')">
             <span class="material-symbols-outlined" aria-hidden="true">forum</span>
             <span class="hub-nav-copy"><strong>Consultas soporte</strong><span>Chat, respuesta documentada y PDF</span></span>
+          </button>
+          <button type="button" class="hub-nav-item" id="btnHubPruebaReq" data-hub-mode="prueba-req" onclick="window.QrysConocimiento&&window.QrysConocimiento.enterMode('prueba-req')">
+            <span class="material-symbols-outlined" aria-hidden="true">science</span>
+            <span class="hub-nav-copy"><strong>Prueba req</strong><span>Entrega del desarrollador contra la base de pruebas</span></span>
           </button>
           <p class="hub-nav-label">Calidad</p>
           <button type="button" class="hub-nav-item" id="btnHubAuditoria" data-hub-mode="auditoria" onclick="window.QrysConocimiento&&window.QrysConocimiento.enterMode('auditoria')">
@@ -538,6 +542,15 @@
               <h2>Requerimiento del cliente</h2>
               <p class="hint compact">Si hay HTML en cola/, el agente lo lee del disco. Aquí complemente lo necesario.</p>
             </div>
+            <div class="form-card" id="cardSolicitudOrigen">
+              <h3>Traer solicitud de requerimiento</h3>
+              <p class="hint compact">Solo salen las solicitudes cerradas que aún no tienen requerimiento. Al elegirla, el caso queda con sus textos y documentos.</p>
+              <div class="sr-asociar-buscar">
+                <input type="search" id="buscarSolicitudReq" placeholder="Título, proyecto o número SR…" autocomplete="off">
+                <div id="buscarSolicitudResultados" class="sr-asociar-lista" hidden></div>
+              </div>
+              <p id="solicitudOrigenEstado" class="hint compact">Ninguna solicitud asociada.</p>
+            </div>
             <div class="form-card">
               <div class="field">
                 <div class="field-head">
@@ -548,7 +561,7 @@
                 <p class="hint compact" id="brechaAnalisisHint">El agente (Cursor) propone la solución: criterios, alcance, restricciones, análisis, recomendación, SP/METODO documentados y, si hay cambio SQL, los fragmentos en «Cambio propuesto — fragmentos SQL». Quedan en este formulario y en el Chat. No usa OpenAI.</p>
                 <div id="brechaAnalisisBox" class="criterios-box hidden"></div>
               </div>
-              <details class="form-more-card wizard-fold">
+              <details class="form-more-card wizard-fold" id="foldCapturasReq">
                 <summary>Capturas y normativa (opcional)</summary>
               <div class="field imagenes-analisis-field">
                 <label for="inputImagenAnalisis">Capturas</label>
@@ -1965,6 +1978,28 @@
             <input type="text" id="scSolicitante" placeholder="Nombre del compañero" autocomplete="off">
           </div>
           <div class="field" style="grid-column:1/-1">
+            <label class="chk-line" for="scValidarBd">
+              <input type="checkbox" id="scValidarBd">
+              Requiere validación en base de datos
+            </label>
+            <p class="hint compact">Solo lectura. El agente consulta esa base al responder y no modifica datos.</p>
+          </div>
+          <div id="scValidarBdBox" class="field" style="grid-column:1/-1;display:none">
+            <div class="grid-2">
+              <div class="field">
+                <label for="scServidor">Servidor *</label>
+                <select id="scServidor">
+                  <option value="">Seleccione…</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="scBase">Base de datos *</label>
+                <select id="scBase"></select>
+                <input type="text" id="scBaseOtra" placeholder="O agregue otra base…" autocomplete="off" style="margin-top:0.35rem">
+              </div>
+            </div>
+          </div>
+          <div class="field" style="grid-column:1/-1">
             <label for="scPregunta">Pregunta o contexto inicial *</label>
             <textarea id="scPregunta" rows="4" placeholder="Pegue el hilo o una captura (Ctrl+V). Si la consulta es solo una imagen, basta con pegarla."></textarea>
           </div>
@@ -2065,6 +2100,122 @@
               <button type="button" class="scw-icon-btn" id="scBtnRefrescarChat" title="Actualizar">
                 <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISTA: PRUEBA REQ -->
+    <section id="view-prueba-req" class="view">
+      <div class="alert alert-warning" id="prAviso" hidden></div>
+      <div class="kb-page-tabs" role="tablist" aria-label="Prueba req">
+        <button type="button" class="kb-page-tab is-on" data-pr-panel="historial">Historial</button>
+        <button type="button" class="kb-page-tab" data-pr-panel="nueva">Nueva prueba</button>
+        <button type="button" class="kb-page-tab" data-pr-panel="prueba" id="prTabPrueba" disabled>Prueba</button>
+      </div>
+
+      <div id="prPanelHistorial" class="kb-page-panel">
+        <div class="sr-lista-head">
+          <div>
+            <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.25rem">Prueba req</h2>
+            <p class="hint" style="margin:0">Registre la entrega, pruébela en la base elegida y cierre con el documento de entrega o de devolución.</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="prBtnIrNueva">Nueva prueba</button>
+        </div>
+        <div class="table-pro-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:11rem">Id</th>
+                <th>Requerimiento</th>
+                <th style="width:8rem">Base</th>
+                <th style="width:7rem">Estado</th>
+                <th style="width:5.5rem;text-align:right"> </th>
+              </tr>
+            </thead>
+            <tbody id="prListaBody"><tr><td colspan="5">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="prPanelNueva" class="kb-page-panel hidden">
+        <h2 style="font-size:1.15rem;margin:0 0 0.75rem">Registrar prueba</h2>
+        <div class="grid-2 mb toolbar-card">
+          <div class="field" style="grid-column:1/-1">
+            <label for="prRequerimiento">Requerimiento *</label>
+            <textarea id="prRequerimiento" rows="5" placeholder="Pegue la descripción del requerimiento."></textarea>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="prJustificacion">Observación o justificación *</label>
+            <textarea id="prJustificacion" rows="4" placeholder="Por qué soporte pidió el requerimiento, o la observación de la prueba."></textarea>
+          </div>
+          <div class="field">
+            <label for="prDesarrollador">Desarrollador</label>
+            <input type="text" id="prDesarrollador" placeholder="Ej. MSUAREZ" autocomplete="off">
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label for="prRespuesta">Respuesta del desarrollador *</label>
+            <textarea id="prRespuesta" rows="4" placeholder="Pegue el TERMINADO PARA PRUEBAS y lo que dice que hizo."></textarea>
+          </div>
+          <div class="field">
+            <label for="prServidor">Servidor de prueba *</label>
+            <select id="prServidor"></select>
+          </div>
+          <div class="field">
+            <label for="prBase">Base de prueba *</label>
+            <select id="prBase"></select>
+            <input type="text" id="prBaseOtra" placeholder="O escriba otra base…" autocomplete="off" style="margin-top:0.35rem">
+          </div>
+          <div class="field" style="align-self:end;display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-primary" id="prBtnCrear">Registrar y abrir</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="prBtnNuevaCancelar">Historial</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="prPanelPrueba" class="kb-page-panel hidden scw">
+        <header class="scw-head">
+          <button type="button" class="scw-back" id="prBtnVolver" title="Volver al historial" aria-label="Volver al historial">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+          </button>
+          <div class="scw-head-info">
+            <strong id="prTitulo" class="scw-title">Prueba</strong>
+            <span id="prMeta" class="scw-meta">—</span>
+          </div>
+          <div class="scw-head-actions">
+            <span id="prSello" class="scw-stamp"></span>
+            <button type="button" class="btn btn-primary btn-sm" id="prBtnProbar">Probar</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="prBtnEntrega">Cerrar como entrega</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="prBtnDevolver">Cerrar como devolución</button>
+            <button type="button" class="scw-icon-btn" id="prBtnVer" disabled title="Ver documento">
+              <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+            </button>
+          </div>
+        </header>
+        <details class="scw-context" open>
+          <summary>
+            <span class="scw-tag">Requerimiento</span>
+            <span id="prContextLine" class="scw-context-line"></span>
+          </summary>
+          <div class="scw-context-body">
+            <section><h4>Requerimiento</h4><p id="prTxtReq"></p></section>
+            <section><h4>Observación o justificación</h4><p id="prTxtJust"></p></section>
+            <section><h4>Respuesta del desarrollador</h4><p id="prTxtDev"></p></section>
+          </div>
+        </details>
+        <div class="scw-chat">
+          <div id="prEstado" class="scw-status hidden" aria-live="polite">
+            <span class="scw-status-dot" aria-hidden="true"></span>
+            <strong id="prEstadoLabel">Agente</strong>
+            <span id="prEstadoDetail"></span>
+          </div>
+          <div id="prChat" class="scw-messages"></div>
+          <div class="scw-compose">
+            <textarea id="prChatInput" rows="2" placeholder="Ajuste para el agente. Enter envía el ajuste."></textarea>
+            <div class="scw-compose-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="prBtnNota">Dejar nota</button>
+              <button type="button" class="btn btn-primary btn-sm" id="prBtnAjuste">Pedir ajuste</button>
             </div>
           </div>
         </div>
@@ -2276,14 +2427,15 @@
   <script src="js/criterios.js?v=9"></script>
   <script src="js/desarrolladores.js?v=3"></script>
   <script src="js/prompts-flujo.js?v=2"></script>
-  <script src="js/conocimiento.js?v=29"></script>
+  <script src="js/conocimiento.js?v=30"></script>
   <script src="js/auditoria.js?v=19"></script>
   <script src="js/informe-contab.js?v=6"></script>
-  <script src="js/soporte-consultas.js?v=10"></script>
+  <script src="js/soporte-consultas.js?v=12"></script>
+  <script src="js/prueba-req.js?v=1"></script>
   <script src="js/sql-revisar.js?v=4"></script>
   <script src="js/solicitar.js?v=23"></script>
   <script src="js/agentes.js?v=3"></script>
   <script src="js/servidores.js?v=3"></script>
-  <script src="js/app.js?v=77"></script>
+  <script src="js/app.js?v=80"></script>
 </body>
 </html>

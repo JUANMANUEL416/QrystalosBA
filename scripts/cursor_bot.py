@@ -233,9 +233,15 @@ def es_soporte_consulta(id_caso: str, motivo: str = "") -> bool:
     )
 
 
+def es_prueba_req(id_caso: str, motivo: str = "") -> bool:
+    return motivo in ("prueba-req", "prueba-req-chat") or str(id_caso or "").startswith("pr20")
+
+
 def caso_dir(id_caso: str) -> str:
     if es_revisar(id_caso):
         return os.path.join(REVISIONES, id_caso)
+    if es_prueba_req(id_caso):
+        return os.path.join(ROOT, "data", "pruebas-req", id_caso)
     if es_soporte_consulta(id_caso):
         return os.path.join(ROOT, "data", "soporte-consultas", id_caso)
     if kb_base(id_caso) in CONOCIMIENTO_IDS:
@@ -311,6 +317,11 @@ def append_chat(id_caso: str, autor: str, texto: str) -> None:
         import solicitud_req as sr
 
         sr.append_chat(id_caso, autor, texto)
+        return
+    if es_prueba_req(id_caso):
+        import prueba_req as pr
+
+        pr.append_chat(id_caso, autor if autor != "sistema" else "sistema", texto)
         return
     if es_soporte_consulta(id_caso):
         import soporte_consultas as sc
@@ -431,6 +442,8 @@ BUSQUEDA_KB = (
 def rol_de(id_caso: str, motivo: str) -> str:
     if es_conocimiento(id_caso, motivo):
         return "consultas" if canal_de(id_caso, motivo) == "consultas" else "conocimiento"
+    if es_prueba_req(id_caso, motivo):
+        return "prueba-req"
     if es_soporte_consulta(id_caso, motivo):
         return "consultas"
     if es_revisar(id_caso, motivo):
@@ -588,6 +601,39 @@ Reglas:
 
 Al terminar, el último mensaje de chat.json debe ser suyo (autor: agente).
 """
+    elif motivo in ("prueba-req", "prueba-req-chat"):
+        accion = (
+            "PRUEBA: contraste la entrega y deje el veredicto."
+            if motivo == "prueba-req"
+            else "AJUSTE: responda lo último del coordinador y, si cambia el criterio, actualice el veredicto."
+        )
+        return f"""Eres el agente que prueba requerimientos entregados en Qrystalos BA. UN turno y termina.
+
+Prueba: {id_caso}
+Turno: {accion}
+
+Lea del disco, en este orden:
+1. data/pruebas-req/{id_caso}/INSTRUCCION-AGENTE.md
+2. data/pruebas-req/{id_caso}/meta.json
+3. data/pruebas-req/{id_caso}/chat.json
+
+Luego contraste, en este orden y solo lo que haga falta:
+1. Base de conocimiento: conocimiento/_indice_busqueda.json y solo la ficha del control. Nunca un sps.json entero.
+2. Qrystalos2: el fuente de la pantalla o el método que el desarrollador dice haber cambiado.
+3. IXONLINE/SQL (DESAIX): PREVERSION contra la última versión cerrada del procedimiento, la vista o el campo.
+4. La base de pruebas de meta.json (servidorId y baseDatos), solo con SELECT. No escriba ni ejecute procedimientos. Use scripts/auditoria_procesos.py (_resolve_server_db y _sqlcmd_query) si hace falta. No imprima credenciales.
+
+{BUSQUEDA_KB}
+Reglas:
+- Español. La primera línea del chat es Aprobado o Rechazado.
+- Escriba en data/pruebas-req/{id_caso}/chat.json (autor: agente, campo en). No borre mensajes previos.
+- Actualice meta.json: veredicto = aprobado o rechazado; veredictoTexto = el texto del documento (qué se cumplió o qué debe corregir el desarrollador).
+- En veredictoTexto no ponga rutas internas del BA ni comandos de oficina. La fuente SQL se cita como IXONLINE/SQL y el nombre del objeto.
+- No genere HTML. No implemente en Qrystalos2 ni cambie la base.
+- No invente columnas ni procedimientos. Si un dato no está, dígalo y rechace solo lo que el requerimiento pedía y no aparece.
+
+Al terminar, el último mensaje útil de chat.json debe ser suyo y meta.json debe tener veredicto y veredictoTexto.
+"""
     elif motivo in ("soporte-consulta-analisis", "soporte-consulta-chat"):
         accion = (
             "ANÁLISIS INICIAL: contraste la pregunta con conocimiento/ y proponga respuesta completa."
@@ -610,13 +656,16 @@ Lea del disco, en este orden:
 {BUSQUEDA_KB}
 {_bloque_handoffs(id_caso, motivo)}
 Reglas:
-- Español. NO implemente en Qrystalos2 ni ejecute SQL en cliente.
+- Español. NO implemente en Qrystalos2. NO escriba en la base del cliente ni ejecute procedimientos.
+- Si meta.json trae validarEnBase en true, mida en la base antes de cerrar la respuesta. Use servidorId y baseDatos. La conexión es solo lectura: scripts/auditoria_procesos.py (_resolve_server_db y _sqlcmd_query), solo SELECT o SET NOCOUNT. No imprima credenciales ni las copie al chat ni al PDF. Si validarEnBase es true y falta servidor o base, pídalos y deténgase. Si validarEnBase no está marcado, no conecte salvo que el chat lo pida.
+- Incorpore conteos y dos o tres filas clave en respuestaOficial. No pida al coordinador que corra sqlcmd ni que pegue resultados: esa medición es suya. Si no hay servidor para ese cliente, dígalo y deje las consultas; no invente filas.
 - Escriba en data/soporte-consultas/{id_caso}/chat.json (autor: agente, campo en). No borre mensajes previos.
 - Actualice data/soporte-consultas/{id_caso}/meta.json → **respuestaOficial** con el texto listo para entregar (informe claro: reportes, pantallas, pasos DIAN, criterios de inclusión/exclusión de copagos, etc.).
-- En el mismo **meta.json** escriba **proposito** (2–4 frases): enlace entre la necesidad (preguntaInicial) y qué entrega el documento según su análisis; no use texto genérico de plantilla. Ese texto se muestra en la cabecera del PDF junto a «quién pregunta».
+- En el mismo **meta.json** escriba **proposito** (2–4 frases): enlace entre la necesidad (preguntaInicial) y qué entrega el documento. Separe en ese texto qué hace el cliente en pantalla y qué queda para soporte interno (lo ya medido en base y el escalamiento). No use texto genérico de plantilla. Ese texto se muestra en la cabecera del PDF junto a «quién pregunta».
+- La última sección de pasos del documento también separa **Para el cliente** y **Para soporte interno**. Al cliente no le pida SQL, sqlcmd ni rutas de la oficina.
 - La respuesta oficial no se edita en pantalla: solo en meta.json. Tras un ajuste pedido por chat, la app regenera el documento sola.
-- Toda consulta SQL va en bloques ```sql … ``` (uno por consulta) o secciones «BLOQUE N» con líneas ═══; la app las muestra en formato copiar/pegar en el PDF.
-- No invente SP ni columnas. Si falta dato del cliente, dígalo en el chat y deje respuestaOficial con lo que sí puede afirmar desde conocimiento/.
+- Toda consulta SQL va en bloques ```sql … ``` (uno por consulta) o secciones «BLOQUE N» con líneas ═══; la app las muestra en formato copiar/pegar en el PDF. Esas consultas son de soporte interno.
+- No invente SP ni columnas. Si falta dato del cliente, dígalo en el chat y deje respuestaOficial con lo que sí puede afirmar desde conocimiento/ y desde la base.
 - El PDF lo genera la app desde respuestaOficial + chat; no genere HTML aparte.
 - OpenAI no interviene.
 
@@ -711,10 +760,130 @@ def _agent_options(api_key: str, motivo: str = "chat"):
     return AgentOptions(**opts)
 
 
+# --- Arranque del puente node del SDK -------------------------------------------------
+# Cada turno lanza un puente propio; con chats en paralelo varios arrancan a la vez y el
+# descubrimiento pasaba de 30 s (CursorSDKError "Timed out waiting for bridge discovery").
+BRIDGE_TIMEOUT_SEC = float(os.environ.get("CURSOR_BRIDGE_TIMEOUT_SEC") or 120)
+BRIDGE_MAX_ARRANQUES = max(1, int(os.environ.get("CURSOR_BRIDGE_MAX_ARRANQUES") or 2))
+BRIDGE_SLOT_DIR = os.path.join(ROOT, "data", "bridge-slots")
+_BRIDGE_SLOT_STALE_SEC = BRIDGE_TIMEOUT_SEC * 2 + 60
+
+
+def _tomar_slot_bridge(espera_max: float) -> str | None:
+    """Semáforo entre procesos: como mucho BRIDGE_MAX_ARRANQUES puentes arrancando a la vez."""
+    os.makedirs(BRIDGE_SLOT_DIR, exist_ok=True)
+    fin = time.time() + espera_max
+    while True:
+        for i in range(BRIDGE_MAX_ARRANQUES):
+            path = os.path.join(BRIDGE_SLOT_DIR, f"slot-{i}.lock")
+            try:
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        dueno = int((fh.read() or "0").strip() or 0)
+                except (OSError, ValueError):
+                    dueno = 0
+                try:
+                    viejo = time.time() - os.path.getmtime(path) > _BRIDGE_SLOT_STALE_SEC
+                except OSError:
+                    viejo = False
+                if viejo or (dueno and not pid_vivo(dueno)):
+                    try:
+                        os.remove(path)  # slot de un proceso caído
+                    except OSError:
+                        pass
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(str(os.getpid()))
+            return path
+        if time.time() > fin:
+            return None  # mejor arrancar sin slot que no responder
+        time.sleep(0.5)
+
+
+def _soltar_slot_bridge(path: str | None) -> None:
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+async def abrir_bridge():
+    """launch_bridge con timeout amplio, 1 reintento si el descubrimiento expira y semáforo
+    de arranque. Solo el arranque se serializa; el turno corre en paralelo."""
+    import asyncio
+
+    from cursor_sdk import CursorSDKError
+    from cursor_sdk.asyncio import AsyncClient
+
+    _limpiar_bridges_huerfanos()
+    ultimo: Exception | None = None
+    for intento in (1, 2):
+        t0 = time.time()
+        slot = await asyncio.to_thread(_tomar_slot_bridge, BRIDGE_TIMEOUT_SEC)
+        espera = time.time() - t0
+        t1 = time.time()
+        try:
+            client = await AsyncClient.launch_bridge(workspace=ROOT, timeout=BRIDGE_TIMEOUT_SEC)
+            print(
+                f"[bridge] arrancó en {time.time() - t1:.1f}s (espera slot {espera:.1f}s, intento {intento})",
+                flush=True,
+            )
+            return client
+        except CursorSDKError as exc:
+            ultimo = exc
+            print(
+                f"[bridge] falló en {time.time() - t1:.1f}s (intento {intento}): {exc}",
+                flush=True,
+            )
+            if "discovery" not in str(exc).lower() or intento == 2:
+                raise
+        finally:
+            _soltar_slot_bridge(slot)
+    raise ultimo  # type: ignore[misc]
+
+
+def _limpiar_bridges_huerfanos() -> int:
+    """Windows: mata node.exe del puente (cursor_sdk\\_vendor\\bridge) cuyo python padre ya murió."""
+    if os.name != "nt":
+        return 0
+    try:
+        out = sin_consola.run_hidden(
+            [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | "
+                "Where-Object { $_.CommandLine -like '*cursor_sdk*_vendor*bridge*' } | "
+                "ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId)\" }",
+            ],
+            capture_output=True, text=True, timeout=20,
+        ).stdout or ""
+    except Exception as exc:  # noqa: BLE001
+        print(f"[bridge] no se pudo listar huérfanos: {exc}", flush=True)
+        return 0
+    n = 0
+    for linea in out.splitlines():
+        partes = linea.split()
+        if len(partes) != 2 or not all(p.isdigit() for p in partes):
+            continue
+        pid, padre = int(partes[0]), int(partes[1])
+        if padre == os.getpid() or pid_vivo(padre):
+            continue  # su python sigue vivo: no es huérfano
+        try:
+            sin_consola.run_hidden(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=15)
+            n += 1
+        except Exception:  # noqa: BLE001
+            pass
+    if n:
+        print(f"[bridge] {n} puente(s) huérfano(s) cerrados", flush=True)
+    return n
+
+
 async def _check_key_async(key: str) -> int:
     from cursor_sdk.asyncio import AsyncClient, AsyncCursor
 
-    async with await AsyncClient.launch_bridge(workspace=ROOT) as client:
+    async with await abrir_bridge() as client:
         me = await AsyncCursor.me(client=client, api_key=key)
         nombre = getattr(me, "api_key_name", None) or getattr(me, "user_email", None) or "ok"
         print("clave_ok=1")
@@ -966,7 +1135,7 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
         agent_id = ""
     timeout_sec = TIMEOUT_KB_SEC if es_kb else TIMEOUT_CASO_SEC
 
-    async with await AsyncClient.launch_bridge(workspace=ROOT) as client:
+    async with await abrir_bridge() as client:
         agent = None
         if agent_id:
             try:

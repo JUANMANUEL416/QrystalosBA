@@ -60,6 +60,11 @@ window.QrysConocimiento = (function () {
       title: "Consultas soporte",
       desc: "Chat, respuesta oficial y PDF de evidencia para el equipo.",
     },
+    "prueba-req": {
+      icon: "science",
+      title: "Prueba req",
+      desc: "Contrasta la entrega del desarrollador y cierra con entrega o devolución.",
+    },
   };
   const ESTADO_UI = {
     consultas: {
@@ -221,6 +226,7 @@ window.QrysConocimiento = (function () {
   function showHub() {
     stopChatPoll();
     if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+    if (window.QrysPruebaReq) window.QrysPruebaReq.stopPoll();
     try {
       guardarModo("hub");
     } catch (_) {}
@@ -277,6 +283,9 @@ window.QrysConocimiento = (function () {
     if (window.QrysSoporteConsultas && modoGuardado() === "soporte-consultas" && mode !== "soporte-consultas") {
       window.QrysSoporteConsultas.stopPoll();
     }
+    if (window.QrysPruebaReq && modoGuardado() === "prueba-req" && mode !== "prueba-req") {
+      window.QrysPruebaReq.stopPoll();
+    }
     try {
       guardarModo(mode);
     } catch (_) {
@@ -291,7 +300,7 @@ window.QrysConocimiento = (function () {
     if (shell) {
       shell.hidden = false;
       shell.removeAttribute("hidden");
-      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar", "modo-auditoria", "modo-agentes", "modo-revisar-sql", "modo-servidores", "modo-informe-contab", "modo-soporte-consultas");
+      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar", "modo-auditoria", "modo-agentes", "modo-revisar-sql", "modo-servidores", "modo-informe-contab", "modo-soporte-consultas", "modo-prueba-req");
       shell.classList.add(`modo-${mode}`);
     }
     const inicio = $("#btnInicioHub");
@@ -349,6 +358,16 @@ window.QrysConocimiento = (function () {
       const v = $("#view-soporte-consultas");
       if (v) v.classList.add("active");
       if (window.QrysSoporteConsultas) window.QrysSoporteConsultas.enter();
+    } else if (mode === "prueba-req") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      ["view-cola", "view-formulario", "view-chat", "view-historico"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("active");
+      });
+      const v = $("#view-prueba-req");
+      if (v) v.classList.add("active");
+      if (window.QrysPruebaReq) window.QrysPruebaReq.enter();
     } else if (mode === "agentes") {
       stopChatPoll();
       if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
@@ -1541,7 +1560,7 @@ window.QrysConocimiento = (function () {
     } catch (_) {
       mode = "hub";
     }
-    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar" || mode === "revisar-sql" || mode === "auditoria" || mode === "agentes" || mode === "servidores" || mode === "informe-contab" || mode === "soporte-consultas") {
+    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar" || mode === "revisar-sql" || mode === "auditoria" || mode === "agentes" || mode === "servidores" || mode === "informe-contab" || mode === "soporte-consultas" || mode === "prueba-req") {
       enterMode(mode);
     } else {
       showHub();

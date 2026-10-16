@@ -4,6 +4,7 @@
 window.QrysSoporteConsultas = (function () {
   const $ = (id) => document.getElementById(id);
   let consultaId = null;
+  let servidores = [];
   let bound = false;
   let pollTimer = null;
   let esperandoDocTrasAgente = false;
@@ -291,7 +292,12 @@ window.QrysSoporteConsultas = (function () {
     const wt = $("scWorkspaceTitulo");
     if (wt) wt.textContent = meta.titulo || "Consulta";
     const wm = $("scWorkspaceMeta");
-    if (wm) wm.textContent = [meta.id, meta.cliente, meta.estado].filter(Boolean).join(" · ") || "—";
+    if (wm) {
+      const base = meta.validarEnBase && meta.baseDatos
+        ? `Validación solo lectura · ${meta.servidorNombre || meta.servidorId || "Servidor"} · ${meta.baseDatos}`
+        : "";
+      wm.textContent = [meta.id, meta.cliente, base, meta.estado].filter(Boolean).join(" · ") || "—";
+    }
     const corta = $("scHeadPreguntaCorta");
     if (corta) corta.textContent = (meta.preguntaInicial || "").replace(/\s+/g, " ").trim();
     const tab = $("scTabConsulta");
@@ -434,10 +440,68 @@ window.QrysSoporteConsultas = (function () {
     await refrescarPanel();
   }
 
+  async function cargarServidores() {
+    const sel = $("scServidor");
+    if (!sel || sel.dataset.listo === "1") return;
+    const data = await fetchJson("/api/informe-contab/servidores");
+    servidores = data.servidores || [];
+    servidores.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.id || "";
+      opt.textContent = s.nombre || s.id;
+      sel.appendChild(opt);
+    });
+    sel.dataset.listo = "1";
+    sel.onchange = () => pintarBases(sel.value);
+    pintarBases(sel.value);
+  }
+
+  function baseElegida() {
+    const otra = ($("scBaseOtra")?.value || "").trim();
+    if (otra) return otra;
+    return ($("scBase")?.value || "").trim();
+  }
+
+  function toggleValidarBd() {
+    const on = !!$("scValidarBd")?.checked;
+    const box = $("scValidarBdBox");
+    if (box) box.hidden = !on;
+    if (box) box.style.display = on ? "" : "none";
+    if (on) cargarServidores().catch((e) => aviso(e.message, true));
+  }
+
+  function pintarBases(servidorId) {
+    const sel = $("scBase");
+    if (!sel) return;
+    const srv = servidores.find((s) => s.id === servidorId) || {};
+    const bases = srv.bases && srv.bases.length ? srv.bases : srv.baseDatosDefault ? [srv.baseDatosDefault] : [];
+    sel.innerHTML = "";
+    if (!servidorId) {
+      sel.disabled = true;
+      return;
+    }
+    sel.disabled = false;
+    bases.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b;
+      opt.textContent = b;
+      sel.appendChild(opt);
+    });
+    if (srv.baseDatosDefault) sel.value = srv.baseDatosDefault;
+  }
+
   async function nuevaConsulta() {
     const titulo = ($("scTitulo")?.value || "").trim();
     const solicitante = ($("scSolicitante")?.value || "").trim();
     const cliente = ($("scCliente")?.value || "").trim();
+    const validarEnBase = !!$("scValidarBd")?.checked;
+    const servidorId = validarEnBase ? ($("scServidor")?.value || "").trim() : "";
+    const baseDatos = validarEnBase ? baseElegida() : "";
+    if (validarEnBase && (!servidorId || !baseDatos)) {
+      aviso("Indique el servidor y la base. La validación es solo lectura.", true);
+      showPanel("nueva");
+      return;
+    }
     let pregunta = ($("scPregunta")?.value || "").trim();
     if (!titulo || (!pregunta && !pendingNueva.length)) {
       aviso("Indique el título y la pregunta, o pegue una captura.", true);
@@ -449,7 +513,7 @@ window.QrysSoporteConsultas = (function () {
     const data = await fetchJson("/api/soporte-consultas/consulta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titulo, solicitante, cliente, pregunta }),
+      body: JSON.stringify({ titulo, solicitante, cliente, pregunta, validarEnBase, servidorId, baseDatos }),
     });
     const sid = data.meta.id;
     const porSubir = pendingNueva.slice();
@@ -457,6 +521,9 @@ window.QrysSoporteConsultas = (function () {
     pintarPendientesNueva();
     if ($("scPregunta")) $("scPregunta").value = "";
     if ($("scTitulo")) $("scTitulo").value = "";
+    if ($("scValidarBd")) $("scValidarBd").checked = false;
+    if ($("scBaseOtra")) $("scBaseOtra").value = "";
+    toggleValidarBd();
     for (const img of porSubir) {
       await fetchJson(`/api/soporte-consultas/${encodeURIComponent(sid)}/imagen`, {
         method: "POST",
@@ -608,10 +675,15 @@ window.QrysSoporteConsultas = (function () {
         const p = btn.dataset.scPanel;
         if (p === "consulta" && !consultaId) return;
         showPanel(p);
+        if (p === "nueva") toggleValidarBd();
       });
     });
 
-    $("scBtnIrNueva")?.addEventListener("click", () => showPanel("nueva"));
+    $("scBtnIrNueva")?.addEventListener("click", () => {
+      showPanel("nueva");
+      toggleValidarBd();
+    });
+    $("scValidarBd")?.addEventListener("change", toggleValidarBd);
     $("scBtnNuevaCancelar")?.addEventListener("click", () => showPanel("historial"));
     $("scBtnVolverHistorial")?.addEventListener("click", () => {
       stopPoll();

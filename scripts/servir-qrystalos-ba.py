@@ -42,6 +42,7 @@ import sql_revisar  # noqa: E402
 import servidores_admin  # noqa: E402
 import informe_contab_sesiones as icinforme  # noqa: E402
 import soporte_consultas as scconsulta  # noqa: E402
+import prueba_req as prreq  # noqa: E402
 
 ROOT = os.path.dirname(SCRIPT_DIR)
 SQL_ROOT = os.path.join(ROOT, "sql")
@@ -160,6 +161,92 @@ def _ext_archivo(nombre, mime=""):
 def _extracto_nombre(nombre):
     stem, _ext = os.path.splitext(nombre or "")
     return f"{stem}.extracto.txt"
+
+
+def _id_caso_ok(id_caso):
+    caso = (id_caso or "").strip()
+    if not caso or any(c in caso for c in "\\/:") or ".." in caso:
+        raise ValueError("ID de caso no válido")
+    return caso
+
+
+def importar_archivos_solicitud(id_caso, id_sr):
+    """Copia los adjuntos de una solicitud de requerimiento al caso del analista."""
+    caso = _id_caso_ok(id_caso)
+    sol = solreq.load((id_sr or "").strip())
+    if not sol:
+        raise ValueError("Solicitud no encontrada")
+    src_dir = os.path.join(solreq.caso_dir(sol["id"]), "archivos")
+    dest_dir = _archivos_analisis_dir(caso)
+    os.makedirs(dest_dir, exist_ok=True)
+    copiados = []
+    for item in sol.get("archivos") or []:
+        if not isinstance(item, dict):
+            continue
+        nombre = _sanitize_archivo_nombre(item.get("nombre") or "")
+        if not nombre or nombre.endswith(".extracto.txt"):
+            continue
+        src = os.path.join(src_dir, nombre)
+        if not os.path.isfile(src):
+            continue
+        dest = os.path.join(dest_dir, nombre)
+        if not os.path.isfile(dest):
+            shutil.copy2(src, dest)
+        extracto = os.path.basename(item.get("extracto") or _extracto_nombre(nombre))
+        extracto = _sanitize_archivo_nombre(extracto) or _extracto_nombre(nombre)
+        src_ex = os.path.join(src_dir, extracto)
+        dest_ex = os.path.join(dest_dir, extracto)
+        aviso = item.get("avisoExtracto") or ""
+        chars = 0
+        if os.path.isfile(src_ex):
+            if not os.path.isfile(dest_ex):
+                shutil.copy2(src_ex, dest_ex)
+            try:
+                chars = len(open(dest_ex, encoding="utf-8", errors="replace").read())
+            except OSError:
+                chars = 0
+        elif not os.path.isfile(dest_ex):
+            texto, aviso = _extraer_texto_archivo(dest)
+            chars = len(texto or "")
+            with open(dest_ex, "w", encoding="utf-8") as fh:
+                fh.write(f"Extracto de {nombre}\nCaso: {caso}\n")
+                if aviso:
+                    fh.write(f"Aviso: {aviso}\n")
+                fh.write("=" * 40 + "\n\n")
+                fh.write(texto or "(sin texto extraíble — abra el original)\n")
+        try:
+            peso = os.path.getsize(dest)
+        except OSError:
+            peso = int(item.get("bytes") or 0)
+        copiados.append({
+            "nombre": nombre,
+            "ruta": f"activo/{caso}/archivos/{nombre}",
+            "extracto": extracto,
+            "extractoRuta": f"activo/{caso}/archivos/{extracto}",
+            "tipo": (item.get("tipo") or "normativa").strip() or "normativa",
+            "mime": item.get("mime") or "",
+            "bytes": peso,
+            "charsExtracto": chars,
+            "avisoExtracto": aviso or "",
+            "subidaEn": datetime.now().isoformat(timespec="seconds"),
+            "url": f"/api/caso/{caso}/archivo/{nombre}",
+            "urlExtracto": f"/api/caso/{caso}/archivo/{extracto}",
+            "origenSolicitud": sol["id"],
+        })
+    db = get_db()
+    solicitud = db.get_solicitud(caso) or {}
+    if solicitud.get("identificacion") or solicitud.get("contenido"):
+        contenido = dict(solicitud.get("contenido") or {})
+        nombres = {c["nombre"] for c in copiados}
+        previos = [a for a in (contenido.get("archivosAnalisis") or []) if a.get("nombre") not in nombres]
+        contenido["archivosAnalisis"] = previos + copiados
+        contenido["solicitudOrigen"] = {
+            "id": sol["id"],
+            "titulo": sol.get("titulo") or "",
+        }
+        solicitud["contenido"] = contenido
+        db.guardar_solicitud(caso, solicitud)
+    return {"id": sol["id"], "titulo": sol.get("titulo") or "", "archivos": copiados}
 
 
 def _extraer_texto_archivo(path):
@@ -1102,6 +1189,21 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 return self._json({"ok": False, "error": str(exc)}, 500)
 
+        if parts == ["api", "prueba-req", "pruebas"]:
+            return self._json({"ok": True, "pruebas": prreq.listar_pruebas()})
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "panel":
+            pid = unquote(parts[2])
+            try:
+                return self._json({"ok": True, **prreq.panel_prueba(pid)})
+            except FileNotFoundError:
+                return self._json({"ok": False, "error": "Prueba no encontrada."}, 404)
+            except ValueError as exc:
+                return self._json({"ok": False, "error": str(exc)}, 400)
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "html":
+            return self._serve_prueba_req_html(unquote(parts[2]))
+
         if parts == ["api", "soporte-consultas", "consultas"]:
             return self._json({"ok": True, "consultas": scconsulta.listar_consultas()})
 
@@ -1400,6 +1502,21 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "informe-contab" and parts[3] == "pdf":
             return self._post_informe_contab_pdf(unquote(parts[2]))
 
+        if parts == ["api", "prueba-req", "prueba"]:
+            return self._post_prueba_req_nueva()
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "chat":
+            return self._post_prueba_req_chat(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "probar":
+            return self._post_prueba_req_probar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "ajustar":
+            return self._post_prueba_req_ajustar(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "cerrar":
+            return self._post_prueba_req_cerrar(unquote(parts[2]))
+
         if parts == ["api", "soporte-consultas", "consulta"]:
             return self._post_soporte_consulta_nueva()
 
@@ -1492,6 +1609,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "archivo":
             return self._post_archivo(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "desde-solicitud":
+            return self._post_desde_solicitud(unquote(parts[2]))
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] in ("diagrama", "diagramas"):
             return self._post_diagrama(unquote(parts[2]))
@@ -1913,6 +2033,133 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             return self._json({"ok": False, "error": str(exc)}, 400)
 
+    def _post_prueba_req_nueva(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        servidor_id = (body.get("servidorId") or "").strip()
+        nombre = (body.get("servidorNombre") or "").strip()
+        if not nombre and servidor_id:
+            for srv in audproc.listar_servidores():
+                if srv.get("id") == servidor_id:
+                    nombre = srv.get("nombre") or servidor_id
+                    break
+        try:
+            meta = prreq.crear_prueba(
+                body.get("requerimiento") or "",
+                body.get("justificacion") or "",
+                body.get("respuestaDesarrollador") or "",
+                servidor_id,
+                nombre,
+                body.get("baseDatos") or "",
+                body.get("desarrollador") or "",
+            )
+            return self._json({"ok": True, "meta": meta})
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _post_prueba_req_chat(self, pid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            meta = prreq.leer_meta(pid)
+            if meta.get("estado") == "cerrada":
+                return self._json({"ok": False, "error": "La prueba ya está cerrada."}, 400)
+            prreq.append_chat(pid, body.get("autor") or "coordinador", body.get("texto") or "")
+            return self._json({"ok": True, **prreq.panel_prueba(pid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Prueba no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _post_prueba_req_probar(self, pid):
+        try:
+            meta = prreq.leer_meta(pid)
+            if meta.get("estado") == "cerrada":
+                return self._json({"ok": False, "error": "La prueba ya está cerrada."}, 400)
+            prreq.escribir_instruccion(pid)
+            prreq.append_chat(
+                pid,
+                "sistema",
+                "El agente está contrastando: base de conocimiento, fuente, IXONLINE/SQL y la base de pruebas.",
+            )
+            bot = agentes_panel.lanzar("prueba-req", pid, "prueba-req")
+            if not bot.get("ok"):
+                prreq.append_chat(
+                    pid,
+                    "sistema",
+                    "El agente no pudo arrancar (" + str(bot.get("error") or "error") + ").",
+                )
+            return self._json({"ok": True, "bot": bot, **prreq.panel_prueba(pid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Prueba no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _post_prueba_req_ajustar(self, pid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            meta = prreq.leer_meta(pid)
+            if meta.get("estado") == "cerrada":
+                return self._json({"ok": False, "error": "La prueba ya está cerrada."}, 400)
+            nota = (body.get("texto") or "").strip()
+            if nota:
+                prreq.append_chat(pid, "coordinador", nota)
+            prreq.escribir_instruccion(pid)
+            prreq.append_chat(pid, "sistema", "El agente está ajustando el veredicto según el chat.")
+            bot = agentes_panel.lanzar("prueba-req", pid, "prueba-req-chat")
+            if not bot.get("ok"):
+                prreq.append_chat(
+                    pid,
+                    "sistema",
+                    "El agente no pudo arrancar (" + str(bot.get("error") or "error") + ").",
+                )
+            return self._json({"ok": True, "bot": bot, **prreq.panel_prueba(pid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Prueba no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _post_prueba_req_cerrar(self, pid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            meta = prreq.cerrar_prueba(pid, (body.get("veredicto") or "").strip())
+            return self._json({
+                "ok": True,
+                "meta": meta,
+                "urlHtml": f"/api/prueba-req/{pid}/html",
+            })
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Prueba no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _serve_prueba_req_html(self, pid):
+        try:
+            path = prreq.ruta_html(pid)
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Prueba no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        if not path.is_file():
+            return self._json({"ok": False, "error": "Cierre la prueba para generar el documento."}, 404)
+        data = path.read_text(encoding="utf-8").encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'inline; filename="prueba-{pid}.html"')
+        self.end_headers()
+        self.wfile.write(data)
+
     def _post_soporte_consulta_nueva(self):
         try:
             body = self._read_json_body()
@@ -1924,6 +2171,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 body.get("pregunta") or body.get("texto") or "",
                 body.get("solicitante") or "",
                 body.get("cliente") or "",
+                body.get("servidorId") or "",
+                body.get("baseDatos") or "",
+                bool(body.get("validarEnBase")),
             )
             return self._json({"ok": True, "meta": meta})
         except ValueError as exc:
@@ -3273,6 +3523,28 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             return self._json({"error": str(exc)}, 400)
         return self._json({"ok": True, "archivo": meta})
+
+    def _post_desde_solicitud(self, id_caso):
+        if not id_caso:
+            return self._json({"error": "Falta idCaso"}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        id_sr = (body.get("idSolicitud") or "").strip()
+        if not id_sr:
+            return self._json({"error": "Falta la solicitud"}, 400)
+        try:
+            traido = importar_archivos_solicitud(id_caso, id_sr)
+            vinculo = solreq.vincular_caso(
+                id_sr,
+                id_caso,
+                body.get("idReq") or "",
+                body.get("titulo") or "",
+            )
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        return self._json({"ok": True, **traido, "vinculo": vinculo})
 
     def _delete_archivo(self, id_caso, nombre):
         nombre = _sanitize_archivo_nombre(nombre)

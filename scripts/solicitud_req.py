@@ -370,6 +370,34 @@ def guardar(payload: dict) -> dict:
     return _persistir(merged)
 
 
+def vincular_caso(id_sr: str, id_caso: str, id_req: str = "", titulo: str = "") -> dict:
+    """Marca el aval técnico de la solicitud con el caso del analista. No cambia los textos."""
+    sol = load(id_sr)
+    if not sol:
+        raise ValueError("Solicitud no encontrada")
+    caso = (id_caso or "").strip()
+    if not caso:
+        raise ValueError("Falta el ID del caso")
+    aval = _as_map(sol.get("aval"))
+    previo = (aval.get("idCaso") or "").strip()
+    aval["aplica"] = True
+    aval["idCaso"] = caso
+    if (id_req or "").strip():
+        aval["idReq"] = id_req.strip()
+    if (titulo or "").strip() and not (aval.get("titulo") or "").strip():
+        aval["titulo"] = titulo.strip()
+    sol["aval"] = aval
+    sol["actualizadoEn"] = _now()
+    _write_json(os.path.join(caso_dir(id_sr), "solicitud.json"), sol)
+    idx = load_index()
+    for item in idx.get("items") or []:
+        if item.get("id") == id_sr:
+            item["avalReq"] = aval.get("idReq") or ""
+            item["actualizadoEn"] = sol["actualizadoEn"]
+    save_index(idx)
+    return {"idCasoAnterior": previo, "aval": aval}
+
+
 def _archivo_export_en_disco(id_sr: str, sol: dict, item: dict) -> bool:
     """True si el PDF o la imagen de un Guardar anterior sigue en disco."""
     nombre = (item.get("nombre") or "").strip()

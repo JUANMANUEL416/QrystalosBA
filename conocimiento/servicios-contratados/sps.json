@@ -1,0 +1,457 @@
+{
+  "procesoId": "servicios-contratados",
+  "actualizado": "2026-10-15T11:45:00",
+  "nota": "Motor del precio. PREVERSION idéntica a la Cerrada 2.0.9 (IDANT 2.0.8). Mantenimiento de SER, TAR, PPT, ESP y ETP queda por leer.",
+  "sps": [
+    {
+      "nombre": "SERTOT",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERTOT.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["SERPRO", "SERETP", "SERETPPCOSTO", "SERESP", "SERESP1", "SERESPPCOSTO"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Arma el precio de venta de cada servicio contratado por tercero y plan. Es la unión de seis vistas: precio base del plan (SERPRO), excepción por prefijo en tarifa (SERETP), excepción por prefijo a costo (SERETPPCOSTO), excepción por servicio en tarifa (SERESP), excepción por servicio a valor fijo (SERESP1) y excepción por servicio a costo (SERESPPCOSTO).",
+          "valida": [
+            "Cada rama ya filtró su propia condición (factor, tipo de restricción, tarifa vigente)",
+            "IDTERCEROCA, IDPLANCA, REQAUTORIZACIONCA e IDAREACA salen en ceros: esta vista no dice quién cobra"
+          ],
+          "noValida": [
+            "No elige una sola fila si el mismo servicio cae en más de una rama: es UNION ALL",
+            "No aplica la cobertura del plan (eso es SERTOT1)",
+            "No oculta servicios Inactivos: el filtro de estado lo pone quien consulta"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Una fila por combinación tercero + plan + servicio + vigencia, con VLRSERVICIO, FACTOR, IDTARIFA, las dos ventanas de fecha, prefijo, cups y estado del servicio.",
+          "capaId": "03-precio",
+          "controlId": "precio-sertot",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERTOT1",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERTOT1.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["SERTOT", "CPPAF"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Toma SERTOT y lo cruza con la cobertura del plan (CPPAF) por plan y servicio. Agrega el contratante que cobra (IDTERCEROCA, IDPLANCA), si esa cobertura pide autorización (REQAUTORIZACIONCA) y el área (IDAREACA).",
+          "valida": [
+            "SERTOT.IDPLAN = CPPAF.IDPLAN",
+            "SERTOT.IDSERVICIO = CPPAF.IDSERVICIO"
+          ],
+          "noValida": [
+            "Un servicio con precio y sin fila en CPPAF no aparece: el selector de venta no lo ofrece",
+            "No recalcula VLRSERVICIO: hereda el de SERTOT"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Precio contratado solo para servicios que el plan cubre, con el tercero y el plan que cobran.",
+          "capaId": "03-precio",
+          "controlId": "precio-sertot1",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERPRO",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERPRO.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["PPT", "TAR", "TARF", "TARD", "TARDV", "SER"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Precio base del plan contratado. Cruza el plan del tercero (PPT: tarifa y factor) con el tarifario (TAR, TARF, TARD, TARDV) y el servicio (SER). VLRSERVICIO = valor del tarifario × factor del plan × factor dinero, redondeado según TARF.REDONDEO. Si la línea del tarifario es cirugía (TARD.CIRUGIA = 1), el valor es el del tarifario, sin factores. Si el servicio es cirugía y la línea no, multiplica y no aplica el redondeo. Tipo de contrato: Capitado si PPT.CAPITADO = 1; si no, Evento.",
+          "valida": [
+            "PPT.FACTOR > 0",
+            "PPT.IDTARIFA = TARD.IDTARIFA = TAR.IDTARIFA = TARF.IDTARIFA = TARDV.IDTARIFA",
+            "TARD.IDSERVICIO = SER.IDSERVICIO = TARDV.IDSERVICIO"
+          ],
+          "noValida": [
+            "Saca los servicios que tengan excepción por prefijo (están en SERETPPAR o SERETPPARPCOSTO para ese tercero y plan)",
+            "Saca los servicios que tengan excepción por servicio (ESP) para ese tercero y plan, sea Tarifa, Valor o PCosto",
+            "El comentario que excluía SER.ESTADO Inactivo está apagado: el inactivo sigue en el precio base",
+            "FECHAINIFD/FECHAFINFD salen de TARF; FECHAINI/FECHAFIN salen de TARDV"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Fila de precio base por tercero, plan, tarifa y servicio.",
+          "capaId": "03-precio",
+          "controlId": "precio-base",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERETP",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERETP.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ETP", "PPT", "SER", "TAR", "TARF", "TARD", "TARDV"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Excepción por prefijo con restricción Tarifa. El prefijo, el nivel de atención, la tarifa y el factor salen de ETP. El tercero y el plan tienen que existir también en PPT. Misma fórmula que el precio base, con el factor de la excepción. Entra a SERTOT.",
+          "valida": [
+            "ETP.TIPORESTRICCION = Tarifa",
+            "ETP.FACTOR > 0",
+            "ETP.PREFIJO = SER.PREFIJO y ETP.NIVELATENCION = SER.NIVELATENCION",
+            "ETP.IDPROVEEDOR + IDPLAN existen en PPT",
+            "La tarifa de ETP está en TARD/TAR/TARF/TARDV para ese servicio"
+          ],
+          "noValida": [
+            "Si el servicio tiene excepción ESP para ese proveedor y plan, esta rama no lo trae",
+            "En el redondeo 05 la fórmula usa PPT.FACTOR; el resto de redondeos usa ETP.FACTOR",
+            "El filtro de servicio Inactivo está apagado"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Precio de la excepción por prefijo (tarifa) que reemplaza al base cuando SERETPPAR excluyó el servicio.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-prefijo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERETPPCOSTO",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERETPPCOSTO.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ETP", "SER", "PPT", "IARTPCOSTO"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Excepción por prefijo con restricción PCosto. VLRSERVICIO = redondeo a entero de IARTPCOSTO.PCOSTO × ETP.FACTOR. El costo tiene que caer entre ETP.VALORINI y ETP.VALORFIN. Entra a SERTOT.",
+          "valida": [
+            "ETP.TIPORESTRICCION = PCosto",
+            "ETP.FACTOR > 0",
+            "ETP.PREFIJO = SER.PREFIJO",
+            "Proveedor y plan existen en PPT",
+            "PCOSTO entre VALORINI y VALORFIN"
+          ],
+          "noValida": [
+            "Si el servicio tiene ESP para ese proveedor y plan, no entra",
+            "Las dos vigencias van del 01/01/2000 a mañana (GETDATE()+1): no usa las fechas de la excepción ni del tarifario"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Precio a costo por prefijo, vigente hasta el día siguiente.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-prefijo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERESP",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERESP.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ESP", "SER", "TAR", "TARF", "TARD", "TARDV"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Excepción por servicio con restricción Tarifa. Usa la tarifa y el factor de ESP. Misma fórmula de redondeo. Entra a SERTOT y, por existir en ESP, el servicio sale del precio base y de la excepción por prefijo.",
+          "valida": [
+            "ESP.TIPORESTRICCION = Tarifa",
+            "ESP.IDSERVICIO = SER.IDSERVICIO = TARD.IDSERVICIO",
+            "ESP.IDTARIFA = TAR.IDTARIFA = TARF.IDTARIFA = TARD.IDTARIFA = TARDV.IDTARIFA"
+          ],
+          "noValida": [
+            "No lee ESP.FECHAINI ni ESP.FECHAFIN: las vigencias son las de TARF y TARDV",
+            "No exige que el plan esté en PPT"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Precio de la excepción por servicio (tarifa). Gana sobre el base y sobre el prefijo.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-servicio",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERESP1",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERESP1.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ESP", "SER"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Excepción por servicio con restricción Valor. VLRSERVICIO es el valor escrito en ESP, sin tarifa ni factor. Si ESP.PAQUETE = 1 marca la fila como cirugía. Entra a SERTOT.",
+          "valida": [
+            "ESP.TIPORESTRICCION = Valor",
+            "ESP.IDSERVICIO = SER.IDSERVICIO"
+          ],
+          "noValida": [
+            "No usa la tarifa ni el factor",
+            "No usa las fechas capturadas en la excepción: las dos vigencias van fijas del 01/01/2002 al 31/12/2025 23:59:59.999",
+            "Por estar en ESP, el servicio también sale del precio base: pasada esa fecha no queda rama que lo cubra"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Valor fijo vigente solo hasta el 31/12/2025.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-servicio",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERESPPCOSTO",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERESPPCOSTO.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ESP", "SER", "PPT", "IARTPCOSTO"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Excepción por servicio con restricción PCosto. VLRSERVICIO = redondeo a entero de IARTPCOSTO.PCOSTO × ESP.FACTOR. Exige el plan en PPT y factor mayor que cero. Entra a SERTOT.",
+          "valida": [
+            "ESP.TIPORESTRICCION = PCosto",
+            "ESP.FACTOR > 0",
+            "Proveedor y plan existen en PPT",
+            "Hay fila de costo del servicio en IARTPCOSTO"
+          ],
+          "noValida": [
+            "Las dos vigencias van del 01/01/2000 a mañana (GETDATE()+1)",
+            "No usa las fechas de la pantalla de la excepción",
+            "La pantalla de excepción por servicio ofrece la opción Pcosto; la vista compara el texto PCosto"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Precio a costo del servicio, vigente hasta el día siguiente.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-servicio",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERETPPAR",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERETPPAR.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ETP", "SER", "PPT", "TARD", "TAR", "TARF", "TARDV"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Lista los servicios que cubre una excepción por prefijo de tipo Tarifa (mismo cruce que SERETP). SERPRO la usa para sacar esos servicios del precio base. No entra a SERTOT.",
+          "valida": [
+            "ETP.TIPORESTRICCION = Tarifa",
+            "ETP.FACTOR > 0",
+            "Prefijo y nivel de atención coinciden con el servicio",
+            "Proveedor y plan existen en PPT"
+          ],
+          "noValida": [
+            "No excluye servicios que además tengan ESP: igual los saca del base, y el precio lo pone la rama ESP",
+            "Su redondeo 05 sí usa ETP.FACTOR; el precio que vende es el de SERETP"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Conjunto de servicios que el precio base no debe liquidar porque ya tienen excepción por prefijo en tarifa.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-prefijo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERETPPARPCOSTO",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERETPPARPCOSTO.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["ETP", "SER", "PPT", "IARTPCOSTO"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Lista los servicios de una excepción por prefijo de tipo PCosto. SERPRO la usa para sacarlos del precio base. El precio que entra a SERTOT es el de SERETPPCOSTO.",
+          "valida": [
+            "ETP.TIPORESTRICCION = PCosto",
+            "ETP.FACTOR > 0",
+            "PCOSTO entre VALORINI y VALORFIN",
+            "Proveedor y plan existen en PPT"
+          ],
+          "noValida": [
+            "Vigencia del 01/01/2000 a mañana",
+            "No entra ella misma a SERTOT"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Conjunto de servicios que el precio base no liquida porque la excepción por prefijo es a costo.",
+          "capaId": "03-precio",
+          "controlId": "excepcion-prefijo",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VLR_SERTOT",
+      "tipo": "FN",
+      "estado": "leido",
+      "fuente": "sql/FNK_VLR_SERTOT.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["SERTOT"],
+      "metodos": [
+        {
+          "id": "(función)",
+          "hace": "Devuelve VLRSERVICIO de SERTOT para un tercero, un plan, un servicio y una fecha. Es el precio que usan la cita y otros cargos de venta.",
+          "valida": [
+            "IDTERCERO + IDPLAN + IDSERVICIO",
+            "La fecha cae en las dos vigencias: FECHAINI–FECHAFIN y FECHAINIFD–FECHAFINFD"
+          ],
+          "noValida": [
+            "Si no hay fila, devuelve NULL (quien llama suele poner 0)",
+            "Si hay varias filas vigentes, se queda con una: no usa TOP ni MAX",
+            "No filtra ESTADO ni CIRUGIA",
+            "No pasa por SERTOT1: no exige que el servicio esté en la cobertura del plan",
+            "Declara IVA y no lo usa"
+          ],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Decimal (14,2) con el valor del servicio, o NULL.",
+          "capaId": "04-venta",
+          "controlId": "consulta-precio",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_TER_SERTOT",
+      "tipo": "SPQ",
+      "modelo": "TER_SERTOT",
+      "estado": "leido",
+      "fuente": "sql/SPQ_TER_SERTOT.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["SERTOT", "USUSU", "UBEQ", "KEXCEL_FILL"],
+      "metodos": [
+        {
+          "id": "EXPORTAR",
+          "hace": "Arma el Excel de servicios contratados del tercero y el plan que vienen en el JSON. La consulta lee SERTOT con las dos vigencias contra la fecha del servidor.",
+          "valida": [
+            "Usuario con equipo en UBEQ (sede y compañía) para el consecutivo @EXCEL",
+            "IDTERCERO e IDPLAN en PARAMETROS"
+          ],
+          "noValida": [
+            "No filtra ESTADO ni prefijo",
+            "Si el insert en KEXCEL_FILL falla, responde KO y el texto de ERROR_MESSAGE"
+          ],
+          "errores": [
+            "KO + CNSEXCEL cuando el insert del Excel falla"
+          ],
+          "llama": ["SPK_GENCONSECUTIVO"],
+          "efecto": "Fila en KEXCEL_FILL y respuesta OK con CNSEXCEL. La pantalla Servicios contratados lo descarga.",
+          "capaId": "04-venta",
+          "controlId": "consulta-contratados",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "VWK_SERTARIFA",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/VWK_SERTARIFA.sql",
+      "actualizado": "2026-10-15T11:45:00",
+      "tablas": ["TARD", "SER"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Servicios de un tarifario que no son línea de cirugía: tarifa, prefijo, código y descripción.",
+          "valida": ["TARD.IDSERVICIO = SER.IDSERVICIO", "TARD.CIRUGIA = 0"],
+          "noValida": ["No trae valor ni vigencia"],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Listado de servicios no quirúrgicos del tarifario.",
+          "capaId": "02-tarifa",
+          "controlId": "tarifario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERTOT_PAQNOR",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERTOT_PAQNOR.sql",
+      "actualizado": "2026-10-15T14:15:00",
+      "tablas": ["SERPRO_PAQNOR", "SERETP", "SERESP", "SERESP_PAQNOR"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Precio de tarifario al lado del paquete. Une SERPRO_PAQNOR (el base conserva los servicios con ESP.PAQUETE = 1), SERETP, SERESP y SERESP_PAQNOR. No incluye costo ni el valor fijo de SERTOT (SERESP1). Quién cobra queda en ceros. No es la vista con la que liquida la venta.",
+          "valida": ["Cada rama conserva la regla de su vista"],
+          "noValida": ["CPPAF", "SERETPPCOSTO", "SERESPPCOSTO", "SERESP1", "estado del servicio", "fecha del cargo"],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Lista el valor normal de un servicio marcado como paquete en la excepción, más las excepciones de tarifa y el valor fijo de las que no son paquete.",
+          "capaId": "03-precio",
+          "controlId": "precio-sertot",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERPRO_PAQNOR",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERPRO_PAQNOR.sql",
+      "actualizado": "2026-10-15T14:15:00",
+      "tablas": ["PPT", "TAR", "TARF", "TARD", "TARDV", "SER", "ESP", "SERETPPAR"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Base del precio normal de paquete. VLRSERVICIO = valor del tarifario × PPT.FACTOR × factor dinero, redondeado por TARF, salvo línea de cirugía del tarifario (cobra el valor sin factores). No trata aparte el servicio marcado cirugía y no tiene redondeo 05. Saca la excepción de prefijo en tarifa. Saca la excepción de servicio solo cuando ESP.PAQUETE = 0: si el paquete está marcado, el servicio permanece en esta fórmula. La columna PAQUETE de la fila queda en 0.",
+          "valida": ["PPT.FACTOR > 0", "TAR, TARD, TARDV y TARF del plan"],
+          "noValida": ["Estado del servicio (el filtro Inactivo está comentado)", "fechas", "ESP con PAQUETE = 1", "excepción de prefijo a costo"],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Deja en el precio de tarifario del plan los servicios cuya excepción está marcada como paquete.",
+          "capaId": "03-precio",
+          "controlId": "precio-sertot",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "nombre": "SERESP_PAQNOR",
+      "tipo": "VWK",
+      "estado": "leido",
+      "fuente": "sql/SERESP_PAQNOR.sql",
+      "actualizado": "2026-10-15T14:15:00",
+      "tablas": ["ESP", "SER"],
+      "metodos": [
+        {
+          "id": "(vista)",
+          "hace": "Valor fijo de las excepciones por servicio que no son paquete. VLRSERVICIO = ESP.VALOR. Entra solo con TIPORESTRICCION Valor y PAQUETE = 0. Las dos vigencias quedan del 01/01/2002 al 31/12/2022. Cirugía queda en 0. Entra a SERTOT_PAQNOR, no a SERTOT.",
+          "valida": ["ESP.TIPORESTRICCION = Valor", "ESP.PAQUETE = 0", "el servicio existe en SER"],
+          "noValida": ["Fechas de la pantalla", "tarifa", "factor", "PPT", "excepciones con paquete marcado"],
+          "errores": ["no aplica"],
+          "llama": [],
+          "efecto": "Precio fijo, ventana cerrada en 2022, para la lista de precio normal. Hoy esa ventana ya no cubre la venta.",
+          "capaId": "03-precio",
+          "controlId": "precio-sertot",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

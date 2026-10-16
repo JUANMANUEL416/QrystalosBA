@@ -43,6 +43,16 @@ DEFINIDOS = [
         "nota": "analisis = caso activo y dictamen; comite = solicitud de requerimiento; contable = validar contabilidad o comprobante errado.",
     },
     {
+        "id": "prueba-req",
+        "nombre": "Prueba req",
+        "hace": "Contrasta una entrega del desarrollador: base, fuente, IXONLINE/SQL y la base de pruebas. Cierra en entrega o devolución.",
+        "motor": "cursor",
+        "motores": ["cursor"],
+        "modeloLocal": "",
+        "modos": ["prueba"],
+        "nota": "Menú Soporte. Solo lectura en la base de pruebas. El documento lo arma la app al cerrar.",
+    },
+    {
         "id": "revisar-sql",
         "nombre": "Revisar SQL",
         "hace": "Valida estructura y sintaxis de un script y dictamina el cambio contra PREVERSION o la última cerrada.",
@@ -60,6 +70,7 @@ ALIAS = {
     "solicitar": ("requerimientos", "comite"),
     "contabilidad": ("requerimientos", "contable"),
     "soporte-consultas": ("consultas", "soporte"),
+    "prueba-req": ("prueba-req", "prueba"),
 }
 # Motivo del turno -> modo, cuando quien llama usa el rol nuevo sin modo.
 MODO_POR_MOTIVO = {
@@ -67,6 +78,8 @@ MODO_POR_MOTIVO = {
     "contabilidad": "contable",
     "soporte-consulta-analisis": "soporte",
     "soporte-consulta-chat": "soporte",
+    "prueba-req": "prueba",
+    "prueba-req-chat": "prueba",
 }
 # Corredor local existente por rol/modo (agente_oficina usa los nombres viejos).
 _LOCAL_LEGACY = {
@@ -111,6 +124,11 @@ SUBAGENTES = [
     {"id": "soporte-indice", "padre": "consultas", "modo": "soporte", "orden": 1, "nombre": "Índice y fichas", "hace": "Contrasta la pregunta con la base vía índice.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "soporte-respuesta", "padre": "consultas", "modo": "soporte", "orden": 2, "nombre": "Respuesta oficial", "hace": "Redacta respuestaOficial y responde el chat de la consulta.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "soporte-escalar", "padre": "consultas", "modo": "soporte", "orden": 3, "nombre": "Escalar", "hace": "Hueco en la base: handoff a Conocimiento.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "prueba-base", "padre": "prueba-req", "modo": "prueba", "orden": 1, "nombre": "Base", "hace": "Contrasta el requerimiento con la ficha del control.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "prueba-fuente", "padre": "prueba-req", "modo": "prueba", "orden": 2, "nombre": "Fuente", "hace": "Revisa en Qrystalos2 el cambio que el desarrollador dice haber hecho.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "prueba-desaix", "padre": "prueba-req", "modo": "prueba", "orden": 3, "nombre": "IXONLINE/SQL", "hace": "Compara PREVERSION con la última cerrada.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "prueba-bd", "padre": "prueba-req", "modo": "prueba", "orden": 4, "nombre": "Base de pruebas", "hace": "Valida con SELECT en el servidor y la base elegidos.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "prueba-veredicto", "padre": "prueba-req", "modo": "prueba", "orden": 5, "nombre": "Veredicto", "hace": "Deja Aprobado o Rechazado en el chat y en meta.json.", "motor": "cursor", "motores": ["cursor"]},
         {"id": "conocimiento-cola", "padre": "conocimiento", "modo": "normal", "orden": 0, "nombre": "Cola de handoffs", "hace": "Atiende primero los handoffs para Conocimiento (alta → baja) y responde en la cola.", "motor": "cursor", "motores": ["cursor"]},
 {"id": "documentar-proceso", "padre": "conocimiento", "modo": "normal", "orden": 1, "nombre": "Proceso", "hace": "Confirma el proceso de la tarea.", "motor": "cursor", "motores": ["local", "cursor"]},
     {"id": "documentar-fichas", "padre": "conocimiento", "modo": "normal", "orden": 2, "nombre": "Fichas", "hace": "Lee lo ya documentado para no pisarlo.", "motor": "cursor", "motores": ["local", "cursor"]},
