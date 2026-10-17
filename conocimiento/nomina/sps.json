@@ -1,6 +1,6 @@
 {
   "procesoId": "nomina",
-  "actualizado": "2026-10-17T15:10:00",
+  "actualizado": "2026-10-17",
   "nota": "Leídos 2026-10-03 desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7; anterior 2.0.6). Fichas de 2026-09-12 (DIAN, motor, retiros) conservadas. Hallazgos: REQ 0100016359 y 0100016378 ya implementados; retefuente sin tope de renta exenta; NEDIA·GUARDAR y PRSD·ELIMINAR no validan período/cuota; GENERATE_NIEPEG no exige CERRADO. Añadidos 2026-10-04 desde IXONLINE/SQL (PREVERSION idéntica a 2.0.7): SPQ_NCINGRET_COL, SPQ_CONTRATOS_NOM, SPQ_FORMATOS_NOMINA, SPQ_NSOLICERT, SPQ_TURNOS_NOMINA, SPK_RESUMEN_TURNOS, SPQ_CAP, SPQ_TALL, SPQ_FORMULARIO_TALLER, SPQ_EMPLEADOS_TALL, SPQ_CALIFICAR_RESPUESTAS_TEXTO; SPQ_NOM_REPORTES con sus 13 métodos.",
   "sps": [
     {
@@ -1062,9 +1062,24 @@
         },
         {
           "id": "CHANGE_NOM_NIEPEG",
-          "hace": "Nota reemplazo/eliminación: inserta NIEPEG nuevo (ESTADODIAN=1) y anula el base.",
+          "hace": "Nota de ajuste DIAN sobre un NIEPEG: copia CONSECUTIVO y NUMDOC del registro base a un NIEPEG nuevo (FECHA hoy, CNSNIEPEG_BASE, TIPONOTA, ESTADODIAN 1) y marca el base ANULADO=1 con OBS «Registro remplazado|eliminado por el registro CNSNIEPEG=…» (TIPONOTA 1 = reemplazo; otro valor = eliminación).",
           "estado": "leido",
-          "gateId": "envio-dian"
+          "gateId": "envio-dian",
+          "valida": [],
+          "noValida": [
+            "No valida el ESTADODIAN del base (que ya esté aceptado por la DIAN) ni que no esté ya anulado",
+            "No valida TIPONOTA (cualquier valor distinto de 1 se rotula 'eliminado')",
+            "Si CNSNIEPEG_BASE no existe, no inserta y el UPDATE no toca filas, pero responde OK"
+          ],
+          "errores": [
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "INSERT NIEPEG (nota, ESTADODIAN 1); UPDATE NIEPEG base ANULADO=1 + OBS.",
+          "tablas": [
+            "NIEPEG"
+          ],
+          "fuente": "sql/SPQ_NOM_DIAN.sql:245 (leído 2026-10-17)"
         },
         {
           "id": "PREVIEW_XML",
@@ -2901,15 +2916,21 @@
         {
           "id": "TRAE_DETALLE",
           "estado": "leido",
-          "hace": "SELECT NCINGRETD + nombre del código (TGEN) por CNSCERTI.",
-          "valida": [],
+          "hace": "Detalle del certificado: SELECT CODRET, DESCRIPCION, VLR_TOTAL de NCINGRETD por CNSCERTI, ordenado por CODRET. (La descripción es la guardada en NCINGRETD; no hay join a TGEN.)",
+          "valida": [
+            "Filtra por CNSCERTI recibido"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (solo lectura; sin CATCH)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT NCINGRETD).",
           "capaId": "02-operacion",
           "gateId": "certificados",
-          "ventanaFe": "CerIngRetComponent (/nom/Certificados)"
+          "ventanaFe": "CerIngRetComponent (/nom/Certificados)",
+          "tablas": [
+            "NCINGRETD"
+          ],
+          "fuente": "sql/SPQ_NCINGRET_COL.sql:186 (leído 2026-10-17)"
         },
         {
           "id": "RELIQUIDAR_DETA",
@@ -2979,17 +3000,29 @@
         {
           "id": "IMPRIMIR_LIQRET",
           "estado": "leido",
-          "hace": "Dataset de la liquidación de retención: RETEL + TER (empleado) + empresa T1; PERIODO desde NIEPE MES/ANO (PROCEDENCIA 'Nomina', NOREFERENCIA=CNSPAGO) o FCXP.F_FACTURAREF (PROCEDENCIA 'CXP'); APENSION / AFONDO / ASALUD desde RETELD CLASE='Resta' por OBSERVACION LIKE '%PENSION%' / '%FONDO%' / '%SALUD%'; detalle RETELD CLASE Resta.",
-          "valida": [],
-          "noValida": [
-            "Observaciones que no contengan esas palabras quedan fuera de los aportes."
+          "hace": "Dataset de la liquidación de retención (CNSCERTI = RETEL.CNSLIQRET): empresa T1 (IDTERCEROINSTALADO), empleado TER, PERIODO «MES m aaaa» y UVTANO desde NIEPE (PROCEDENCIA 'Nomina', NOREFERENCIA=CNSPAGO) o FCXP.F_FACTURAREF (PROCEDENCIA 'CXP'); VLRUVT, DEVENGOS, DEDUCCION, RENTAEXEP, BASERET, UVTLIQ, VLR_REFTE; aportes desde RETELD CLASE='Resta': APENSION = OBSERVACION con PENSION y sin FONDO, AFONDO = PENSION y FONDO, ASALUD = SALUD. Segundo dataset: RETELD CLASE Resta (CODIGO, OBSERVACION, VLR_ITEM).",
+          "valida": [
+            "Filtra RETEL.CNSLIQRET = CNSCERTI",
+            "Empresa = tercero de la variable IDTERCEROINSTALADO"
           ],
-          "errores": [],
+          "noValida": [
+            "Observaciones que no contengan PENSION/FONDO/SALUD quedan fuera de los aportes",
+            "Si IDTERCEROINSTALADO no tiene TER, el primer dataset sale vacío"
+          ],
+          "errores": "no aplica (solo lectura; sin CATCH)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT RETEL, RETELD, TER, NIEPE, FCXP).",
           "capaId": "02-operacion",
           "gateId": "retefuente",
-          "ventanaFe": "RETELComponent (/nom/LiqReteFte)"
+          "ventanaFe": "RETELComponent (/nom/LiqReteFte)",
+          "tablas": [
+            "RETEL",
+            "RETELD",
+            "TER",
+            "NIEPE",
+            "FCXP"
+          ],
+          "fuente": "sql/SPQ_NCINGRET_COL.sql:329 (leído 2026-10-17)"
         },
         {
           "id": "TRAER_CODRET",
@@ -3063,14 +3096,29 @@
           "id": "GET_INFO_CONTRACT",
           "estado": "leido",
           "hace": "Dataset para armar el PDF: NCERTC.FORMATOWEB + TITULO/CODIGO/VERSION/FECHA, NEMP, cargo NCARNG, dirección/teléfono TER, CIU, EPS/ARL/CAJACOMPENSACION más recientes (NPRFED + TGEN Nomina), firmas (FECHA_FIRMA, USUARIOFIRMA, FIRMA_EMPLEADO_B64, FECHA_FIRMA_REPRE, USUARIOFIRMA_REPRE, FIRMA_REPRE_B64).",
-          "valida": [],
+          "valida": [
+            "Filtra NCONTLABO.CNSCONTLABO = $.CNSCONTLABO (CNSFORMATO e IDNEMP se leen pero no filtran)",
+            "INNER JOIN NCERTC, NEMP, NCARNG (cargo+nivel+grado) y TER: si falta alguno, no hay fila",
+            "EPS/ARL/Caja: la NPRFED más reciente por FECHAINI con TGEN Nomina EPS/ARL/CAJACOMPENSACION; si no hay, 'No registra'"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (solo lectura; sin CATCH)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT NCONTLABO, NCERTC, NEMP, NCARNG, TER, CIU, NPRFED, TGEN).",
           "capaId": "02-operacion",
           "gateId": "certificados",
-          "ventanaFe": "NomContLaboComponent (/nom/Contratos)"
+          "ventanaFe": "NomContLaboComponent (/nom/Contratos)",
+          "tablas": [
+            "NCONTLABO",
+            "NCERTC",
+            "NEMP",
+            "NCARNG",
+            "TER",
+            "CIU",
+            "NPRFED",
+            "TGEN"
+          ],
+          "fuente": "sql/SPQ_CONTRATOS_NOM.sql:97 (leído 2026-10-17)"
         },
         {
           "id": "INACTIVE_CONTRACT",
@@ -3195,15 +3243,23 @@
         {
           "id": "TRAER_CONCEPTOS",
           "estado": "leido",
-          "hace": "Lista NCON Activo (para los conceptos del certificado laboral).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "hace": "Lista de NCON con ESTADO 'Activo' como value (CODCONCEPTO) / label (DESCRIPCION), para los conceptos del certificado laboral.",
+          "valida": [
+            "Solo conceptos ESTADO = 'Activo'"
+          ],
+          "noValida": [
+            "Responde SELECT 'OK' sin alias OK (columna sin nombre)"
+          ],
+          "errores": "no aplica (solo lectura)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT NCON).",
           "capaId": "02-operacion",
           "gateId": "certificados",
-          "ventanaFe": "NominaCertLaboComponent (/nom/certiLab)"
+          "ventanaFe": "NominaCertLaboComponent (/nom/certiLab)",
+          "tablas": [
+            "NCON"
+          ],
+          "fuente": "sql/SPQ_FORMATOS_NOMINA.sql:191 (leído 2026-10-17)"
         },
         {
           "id": "CRUD_NCERT",
@@ -3224,15 +3280,27 @@
         {
           "id": "TRAER_NCERT",
           "estado": "leido",
-          "hace": "Dataset del PDF: NCERT + NSOLICERT + NEMP + USUSU del jefe (NOMBRE, CARGO) + firma ARCHIVOS.DICOM.",
-          "valida": [],
+          "hace": "Dataset del PDF del certificado laboral por CNSCERT: NSOLICERT (cargo, ingreso, tipo de contrato, sueldo, DIRIGIDOA), NCERT (auxilio, DESCARGO sin dígitos, otros devengos, básico, fechas, salario promedio, CONCEPTO2-4/VALOR2-4), NEMP (documento, email, nombre), jefe de RH USUSU (NOMBRE, CARGO) y su firma ARCHIVOS.DICOM.",
+          "valida": [
+            "Filtra NCERT.CNSCERT = $.CNSCERT",
+            "INNER JOIN NEMP y NSOLICERT (NSOLICERT.IDNCERT = CNSCERT): sin solicitud no hay fila",
+            "Jefe y firma por LEFT JOIN (NCERT.JEFERH → USUSU → ARCHIVOS)"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (solo lectura; sin CATCH)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT NCERT, NSOLICERT, NEMP, USUSU, ARCHIVOS).",
           "capaId": "02-operacion",
           "gateId": "certificados",
-          "ventanaFe": "NominaCertLaboComponent (/nom/certiLab)"
+          "ventanaFe": "NominaCertLaboComponent (/nom/certiLab)",
+          "tablas": [
+            "NCERT",
+            "NSOLICERT",
+            "NEMP",
+            "USUSU",
+            "ARCHIVOS"
+          ],
+          "fuente": "sql/SPQ_FORMATOS_NOMINA.sql:270 (leído 2026-10-17)"
         }
       ]
     },
@@ -3269,17 +3337,25 @@
         {
           "id": "ELIMINAR",
           "estado": "leido",
-          "hace": "DELETE NSOLICERT.",
+          "hace": "DELETE NSOLICERT por CNSOLICERT.",
           "valida": [],
           "noValida": [
-            "Estado Generado."
+            "No valida estado Generado (borra aunque ya tenga certificado)",
+            "No borra el NCERT asociado",
+            "Si CNSOLICERT no existe responde OK"
           ],
-          "errores": [],
+          "errores": [
+            "ERROR_MESSAGE() del CATCH"
+          ],
           "llama": [],
-          "efecto": "",
+          "efecto": "DELETE NSOLICERT (una fila).",
           "capaId": "02-operacion",
           "gateId": "certificados",
-          "ventanaFe": "SolCertComponent (menú personal → Talento humano)"
+          "ventanaFe": "SolCertComponent (menú personal → Talento humano)",
+          "tablas": [
+            "NSOLICERT"
+          ],
+          "fuente": "sql/SPQ_NSOLICERT.sql:98 (leído 2026-10-17)"
         },
         {
           "id": "GET_INFO_CERTIFICATE",
@@ -3328,28 +3404,43 @@
         {
           "id": "TRAER_NOVEDAD",
           "estado": "leido",
-          "hace": "DISTINCT TURNOV.CODNOV del PERIODO + descripción TGEN TSECFU·NOVEDAD (DATO1 = IDEVENTO mapeado).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "hace": "Códigos de novedad del período: DISTINCT TURNOV.CODNOV (value) + TGEN.DESCRIPCION (label) con TGEN TABLA 'TSECFU' CAMPO 'NOVEDAD' por LEFT JOIN, filtrado por TURNOV.PERIODO.",
+          "valida": [
+            "Filtra TURNOV.PERIODO = $.PERIODO"
+          ],
+          "noValida": [
+            "Código sin TGEN sale con label NULL"
+          ],
+          "errores": "no aplica (solo lectura)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT TURNOV, TGEN).",
           "capaId": "03-alimentadores",
           "gateId": "turnos-novedades",
-          "ventanaFe": "AudiTurnosComponent / NovedadesTurComponent (/nom/AudiTurnos)"
+          "ventanaFe": "AudiTurnosComponent / NovedadesTurComponent (/nom/AudiTurnos)",
+          "tablas": [
+            "TURNOV",
+            "TGEN"
+          ],
+          "fuente": "sql/SPQ_TURNOS_NOMINA.sql:52 (leído 2026-10-17)"
         },
         {
           "id": "TRAER_NEVE",
           "estado": "leido",
-          "hace": "Lista NEVE para el mapeo código → evento.",
+          "hace": "Lista DISTINCT NEVE.IDEVENTO (value) / DESCRIPCION (label) para mapear código de turno → evento de nómina.",
           "valida": [],
-          "noValida": [],
-          "errores": [],
+          "noValida": [
+            "No filtra eventos inactivos"
+          ],
+          "errores": "no aplica (solo lectura)",
           "llama": [],
-          "efecto": "",
+          "efecto": "Solo lectura (SELECT NEVE).",
           "capaId": "03-alimentadores",
           "gateId": "turnos-novedades",
-          "ventanaFe": "AudiTurnosComponent / NovedadesTurComponent (/nom/AudiTurnos)"
+          "ventanaFe": "AudiTurnosComponent / NovedadesTurComponent (/nom/AudiTurnos)",
+          "tablas": [
+            "NEVE"
+          ],
+          "fuente": "sql/SPQ_TURNOS_NOMINA.sql:66 (leído 2026-10-17)"
         }
       ]
     },
@@ -4101,7 +4192,7 @@
       "estado": "leido",
       "fuente": "sql/SPQ_NOM_NEMPV.sql (IXONLINE/SQL, leído 2026-10-17)",
       "actualizado": "2026-10-17",
-      "nota": "CRUD manual del período NEMPV. El evento (salida, días, disfrute) lo escribe SPQ_NOM_VACACIONES en NEMPVD; no hay SPQ_NOM_NEMPVD.",
+      "nota": "CRUD manual del período NEMPV. Los eventos NEMPVD los escribe SPQ_NOM_VACACIONES y también SPQ_NOM_NEMPVD (novedad, JUSTIFICA_VACACIONES, ANULAR_JUSVAC; fuente sql_refe/0100016522).",
       "tablas": [
         "NEMPV",
         "NEMP",
@@ -4136,6 +4227,95 @@
           "capaId": "03-alimentadores",
           "gateId": "vacaciones-alimenta",
           "ventanaFe": "VacacionesNominaComponent · período NEMPV"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPVD",
+      "tipo": "SPQ",
+      "modelo": "NOM_NEMPVD",
+      "estado": "leido",
+      "fuente": "sql_refe/0100016522/SPQ_NOM_NEMPVD.sql (archivado del REQ 0100016522 el 2026-09-26; leído 2026-10-17). No confirmado contra PREVERSION ni qué pantalla lo llama.",
+      "actualizado": "2026-10-17",
+      "nota": "Eventos de vacaciones NEMPVD (novedad manual, justificación de vacaciones y su anulación). Convive con SPQ_NOM_VACACIONES, que también escribe NEMPVD. Consecutivo CNSNEMPVD con SPQ_GENSEQUENCE prefijo @NEMPVD.",
+      "tablas": [
+        "NEMPVD",
+        "NEMPV",
+        "NPER",
+        "USUSU",
+        "UBEQ"
+      ],
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "PROCESO=INSERTAR: crea el evento NEMPVD (CNSNEMPVD por SPQ_GENSEQUENCE @NEMPVD, ESTADO Nuevo, PROCE fijo 'Novedad', FECHAINI desde $.FECHASALIDA, SABADO/DOMINGO/FESTIVO/DIASCAL, USUARIO y equipo). PROCESO=EDITAR: actualiza EVENTO, CNSPAGO, NDIAS, FECHAINI, SABADO, DOMINGO, FESTIVO, DIASCAL, OBSERVACIONES, USUARIO y equipo por CNSNEMPVD + ITEM.",
+          "valida": [
+            "PROCESO en mayúsculas igual a INSERTAR o EDITAR",
+            "NPER.CERRADO del CNSPAGO recibido: si es 1 rechaza crear o editar"
+          ],
+          "noValida": [
+            "No recalcula NEMPV (DIASG/DIASP/ESTADO) ni llama SPK_PROCESO_VACACIONES",
+            "INSERTAR ignora el PROCE recibido (siempre 'Novedad') y fija ESTADO 'Nuevo'",
+            "Si el CNSPAGO no existe en NPER, la validación de cerrado no se dispara",
+            "No valida solape de fechas ni días disponibles del período",
+            "Si PROCESO no es INSERTAR ni EDITAR responde OK sin escribir"
+          ],
+          "errores": [
+            "EL PERIODO {CNSPAGO} SE ENCUENTRRA CERRADO, NO SERA POSIBLE CREAR LA NOVEDAD",
+            "EL PERIODO {CNSPAGO} SE ENCUENTRRA CERRADO, NO SERA POSIBLE EDITAR LA NOVEDAD",
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE (@PREFIJO '@NEMPVD', longitud 8)"
+          ],
+          "efecto": "INSERT NEMPVD (ESTADO Nuevo, PROCE Novedad) o UPDATE NEMPVD por CNSNEMPVD + ITEM. NEMPV no cambia.",
+          "capaId": "03-alimentadores",
+          "gateId": "vacaciones-alimenta",
+          "ventanaFe": "Vacaciones · evento NEMPVD (pantalla no confirmada)"
+        },
+        {
+          "id": "JUSTIFICA_VACACIONES",
+          "estado": "leido",
+          "hace": "Registra días justificados contra el período NEMPV: inserta NEMPVD con ESTADO 'EnNomina', PROCE 'JustVaca', DIASCAL = NDIAS y SABADO/DOMINGO/FESTIVO en 0; suma NDIAS a NEMPV.DIASP y recalcula NEMPV.ESTADO (DIASG ≥ NDIAS → Pagado si DIASP ≥ DIASG, si no Cumplidas; si no, Proceso).",
+          "valida": [],
+          "noValida": [
+            "No valida período NPER cerrado (a diferencia de GUARDAR)",
+            "No valida que DIASP no supere DIASG ni NDIAS",
+            "No valida que exista el NEMPV (NUMDOC + ITEM): si no existe, inserta NEMPVD y los UPDATE no tocan filas"
+          ],
+          "errores": [
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [
+            "SPQ_GENSEQUENCE (@PREFIJO '@NEMPVD', longitud 8)"
+          ],
+          "efecto": "INSERT NEMPVD (EnNomina, JustVaca); UPDATE NEMPV.DIASP += NDIAS y NEMPV.ESTADO recalculado.",
+          "capaId": "03-alimentadores",
+          "gateId": "vacaciones-alimenta",
+          "ventanaFe": "Vacaciones · justificar (pantalla no confirmada)"
+        },
+        {
+          "id": "ANULAR_JUSVAC",
+          "estado": "leido",
+          "hace": "Anula un evento NEMPVD (ESTADO 'Anulado'). Si PROCE recibido = 'JustVaca', resta los días del evento de NEMPV.DIASP (join por NUMDOC, filtro NEMPV.ITEM) y recalcula NEMPV.ESTADO con la misma regla.",
+          "valida": [
+            "Solo revierte DIASP cuando el PROCE recibido es 'JustVaca'"
+          ],
+          "noValida": [
+            "No valida período NPER cerrado",
+            "No verifica que el evento no esté ya Anulado: anular dos veces resta dos veces",
+            "El PROCE se toma del JSON, no de la fila NEMPVD",
+            "No valida que DIASP quede ≥ 0"
+          ],
+          "errores": [
+            "ERROR_MESSAGE() del CATCH"
+          ],
+          "llama": [],
+          "efecto": "UPDATE NEMPVD.ESTADO = 'Anulado'; con JustVaca, UPDATE NEMPV.DIASP -= NEMPVD.NDIAS y NEMPV.ESTADO recalculado.",
+          "capaId": "03-alimentadores",
+          "gateId": "vacaciones-alimenta",
+          "ventanaFe": "Vacaciones · anular justificación (pantalla no confirmada)"
         }
       ]
     }
