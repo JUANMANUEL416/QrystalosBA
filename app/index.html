@@ -911,7 +911,7 @@
             </details>
             <details class="form-card mockups-req-card diagrama-flujo-card wizard-fold">
               <summary>Mockups (UX / SP)</summary>
-              <p class="hint compact">Ventana <strong>propuesta</strong> tras el análisis. ZIP offline para el desarrollador.</p>
+              <p class="hint compact">La plantilla rápida toma etiquetas del Vue. Cuando el análisis queda escrito, el agente sigue solo: GPT arma manual, capacitación y planeación; Gemini arma la ventana; Muse arma el guion; al final junta el documento.</p>
               <div class="field">
                 <label for="notasMockups">Notas para los mockups (opcional)</label>
                 <textarea id="notasMockups" rows="2" placeholder="Ej. mockup UX del diálogo principal; mockup SP solo REGISTRAR_CXP_FRADIAN…"></textarea>
@@ -1830,7 +1830,43 @@
     <!-- VISTA: AGENTES -->
     <section id="view-agentes" class="view">
       <h2>Panel de agentes</h2>
-      <p class="hint">Cada agente muestra cuántos subagentes tiene. El interruptor de cada paso elige <strong>local</strong> o <strong>Cursor</strong>. En Solicitud, cada paso corre en su motor. En los otros, si hay algún paso en Cursor el turno va a Cursor y el plan le dice cuáles no debe rehacer. El nombre de abajo es el modelo de prueba de todos los locales.</p>
+      <p class="hint">Cada agente muestra cuántos subagentes tiene. El interruptor de cada paso elige <strong>local</strong> o <strong>Cursor</strong>. En Solicitud, cada paso corre en su motor. En los otros, si hay algún paso en Cursor el turno va a Cursor y el plan le dice cuáles no debe rehacer. La clave se asigna al agente: sus pasos la heredan. El nombre de abajo es el modelo de prueba de todos los locales.</p>
+      <div class="agente-card" id="agentesOrquesta">
+        <h3>Orquesta de Cursor</h3>
+        <p class="hint compact" id="agentesOrquestaNota">El turno largo va a Grok. El turno corto va a Composer. El diseño lo arma la oficina.</p>
+        <ul id="agentesOrquestaLista" class="agentes-claves-lista"></ul>
+      </div>
+      <div class="agente-card" id="agentesClaves">
+        <h3>Claves de Cursor</h3>
+        <p class="hint compact">Cada agente de rol puede usar una clave distinta. Así Consultas, Conocimiento y Requerimientos no comparten cupo. La clave queda en <code>.env</code> y aquí solo se ve el final.</p>
+        <ul id="agentesClavesLista" class="agentes-claves-lista"></ul>
+        <div class="grid-2">
+          <div class="field">
+            <label for="agentesClaveNueva">Nueva clave</label>
+            <input id="agentesClaveNueva" type="password" autocomplete="new-password" spellcheck="false" placeholder="crsr_…">
+          </div>
+          <div class="field">
+            <label for="agentesClaveNombre">Nombre</label>
+            <input id="agentesClaveNombre" type="text" autocomplete="off" maxlength="40" placeholder="Consultas">
+          </div>
+        </div>
+        <button type="button" class="btn" id="btnAgentesClaveAgregar">Agregar clave</button>
+        <div class="grid-2 agentes-clave-cambiar">
+          <div class="field">
+            <label for="agentesClaveCambiar">Cambiar</label>
+            <select id="agentesClaveCambiar"></select>
+          </div>
+          <div class="field">
+            <label for="agentesClaveValor">Nuevo valor</label>
+            <input id="agentesClaveValor" type="password" autocomplete="new-password" spellcheck="false" placeholder="crsr_…">
+          </div>
+        </div>
+        <div class="field">
+          <label for="agentesClaveRenombre">Nombre de esa clave</label>
+          <input id="agentesClaveRenombre" type="text" autocomplete="off" maxlength="40" placeholder="Se conserva si lo deja vacío">
+        </div>
+        <button type="button" class="btn btn-secondary" id="btnAgentesClaveCambiar">Guardar cambio</button>
+      </div>
       <div class="agente-card" id="agentesModelo">
         <h3>Modelo local de prueba</h3>
         <div class="field">
@@ -1945,6 +1981,16 @@
           </div>
           <button type="button" class="btn btn-primary btn-sm" id="scBtnIrNueva">Nueva consulta</button>
         </div>
+        <div class="agente-card sc-gemini" id="scGemini">
+          <h3>Clave de Gemini</h3>
+          <p class="hint compact">Cuando ya existe la respuesta oficial, <strong>Generar documento</strong> se la pasa a Gemini para ordenarla en el lenguaje de las pantallas. El PDF incluye el diagrama y el mockup que ya usan los desarrollos, leídos del proceso documentado. No inventa pasos. La clave queda en <code>.env</code>.</p>
+          <p id="scGeminiEstado" class="hint compact">Sin clave de Gemini.</p>
+          <div class="field">
+            <label for="scGeminiClave">Clave de Google AI</label>
+            <input id="scGeminiClave" type="password" autocomplete="new-password" spellcheck="false" placeholder="AIza…">
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="scBtnGemini">Guardar clave</button>
+        </div>
         <div class="table-pro-card">
           <table class="data-table">
             <thead>
@@ -2032,6 +2078,9 @@
           </div>
           <div class="scw-head-actions">
             <span id="scMetaResumen" class="scw-stamp"></span>
+            <button type="button" class="btn btn-secondary btn-sm" id="scBtnRequerimiento" title="Crear solicitud de requerimiento para el comité">
+              <span class="material-symbols-outlined" aria-hidden="true">assignment</span><span class="sc-req-label">Requerimiento</span>
+            </button>
             <button type="button" class="btn btn-primary btn-sm" id="scBtnGenerarDoc">
               <span class="material-symbols-outlined" aria-hidden="true">description</span>Generar documento
             </button>
@@ -2086,6 +2135,7 @@
             <textarea id="scChatInput" rows="1" placeholder="Escriba un mensaje o pegue una captura…  (Enter envía · Shift+Enter nueva línea)"></textarea>
             <div id="scChatPendientes" class="sc-captura-lista"></div>
             <div class="scw-compose-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="scBtnIlustracion" title="Dibuja solo lo que ya dice la respuesta oficial, tomada de la ficha, el grafo y el flujo">Ilustración</button>
               <button type="button" class="scw-icon-btn" id="scBtnAdjuntar" title="Adjuntar captura">
                 <span class="material-symbols-outlined" aria-hidden="true">image</span>
               </button>
@@ -2430,11 +2480,11 @@
   <script src="js/conocimiento.js?v=30"></script>
   <script src="js/auditoria.js?v=19"></script>
   <script src="js/informe-contab.js?v=6"></script>
-  <script src="js/soporte-consultas.js?v=12"></script>
+  <script src="js/soporte-consultas.js?v=16"></script>
   <script src="js/prueba-req.js?v=1"></script>
   <script src="js/sql-revisar.js?v=4"></script>
-  <script src="js/solicitar.js?v=23"></script>
-  <script src="js/agentes.js?v=3"></script>
+  <script src="js/solicitar.js?v=24"></script>
+  <script src="js/agentes.js?v=4"></script>
   <script src="js/servidores.js?v=3"></script>
   <script src="js/app.js?v=80"></script>
 </body>

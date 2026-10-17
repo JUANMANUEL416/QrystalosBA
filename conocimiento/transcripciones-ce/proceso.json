@@ -1,0 +1,173 @@
+{
+  "id": "transcripciones-ce",
+  "nombre": "Consulta externa · Transcripciones",
+  "modulo": "CEFM",
+  "familia": "inventario",
+  "prioridad": 24,
+  "enRuta": false,
+  "estado": "documentado",
+  "resumen": "La fórmula de consulta externa se transcribe, se envía a farmacia como solicitud y la salida se confirma en Solicitudes. La autorización de facturación nace al confirmar esa salida, no al transcribir. El centro de costo y el área no viajan en la solicitud.",
+  "actualizado": "2026-10-17T10:20:00",
+  "notaSql": "2026-10-17. IXONLINE/SQL PREVERSION 2.0.10, idéntica a la cerrada. SPQ_CEFM (CRUDCEFM, AUDITAR, TRAER_DE_AUTE, ANULAR, REABRIR, GET_BODEGA_DESTINO) y SPQ_CEFM_CREA_AUT_DESDE_IMOV. La salida ya estaba en dispensación (SPQ_IZSOL, SPK_CM_GENIMOV_SOL, SPK_IZSOLDT_PROCESOS, SPK_CONFIRMASAL_CM, SPK_NC_CONTAB_INV). Literales del procedimiento, no variables: bodega PQR/NO POS = 052; sedes admitidas al guardar y al auditar = 29, 33, 34, 35; contratante fijo 0100000011. AUDITAR_LOTE delega en SPQ_CEFM_AUDITAR_LOTE (cuerpo no fichado). Hay un segundo bloque ANULAR más abajo que no se ejecuta: el primero hace RETURN.",
+  "alcanceHasta": "Desde la transcripción en Consulta externa hasta la solicitud, la salida de inventario y el nacimiento de la autorización. No reescribe el Autorizador ni la factura.",
+  "flujoResumen": "Transcribir (CEFM Ingresado) → Enviar a farmacia (AUDITAR: periodos AUTE y solicitud TRANS_CE del periodo 1) → Solicitudes: Agregar, Entregar, Procesar, Confirmar → al confirmar, comprobante y después la autorización. Los periodos siguientes se piden con Traer de (clase FORMEDCE).",
+  "ventanas": [
+    {
+      "uso": "Transcripciones",
+      "ruta": "ce.formulas",
+      "path": "/ce/formulas",
+      "vue": "pages/cexterna/FormulasCEPage.vue → components/cexterna/FormulasCEComponent.vue",
+      "entrada": "Consulta externa → Transcripciones. Lista y pestaña Transcribe. Guardar persiste la fórmula y, en el mismo paso, la envía a farmacia."
+    },
+    {
+      "uso": "Salida de la solicitud",
+      "ruta": "inv.izsol_2",
+      "path": "/inv/sol_2",
+      "vue": "pages/inv/izsol/SolicitudesPage.vue → components/inv/izsol/IndexComponent.vue",
+      "entrada": "Inventario → Solicitudes. La fórmula no se dispensa en Transcripciones. El botón de dispensar aparece con la solicitud abierta."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "documentado",
+      "explicacion": "La sede de la fórmula tiene que estar en la lista fija del procedimiento. El prefijo del medicamento sale de una variable (uno para POS y otro para NO POS). La bodega de PQR y NO POS también está escrita en el procedimiento; el resto usa la bodega de la pantalla o la bodega CM de la sede. El centro y el área salen del equipo del usuario, no de la bodega.",
+      "tablasClave": ["USVGS", "UBEQ", "SED", "IBOD", "CEFMMED", "CEFMEPS"],
+      "controles": [
+        {
+          "id": "transcripcion-sede-bodega",
+          "nombre": "Sede, bodega y equipo",
+          "explicacion": "Guardar y auditar rechazan la sede si no está en la lista del procedimiento. PQR o NO POS van a la bodega fija. Si no, a la bodega enviada por la pantalla, y si no viene, a SED.IDBODEGACM. Esa bodega tiene que existir en IBOD. El centro y el área se leen de UBEQ por el equipo del usuario (USUSU.SYS_ComputerName). La pantalla no los manda. Si el equipo no está en UBEQ, la fórmula queda sin centro y sin área, y el guardado sigue.",
+          "invariante": "Sin bodega resoluble no se envía a farmacia. Sin equipo en UBEQ sí se envía, y el centro queda vacío.",
+          "sps": [
+            { "nombre": "SPQ_CEFM", "metodo": "CRUDCEFM / AUDITAR / GET_BODEGA_DESTINO", "rol": "Resuelven sede, bodega y equipo." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "documentado",
+      "explicacion": "Primero se guarda la fórmula. El envío a farmacia arma los periodos y solo pide el primero. La salida y la autorización ocurren después, en Solicitudes.",
+      "tablasClave": ["CEFM", "CEFMD", "AUTE", "AUTED", "IZSOL", "IZSOLD"],
+      "controles": [
+        {
+          "id": "transcripcion-guardar",
+          "nombre": "Guardar la fórmula",
+          "explicacion": "CRUDCEFM (Nuevo o Editar) escribe CEFM y CEFMD en estado Ingresado. Exige afiliado existente, médico activo en el catálogo de la transcripción, IPS formulante activa, diagnóstico en el catálogo, al menos un medicamento y un solo renglón por servicio. NO POS exige número MIPRES. Si la fecha de transcripción está activa, la fecha es obligatoria y no puede ser futura. Editar solo con la fórmula Ingresada. El modo de entrega queda Institucional. El contratante lo fija el procedimiento; el plan sale de la pantalla o, si el afiliado es de ese mismo contratante, de su plan.",
+          "invariante": "Ingresado todavía no es pedido de farmacia ni autorización.",
+          "sps": [
+            { "nombre": "SPQ_CEFM", "metodo": "CRUDCEFM", "rol": "Alta y edición de la fórmula." }
+          ]
+        },
+        {
+          "id": "transcripcion-auditar",
+          "nombre": "Enviar a farmacia",
+          "explicacion": "AUDITAR solo corre sobre una fórmula Ingresada. Vuelve a exigir diagnóstico, MIPRES si es NO POS, y médico si se envía bodega. Arma un periodo AUTE por mes de tratamiento: el primero queda En farmacia y los demás Pendiente. La cantidad del periodo es la del mes cuando hay posología; si no, la cantidad total. Crea la solicitud IZSOL clase TRANS_CE, estado abierta, las dos bodegas iguales y el afiliado en NOADMISION. Las líneas salen del periodo 1, no del total de la fórmula, y quedan con faltante. La fórmula pasa a Auditado. La autorización no se crea: el campo queda vacío y el aviso de la pantalla lo dice.",
+          "invariante": "La solicitud del primer periodo no guarda centro ni área. Esos datos, si existen, se quedan en la fórmula.",
+          "sps": [
+            { "nombre": "SPQ_CEFM", "metodo": "AUDITAR", "rol": "Periodos y solicitud del periodo 1." }
+          ]
+        },
+        {
+          "id": "transcripcion-periodos",
+          "nombre": "Periodos siguientes",
+          "explicacion": "TRAER_DE_AUTE envía un periodo Pendiente, y solo si los anteriores ya están Dispensados. Crea otra solicitud, clase FORMEDCE y estado Sin solicitar, con el afiliado en NOADMISION y el consecutivo de la fórmula en CNSIZSOLM. Sus líneas quedan en el estado que la dispensación trata como completas. La bodega, si no viene, sale de la variable IDBODEGA_CE, no de la regla del primer envío.",
+          "invariante": "El periodo 2 en adelante no es TRANS_CE y no nace abierto.",
+          "sps": [
+            { "nombre": "SPQ_CEFM", "metodo": "TRAER_DE_AUTE", "rol": "Solicitud de un periodo posterior." }
+          ]
+        },
+        {
+          "id": "transcripcion-reabrir",
+          "nombre": "Anular y reabrir",
+          "explicacion": "ANULAR solo pasa a Anulado una fórmula Ingresada. REABRIR exige Auditado, sin periodo ya dispensado y sin periodos posteriores ya enviados. Rechaza si la solicitud está cerrada, si hay una salida confirmada o si hay artículos procesados sin confirmar. Borra periodos, la solicitud que no comparte con otra fórmula, el movimiento en borrador y la autorización de esta fórmula, y devuelve la fórmula a Ingresado.",
+          "invariante": "No se reabre una salida ya confirmada.",
+          "sps": [
+            { "nombre": "SPQ_CEFM", "metodo": "ANULAR / REABRIR", "rol": "Deshace el pedido antes de confirmar la salida." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "documentado",
+      "explicacion": "La salida no está en esta pantalla. Farmacia toma la solicitud en Inventario → Solicitudes. El libro de Dispensación describe Agregar, Entregar, Procesar y Confirmar. Aquí solo cambia lo que esta procedencia les entrega.",
+      "tablasClave": ["IZSOL", "IMOV", "IEXI"],
+      "controles": [
+        {
+          "id": "transcripcion-salida",
+          "nombre": "Salida en Solicitudes",
+          "explicacion": "Agregar abre el movimiento en borrador. Para esta procedencia el centro y el área nacen vacíos. Entregar descuenta el lote en el momento. Procesar pasa lo entregado al movimiento. Confirmar descuenta, escribe kardex y, si el tipo y la bodega contabilizan, arma el comprobante. Antes del comprobante, solo la clase TRANS_CE copia el centro y el área de la fórmula, y solo si la fórmula trae alguno de los dos.",
+          "invariante": "Hasta confirmar, el movimiento sigue en borrador. El lote ya bajó al entregar.",
+          "sps": [
+            { "nombre": "SPQ_IZSOL", "metodo": "AGREGAR / ENTREGAR / PROCESAR / CONF_MOVIMIENTO", "rol": "Fichado en inventario. La clase manda el relleno." },
+            { "nombre": "SPK_CM_GENIMOV_SOL", "metodo": "(SPK)", "rol": "Nace el movimiento. Transcripción queda sin centro." },
+            { "nombre": "SPK_CONFIRMASAL_CM", "metodo": "(SPK)", "rol": "Confirma y, en TRANS_CE, copia la fórmula antes del comprobante." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "04-unido",
+      "numero": 4,
+      "nombre": "Subproceso unido",
+      "estado": "documentado",
+      "explicacion": "La autorización de facturación se crea al confirmar la salida, con lo que se dispensó. Si esa creación falla, la salida ya quedó confirmada.",
+      "tablasClave": ["AUT", "AUTD", "IMOVH"],
+      "controles": [
+        {
+          "id": "transcripcion-aut",
+          "nombre": "Autorización al confirmar",
+          "explicacion": "SPQ_CEFM_CREA_AUT_DESDE_IMOV corre dentro de la confirmación, después del comprobante. Aplica a TRANS_CE, FORMEDCE y a una CE manual. El afiliado de la transcripción sale de la fórmula, no de una autorización que por casualidad tenga el mismo número. El detalle es una línea por artículo dispensado. El plan de la autorización es el del afiliado. El contratante lo vuelve a fijar el procedimiento. El centro y el área salen de la fórmula o, si faltan, del equipo de quien confirma. El procedimiento no rechaza la autorización si el centro viene vacío. En TRANS_CE no reescribe el NOADMISION de la solicitud.",
+          "invariante": "Sin renglones dispensados no hay autorización. Con la salida ya confirmada, un fallo de la autorización no la deshace.",
+          "sps": [
+            { "nombre": "SPQ_CEFM_CREA_AUT_DESDE_IMOV", "metodo": "(SP)", "rol": "Nace AUT/AUTD desde el movimiento confirmado." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Contabilidad",
+      "estado": "documentado",
+      "explicacion": "El comprobante de la salida usa el centro que tenga el movimiento en ese instante. La autorización, que podría traer centro, todavía no existe.",
+      "tablasClave": ["IMOV", "MCHE", "KMCOM"],
+      "controles": [
+        {
+          "id": "transcripcion-comprobante",
+          "nombre": "Comprobante de la salida",
+          "explicacion": "Si la bodega contabiliza y el tipo también, SPK_NC_CONTAB_INV busca la cuenta con el centro del movimiento. Centro vacío o desconocido no encuentra configuración y la cuenta del asiento queda sin definir; el renglón hereda ese centro y esa área vacíos. La copia posterior desde la autorización nueva no rehace el comprobante. Si el comprobante va por cola, la cola se escribe antes de crear la autorización.",
+          "invariante": "El asiento ve el centro de antes de la autorización, no el de después.",
+          "sps": [
+            { "nombre": "SPK_NC_CONTAB_INV", "metodo": "(SPK)", "rol": "Fichado en contabilidad de inventario. Cuenta por centro del movimiento." }
+          ]
+        }
+      ]
+    }
+  ],
+  "hallazgos": [
+    {
+      "id": "hueco-inventario",
+      "titulo": "Inventario no recibe centro y el periodo siguiente no nace abierto",
+      "detalle": "IZSOL de AUDITAR no tiene columnas de centro ni área. SPK_CM_GENIMOV_SOL deja IMOV.CCOSTO e IDAREA en NULL para TRANS_CE. El periodo 1 queda IZSOL.ESTADO 1 e IZSOLD.ESTADO 1. TRAER_DE_AUTE crea clase FORMEDCE, IZSOL.ESTADO 0 (la pantalla lo muestra Sin solicitar) e IZSOLD.ESTADO 0 (la dispensación lo trata como línea completa). Abrir la solicitud exige líneas en estado 1. REABRIR borra IZSOLDT e IMOV en borrador y no llama al proceso que devuelve IEXI.EXISLOTE, ya descontado al entregar. La bodega de PQR/NO POS es el literal 052; no se lee el centro de esa bodega."
+    },
+    {
+      "id": "hueco-facturacion",
+      "titulo": "La autorización nace tarde y puede nacer incompleta",
+      "detalle": "AUT no existe al auditar. SPQ_CEFM_CREA_AUT_DESDE_IMOV corre después de SPK_NC_CONTAB_INV y el error queda en un CATCH silencioso: la salida sigue confirmada. AUTD sale de IMOVH (lo dispensado), no de CEFMD. IDTERCEROCA se fuerza a 0100000011 en la fórmula, en la solicitud y otra vez al crear la autorización. El plan de AUT se pisa con AFI.IDPLAN y, si el nombre parece contributivo o subsidiado, con CSRC26 o CSRS26. CCOSTO e IDAREA vacíos no rechazan el INSERT. En TRANS_CE, IZSOL.NOADMISION sigue siendo el afiliado. Si el prefijo no está en PRE, la facturación que hace INNER JOIN con PRE no ve la orden; el procedimiento intenta crear un SER mínimo para el artículo."
+    },
+    {
+      "id": "hueco-contabilidad",
+      "titulo": "El comprobante se arma antes de tener centro",
+      "detalle": "SPK_NC_CONTAB_INV resuelve la cuenta con FNK_NC_CUENTA_KMCOM a partir de FNK_VALIDA_CCOSTO(IMOV.CCOSTO). Centro vacío o inexistente deja la cuenta en NO DEF.KMCOM y MCHE hereda CCOSTO e IDAREA vacíos. La copia desde CEFM, dentro de SPK_CONFIRMASAL_CM, solo corre si IZSOL.CLASE es TRANS_CE y la fórmula tiene centro o área. FORMEDCE no entra a esa copia ni al relleno de CONF_MOVIMIENTO. CONF_MOVIMIENTO busca AUT por NOADMISION, y en esta procedencia ese campo es el afiliado; además solo escribe si el área viene con valor. La copia desde la AUT nueva es posterior al comprobante. Con CONTABIMOV_JOB=SI la cola IMOVC se inserta antes de crear la AUT. No se exige CEN ni KMCOM al confirmar, a diferencia del alta manual de un movimiento cuando ASI_VAL_CCAF_CARGOS=SI. El único origen del centro en la fórmula es UBEQ del equipo de quien guarda o confirma."
+    }
+  ]
+}

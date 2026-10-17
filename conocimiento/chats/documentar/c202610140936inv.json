@@ -90,6 +90,36 @@
       "autor": "agente",
       "texto": "## SPQ_ITRA · ANIOS / EXCEL_DETALLE / EXPORT_TRANSITO — leidos\n\nPREVERSION 2.0.9 idéntica a la liberada. Los tres son **solo lectura**: no tocan IEXI ni confirman.\n\n- **ANIOS:** años de ITRA.FECHAING. Sin filtro de bodega ni permiso.\n- **EXCEL_DETALLE:** plantilla del tránsito (ITRAH aún no loteado, INICIAL=0). Lote, vencimiento y costo van en NULL para llenarlos. Si el consecutivo no existe, no hay KO: lista vacía.\n- **EXPORT_TRANSITO:** líneas de la orden (cantidad y precio) más hermanos del mismo servicio. Si no mandan ni tránsito ni orden, no acota a un documento. El JOIN a ITRAH usa el consecutivo de la orden, no el del tránsito (el query por ITRAH está comentado).\n\nNo hace falta otro SP. Capacitación: exportar no es lotear ni aceptar.",
       "en": "2026-10-14T10:40:00"
+    },
+    {
+      "id": "a202610170940inv14",
+      "autor": "agente",
+      "texto": "## Seis SPK del grafo + fecha de transcripción — leídos\n\nPREVERSION = 2.0.10, idéntica a la cerrada (IDANT 2.0.9).\n\n- **SPK_GENCONSECUTIVO.** Prefijos de factura y nota débito/crédito suman USCXS (reintento si hay deadlock). El resto lo numera SPQ_GENSEQUENCE. Un error distinto del deadlock se traga: el consecutivo puede salir vacío.\n- **FNK_CEFM_FECHATRANSCRIPCION.** Fecha de la fórmula solo si CEFM_FECHA_TRANS=SI. Si no, NULL.\n- **SPK_CM_GENIMOV_SOL.** Nace el IMOV en 0. La fecha es la de la solicitud (FECHAMOVSOL=SI), o la de esa función, o ahora. No mira el periodo abierto. El único rechazo es solicitud sin bodega. INGRESOAPROD sí confirma entrada y salida de consumo.\n- **SPK_IZSOLDT_PROCESOS.** Al agregar el lote ya descuenta IEXI. Quitar y cancelar lo reponen.\n- **SPK_GENCOBRO_INSCENTRAL.** Cobra según la clase de la solicitud. No mueve existencia. Si no hay admisión, el cargo HPRE nace igual con tercero y plan vacíos. El movimiento sin confirmar no cobra (sale con aviso, no con error).\n- **SPK_GENERARFISICO_U.** Arma la hoja del contador (IFISHU) en ceros. No toca existencia.\n- **SPK_REVISA_EXISTS_INV.** Recalcula el total del artículo y de la bodega solo con lotes positivos. Un artículo en cero no se entera.\n\nCEFM quedó en el diccionario (fórmula de consulta externa). Siguen sin documentar las dos impresiones del menú (masiva de entregas y etiquetas): hace falta el MODELO del frontend.",
+      "en": "2026-10-17T09:40:00"
+    },
+    {
+      "id": "a202610170950inv15",
+      "autor": "agente",
+      "texto": "## SPK_CM_GENIMOV_SOL — centro de costo y área al nacer el IMOV\n\nPREVERSION 2.0.10. Inserta la cabecera en estado 0. El único rechazo es la bodega vacía. Centro y área se escriben tal cual salgan de la rama; si no hay fila, quedan NULL. No mira CEN (salvo APLIM), ni AFU, ni KMCOM.\n\nAGREGAR manda ENTREGALOG, salvo Consumo.\n\n| Clase / proceso | Centro | Área |\n|---|---|---|\n| Canasta QXPGCX | CXPS o QXPCX | Los mismos. IDAREAH se lee y no se guarda |\n| Perú + HTX | Plan | Primera hoja de trabajo |\n| Admisión (ENTREGALOG) | Cama HHAB; si no, el sector; HPRE cae a la prestación | La misma fuente |\n| Consumo | IZSOL.SECTOR | FNK_AREADELCCOSTO de ese sector |\n| APLIM | APLIM.CCOSTO | CEN activo de ese centro |\n| CE, transcripción, producción, ingreso de producción, proceso vacío | NULL | NULL |\n\nHHAB asigna sin TOP: varias camas dejan una fila sin orden. CE y TRANS_CE reciben centro y área después, al confirmar (AUT, y en transcripción también la fórmula).",
+      "en": "2026-10-17T09:50:00"
+    },
+    {
+      "id": "a202610171000inv16",
+      "autor": "agente",
+      "texto": "## Seguimiento — por qué el centro sigue vacío en el comprobante\n\nEl IMOV nace vacío y hay dos compuertas que no lo recuperan antes del asiento.\n\n1. **Al confirmar** (`SPQ_IZSOL`), CE y TRANS_CE leen centro y área de AUT, y orden médica / 24 horas de la cama. Los dos UPDATE están dentro de «si el área no viene vacía». Con área en blanco no se escribe el centro aunque la autorización o la cama sí lo tengan. FORMEDCE no entra a ese bloque.\n\n2. **Al confirmar la salida** (`SPK_CONFIRMASAL_CM`), TRANS_CE copia la fórmula (CEFM) antes del comprobante. El respaldo de APLIM está comentado. La copia desde la autorización que nace en la transcripción corre después de `SPK_NC_CONTAB_INV`: el movimiento puede llenarse y el asiento ya quedó vacío.\n\n3. **En el comprobante** (`SPK_NC_CONTAB_INV`), la cuenta sale de KMCOM con `IMOV.CCOSTO`. Centro vacío no encuentra fila y la cuenta queda **NO DEF.KMCOM**. El renglón de MCHE lleva ese centro y esa área vacíos.\n\nCE clásica solo se salva si la autorización tiene área. Transcripción solo se salva si la fórmula tiene centro o área antes del asiento.",
+      "en": "2026-10-17T10:00:00"
+    },
+    {
+      "id": "a202610171010inv17",
+      "autor": "agente",
+      "texto": "## Transcripciones (/ce/formulas) → IZSOL → salida\n\nPREVERSION 2.0.10, SPQ_CEFM · AUDITAR.\n\n1. Guardar: CEFM + CEFMD, estado INGRESADO. Aún no hay solicitud.\n2. Enviar a farmacia (AUDITAR): bodega 052 si es PQR o NO POS; si no, la bodega de la pantalla o SED.IDBODEGACM. Centro y área salen del equipo del usuario (UBEQ), no de la bodega. Crea periodos AUTE (el 1 queda En farmacia) y la solicitud IZSOL clase TRANS_CE, con el afiliado en NOADMISION. La solicitud no lleva centro ni área. La autorización de facturación no nace aquí.\n3. La salida es en Solicitudes: Agregar (IMOV en 0, centro vacío), Entregar (descuenta lote), Procesar, Confirmar. Al confirmar, TRANS_CE copia el centro de la fórmula antes del comprobante. Si el equipo no tenía UBEQ, la fórmula también va vacía y el asiento queda NO DEF.KMCOM.",
+      "en": "2026-10-17T10:10:00"
+    },
+    {
+      "id": "a202610171020inv18",
+      "autor": "agente",
+      "texto": "## Proceso documentado: transcripciones-ce\n\nQuedó el proceso Consulta externa · Transcripciones (conocimiento/transcripciones-ce). PREVERSION 2.0.10.\n\nFlujo: guardar CEFM Ingresado → AUDITAR (periodos AUTE y IZSOL TRANS_CE del periodo 1, afiliado en NOADMISION, sin centro) → Solicitudes (Agregar, Entregar, Procesar, Confirmar) → comprobante y después AUT. Los periodos siguientes son TRAER_DE_AUTE, clase FORMEDCE, estado Sin solicitar.\n\nHuecos:\n- Inventario: la solicitud no lleva centro; el movimiento nace vacío; el periodo 2 nace cerrado de hecho (IZSOL 0, líneas 0) y Abrir exige líneas en 1. Reabrir no repone el lote ya descontado.\n- Facturación: la AUT nace al confirmar, el error no deshace la salida, el contratante va fijo, el plan se reescribe y el centro vacío no se rechaza.\n- Contabilidad: el asiento usa el centro de antes de la AUT. Solo TRANS_CE copia la fórmula, y solo si ya tiene centro. Vacío → NO DEF.KMCOM. El origen del centro es el equipo (UBEQ).",
+      "en": "2026-10-17T10:20:00"
     }
   ]
 }

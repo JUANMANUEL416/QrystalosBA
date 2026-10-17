@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventario cíclico (capa sobre conteo físico) — Dictamen técnico Qrystalos</title>
+  <style>
+    :root { --primary:#E67817; --secondary:#CB500F; --border:#000; --bg:#fff8ee; --text:#1a1a1a; --muted:#5d4e37; --warn:#b7950b; --danger:#922b21; --ok:#1e8449; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:"Segoe UI",Tahoma,sans-serif; font-size:14px; line-height:1.6; color:var(--text); background:var(--bg); padding:2rem; }
+    .container { max-width:960px; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:4px; padding:2.5rem; }
+    .brand-bar { height:6px; background:#E67817; margin:-2.5rem -2.5rem 1.15rem; }
+    .brand-head { display:flex; align-items:center; gap:12px; margin-bottom:1rem; }
+    .brand-mark { height:56px; width:auto; background:#000; border-radius:8px; }
+    .brand-name { font-size:1.05rem; font-weight:700; color:#2c2c2c; letter-spacing:.06em; }
+    .brand-sub { font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.1em; }
+    header { border-bottom:3px solid var(--primary); padding-bottom:1.5rem; margin-bottom:2rem; }
+    header h1 { font-size:1.45rem; color:var(--primary); margin-bottom:.5rem; }
+    .meta-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem 1.5rem; margin-top:1rem; font-size:.9rem; }
+    .meta-item label { display:block; font-weight:600; color:var(--muted); font-size:.75rem; text-transform:uppercase; }
+    .badge { display:inline-block; padding:.15rem .6rem; border-radius:3px; font-size:.8rem; font-weight:600; background:#fef9e7; color:var(--warn); border:1px solid var(--warn); }
+    section { margin-bottom:2rem; }
+    section h2 { font-size:1.1rem; color:var(--primary); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-bottom:1rem; }
+    section h3 { font-size:.95rem; color:var(--secondary); margin:1rem 0 .5rem; }
+    section h4 { font-size:.9rem; color:var(--muted); margin:.75rem 0 .35rem; }
+    .content-block { background:var(--bg); border-left:4px solid var(--secondary); padding:1rem 1.25rem; margin-bottom:1rem; white-space:pre-wrap; }
+    .muted-note { color:var(--muted); font-size:.9rem; margin-bottom:.75rem; }
+    table { width:100%; border-collapse:collapse; margin:.75rem 0; font-size:.9rem; }
+    th, td { border:1px solid var(--border); padding:.5rem .75rem; text-align:left; vertical-align:top; }
+    th { background:var(--primary); color:#fff; }
+    tr:nth-child(even) { background:#f4f6f7; }
+    ul, ol { margin:.5rem 0 .5rem 1.5rem; }
+    .checklist { list-style:none; margin-left:0; }
+    .checklist li { padding-left:1.5rem; position:relative; margin-bottom:.35rem; }
+    .checklist li::before { content:"☐"; position:absolute; left:0; color:var(--muted); }
+    .impacto-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin:1rem 0; }
+    .impacto-grid-1 { grid-template-columns:1fr; max-width:280px; }
+    .impacto-card { border:1px solid var(--border); border-radius:4px; padding:.75rem; text-align:center; }
+    .impacto-card .label { font-size:.75rem; color:var(--muted); text-transform:uppercase; }
+    .impacto-card .value { font-size:1.1rem; font-weight:700; margin-top:.25rem; }
+    .impacto-si { color:var(--danger); }
+    .impacto-no { color:var(--ok); }
+    pre.sql-spec { background:#1e1e1e; color:#d4d4d4; padding:1rem; overflow-x:auto; font-size:.78rem; border-radius:4px; margin:.75rem 0; white-space:pre-wrap; font-family:Consolas,"Courier New",monospace; }
+    .diagrama-flujo-block { background:#f4f6f8; border:1px dashed var(--border); border-radius:4px; padding:1rem 1.25rem; }
+    .diagrama-incrustado .df-flow { display:flex; flex-wrap:wrap; align-items:stretch; gap:.45rem .35rem; padding:.85rem; background:#faf6f0; border:1px dashed #e4d5c0; border-radius:6px; margin-bottom:.85rem; }
+    .diagrama-incrustado .df-node { flex:1 1 130px; min-width:115px; max-width:200px; border-radius:6px; padding:.55rem .65rem; border:1px solid #e4d5c0; background:#fff; }
+    .diagrama-incrustado .df-node .k { font-weight:700; font-size:.82rem; margin-bottom:.2rem; }
+    .diagrama-incrustado .df-node .d { font-size:.78rem; color:#5d4e37; line-height:1.35; }
+    .diagrama-incrustado .df-user { border-color:#E67817; background:#fff4e8; }
+    .diagrama-incrustado .df-vue { border-color:#3d7ea6; }
+    .diagrama-incrustado .df-api { border-color:#6b4c9a; background:#f7f2fc; }
+    .diagrama-incrustado .df-sql { border-color:#1e8449; background:#f2faf5; }
+    .diagrama-incrustado .df-out { border-color:#CB500F; background:#fff0e4; }
+    .diagrama-incrustado .df-arrow { align-self:center; color:#E67817; font-weight:700; }
+    .diagrama-incrustado .df-split { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; margin-bottom:.85rem; }
+    .diagrama-incrustado .df-box { border:1px solid #e4d5c0; border-radius:6px; padding:.75rem .85rem; font-size:.85rem; }
+    .diagrama-incrustado .df-hoy { background:#fdf2f2; border-color:#e6b0aa; }
+    .diagrama-incrustado .df-ok { background:#eafaf1; border-color:#a9dfbf; }
+    footer { margin-top:2rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.8rem; color:var(--muted); text-align:center; }
+    html, body, .container, th, .badge, .brand-bar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print { body{background:#fff8ee;padding:8px} .container{border:1px solid #000;padding:1.5rem} th{background:#E67817!important;color:#fff!important} }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="brand-bar"></div>
+  <div class="brand-head">
+    <img class="brand-mark" src="../app/assets/logo-ixcolombia.png" alt="IX Colombia SAS">
+    <div>
+      <div class="brand-name">IX COLOMBIA SAS</div>
+      <div class="brand-sub">Business Analyst · Qrystalos</div>
+    </div>
+  </div>
+  <header>
+    <h1>Módulo de inventario cíclico (planificación sobre conteo físico)</h1>
+    <p class="muted-note">Dictamen técnico — Qrystalos BA · REQ 0100012479</p>
+    <div class="meta-grid">
+      <div class="meta-item"><label>ID caso</label><span>20261014-0100012479</span></div>
+      <div class="meta-item"><label>Cliente</label><span>ART MEDICA S.A.S</span></div>
+      <div class="meta-item"><label>Módulo</label><span>INV · Inventario</span></div>
+      <div class="meta-item"><label>Desarrollador</label><span>ANDRE CARBAJAL</span></div>
+      <div class="meta-item"><label>Coordinador / BA</label><span>JOSE MANUEL JIMENEZ</span></div>
+      <div class="meta-item"><label>Rama</label><span>bugfix/ARTMED551</span></div>
+      <div class="meta-item"><label>Prioridad / tipo</label><span>1 - Alta · Performance</span></div>
+      <div class="meta-item"><label>Estado</label><span class="badge">Propuesto</span></div>
+      <div class="meta-item"><label>Fecha</label><span>17/10/2026</span></div>
+    </div>
+  </header>
+
+  <section id="requerimiento">
+    <h2>1. Requerimiento del cliente</h2>
+    <div class="content-block">Creación de módulo de inventario cíclico para farmacia/bodegas: contar periódicamente grupos pequeños de artículos (ABC, frecuencias diaria/semanal/mensual) sin detener toda la bodega; plan por bodega y periodo; tareas de conteo; conteo ciego; tolerancias; reconteo; aprobación supervisor; motivo de diferencia; trazabilidad e indicadores de cumplimiento.
+
+El cliente reconoce que Qrystalos ya tiene Inventario → Procesos → Conteo físico (/inv/conteo) con IFIS/IFISH/IFISHU, tres rondas, listados por contador y ajustes vía SPQ_CONTEOFISICO · APLICAR y SPK_APLICARCONTEO. Pide una capa de planeación y gobierno sobre ese motor, no un segundo motor de conteo.
+
+Entrega sugerida en dos etapas: MVP (planeación manual, alcance parcial, ciego, reconteo, aprobación, reuse de ajustes) y evolución (ABC automático, cronograma recurrente, alertas, lectores).</div>
+  </section>
+
+  <section id="analisis">
+    <h2>2. Análisis del coordinador</h2>
+    <div class="content-block">Paso 0 — ¿Ya existe?
+• Capacitación parcial: el conteo físico tradicional ya permite contar y ajustar por bodega (control conteo-fisico documentado).
+• No cubre: plan cíclico, cronograma, ABC operativo, conteo ciego, tolerancias, cola de aprobación ni tablero de cumplimiento.
+• Clasificación: hueco funcional (nuevo subproceso), no defecto del conteo actual.
+
+Recomendación: Opción A — capa «Inventario cíclico» + reuse de CONTEOFISICO/APLICAR. Priorizar SPQ_IFISC (nuevo) y FE de planeación; extender SPQ_CONTEOFISICO solo para conteo parcial, origen cíclico y guard de aprobación.
+
+Decisiones de comité (no bloqueantes): (1) ¿MVP mantiene tres conteos cerrados como el anual o 1 conteo + reconteo condicionado? (2) ¿Confirmar automáticamente la entrada de ajuste en cíclico igual que la salida?</div>
+  </section>
+
+  <section id="validar-antes">
+    <h2>Validar antes de desarrollar</h2>
+    <p class="muted-note">No aplica: requerimiento de capacidad nueva, no corrección de un error reproducible en producción.</p>
+  </section>
+
+  <section id="contabilidad">
+    <h2>3. Contabilidad</h2>
+    <div class="impacto-grid impacto-grid-1">
+      <div class="impacto-card">
+        <div class="label">Afecta contabilidad</div>
+        <div class="value impacto-no">No</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="dictamen">
+    <h2>4. Dictamen técnico</h2>
+    <div class="impacto-grid">
+      <div class="impacto-card"><div class="label">Frontend</div><div class="value impacto-si">Sí</div></div>
+      <div class="impacto-card"><div class="label">API / Backend</div><div class="value impacto-si">Sí</div></div>
+      <div class="impacto-card"><div class="label">SQL Server</div><div class="value impacto-si">Sí</div></div>
+    </div>
+
+    <h3>Resumen ejecutivo</h3>
+    <div class="content-block">Implementar Inventario → Procesos → Inventario cíclico como capa de configuración, planeación de tareas, conteo ciego, tolerancia/reconteo y aprobación. Cada tarea aprobada dispara el flujo operativo existente de conteo físico (IFIS parcial → listados → digitar → APLICAR). Persistencia nueva para plan/tareas/alcance; tablas operativas IFIS/IFISH/IFISHU/IMOV se reutilizan. Fuente SQL operativa: IXONLINE/SQL · SPQ_CONTEOFISICO y SPK_APLICARCONTEO (fichas documentadas).</div>
+
+    <h3>Trazabilidad proceso (control conteo-fisico + extensión cíclica)</h3>
+    <table>
+      <thead><tr><th>Paso</th><th>Vue / ruta</th><th>MODELO</th><th>METODO</th><th>Rol</th></tr></thead>
+      <tbody>
+        <tr><td>Config políticas</td><td>/inv/ciclico (nueva) o conf</td><td>IFISC</td><td>CRUD_POLITICA</td><td>Tolerancias, causas, roles</td></tr>
+        <tr><td>Plan / tareas</td><td>/inv/ciclico</td><td>IFISC</td><td>CRUD_PLAN / CRUD_TAREA / GENERAR_TAREAS</td><td>Planeación MVP</td></tr>
+        <tr><td>Crear conteo parcial</td><td>Embede conteo o enlace</td><td>IFISC → CONTEOFISICO</td><td>CREAR_CONTEO</td><td>IFIS + IFISH alcance</td></tr>
+        <tr><td>Listado / digitar</td><td>ConteoFisicoComponent*</td><td>CONTEOFISICO</td><td>CREA_LISTADO / GUARDA_REGISTRO</td><td>Ciego en FE contador</td></tr>
+        <tr><td>Reconteo</td><td>Conteo físico</td><td>CONTEOFISICO</td><td>CLONAR_CONTEO / CERRAR_CONTEO</td><td>Segunda ronda</td></tr>
+        <tr><td>Aprobación</td><td>/inv/ciclico</td><td>IFISC</td><td>APROBAR_TAREA / RECHAZAR_TAREA</td><td>Antes de ajuste</td></tr>
+        <tr><td>Ajuste inventario</td><td>Conteo físico</td><td>CONTEOFISICO</td><td>APLICAR</td><td>→ SPK_APLICARCONTEO</td></tr>
+      </tbody>
+    </table>
+    <p class="muted-note">*Ajustes en ConteoFisicoComponent cuando el conteo proviene de tarea cíclica (ocultar EXISTOTAL, deshabilitar Aplicar directo).</p>
+
+    <h3>Archivos / objetos impactados</h3>
+    <table>
+      <thead><tr><th>Capa</th><th>Objeto</th><th>Cambio</th></tr></thead>
+      <tbody>
+        <tr><td>FE</td><td>InventarioCiclicoPage.vue (nueva), router /inv/ciclico, menú USPROH</td><td>Planeación, tablero, aprobación</td></tr>
+        <tr><td>FE</td><td>ConteoFisicoComponent.vue</td><td>Modo cíclico: sin EXISTOTAL, Aplicar condicionado</td></tr>
+        <tr><td>API</td><td>MODELO IFISC (SPQ_IFISC nuevo)</td><td>Plan, tareas, aprobación</td></tr>
+        <tr><td>SQL</td><td>Tablas IFISCPLAN, IFISCTAR, IFISCTAR_D (+ catálogos)</td><td>Nuevas — validar nombres en PREVERSION</td></tr>
+        <tr><td>SQL</td><td>IXONLINE/SQL · SPQ_CONTEOFISICO</td><td>CREA_CONTEO_PARCIAL y/o guard en APLICAR</td></tr>
+        <tr><td>SQL</td><td>IXONLINE/SQL · SPK_APLICARCONTEO</td><td>Reuse; sin cambio salvo reglas acordadas</td></tr>
+        <tr><td>Permisos</td><td>USGRUH</td><td>inv.ciclico, roles contador/aprobador</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="diagrama-flujo">
+    <h2>4.5 Diagrama de flujo</h2>
+    <div class="diagrama-flujo-block diagrama-incrustado">
+      <div class="df-flow">
+        <div class="df-node df-user"><div class="k">Usuario</div><div class="d">Planifica tarea cíclica → ejecuta conteo → aprueba ajuste</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-vue"><div class="k">Pantallas</div><div class="d">Inventario cíclico (nueva) + Conteo físico (reuse)</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-api"><div class="k">AppStore.json</div><div class="d">IFISC · plan/tareas/aprobación · CONTEOFISICO · CRUD, CREA_LISTADO, GUARDA_REGISTRO, APLICAR</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-sql"><div class="k">SQL</div><div class="d">SPQ_IFISC (nuevo) · SPQ_CONTEOFISICO · SPK_APLICARCONTEO</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-out"><div class="k">Resultado</div><div class="d">IMOV ajuste + trazabilidad plan → CNSIFIS</div></div>
+      </div>
+      <div class="df-split">
+        <div class="df-box df-hoy"><strong>Hoy</strong><br>Conteo físico por bodega completa; contador ve existencia teórica; sin plan ni aprobación cíclica.</div>
+        <div class="df-box df-ok"><strong>Propuesto</strong><br>Plan → tarea → IFIS parcial → conteo ciego → tolerancia/reconteo → aprobación → APLICAR existente.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="normativa">
+    <h2>4.6 Normativa adjunta</h2>
+    <div class="content-block">No se adjuntaron resoluciones, circulares ni anexos técnicos para este REQ.</div>
+  </section>
+
+  <section id="cambios">
+    <h2>5. Cambios propuestos</h2>
+    <h3>5.0 En palabras simples (negocio)</h3>
+    <div class="content-block">Hoy el farmacéutico solo puede hacer un conteo físico «completo» por bodega. Se agregará un módulo «Inventario cíclico» para planear qué contar cada semana o mes, asignar responsables, contar sin ver la existencia del sistema, revisar diferencias con tolerancia, pedir reconteo o visto bueno de un supervisor, y recién ahí generar los mismos ajustes de inventario que ya usa el conteo físico.</div>
+
+    <h3>5.1 Detalle técnico — Frontend (Qrystalos2)</h3>
+    <ul>
+      <li>Nueva ruta <code>/inv/ciclico</code> y entrada de menú Inventario → Procesos → Inventario cíclico (<code>inv.ciclico</code>).</li>
+      <li>Pestañas o vistas: Configuración (políticas, tolerancias, causas), Planes (CRUD), Tareas (generar, filtrar pendientes/vencidas), Aprobaciones.</li>
+      <li>Acción «Ejecutar tarea» abre conteo embebido o navega a ConteoFisicoComponent con <code>CNSIFIS</code> y flag origen cíclico.</li>
+      <li>ConteoFisicoComponent: ocultar columna EXISTOTAL para rol contador cuando origen cíclico; botón Aplicar visible solo para aprobador o tras APROBAR_TAREA.</li>
+      <li>Tablero MVP: conteos % cumplimiento por plan (lectura IFISCTAR).</li>
+      <li>Mockup UX: regenerar ventana propuesta de planeación cíclica (el borrador actual aún referencia ConteoFisicoPage genérico).</li>
+    </ul>
+
+    <h3>5.2 Detalle técnico — SQL Server</h3>
+    <ul>
+      <li>Crear tablas de planificación (especificación abajo) y SPQ_IFISC con METODOs de plan, tarea, enlace a IFIS, cálculo de diferencia/tolerancia y aprobación.</li>
+      <li>Preferir METODO <strong>CREA_CONTEO_PARCIAL</strong> en IXONLINE/SQL · SPQ_CONTEOFISICO para no materializar toda la bodega en IFISH.</li>
+      <li>Extensión IXONLINE/SQL · SPQ_CONTEOFISICO · APLICAR: rechazar si tarea cíclica vinculada no está aprobada (salvo auto-aprobación por tolerancia).</li>
+      <li>Variables existentes: IDINVSIENT, IDINVSISAL, IDINV_AJUSXITAR.</li>
+      <li>Cambio de BD: <strong>Sí</strong> (tablas nuevas + SPQ nuevo + extensión SPQ existente).</li>
+    </ul>
+    <h4>5.2.1 Fragmentos SQL (especificación)</h4>
+    <p class="muted-note">Especificación para desarrollo en IXONLINE/SQL. No ejecutar desde la oficina BA.</p>
+    <pre class="sql-spec">-- ESPECIFICACIÓN (IXONLINE/SQL). Objetos nuevos — validar nombres en PREVERSION.
+
+CREATE TABLE IFISCPLAN (
+  CNSPLAN     VARCHAR(20) NOT NULL PRIMARY KEY,
+  IDBODEGA    VARCHAR(10) NOT NULL,
+  DETALLE     VARCHAR(200),
+  FECHAINI    DATE,
+  FECHAFIN    DATE,
+  ESTADO      VARCHAR(2),
+  USUARIO     VARCHAR(12),
+  FECHA       DATETIME
+);
+
+CREATE TABLE IFISCTAR (
+  CNSTAR      VARCHAR(20) NOT NULL PRIMARY KEY,
+  CNSPLAN     VARCHAR(20) NOT NULL,
+  IDBODEGA    VARCHAR(10) NOT NULL,
+  FECHA_PROG  DATE,
+  FECHA_LIM   DATE,
+  CONTADOR    VARCHAR(12),
+  APROBADOR   VARCHAR(12),
+  ESTADO      VARCHAR(2),
+  CNSIFIS     VARCHAR(20) NULL,
+  TOLER_PCT   DECIMAL(9,4) NULL,
+  TOLER_UND   DECIMAL(14,4) NULL,
+  CAUSA_DIF   VARCHAR(10) NULL,
+  OBS_APROB   VARCHAR(500) NULL
+);
+
+CREATE TABLE IFISCTAR_D (
+  CNSTAR      VARCHAR(20) NOT NULL,
+  IDARTICULO  VARCHAR(20) NOT NULL,
+  NOLOTE      VARCHAR(20) NULL,
+  ESTANTE     VARCHAR(20) NULL
+);
+
+-- SPQ_IFISC: CRUD_PLAN, CRUD_TAREA, GENERAR_TAREAS, CREAR_CONTEO, APROBAR_TAREA, RECHAZAR_TAREA
+-- SPQ_CONTEOFISICO · APLICAR: guard aprobación cíclica</pre>
+
+    <h3>5.3 Detalle técnico — Backend (qrystalos.server)</h3>
+    <p class="muted-note">Registrar MODELO <strong>IFISC</strong> → SPQ_IFISC en el catálogo de procedimientos JSON del backend (misma convención SPQ_&lt;MODELO&gt;). Confirmar ruta de despliegue del servidor con infraestructura del cliente.</p>
+  </section>
+
+  <section id="consideraciones">
+    <h2>6. Qué tener en cuenta</h2>
+    <ul>
+      <li>No regresión del conteo físico anual en /inv/conteo para usuarios sin módulo cíclico.</li>
+      <li>Performance: generación de tareas y listados parciales con paginación; evitar snapshot completo de bodega en planes pequeños.</li>
+      <li>Invariante actual de APLICAR: tres conteos cerrados, sin negativos, sin movimientos pendientes sobre artículos del conteo — acordar relajación solo para origen cíclico.</li>
+      <li>Entrada de ajuste queda pendiente en Movimientos tras APLICAR (comportamiento documentado del control conteo-fisico).</li>
+      <li>Evolución etapa 2 (ABC automático, jobs recurrentes) fuera del MVP salvo nuevo REQ.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas-dev">
+    <h2>7. Pruebas del desarrollador</h2>
+    <ul class="checklist">
+      <li>Lint y build Qrystalos2 en rama bugfix/ARTMED551.</li>
+      <li>DDL + SPQ_IFISC en copia SQL; permisos USGRUH inv.ciclico.</li>
+      <li>Plan con 5 artículos: IFISH solo alcance; resto de bodega sigue movimientos normales.</li>
+      <li>Contador no ve EXISTOTAL; supervisor sí tras cierre de ronda.</li>
+      <li>Tolerancia: dentro → auto-aprobación (si configurada); fuera → reconteo → cola aprobación.</li>
+      <li>APLICAR bloqueado sin aprobación; tras aprobar genera IMOV y NODOCUMENTO = CNSIFIS.</li>
+      <li>Regresión: conteo físico clásico sin vínculo IFISCTAR.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas-coord">
+    <h2>8. Pruebas del coordinador</h2>
+    <ul class="checklist">
+      <li>Happy path: plan → tarea → conteo ciego → dentro de tolerancia → aprobación → ajuste en kardex.</li>
+      <li>Borde: diferencia fuera de tolerancia → reconteo → aprobación supervisor.</li>
+      <li>Tablero refleja pendientes/vencidas/completadas.</li>
+      <li>Conteo tradicional sin plan cíclico sin cambios.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas-soporte">
+    <h2>9. Pruebas de soporte</h2>
+    <ul class="checklist">
+      <li>Verificar permisos contador vs aprobador en USGRUH.</li>
+      <li>Variables IDINVSIENT, IDINVSISAL, IDINV_AJUSXITAR configuradas (igual que conteo físico).</li>
+      <li>Si APLICAR falla por movimientos pendientes: ANULA_MASIVO o confirmar movimientos según runbook de conteo físico.</li>
+      <li>Rollback: desactivar menú inv.ciclico; planes abiertos no deben bloquear operación de bodega.</li>
+      <li>Escalar L3 si SPQ_IFISC o extensión CONTEOFISICO diverge de PREVERSION.</li>
+    </ul>
+  </section>
+
+  <footer>Generado por Qrystalos BA — Oficina de coordinación Qrystalos · 17/10/2026</footer>
+</div>
+</body>
+</html>

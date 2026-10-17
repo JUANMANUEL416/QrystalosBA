@@ -22,10 +22,11 @@ def _instruccion_md(sid: str, meta: dict) -> str:
 ## Objetivo
 Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, grafos, runbooks) y documentación viva.
 
-## Leer primero
-1. `data/soporte-consultas/{sid}/meta.json`
-2. `data/soporte-consultas/{sid}/chat.json`
-3. `conocimiento/INDICE.json` → procesos relacionados con la pregunta
+## Leer primero, en este orden
+1. `data/soporte-consultas/{sid}/meta.json` y `chat.json`
+2. `conocimiento/_indice_busqueda.json` — ubique proceso, control y la ficha. Abra solo esa línea. No lea un `sps.json` entero.
+3. El guion de ese proceso: `conocimiento/{{proceso}}/proceso.json` (resumen, ventanas y controles) y el grafo de ese mismo proceso (`grafo-*/`, nodos en el orden del archivo). La respuesta sigue ese orden. No reordene pasos ni traiga un paso de otro proceso.
+4. Ficha con estado distinto de `leido`, o grafo/flujo que no cubre la pregunta: no complete el hueco. Diga en el chat y en `respuestaOficial` qué falta y que no puede afirmarlo. Encole el handoff a Conocimiento. No devuelva un atajo, un procedimiento parecido ni un paso que el sistema no tenga documentado.
 
 ## Entregables
 1. Mensaje en **chat.json** (autor: `agente`).
@@ -167,6 +168,36 @@ def listar_consultas(limit: int = 40) -> list[dict]:
 
 def leer_meta(sid: str) -> dict:
     return _read_json(carpeta_consulta(sid) / "meta.json", {})
+
+
+def vincular_solicitud(sid: str, id_sr: str) -> dict:
+    """Deja en la consulta el id de la solicitud de requerimiento generada."""
+    meta = leer_meta(sid)
+    meta["solicitudId"] = (id_sr or "").strip()
+    meta["solicitudEn"] = datetime.now().isoformat(timespec="seconds")
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    return meta
+
+
+def generar_requerimiento(sid: str, textos: dict | None = None, nota: str = "") -> dict:
+    """Crea (o reabre el vínculo de) la solicitud de comité a partir de esta consulta."""
+    import solicitud_req as solreq
+
+    meta = leer_meta(sid)
+    mensajes = leer_chat(sid).get("mensajes") or []
+    sol = solreq.crear_desde_consulta_soporte(meta, mensajes, textos=textos, nota=nota)
+    ya = bool(sol.pop("_yaExistia", False))
+    id_sr = (sol.get("id") or "").strip()
+    if id_sr:
+        vincular_solicitud(sid, id_sr)
+    if id_sr and not ya:
+        append_chat(
+            sid,
+            "sistema",
+            f"Solicitud de requerimiento {id_sr}: {sol.get('titulo') or 'sin título'}. "
+            "Quedó abierta en Solicitar requerimiento.",
+        )
+    return {"yaExistia": ya, "solicitud": sol}
 
 
 def leer_chat(sid: str) -> dict:
@@ -312,6 +343,8 @@ def html_capturas(sid: str) -> str:
         ".gif": "image/gif",
     }
     for img in meta.get("imagenes") or []:
+        if img.get("origen") == "gemini":
+            continue
         nombre = Path(str(img.get("nombre") or "")).name
         path = carp / nombre
         if not path.is_file() or path.suffix.lower() not in _IMG_EXT:
@@ -738,15 +771,191 @@ def resolver_proposito(meta: dict) -> str:
     )
 
 
-def generar_html_documento(sid: str, logo_href: str = "/app/assets/logo-ixcolombia.svg") -> tuple[str, dict]:
+def _html_figura(path: Path, titulo: str) -> str:
+    mime = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    src = f"data:{mime.get(path.suffix.lower(), 'image/png')};base64,{encoded}"
+    return (
+        f'<figure class="doc-captura"><img src="{src}" alt="{_esc(titulo)}">'
+        f"<figcaption>{_esc(titulo)}</figcaption></figure>"
+    )
+
+
+def html_ilustraciones(sid: str) -> str:
+    meta = leer_meta(sid)
+    carp = carpeta_consulta(sid) / "imagenes"
+    partes: list[str] = []
+    for img in meta.get("imagenes") or []:
+        if img.get("origen") != "gemini":
+            continue
+        nombre = Path(str(img.get("nombre") or "")).name
+        path = carp / nombre
+        if not path.is_file():
+            continue
+        titulo = str(img.get("titulo") or nombre)
+        partes.append(_html_figura(path, titulo))
+    if not partes:
+        return ""
+    return '<div class="doc-capturas">' + "".join(partes) + "</div>"
+
+
+def html_flujo(pasos: list) -> str:
+    items = []
+    for paso in pasos or []:
+        frase = str(paso or "").strip()
+        if frase:
+            items.append(f"<li>{_esc(frase)}</li>")
+    if not items:
+        return ""
+    return (
+        '<h3>Flujo en el aplicativo</h3>'
+        '<ol class="manual-list">' + "".join(items) + "</ol>"
+    )
+
+
+def _quitar_ilustraciones_gemini(sid: str) -> None:
+    meta = leer_meta(sid)
+    carp = carpeta_consulta(sid) / "imagenes"
+    quedan = []
+    for img in meta.get("imagenes") or []:
+        if img.get("origen") != "gemini":
+            quedan.append(img)
+            continue
+        path = carp / Path(str(img.get("nombre") or "")).name
+        if path.is_file():
+            path.unlink()
+    meta["imagenes"] = quedan
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+
+
+def _guia_documentada(texto: str) -> dict:
+    """Flujos y ventanas del proceso citado en la respuesta oficial. No inventa pasos."""
+    import conocimiento as kb
+    import diagrama_flujo as diagflujo
+    import mockup_generar as mockgen
+
+    bajo = (texto or "").lower()
+    vistos: list[str] = []
+    for patron in (
+        r"proceso documentado:\**\s*`?([a-z0-9][a-z0-9_-]{1,40})",
+        r"conocimiento/([a-z0-9][a-z0-9_-]{1,40})",
+    ):
+        for hallado in re.findall(patron, bajo):
+            if hallado not in vistos and kb.load_proceso(hallado):
+                vistos.append(hallado)
+    if not vistos:
+        return {"flujos": [], "ventanas": [], "pantallas": []}
+    proceso = kb.load_proceso(vistos[0]) or {}
+    flujos = []
+    for flujo in proceso.get("flujos") or []:
+        if not isinstance(flujo, dict):
+            continue
+        puntaje = 0
+        blob = f"{flujo.get('id') or ''} {flujo.get('nombre') or ''}".lower().replace("-", " ")
+        for token in re.findall(r"[a-záéíóúñ0-9]{5,}", blob):
+            if token in bajo:
+                puntaje += 2
+        for paso in flujo.get("pasos") or []:
+            if not isinstance(paso, dict):
+                continue
+            pantalla = str(paso.get("pantalla") or "").strip().lower()
+            titulo = str(paso.get("titulo") or "").strip().lower()
+            if pantalla and pantalla in bajo:
+                puntaje += 4
+            if titulo and titulo in bajo:
+                puntaje += 3
+        if puntaje >= 4:
+            flujos.append(flujo)
+        if len(flujos) >= 2:
+            break
+    pantallas: list[str] = []
+    for flujo in flujos:
+        for paso in flujo.get("pasos") or []:
+            nombre = str((paso or {}).get("pantalla") or "").strip()
+            if nombre and nombre not in pantallas:
+                pantallas.append(nombre)
+    candidatas = []
+    for ventana in proceso.get("ventanas") or []:
+        if not isinstance(ventana, dict):
+            continue
+        path = str(ventana.get("path") or "").strip()
+        if not path or path.lower() not in bajo:
+            continue
+        candidatas.append((bajo.find(path.lower()), ventana))
+    candidatas.sort(key=lambda par: par[0])
+    ventanas = [ventana for _pos, ventana in candidatas[:4]]
+    return {
+        "flujos": flujos,
+        "ventanas": ventanas,
+        "pantallas": pantallas,
+        "diagrama": diagflujo.fragmento_guia(flujos),
+        "mockup": mockgen.fragmento_pantallas(ventanas),
+    }
+
+
+def preparar_presentacion(sid: str) -> dict:
+    """Pasa la respuesta oficial por Gemini: lenguaje de pantalla, flujo e ilustraciones."""
+    import gemini_ilustracion
+
+    meta = leer_meta(sid)
+    oficial = (meta.get("respuestaOficial") or "").strip()
+    if len(oficial) < 40:
+        raise ValueError("Complete la respuesta oficial antes de generar el documento.")
+    if not gemini_ilustracion.clave():
+        raise ValueError("Falta la clave de Gemini en Consultas de soporte.")
+    guia = _guia_documentada(oficial)
+    pieza = gemini_ilustracion.organizar(oficial, guia.get("pantallas") or [])
+    _quitar_ilustraciones_gemini(sid)
+    for i, item in enumerate(pieza["ilustraciones"], start=1):
+        escena = (
+            "Esquema visual del flujo de Qrystalos, claro y sin datos de personas. "
+            "Dibuje solo estos pasos, en este orden, sin agregar pantallas que no estén nombradas: "
+            + item["escena"]
+        )
+        try:
+            mime, data = gemini_ilustracion.generar(escena)
+        except ValueError:
+            continue
+        imagen = guardar_imagen(sid, f"data:{mime};base64,{data}", f"flujo-{i}.png")
+        meta = leer_meta(sid)
+        for fila in meta.get("imagenes") or []:
+            if fila.get("nombre") == imagen.get("nombre"):
+                fila["origen"] = "gemini"
+                fila["titulo"] = item["titulo"]
+        _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    meta = leer_meta(sid)
+    meta["documentoUsuario"] = pieza["texto"]
+    meta["flujoDocumento"] = pieza["flujo"]
+    _write_json(carpeta_consulta(sid) / "meta.json", meta)
+    return meta
+
+
+def generar_html_documento(
+    sid: str,
+    logo_href: str = "/app/assets/logo-ixcolombia.svg",
+    presentar: bool = False,
+) -> tuple[str, dict]:
+    if presentar:
+        preparar_presentacion(sid)
     meta = leer_meta(sid)
     hoy = date.today().isoformat()
-    respuesta = meta.get("respuestaOficial") or ""
+    respuesta = (meta.get("documentoUsuario") or meta.get("respuestaOficial") or "")
     if not respuesta.strip():
         raise ValueError("Complete la «Respuesta oficial» antes de generar el documento.")
 
     proposito = resolver_proposito(meta)
     proposito_html = _esc(proposito).replace(chr(10), "<br>")
+    guia = _guia_documentada(meta.get("respuestaOficial") or respuesta)
+    diagrama = guia.get("diagrama") or ""
+    mockup = guia.get("mockup") or ""
+    flujo_simple = "" if diagrama else html_flujo(meta.get("flujoDocumento") or [])
+    guia_html = diagrama + mockup + flujo_simple
     logo_src = _logo_embebido(logo_href)
 
     doc = f"""<!DOCTYPE html>
@@ -866,6 +1075,7 @@ def generar_html_documento(sid: str, logo_href: str = "/app/assets/logo-ixcolomb
       .page-content {{ padding:0; }}
       .top-accent {{ margin:0 0 8mm; }}
       .brand-head, .doc-purpose, .question-card, .meta-item, th, pre.sql-spec, .callout,
+      .diagrama-incrustado, .sc-mock .win-top, .sc-mock .chip-tab,
       .numbered-heading > span, ul.manual-list li::before, ol.manual-list li::before {{
         -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
       }}
@@ -917,6 +1127,8 @@ def generar_html_documento(sid: str, logo_href: str = "/app/assets/logo-ixcolomb
       </section>
       <h2 class="manual-title"><span>✓</span> Guía de solución</h2>
       <main class="manual-content">
+      {guia_html}
+      {html_ilustraciones(sid)}
       {texto_respuesta_a_html(respuesta)}
       </main>
       <footer>
@@ -949,7 +1161,8 @@ def ruta_pdf(sid: str) -> Path:
 
 
 def generar_pdf(sid: str) -> Path:
-    generar_html_documento(sid)
+    meta = leer_meta(sid)
+    generar_html_documento(sid, presentar=not (meta.get("documentoUsuario") or "").strip())
     html_path = ruta_html(sid)
     import correo as mailer
 

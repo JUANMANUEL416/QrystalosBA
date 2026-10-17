@@ -20,8 +20,11 @@ from cursor_bot import (  # noqa: E402
     CONOCIMIENTO_ID,
     CONSULTAS_ID,
     DOCUMENTAR_ID,
+    agregar_clave_cursor,
+    cambiar_clave_cursor,
     cursor_key_status,
     leer_estado_bot,
+    listar_claves_publicas,
     load_api_key,
     modelo_report,
 )
@@ -42,6 +45,7 @@ import sql_revisar  # noqa: E402
 import servidores_admin  # noqa: E402
 import informe_contab_sesiones as icinforme  # noqa: E402
 import soporte_consultas as scconsulta  # noqa: E402
+import gemini_ilustracion  # noqa: E402
 import prueba_req as prreq  # noqa: E402
 
 ROOT = os.path.dirname(SCRIPT_DIR)
@@ -1005,11 +1009,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "items": items})
 
         if parts == ["api", "agentes"]:
-            return self._json({
-                "ok": True,
-                "agentes": agentes_panel.catalogo(),
-                "modeloLocal": agentes_panel.modelo_local(),
-            })
+            return self._json(self._payload_agentes())
 
         if parts == ["api", "servidores", "estado"]:
             token = self.headers.get("X-Ba-Sesion") or ""
@@ -1203,6 +1203,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "html":
             return self._serve_prueba_req_html(unquote(parts[2]))
+
+        if parts == ["api", "soporte-consultas", "gemini"]:
+            return self._json({"ok": True, **gemini_ilustracion.estado()})
 
         if parts == ["api", "soporte-consultas", "consultas"]:
             return self._json({"ok": True, "consultas": scconsulta.listar_consultas()})
@@ -1517,6 +1520,12 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "prueba-req" and parts[3] == "cerrar":
             return self._post_prueba_req_cerrar(unquote(parts[2]))
 
+        if parts == ["api", "soporte-consultas", "gemini"]:
+            return self._post_soporte_gemini()
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "ilustracion":
+            return self._post_soporte_ilustracion(unquote(parts[2]))
+
         if parts == ["api", "soporte-consultas", "consulta"]:
             return self._post_soporte_consulta_nueva()
 
@@ -1543,6 +1552,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "agente":
             return self._post_soporte_consulta_agente(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "requerimiento":
+            return self._post_soporte_consulta_requerimiento(unquote(parts[2]))
 
         if parts == ["api", "sugerir-criterios"]:
             return self._sugerir_criterios()
@@ -2160,6 +2172,47 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _post_soporte_gemini(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            return self._json({"ok": True, **gemini_ilustracion.guardar_clave(body.get("valor") or "")})
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+
+    def _post_soporte_ilustracion(self, sid):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido"}, 400)
+        try:
+            meta = scconsulta.leer_meta(sid)
+            oficial = (meta.get("respuestaOficial") or "").strip()
+            if len(oficial) < 40:
+                raise ValueError(
+                    "Primero hace falta la respuesta oficial, tomada de la ficha, el grafo y el flujo. Sin ese guion no se dibuja."
+                )
+            enfasis = (body.get("prompt") or "").strip()
+            pedido = (
+                "Ilustración para un documento de soporte de Qrystalos. "
+                "Dibuje solo los pasos que el texto cita. "
+                "No agregue pantallas, botones ni pasos que el texto no mencione. "
+                "Si el texto dice que algo no está documentado, no lo dibuje.\n\n"
+                + oficial
+            )
+            if enfasis:
+                pedido += "\n\nÉnfasis, solo si ya está en el texto anterior: " + enfasis[:500]
+            mime, data = gemini_ilustracion.generar(pedido)
+            imagen = scconsulta.guardar_imagen(sid, f"data:{mime};base64,{data}", "ilustracion.png")
+            scconsulta.append_chat(sid, "agente", "Ilustración generada con Gemini.", [imagen])
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, "imagen": imagen})
+
     def _post_soporte_consulta_nueva(self):
         try:
             body = self._read_json_body()
@@ -2221,7 +2274,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
     def _post_soporte_consulta_documento(self, sid):
         try:
-            _html, meta = scconsulta.generar_html_documento(sid)
+            _html, meta = scconsulta.generar_html_documento(sid, presentar=True)
             return self._json({"ok": True, "meta": meta, "urlHtml": f"/api/soporte-consultas/{sid}/html"})
         except FileNotFoundError:
             return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
@@ -2229,6 +2282,15 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": str(exc)}, 400)
         except Exception as exc:
             return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_soporte_consulta_requerimiento(self, sid):
+        try:
+            result = scconsulta.generar_requerimiento(sid)
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 400)
+        return self._json({"ok": True, **result})
 
     def _post_soporte_consulta_cerrar(self, sid):
         try:
@@ -2575,28 +2637,61 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": str(exc)}, 400)
         return self._json({"ok": True, "handoff": h})
 
+    @staticmethod
+    def _payload_agentes(extra=None):
+        nombres = agentes_panel.nombres_claves()
+        claves = []
+        for fila in listar_claves_publicas():
+            item = dict(fila)
+            item["nombre"] = nombres.get(item["etiqueta"]) or ""
+            claves.append(item)
+        try:
+            import orquesta
+
+            reparto = orquesta.estado()
+        except Exception:
+            reparto = {"nota": "", "piezas": []}
+        base = {
+            "ok": True,
+            "agentes": agentes_panel.catalogo(),
+            "modeloLocal": agentes_panel.modelo_local(),
+            "orquesta": reparto,
+            "claves": claves,
+        }
+        if extra:
+            base.update(extra)
+        return base
+
     def _post_agentes(self):
         try:
             body = self._read_json_body()
         except json.JSONDecodeError:
             return self._json({"error": "JSON inválido"}, 400)
+        accion = (body.get("accion") or "").strip()
         try:
+            if accion == "agregar-clave":
+                etiqueta = agregar_clave_cursor(body.get("valor") or "")
+                agentes_panel.nombrar_clave(etiqueta, body.get("nombre") or "")
+                return self._json(self._payload_agentes({"etiqueta": etiqueta}))
+            if accion == "cambiar-clave":
+                etiqueta = (body.get("etiqueta") or "").strip()
+                if (body.get("valor") or "").strip():
+                    etiqueta = cambiar_clave_cursor(etiqueta, body.get("valor") or "")
+                elif not etiqueta:
+                    raise ValueError("Elija qué clave cambiar.")
+                if "nombre" in body:
+                    agentes_panel.nombrar_clave(etiqueta, body.get("nombre") or "")
+                return self._json(self._payload_agentes({"etiqueta": etiqueta}))
             if (body.get("modeloLocal") or "").strip() and not (body.get("id") or "").strip():
                 nombre = agentes_panel.asignar_modelo(body.get("modeloLocal") or "")
-                return self._json({
-                    "ok": True,
-                    "modeloLocal": nombre,
-                    "agentes": agentes_panel.catalogo(),
-                })
+                return self._json(self._payload_agentes({"modeloLocal": nombre}))
+            if "clave" in body and not (body.get("motor") or "").strip():
+                fila = agentes_panel.asignar_clave(body.get("id") or "", body.get("clave") or "")
+                return self._json(self._payload_agentes({"agente": fila}))
             fila = agentes_panel.asignar(body.get("id") or "", body.get("motor") or "")
         except ValueError as exc:
             return self._json({"error": str(exc)}, 400)
-        return self._json({
-            "ok": True,
-            "agente": fila,
-            "agentes": agentes_panel.catalogo(),
-            "modeloLocal": agentes_panel.modelo_local(),
-        })
+        return self._json(self._payload_agentes({"agente": fila}))
 
     def _post_solicitar(self):
         try:

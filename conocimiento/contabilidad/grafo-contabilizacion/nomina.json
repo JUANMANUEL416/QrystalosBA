@@ -1,6 +1,6 @@
 {
   "procedencia": "NOMINA",
-  "actualizado": "2026-10-14",
+  "actualizado": "2026-10-17",
   "auditoriaBd": {
     "estado": "implementado_parcial",
     "nota": "Tipo NOMINA_PAGO — NUMDOC/CNSPAGO/CNSNIEPE (MCP REF1/2/3).",
@@ -118,7 +118,7 @@
         "nota": "Salvo MANUAL/REVERSOS: revisión y paso a MCP tras insertar MCPE/MCHE"
       },
       "nombre": "Generar comprobante nómina (NOMINA)",
-      "notaTecnica": "SPK_NC_CONTAB_RECOBRONOMI es otro flujo (recobro)",
+      "notaTecnica": "El envío desde Liquidación es SPQ_NC_CONTAB_NOMINA · CONTABILIZAR (escribe MCPE/MCHE y no llama a este SPK). Este SPK lo invoca SPQ_MCPE_COL · RECONSTRUIR. SPK_NC_CONTAB_RECOBRONOMI es recobro de NIEPER, no este generador.",
       "fichas": [
         {
           "sp": "SPK_NC_CONTAB_NOMINA",
@@ -127,6 +127,11 @@
         },
         {
           "sp": "SPK_NC_CONTAB_RECOBRONOMI",
+          "proceso": "nomina",
+          "archivo": "conocimiento/nomina/sps.json"
+        },
+        {
+          "sp": "SPQ_NC_CONTAB_NOMINA",
           "proceso": "nomina",
           "archivo": "conocimiento/nomina/sps.json"
         }
@@ -141,9 +146,10 @@
       ],
       "nombre": "Cierre nómina → causación",
       "sp": [
-        "SPK_REVISANOMINA_ANTES",
-        "Proceso cierre nómina (SPQ_NOMI*)"
+        "SPQ_LIQUIDACION · GENERATE_NOMINA",
+        "SPQ_NC_CONTAB_NOMINA · CONTABILIZAR"
       ],
+      "nota": "Cierre con GENERATE_NOMINA y PROCESO=CLOSE (SPQ_CERRAR_NOMI). La pantalla escribe el comprobante en CONTABILIZAR y no llama al SPK. El SPK entra por SPQ_MCPE_COL · RECONSTRUIR. El chequeo de rubros es otro flujo: SPQ_PRESUPUESTO · ENVIAR llama SPK_REVISANOMINA_ANTES (ficha leída en presupuesto).",
       "metodoUi": "Nómina → cerrar periodo / enviar contabilidad",
       "requiresDocumento": [
         {
@@ -170,7 +176,7 @@
           "obligatorio": true
         }
       ],
-      "efecto": "EXEC SPK_NC_CONTAB_NOMINA",
+      "efecto": "Cierre: SPQ_LIQUIDACION · GENERATE_NOMINA (PROCESO=CLOSE). Pantalla: SPQ_NC_CONTAB_NOMINA · CONTABILIZAR escribe MCPE/MCHE. Reconstruir: SPQ_MCPE_COL · RECONSTRUIR ejecuta SPK_NC_CONTAB_NOMINA.",
       "puntosCriticos": [
         "PC-NOM-01",
         "PC-NOM-02"
@@ -180,6 +186,16 @@
           "sp": "SPK_NC_CONTAB_NOMINA",
           "proceso": "nomina",
           "archivo": "conocimiento/nomina/sps.json"
+        },
+        {
+          "sp": "SPQ_LIQUIDACION",
+          "proceso": "nomina",
+          "archivo": "conocimiento/nomina/sps.json"
+        },
+        {
+          "sp": "SPQ_NC_CONTAB_NOMINA",
+          "proceso": "nomina",
+          "archivo": "conocimiento/nomina/sps.json"
         }
       ]
     },
@@ -187,7 +203,10 @@
       "id": "N1-prenomina",
       "orden": 1,
       "nombre": "Prenómina / liquidación",
-      "sp": "SPQ_NOMI*",
+      "sp": [
+        "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA",
+        "SPQ_LIQUIDACION · GENERATE_NOMINA"
+      ],
       "requiresDocumento": [
         {
           "id": "empleados-activos",
@@ -197,6 +216,18 @@
       ],
       "llamaAnterior": [
         "N0-config-nom"
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC",
+          "proceso": "nomina",
+          "archivo": "conocimiento/nomina/sps.json"
+        },
+        {
+          "sp": "SPQ_LIQUIDACION",
+          "proceso": "nomina",
+          "archivo": "conocimiento/nomina/sps.json"
+        }
       ]
     },
     {

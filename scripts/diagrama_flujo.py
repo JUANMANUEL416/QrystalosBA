@@ -759,6 +759,60 @@ def contexto_proceso(proceso_id: str, pregunta: str = "", notas: str = "") -> di
     return ctx
 
 
+def _sin_tecnico(texto: str) -> str:
+    limpio = _SP_RE.sub("", str(texto or ""))
+    return _norm(re.sub(r"\s+([,.;:])", r"\1", limpio))
+
+
+def fragmento_guia(flujos: list[dict]) -> str:
+    """Diagrama de soporte con el mismo diseño de los desarrollos. Solo pasos ya documentados."""
+    bloques: list[str] = []
+    for flujo in flujos or []:
+        if not isinstance(flujo, dict):
+            continue
+        pasos_html: list[str] = []
+        for i, paso in enumerate((flujo.get("pasos") or [])[:8]):
+            if not isinstance(paso, dict):
+                continue
+            if pasos_html:
+                pasos_html.append('<div class="df-arrow" aria-hidden="true">→</div>')
+            titulo = paso.get("titulo") or "Paso"
+            pantalla = _sin_tecnico(paso.get("pantalla") or "")
+            detalle = _sin_tecnico(paso.get("descripcion") or "")
+            if (paso.get("tipo") or "") == "decision":
+                ramas = []
+                if paso.get("si"):
+                    ramas.append("Sí: " + _sin_tecnico(paso.get("si")))
+                if paso.get("no"):
+                    ramas.append("No: " + _sin_tecnico(paso.get("no")))
+                if ramas:
+                    detalle = _norm(detalle + " " + " ".join(ramas))
+            piezas = [p for p in (pantalla, detalle) if p]
+            kind = "user" if (paso.get("tipo") or "") == "decision" else "vue"
+            pasos_html.append(
+                f'<div class="df-node df-{kind}">'
+                f'<div class="k">{_esc(titulo)}</div>'
+                f'<div class="d">{_esc(_clip(" · ".join(piezas), 170))}</div>'
+                f"</div>"
+            )
+        if not pasos_html:
+            continue
+        bloques.append(
+            f'<p class="df-meta"><strong>{_esc(flujo.get("nombre") or "Flujo")}</strong></p>'
+            f'<div class="df-flow">{"".join(pasos_html)}</div>'
+        )
+    if not bloques:
+        return ""
+    return (
+        f"<style>{CSS_INCRUSTADO}</style>\n"
+        '<div class="diagrama-incrustado">'
+        "<h3>Diagrama del proceso</h3>"
+        + "".join(bloques)
+        + '<p class="df-meta">El mismo diagrama que usan los desarrollos, leído de conocimiento/. No agrega pasos.</p>'
+        "</div>"
+    )
+
+
 def html_caso(solicitud: dict, notas: str = "") -> tuple[str, dict]:
     ctx = contexto_caso(solicitud, notas=notas)
     return render_html(ctx), ctx

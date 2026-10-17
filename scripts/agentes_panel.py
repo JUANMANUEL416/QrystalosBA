@@ -199,6 +199,7 @@ def catalogo() -> list[dict]:
         fila = dict(base)
         fila["motor"] = motor
         fila["motores"] = motores
+        fila["clave"] = (prev.get("clave") or "").strip()
         subs = subagentes_de(base["id"])
         fila["subagentes"] = subs
         fila["subagentesTotal"] = len(subs)
@@ -213,6 +214,7 @@ def catalogo() -> list[dict]:
         fila = dict(extra)
         fila["motor"] = motor
         fila["motores"] = motores
+        fila["clave"] = (extra.get("clave") or "").strip()
         fila["subagentes"] = []
         fila["subagentesTotal"] = 0
         salida.append(fila)
@@ -324,22 +326,74 @@ def motor_de(agente_id: str) -> str:
     return "cursor"
 
 
+def clave_de(agente_id: str) -> str:
+    """Etiqueta de la clave del rol. Vacío = la predeterminada del .env."""
+    rol = ALIAS.get(agente_id, (agente_id,))[0]
+    for fila in catalogo():
+        if fila["id"] == rol:
+            return (fila.get("clave") or "").strip()
+    return ""
+
+
+def nombres_claves() -> dict:
+    datos = _leer().get("clavesNombre") or {}
+    if not isinstance(datos, dict):
+        return {}
+    return {str(k): str(v).strip() for k, v in datos.items() if str(k).strip() and str(v).strip()}
+
+
+def nombrar_clave(etiqueta: str, nombre: str) -> None:
+    etiqueta = (etiqueta or "").strip()
+    nombre = (nombre or "").strip()
+    if not etiqueta:
+        return
+    datos = _leer()
+    mapa = datos.get("clavesNombre") if isinstance(datos.get("clavesNombre"), dict) else {}
+    if nombre:
+        mapa[etiqueta] = nombre[:40]
+    else:
+        mapa.pop(etiqueta, None)
+    datos["clavesNombre"] = mapa
+    _guardar(datos)
+
+
+def asignar_clave(agente_id: str, etiqueta: str) -> dict:
+    """La clave se asigna al agente de rol. Los pasos heredan esa clave."""
+    etiqueta = (etiqueta or "").strip()
+    if any(fila["id"] == agente_id for fila in SUBAGENTES):
+        raise ValueError("La clave se asigna al agente, no a cada paso.")
+    filas = catalogo()
+    encontrada = next((fila for fila in filas if fila["id"] == agente_id), None)
+    if not encontrada:
+        raise ValueError("Ese agente no está en el panel.")
+    if etiqueta:
+        from cursor_bot import listar_claves_publicas
+
+        if not any(fila["etiqueta"] == etiqueta for fila in listar_claves_publicas()):
+            raise ValueError("Esa clave no está cargada.")
+    encontrada["clave"] = etiqueta
+    _persistir(filas)
+    return next(fila for fila in catalogo() if fila["id"] == agente_id)
+
+
 def _persistir(filas: list[dict]) -> None:
     definidos = {d["id"] for d in DEFINIDOS}
     agentes = []
     for fila in filas:
+        item = {"id": fila["id"], "motor": fila["motor"]}
+        if (fila.get("clave") or "").strip():
+            item["clave"] = fila["clave"].strip()
         if fila["id"] in definidos:
-            agentes.append({"id": fila["id"], "motor": fila["motor"]})
+            agentes.append(item)
         else:
-            agentes.append({
-                "id": fila["id"],
+            item.update({
                 "nombre": fila.get("nombre") or "",
                 "hace": fila.get("hace") or "",
-                "motor": fila["motor"],
                 "motores": fila.get("motores") or ["cursor"],
                 "modeloLocal": fila.get("modeloLocal") or "",
                 "nota": fila.get("nota") or "",
             })
+            agentes.append(item)
     datos = _leer()
     datos["agentes"] = agentes
     _guardar(datos)

@@ -1,14 +1,14 @@
 {
   "procesoId": "nomina-conceptos",
-  "actualizado": "2026-10-04T06:40:00",
+  "actualizado": "2026-10-17T15:10:00",
   "nota": "Leídos 2026-10-03 desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7). Hallazgos: REQ 0100016359 (IDAREA/CCOSTO en NEMPHIS) y REQ 0100016378 (nombre en colilla NCONCOL) ya implementados; ningún SP de configuración valida USGRUH por acción; ELIMINAR de NCON/NOMI no revisa uso. Añadidos 2026-10-04: SPQ_TH_NEMPPRUEBA (período de prueba) y SPQ_NDISP (distribución de planta), pestaña Empleados.",
   "sps": [
     {
       "nombre": "SPQ_NOM_CONCEPTOS",
       "tipo": "SPQ",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "fuente": "sql/SPQ_NOM_CONCEPTOS.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NOM_CONCEPTOS",
       "cola": "Maestro NCON + carga masiva de conceptos particulares (NEMPDA).",
       "metodos": [
@@ -172,18 +172,6 @@
           "ventanaFe": "QuitaMasivoComponent"
         },
         {
-          "id": "CNS_RPDX_REMOVE_MASIVE_CON / CNS_RPDX_REMOVE_MASIVE_NOV",
-          "estado": "listado",
-          "hace": "Lista lotes masivos (CNSMASIVO) de conceptos o novedades para quitar.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "Resultset de lotes.",
-          "capaId": "04-empleado",
-          "gateId": "particulares-excepciones"
-        },
-        {
           "id": "VALIDAR_VALOR_CONCEPTO",
           "estado": "leido",
           "hace": "Valida un valor digitado contra la parametrización del concepto (RAISERROR si no existe NCOND).",
@@ -197,6 +185,37 @@
           "capaId": "02-conceptos",
           "gateId": "concepto-definicion",
           "ventanaFe": "PreNominaComponent · editar línea"
+        },
+        {
+          "id": "CNS_RPDX_REMOVE_MASIVE_CON",
+          "estado": "leido",
+          "hace": "Lista los consecutivos masivos de conceptos particulares cuya vigencia cubre el rango de fechas.",
+          "valida": [
+            "FECHAINI",
+            "FECHAFIN en formato 103"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-maestro",
+          "ventanaFe": "ConceptosComponent · Nuevo / Editar"
+        },
+        {
+          "id": "CNS_RPDX_REMOVE_MASIVE_NOV",
+          "estado": "leido",
+          "hace": "Lista los consecutivos masivos de novedades del período.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "02-conceptos",
+          "gateId": "concepto-maestro",
+          "ventanaFe": "ConceptosComponent · Nuevo / Editar"
         }
       ]
     },
@@ -204,8 +223,8 @@
       "nombre": "SPQ_NOM_NCOND",
       "tipo": "SPQ",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "fuente": "sql/SPQ_NOM_NCOND.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NOM_NCOND",
       "metodos": [
         {
@@ -294,15 +313,18 @@
         },
         {
           "id": "COUNT_CXPESPECIAL",
-          "estado": "listado",
-          "hace": "Cuenta conceptos con tratamiento de CxP especial (usado por Liquidación · CxP Especiales).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Cuenta conceptos marcados en TGEN como cuenta por pagar especial de nómina (tabla NOMINA, campo CXPESPECIAL).",
+          "valida": [
+            "no aplica (no recibe filtros)"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "Conteo.",
+          "efecto": "No escribe. Devuelve TOTAL.",
           "capaId": "02-conceptos",
-          "gateId": "concepto-definicion"
+          "gateId": "concepto-definicion",
+          "ventanaFe": "RegisConceptoComponent · Guardar/Actualizar"
         }
       ]
     },
@@ -1020,8 +1042,8 @@
       "nombre": "SPQ_NOM_NOMIE",
       "tipo": "SPQ",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "fuente": "sql/SPQ_NOM_NOMIE.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NOM_NOMIE",
       "metodos": [
         {
@@ -1038,16 +1060,58 @@
           "ventanaFe": "NominasComponent · Asignar"
         },
         {
-          "id": "GET_NOMIE_EMPLOYEES / GET_NOMIE_EMPLOYE_ACCOUNT / GET_NOMIE_EMPLOYEES_ACCOUNT",
-          "estado": "listado",
-          "hace": "Empleados del período para Prenómina y Liquidación (crea NEMPF si falta, limpia NEMPFD_RUN).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "Resultset; NEMPF.",
+          "id": "GET_NOMIE_EMPLOYEES",
+          "estado": "leido",
+          "hace": "Revisa que los conceptos del temporal RPDX CNS NCON tengan vigencia NCOND a la fecha. Crea la fila NEMPF del período a los empleados activos de la nómina que aún no la tienen, y los lista. Si hay conceptos sin vigencia, arma un Excel.",
+          "valida": [
+            "CNSPAGO",
+            "FECHAFIN"
+          ],
+          "noValida": [
+            "Borra todo RPDX con CNS1 VALIDANCON, no solo el de esta llamada",
+            "El cursor lee RPDX CNS = NCON, un temporal compartido"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "DELETE NEMPFD_RUN del equipo. INSERT NEMPF. Puede INSERT KEXCEL_FILL y RPDX.",
           "capaId": "01-estructura",
-          "gateId": "periodo"
+          "gateId": "periodo",
+          "ventanaFe": "NominasComponent · Asignar"
+        },
+        {
+          "id": "GET_NOMIE_EMPLOYE_ACCOUNT",
+          "estado": "leido",
+          "hace": "Arma la fila de contabilizar de un empleado: reserva un consecutivo NIEPE y devuelve compañía, sede y usuario. No graba el comprobante.",
+          "valida": [
+            "CODNOMINA",
+            "NUMDOC"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "No escribe nómina. Consume un consecutivo @NIEPE.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "NominasComponent · Asignar"
+        },
+        {
+          "id": "GET_NOMIE_EMPLOYEES_ACCOUNT",
+          "estado": "leido",
+          "hace": "Empleados del período que aún no están contabilizados, con el consecutivo de liquidación.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "01-estructura",
+          "gateId": "periodo",
+          "ventanaFe": "NominasComponent · Asignar"
         }
       ]
     },
@@ -1055,8 +1119,8 @@
       "nombre": "SPQ_NOM_NPER",
       "tipo": "SPQ",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "fuente": "sql/SPQ_NOM_NPER.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NOM_NPER",
       "metodos": [
         {
@@ -1111,15 +1175,21 @@
         },
         {
           "id": "GET_NIEPE_REPORT",
-          "estado": "listado",
-          "hace": "Liquidación por empleado con filtros área/ccosto/cargo (reporte de nómina).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Listado del período para reporte: neto, devengados y deducidos que se imprimen, y el salario de la línea que se imprime. Filtros de área, centro y cargo; 0 significa todos.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [
+            "SEDE se lee y no entra al WHERE",
+            "El comodín de cargo usa @CARGO = 0 y compara CODCARGO, NIVEL y GRADO"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "Resultset.",
+          "efecto": "No escribe.",
           "capaId": "01-estructura",
-          "gateId": "periodo"
+          "gateId": "periodo",
+          "ventanaFe": "PeriodosComponent"
         }
       ]
     },
@@ -1332,44 +1402,110 @@
     {
       "nombre": "SPQ_NOM_NAJUST",
       "tipo": "SPQ",
-      "estado": "parcial",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_NAJUST.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NOM_NAJUST",
       "cola": "SPK_AJUSTE_SALARIO_NEMP y SPK_QUITA_AJUSTE_SALARIO_NEMP sin ficha.",
       "metodos": [
         {
-          "id": "GUARDAR / UPDATE_NAJUSTD / GET_NCAR",
-          "estado": "listado",
-          "hace": "Cabecera NAJUST (fecha, % o valor) y detalle de cargos NAJUSTD.",
-          "valida": [],
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "Crea o edita el encabezado del ajuste (fecha, tipo Valor o porcentaje, valor, a partir de, estado). El alta pide consecutivo @NAJUST.",
+          "valida": [
+            "PROCESO INSERTAR o EDITAR"
+          ],
+          "noValida": [
+            "EDITAR no está dentro de un TRY propio",
+            "Otro PROCESO responde OK y no escribe"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT o UPDATE NAJUST.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "AjusteSalariosComponent"
+        },
+        {
+          "id": "GET_NCAR",
+          "estado": "leido",
+          "hace": "Cargos, nivel y grado incluidos en el ajuste.",
+          "valida": [
+            "CNSAJUSTE"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "NAJUST/NAJUSTD.",
+          "efecto": "No escribe.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "AjusteSalariosComponent"
+        },
+        {
+          "id": "UPDATE_NAJUSTD",
+          "estado": "leido",
+          "hace": "Deja el detalle de cargos igual a la lista JSON: inserta los que faltan y borra los que sobran.",
+          "valida": [
+            "JSON válido en DATOS",
+            "CNSAJUSTE"
+          ],
+          "noValida": [],
+          "errores": [
+            "El parametro JSON no es valido."
+          ],
+          "llama": [],
+          "efecto": "INSERT y DELETE NAJUSTD.",
+          "capaId": "01-estructura",
+          "gateId": "cargo-salario",
+          "ventanaFe": "AjusteSalariosComponent"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "Quita un cargo del detalle. No borra el encabezado.",
+          "valida": [
+            "CNSAJUSTE",
+            "CODCARGO",
+            "NIVEL",
+            "GRADO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [],
+          "efecto": "DELETE NAJUSTD.",
           "capaId": "01-estructura",
           "gateId": "cargo-salario",
           "ventanaFe": "AjusteSalariosComponent"
         },
         {
           "id": "APLICA_AJUSTE",
-          "estado": "listado",
-          "hace": "EXEC SPK_AJUSTE_SALARIO_NEMP: crea vigencia NCARNGV y actualiza básico de empleados.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Por cada cargo del detalle toma el básico vigente, le suma el valor o le aplica el porcentaje, y llama el ajuste de empleados. Al terminar el encabezado queda Aplicado.",
+          "valida": [
+            "CNSAJUSTE con detalle"
+          ],
+          "noValida": [
+            "No exige que el ajuste esté sin aplicar",
+            "Si el tipo no es Valor, siempre calcula porcentaje"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [
             "SPK_AJUSTE_SALARIO_NEMP"
           ],
-          "efecto": "NCARNGV + NEMPHIS.",
+          "efecto": "EXEC SPK_AJUSTE_SALARIO_NEMP por cargo. UPDATE NAJUST.ESTADO = Aplicado.",
           "capaId": "01-estructura",
-          "gateId": "cargo-salario"
+          "gateId": "cargo-salario",
+          "ventanaFe": "AjusteSalariosComponent"
         },
         {
           "id": "ANULAR_AJUSTE",
-          "estado": "listado",
-          "hace": "EXEC SPK_QUITA_AJUSTE_SALARIO_NEMP; borra NCARNGV del ajuste. KO si hay nóminas liquidadas posteriores.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Si no hay períodos cerrados desde la fecha del ajuste, borra las vigencias de ese consecutivo, restaura el básico anterior y deja el encabezado Anulado.",
+          "valida": [
+            "No hay NPER cerrado con FECHAINI mayor o igual a APARTIR"
+          ],
           "noValida": [],
           "errores": [
             "YA SE HAN LIQUIDADO NOMINAS POSTERIORES A LA APLICACION DEL AJUSTE, SE DEBE HACER UN AJUSTE COMPLETAMENTE NUEVO"
@@ -1377,21 +1513,10 @@
           "llama": [
             "SPK_QUITA_AJUSTE_SALARIO_NEMP"
           ],
-          "efecto": "Ajuste revertido.",
+          "efecto": "DELETE NCARNGV del consecutivo. EXEC SPK_QUITA_AJUSTE_SALARIO_NEMP. UPDATE NAJUST.ESTADO = Anulado.",
           "capaId": "01-estructura",
-          "gateId": "cargo-salario"
-        },
-        {
-          "id": "ELIMINAR",
-          "estado": "listado",
-          "hace": "DELETE NAJUSTD.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "Detalle borrado.",
-          "capaId": "01-estructura",
-          "gateId": "cargo-salario"
+          "gateId": "cargo-salario",
+          "ventanaFe": "AjusteSalariosComponent"
         }
       ]
     },
@@ -1876,9 +2001,9 @@
     {
       "nombre": "SPQ_NEMP",
       "tipo": "SPQ",
-      "estado": "parcial",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NEMP.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NEMP",
       "metodos": [
         {
@@ -1903,66 +2028,177 @@
           "ventanaFe": "RegisEmpleadosComponent"
         },
         {
-          "id": "ADD_JOB / REMOVE_JOB / GET_DISTRIBUCION",
-          "estado": "listado",
-          "hace": "Planta NPLA y distribución por centro de costo.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "id": "REMOVE_JOB",
+          "estado": "leido",
+          "hace": "Quita cargo, centro, básico y planta del contrato y libera la planta. Graba un histórico CAMBIA con básico cero. La llamada a SPK_ADD_HISTORICO_NEMP está comentada.",
+          "valida": [
+            "NUMDOC",
+            "FECHAMOV"
+          ],
+          "noValida": [
+            "No exige que el contrato exista: si no hay fila, el histórico no se inserta y aun así responde OK"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "NPLA/NDIS.",
+          "efecto": "UPDATE NEMP y NPLA. INSERT NEMPHIS.",
           "capaId": "04-empleado",
           "gateId": "empleados-historico",
-          "ventanaFe": "CargosComponent"
+          "ventanaFe": "RegisEmpleadosComponent"
         },
         {
-          "id": "GET_NOMIE / UPDATE_NOMIE / STATE_NOMIE",
-          "estado": "listado",
-          "hace": "Nóminas del empleado.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "NOMIE.",
+          "id": "ADD_JOB",
+          "estado": "leido",
+          "hace": "Asigna cargo, centro, básico, nivel, grado, horas, días, área y planta. Si no viene planta, crea una NPLA. Graba histórico CAMBIA. La llamada al SPK de histórico está comentada.",
+          "valida": [
+            "NUMDOC",
+            "CODCARGO",
+            "FECHAMOV"
+          ],
+          "noValida": [
+            "No valida que el cargo exista",
+            "No revisa si la planta ya tiene otro empleado"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "UPDATE NEMP. INSERT o UPDATE NPLA. INSERT NEMPHIS.",
           "capaId": "04-empleado",
-          "gateId": "empleados-historico"
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
         },
         {
-          "id": "EXPORTA_EMPLEADOS / EXPORTA_CUMPLEANOS",
-          "estado": "listado",
-          "hace": "Exportaciones Excel.",
-          "valida": [],
+          "id": "GET_DISTRIBUCION",
+          "estado": "no_existe",
+          "hace": "No está en el cuerpo de SPQ_NEMP. La distribución de planta es SPQ_NDISP.",
+          "valida": [
+            "no aplica (no hay rama)"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay rama)",
           "llama": [],
-          "efecto": "KEXCEL_FILL.",
+          "efecto": "no aplica (no hay rama)",
           "capaId": "04-empleado",
-          "gateId": "empleados-historico"
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
+        },
+        {
+          "id": "STATE_NOMIE",
+          "estado": "leido",
+          "hace": "Invierte el estado de la nómina del empleado: Activo pasa a Inactivo y cualquier otro valor a Activo.",
+          "valida": [
+            "NUMDOC",
+            "CODNOMINA"
+          ],
+          "noValida": [
+            "Si no hay fila, el UPDATE no afecta registros y responde OK"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [],
+          "efecto": "UPDATE NOMIE.ESTADO.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
+        },
+        {
+          "id": "GET_NOMIE",
+          "estado": "leido",
+          "hace": "Nóminas en las que el empleado ya está asignado, con plantilla y estado.",
+          "valida": [
+            "NUMDOC"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
+        },
+        {
+          "id": "UPDATE_NOMIE",
+          "estado": "leido",
+          "hace": "Deja las nóminas del empleado igual a la lista: inserta las nuevas en Activo y borra las que ya no están.",
+          "valida": [
+            "JSON válido",
+            "NUMDOC"
+          ],
+          "noValida": [
+            "Arma el ALTER de collation y no lo ejecuta"
+          ],
+          "errores": [
+            "El parametro JSON no es valido."
+          ],
+          "llama": [],
+          "efecto": "INSERT y DELETE NOMIE.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
+        },
+        {
+          "id": "EXPORTA_EMPLEADOS",
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL el listado de empleados filtrado por nombres, área, centro, cargo, sede, estado y rango de ingreso o retiro.",
+          "valida": [
+            "Los filtros de texto pueden ir vacíos"
+          ],
+          "noValida": [
+            "Estado Todos incluye nulos; otro estado compara el texto recibido"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
+        },
+        {
+          "id": "EXPORTA_CUMPLEANOS",
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL los empleados del mes de nacimiento indicado.",
+          "valida": [
+            "MES"
+          ],
+          "noValida": [
+            "Filtra ESTADO = ACTIVO en mayúsculas"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
+          "capaId": "04-empleado",
+          "gateId": "empleados-historico",
+          "ventanaFe": "RegisEmpleadosComponent"
         },
         {
           "id": "ADD_NEW_NEMP_PRENOMINA",
-          "estado": "listado",
-          "hace": "Agrega un empleado al período (NEMPF) y recalcula totales.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [
-            "SPK_CALCULAR_NEMPF",
-            "SPQ_HOMOLOGAR_PRS_NUMDOC"
+          "estado": "leido",
+          "hace": "Calcula la prenómina de un empleado en el período.",
+          "valida": [
+            "NUMDOC",
+            "CNSPAGO"
           ],
-          "efecto": "NEMPF.",
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_CALCULAR_NEMPF"
+          ],
+          "efecto": "EXEC SPK_CALCULAR_NEMPF.",
           "capaId": "04-empleado",
           "gateId": "empleados-historico",
-          "ventanaFe": "PreNominaComponent · Agregar"
+          "ventanaFe": "RegisEmpleadosComponent"
         }
       ]
     },
     {
       "nombre": "SPQ_TH_NEMPPRUEBA",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_TH_NEMPPRUEBA.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "TH_NEMPPRUEBA",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -1971,41 +2207,74 @@
       "metodos": [
         {
           "id": "VALIDAR_NOTIFICACIONES",
-          "estado": "listado",
-          "hace": "Empleados con fin de período de prueba próximo: arma y encola el correo en QRY_ENVIOS (SPQ_GENSEQUENCE).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [
-            "SPQ_GENSEQUENCE"
+          "estado": "leido",
+          "hace": "Encola un correo de período de prueba para cada empleado cuyo fin de prueba cae en 30 días o menos y que aún no tiene un QRY_ENVIOS de clase NEMPERIODOPRUEBA. Un solo consecutivo (@QRY_ENVIOS) para todo el lote. El tipo queda Vencido o Menos de 30 dias; el asunto guarda los días que faltan. Luego lista los envíos POR ENVIAR con cargo, meses, días y la firma del usuario USUARIOJEFERH.",
+          "valida": [
+            "DATEDIFF de hoy a NEMP.FECHAFINPRUEBA menor o igual a 30",
+            "No existe QRY_ENVIOS de ese NUMDOC con CLASE NEMPERIODOPRUEBA, en cualquier estado",
+            "Destino: NEMP.EMAIL y, si viene vacío, TER.EMAIL"
           ],
-          "efecto": "Correos encolados.",
+          "noValida": [
+            "Que el empleado esté Activo",
+            "Que el correo tenga valor",
+            "Volver a encolar si el aviso ya quedó ENVIADO",
+            "Las ramas Menos de 60 dias y Mas de 60 dias no insertan: el filtro ya exige 30 días o menos",
+            "Si el TRY sale bien, devuelve OK dos veces (una dentro del TRY y otra al final)"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE",
+            "FNK_VALORVARIABLE (USUARIOJEFERH, solo en el listado)"
+          ],
+          "efecto": "INSERT QRY_ENVIOS (TIPOCNS NEMP, ESTADO POR ENVIAR, CLASE NEMPERIODOPRUEBA, CANAL MAIL, IDAFILIADO = NUMDOC). El listado no cambia estados.",
+          "tablas": [
+            "QRY_ENVIOS",
+            "NEMP",
+            "TER",
+            "NCAR",
+            "NCARNG",
+            "USUSU",
+            "UBEQ",
+            "ARCHIVOS"
+          ],
           "capaId": "01-configuracion",
           "gateId": "empleados",
           "ventanaFe": "EmpleadosPruebaComponent"
         },
         {
           "id": "VER_NOTINEMPPRUEBA",
-          "estado": "listado",
-          "hace": "Lista notificaciones enviadas / pendientes por empleado.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "",
+          "estado": "leido",
+          "hace": "Lista los envíos de período de prueba de un documento, en cualquier estado, con el mismo detalle de cargo, meses, días y firma.",
+          "valida": [
+            "NUMDOC"
+          ],
+          "noValida": [
+            "Que exista el empleado o el envío"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [
+            "FNK_VALORVARIABLE (USUARIOJEFERH)"
+          ],
+          "efecto": "No escribe. Devuelve los QRY_ENVIOS de clase NEMPERIODOPRUEBA de ese NUMDOC.",
           "capaId": "01-configuracion",
           "gateId": "empleados",
           "ventanaFe": "EmpleadosPruebaComponent"
         },
         {
           "id": "ACTUALIZA_NOIF",
-          "estado": "listado",
-          "hace": "Marca la notificación como atendida.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Marca un envío como ENVIADO y graba la fecha de envío.",
+          "valida": [
+            "ID del QRY_ENVIOS"
+          ],
+          "noValida": [
+            "Que la fila exista",
+            "Que la clase sea NEMPERIODOPRUEBA",
+            "El estado anterior"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "UPDATE QRY_ENVIOS SET ESTADO = ENVIADO, FECHA_ENVIO = ahora, por ID.",
           "capaId": "01-configuracion",
           "gateId": "empleados",
           "ventanaFe": "EmpleadosPruebaComponent"
@@ -2015,9 +2284,12 @@
     {
       "nombre": "SPQ_NDISP",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NDISP.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
+      "tablas": [
+        "NDISP"
+      ],
       "modelo": "NDISP",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -2026,46 +2298,63 @@
       "metodos": [
         {
           "id": "GUARDAR",
-          "estado": "listado",
-          "hace": "INSERT NDISP (planta del empleado, área / centro de costo, porcentaje). KO si ya hay distribución para el área.",
+          "estado": "leido",
+          "hace": "Inserta o edita un porcentaje de distribución de la planta. La clave es planta + centro de costo + área. INSERTAR crea la fila. EDITAR cambia centro, área y porcentaje de un IDNDISP y no cambia la planta.",
           "valida": [
-            "Una distribución por área."
+            "PROCESO INSERTAR o EDITAR",
+            "No puede existir otra fila con la misma planta, centro de costo y área"
           ],
-          "noValida": [],
+          "noValida": [
+            "Que los porcentajes de la planta sumen 100 (eso lo exige contabilizar con NOMINATIPOCONTAB=3)",
+            "Rango del porcentaje",
+            "Si PROCESO no es INSERTAR ni EDITAR, responde OK y no escribe",
+            "EDITAR no actualiza CODPLANTA",
+            "Si hay dos filas iguales, el aviso amable no sale: la subconsulta devuelve más de un valor y el KO es el error de SQL"
+          ],
           "errores": [
-            "LA PLANTA YA CUENTA CON UNA DISTRIBUCION PARA EL AREA "
+            "LA PLANTA YA CUENTA CON UNA DISTRIBUCION PARA EL AREA {área} Y EL CENTRO DE COSTO {centro}."
           ],
           "llama": [],
-          "efecto": "Porcentaje registrado; lo usa Contabilizar con NOMINATIPOCONTAB=3.",
+          "efecto": "INSERT o UPDATE NDISP. Lo consume contabilizar cuando NOMINATIPOCONTAB=3.",
           "capaId": "01-configuracion",
           "gateId": "empleados",
-          "ventanaFe": "EmpleadosComponent"
+          "ventanaFe": "EmpleadosComponent · Ver distribución de planta"
         },
         {
           "id": "GET_DISTRIBUCION",
-          "estado": "listado",
-          "hace": "Distribución vigente del empleado.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Devuelve la suma de porcentajes de una planta.",
+          "valida": [
+            "CODPLANTA"
+          ],
+          "noValida": [
+            "No devuelve las filas, solo la suma",
+            "No es por empleado"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe. SUM(NDISP.PORCENTAJE) de la planta; 0 si no hay filas.",
           "capaId": "01-configuracion",
           "gateId": "empleados",
-          "ventanaFe": "EmpleadosComponent"
+          "ventanaFe": "EmpleadosComponent · Ver distribución de planta"
         },
         {
           "id": "ELIMINAR",
-          "estado": "listado",
-          "hace": "DELETE NDISP de la fila.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Borra una fila de distribución por su id.",
+          "valida": [
+            "IDNDISP"
+          ],
+          "noValida": [
+            "Que la fila exista",
+            "Que la planta quede en 100 % después de borrar"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "DELETE NDISP por IDNDISP.",
           "capaId": "01-configuracion",
           "gateId": "empleados",
-          "ventanaFe": "EmpleadosComponent"
+          "ventanaFe": "EmpleadosComponent · Ver distribución de planta"
         }
       ]
     }

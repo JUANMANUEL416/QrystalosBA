@@ -18,9 +18,17 @@ window.QrysAgentes = (function () {
     return data;
   }
 
+  let claves = [];
+
   function aviso(texto) {
     const el = document.getElementById("agentesAviso");
     if (el) el.textContent = texto || "";
+  }
+
+  function textoClave(clave) {
+    const nombre = clave.nombre ? clave.nombre + " · " : "";
+    const marca = clave.activa ? " · predeterminada" : "";
+    return nombre + clave.etiqueta + " …" + (clave.sufijo || "") + marca;
   }
 
   function motoresHtml(id, motorActual, motores) {
@@ -44,6 +52,18 @@ window.QrysAgentes = (function () {
     </article>`;
   }
 
+  function selectorClave(agente) {
+    const opciones = [`<option value="">Predeterminada</option>`].concat(
+      claves.map((clave) => {
+        const sel = agente.clave === clave.etiqueta ? " selected" : "";
+        return `<option value="${esc(clave.etiqueta)}"${sel}>${esc(textoClave(clave))}</option>`;
+      })
+    );
+    return `<label class="agente-clave">Clave de este agente
+      <select data-clave-de="${esc(agente.id)}">${opciones.join("")}</select>
+    </label>`;
+  }
+
   function tarjeta(agente) {
     const nota = agente.nota ? `<p class="hint compact">${esc(agente.nota)}</p>` : "";
     const subs = agente.subagentes || [];
@@ -60,19 +80,56 @@ window.QrysAgentes = (function () {
       <h3>${esc(agente.nombre)}</h3>
       <p class="hint compact">${esc(agente.hace || "")}</p>
       ${nota}
+      ${selectorClave(agente)}
       ${resumen}
       ${lista || `<div class="agente-motores">${motoresHtml(agente.id, agente.motor, agente.motores)}</div>`}
     </article>`;
   }
 
+  function pintarOrquesta(orquesta) {
+    const nota = document.getElementById("agentesOrquestaNota");
+    const lista = document.getElementById("agentesOrquestaLista");
+    if (!lista) return;
+    const piezas = (orquesta && orquesta.piezas) || [];
+    if (nota && orquesta && orquesta.nota) nota.textContent = orquesta.nota;
+    lista.innerHTML = piezas.length
+      ? piezas.map((pieza) => {
+          const modelo = pieza.modelo
+            ? esc(pieza.proveedor || "cursor") + " · " + esc(pieza.modelo)
+            : "La aplicación";
+          const cubre = (pieza.cubre || []).map((item) => esc(item)).join(" · ");
+          return `<li><strong>${esc(pieza.nombre)}</strong> — ${modelo}<br><span class="hint">${esc(pieza.hace || "")}</span>${cubre ? `<br><span class="hint">${cubre}</span>` : ""}</li>`;
+        }).join("")
+      : "<li>Sin reparto cargado.</li>";
+  }
+
+  function pintarClaves() {
+    const lista = document.getElementById("agentesClavesLista");
+    const cambiar = document.getElementById("agentesClaveCambiar");
+    if (lista) {
+      lista.innerHTML = claves.length
+        ? claves.map((clave) => `<li>${esc(textoClave(clave))}</li>`).join("")
+        : `<li>No hay claves en .env.</li>`;
+    }
+    if (cambiar && document.activeElement !== cambiar) {
+      const actual = cambiar.value;
+      cambiar.innerHTML = claves.length
+        ? claves.map((clave) => `<option value="${esc(clave.etiqueta)}">${esc(textoClave(clave))}</option>`).join("")
+        : `<option value="">Sin claves</option>`;
+      if (actual && claves.some((clave) => clave.etiqueta === actual)) cambiar.value = actual;
+    }
+  }
+
   async function pintar() {
     const caja = document.getElementById("agentesLista");
     if (!caja) return;
-    aviso("");
     try {
       const data = await fetchJson("/api/agentes");
       const campo = document.getElementById("agentesModeloNombre");
       if (campo && document.activeElement !== campo) campo.value = data.modeloLocal || "";
+      claves = data.claves || [];
+      pintarClaves();
+      pintarOrquesta(data.orquesta);
       const lista = data.agentes || [];
       caja.innerHTML = lista.length
         ? lista.map(tarjeta).join("")
@@ -84,7 +141,27 @@ window.QrysAgentes = (function () {
 
   async function onCambio(e) {
     const input = e.target;
-    if (!input || input.type !== "radio") return;
+    if (!input) return;
+    if (input.tagName === "SELECT" && input.hasAttribute("data-clave-de")) {
+      const id = input.getAttribute("data-clave-de");
+      aviso("Guardando clave…");
+      try {
+        await fetchJson("/api/agentes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, clave: input.value }),
+        });
+        aviso(input.value
+          ? "Ese agente usará su clave en el siguiente turno."
+          : "Ese agente volvió a la clave predeterminada.");
+        await pintar();
+      } catch (err) {
+        aviso(err.message);
+        await pintar();
+      }
+      return;
+    }
+    if (input.type !== "radio") return;
     const card = input.closest("[data-agente]");
     if (!card) return;
     const id = card.getAttribute("data-agente");
@@ -122,6 +199,69 @@ window.QrysAgentes = (function () {
     }
   }
 
+  async function agregarClave() {
+    const campo = document.getElementById("agentesClaveNueva");
+    const nombre = document.getElementById("agentesClaveNombre");
+    const valor = (campo && campo.value || "").trim();
+    if (!valor) {
+      aviso("Pegue la clave nueva.");
+      return;
+    }
+    aviso("Agregando clave…");
+    try {
+      const data = await fetchJson("/api/agentes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accion: "agregar-clave",
+          valor,
+          nombre: (nombre && nombre.value || "").trim(),
+        }),
+      });
+      if (campo) campo.value = "";
+      if (nombre) nombre.value = "";
+      claves = data.claves || [];
+      aviso("Clave agregada. Asígnela al agente que debe usarla.");
+      await pintar();
+    } catch (err) {
+      aviso(err.message);
+    }
+  }
+
+  async function cambiarClave() {
+    const elegir = document.getElementById("agentesClaveCambiar");
+    const campo = document.getElementById("agentesClaveValor");
+    const nombre = document.getElementById("agentesClaveRenombre");
+    const etiqueta = (elegir && elegir.value || "").trim();
+    const valor = (campo && campo.value || "").trim();
+    const texto = (nombre && nombre.value || "").trim();
+    if (!etiqueta) {
+      aviso("No hay una clave para cambiar.");
+      return;
+    }
+    if (!valor && !texto) {
+      aviso("Escriba el valor nuevo o un nombre.");
+      return;
+    }
+    aviso("Guardando clave…");
+    try {
+      const cuerpo = { accion: "cambiar-clave", etiqueta };
+      if (valor) cuerpo.valor = valor;
+      if (texto) cuerpo.nombre = texto;
+      await fetchJson("/api/agentes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cuerpo),
+      });
+      if (campo) campo.value = "";
+      if (nombre) nombre.value = "";
+      aviso(valor ? "Clave reemplazada. Los agentes que la tenían siguen usándola." : "Nombre de la clave actualizado.");
+      await pintar();
+    } catch (err) {
+      aviso(err.message);
+    }
+  }
+
   function enter() {
     const caja = document.getElementById("agentesLista");
     if (caja && !caja.dataset.bound) {
@@ -132,6 +272,16 @@ window.QrysAgentes = (function () {
     if (btn && !btn.dataset.bound) {
       btn.dataset.bound = "1";
       btn.addEventListener("click", () => guardarModelo());
+    }
+    const agregar = document.getElementById("btnAgentesClaveAgregar");
+    if (agregar && !agregar.dataset.bound) {
+      agregar.dataset.bound = "1";
+      agregar.addEventListener("click", () => agregarClave());
+    }
+    const cambiar = document.getElementById("btnAgentesClaveCambiar");
+    if (cambiar && !cambiar.dataset.bound) {
+      cambiar.dataset.bound = "1";
+      cambiar.addEventListener("click", () => cambiarClave());
     }
     pintar();
   }

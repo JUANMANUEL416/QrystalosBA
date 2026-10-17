@@ -325,6 +325,47 @@ window.QrysSoporteConsultas = (function () {
     if (ver) ver.disabled = !meta.documentoGenerado;
     if (pdf) pdf.disabled = !tieneResp;
     if (gen) gen.disabled = !tieneResp;
+    const req = $("scBtnRequerimiento");
+    if (req) {
+      const sidSr = (meta.solicitudId || "").trim();
+      req.dataset.solicitud = sidSr;
+      req.title = sidSr
+        ? `Abrir la solicitud ${sidSr}`
+        : "Crear solicitud de requerimiento para el comité";
+      const label = req.querySelector(".sc-req-label");
+      if (label) label.textContent = sidSr ? "Ver requerimiento" : "Requerimiento";
+    }
+  }
+
+  async function generarRequerimiento() {
+    if (!consultaId) return;
+    const btn = $("scBtnRequerimiento");
+    const ya = (btn?.dataset.solicitud || "").trim();
+    if (!ya && !confirm("Se creará una solicitud de requerimiento para el comité con el contenido de esta consulta. ¿Continuar?")) {
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const data = await fetchJson(
+        `/api/soporte-consultas/${encodeURIComponent(consultaId)}/requerimiento`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      const sol = data.solicitud || {};
+      const id = sol.id || "";
+      if (btn && id) {
+        btn.dataset.solicitud = id;
+        const label = btn.querySelector(".sc-req-label");
+        if (label) label.textContent = "Ver requerimiento";
+        btn.title = `Abrir la solicitud ${id}`;
+      }
+      aviso(data.yaExistia ? `La solicitud ${id} ya existía. Se abre.` : `Solicitud ${id} creada.`);
+      if (id && window.QrysConocimiento && window.QrysSolicitar?.abrir) {
+        window.QrysConocimiento.enterMode("solicitar");
+        await window.QrysSolicitar.abrir(id);
+      }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   function stopPoll() {
@@ -344,7 +385,7 @@ window.QrysSoporteConsultas = (function () {
 
   async function generarDocumento(silencioso) {
     if (!consultaId) return;
-    if (!silencioso) aviso("Generando documento…");
+    if (!silencioso) aviso("Gemini organiza la respuesta. El documento lleva el diagrama y el mockup del proceso. Puede tardar un minuto.");
     await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/documento`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -392,6 +433,63 @@ window.QrysSoporteConsultas = (function () {
     if (ult && ult.autor === "agente" && !esperandoDocTrasAgente && mid && mid !== ultimoAvisoMsgAgente) {
       ultimoAvisoMsgAgente = mid;
       aviso("El agente respondió. Pulse «Generar documento» para validarlo.");
+    }
+  }
+
+  function pintarGemini(data) {
+    const el = $("scGeminiEstado");
+    if (!el) return;
+    el.textContent = data && data.configurado
+      ? "Clave cargada · …" + (data.sufijo || "") + ". Al generar el documento, Gemini lo organiza, lo pasa al lenguaje de las pantallas y agrega el flujo y las ilustraciones."
+      : "Sin clave de Gemini. Pégue la de Google AI y pulse Guardar clave.";
+  }
+
+  async function cargarGemini() {
+    try {
+      pintarGemini(await fetchJson("/api/soporte-consultas/gemini"));
+    } catch (e) {
+      pintarGemini(null);
+    }
+  }
+
+  async function guardarGemini() {
+    const campo = $("scGeminiClave");
+    const valor = (campo && campo.value || "").trim();
+    if (!valor) {
+      aviso("Pegue la clave de Gemini.", true);
+      return;
+    }
+    aviso("Guardando clave de Gemini…");
+    try {
+      const data = await fetchJson("/api/soporte-consultas/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ valor }),
+      });
+      if (campo) campo.value = "";
+      pintarGemini(data);
+      aviso("Clave de Gemini guardada. Solo la usa esta sección.");
+    } catch (e) {
+      aviso(e.message, true);
+    }
+  }
+
+  async function generarIlustracion() {
+    if (!consultaId) return;
+    const texto = ($("scChatInput")?.value || "").trim();
+    aviso("Generando ilustración a partir de la respuesta oficial…");
+    try {
+      await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/ilustracion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: texto }),
+      });
+      const input = $("scChatInput");
+      if (input) input.value = "";
+      await refrescarPanel();
+      aviso("Ilustración lista. Al generar el documento queda en las capturas.");
+    } catch (e) {
+      aviso(e.message, true);
     }
   }
 
@@ -679,6 +777,8 @@ window.QrysSoporteConsultas = (function () {
       });
     });
 
+    $("scBtnGemini")?.addEventListener("click", () => guardarGemini());
+    $("scBtnIlustracion")?.addEventListener("click", () => generarIlustracion());
     $("scBtnIrNueva")?.addEventListener("click", () => {
       showPanel("nueva");
       toggleValidarBd();
@@ -726,6 +826,9 @@ window.QrysSoporteConsultas = (function () {
         enviarChat().catch((e) => aviso(e.message, true));
       }
     });
+    $("scBtnRequerimiento")?.addEventListener("click", () =>
+      generarRequerimiento().catch((e) => aviso(e.message, true)),
+    );
     $("scBtnGenerarDoc")?.addEventListener("click", () =>
       generarDocumento(false).catch((e) => aviso(e.message, true))
     );
@@ -820,6 +923,7 @@ window.QrysSoporteConsultas = (function () {
     setConsultaTabEnabled(!!consultaId);
     showPanel(consultaId ? "consulta" : "historial");
     cargarLista().catch((e) => aviso(e.message, true));
+    cargarGemini().catch(() => {});
     if (consultaId) refrescarPanel().catch(() => {});
   }
 

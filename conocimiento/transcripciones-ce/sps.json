@@ -1,0 +1,350 @@
+{
+  "procesoId": "transcripciones-ce",
+  "actualizado": "2026-10-17T10:20:00",
+  "nota": "Flujo de la transcripción leído en IXONLINE/SQL PREVERSION 2.0.10 (idéntica a la cerrada). Catálogos de médico e IPS, consultas de lista y el cuerpo de SPQ_CEFM_AUDITAR_LOTE quedan listados. La salida (SPQ_IZSOL, SPK_CM_GENIMOV_SOL, SPK_CONFIRMASAL_CM, SPK_NC_CONTAB_INV) sigue canónica en inventario.",
+  "sps": [
+    {
+      "nombre": "SPQ_CEFM",
+      "tipo": "SPQ",
+      "modelo": "CEFM",
+      "estado": "parcial",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Pantalla Consulta externa → Transcripciones (/ce/formulas). El envío a farmacia y los periodos están leídos. Falta el cuerpo de AUDITAR_LOTE y las consultas de catálogo.",
+      "tablas": ["CEFM", "CEFMD", "AUTE", "AUTED", "IZSOL", "IZSOLD", "UBEQ", "SED", "IBOD", "AFI", "SER"],
+      "metodos": [
+        {
+          "id": "CRUDCEFM",
+          "hace": "Crea o edita la fórmula y sus líneas en estado Ingresado. No crea solicitud ni autorización.",
+          "estado": "leido",
+          "valida": [
+            "Afiliado informado y existente",
+            "Médico con tipo y documento, activo en CEFMMED",
+            "IPS formulante informada y activa en CEFMEPS",
+            "Diagnóstico informado y existente en MDX",
+            "NO POS con número MIPRES",
+            "Al menos un medicamento y un solo renglón por servicio",
+            "Prefijo: PREFIJOMEDNOPOS o PREF_MED_NOPOS si es NO POS; si no, PREFIJOMEDICAMENTOS",
+            "Sede de dispensación dentro de la lista fija del procedimiento",
+            "Si CEFM_FECHA_TRANS=SI, fecha de transcripción informada y no futura",
+            "Editar: la fórmula existe y está Ingresado"
+          ],
+          "noValida": [
+            "No exige centro de costo ni área: los toma de UBEQ del equipo y, si no hay fila, guarda NULL",
+            "No exige que el centro exista en CEN ni que haya KMCOM",
+            "El contratante no sale de la pantalla: el procedimiento lo fija",
+            "El plan solo cae al plan del afiliado cuando la administradora es ese mismo contratante"
+          ],
+          "errores": [
+            "Debe seleccionar un afiliado.",
+            "Debe seleccionar el médico de la fórmula.",
+            "El médico no está en el catálogo o está inactivo.",
+            "Debe indicar la IPS formulante.",
+            "La IPS no está en el catálogo o está inactiva.",
+            "Debe indicar el diagnóstico de la fórmula.",
+            "El diagnóstico no existe en el catálogo.",
+            "Si la fórmula es NO POS debe indicar el número MIPRES.",
+            "La fórmula debe tener al menos un medicamento.",
+            "Hay medicamentos repetidos. AUT no admite el mismo servicio dos veces. Deje una sola línea por medicamento.",
+            "NO POS marcado: configure la variable PREFIJOMEDNOPOS (o PREF_MED_NOPOS).",
+            "La sede de dispensación debe ser 29, 33, 34 o 35.",
+            "Debe indicar la fecha de transcripción.",
+            "La fecha de transcripción no puede ser futura.",
+            "La fórmula no existe.",
+            "Solo se puede editar una fórmula en estado Ingresado.",
+            "El afiliado no existe."
+          ],
+          "llama": ["FNK_VALORVARIABLE", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_FECHA_AUT"],
+          "efecto": "INSERT o UPDATE de CEFM (estado INGRESADO, entrega Institucional) y reemplazo de CEFMD. Sin IZSOL, sin AUTE y sin AUT.",
+          "tablas": ["CEFM", "CEFMD", "UBEQ", "USUSU", "AFI", "PPT", "CEFMMED", "CEFMEPS", "MDX", "MED"],
+          "controlId": "transcripcion-guardar"
+        },
+        {
+          "id": "AUDITAR",
+          "hace": "Envía a farmacia una fórmula Ingresada: periodos de entrega y la solicitud del primer periodo. Deja la autorización para cuando se confirme la salida.",
+          "estado": "leido",
+          "valida": [
+            "La fórmula está Ingresada",
+            "Diagnóstico informado y existente en MDX",
+            "Si CEFM_FECHA_TRANS=SI, fecha de transcripción informada y no futura",
+            "NO POS con MIPRES y con prefijo configurado",
+            "Si la sede viene en el JSON, está en la lista fija del procedimiento",
+            "Si viene bodega, exige tipo y documento del médico",
+            "La bodega elegida existe en IBOD",
+            "Sin bodega de pantalla y sin PQR/NO POS, la sede tiene SED.IDBODEGACM y esa bodega existe",
+            "El servicio del periodo tiene artículo de inventario, salvo el caso que cubre DEINVNODESER",
+            "Cabecera y detalle de periodos caben en el tipo de la columna (identity y cantidad)"
+          ],
+          "noValida": [
+            "No exige centro ni área. Los copia de UBEQ y, si el equipo no está, la fórmula sigue sin ellos",
+            "No escribe centro ni área en IZSOL",
+            "No crea AUT. Deja CEFM.IDAUT vacío",
+            "La cantidad pedida es la del periodo 1, no CANTIDAD_TOTAL de la fórmula",
+            "PQR o NO POS ignoran la bodega de la pantalla y usan la bodega fija del procedimiento"
+          ],
+          "errores": [
+            "Solo se puede auditar una fórmula Ingresada.",
+            "Debe indicar el diagnóstico de la fórmula.",
+            "El diagnóstico no existe en el catálogo.",
+            "Falta la fecha de transcripción para auditar esta fórmula.",
+            "La fecha de transcripción no puede ser futura.",
+            "Si la fórmula es NO POS debe indicar el número MIPRES.",
+            "La sede de dispensación debe ser 29, 33, 34 o 35.",
+            "Debe indicar el tipo y el documento del médico.",
+            "NO POS: la fórmula no tiene número MIPRES.",
+            "NO POS marcado: configure la variable PREFIJOMEDNOPOS (o PREF_MED_NOPOS).",
+            "La bodega no existe en IBOD.",
+            "La sede no tiene bodega CM (SED.IDBODEGACM). Configure la sede.",
+            "No se pudieron crear los periodos AUTE.",
+            "No hay AUTE periodo 1 para armar IZSOLD.",
+            "AUTED periodo 1 no produjo renglones de IZSOLD (servicio sin IDARTICULO o cantidad 0).",
+            "No se generó el IZSOL."
+          ],
+          "llama": ["SPQ_GENSEQUENCE", "SPK_GENCONSECUTIVO", "FNK_VALORVARIABLE", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_FECHA_AUT", "FNK_CEFM_PERSONAL_AT"],
+          "efecto": "Actualiza CEFM a AUDITADO con el centro del equipo si lo hubo. Inserta AUTE/AUTED (periodo 1 En farmacia, el resto Pendiente). Inserta IZSOL clase TRANS_CE, estado 1, NOADMISION = afiliado, sin centro ni área, y IZSOLD del periodo 1 en estado 1. Enlaza AUTE.CNSIZSOL. IDAUT queda NULL.",
+          "tablas": ["CEFM", "CEFMD", "AUTE", "AUTED", "IZSOL", "IZSOLD", "UBEQ", "IBOD", "SED", "SER", "USUSU"],
+          "controlId": "transcripcion-auditar"
+        },
+        {
+          "id": "TRAER_DE_AUTE",
+          "hace": "Manda a farmacia un periodo que sigue pendiente. Arma otra solicitud, de otra clase y en otro estado que el primer envío.",
+          "estado": "leido",
+          "valida": [
+            "El periodo está Pendiente y tiene líneas pendientes",
+            "El periodo tiene CNSCEFM; si no, remite al Autorizador",
+            "Los periodos anteriores de la misma fórmula están Dispensados",
+            "Si no viene bodega, usa la variable IDBODEGA_CE"
+          ],
+          "noValida": [
+            "No aplica la regla de bodega del primer envío (PQR/NO POS ni SED.IDBODEGACM)",
+            "No escribe centro ni área",
+            "Deja IZSOL.ESTADO en 0 e IZSOLD.ESTADO en 0",
+            "La clase es FORMEDCE, no TRANS_CE",
+            "No comprueba que la bodega exista en IBOD"
+          ],
+          "errores": [
+            "Solo se envían a farmacia periodos en estado Pendiente.",
+            "No hay medicamentos pendientes en este periodo.",
+            "Este periodo no proviene de Fórmulas CE. Utilice AUT_COL.TRAER_DE_AUTE.",
+            "Debe dispensar los periodos anteriores primero."
+          ],
+          "llama": ["SPK_GENCONSECUTIVO", "FNK_VALORVARIABLE"],
+          "efecto": "INSERT IZSOL clase FORMEDCE, estado 0, NOADMISION = afiliado, CNSIZSOLM = consecutivo de la fórmula, contratante fijo. INSERT IZSOLD en estado 0. El periodo y sus líneas pasan a En farmacia y AUTE.CNSIZSOL apunta a la solicitud nueva.",
+          "tablas": ["AUTE", "AUTED", "IZSOL", "IZSOLD", "CEFM", "SER"],
+          "controlId": "transcripcion-periodos"
+        },
+        {
+          "id": "ANULAR",
+          "hace": "Pasa a Anulado una fórmula que todavía está Ingresada.",
+          "estado": "leido",
+          "valida": ["La fórmula existe y está Ingresado"],
+          "noValida": [
+            "No deshace una fórmula ya Auditada: eso es REABRIR",
+            "Hay un segundo bloque ANULAR más abajo en el mismo procedimiento; no se ejecuta porque este hace RETURN"
+          ],
+          "errores": ["Solo se puede anular una fórmula Ingresada."],
+          "llama": [],
+          "efecto": "CEFM.ESTADO = ANULADO. No toca líneas, periodos ni solicitudes.",
+          "tablas": ["CEFM"],
+          "controlId": "transcripcion-reabrir"
+        },
+        {
+          "id": "REABRIR",
+          "hace": "Deshace el envío a farmacia de una fórmula Auditada y la devuelve a Ingresado, si todavía no hay salida confirmada.",
+          "estado": "leido",
+          "valida": [
+            "Fórmula Auditada",
+            "Ningún periodo en Dispensado o Dispensacion",
+            "Ningún periodo posterior ya salió de Pendiente",
+            "La solicitud no está cerrada (estado 2)",
+            "No hay IMOV confirmado (estado 1) de esa solicitud",
+            "Si la solicitud ya se abrió, no hay líneas con lote o movimiento distintas de un movimiento anulado"
+          ],
+          "noValida": [
+            "No devuelve IEXI.EXISLOTE. Borra IZSOLDT del borrador sin el proceso que repone el lote descontado al entregar",
+            "No deshace un movimiento ya confirmado",
+            "Si la solicitud está compartida con otra fórmula auditada, no la borra: le resta la cantidad y le cambia el NOADMISION"
+          ],
+          "errores": [
+            "Debe indicar la fórmula (CNSCEFM).",
+            "Solo se puede reabrir una fórmula Auditada.",
+            "No se puede reabrir: hay un periodo ya dispensado.",
+            "No se puede reabrir: hay periodos posteriores ya enviados a farmacia (Traer de).",
+            "No se puede reabrir: la solicitud de farmacia está cerrada.",
+            "No se puede reabrir: la solicitud ya tiene dispensación confirmada.",
+            "No se puede reabrir: hay artículos procesados pendientes de confirmar.",
+            "No se pudo reabrir la transcripción."
+          ],
+          "llama": [],
+          "efecto": "Borra ISAL, IMOVH e IMOV en borrador, IZSOLDT y, si la solicitud no está compartida, IZSOL e IZSOLD. Borra AUTE/AUTED de la fórmula y AUT/AUTD ligados. CEFM vuelve a INGRESADO con IDAUT vacío.",
+          "tablas": ["CEFM", "AUTE", "AUTED", "IZSOL", "IZSOLD", "IZSOLDT", "IMOV", "IMOVH", "ISAL", "AUT", "AUTD"],
+          "controlId": "transcripcion-reabrir"
+        },
+        {
+          "id": "GET_BODEGA_DESTINO",
+          "hace": "Dice qué bodega correspondería, sin grabar. PQR o NO POS usan la bodega fija; si no, la bodega CM de la sede.",
+          "estado": "leido",
+          "valida": [
+            "Sin PQR ni NO POS exige sede",
+            "La sede tiene SED.IDBODEGACM",
+            "La bodega existe en IBOD"
+          ],
+          "noValida": ["No mira el centro ni el área de la bodega ni del equipo"],
+          "errores": [
+            "Indique la sede de dispensación para resolver la bodega (SED.IDBODEGACM).",
+            "La sede no tiene bodega CM (SED.IDBODEGACM). Configure la sede."
+          ],
+          "llama": [],
+          "efecto": "Solo lectura. Devuelve la bodega y si salió de PQR/NO POS o de la sede.",
+          "tablas": ["SED", "IBOD"],
+          "controlId": "transcripcion-sede-bodega"
+        },
+        {
+          "id": "AUDITAR_LOTE",
+          "hace": "Delega el lote en SPQ_CEFM_AUDITAR_LOTE. Ese cuerpo no está fichado.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica",
+          "llama": ["SPQ_CEFM_AUDITAR_LOTE"]
+        },
+        {
+          "id": "DESHACER_DISP_MANUAL",
+          "hace": "Deshace una dispensación manual (AUT.MANUALCE) todavía no confirmada. No es el envío de esta pantalla.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "GET",
+          "hace": "Lee una fórmula para la pantalla.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "GET_LOTE",
+          "hace": "Lee un grupo de fórmulas.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "DATOS_AFI",
+          "hace": "Trae plan y tipo de afiliado para armar la fórmula.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "CNS_CEFMMED",
+          "hace": "Lista médicos activos del catálogo de la transcripción.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "LISTCEFMMED",
+          "hace": "Lista el catálogo de médicos.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "CRUDCEFMMED",
+          "hace": "Mantiene el catálogo de médicos de la transcripción.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "CNS_CEFMEPS",
+          "hace": "Lista IPS activas del catálogo de la transcripción.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "LISTCEFMEPS",
+          "hace": "Lista el catálogo de IPS.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "CRUDCEFMEPS",
+          "hace": "Mantiene el catálogo de IPS formulantes.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "CNS_SER_BODEGA",
+          "hace": "Servicios que la bodega puede dispensar.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        },
+        {
+          "id": "CNS_SER_NOTA_TECNICA",
+          "hace": "Servicios de la nota técnica.",
+          "estado": "listado",
+          "valida": "no aplica",
+          "errores": "no aplica",
+          "efecto": "no aplica"
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_CEFM_CREA_AUT_DESDE_IMOV",
+      "tipo": "SP",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Lo llama SPK_CONFIRMASAL_CM después del comprobante, al confirmar una salida de transcripción.",
+      "hace": "Crea la autorización de facturación a partir del movimiento ya confirmado. En transcripción el afiliado sale de la fórmula ligada a la solicitud. El detalle es una línea por artículo dispensado. El plan queda en el plan del afiliado y el contratante lo fija otra vez el procedimiento. El centro y el área salen de la fórmula o, si faltan, del equipo de quien confirma.",
+      "valida": [
+        "CNSMOV informado y movimiento confirmado",
+        "La solicitud es TRANS_CE, FORMEDCE, CE manual o CE cuyo NOADMISION es un afiliado y no una autorización",
+        "Se resuelve afiliado",
+        "Hay líneas dispensadas en IMOVH",
+        "Hay consecutivo de autorización"
+      ],
+      "noValida": [
+        "No rechaza centro ni área vacíos",
+        "No exige KMCOM ni que el centro exista",
+        "No usa el pagador de la pantalla: el contratante queda fijo",
+        "Pisa el plan con el del afiliado y puede reescribirlo a un plan de facturación fijo según el nombre del plan",
+        "En TRANS_CE no cambia IZSOL.NOADMISION (sigue el afiliado). Solo la clase CE legada pasa a guardar el id de la autorización",
+        "El llamador se traga el error: la salida confirmada no se revierte"
+      ],
+      "errores": [
+        "CNSMOV vacío.",
+        "Falta columna AUT.CNSIMOV.",
+        "IMOV no confirmado.",
+        "IZSOL no aplica CREA_AUT (CLASE/NOADMISION).",
+        "No se resolvió afiliado para IMOV.",
+        "IMOV sin líneas dispensadas.",
+        "No se pudo generar consecutivo AUT/AUTF.",
+        "INSERT AUT.",
+        "INSERT AUTD."
+      ],
+      "llama": ["FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FECHA_AUT", "FNK_VALORVARIABLE", "SPK_GENCONSECUTIVO"],
+      "efecto": "INSERT AUT (facturable, no facturada) y AUTD por artículo de IMOVH. Puede insertar un SER mínimo si el artículo no existe como servicio. Después el llamador copia centro y área de esa AUT al movimiento, ya con el comprobante emitido.",
+      "tablas": ["AUT", "AUTD", "IMOV", "IMOVH", "IZSOL", "CEFM", "AUTE", "AFI", "SER", "PRE", "PLN", "UBEQ"],
+      "controlId": "transcripcion-aut",
+      "metodos": []
+    }
+  ]
+}

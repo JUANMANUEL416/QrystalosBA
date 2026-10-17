@@ -1951,5 +1951,5 @@ window.QrysSolicitar = (function () {
     bind();
   }
 
-  return { init, enter, stopPoll, refresh: refreshLista };
+  return { init, enter, stopPoll, refresh: refreshLista, abrir };
 })();

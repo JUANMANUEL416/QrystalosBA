@@ -1,6 +1,6 @@
 {
   "procesoId": "inventario",
-  "actualizado": "2026-10-04T09:30:00",
+  "actualizado": "2026-10-17T09:40:00",
   "nota": "2026-10-04 (2ª pasada): se ficharon los 9 SPK pendientes (APLICARCONTEO, MOVSALIDAVENCIDOS, AJUSTE_IDXB_IART, INSERT_ITRAH, CLONA_ORDENCOMPRA, UPDATE_VLRS_FCOM, TRAECOMPRA_SALIDA, ANULAR_MOV_INV, PROCESA_IZSOLDT), SPQ_GESVENTA, SPQ_IZSOL_2 completo, SPQ_IZSOLDT, SPQ_GES_MED y los satélites (LISTA_AUT, GES_LENTES_COL, PERFIL_FARMACOTERAPEUTICO, FAR_IF, FAR_CTRLDOSIS, DELIVERY_MAD, TRANSFUSIONAL). Todos PREVERSION = 2.0.7. SPQ_ORDEN_PAGO está fichado en cxp-fcxp y SPQ_CONF_CAJA en caja (no se duplican). Hallazgo: los ajustes del conteo usan IDINVSIENT / IDINVSISAL para todo conteo y la entrada queda sin confirmar. | 2026-10-04: Inventario, Compras y Farmacia. Liberada 2.0.7 (IDANT 2.0.6); se bajó PREVERSION de 39 objetos. Distintos de 2.0.7: SPQ_IZSOL, SPK_CONFIRMARENTRADAS, SPK_CONFIRMASAL_CM, SPQ_IARTO (ver cola de cada ficha). Desde la ficha de 2.0.5: cambió SPQ_IART (IART_SER_UNICO ya liberado) y SPQ_IZSOL. Hallazgos FE↔SQL: la pantalla Artículos llama IART · CARGAR_PRECIO_REGULADO y ese método no existe en SPQ_IART (pendiente); SPQ_INTERFAZINV no usa @METODO. Datos de pruebas (PCEM, copia CEM) 2026-10-04: ESFARMACIA = «SIP» (el SP compara con «SI»: la validación de costo cero está apagada en pruebas). | 2026-10-02: contraste DESAIX 2.0.3 / 2.0.5 / PREVERSION. Mismos METODO. Cuerpo distinto en los objetos citados en proceso.notaSql. SPQ_IART y SPQ_IZSOL siguen adelante solo en PREVERSION. SPQ_ICTZG leído: cotización comercial, sin uso en CEM.",
   "sps": [
     {
@@ -12007,6 +12007,323 @@
           "fichaAutomatica": true
         }
       ]
+    },
+    {
+      "nombre": "SPK_GENCONSECUTIVO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Consecutivo transversal. El grafo de cotizaciones lo cita en N3-generar-oc. También lo usan factura INV, HPRE y autorizaciones.",
+      "hace": "Devuelve el siguiente consecutivo en @NVOCONSEC. Si el prefijo no es de factura ni de nota débito/crédito (@FTR, @NCF, @NDF, @NCB, @NDB), delega en SPQ_GENSEQUENCE. Esos prefijos suman USCXS (o insertan la fila en 1) dentro de una transacción, con hasta 3 reintentos si hay deadlock.",
+      "valida": [
+        "Sede vacía: toma IDSEDEPRINCIPAL",
+        "Prefijo @MCP: el número sale con el SPID por delante (comprobante contable)"
+      ],
+      "noValida": [
+        "Prefijo NULL: solo imprime y sigue",
+        "Un error distinto del deadlock 1205 hace rollback y sale sin relanzar: @NVOCONSEC puede quedar sin valor"
+      ],
+      "errores": [
+        "no aplica (no hay RAISERROR al llamador; PRINT «ES NULL EL PREFIJO»)"
+      ],
+      "llama": [
+        "SPQ_GENSEQUENCE",
+        "FNK_VALORVARIABLE"
+      ],
+      "variablesUsvgs": [
+        "IDSEDEPRINCIPAL"
+      ],
+      "tablas": [
+        "USCXS"
+      ],
+      "efecto": "UPDATE o INSERT USCXS.CONSECUTIVO en la rama de facturas y notas. El resto no escribe: lo hace SPQ_GENSEQUENCE.",
+      "capaId": "02-operacion",
+      "gateId": "ilpre-cotizacion-compras",
+      "metodos": []
+    },
+    {
+      "nombre": "FNK_CEFM_FECHATRANSCRIPCION",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "La usa SPK_CM_GENIMOV_SOL para FECHAMOV cuando la transcripción de la fórmula llega tarde (CEFM_FECHA_TRANS).",
+      "hace": "Devuelve CEFM.FECHATRANSCRIPCION de la fórmula ligada a la autorización de la solicitud (AUTE.CNSIZSOL = AUTE.CNSCEFM). Si la variable no es SI, la solicitud va vacía o no hay fecha, devuelve NULL.",
+      "valida": [
+        "CEFM_FECHA_TRANS = SI",
+        "AUTE.CNSIZSOL informado y CEFM.FECHATRANSCRIPCION no nula"
+      ],
+      "noValida": [
+        "No exige que la fórmula esté dispensada",
+        "Si hay más de una autorización, el SELECT sin TOP se queda con una fila"
+      ],
+      "errores": [
+        "no aplica (no escribe ni lanza error; NULL significa «usar la fecha de hoy»)"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE"
+      ],
+      "variablesUsvgs": [
+        "CEFM_FECHA_TRANS"
+      ],
+      "tablas": [
+        "AUTE",
+        "CEFM"
+      ],
+      "efecto": "Solo lectura. DATETIME o NULL.",
+      "capaId": "02-operacion",
+      "gateId": "izsol-dispensacion",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_CM_GENIMOV_SOL",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Lo llama IZSOL al abrir la dispensación (grafo dispensación N2-agregar). Nace el IMOV en estado 0. No confirma, salvo el proceso INGRESOAPROD.",
+      "hace": "Arma la cabecera IMOV en estado 0. AGREGAR (SPQ_IZSOL) llama con ENTREGALOG, salvo Consumo que llega como Consumo. La bodega es la que atiende y, si viene vacía, la que solicita. La fecha es la de la solicitud si FECHAMOVSOL=SI; si no, la de FNK_CEFM_FECHATRANSCRIPCION cuando no es NULL; si no, ahora. Centro y área solo se llenan en algunas clases: canasta (CXPS o QXPCX), Perú+HTX (plan y hoja de trabajo), ENTREGALOG de admisión (cama HHAB, y si no hay, el sector; HPRE cae a la prestación), Consumo (el sector y FNK_AREADELCCOSTO) y APLIM (centro de la aplicación y un CEN activo). Consulta externa, transcripción, producción, ingreso de producción y el proceso vacío dejan centro y área en NULL.",
+      "valida": [
+        "Sin bodega que atiende ni que solicita: RAISERROR y RETURN",
+        "Clase APLIM sin centro o área: los toma de APLIM.CCOSTO y del CEN activo de ese centro (prefiere la sede de la solicitud)",
+        "INGRESOAPROD: confirma la entrada (SPK_CONFIRMARENTRADAS) y la salida de consumo (SPK_CONFIRMASAL_CM)"
+      ],
+      "noValida": [
+        "No exige centro de costo ni área funcional: si la fuente no trae fila, el INSERT sigue con NULL",
+        "No comprueba que el centro exista, que esté activo, ni que el área sea de ese centro. APLIM es el único tramo que mira CEN.ESTADO=Activo, y si no hay área igual inserta",
+        "No mira KMCOM ni AFU",
+        "QXPGCX lee IDAREAH y no lo escribe en IMOV",
+        "HHAB por admisión y por sector asignan sin TOP: si hay varias camas, queda una fila sin orden",
+        "No mira PRI.CERRADO_INV al nacer el movimiento",
+        "Fuera de INGRESOAPROD no inserta líneas ni toca IEXI",
+        "El centro de CE y TRANS_CE no se copia aquí. CONF_MOVIMIENTO solo escribe centro y área si el área de origen no viene vacía (AUT en CE/TRANS_CE, HHAB en OMEDICA/24HORAS). Con área vacía se pierde también el centro. FORMEDCE no entra a ese relleno",
+        "SPK_CONFIRMASAL_CM rellena TRANS_CE desde CEFM antes del comprobante. El respaldo de APLIM está comentado. La copia desde la autorización creada en la transcripción ocurre después de SPK_NC_CONTAB_INV: el movimiento puede quedar con centro y el comprobante ya salió vacío",
+        "SPK_NC_CONTAB_INV manda IMOV.CCOSTO a FNK_NC_CUENTA_KMCOM. Centro vacío o inexistente no encuentra KMCOM y la cuenta del asiento queda NO DEF.KMCOM; MCHE hereda el centro y el área vacíos"
+      ],
+      "errores": [
+        "SPK_CM_GENIMOV_SOL: IZSOL %s sin IDBODEGAATIENDE ni IDBODEGASOLICITA."
+      ],
+      "llama": [
+        "SPQ_GENSEQUENCE",
+        "FNK_CEFM_FECHATRANSCRIPCION",
+        "FNK_VALORVARIABLE",
+        "SPK_CONFIRMARENTRADAS",
+        "SPK_CONFIRMASAL_CM",
+        "SPK_XML_MOVIN",
+        "FNK_AREADELCCOSTO"
+      ],
+      "variablesUsvgs": [
+        "IDINVARTNA",
+        "IDTS",
+        "IDINVMOVINGRESOAPROD",
+        "IDINVMOV_VENTAS",
+        "IDINVMOVVENTAFACTURA",
+        "IDINVMOVCONSUMO",
+        "IDINVMOVINCONSUPROD",
+        "IDINVIDITARUNICA",
+        "IDITARUNIDOSIS",
+        "IDTERCEROINSTALADO",
+        "FECHAMOVSOL",
+        "IXCOUNTRY",
+        "INTERFAZ_INV"
+      ],
+      "tablas": [
+        "IMOV",
+        "IMOVH",
+        "IZSOL",
+        "IZSOLD",
+        "IZOTLIBARTL",
+        "IZOTLIBARTLC",
+        "HHAB",
+        "CXPS",
+        "QXPCX",
+        "PLN",
+        "HTX",
+        "HPRE",
+        "APLIM",
+        "CEN"
+      ],
+      "efecto": "INSERT IMOV estado 0 con el centro y el área que haya resuelto (o NULL). INGRESOAPROD además inserta IMOVH, confirma la entrada y genera la salida de consumo ya confirmada. Perú con INTERFAZ_INV=INTER_SAP envía ese movimiento a SAP.",
+      "capaId": "02-operacion",
+      "gateId": "izsol-dispensacion",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_IZSOLDT_PROCESOS",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Picking de la dispensación (grafo N2-agregar). Descuenta el lote al agregar, antes de confirmar la salida.",
+      "hace": "Tres procesos sobre IZSOLDT y el lote. AGREGAR acumula o inserta la entrega en estado 0 y resta IEXI.EXISLOTE. QUITAR devuelve el lote y borra la línea si no está liberada. CANCELAR devuelve y borra todas las líneas en estado 0 de ese detalle.",
+      "valida": [
+        "AGREGAR: cantidad mayor que cero",
+        "AGREGAR: lo ya entregado no cubre ni supera lo solicitado",
+        "AGREGAR: el artículo real corresponde al servicio, salvo DEINVNODESER",
+        "AGREGAR: el UPDATE de IEXI afecta exactamente una fila con existencia suficiente",
+        "QUITAR: IZSOLDT.LIBERADO en 0 o 2"
+      ],
+      "noValida": [
+        "No confirma el IMOV ni mira el periodo",
+        "CANCELAR solo repone líneas con estado 0",
+        "Si el lote no está en esa bodega, AGREGAR busca el artículo por lote y bodega y sigue"
+      ],
+      "errores": [
+        "La cantidad a entregar debe ser mayor a cero.",
+        "Este Artículo ya tiene La Cantidad Cumplida.",
+        "La Cantidad Supera lo Solicitado.",
+        "Inconsistencia en la Entrega idarticulo no corresponde a IDservicio.",
+        "El lote no cuenta con las cantidades a entregar.",
+        "El estado del registro no permite la operación."
+      ],
+      "llama": [
+        "SPQ_GENSEQUENCE",
+        "FNK_VALORVARIABLE"
+      ],
+      "variablesUsvgs": [
+        "DEINVNODESER",
+        "IDITARHEMODERIVADOS"
+      ],
+      "tablas": [
+        "IEXI",
+        "IZSOLDT",
+        "IZSOLD",
+        "IMOV",
+        "IART"
+      ],
+      "efecto": "AGREGAR baja IEXI.EXISLOTE y deja IZSOLDT en 0. QUITAR y CANCELAR reponen el lote y borran la entrega. Transacción propia o savepoint; el error se relanza.",
+      "capaId": "02-operacion",
+      "gateId": "izsol-dispensacion",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_GENCOBRO_INSCENTRAL",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Lo llama la confirmación de la dispensación (grafo N3-confirmar) para cobrar lo entregado. No mueve existencia.",
+      "hace": "Según IZSOL.CLASE del movimiento (PROCEDENCIA CM_SOL): HPRE solo enlaza la prestación ya existente; HTX marca entregado (Perú además acumula cantidad); CE en Perú clona autorizaciones AUT/AUTD y fuera de Perú sale sin escribir; APOYODX suma LORDI; QXPGCX actualiza la canasta de la programación. El resto, con el movimiento confirmado, abre o reutiliza un HPRE de procedencia CMEZCLAS y carga HPRED. En modo HBALI, orden médica y 24 horas solo cobran mezcla, nutrición o insumos que enfermería no recibe; SENFER y HEMOD solo insumos.",
+      "valida": [
+        "El IMOV se busca con PROCEDENCIA CM_SOL y NODOCUMENTO = IZSOL.CNSIZSOL",
+        "Antes del HPRE, IMOV.ESTADO debe ser 1 (las clases que salen antes no lo exigen)",
+        "HBALI + OMEDICA/24HORAS: sin mezcla, nutrición parenteral ni insumo que enfermería no reciba, no cobra",
+        "HBALI + SENFER/HEMOD: solo líneas con MEDICAMENTOS=0"
+      ],
+      "noValida": [
+        "No comprueba que exista la admisión: si HADM no tiene la fila, diagnóstico, tercero y plan quedan vacíos y el HPRE se inserta igual",
+        "No mira PRI ni la fecha de confirmación contra el periodo",
+        "CE fuera de Perú imprime «YA ESTA COBRADO» y sale aunque no haya cobrado nada en este llamado"
+      ],
+      "errores": [
+        "MOVIMIENTO DE INVENTARIO NO CONFIRMADO",
+        "YA ESTA COBRADO"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO",
+        "SPK_VALORES_HPRED",
+        "SPK_RELIQUIDACOPAGOQX_HPRE",
+        "SPK_VERIFICA_COPAGOQX",
+        "SPK_COPAGOQX",
+        "FNK_VALORVARIABLE"
+      ],
+      "variablesUsvgs": [
+        "IXCOUNTRY",
+        "MODOCOBROMEDHBALI",
+        "OMCODMEZCLA",
+        "OMCODNUTRICIONP",
+        "IENF_MEZCLA",
+        "IENF_NUTP",
+        "IENF_RECIBE_INSUMOS",
+        "FECHAMOVSOL",
+        "MDEVOLUCIONDOSIS",
+        "COBRAENREGAFARMACIA",
+        "IDTERCEROPARTICULAR",
+        "IDPLANPART"
+      ],
+      "tablas": [
+        "HPRE",
+        "HPRED",
+        "IMOV",
+        "IMOVH",
+        "HTX",
+        "AUT",
+        "AUTD",
+        "LORDI",
+        "QXPCXI",
+        "CXPSI"
+      ],
+      "efecto": "Enlaza o crea la prestación (HPRE/HPRED procedencia CMEZCLAS), o marca entrega (HTX), o clona autorización (CE Perú), o actualiza cantidades de orden de apoyo y canasta. No toca IEXI.",
+      "capaId": "02-operacion",
+      "gateId": "izsol-dispensacion",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_GENERARFISICO_U",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Lo llama el conteo al crear el listado del contador (grafo conteo N1-ifis).",
+      "hace": "Copia las líneas del conteo (IFISH) a la hoja del usuario (IFISHU) con conteos en cero y el estado que ya tenga esa bodega. No duplica artículo y lote del mismo usuario. Después rellena, para cada usuario que ya tenga hoja en ese conteo, las líneas que le falten. Al final copia esos estados a IFISH de la bodega pedida.",
+      "valida": [
+        "Solo conteos IFIS.CERRADO=0",
+        "No inserta si ese usuario ya tiene el artículo y el lote"
+      ],
+      "noValida": [
+        "No toca IEXI ni aplica el ajuste",
+        "Usuario vacío: no arma la hoja inicial y solo rellena usuarios que ya estaban",
+        "@TODASLASBODEGAS=1 limita el primer insert a IFIS.IDBODEGA=@IDBODEGA; en 0 ese insert no filtra la bodega del conteo",
+        "No hay mensaje KO si el conteo no existe o está cerrado: no inserta"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "tablas": [
+        "IFISHU",
+        "IFISH",
+        "IFIS",
+        "IEXI",
+        "IART"
+      ],
+      "efecto": "INSERT IFISHU (conteos 0) y UPDATE IFISH.ESTADO1/2/3 de la bodega. IEXI solo se lee para copiar el lugar.",
+      "capaId": "02-operacion",
+      "gateId": "conteo-fisico",
+      "metodos": []
+    },
+    {
+      "nombre": "SPK_REVISA_EXISTS_INV",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
+      "actualizado": "2026-10-17",
+      "cola": "Lo cita el grafo de ventas en N3-iexi. Recalcula el total del artículo y de la bodega desde los lotes con existencia positiva.",
+      "hace": "Suma IEXI.EXISLOTE mayor que cero y lo escribe en IART.EXISTOTAL y en IDXB.EXISTOTAL. Si el costo del artículo es 0, lo toma del último precio de compra del hermano mayor. El costo medio de la bodega es el promedio de IEXI.PCOSTO de esos lotes. Con @IDARTICULO vacío recorre todos.",
+      "valida": [
+        "Solo lotes con EXISLOTE > 0 entran a la suma"
+      ],
+      "noValida": [
+        "Un artículo sin lotes positivos no se pone en cero: el UPDATE no lo alcanza",
+        "No confirma movimientos ni mira el periodo",
+        "No hay mensaje KO"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "tablas": [
+        "IART",
+        "IDXB",
+        "IEXI",
+        "FCOMD",
+        "VWK_HERMANOS_INVENTARIO"
+      ],
+      "efecto": "UPDATE IART.EXISTOTAL y, si el costo estaba en cero, IART.PCOSTO. UPDATE IDXB.EXISTOTAL y PCOSTOM.",
+      "capaId": "02-operacion",
+      "gateId": "venta",
+      "metodos": []
     }
   ]
 }

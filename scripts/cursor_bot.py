@@ -27,7 +27,7 @@ SOLICITUDES = os.path.join(ROOT, "solicitudes")
 REVISIONES = os.path.join(ROOT, "revisiones")
 CONOCIMIENTO = os.path.join(ROOT, "conocimiento")
 ENV_PATH = os.path.join(ROOT, ".env")
-# Bot de oficina: Composer 2.5 Fast. Grok 4.5 quedó lento para estos turnos.
+# Si CURSOR_BOT_MODEL está en el entorno, pisa el reparto de config/orquesta.json.
 MODELO = os.environ.get("CURSOR_BOT_MODEL", "composer-2.5")
 HERRAMIENTAS_KB = ("read", "edit", "grep", "glob", "ls")
 HERRAMIENTAS_NO = ("shell", "task", "mcp", "webSearch")
@@ -52,13 +52,26 @@ def _env_bool(name: str, default: bool = False) -> bool:
 FAST_CASOS = _env_bool("CURSOR_BOT_FAST", True)
 
 
+def _modelo_forzado() -> str:
+    env = _parse_env(ENV_PATH)
+    return (os.environ.get("CURSOR_BOT_MODEL") or env.get("CURSOR_BOT_MODEL") or "").strip()
+
+
 def modelo_id(motivo: str = "") -> str:
     env = _parse_env(ENV_PATH)
     if motivo in MOTIVOS_KB:
         kb = (os.environ.get("CURSOR_BOT_MODEL_KB") or env.get("CURSOR_BOT_MODEL_KB") or "").strip()
         if kb:
             return kb
-    return (os.environ.get("CURSOR_BOT_MODEL") or env.get("CURSOR_BOT_MODEL") or MODELO).strip() or "composer-2.5"
+    forzado = _modelo_forzado()
+    if forzado:
+        return forzado
+    try:
+        import orquesta
+
+        return orquesta.modelo_de(motivo)
+    except Exception:
+        return MODELO.strip() or "composer-2.5"
 
 
 def usa_fast(motivo: str = "") -> bool:
@@ -66,21 +79,38 @@ def usa_fast(motivo: str = "") -> bool:
     raw = (os.environ.get("CURSOR_BOT_FAST") or env.get("CURSOR_BOT_FAST") or "").strip().lower()
     if raw:
         return raw in ("1", "true", "yes", "si", "on")
-    return FAST_CASOS
+    if _modelo_forzado():
+        return FAST_CASOS
+    try:
+        import orquesta
+
+        return orquesta.usa_fast(motivo)
+    except Exception:
+        return FAST_CASOS
 
 
 def modelo_selection(motivo: str = ""):
     from cursor_sdk import ModelParameterValue, ModelSelection
 
-    return ModelSelection(
-        id=modelo_id(motivo),
-        params=[ModelParameterValue(id="fast", value="true" if usa_fast(motivo) else "false")],
-    )
+    especificos = None
+    if not _modelo_forzado():
+        try:
+            import orquesta
+
+            especificos = orquesta.params_de(motivo)
+        except Exception:
+            especificos = None
+    if especificos is None:
+        params = [ModelParameterValue(id="fast", value="true" if usa_fast(motivo) else "false")]
+    else:
+        params = [ModelParameterValue(id=item["id"], value=item["value"]) for item in especificos]
+    return ModelSelection(id=modelo_id(motivo), params=params)
 
 
 def modelo_report() -> dict:
     return {
         "modelo": modelo_id("chat"),
+        "modeloAnalisis": modelo_id("analizar-req"),
         "modeloKb": modelo_id("consultas"),
         "fast": usa_fast("chat"),
         "fastKb": usa_fast("consultas"),
@@ -105,8 +135,27 @@ def _parse_env(path: str) -> dict:
     return values
 
 
-def _cursor_key_names() -> tuple[str, ...]:
-    return ("CURSOR_API_KEY", "CURSOR_API_KEY_2", "CURSOR_API_KEY_FALLBACK")
+def _es_nombre_clave(nombre: str) -> bool:
+    if nombre in ("CURSOR_API_KEY", "CURSOR_API_KEY_FALLBACK"):
+        return True
+    if not nombre.startswith("CURSOR_API_KEY_"):
+        return False
+    resto = nombre[len("CURSOR_API_KEY_") :]
+    return resto.isdigit()
+
+
+def _nombres_clave(env: dict) -> list[str]:
+    """Nombres de variable, en orden estable. CURSOR_API_KEY_3 y siguientes también cuentan."""
+    nombres = ["CURSOR_API_KEY", "CURSOR_API_KEY_2", "CURSOR_API_KEY_FALLBACK"]
+    extras = []
+    for name in env:
+        if _es_nombre_clave(name) and name not in nombres:
+            resto = name[len("CURSOR_API_KEY_") :]
+            if resto.isdigit():
+                extras.append((int(resto), name))
+    for _, name in sorted(extras):
+        nombres.append(name)
+    return nombres
 
 
 ACTIVE_KEY_PATH = os.path.join(ROOT, "config", "cursor-api-key-active.json")
@@ -139,7 +188,7 @@ def load_cursor_api_keys() -> list[tuple[str, str]]:
         seen.add(k)
         out.append((label, k))
 
-    for name in _cursor_key_names():
+    for name in _nombres_clave({**env, **os.environ}):
         _add(name, os.environ.get(name) or env.get(name) or "")
 
     if os.path.isfile(ENV_PATH):
@@ -193,6 +242,134 @@ def cursor_key_status() -> dict:
     }
 
 
+def listar_claves_publicas() -> list[dict]:
+    """Etiqueta y últimos 4 caracteres. Nunca el secreto."""
+    pairs = load_cursor_api_keys()
+    meta = _load_active_key_meta()
+    idx = meta.get("indice") if isinstance(meta.get("indice"), int) else 0
+    salida = []
+    for i, (etiqueta, valor) in enumerate(pairs):
+        salida.append({
+            "etiqueta": etiqueta,
+            "sufijo": valor[-4:] if len(valor) >= 4 else "",
+            "activa": i == idx,
+        })
+    return salida
+
+
+def clave_por_etiqueta(etiqueta: str) -> str:
+    buscada = (etiqueta or "").strip()
+    if not buscada:
+        return ""
+    for label, key in load_cursor_api_keys():
+        if label == buscada:
+            return key
+    return ""
+
+
+def _validar_clave_cursor(valor: str) -> str:
+    clave = (valor or "").strip().strip('"').strip("'")
+    if any(c.isspace() for c in clave) or "\n" in clave or "\r" in clave:
+        raise ValueError("La clave no puede llevar espacios.")
+    if not clave.startswith("crsr_") or len(clave) < 20:
+        raise ValueError("La clave de Cursor empieza por crsr_.")
+    return clave
+
+
+def _leer_env_lineas(path: str) -> tuple[list[str], str]:
+    if not os.path.isfile(path):
+        return [], "\n"
+    with open(path, encoding="utf-8") as fh:
+        texto = fh.read()
+    sep = "\r\n" if "\r\n" in texto else "\n"
+    return texto.splitlines(), sep
+
+
+def _escribir_env_lineas(path: str, lineas: list[str], sep: str) -> None:
+    texto = sep.join(lineas)
+    if texto and not texto.endswith(sep):
+        texto += sep
+    carpeta = os.path.dirname(path) or "."
+    os.makedirs(carpeta, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        fh.write(texto)
+    os.replace(tmp, path)
+
+
+def _linea_de_etiqueta(lineas: list[str], etiqueta: str) -> int:
+    nombre = etiqueta
+    n = 1
+    if "#" in etiqueta:
+        nombre, _, num = etiqueta.partition("#")
+        n = int(num) if num.isdigit() else 1
+    vistos = 0
+    for i, raw in enumerate(lineas):
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, _val = line.partition("=")
+        if key.strip() == nombre:
+            vistos += 1
+            if vistos == n:
+                return i
+    return -1
+
+
+def _siguiente_nombre_clave(lineas: list[str]) -> str:
+    usados = set()
+    for raw in lineas:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, _val = line.partition("=")
+        nombre = key.strip()
+        if _es_nombre_clave(nombre):
+            usados.add(nombre)
+    if "CURSOR_API_KEY" not in usados:
+        return "CURSOR_API_KEY"
+    n = 2
+    while f"CURSOR_API_KEY_{n}" in usados:
+        n += 1
+    return f"CURSOR_API_KEY_{n}"
+
+
+def agregar_clave_cursor(valor: str, path: str | None = None) -> str:
+    """Añade la clave al .env con un nombre nuevo. Devuelve la etiqueta, no el secreto."""
+    clave = _validar_clave_cursor(valor)
+    for _label, previa in load_cursor_api_keys():
+        if previa == clave:
+            raise ValueError("Esa clave ya está cargada.")
+    ruta = path or ENV_PATH
+    lineas, sep = _leer_env_lineas(ruta)
+    nombre = _siguiente_nombre_clave(lineas)
+    lineas.append(f"{nombre}={clave}")
+    _escribir_env_lineas(ruta, lineas, sep)
+    return nombre
+
+
+def cambiar_clave_cursor(etiqueta: str, valor: str, path: str | None = None) -> str:
+    """Reemplaza el valor de una clave ya cargada. La etiqueta no cambia."""
+    buscada = (etiqueta or "").strip()
+    if not buscada:
+        raise ValueError("Elija qué clave cambiar.")
+    if not clave_por_etiqueta(buscada) and path is None:
+        raise ValueError("Esa clave no está cargada.")
+    clave = _validar_clave_cursor(valor)
+    for label, previa in load_cursor_api_keys():
+        if previa == clave and label != buscada:
+            raise ValueError("Esa clave ya está cargada con otro nombre.")
+    ruta = path or ENV_PATH
+    lineas, sep = _leer_env_lineas(ruta)
+    idx = _linea_de_etiqueta(lineas, buscada)
+    if idx < 0:
+        raise ValueError("Esa clave no está en .env. No se puede cambiar desde el panel.")
+    nombre = buscada.partition("#")[0]
+    lineas[idx] = f"{nombre}={clave}"
+    _escribir_env_lineas(ruta, lineas, sep)
+    return buscada
+
+
 KB_SEP = "~"
 
 
@@ -235,6 +412,10 @@ def es_soporte_consulta(id_caso: str, motivo: str = "") -> bool:
 
 def es_prueba_req(id_caso: str, motivo: str = "") -> bool:
     return motivo in ("prueba-req", "prueba-req-chat") or str(id_caso or "").startswith("pr20")
+
+
+def _carpeta_caso(id_caso: str) -> str:
+    return os.path.relpath(caso_dir(id_caso), ROOT).replace("\\", "/")
 
 
 def caso_dir(id_caso: str) -> str:
@@ -563,7 +744,9 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "- No dé por terminado el turno hasta que esos campos del formulario estén escritos.\n"
             "- Si genera o ajusta el mockup UX: debe mostrar la **ventana propuesta** "
             "(cambioPropuestoSimple / criterios / recomendación), no la captura del problema "
-            "ni pantallas de otro REQ. Regenere con Generar mockups o reescriba el HTML."
+            "ni pantallas de otro REQ. Regenere con Generar mockups o reescriba el HTML.\n"
+            "- No escriba el manual, el guion ni la ventana flexible: cuando analisis y "
+            "recomendacion queden en solicitud.json, la oficina los dispara sola."
         )
     elif motivo == "criterios":
         extra = (
@@ -650,8 +833,9 @@ Lea del disco, en este orden:
 2. data/soporte-consultas/{id_caso}/meta.json
 3. data/soporte-consultas/{id_caso}/chat.json
 4. Si hay capturas, léalas en data/soporte-consultas/{id_caso}/imagenes/ y contrástelas con la pregunta.
-5. La base vía conocimiento/_indice_busqueda.json: solo las fichas que apliquen (y grafos en contabilidad/ si es contable). Nunca un sps.json entero.
-6. Solo si la ficha no alcanza: SQL → DESAIX; código → Qrystalos2; al final qrystalos.documentacion (config/rutas.json). Cada hueco también va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
+5. La base, antes que cualquier otra fuente: conocimiento/_indice_busqueda.json y solo la ficha indicada. Nunca un sps.json entero.
+6. El guion ya establecido de ese proceso: conocimiento/{{proceso}}/proceso.json (resumen, ventanas, controles) y el grafo de ese proceso (conocimiento/{{proceso}}/grafo-*/, nodos en su orden). La respuesta sigue ese orden. No reordene ni agregue un paso que el grafo o el flujo no tengan.
+7. Solo si la ficha leída no alcanza para un dato concreto: SQL → DESAIX; código → Qrystalos2; al final qrystalos.documentacion (config/rutas.json). Eso no autoriza a inventar el tramo que falta. Cada hueco va como handoff a Conocimiento (conocimiento/handoffs/cola.json, de consultas).
 
 {BUSQUEDA_KB}
 {_bloque_handoffs(id_caso, motivo)}
@@ -665,7 +849,9 @@ Reglas:
 - La última sección de pasos del documento también separa **Para el cliente** y **Para soporte interno**. Al cliente no le pida SQL, sqlcmd ni rutas de la oficina.
 - La respuesta oficial no se edita en pantalla: solo en meta.json. Tras un ajuste pedido por chat, la app regenera el documento sola.
 - Toda consulta SQL va en bloques ```sql … ``` (uno por consulta) o secciones «BLOQUE N» con líneas ═══; la app las muestra en formato copiar/pegar en el PDF. Esas consultas son de soporte interno.
-- No invente SP ni columnas. Si falta dato del cliente, dígalo en el chat y deje respuestaOficial con lo que sí puede afirmar desde conocimiento/ y desde la base.
+- Responda solo con lo que la ficha `leido`, el grafo y el flujo del proceso dicen. Cite proceso, SP, METODO y el paso del grafo.
+- Si falta la ficha, está en otro estado, o el grafo no cubre la pregunta: escríbalo en el chat y en respuestaOficial («No está documentado: … No puedo afirmarlo»). No rellene con un flujo parecido, un paso de otro módulo ni una pantalla que el proceso.json no nombre.
+- No invente SP, columnas, botones ni el orden del proceso. Si falta un dato del cliente en la base SQL, dígalo; no invente filas.
 - El PDF lo genera la app desde respuestaOficial + chat; no genere HTML aparte.
 - OpenAI no interviene.
 
@@ -699,6 +885,55 @@ Reglas:
 
 Al terminar, el último mensaje relevante de chat.json debe ser suyo (autor: agente).
 {_plan_subagentes(id_caso)}
+"""
+    elif motivo == "material":
+        carpeta = _carpeta_caso(id_caso)
+        return f"""Eres quien redacta material para quien usa Qrystalos. UN turno y termina.
+
+Caso: {id_caso}
+Carpeta: {carpeta}
+
+Lea, en este orden, lo que exista: {carpeta}/solicitud.json (analisis, alcance, recomendacion, cambioPropuestoSimple), {carpeta}/meta.json (respuestaOficial o veredictoTexto) y el último mensaje del coordinador en {carpeta}/chat.json. Escriba manual, capacitación, documento explicativo y planeación en el mismo archivo, cada uno con su título. Si el texto de origen no trae pantalla (una revisión o una prueba), no invente una: deje el manual en lo que sí quedó escrito.
+
+Reglas:
+- Español, en lenguaje de pantalla. Sin nombres de procedimiento salvo un apartado final «Para soporte interno».
+- Use solo pasos, botones y pantallas que ya estén en el análisis o en el proceso documentado. Si falta un dato, escriba «no documentado».
+- No reabra el SQL ni proponga un módulo nuevo.
+- Guarde el texto en {carpeta}/material/documento.md
+- Resuma en {carpeta}/chat.json (autor: agente) qué quedó.
+
+Al terminar, el último mensaje del chat es suyo y documento.md existe.
+"""
+    elif motivo == "mockup-ventana":
+        carpeta = _carpeta_caso(id_caso)
+        return f"""Eres quien arma la ventana de muestra de Qrystalos. UN turno y termina.
+
+Caso: {id_caso}
+Carpeta: {carpeta}
+
+1. En {carpeta}/solicitud.json y en el proceso documentado, ubique la pantalla de este cambio.
+2. Abra el Vue de esa pantalla en Qrystalos2. Copie títulos, pestañas, botones y columnas que el archivo ya tiene.
+3. Escriba un HTML autónomo que se parezca a esa ventana: misma jerarquía, mismas etiquetas. Marque solo el cambio propuesto.
+4. No agregue botones, menús ni columnas que el Vue no tenga.
+5. Guárdelo en {carpeta}/mockups/mockup-ventana-flexible.html
+6. Avise en {carpeta}/chat.json (autor: agente) con la ruta.
+
+Al terminar, el HTML existe y el último mensaje del chat es suyo.
+"""
+    elif motivo == "presentacion":
+        carpeta = _carpeta_caso(id_caso)
+        return f"""Eres quien prepara el guion de capacitación de Qrystalos. UN turno y termina.
+
+Caso: {id_caso}
+Carpeta: {carpeta}
+
+Lea el análisis ya cerrado en {carpeta}/solicitud.json y, si existe, {carpeta}/material/documento.md.
+
+Escriba un guion hablado, en el orden de la pantalla: qué muestra, qué hace la persona, qué no debe hacer. Sin procedimientos ni rutas internas.
+
+Guárdelo en {carpeta}/material/guion-capacitacion.md y resuma en {carpeta}/chat.json (autor: agente).
+
+No invente pasos. Si falta un tramo, escriba «no documentado».
 """
     return f"""Eres el agente de coordinación de Qrystalos BA. Trabaja SOLO este caso.
 
@@ -1117,16 +1352,16 @@ async def _soltar_turnos_vivos(client, agent_id: str) -> int:
     return n
 
 
-def run_caso(id_caso: str, motivo: str) -> int:
+def run_caso(id_caso: str, motivo: str, clave: str = "") -> int:
     sid = kb_sid(id_caso)
     if not sid:
-        return _run_caso_impl(id_caso, motivo)
+        return _run_caso_impl(id_caso, motivo, clave)
     import conocimiento as kb
 
     canal = canal_de(id_caso, motivo)
     kb.preparar_sesion_run(canal, sid)
     try:
-        return _run_caso_impl(id_caso, motivo)
+        return _run_caso_impl(id_caso, motivo, clave)
     finally:
         try:
             kb.absorber_sesion_run(canal, sid)
@@ -1134,7 +1369,7 @@ def run_caso(id_caso: str, motivo: str) -> int:
             print(f"[absorber_sesion_run] {exc}", flush=True)
 
 
-def _run_caso_impl(id_caso: str, motivo: str) -> int:
+def _run_caso_impl(id_caso: str, motivo: str, clave: str = "") -> int:
     if motivo == "documentar-auto":
         write_bot(
             id_caso,
@@ -1192,19 +1427,43 @@ def _run_caso_impl(id_caso: str, motivo: str) -> int:
         )
         return 1
 
-    meta = _load_active_key_meta()
-    start = meta.get("indice") if isinstance(meta.get("indice"), int) else 0
-    if not (0 <= start < len(pairs)):
-        start = 0
-    order = list(range(start, len(pairs))) + list(range(0, start))
+    pedida = (clave or "").strip()
+    if pedida:
+        idx_pedida = next((i for i, (label, _key) in enumerate(pairs) if label == pedida), -1)
+        if idx_pedida < 0:
+            write_bot(
+                id_caso,
+                estado="sin_clave",
+                error="La clave asignada a este agente no está cargada.",
+                pid=os.getpid(),
+                motivo=motivo,
+            )
+            append_chat(
+                id_caso,
+                "sistema",
+                "Este agente tiene una clave asignada que ya no está en .env. Cámbiela en el panel de agentes.",
+            )
+            latido.set()
+            return 1
+        order = [idx_pedida]
+    else:
+        meta = _load_active_key_meta()
+        start = meta.get("indice") if isinstance(meta.get("indice"), int) else 0
+        if not (0 <= start < len(pairs)):
+            start = 0
+        order = list(range(start, len(pairs))) + list(range(0, start))
 
     try:
         for pos, idx in enumerate(order):
             label, key = pairs[idx]
             os.environ["CURSOR_API_KEY"] = key
+            write_bot(id_caso, claveEtiqueta=label)
             try:
                 codigo = asyncio.run(_run_caso_async(id_caso, motivo, key))
-                set_active_api_key_index(idx, label)
+                if not pedida:
+                    set_active_api_key_index(idx, label)
+                if codigo == 0:
+                    _disparar_siguiente(id_caso, motivo)
                 return codigo
             except CursorAgentError as exc:
                 if isinstance(exc, AuthenticationError) and pos + 1 < len(order):
@@ -1392,6 +1651,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Bot Cursor para Qrystalos BA")
     parser.add_argument("--check", action="store_true", help="Validar CURSOR_API_KEY")
     parser.add_argument("--caso", help="ID caso activo")
+    parser.add_argument("--clave", default="", help="Etiqueta de CURSOR_API_KEY asignada al agente")
     parser.add_argument(
         "--motivo",
         default="chat",
@@ -1410,6 +1670,9 @@ def main() -> int:
             "revisar-sql-chat",
             "soporte-consulta-analisis",
             "soporte-consulta-chat",
+            "material",
+            "mockup-ventana",
+            "presentacion",
         ],
     )
     args = parser.parse_args()
@@ -1423,7 +1686,7 @@ def main() -> int:
         print("No existe la carpeta del caso o de proceso: " + args.caso)
         return 1
     _adjuntar_log(args.caso)
-    return run_caso(args.caso, args.motivo)
+    return run_caso(args.caso, args.motivo, args.clave or "")
 
 
 def _adjuntar_log(id_caso: str) -> None:
@@ -1626,13 +1889,14 @@ def _pythonw(exe: list[str]) -> list[str]:
     return out
 
 
-def _escribir_vbs_bot(exe: list[str], script: str, id_caso: str, motivo: str) -> str:
+def _escribir_vbs_bot(exe: list[str], script: str, id_caso: str, motivo: str, clave: str = "") -> str:
     import subprocess
 
     # sh.Run ..., 0 oculta la consola de python.exe; los hijos la heredan oculta.
-    linea = subprocess.list2cmdline(
-        list(exe) + [script, "--caso", id_caso, "--motivo", motivo]
-    )
+    cmd = list(exe) + [script, "--caso", id_caso, "--motivo", motivo]
+    if (clave or "").strip():
+        cmd += ["--clave", clave.strip()]
+    linea = subprocess.list2cmdline(cmd)
     vbs_cmd = linea.replace('"', '""')
     vbs_path = os.path.join(caso_dir(id_caso), "lanzar-bot.vbs")
     with open(vbs_path, "w", encoding="ascii", errors="replace") as fh:
@@ -1701,6 +1965,53 @@ def _esperar_arranque(id_caso: str, timeout_sec: float = 20) -> dict:
     return {"ok": False, "error": "proceso_muerto", "detalle": ultimo.get("error") or ""}
 
 
+def _clave_del_turno(id_caso: str, motivo: str) -> str:
+    """Etiqueta asignada al rol. Vacío = la clave predeterminada."""
+    try:
+        import agentes_panel
+
+        return agentes_panel.clave_de(rol_de(id_caso, motivo))
+    except Exception:
+        return ""
+
+
+def _disparar_siguiente(id_caso: str, motivo: str) -> None:
+    """Con los datos escritos, lanza el manual, la ventana, el guion y el armado."""
+    try:
+        import orquesta
+    except Exception:
+        return
+    nxt = ""
+    if motivo in ("material", "mockup-ventana", "presentacion"):
+        nxt = orquesta.avanzar(id_caso, motivo)
+    elif orquesta.siguiente(motivo):
+        if not orquesta.datos_listos(id_caso, motivo):
+            append_chat(
+                id_caso,
+                "sistema",
+                "El texto de este proceso todavía no quedó escrito. Cuando esté, entra al mismo cierre que los demás: manual y documento armado.",
+            )
+            return
+        nxt = orquesta.abrir_cierre(id_caso, motivo)
+    if not nxt:
+        return
+    if nxt == "armar":
+        try:
+            ruta = orquesta.armar(id_caso)
+        except Exception as exc:  # noqa: BLE001
+            append_chat(id_caso, "sistema", "No pude armar el documento: " + str(exc))
+            return
+        append_chat(id_caso, "sistema", "Documento armado: " + ruta)
+        return
+    nombres = {
+        "material": "el manual, la capacitación y la planeación",
+        "mockup-ventana": "la ventana, parecida a la pantalla",
+        "presentacion": "el guion de la capacitación",
+    }
+    append_chat(id_caso, "sistema", "Datos listos. Sigue " + nombres.get(nxt, nxt) + ".")
+    lanzar_bot(id_caso, nxt, encadenado=True)
+
+
 def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> dict:
     if motivo == "documentar-auto":
         return {"ok": False, "error": "barrido_deshabilitado"}
@@ -1709,7 +2020,17 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
         return {"ok": True, "yaCorria": True, "pid": actual.get("pid")}
     if not os.path.isdir(caso_dir(id_caso)):
         return {"ok": False, "error": "sin_caso"}
-    if not load_api_key():
+    clave = _clave_del_turno(id_caso, motivo)
+    if clave:
+        if not clave_por_etiqueta(clave):
+            write_bot(
+                id_caso,
+                estado="sin_clave",
+                error="La clave asignada a este agente no está cargada.",
+                motivo=motivo,
+            )
+            return {"ok": False, "error": "sin_clave"}
+    elif not load_api_key():
         write_bot(id_caso, estado="sin_clave", error="Falta CURSOR_API_KEY en .env", motivo=motivo)
         return {"ok": False, "error": "sin_clave"}
 
@@ -1733,7 +2054,7 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
     )
 
     if _es_cuenta_servicio():
-        vbs_path = _escribir_vbs_bot(exe, script, id_caso, motivo)
+        vbs_path = _escribir_vbs_bot(exe, script, id_caso, motivo, clave)
         ok, detalle = _lanzar_via_tarea(vbs_path)
         if not ok:
             write_bot(
@@ -1756,8 +2077,11 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
     with open(log_path, "a", encoding="utf-8") as log:
         # python.exe + CREATE_NO_WINDOW: consola oculta que heredan node y los shells del SDK.
         # Con pythonw cada hijo de consola abría su propia ventana negra.
+        cmd = list(exe) + [script, "--caso", id_caso, "--motivo", motivo]
+        if clave:
+            cmd += ["--clave", clave]
         proc = subprocess.Popen(
-            list(exe) + [script, "--caso", id_caso, "--motivo", motivo],
+            cmd,
             cwd=ROOT,
             stdout=log,
             stderr=subprocess.STDOUT,

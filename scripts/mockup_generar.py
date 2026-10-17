@@ -1302,6 +1302,87 @@ def render_mockup_emulado(ctx: dict, solicitud: dict, control: dict, proceso: di
 </html>"""
 
 
+_MOCK_CSS = """
+.sc-mock { display: grid; gap: .75rem; margin: .4rem 0 1rem; }
+.sc-mock .win { border: 1px solid #e4d5c0; border-radius: 8px; overflow: hidden; background: #fff; break-inside: avoid; }
+.sc-mock .win-top { background: #E67817; color: #fff; padding: .45rem .75rem; font-weight: 700; font-size: .84rem; }
+.sc-mock .win-path { background: #fff4e8; color: #5d4e37; padding: .28rem .75rem; font-size: .75rem; }
+.sc-mock .win-body { padding: .7rem .75rem .8rem; }
+.sc-mock .win-note { margin: 0 0 .45rem; font-size: .8rem; color: #344054; }
+.sc-mock .chips { display: flex; flex-wrap: wrap; gap: .35rem; margin: .15rem 0 .45rem; }
+.sc-mock .chip { border: 1px solid #d0d5dd; border-radius: 4px; padding: .18rem .45rem; font-size: .74rem; background: #f8fafc; color: #172033; }
+.sc-mock .chip-tab { background: #175cd3; color: #fff; border-color: #175cd3; }
+.sc-mock .cols { margin: 0; font-size: .76rem; color: #344054; }
+"""
+
+
+def _etiqueta_de_pantalla(nombre: str) -> bool:
+    texto = (nombre or "").strip()
+    if len(texto) < 2:
+        return False
+    if " " not in texto and re.search(r"[a-záéíóúñ][A-Z]", texto):
+        return False
+    return True
+
+
+def _piezas_vue(ventana: dict) -> tuple[list[str], list[str], list[str], list[str]]:
+    pista = " ".join(str(ventana.get(k) or "") for k in ("vue", "path", "ruta", "uso"))
+    archivo = _resolver_vue(pista)
+    if not archivo:
+        return [], [], [], []
+    plantilla = _trozo_plantilla(archivo)
+    corte = plantilla.find("<q-table")
+    zona = plantilla[:corte] if corte > 400 else plantilla[:20000]
+    filtros = [n for n in _etiquetas(zona, 12) if _etiqueta_de_pantalla(n)][:8]
+    botones = [n for n in (_botones_vue(zona) or _botones_vue(plantilla[:20000])) if _etiqueta_de_pantalla(n)][:8]
+    pestanas = [n for n in (_pestanas_vue(zona) or _pestanas_vue(plantilla)) if _etiqueta_de_pantalla(n)][:6]
+    columnas = [n for n in _columnas_script(archivo) if _etiqueta_de_pantalla(n)][:8]
+    return pestanas, filtros, botones, columnas
+
+
+def fragmento_pantallas(ventanas: list[dict]) -> str:
+    """Mockup de las ventanas citadas, con las etiquetas reales del frontend."""
+    tarjetas: list[str] = []
+    for ventana in ventanas or []:
+        if not isinstance(ventana, dict):
+            continue
+        uso = str(ventana.get("uso") or "Pantalla").strip()
+        path = str(ventana.get("path") or ventana.get("ruta") or "").strip()
+        entrada = _clip(ventana.get("entrada") or "", 220)
+        if re.search(r"\b(?:SPQ_|SPK_|FNK_|MODELO|METODO)\b", entrada):
+            entrada = ""
+        pestanas, filtros, botones, columnas = _piezas_vue(ventana)
+        chips = []
+        for nombre in pestanas:
+            chips.append(f'<span class="chip chip-tab">{_esc(nombre)}</span>')
+        for nombre in botones:
+            chips.append(f'<span class="chip">{_esc(nombre)}</span>')
+        for nombre in filtros:
+            if nombre not in botones:
+                chips.append(f'<span class="chip">{_esc(nombre)}</span>')
+        nota = f'<p class="win-note">{_esc(entrada)}</p>' if entrada else ""
+        cols = (
+            f'<p class="cols">Columnas: {_esc(", ".join(columnas))}</p>'
+            if columnas
+            else ""
+        )
+        barra = f'<div class="chips">{"".join(chips)}</div>' if chips else ""
+        tarjetas.append(
+            '<article class="win">'
+            f'<div class="win-top">{_esc(uso)}</div>'
+            f'<div class="win-path">{_esc(path or "Ruta documentada en el proceso")}</div>'
+            f'<div class="win-body">{nota}{barra}{cols}</div>'
+            "</article>"
+        )
+    if not tarjetas:
+        return ""
+    return (
+        f"<style>{_MOCK_CSS}</style>"
+        '<h3>Así se ve en el aplicativo</h3>'
+        f'<div class="sc-mock">{"".join(tarjetas)}</div>'
+    )
+
+
 def render_mockup_ux(ctx: dict, solicitud: dict) -> str:
     sql = solicitud.get("sql") or {}
     proceso_id = (sql.get("procesoId") or ctx.get("procesoId") or "").strip()

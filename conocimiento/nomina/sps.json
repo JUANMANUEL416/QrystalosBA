@@ -1,6 +1,6 @@
 {
   "procesoId": "nomina",
-  "actualizado": "2026-10-14T09:00:00",
+  "actualizado": "2026-10-17T15:10:00",
   "nota": "Leídos 2026-10-03 desde IXONLINE/SQL (PREVERSION idéntica a la liberada 2.0.7; anterior 2.0.6). Fichas de 2026-09-12 (DIAN, motor, retiros) conservadas. Hallazgos: REQ 0100016359 y 0100016378 ya implementados; retefuente sin tope de renta exenta; NEDIA·GUARDAR y PRSD·ELIMINAR no validan período/cuota; GENERATE_NIEPEG no exige CERRADO. Añadidos 2026-10-04 desde IXONLINE/SQL (PREVERSION idéntica a 2.0.7): SPQ_NCINGRET_COL, SPQ_CONTRATOS_NOM, SPQ_FORMATOS_NOMINA, SPQ_NSOLICERT, SPQ_TURNOS_NOMINA, SPK_RESUMEN_TURNOS, SPQ_CAP, SPQ_TALL, SPQ_FORMULARIO_TALLER, SPQ_EMPLEADOS_TALL, SPQ_CALIFICAR_RESPUESTAS_TEXTO; SPQ_NOM_REPORTES con sus 13 métodos.",
   "sps": [
     {
@@ -1014,8 +1014,8 @@
       "tipo": "SPQ",
       "modelo": "NOM_DIAN",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-09-12T21:15:18",
+      "fuente": "sql/SPQ_NOM_DIAN.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "cola": "No inserta FDIANR. PROCESAR_NIE solo pone ESTADODIAN=1 (cola). El externo + TK cierran el circuito.",
       "metodos": [
         {
@@ -1061,25 +1061,6 @@
           "estado": "leido"
         },
         {
-          "id": "GET_NIEPEG_PERIOD",
-          "hace": "Cuenta NIEPEG no anulados del consecutivo.",
-          "estado": "parcial",
-          "capaId": "02-operacion",
-          "gateId": "envio-dian"
-        },
-        {
-          "id": "GET_TOTALS",
-          "hace": "Totales neto/ingresos/egresos/empleados del filtro DIAN.",
-          "estado": "parcial",
-          "gateId": "envio-dian"
-        },
-        {
-          "id": "GET_NIEPED",
-          "hace": "Detalle VWK_NIEPED de un empleado/período.",
-          "estado": "parcial",
-          "gateId": "envio-dian"
-        },
-        {
           "id": "CHANGE_NOM_NIEPEG",
           "hace": "Nota reemplazo/eliminación: inserta NIEPEG nuevo (ESTADODIAN=1) y anula el base.",
           "estado": "leido",
@@ -1103,6 +1084,54 @@
           "capaId": "02-operacion",
           "gateId": "envio-dian",
           "estado": "leido"
+        },
+        {
+          "id": "GET_TOTALS",
+          "estado": "leido",
+          "hace": "Suma neto, ingresos y egresos y cuenta empleados del consecutivo año+mes en NIEPEG, según anulado, tipo de nota y estado DIAN. 4 en tipo y 5 en estado significan todos.",
+          "valida": [
+            "ANO",
+            "MES",
+            "ANULADOS",
+            "TIPONOM",
+            "ESTADO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian"
+        },
+        {
+          "id": "GET_NIEPED",
+          "estado": "leido",
+          "hace": "Detalle del empleado en la vista VWK_NIEPED para el consecutivo año+mes.",
+          "valida": [
+            "ANO",
+            "MES",
+            "NUMDOC"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian"
+        },
+        {
+          "id": "GET_NIEPEG_PERIOD",
+          "estado": "leido",
+          "hace": "Cuenta documentos electrónicos no anulados de un consecutivo.",
+          "valida": [
+            "CONSECUTIVO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "02-operacion",
+          "gateId": "envio-dian"
         }
       ]
     },
@@ -1160,8 +1189,8 @@
       "tipo": "SPQ",
       "modelo": "LIQUIDACION",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-09-12T21:35:00",
+      "fuente": "sql/SPQ_LIQUIDACION.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "cola": "Orquesta generar/cerrar/abrir. NPER.CERRADO lo escribe SPQ_CERRAR_NOMI / SPQ_ABRIR_NOMI.",
       "metodos": [
         {
@@ -1224,33 +1253,91 @@
         },
         {
           "id": "EXPORTAR_PDF",
-          "hace": "Listado NIEPE del CNSPAGO para PDF.",
-          "estado": "parcial",
-          "gateId": "liquidacion"
+          "estado": "leido",
+          "hace": "Listado del período para PDF: documento, nombres, cargo, centro, ingresos, egresos, neto, aportes y fechas.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "ventanaFe": "LiquidaNomComponent · Generar / Cerrar (CLOSE)"
         },
         {
           "id": "EXPORTAR_EXCEL",
-          "hace": "Export Excel de liquidación.",
-          "estado": "parcial",
-          "gateId": "liquidacion"
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL esa misma consulta, sin las fechas.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "ventanaFe": "LiquidaNomComponent · Generar / Cerrar (CLOSE)"
         },
         {
           "id": "EXPORTAR_SOI",
-          "hace": "Export SOI.",
-          "estado": "listado",
-          "gateId": "liquidacion"
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL la consulta SELECT * FROM TFK_SOI del CNSPAGO.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE",
+            "TFK_SOI"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "ventanaFe": "LiquidaNomComponent · Generar / Cerrar (CLOSE)"
         },
         {
           "id": "EXPORTAR_DETALLE_NOMINA",
-          "hace": "Export detalle.",
-          "estado": "listado",
-          "gateId": "liquidacion"
+          "estado": "leido",
+          "hace": "Arma un pivote de conceptos del período (valor por concepto) y lo deja en KEXCEL_FILL.",
+          "valida": [
+            "CNSPAGO",
+            "Que el período tenga conceptos; si no, el IN del pivote queda vacío"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE",
+            "FNK_LIMPIATEXTO"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "ventanaFe": "LiquidaNomComponent · Generar / Cerrar (CLOSE)"
         },
         {
           "id": "EXPORTAR_CUENTAS_DBCR",
-          "hace": "Export cuentas DB/CR.",
-          "estado": "listado",
-          "gateId": "liquidacion"
+          "estado": "leido",
+          "hace": "Detalle del período con cuenta débito y crédito de KMCOM por concepto, área y centro, y el NIT del tercero de la prestación.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [
+            "KMCOM es LEFT JOIN: la cuenta puede venir vacía"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion",
+          "ventanaFe": "LiquidaNomComponent · Generar / Cerrar (CLOSE)"
         }
       ]
     },
@@ -1258,8 +1345,8 @@
       "nombre": "SPQ_NOM_REPORTES",
       "tipo": "SPQ",
       "modelo": "NOM_REPORTES",
-      "estado": "parcial",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_REPORTES.sql (IXONLINE/SQL, leído 2026-10-17)",
       "notaArchivo": "Bajado DESAIX.SQLIX PREVERSION 2026-09-15. Hash idéntico a 2.0.0 y 1.8.32. Solo se fichó PAGOS_X_TERCEROS (REQ 6418).",
       "llamadoDesde": [
         "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)",
@@ -1290,164 +1377,208 @@
         },
         {
           "id": "TOTAL_X_CONCEPTOS",
-          "estado": "listado",
-          "hace": "Resumen por concepto del período (totales devengo/deducción).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Totales del período por concepto: valor del empleado, del empleador y la suma.",
+          "valida": [
+            "CNSPAGO"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "TOTAL_DETALLADO_X_CONCEPTOS",
-          "estado": "listado",
-          "hace": "Resumen por concepto abierto por detalle.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "El mismo total, con el detalle JSON de cada empleado y el nombre del período.",
+          "valida": [
+            "CNSPAGO"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "EMPLEADO_DET_X_CONCEPTO",
-          "estado": "listado",
-          "hace": "Empleados que componen un concepto.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Detalle JSON de empleados de un concepto del período.",
+          "valida": [
+            "CNSPAGO",
+            "CODCONCEPTO"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "TERCEROS_DET_X_CONCEPTO",
-          "estado": "listado",
-          "hace": "Terceros (EPS, fondos, libranzas) que componen un concepto.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Suma del concepto agrupada por tercero de la prestación.",
+          "valida": [
+            "CNSPAGO",
+            "CODCONCEPTO"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "TERCEROS_DET_X_CONCEPTO_X_EMP",
-          "estado": "listado",
-          "hace": "Tercero × empleado para un concepto.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Por tercero del concepto, el detalle JSON de empleados.",
+          "valida": [
+            "CNSPAGO",
+            "CODCONCEPTO"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "ACUMULADO_X_EMPLEADOS",
-          "estado": "listado",
-          "hace": "Acumulados del año por empleado (VWK_NOM_ACUMULADOS).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Acumulado de la vista VWK_NOM_ACUMULADOS entre dos fechas, con ingresos y egresos en JSON. Filtros opcionales de centro, área, empleado y concepto.",
+          "valida": [
+            "FECHAINI",
+            "FECHAFIN"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "ACUMULADO_X_DETALLE",
-          "estado": "listado",
-          "hace": "Acumulados abiertos por concepto y período.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "El mismo rango, con el detalle de conceptos además de ingresos y egresos.",
+          "valida": [
+            "FECHAINI",
+            "FECHAFIN"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "EXPORTAR_ACUMULADOS",
-          "estado": "listado",
-          "hace": "Acumulados a Excel (KEXCEL_FILL).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL la consulta de VWK_NOM_ACUMULADOS con los mismos filtros.",
+          "valida": [
+            "FECHAINI",
+            "FECHAFIN"
+          ],
           "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "",
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "GUARDAR_CONF_REP",
-          "estado": "listado",
-          "hace": "Guarda en TGEN los conceptos que entran al reporte de prestaciones por tipo (permiso BtnConfigurarRepPreSoc). KO si ya estaba.",
-          "valida": [],
-          "noValida": [],
+          "estado": "leido",
+          "hace": "Inserta o edita la lista de conceptos de un reporte de prestación social (TGEN tabla REPNOMPRESO).",
+          "valida": [
+            "PROCESO INSERTAR o EDITAR",
+            "CAMPO",
+            "CODIGO"
+          ],
+          "noValida": [
+            "EDITAR no revisa que el código quede duplicado",
+            "Otro PROCESO responde OK y no escribe"
+          ],
           "errores": [
-            " YA SE ENCUENTRAN REGISTRADO PARA EL REPORTE DE "
+            "EL CODIGO {código} YA SE ENCUENTRAN REGISTRADO PARA EL REPORTE DE {campo}"
           ],
           "llama": [],
-          "efecto": "",
+          "efecto": "INSERT o UPDATE TGEN.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "ELIMINAR_CONF_REP",
-          "estado": "listado",
-          "hace": "Quita un concepto de la configuración del reporte.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Borra una fila de esa configuración por IDTGEN.",
+          "valida": [
+            "IDTGEN"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "DELETE TGEN.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "REPORTE_PRESOCIAL",
-          "estado": "listado",
-          "hace": "Reporte de prestaciones sociales por tipo y mes según la configuración TGEN.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Líneas liquidadas del año (y del mes, si no viene 0) cuyos conceptos están en REPNOMPRESO para el tipo. Si el tipo no es Vacaciones, toma el CNSPAGO de la nómina especial TGEN CODNESPECIAL.",
+          "valida": [
+            "ANO",
+            "TIPO"
+          ],
+          "noValida": [
+            "Compara NIEPED.TIPO con INGRESO y EGRESO en mayúsculas",
+            "Si no hay nómina especial, el filtro de CNSPAGO queda vacío y no devuelve filas"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         },
         {
           "id": "REPORTE_NIEPE",
-          "estado": "listado",
-          "hace": "Reporte de nómina del período filtrado por área / centro / cargo / sede.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Colilla de datos del CNSPAGO: neto, devengados y deducidos que se imprimen. Filtra área, centro y cargo; 0 en el filtro significa todos. El texto busca en NIT, nombre, centro, cargo y área.",
+          "valida": [
+            "CNSPAGO"
+          ],
+          "noValida": [
+            "SEDE se lee y no entra al WHERE",
+            "El comodín de cargo, nivel y grado mira @CARGO = 0, y el texto comparado es CODCARGO, NIVEL y GRADO"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
-          "gateId": "liquidacion",
-          "ventanaFe": "pages/nom/reportes (RepLiquidaciones / RepPrenomina / RepPreSociales)"
+          "gateId": "prenomina",
+          "ventanaFe": "repPagosTercerosComponent · PAGOS_X_TERCEROS"
         }
       ],
-      "actualizado": "2026-10-04T06:40:00"
+      "actualizado": "2026-10-17"
     },
     {
       "nombre": "SPK_GENERA_CUOTAS",
@@ -1495,8 +1626,8 @@
       "nombre": "SPQ_NOM_PRS",
       "tipo": "SPQ",
       "modelo": "NOM_PRS",
-      "estado": "parcial",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_PRS.sql (IXONLINE/SQL, leído 2026-10-17)",
       "notaArchivo": "DESAIX.SQLIX PREVERSION 2026-09-19. Idéntico a 2.0.3. REQ 0100016450: GUARDAR, GENERAR_CUOTAS, ELIMINAR_CUOTAS + SPK_GENERA_CUOTAS leídos. REFINANCIAR no existe en PREVERSION.",
       "llamadoDesde": [
         "CuotasComponent.vue · MODELO NOM_PRS"
@@ -1542,109 +1673,194 @@
         {
           "id": "GENERAR_CUOTAS",
           "estado": "leido",
-          "hace": "EXEC SPK_GENERA_CUOTAS @IDTRANSACCION, @NUMDOCUMENTO, @NUMCUOTAS, 0, @VLRSALDO, @FECHAINI.",
-          "valida": [],
-          "noValida": [
-            "No valida ESTADO del préstamo ni cuotas previas en nómina",
-            "No actualiza indicador CUOTASGENERADAS (columna aún no existe)"
+          "hace": "Genera las cuotas pendientes del saldo (préstamo menos capital ya pagado o ya descontado en nómina). No corre si la libranza está pagada o anulada, ni si el número de cuotas no supera las ya pagadas.",
+          "valida": [
+            "La libranza existe",
+            "No está Pagada ni Anulada",
+            "NUMCUOTAS mayor que cero y mayor que las ya pagadas",
+            "VLRPRESTAMO mayor que cero y no menor a lo ya descontado"
           ],
-          "errores": [],
+          "noValida": [],
+          "errores": [
+            "No existe la libranza {número}",
+            "La libranza {número} esta {estado} y no permite generar cuotas",
+            "Debe indicar el numero de cuotas antes de generarlas",
+            "Debe indicar el valor del prestamo antes de generar las cuotas",
+            "El numero de cuotas debe ser mayor a las ya pagadas ({n})",
+            "El valor del prestamo no puede ser menor a lo ya descontado ({valor})"
+          ],
           "llama": [
             "SPK_GENERA_CUOTAS"
           ],
-          "efecto": "Delega en SPK_GENERA_CUOTAS: borra PRSD no Pagada con NUMCUOTA>última pagada e inserta plan nuevo (ver ficha SPK).",
+          "efecto": "EXEC SPK_GENERA_CUOTAS.",
           "capaId": "03-alimenta",
           "gateId": "gestion-libranzas",
-          "ventanaFe": "CuotasComponent · Generar cuotas"
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "ELIMINAR_CUOTAS",
           "estado": "leido",
-          "hace": "DELETE PRSD WHERE ESTADO <> 'Pagada' AND IDTRANSACCION + NUMDOCUMENTO.",
-          "valida": [],
-          "noValida": [
-            "No valida CNSPAGO ni ITEM_NIEPED — cuotas en nómina PorPagar pueden borrarse",
-            "No pone indicador en PRS ni recalcula VLRSALDO encabezado"
+          "hace": "Borra las cuotas que no están pagadas, ni anuladas, ni ligadas a un período. Recalcula el saldo de la libranza. Si solo quedan pagadas o aplicadas, no borra nada.",
+          "valida": [
+            "Hay cuotas pendientes sin período"
           ],
-          "errores": [],
+          "noValida": [],
+          "errores": [
+            "No hay cuotas pendientes para eliminar. Las cuotas pagadas o aplicadas en nomina se conservan"
+          ],
           "llama": [],
-          "efecto": "Elimina cuotas no Pagada; deja PRSD vacío o parcial sin rollback de encabezado.",
+          "efecto": "DELETE PRSD pendientes. UPDATE PRS.VLRSALDO.",
           "capaId": "03-alimenta",
           "gateId": "gestion-libranzas",
-          "ventanaFe": "CuotasComponent · Borrar cuotas"
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "REFINANCIAR",
-          "estado": "listado",
-          "hace": "No existe en SPQ_NOM_PRS PREVERSION 2.0.3 — desarrollo nuevo REQ 6450.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "no_existe",
+          "hace": "No está en el cuerpo de SPQ_NOM_PRS.",
+          "valida": [
+            "no aplica (no hay rama)"
+          ],
+          "noValida": [
+            "El método figura en la pantalla y no en este procedimiento"
+          ],
+          "errores": "no aplica (no hay rama)",
           "llama": [],
-          "efecto": "Pendiente diseño.",
+          "efecto": "no aplica (no hay rama)",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "CALUCLA_CUOTAS",
-          "estado": "listado",
-          "hace": "Calcula VLRCUOTA/TTLPRESTAMO cuando MANINTERESES=0 según saldo y cuotas pagadas.",
+          "estado": "leido",
+          "hace": "Calcula la cuota del saldo que falta. Si ya hay cuotas pagadas o con período, el saldo es el préstamo menos el capital pagado. El nombre del método lleva el typo CALUCLA.",
+          "valida": [
+            "NUMCUOTAS mayor que las ya pagadas",
+            "Saldo mayor que cero"
+          ],
+          "noValida": [
+            "No graba PRSD"
+          ],
+          "errores": [
+            "Debe indicar el numero de cuotas para calcular",
+            "El numero de cuotas debe ser mayor a las ya pagadas ({n})",
+            "Debe indicar el valor del prestamo para calcular las cuotas"
+          ],
+          "llama": [],
+          "efecto": "No escribe. Devuelve VLRCUOTA, TTLPRESTAMO, VLRINTERESES y VLRSALDO.",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "ENVIAR_A_CXP",
-          "estado": "listado",
-          "hace": "EXEC SPK_GENCXP_PRESTAMO_NOMI.",
+          "estado": "leido",
+          "hace": "Genera la cuenta por pagar del préstamo.",
+          "valida": [
+            "NUMDOCUMENTO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [
             "SPK_GENCXP_PRESTAMO_NOMI"
           ],
-          "capaId": "04-unido",
-          "gateId": "gestion-libranzas"
+          "efecto": "EXEC SPK_GENCXP_PRESTAMO_NOMI.",
+          "capaId": "03-alimenta",
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "MARCAR_PAGADA",
-          "estado": "listado",
-          "hace": "Marca PRSD no pagadas/anuladas como Pagada y PRS Pagada con saldo 0.",
+          "estado": "leido",
+          "hace": "Marca como pagadas las cuotas que no están pagadas ni anuladas, y deja la libranza en Pagada con saldo cero. Si la cuota ya tiene período de nómina, no le cambia la observación.",
+          "valida": [
+            "La libranza existe",
+            "No está anulada",
+            "Tiene cuotas y no todas están anuladas"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe indicar el numero de documento de la libranza",
+            "No existe la libranza {número}",
+            "La libranza {número} se encuentra anulada y no puede marcarse como pagada",
+            "La libranza {número} no tiene cuotas generadas",
+            "La libranza {número} solo tiene cuotas anuladas"
+          ],
+          "llama": [],
+          "efecto": "UPDATE PRSD y PRS.",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "ELIMINAR",
-          "estado": "listado",
-          "hace": "DELETE PRS solo si no hay filas PRSD.",
-          "errores": [
-            "EXISTE CUOTAS RELACIONADOAS AL PRESTAMO … NO ES POSIBLE ELIMINARLO"
+          "estado": "leido",
+          "hace": "Borra el encabezado de la libranza si no tiene cuotas.",
+          "valida": [
+            "NUMDOCUMENTO sin filas en PRSD"
           ],
+          "noValida": [],
+          "errores": [
+            "EXISTE CUOTAS RELACIONADOAS AL PRESTAMO {número} NO ES POSIBLE ELIMINARLO"
+          ],
+          "llama": [],
+          "efecto": "DELETE PRS.",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "CONSULTAR_PENDIENTES_HOMOLOG",
-          "estado": "listado",
-          "hace": "Lista PRS PorPagar del deudor retirado con cuotas pendientes.",
+          "estado": "leido",
+          "hace": "Lista libranzas por pagar del contrato origen, con cuotas por pagar, si ese contrato tiene fecha de retiro.",
+          "valida": [
+            "NEMP del origen con FECHARETIRO"
+          ],
+          "noValida": [],
+          "errores": [
+            "El contrato origen no existe o no tiene fecha de retiro registrada"
+          ],
+          "llama": [],
+          "efecto": "No escribe.",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         },
         {
           "id": "HOMOLOGAR_NUMDOC",
-          "estado": "listado",
-          "hace": "EXEC SPQ_HOMOLOGAR_PRS_NUMDOC entre contratos.",
+          "estado": "leido",
+          "hace": "Pasa las libranzas pendientes del contrato retirado al contrato destino.",
+          "valida": [
+            "Origen y destino",
+            "El origen tiene fecha de retiro",
+            "El destino existe",
+            "Hay préstamos pendientes"
+          ],
+          "noValida": [],
+          "errores": [
+            "Debe indicar contrato origen y contrato destino",
+            "El contrato origen no tiene fecha de retiro. Solo se homologan prestamos de contratos ratirados",
+            "El contrato destino no existe",
+            "No se encontraron prestamos pendientes para homologar con los criterios indicados"
+          ],
           "llama": [
             "SPQ_HOMOLOGAR_PRS_NUMDOC"
           ],
+          "efecto": "EXEC SPQ_HOMOLOGAR_PRS_NUMDOC. Devuelve la cantidad homologada.",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRS / editar préstamo"
         }
       ],
-      "actualizado": "2026-10-03"
+      "actualizado": "2026-10-17"
     },
     {
       "nombre": "SPQ_NOM_PRSD",
       "tipo": "SPQ",
       "modelo": "NOM_PRSD",
-      "estado": "parcial",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_PRSD.sql (IXONLINE/SQL, leído 2026-10-17)",
       "notaArchivo": "DESAIX.SQLIX PREVERSION 2026-09-19 (= 2.0.3). REQ 6450: GUARDAR y ELIMINAR leídos.",
       "llamadoDesde": [
         "CuotasComponent.vue · detalle cuotas · MODELO NOM_PRSD"
@@ -1689,12 +1905,21 @@
         },
         {
           "id": "OBTENER_VLRCUOTA",
-          "estado": "listado",
-          "hace": "SUM(VLRCUOTA) del plan.",
+          "estado": "leido",
+          "hace": "Suma el valor de las cuotas no anuladas del documento. Si no viene transacción, usa PRS.",
+          "valida": [
+            "NUMDOCUMENTO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [],
+          "efecto": "No escribe. Devuelve VLRCUOTA.",
           "capaId": "03-alimenta",
-          "gateId": "gestion-libranzas"
+          "gateId": "gestion-libranzas",
+          "ventanaFe": "CuotasComponent · onSavePRSD"
         }
-      ]
+      ],
+      "actualizado": "2026-10-17"
     },
     {
       "nombre": "SPQ_LIQUIDAR_NOMI",
@@ -2462,20 +2687,63 @@
     {
       "nombre": "SPQ_PROVISIONES",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PROVISIONES.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "PROVISIONES",
       "metodos": [
         {
-          "id": "GENERA_RPDX_REPORTE / ELIMINA_RPDX_REPORTE / EXPORTAR_EXCEL",
-          "estado": "listado",
-          "hace": "Reporte de provisiones a RPDX temporal y Excel.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "id": "GENERA_RPDX_REPORTE",
+          "estado": "leido",
+          "hace": "Arma el cruce de provisiones del año en RPDX. La clase de NVAC elige el concepto TGEN (ProvPrimaJ, ProvPrimaD, ProvCesan, ProvVaca, ProvICesan) y el rango de meses. Pivota el valor de aportes por mes. NVAC.NUMDOC se usa como código de nómina.",
+          "valida": [
+            "CNSVAC existente en NVAC",
+            "CNSRPDX"
+          ],
+          "noValida": [
+            "El KO no devuelve el texto del error, solo OK=KO",
+            "Si la clase no es una de las cinco, el campo TGEN queda vacío"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SQL dinámico"
+          ],
+          "efecto": "DELETE RPDX del consecutivo e INSERT del pivote (VALOR1 a VALOR12).",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion"
+        },
+        {
+          "id": "ELIMINA_RPDX_REPORTE",
+          "estado": "leido",
+          "hace": "Borra el temporal del reporte.",
+          "valida": [
+            "CNSRPDX"
+          ],
+          "noValida": [
+            "El KO no devuelve el texto del error"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "RPDX / KEXCEL_FILL.",
+          "efecto": "DELETE RPDX.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion"
+        },
+        {
+          "id": "EXPORTAR_EXCEL",
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL la consulta de provisiones liquidadas (NVACD estado Liquidado) de los conceptos TGEN de esa clase.",
+          "valida": [
+            "CNSVAC",
+            "CNSLIQUIDA"
+          ],
+          "noValida": [
+            "La consulta filtra por CNSLIQUIDA y año, no por el CNSVAC dentro del WHERE"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPQ_GENSEQUENCE"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
           "capaId": "02-operacion",
           "gateId": "liquidacion"
         }
@@ -2484,25 +2752,112 @@
     {
       "nombre": "SPQ_NOM_NAJUST",
       "tipo": "SPQ",
-      "estado": "parcial",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-03",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_NAJUST.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "NOM_NAJUST",
       "metodos": [
         {
-          "id": "APLICA_AJUSTE / ANULAR_AJUSTE",
-          "estado": "listado",
-          "hace": "Ajuste salarial masivo por cargo (ver libro Conceptos).",
-          "valida": [],
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "Crea o edita el encabezado del ajuste (fecha, tipo Valor o porcentaje, valor, a partir de, estado). El alta pide consecutivo @NAJUST.",
+          "valida": [
+            "PROCESO INSERTAR o EDITAR"
+          ],
+          "noValida": [
+            "EDITAR no está dentro de un TRY propio",
+            "Otro PROCESO responde OK y no escribe"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT o UPDATE NAJUST.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "GET_NCAR",
+          "estado": "leido",
+          "hace": "Cargos, nivel y grado incluidos en el ajuste.",
+          "valida": [
+            "CNSAJUSTE"
+          ],
+          "noValida": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
+          "llama": [],
+          "efecto": "No escribe.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "UPDATE_NAJUSTD",
+          "estado": "leido",
+          "hace": "Deja el detalle de cargos igual a la lista JSON: inserta los que faltan y borra los que sobran.",
+          "valida": [
+            "JSON válido en DATOS",
+            "CNSAJUSTE"
+          ],
+          "noValida": [],
+          "errores": [
+            "El parametro JSON no es valido."
+          ],
+          "llama": [],
+          "efecto": "INSERT y DELETE NAJUSTD.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "ELIMINAR",
+          "estado": "leido",
+          "hace": "Quita un cargo del detalle. No borra el encabezado.",
+          "valida": [
+            "CNSAJUSTE",
+            "CODCARGO",
+            "NIVEL",
+            "GRADO"
+          ],
+          "noValida": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [],
+          "efecto": "DELETE NAJUSTD.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "APLICA_AJUSTE",
+          "estado": "leido",
+          "hace": "Por cada cargo del detalle toma el básico vigente, le suma el valor o le aplica el porcentaje, y llama el ajuste de empleados. Al terminar el encabezado queda Aplicado.",
+          "valida": [
+            "CNSAJUSTE con detalle"
+          ],
+          "noValida": [
+            "No exige que el ajuste esté sin aplicar",
+            "Si el tipo no es Valor, siempre calcula porcentaje"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_AJUSTE_SALARIO_NEMP"
+          ],
+          "efecto": "EXEC SPK_AJUSTE_SALARIO_NEMP por cargo. UPDATE NAJUST.ESTADO = Aplicado.",
+          "capaId": "01-configuracion",
+          "gateId": "empleados-historico"
+        },
+        {
+          "id": "ANULAR_AJUSTE",
+          "estado": "leido",
+          "hace": "Si no hay períodos cerrados desde la fecha del ajuste, borra las vigencias de ese consecutivo, restaura el básico anterior y deja el encabezado Anulado.",
+          "valida": [
+            "No hay NPER cerrado con FECHAINI mayor o igual a APARTIR"
+          ],
           "noValida": [],
           "errores": [
             "YA SE HAN LIQUIDADO NOMINAS POSTERIORES A LA APLICACION DEL AJUSTE, SE DEBE HACER UN AJUSTE COMPLETAMENTE NUEVO"
           ],
           "llama": [
-            "SPK_AJUSTE_SALARIO_NEMP",
-            "SPK_QUITA_ajuste_SALARIO_NEMP"
+            "SPK_QUITA_AJUSTE_SALARIO_NEMP"
           ],
-          "efecto": "NCARNGV + NEMPHIS.",
+          "efecto": "DELETE NCARNGV del consecutivo. EXEC SPK_QUITA_AJUSTE_SALARIO_NEMP. UPDATE NAJUST.ESTADO = Anulado.",
           "capaId": "01-configuracion",
           "gateId": "empleados-historico"
         }
@@ -3034,9 +3389,9 @@
     {
       "nombre": "SPQ_CAP",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CAP.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "CAP",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -3044,151 +3399,186 @@
       ],
       "metodos": [
         {
-          "id": "GUARDAR",
-          "estado": "listado",
-          "hace": "INSERT/UPDATE CAP (capacitación: nombre, objetivo, fechas, instructor, grupo). Consecutivo SPK_GENCONSECUTIVO.",
-          "valida": [],
-          "noValida": [],
-          "errores": [
-            "LA CAPACITACION YA EXISTE"
-          ],
-          "llama": [
-            "SPK_GENCONSECUTIVO"
-          ],
-          "efecto": "CAP creada/editada.",
-          "capaId": "02-operacion",
-          "gateId": "talento-humano",
-          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
-        },
-        {
-          "id": "SESION",
-          "estado": "listado",
-          "hace": "INSERT/UPDATE CAPD (sesión: fecha, hora inicio/fin, lugar, instructor).",
-          "valida": [],
-          "noValida": [],
-          "errores": [
-            "DEBE ESPECIFICAR UN ID DE SESION (IDCAPD)",
-            "YA EXISTE UNA SESION CON ESTE ID"
-          ],
-          "llama": [],
-          "efecto": "Sesión creada.",
-          "capaId": "02-operacion",
-          "gateId": "talento-humano",
-          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
-        },
-        {
           "id": "GET_SESION",
-          "estado": "listado",
-          "hace": "Sesiones de una capacitación.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Sesiones de una capacitación, con responsable, convocados y asistentes.",
+          "valida": [
+            "IDCAP"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GET_CONVOCADOS_X_SESION",
-          "estado": "listado",
-          "hace": "Empleados convocados (CAPASI) por sesión con asistencia.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Empleados activos en la convocatoria de la sesión, con asistencia y centro de costo.",
+          "valida": [
+            "IDCAPD"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GET_CAP_INSCRITO",
-          "estado": "listado",
-          "hace": "Capacitaciones donde el empleado está convocado (menú personal).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Capacitaciones en las que el empleado está activo, con taller, evaluación y calificación.",
+          "valida": [
+            "IDEMPLEADO"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
-          "capaId": "02-operacion",
-          "gateId": "talento-humano",
-          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
-        },
-        {
-          "id": "ASISTENCIA",
-          "estado": "listado",
-          "hace": "Marca asistencia en CAPASI por convocado y sesión.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "Asistencia registrada.",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GET_SOPORTES",
-          "estado": "listado",
-          "hace": "Documentos DOCS adjuntos a la capacitación.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Archivos de la sesión en DOCS, tipo SOPORTE_CAPD.",
+          "valida": [
+            "IDCAPD"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "ELIMINAR_SOPORTE",
-          "estado": "listado",
-          "hace": "DELETE DOCS del soporte.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Borra un soporte de la sesión.",
+          "valida": [
+            "IDCAPD",
+            "DOCID"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": [
+            "DEBE ESPECIFICAR UN ID DE SESION (IDCAPD)",
+            "NO SE PROPORCIONO EL ID DEL DOCUMENTO"
+          ],
           "llama": [],
-          "efecto": "Soporte eliminado.",
+          "efecto": "DELETE DOCS tipo SOPORTE_CAPD.",
+          "capaId": "02-operacion",
+          "gateId": "talento-humano",
+          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
+        },
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "Crea o edita la capacitación (tema y objetivo). El alta no usa el IDCAP enviado: solo lo consulta para el aviso de duplicado.",
+          "valida": [
+            "PROCESO INSERTAR o EDITAR"
+          ],
+          "noValida": [
+            "No llama consecutivo",
+            "Otro PROCESO responde OK y no escribe"
+          ],
+          "errores": [
+            "LA CAPACITACION YA EXISTE"
+          ],
+          "llama": [],
+          "efecto": "INSERT o UPDATE CAP.",
+          "capaId": "02-operacion",
+          "gateId": "talento-humano",
+          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
+        },
+        {
+          "id": "SESION",
+          "estado": "leido",
+          "hace": "Crea, edita, borra o duplica la sesión (CAPD). Duplicar puede copiar los convocados activos. Confirmar evaluación marca EVALUADA=1. No borra la sesión si tiene inscritos.",
+          "valida": [
+            "PROCESO INSERTAR, EDITAR, ELIMINAR, DUPLICAR o CONFIRMAR_EVALUACION"
+          ],
+          "noValida": [],
+          "errores": [
+            "YA EXISTE UNA SESION CON ESTE ID",
+            "LA SESION TIENE EMPLEADOS INSCRITOS (CAPASI)"
+          ],
+          "llama": [],
+          "efecto": "INSERT, UPDATE o DELETE CAPD. DUPLICAR también puede INSERT CAPASI.",
+          "capaId": "02-operacion",
+          "gateId": "talento-humano",
+          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
+        },
+        {
+          "id": "ASISTENCIA",
+          "estado": "leido",
+          "hace": "GUARDAR deja activos solo los empleados de la lista (los demás de la sesión quedan inactivos) e inserta los nuevos. CONFIRMAR marca asistencia en una fila.",
+          "valida": [
+            "PROCESO GUARDAR o CONFIRMAR"
+          ],
+          "noValida": [
+            "Otro PROCESO responde OK y no cambia la asistencia"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [],
+          "efecto": "UPDATE e INSERT CAPASI.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "ELIMINAR",
-          "estado": "listado",
-          "hace": "DELETE CAP / CAPD / CAPASI.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Borra la capacitación si no tiene sesiones.",
+          "valida": [
+            "IDCAP sin filas en CAPD"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": [
+            "LA CAPACITACION TIENE SESIONES REALIZADAS (CAPD)"
+          ],
           "llama": [],
-          "efecto": "Capacitación eliminada.",
+          "efecto": "DELETE CAP.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "EXPORTA_CRONO_CAP",
-          "estado": "listado",
-          "hace": "Cronograma a Excel (KEXCEL_FILL).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL el cronograma de capacitaciones.",
+          "valida": [
+            "CNSEXCEL opcional"
+          ],
           "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "Archivo Excel.",
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "EXPORTA_CAPD",
-          "estado": "listado",
-          "hace": "Detalle de sesiones y asistencia a Excel (KEXCEL_FILL).",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Deja en KEXCEL_FILL el detalle de sesiones.",
+          "valida": [
+            "CNSEXCEL opcional"
+          ],
           "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "Archivo Excel.",
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT KEXCEL_FILL. Devuelve CNSEXCEL.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
@@ -3198,9 +3588,9 @@
     {
       "nombre": "SPQ_TALL",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_TALL.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "TALL",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -3209,26 +3599,35 @@
       "metodos": [
         {
           "id": "GUARDAR",
-          "estado": "listado",
-          "hace": "INSERT/UPDATE TALL (taller).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Inserta o edita un taller (TALL) ligado a una capacitación: nombre, descripción, instructor, fechas y estado.",
+          "valida": [
+            "PROCESO INSERTAR o EDITAR"
+          ],
+          "noValida": [
+            "Si PROCESO no es INSERTAR ni EDITAR, responde OK y no escribe",
+            "No valida que IDCAP exista"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "INSERT o UPDATE TALL.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "ELIMINAR",
-          "estado": "listado",
-          "hace": "DELETE TALL.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Borra el taller por TALLERID.",
+          "valida": [
+            "TALLERID"
+          ],
+          "noValida": [
+            "No revisa asignaciones ni preguntas del taller"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "DELETE TALL.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
@@ -3238,9 +3637,9 @@
     {
       "nombre": "SPQ_FORMULARIO_TALLER",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FORMULARIO_TALLER.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "FORMULARIO_TALLER",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -3249,65 +3648,83 @@
       "metodos": [
         {
           "id": "GUARDAR",
-          "estado": "listado",
-          "hace": "INSERT/UPDATE del formulario del taller: TPREGUNTAS y TOPCIONES.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Actualiza título y descripción del taller y carga las preguntas. INSERTAR agrega preguntas y opciones. EDITAR borra las preguntas anteriores y las vuelve a crear. Tipos con opciones: multiple, seleccion_unica y booleano.",
+          "valida": [
+            "TALLERID",
+            "PROCESO INSERTAR o EDITAR"
+          ],
+          "noValida": [
+            "INSERTAR no borra preguntas viejas: puede duplicarlas",
+            "ELIMINA_FORMULARIO borra preguntas y no las opciones"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "UPDATE TALL. INSERT TPREGUNTAS y TOPCIONES. EDITAR también DELETE TPREGUNTAS.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GET_FORMULARIO",
-          "estado": "listado",
-          "hace": "Preguntas del taller.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Dice si el taller ya tiene preguntas.",
+          "valida": [
+            "TALLERID"
+          ],
+          "noValida": [
+            "Si ya hay preguntas, devuelve OK y no llega al OK final"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe. Devuelve hasForm 1 o 0.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GET_FORMULARIO_DETALLE",
-          "estado": "listado",
-          "hace": "Preguntas + opciones.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Preguntas del taller con opciones y respuesta correcta en JSON.",
+          "valida": [
+            "TALLERID"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GET_RESPUESTAS_EMPLEADO",
-          "estado": "listado",
-          "hace": "Respuestas de un empleado asignado.",
-          "valida": [],
+          "estado": "leido",
+          "hace": "Respuestas del empleado en el taller.",
+          "valida": [
+            "TALLERID y el empleado que envía la pantalla"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "ELIMINA_FORMULARIO",
-          "estado": "listado",
-          "hace": "DELETE TPREGUNTAS / TOPCIONES del taller.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Borra las preguntas del taller.",
+          "valida": [
+            "TALLERID"
+          ],
+          "noValida": [
+            "No borra TOPCIONES ni TALL"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "DELETE TPREGUNTAS.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
@@ -3317,9 +3734,9 @@
     {
       "nombre": "SPQ_EMPLEADOS_TALL",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_EMPLEADOS_TALL.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "EMPLEADOS_TALL",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -3327,40 +3744,57 @@
       ],
       "metodos": [
         {
-          "id": "EMPEADOS_ASIGNAR_TALLER",
-          "estado": "listado",
-          "hace": "INSERT TASIGNACION (empleados asignados al taller).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
-          "llama": [],
-          "efecto": "",
-          "capaId": "02-operacion",
-          "gateId": "talento-humano",
-          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
-        },
-        {
           "id": "EMPLEADOS_EVALUAR",
-          "estado": "listado",
-          "hace": "Empleados asignados con estado de evaluación.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Lista asistentes de la sesión (CAPASI activa y con asistencia) como Pendiente, y une las asignaciones del taller con su estado.",
+          "valida": [
+            "IDCAP",
+            "TALLERID"
+          ],
+          "noValida": [
+            "El empleado tiene que tener centro de costo en CEN",
+            "El id del método está escrito EMPEADOS en la otra rama, no aquí"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
           "id": "GUARDAR_EMPLEADOS_ASIS_CAP",
-          "estado": "listado",
-          "hace": "Guarda convocados/asistentes de una capacitación.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "estado": "leido",
+          "hace": "Asigna al taller, en estado Pendiente, los empleados que aún no están en TASIGNACION. No quita a los que sobran.",
+          "valida": [
+            "TALLERID",
+            "EMPLEADOS"
+          ],
+          "noValida": [
+            "No borra asignaciones que ya no vienen en la lista"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "INSERT TASIGNACION.",
+          "capaId": "02-operacion",
+          "gateId": "talento-humano",
+          "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
+        },
+        {
+          "id": "EMPEADOS_ASIGNAR_TALLER",
+          "estado": "leido",
+          "hace": "Con PROCESO GUARDAR, deja TASIGNACION del taller igual a la lista: inserta los nuevos en Pendiente y borra los que ya no están. El nombre del método lleva el typo EMPEADOS.",
+          "valida": [
+            "PROCESO GUARDAR",
+            "TALLERID",
+            "EMPLEADOS"
+          ],
+          "noValida": [
+            "Otro PROCESO responde OK y no escribe"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [],
+          "efecto": "INSERT y DELETE TASIGNACION.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
@@ -3370,9 +3804,9 @@
     {
       "nombre": "SPQ_CALIFICAR_RESPUESTAS_TEXTO",
       "tipo": "SPQ",
-      "estado": "listado",
-      "fuente": "IXONLINE/SQL (PREVERSION = 2.0.7)",
-      "actualizado": "2026-10-04T06:40:00",
+      "estado": "leido",
+      "fuente": "sql/SPQ_CALIFICAR_RESPUESTAS_TEXTO.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
       "modelo": "CALIFICAR_RESPUESTAS_TEXTO",
       "cola": "NOMINA",
       "llamadoDesde": [
@@ -3380,27 +3814,38 @@
       ],
       "metodos": [
         {
-          "id": "GET_RESPUESTAS_TEXTO",
-          "estado": "listado",
-          "hace": "Respuestas de texto libre pendientes de calificar (TRESULTADOS).",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "id": "GUARDAR_CALIFICACION",
+          "estado": "leido",
+          "hace": "Marca correctas las respuestas de texto indicadas y recalcula la calificación del resultado: correctas por pregunta sobre el total, en porcentaje.",
+          "valida": [
+            "RESULTADOID",
+            "RESPUESTAS con RESPUESTAID y CORRECTA"
+          ],
+          "noValida": [
+            "PROCESO se lee y no se usa",
+            "No evita la división por cero si el resultado no tiene preguntas",
+            "No limita el tipo de pregunta a texto"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
           "llama": [],
-          "efecto": "",
+          "efecto": "UPDATE TRespEmpleado (Correcta, Calificada=1) y TRESULTADOS.CalificacionFinal.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
         },
         {
-          "id": "GUARDAR_CALIFICACION",
-          "estado": "listado",
-          "hace": "UPDATE TRESULTADOS con la calificación manual.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "id": "GET_RESPUESTAS_TEXTO",
+          "estado": "leido",
+          "hace": "Lista las respuestas de preguntas tipo texto de un resultado, con el enunciado.",
+          "valida": [
+            "RESULTADOID"
+          ],
+          "noValida": [
+            "Si sale bien, devuelve OK dos veces"
+          ],
+          "errores": "no aplica (no hay CATCH ni texto KO)",
           "llama": [],
-          "efecto": "",
+          "efecto": "No escribe.",
           "capaId": "02-operacion",
           "gateId": "talento-humano",
           "ventanaFe": "CAPComponent y talleres (/nom/capacitaciones)"
@@ -3646,6 +4091,51 @@
             "IDMODELOCONTABLE",
             "COD_NOMI_CXP_ADICION"
           ]
+        }
+      ]
+    },
+    {
+      "nombre": "SPQ_NOM_NEMPV",
+      "tipo": "SPQ",
+      "modelo": "NOM_NEMPV",
+      "estado": "leido",
+      "fuente": "sql/SPQ_NOM_NEMPV.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
+      "nota": "CRUD manual del período NEMPV. El evento (salida, días, disfrute) lo escribe SPQ_NOM_VACACIONES en NEMPVD; no hay SPQ_NOM_NEMPVD.",
+      "tablas": [
+        "NEMPV",
+        "NEMP",
+        "NCARNG",
+        "USUSU",
+        "UBEQ"
+      ],
+      "metodos": [
+        {
+          "id": "GUARDAR",
+          "estado": "leido",
+          "hace": "Inserta o edita un período de vacaciones del empleado y recalcula con SPK_PROCESO_VACACIONES · ACTUALIZA. PROCESO=INSERTAR: ITEM = MAX(ITEM)+1, NDIAS = 15 × COALESCE(NCARNG.NVACACIONES, 1) del cargo/nivel/grado del empleado Activo, PROCEDENCIA Manual, CONCEPTO y CNSPAGO en NULL. PROCESO=EDITAR: actualiza F_CUMPLE, F_INICAL, F_FINAL, DIASG y DIASP y fuerza PROCEDENCIA Manual.",
+          "valida": [
+            "PROCESO en mayúsculas igual a INSERTAR o EDITAR",
+            "INSERTAR toma CODCARGO, NIVEL y GRADO de NEMP con ESTADO Activo",
+            "NVACACIONES del cargo (NCARNG); si no hay fila, NDIAS queda en 15"
+          ],
+          "noValida": [
+            "No hay ELIMINAR",
+            "Si PROCESO no es INSERTAR ni EDITAR, responde OK y no escribe",
+            "INSERTAR ignora CONCEPTO, NDIAS y CNSPAGO recibidos",
+            "EDITAR no toca NDIAS, CONCEPTO, ESTADO ni CNSPAGO",
+            "No valida período de nómina cerrado ni solape de fechas",
+            "No rechaza un NUMDOC que no esté Activo: el cargo queda vacío y NVACACIONES cae a 1",
+            "Lee USUSU y UBEQ (equipo, sede, compañía) y no los usa en el INSERT ni en el UPDATE"
+          ],
+          "errores": "no aplica (el KO devuelve ERROR_MESSAGE() del CATCH; no hay texto fijo)",
+          "llama": [
+            "SPK_PROCESO_VACACIONES · ACTUALIZA (CNSPAGO vacío, NUMDOC del período)"
+          ],
+          "efecto": "INSERT o UPDATE NEMPV (PROCEDENCIA Manual). Luego ACTUALIZA recalcula los períodos del empleado.",
+          "capaId": "03-alimentadores",
+          "gateId": "vacaciones-alimenta",
+          "ventanaFe": "VacacionesNominaComponent · período NEMPV"
         }
       ]
     }

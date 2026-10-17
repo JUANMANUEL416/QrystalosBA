@@ -300,6 +300,7 @@ def empty_solicitud(id_sr: str) -> dict:
         "archivos": [],
         "mockups": [],
         "siguiente": "",
+        "origenSoporte": "",
         "aval": {
             "aplica": False,
             "idReq": "",
@@ -336,6 +337,7 @@ def _persistir(merged: dict) -> dict:
             or os.path.isfile(os.path.join(dest, "documento.html")),
         "actualizadoEn": merged.get("actualizadoEn") or _now(),
         "avalReq": (_as_map(merged.get("aval")).get("idReq") or ""),
+        "origenSoporte": (merged.get("origenSoporte") or ""),
     })
     idx["items"] = items
     save_index(idx)
@@ -365,9 +367,141 @@ def guardar(payload: dict) -> dict:
         "notas": (aval.get("notas") or "").strip(),
     }
     merged["titulo"] = _titulo_corto(merged)
+    merged["origenSoporte"] = str(merged.get("origenSoporte") or "").strip()
     if not merged.get("estado") or merged.get("estado") in ("borrador",):
         merged["estado"] = "abierto"
     return _persistir(merged)
+
+
+def buscar_por_origen_soporte(consulta_id: str) -> dict:
+    """Solicitud ya creada desde una consulta de soporte."""
+    cid = (consulta_id or "").strip()
+    if not cid:
+        return {}
+    for item in load_index().get("items") or []:
+        if (item.get("origenSoporte") or "") != cid:
+            continue
+        sol = load(item.get("id") or "")
+        if sol:
+            return sol
+    return {}
+
+
+def _limpiar_respuesta_consulta(texto: str) -> str:
+    t = texto or ""
+    t = re.sub(r"```sql[\s\S]*?```", "", t, flags=re.I)
+    t = re.sub(r"\n## BLOQUE \d+[\s\S]*", "\n", t)
+    t = re.sub(r"\n---\n", "\n\n", t)
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
+def textos_desde_consulta(meta: dict, mensajes: list | None = None) -> dict:
+    """Borrador de comité a partir de una consulta de soporte. El coordinador lo ajusta."""
+    sid = (meta.get("id") or "").strip()
+    titulo = re.sub(r"\s+", " ", str(meta.get("titulo") or "").strip())
+    pregunta = str(meta.get("preguntaInicial") or "").strip()
+    if not titulo:
+        titulo = _titulo_corto({"titulo": "", "necesidad": pregunta})
+    respuesta = _limpiar_respuesta_consulta(str(meta.get("respuestaOficial") or ""))
+    if len(respuesta) > 3500:
+        respuesta = respuesta[:3490].rstrip() + "…"
+    seguimiento = []
+    for msg in mensajes or []:
+        if not isinstance(msg, dict) or (msg.get("autor") or "") != "soporte":
+            continue
+        tx = str(msg.get("texto") or "").strip()
+        if not tx or tx == pregunta:
+            continue
+        seguimiento.append(tx)
+    just = "\n\n".join(seguimiento).strip()
+    if not just:
+        just = (
+            "Soporte escaló la consulta porque el camino actual no resuelve la necesidad "
+            "sin intervención en base de datos."
+        )
+    hallazgo = respuesta[:1200].rstrip()
+    if len(respuesta) > 1200:
+        hallazgo += "…"
+    hoy = (
+        "Hallazgo de la consulta de soporte:\n\n" + hallazgo
+        if hallazgo
+        else (
+            "Según la consulta de soporte, el usuario ve el dato tal como quedó guardado. "
+            "No hay una acción de pantalla que lo corrija."
+        )
+    )
+    return {
+        "titulo": titulo[:90],
+        "proyecto": str(meta.get("cliente") or "").strip(),
+        "prioridad": "Media",
+        "necesidad": pregunta or titulo,
+        "hoy": hoy,
+        "propuesta": (
+            "Resolver la necesidad en el sistema, con validación, "
+            "de modo que soporte no tenga que corregir el dato con un script de base de datos."
+        ),
+        "justificacion": just,
+        "analisis": (
+            f"Borrador armado desde la consulta de soporte {sid}. "
+            "Contraste el proceso en la base de conocimiento y clasifique: capacitación, defecto o hueco, "
+            "antes de llevarlo a comité.\n\n"
+            + (respuesta or "Aún no hay respuesta oficial en la consulta.")
+        ),
+        "alcance": "Lo que describe la consulta de soporte. Ajustar con el comité.",
+        "restricciones": (
+            "La corrección masiva por script de base de datos y los documentos ya cerrados o facturados "
+            "quedan fuera, salvo que el comité los incluya."
+        ),
+        "criterios": (
+            "El usuario completa la necesidad en la pantalla del proceso, "
+            "sin actualización directa en la base de datos."
+        ),
+        "recomendacion": (
+            "Revisar el borrador con el proceso de negocio y confirmar alcance "
+            "antes de generar el documento de comité."
+        ),
+        "origenSoporte": sid,
+    }
+
+
+def crear_desde_consulta_soporte(
+    meta: dict,
+    mensajes: list | None = None,
+    textos: dict | None = None,
+    nota: str = "",
+) -> dict:
+    """Alta de solicitud ligada a una consulta. Si ya existe, devuelve la misma."""
+    sid = str((meta or {}).get("id") or "").strip()
+    if not sid:
+        raise ValueError("Falta la consulta de soporte.")
+    previa = buscar_por_origen_soporte(sid)
+    if previa and previa.get("id"):
+        previa["_yaExistia"] = True
+        return previa
+    base = textos_desde_consulta(meta, mensajes)
+    if isinstance(textos, dict):
+        for clave, valor in textos.items():
+            if valor is None:
+                continue
+            if isinstance(valor, str) and not valor.strip():
+                continue
+            base[clave] = valor
+    base["origenSoporte"] = sid
+    base.pop("id", None)
+    sol = guardar(base)
+    append_chat(
+        sol["id"],
+        "agente",
+        (nota or "").strip()
+        or (
+            f"Solicitud creada desde la consulta de soporte {sid}. "
+            "Revise el texto antes de generar el documento de comité."
+        ),
+    )
+    sol["_yaExistia"] = False
+    return sol
 
 
 def vincular_caso(id_sr: str, id_caso: str, id_req: str = "", titulo: str = "") -> dict:
