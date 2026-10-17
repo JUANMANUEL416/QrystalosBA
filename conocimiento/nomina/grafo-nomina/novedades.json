@@ -1,0 +1,153 @@
+{
+  "tramo": "novedades",
+  "nombre": "Novedades de nómina",
+  "actualizado": "2026-10-17",
+  "fuenteSql": "IXONLINE/SQL · SPQ_NOM_NOVEDADES y SPQ_NOM_NEDIA, fichas leídas",
+  "pantalla": {
+    "path": "/nom/Nom_procesos",
+    "vue": "RegistNovedades · NovedadesMasivo",
+    "menu": "Talento humano → Procesos nómina → Prenómina → Novedades"
+  },
+  "documentoOrigen": {
+    "tabla": "NEDIA",
+    "claves": ["CNSPAGO", "NUMDOC", "ITEM"],
+    "detalle": "El catálogo del evento es NEVE. El masivo pasa por RPDX."
+  },
+  "noEs": [
+    "No es el concepto particular (NEMPDA) ni el manual del período (NPERC).",
+    "No pasa los turnos TURNOV a NEDIA: ese método no existe."
+  ],
+  "nodos": [
+    {
+      "id": "N0-evento",
+      "orden": 0,
+      "nombre": "Definir el evento",
+      "sp": "SPQ_NOM_NOVEDADES · GUARDAR",
+      "metodo": "GUARDAR",
+      "llamaSiguiente": ["N1-individual", "N2-carga"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NEVE. Rechaza un IDEVENTO repetido.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1934,
+          "nota": "La novedad del período usa el evento del catálogo y luego NEDIA, individual o masiva."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NOVEDADES", "metodo": "GUARDAR", "proceso": "nomina-conceptos", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-individual",
+      "orden": 1,
+      "nombre": "Registrar la novedad de un empleado",
+      "sp": "SPQ_NOM_NEDIA · GUARDAR",
+      "metodo": "GUARDAR",
+      "llamaAnterior": ["N0-evento"],
+      "llamaSiguiente": ["N5-motor"],
+      "ordenEstado": "evidenciado",
+      "nota": "No valida que el período esté cerrado: eso lo hace la pantalla. Si el evento es RET, actualiza la fecha de retiro; ese camino está en el grafo de retiro.",
+      "efecto": "NEDIA.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1934,
+          "nota": "Individual: NOM_NEDIA · GUARDAR."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NEDIA", "metodo": "GUARDAR", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-carga",
+      "orden": 2,
+      "nombre": "Cargar el archivo masivo",
+      "sp": "SPQ_NOM_NOVEDADES · CARGAR_EMPLEADOS_NOVEDAD",
+      "metodo": "CARGAR_EMPLEADOS_NOVEDAD",
+      "llamaAnterior": ["N0-evento"],
+      "llamaSiguiente": ["N3-validar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "Filas en RPDX. Valida contrato, documento, evento, diagnóstico y que el empleado esté en la plantilla.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1934,
+          "nota": "Masivo: CARGAR y luego validar."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NOVEDADES", "metodo": "CARGAR_EMPLEADOS_NOVEDAD", "proceso": "nomina-conceptos", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-validar",
+      "orden": 3,
+      "nombre": "Revalidar una fila del archivo",
+      "sp": "SPQ_NOM_NOVEDADES · VALIDAR_RPDX_EMPLEADO_NOVEDAD / ELIMINAR_RPDX_EMPLEADO_NOVEDAD",
+      "metodo": "VALIDAR_RPDX_EMPLEADO_NOVEDAD / ELIMINAR_RPDX_EMPLEADO_NOVEDAD",
+      "llamaAnterior": ["N2-carga"],
+      "llamaSiguiente": ["N4-aplicar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "RPDX corregido o fila quitada.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1934,
+          "nota": "El masivo valida antes de agregar."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NOVEDADES", "metodo": "VALIDAR_RPDX_EMPLEADO_NOVEDAD / ELIMINAR_RPDX_EMPLEADO_NOVEDAD", "proceso": "nomina-conceptos", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-aplicar",
+      "orden": 4,
+      "nombre": "Pasar las filas válidas a novedades",
+      "sp": "SPQ_NOM_NOVEDADES · AGREGAR_NOVEDAD_EMPLEADOS",
+      "metodo": "AGREGAR_NOVEDAD_EMPLEADOS",
+      "llamaAnterior": ["N3-validar"],
+      "llamaSiguiente": ["N5-motor"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NEDIA con el consecutivo del lote. Devuelve los NUMDOC para recalcular.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1934,
+          "nota": "AGREGAR_NOVEDAD_EMPLEADOS inserta NEDIA desde RPDX."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NOVEDADES", "metodo": "AGREGAR_NOVEDAD_EMPLEADOS", "proceso": "nomina-conceptos", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N5-motor",
+      "orden": 5,
+      "nombre": "Valorar la novedad en la prenómina",
+      "sp": "FNK_CALCULO_VLR_NOVEDAD_NOM · CALCULO_VLR_NOVEDAD",
+      "metodo": "CALCULO_VLR_NOVEDAD",
+      "llamaAnterior": ["N1-individual", "N4-aplicar"],
+      "ordenEstado": "evidenciado",
+      "nota": "Lo llama el motor de prenómina. Sin NEDIA del concepto no hay valor de novedad.",
+      "efecto": "Valor de la novedad que entra al cálculo del empleado.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1934,
+          "nota": "El motor suma NEDIA con FNK_CALCULO_VLR_NOVEDAD_NOM."
+        }
+      ],
+      "fichas": [
+        {"sp": "FNK_CALCULO_VLR_NOVEDAD_NOM", "metodo": "CALCULO_VLR_NOVEDAD", "proceso": "nomina", "estado": "leido"}
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "Individual y masivo convergen en el motor. No hay paso pendiente."
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "tramo": "liquidacion",
+  "nombre": "Liquidación de nómina",
+  "actualizado": "2026-10-17",
+  "fuenteSql": "IXONLINE/SQL · fichas leídas en conocimiento/nomina/sps.json",
+  "pantalla": {
+    "path": "/nom/Nom_procesos",
+    "vue": "PreNominaComponent · LiquidaNomComponent",
+    "menu": "Talento humano → Procesos nómina → Prenómina · Liquidación"
+  },
+  "documentoOrigen": {
+    "tabla": "NPER",
+    "claves": ["CNSPAGO"],
+    "detalle": "NEMPF/NEMPFD en prenómina; NIEPE/NIEPED al generar; MCPE/MCHE al contabilizar"
+  },
+  "grafoContableHermano": "conocimiento/contabilidad/grafo-contabilizacion/nomina.json",
+  "noEs": [
+    "No es el generador SPK_NC_CONTAB_NOMINA: ese entra al reconstruir el comprobante, no desde esta pantalla.",
+    "No incluye el envío DIAN (SPQ_NOM_DIAN)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-periodo",
+      "orden": 0,
+      "nombre": "Elegir período abierto",
+      "sp": "SPQ_NOM_NPER · GET_NPER / GET_NPER_ACTIVO",
+      "metodo": "GET_NPER / GET_NPER_ACTIVO",
+      "llama": ["SPQ_NOM_NOMIE · GET_NOMIE_EMPLOYEES"],
+      "llamaSiguiente": ["N1-plantilla"],
+      "ordenEstado": "evidenciado",
+      "efecto": "CNSPAGO y grilla de empleados de la nómina.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 928,
+          "nota": "Flujo prenómina, paso 1: GET_NPER y GET_NOMIE_EMPLOYEES."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NPER", "metodo": "GET_NPER / GET_NPER_ACTIVO", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPQ_NOM_NOMIE", "metodo": "GET_NOMIE_EMPLOYEES", "proceso": "nomina-conceptos", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-plantilla",
+      "orden": 1,
+      "nombre": "Traer la plantilla a la prenómina",
+      "sp": "SPQ_NOM_NPLT · GET_NPLTCA_RPDX / GET_NPLTCO_RPDX",
+      "metodo": "GET_NPLTCA_RPDX / GET_NPLTCO_RPDX",
+      "llama": ["SPQ_TRAER_PLANTILLA_NOMI · (CARGA)"],
+      "llamaAnterior": ["N0-periodo"],
+      "llamaSiguiente": ["N2-prenomina"],
+      "ordenEstado": "evidenciado",
+      "efecto": "Cargos y conceptos de la plantilla en RPDX.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 956,
+          "nota": "Paso 3: SPQ_TRAER_PLANTILLA_NOMI y los GET de RPDX de la plantilla."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NPLT", "metodo": "GET_NPLTCA_RPDX / GET_NPLTCO_RPDX", "proceso": "nomina-conceptos", "estado": "leido"},
+        {"sp": "SPQ_TRAER_PLANTILLA_NOMI", "metodo": "(CARGA)", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-prenomina",
+      "orden": 2,
+      "nombre": "Calcular la prenómina del empleado",
+      "sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA",
+      "metodo": "PRENOMINA",
+      "llamaAnterior": ["N1-plantilla"],
+      "llamaSiguiente": ["N3-generar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NEMPFD y NEMPF del empleado. El motor no lanza error: deja el detalle en la línea.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 971,
+          "nota": "Paso 4: PRENOMINA por empleado."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC", "metodo": "PRENOMINA", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-generar",
+      "orden": 3,
+      "nombre": "Generar la liquidación",
+      "sp": "SPQ_LIQUIDACION · GENERATE_NOMINA",
+      "metodo": "GENERATE_NOMINA",
+      "llama": ["SPQ_LIQUIDAR_NOMI · (PROCEDIMIENTO @CNSPAGO)"],
+      "llamaAnterior": ["N2-prenomina"],
+      "llamaSiguiente": ["N4-cerrar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NIEPE y NIEPED. Para si un ingreso tiene el tercero del concepto distinto al del empleado.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1213,
+          "nota": "Flujo de cierre, paso 1: GENERATE_NOMINA."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_LIQUIDACION", "metodo": "GENERATE_NOMINA", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPQ_LIQUIDAR_NOMI", "metodo": "(PROCEDIMIENTO @CNSPAGO)", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-cerrar",
+      "orden": 4,
+      "nombre": "Cerrar el período",
+      "sp": "SPQ_CERRAR_NOMI · (PROCEDIMIENTO @CNSPAGO)",
+      "metodo": "(PROCEDIMIENTO @CNSPAGO)",
+      "llama": ["SPK_PROCESO_VACACIONES · CIERRE"],
+      "llamaAnterior": ["N3-generar"],
+      "llamaSiguiente": ["N5-contabilizar"],
+      "ordenEstado": "evidenciado",
+      "nota": "Lo dispara GENERATE_NOMINA cuando PROCESO=CLOSE. Exige detalles y cuenta KMCOM en cada línea. Escribe CERRADO=1 y marca las cuotas de libranza Pagada.",
+      "efecto": "NPER y NIEPE cerrados. Provisión mensual de vacaciones.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1260,
+          "nota": "Paso 4: SPQ_CERRAR_NOMI y el cierre de vacaciones."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_CERRAR_NOMI", "metodo": "(PROCEDIMIENTO @CNSPAGO)", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPK_PROCESO_VACACIONES", "metodo": "CIERRE", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N5-contabilizar",
+      "orden": 5,
+      "nombre": "Contabilizar desde la pantalla",
+      "sp": "SPQ_NC_CONTAB_NOMINA · CONTABILIZAR",
+      "metodo": "CONTABILIZAR",
+      "llamaAnterior": ["N4-cerrar"],
+      "llamaSiguiente": ["N6-cxp"],
+      "ordenEstado": "evidenciado",
+      "nota": "Escribe MCPE/MCHE. No llama a SPK_NC_CONTAB_NOMINA; ese SPK queda en el grafo contable, al reconstruir.",
+      "efecto": "Comprobante del empleado y NPER.CONTABILIZADA.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1275,
+          "nota": "Paso 5: CONTABILIZAR."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NC_CONTAB_NOMINA", "metodo": "CONTABILIZAR", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N6-cxp",
+      "orden": 6,
+      "nombre": "Cuentas por pagar de la nómina",
+      "sp": "SPQ_NC_CONTAB_NOMINA · GENERATE_CxP_NOM",
+      "metodo": "GENERATE_CxP_NOM",
+      "llamaAnterior": ["N5-contabilizar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "FCXP por tercero del período, procedencia Nómina.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1275,
+          "nota": "El mismo paso nombra GENERATE_CxP_NOM junto con CONTABILIZAR."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NC_CONTAB_NOMINA", "metodo": "GENERATE_CxP_NOM", "proceso": "nomina", "estado": "leido"}
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "Cada nodo usa un METODO leído. No hay paso pendiente en este tramo."
+  }
+}

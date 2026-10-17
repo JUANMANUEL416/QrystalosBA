@@ -1,0 +1,132 @@
+{
+  "tramo": "vacaciones",
+  "nombre": "Vacaciones",
+  "actualizado": "2026-10-17",
+  "fuenteSql": "IXONLINE/SQL · SPQ_NOM_NEMPV en sql/; SPQ_NOM_NEMPVD leído del archivo del REQ 0100016522, sin confirmar contra PREVERSION",
+  "pantalla": {
+    "path": "/nom/Vacaciones",
+    "vue": "VacacionesNominaComponent",
+    "menu": "Talento humano → Vacaciones"
+  },
+  "documentoOrigen": {
+    "tabla": "NEMPV",
+    "claves": ["NUMDOC", "ITEM"],
+    "detalle": "NEMPVD por evento; la novedad de pago queda en NEDIA"
+  },
+  "noEs": [
+    "No es el adelanto de cesantías (NACE).",
+    "SPK_PROCESO_VACACIONES · CIERRE provisiona el mes al cerrar la nómina; no paga el evento."
+  ],
+  "nodos": [
+    {
+      "id": "N0-periodo",
+      "orden": 0,
+      "nombre": "Registrar el período de vacaciones",
+      "sp": "SPQ_NOM_NEMPV · GUARDAR",
+      "metodo": "GUARDAR",
+      "llama": ["SPK_PROCESO_VACACIONES · ACTUALIZA"],
+      "llamaSiguiente": ["N1-solicitud"],
+      "ordenEstado": "evidenciado",
+      "efecto": "INSERT o UPDATE NEMPV, procedencia Manual. Luego recalcula los períodos del empleado.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1975,
+          "nota": "El control de vacaciones abre con SPQ_NOM_NEMPV · GUARDAR."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NEMPV", "metodo": "GUARDAR", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-solicitud",
+      "orden": 1,
+      "nombre": "Solicitar el evento",
+      "sp": "SPQ_NOM_NEMPVD · GUARDAR",
+      "metodo": "GUARDAR",
+      "llamaAnterior": ["N0-periodo"],
+      "llamaSiguiente": ["N2-justificacion"],
+      "ordenEstado": "evidenciado",
+      "nota": "INSERTAR deja el evento en estado Nuevo y procedencia Novedad. Rechaza el período de nómina cerrado. La ficha no confirma qué pantalla lo llama.",
+      "efecto": "INSERT o UPDATE NEMPVD. No mueve NEMPV.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1986,
+          "nota": "SPQ_NOM_NEMPVD · GUARDAR es el alta del evento."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NEMPVD", "metodo": "GUARDAR", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-justificacion",
+      "orden": 2,
+      "nombre": "Justificar días",
+      "sp": "SPQ_NOM_NEMPVD · JUSTIFICA_VACACIONES",
+      "metodo": "JUSTIFICA_VACACIONES",
+      "llamaAnterior": ["N1-solicitud"],
+      "llamaSiguiente": ["N3-liquidacion"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NEMPVD en EnNomina, procedencia JustVaca. Suma los días a NEMPV.DIASP y puede dejar el período en Pagado.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1986,
+          "nota": "JUSTIFICA_VACACIONES suma DIASP; ANULAR_JUSVAC los resta."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NEMPVD", "metodo": "JUSTIFICA_VACACIONES", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-liquidacion",
+      "orden": 3,
+      "nombre": "Liquidar el evento como novedad",
+      "sp": "SPQ_NOM_VACACIONES · GENERA_NOVEDAD_VACACIONES",
+      "metodo": "GENERA_NOVEDAD_VACACIONES",
+      "llama": ["SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA"],
+      "llamaAnterior": ["N2-justificacion"],
+      "llamaSiguiente": ["N4-pago"],
+      "ordenEstado": "evidenciado",
+      "nota": "La ficha de este método nombra SPQ_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC. Ese nombre no tiene ficha. El recálculo leído es SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA.",
+      "efecto": "NEDIA del concepto de vacaciones. Si el evento cruza de mes, parte la novedad en dos. Exige período abierto.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1965,
+          "nota": "GENERA_NOVEDAD_VACACIONES crea la NEDIA y recalcula."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_VACACIONES", "metodo": "GENERA_NOVEDAD_VACACIONES", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-pago",
+      "orden": 4,
+      "nombre": "Pago de la vacación",
+      "sp": "pendiente",
+      "metodo": "pendiente",
+      "estadoPaso": "pendiente",
+      "llamaAnterior": ["N3-liquidacion"],
+      "ordenEstado": "por_confirmar",
+      "nota": "No hay un METODO leído que pague solo las vacaciones. El valor de la NEDIA entra al pago del período cuando se genera la liquidación (SPQ_LIQUIDACION · GENERATE_NOMINA), que es el grafo de liquidación y no un paso propio de esta pantalla.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1465,
+          "nota": "El capítulo dice que el evento termina en la prenómina. No nombra un SP de pago distinto."
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "N4-pago no tiene SP propio. SPQ_NOM_NEMPVD está leído desde el archivo del REQ, no desde PREVERSION."
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "tramo": "libranzas",
+  "nombre": "Libranzas",
+  "actualizado": "2026-10-17",
+  "fuenteSql": "IXONLINE/SQL · SPQ_NOM_PRS, SPK_GENERA_CUOTAS y SPQ_CERRAR_NOMI, fichas leídas",
+  "pantalla": {
+    "path": "/nom/cuotas",
+    "vue": "CuotasComponent",
+    "menu": "Talento humano → Gestión de libranzas"
+  },
+  "documentoOrigen": {
+    "tabla": "PRS",
+    "claves": ["NUMDOCUMENTO"],
+    "detalle": "Plan de cuotas en PRSD. El descuento del período queda en NEMPFD y, al cerrar, en NIEPED."
+  },
+  "noEs": [
+    "REFINANCIAR no existe en SPQ_NOM_PRS.",
+    "MARCAR_PAGADA es un botón aparte. El cierre del período también deja la cuota Pagada."
+  ],
+  "nodos": [
+    {
+      "id": "N0-prestamo",
+      "orden": 0,
+      "nombre": "Crear el préstamo",
+      "sp": "SPQ_NOM_PRS · GUARDAR",
+      "metodo": "GUARDAR",
+      "llama": ["SPK_GENERA_CUOTAS · GENERA_CUOTAS"],
+      "llamaSiguiente": ["N1-cuotas"],
+      "ordenEstado": "evidenciado",
+      "efecto": "PRS. El alta genera el plan de cuotas.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1129,
+          "nota": "Flujo de libranza, paso 1: GUARDAR."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_PRS", "metodo": "GUARDAR", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-cuotas",
+      "orden": 1,
+      "nombre": "Regenerar las cuotas pendientes",
+      "sp": "SPQ_NOM_PRS · GENERAR_CUOTAS",
+      "metodo": "GENERAR_CUOTAS",
+      "llama": ["SPK_GENERA_CUOTAS · GENERA_CUOTAS"],
+      "llamaAnterior": ["N0-prestamo"],
+      "llamaSiguiente": ["N2-cxp"],
+      "ordenEstado": "evidenciado",
+      "efecto": "PRSD PorPagar del saldo. No toca las cuotas ya pagadas o ya descontadas.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1141,
+          "nota": "Paso 2: plan de cuotas con SPK_GENERA_CUOTAS."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_PRS", "metodo": "GENERAR_CUOTAS", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPK_GENERA_CUOTAS", "metodo": "GENERA_CUOTAS", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-cxp",
+      "orden": 2,
+      "nombre": "Enviar el desembolso a CxP",
+      "sp": "SPQ_NOM_PRS · ENVIAR_A_CXP",
+      "metodo": "ENVIAR_A_CXP",
+      "llama": ["SPK_GENCXP_PRESTAMO_NOMI · (PROCEDIMIENTO)"],
+      "llamaAnterior": ["N1-cuotas"],
+      "llamaSiguiente": ["N3-descuento"],
+      "ordenEstado": "evidenciado",
+      "nota": "Es opcional. La cuota se descuenta en la prenómina aunque no se envíe a CxP.",
+      "efecto": "Cuenta por pagar del desembolso al empleado.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1154,
+          "nota": "Paso 3, marcado opcional: ENVIAR_A_CXP."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_PRS", "metodo": "ENVIAR_A_CXP", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPK_GENCXP_PRESTAMO_NOMI", "metodo": "(PROCEDIMIENTO)", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-descuento",
+      "orden": 3,
+      "nombre": "Descontar la cuota en la prenómina",
+      "sp": "FNK_VALORCONCEPTO_NEMPFD_RUN · VALORCONCEPTO_RUN",
+      "metodo": "VALORCONCEPTO_RUN",
+      "llamaAnterior": ["N2-cxp"],
+      "llamaSiguiente": ["N4-pagar"],
+      "ordenEstado": "evidenciado",
+      "nota": "Corre dentro de PRENOMINA cuando el concepto es clase Préstamo y la base es Cuota. Toma la cuota PorPagar cuya fecha cae en el período.",
+      "efecto": "Egreso en NEMPFD con el identificador del préstamo y el número de cuota.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1167,
+          "nota": "Paso 4: base Cuota en el motor de prenómina."
+        }
+      ],
+      "fichas": [
+        {"sp": "FNK_VALORCONCEPTO_NEMPFD_RUN", "metodo": "VALORCONCEPTO_RUN", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-pagar",
+      "orden": 4,
+      "nombre": "Marcar la cuota pagada al cerrar",
+      "sp": "SPQ_CERRAR_NOMI · (PROCEDIMIENTO @CNSPAGO)",
+      "metodo": "(PROCEDIMIENTO @CNSPAGO)",
+      "llamaAnterior": ["N3-descuento"],
+      "ordenEstado": "evidenciado",
+      "efecto": "PRSD Pagada con el CNSPAGO y el ítem de la liquidación. Recalcula saldo y estado del préstamo.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1193,
+          "nota": "Paso 6: SPQ_CERRAR_NOMI deja la cuota Pagada."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_CERRAR_NOMI", "metodo": "(PROCEDIMIENTO @CNSPAGO)", "proceso": "nomina", "estado": "leido"}
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": false,
+    "motivo": "Alta, cuotas, CxP, descuento y cierre están leídos. REFINANCIAR no se dibuja: no existe en el SQL."
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "tramo": "retiro",
+  "nombre": "Liquidación de contrato / retiro",
+  "actualizado": "2026-10-17",
+  "fuenteSql": "IXONLINE/SQL · SPQ_NOM_NEDIA, FRT_NEMP (procedimiento SPQ_FRT_NEMP) y SPK_CALCULAR_RETIROS",
+  "pantalla": {
+    "path": "/nom/Nom_procesos",
+    "vue": "RegistNovedades · retiros masivos",
+    "menu": "Talento humano → Procesos nómina → Prenómina → Retiros"
+  },
+  "documentoOrigen": {
+    "tabla": "NEDIA",
+    "claves": ["CNSPAGO", "NUMDOC"],
+    "detalle": "Evento RET. También escribe NEMP.FECHARETIRO y NEMPHIS."
+  },
+  "noEs": [
+    "No es la liquidación del período (NIEPE). El retiro deja líneas en la prenómina; el volcado es el grafo de liquidación.",
+    "RETIRAR_EMPLEADOS no recalcula: la pantalla debe lanzar el cálculo por empleado."
+  ],
+  "nodos": [
+    {
+      "id": "N0-individual",
+      "orden": 0,
+      "nombre": "Registrar el retiro de un empleado",
+      "sp": "SPQ_NOM_NEDIA · GUARDAR",
+      "metodo": "GUARDAR",
+      "llamaSiguiente": ["N4-liquidar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NEDIA del evento RET, NEMP.FECHARETIRO y NEMPHIS.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1408,
+          "nota": "Individual: novedad RET con fecha, indemnización y motivo."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPQ_NOM_NEDIA", "metodo": "GUARDAR", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-cargar",
+      "orden": 1,
+      "nombre": "Cargar el archivo de retiros",
+      "sp": "FRT_NEMP · CARGAR_EMPLEADOS",
+      "metodo": "CARGAR_EMPLEADOS",
+      "llamaSiguiente": ["N2-validar"],
+      "ordenEstado": "evidenciado",
+      "nota": "La ficha se llama FRT_NEMP. El procedimiento SQL es SPQ_FRT_NEMP.",
+      "efecto": "RPDX. Exige empleado sin fecha de retiro y activo en la nómina.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1408,
+          "nota": "Masivo: archivo documento, nombre y fecha."
+        }
+      ],
+      "fichas": [
+        {"sp": "FRT_NEMP", "metodo": "CARGAR_EMPLEADOS", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-validar",
+      "orden": 2,
+      "nombre": "Validar la fila editada",
+      "sp": "FRT_NEMP · VALIDAR_RPDX_EMPLEADO",
+      "metodo": "VALIDAR_RPDX_EMPLEADO",
+      "llamaAnterior": ["N1-cargar"],
+      "llamaSiguiente": ["N3-retirar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "RPDX. La fecha de retiro no puede ser anterior al ingreso.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1408,
+          "nota": "Validar: sin retiro previo, en plantilla, fecha mayor o igual al ingreso."
+        }
+      ],
+      "fichas": [
+        {"sp": "FRT_NEMP", "metodo": "VALIDAR_RPDX_EMPLEADO", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-retirar",
+      "orden": 3,
+      "nombre": "Marcar los retiros del archivo",
+      "sp": "FRT_NEMP · RETIRAR_EMPLEADOS",
+      "metodo": "RETIRAR_EMPLEADOS",
+      "llamaAnterior": ["N2-validar"],
+      "llamaSiguiente": ["N4-liquidar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "FECHARETIRO y NEDIA RET de las filas sin error. Devuelve los NUMDOC; no calcula valores.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1408,
+          "nota": "Retirar marca a todos; el recálculo va uno a uno."
+        }
+      ],
+      "fichas": [
+        {"sp": "FRT_NEMP", "metodo": "RETIRAR_EMPLEADOS", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-liquidar",
+      "orden": 4,
+      "nombre": "Liquidar los conceptos del retiro",
+      "sp": "SPK_CALCULAR_RETIROS · CALCULAR_RETIROS",
+      "metodo": "CALCULAR_RETIROS",
+      "llama": ["SPQ_ADELANTO_CESAN · APLICAR", "SPK_PROCESO_VACACIONES · ACTUALIZA"],
+      "llamaAnterior": ["N0-individual", "N3-retirar"],
+      "llamaSiguiente": ["N5-limpiar"],
+      "ordenEstado": "evidenciado",
+      "nota": "Según FORMALIQRETIROS: estándar escribe en el staging; OTRASIPS escribe la provisión directo en NEMPFD. No lanza error si no hay retiros en el mes. Adelantos y días de vacaciones los llama este mismo procedimiento.",
+      "efecto": "Líneas de prima, cesantías, intereses, vacaciones e indemnización del retiro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1408,
+          "nota": "Liquida, descuenta adelantos y toma los días de NEMPV/NEMPVD."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPK_CALCULAR_RETIROS", "metodo": "CALCULAR_RETIROS", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPQ_ADELANTO_CESAN", "metodo": "APLICAR", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPK_PROCESO_VACACIONES", "metodo": "ACTUALIZA", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N5-limpiar",
+      "orden": 5,
+      "nombre": "Quitar la novedad y limpiar las líneas",
+      "sp": "pendiente",
+      "metodo": "pendiente",
+      "estadoPaso": "pendiente",
+      "llamaAnterior": ["N4-liquidar"],
+      "ordenEstado": "por_confirmar",
+      "nota": "SPQ_NOM_NEDIA · ELIMINAR está leído y dice que, si era retiro, llama SPK_QUITANOV_RETIROS. Ese SPK no tiene ficha ni cuerpo en sql/. No se documenta aquí qué borra hasta bajarlo de DESAIX. No es el paso que sigue al liquidar: es la reversa.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/nomina/proceso.json",
+          "linea": 1408,
+          "nota": "Borrar: quita la novedad y limpia con SPK_QUITANOV_RETIROS."
+        }
+      ]
+    }
+  ],
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "N5-limpiar espera SPK_QUITANOV_RETIROS. El alta individual y el masivo están leídos."
+  }
+}
