@@ -114,22 +114,27 @@
       "nombre": "Cerrar el período",
       "sp": "SPQ_CERRAR_NOMI · (PROCEDIMIENTO @CNSPAGO)",
       "metodo": "(PROCEDIMIENTO @CNSPAGO)",
-      "llama": ["SPK_PROCESO_VACACIONES · CIERRE"],
+      "llama": ["SPQ_PROCESO_VACACIONES · CIERRE"],
       "llamaAnterior": ["N3-generar"],
       "llamaSiguiente": ["N5-contabilizar"],
       "ordenEstado": "evidenciado",
-      "nota": "Lo dispara GENERATE_NOMINA cuando PROCESO=CLOSE. Exige detalles y cuenta KMCOM en cada línea. Escribe CERRADO=1 y marca las cuotas de libranza Pagada.",
-      "efecto": "NPER y NIEPE cerrados. Provisión mensual de vacaciones.",
+      "nota": "Lo ejecuta SPQ_LIQUIDACION · GENERATE_NOMINA con PROCESO=CLOSE, en este orden: SPQ_LIQUIDAR_NOMI → SPQ_CERRAR_NOMI → SPQ_PROCESO_VACACIONES @CNSPAGO,'CIERRE'. El cierre de vacaciones no lo llama SPQ_CERRAR_NOMI. SPQ_CERRAR_NOMI exige detalles y cuenta KMCOM en cada línea, escribe CERRADO=1 y marca las cuotas de libranza Pagada. Con la versión de sql/, SPQ_PROCESO_VACACIONES recibe @NUMDOCR NULL y su cursor filtra NEMP.NUMDOC = @NUMDOCR, así que no procesa empleados (sin provisión). La versión SPK_PROCESO_VACACIONES de sql_refe/0100016359 es distinta: confirmar en DESAIX cuál corre.",
+      "efecto": "NPER y NIEPE cerrados. Provisión de vacaciones DIASG += NDIAS/12 solo si el cursor de SPQ_PROCESO_VACACIONES trae empleados (ver nota).",
       "evidenciaOrden": [
         {
           "archivo": "conocimiento/nomina/proceso.json",
           "linea": 1260,
           "nota": "Paso 4: SPQ_CERRAR_NOMI y el cierre de vacaciones."
+        },
+        {
+          "archivo": "sql/SPQ_LIQUIDACION.sql",
+          "linea": 156,
+          "nota": "CLOSE: EXEC SPQ_LIQUIDAR_NOMI; EXEC SPQ_CERRAR_NOMI (158); EXEC SPQ_PROCESO_VACACIONES @CNSPAGO,'CIERRE' (160). OPEN_NOMINA hace la reversa con 'ABRE' (233)."
         }
       ],
       "fichas": [
         {"sp": "SPQ_CERRAR_NOMI", "metodo": "(PROCEDIMIENTO @CNSPAGO)", "proceso": "nomina", "estado": "leido"},
-        {"sp": "SPK_PROCESO_VACACIONES", "metodo": "CIERRE", "proceso": "nomina", "estado": "leido"}
+        {"sp": "SPQ_PROCESO_VACACIONES", "metodo": "CIERRE", "proceso": "nomina", "estado": "leido"}
       ]
     },
     {
@@ -141,13 +146,18 @@
       "llamaAnterior": ["N4-cerrar"],
       "llamaSiguiente": ["N6-cxp"],
       "ordenEstado": "evidenciado",
-      "nota": "Escribe MCPE/MCHE. No llama a SPK_NC_CONTAB_NOMINA; ese SPK queda en el grafo contable, al reconstruir.",
+      "nota": "Escribe MCPE/MCHE. No llama a SPK_NC_CONTAB_NOMINA; ese SPK queda en el grafo contable, al reconstruir. El orden N4→N5 lo impone la pantalla, no el SQL: CONTABILIZAR no valida NPER.CERRADO (solo período contable y comprobante previo).",
       "efecto": "Comprobante del empleado y NPER.CONTABILIZADA.",
       "evidenciaOrden": [
         {
           "archivo": "conocimiento/nomina/proceso.json",
           "linea": 1275,
           "nota": "Paso 5: CONTABILIZAR."
+        },
+        {
+          "archivo": "sql/SPQ_NC_CONTAB_NOMINA.sql",
+          "linea": 24,
+          "nota": "El bloque CONTABILIZAR (24-629) no consulta NPER.CERRADO; solo actualiza NPER.CONTABILIZADA (603)."
         }
       ],
       "fichas": [
@@ -177,7 +187,7 @@
   ],
   "veredictoFichas": {
     "usarDocumentacion": true,
-    "releerSqlHoy": false,
-    "motivo": "Cada nodo usa un METODO leído. No hay paso pendiente en este tramo."
+    "releerSqlHoy": true,
+    "motivo": "Cada nodo usa un METODO leído. El efecto del cierre de vacaciones depende de qué versión de PROCESO_VACACIONES corre (SPQ en sql/ vs SPK en sql_refe)."
   }
 }
