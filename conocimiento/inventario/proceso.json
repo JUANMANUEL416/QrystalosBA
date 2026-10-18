@@ -398,8 +398,8 @@
         {
           "id": "periodo-inv-abierto",
           "nombre": "Periodo inventario / contable abierto",
-          "explicacion": "CRUD_IMOV (entrada) rechaza fecha futura, periodo cerrado (PRI.CERRADO_INV) y, si MOV_PERIODOS_ANT ≠ SI, movimientos de meses anteriores. CRUD_IMOV_SAL igual para salidas. Las confirmaciones y anulaciones no consultan PRI; el cierre contable (VALIDAR_PERIODO_BASICO) sí bloquea si quedan pendientes.",
-          "invariante": "Propuesta no implementada (SR20260911-001): con PRI cerrado no insertar/confirmar/anular IMOV del mes.",
+          "explicacion": "CRUD_IMOV y CRUD_IMOV_SAL rechazan alta y edición si el mes de FECHAMOV tiene PRI.CERRADO o PRI.CERRADO_INV. Confirmar salida, confirmar entrada y confirmar dispensación rechazan si el mes de la fecha de confirmación está cerrado, antes de mover existencias. En dispensación esa fecha es la de la fórmula cuando CEFM_FECHA_TRANS sustituye el reloj; si no hay fila PRI, tampoco confirma (COESME644). Anular un movimiento confirmado también. Anular uno pendiente sigue permitido, para poder limpiar el mes.",
+          "invariante": "Con el mes cerrado en contabilidad o en inventario no se inserta, no se edita, no se confirma y no se anula un IMOV confirmado de ese mes. COESME614. Dispensación: PRI del mes de la fecha efectiva (fórmula o reloj); sin periodo o cerrado, no confirma. COESME644.",
           "sps": [
             {
               "nombre": "SPQ_IMOV",
@@ -408,13 +408,13 @@
             },
             {
               "nombre": "SPQ_IMOV",
-              "metodo": "CONFIRMA_SALIDA / CONFIRMA_ENTREGA / ANULAR_SALIDA",
-              "rol": "No validan PRI."
+              "metodo": "CONFIRMA_SALIDA / ANULAR_SALIDA",
+              "rol": "CONFIRMA_SALIDA hereda el periodo de SPK_CONFIRMARSALIDAS. ANULAR_SALIDA bloquea el confirmado. CONFIRMA_ENTREGA no mira PRI: solo arma lotes del pendiente."
             },
             {
               "nombre": "SPQ_IZSOL",
-              "metodo": "CONF_ENTRADA / ANULAR_ENTRADA",
-              "rol": "No validan PRI."
+              "metodo": "CONF_ENTRADA / CONF_MOVIMIENTO",
+              "rol": "CONF_ENTRADA hereda SPK_CONFIRMARENTRADAS. CONF_MOVIMIENTO hereda SPK_CONFIRMASAL_CM."
             },
             {
               "nombre": "SPQ_PRI",
