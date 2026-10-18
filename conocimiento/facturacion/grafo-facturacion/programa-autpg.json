@@ -1,0 +1,195 @@
+{
+  "tramo": "programa-autpg",
+  "nombre": "Programa AUTPG (capitado / PGP)",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "AUTPG · facturar programa",
+  "documentoOrigen": {
+    "tabla": "AUTPG",
+    "claves": [
+      "IDAUTPG"
+    ],
+    "detalle": "Relación FTRDC con CIT/AUT del afiliado."
+  },
+  "nodos": [
+    {
+      "id": "N0-facturar",
+      "orden": 0,
+      "nombre": "Facturar programa",
+      "sp": "SPQ_AUTPG · FACTURAR_AUTPG",
+      "metodo": "FACTURAR_AUTPG",
+      "llamaSiguiente": [
+        "N1-validadian"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Llama SPK_FACTURA_AUTPG.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_AUTPG.sql",
+          "linea": 946,
+          "nota": "FACTURAR_AUTPG."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_AUTPG",
+          "metodo": "FACTURAR_AUTPG",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-validadian",
+      "orden": 1,
+      "nombre": "Validar resolución DIAN por sede",
+      "sp": "SPK_FACTURA_AUTPG",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N2-numeracion"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Resolución vigente, agotada, insuficiente, vencida (:108-242).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_AUTPG.sql",
+          "linea": 221,
+          "nota": "Agotada."
+        },
+        {
+          "archivo": "sql/SPK_FACTURA_AUTPG.sql",
+          "linea": 242,
+          "nota": "Sin resolución."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURA_AUTPG",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-numeracion",
+      "orden": 2,
+      "nombre": "Número de factura y resolución DIAN",
+      "sp": "SPK_GENNUMEROFACTURA",
+      "metodo": null,
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "llamaSiguiente": [
+        "N3-ftr"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Consume consecutivo; si falla devuelve error severidad 1 y el motor sigue con N_FACTURA vacío (riesgo).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_AUTPG.sql",
+          "linea": 448,
+          "nota": "Pide número; revisa vacío :452."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
+          "linea": 49,
+          "nota": "Errores sev1 :49/:81/:86."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_GENNUMEROFACTURA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_GENCONSECUTIVO",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-ftr",
+      "orden": 3,
+      "nombre": "FTR/FTRD/FTRDC en transacción",
+      "sp": "SPK_FACTURA_AUTPG",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N4-contab"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "INSERT FTR (:497), FTRD (:526); FTRDC desde CIT/AUT sin filtro de periodo ni FACTURADA (:315-389).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_AUTPG.sql",
+          "linea": 435,
+          "nota": "TX :435-585."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURA_AUTPG",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-contab",
+      "orden": 4,
+      "nombre": "Contabilizar",
+      "sp": "SPK_NC_CONTAB_FTR",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N5-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Comprobante o cola FTRCO.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_AUTPG.sql",
+          "linea": 641,
+          "nota": "EXEC SPK_NC_CONTAB_FTR."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_NC_CONTAB_FTR",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N5-emision",
+      "orden": 5,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR queda ESTADO P lista para FE y cuenta de cobro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN encola FE (FACTE=1)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

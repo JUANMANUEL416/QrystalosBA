@@ -1,0 +1,328 @@
+{
+  "tramo": "hadm",
+  "nombre": "Salud / HADM: hospitalización, urgencias y ambulatorio",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "Facturación hospitalaria/urgencias (FACT_HOSPIURG)",
+  "documentoOrigen": {
+    "tabla": "HADM",
+    "claves": [
+      "NOADMISION"
+    ],
+    "detalle": "Cargos HPRE/HPRED de la admisión (prestaciones) y HADMAUT."
+  },
+  "nodos": [
+    {
+      "id": "N0-preparar",
+      "orden": 0,
+      "nombre": "Preparar admisión cerrada",
+      "sp": "SPQ_FTR_HADM_COL · PREPARAR_HADM",
+      "metodo": "PREPARAR_HADM",
+      "llamaSiguiente": [
+        "N1-estado-admi",
+        "N1-soat"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Valida HADM facturable, alta, no capitado/masivo; staging RPDX.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_HADM_COL.sql",
+          "linea": 79,
+          "nota": "PREPARAR_HADM."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_HADM_COL",
+          "metodo": "PREPARAR_HADM",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-estado-admi",
+      "orden": 1,
+      "nombre": "Prechequeo de la admisión",
+      "sp": "SPK_ESTADO_ADMI",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N2-afacturar"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "RPDX con inconvenientes (sin cargos, copago, cirugía sin liquidar).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/0100012147/SPK_ESTADO_ADMI.sql",
+          "linea": 41,
+          "nota": "Mensajes :41-498."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_ESTADO_ADMI",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-soat",
+      "orden": 1,
+      "nombre": "Rama SOAT / accidente de tránsito",
+      "sp": "SPQ_FTR_CXC_SOAT",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N7-emision"
+      ],
+      "ordenEstado": "por_confirmar",
+      "efecto": "Sin SQL en el repo (DESAIX). La ruta SOAT documentada está en grafo-acctran (SPQ_DISTRIHPRED_SOAT · FACTURAR).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_HADM_COL.sql",
+          "linea": 79,
+          "nota": "PREPARAR_HADM deriva a SOAT."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_CXC_SOAT",
+          "metodo": null,
+          "proceso": null,
+          "estado": "sin_sql_desaix"
+        }
+      ]
+    },
+    {
+      "id": "N2-afacturar",
+      "orden": 2,
+      "nombre": "Agrupar cargos por pagador/plan",
+      "sp": "SPK_AFACTURAR",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N3-item",
+        "N3-todo"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "RPDX por tercero/plan (FACTPORAFU vía PPTFTR/PPTFTRD).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/0100012147/SPK_AFACTURAR.sql",
+          "linea": 85,
+          "nota": "Agrupación HPRED."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_AFACTURAR",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-item",
+      "orden": 3,
+      "nombre": "Facturar un pagador",
+      "sp": "SPQ_FTR_HADM_COL · FACTHADM_ITEM",
+      "metodo": "FACTHADM_ITEM",
+      "llama": [
+        "SPK_FACTURA_ASIS"
+      ],
+      "llamaSiguiente": [
+        "N4-numeracion"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Llama SPK_FACTURA_ASIS.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_HADM_COL.sql",
+          "linea": 165,
+          "nota": "FACTHADM_ITEM."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_HADM_COL",
+          "metodo": "FACTHADM_ITEM",
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_FACTURA_ASIS",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-todo",
+      "orden": 3,
+      "nombre": "Facturar todos los pagadores",
+      "sp": "SPQ_FTR_HADM_COL · FACTHADM_TODO",
+      "metodo": "FACTHADM_TODO",
+      "llama": [
+        "SPK_FACTURA_ASIS_T"
+      ],
+      "llamaSiguiente": [
+        "N4-numeracion"
+      ],
+      "ordenEstado": "por_confirmar",
+      "efecto": "Llama SPK_FACTURA_ASIS_T, sin SQL en el repo.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_HADM_COL.sql",
+          "linea": 252,
+          "nota": "FACTHADM_TODO."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_HADM_COL",
+          "metodo": "FACTHADM_TODO",
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_FACTURA_ASIS_T",
+          "metodo": null,
+          "proceso": null,
+          "estado": "sin_sql_desaix"
+        }
+      ]
+    },
+    {
+      "id": "N4-numeracion",
+      "orden": 4,
+      "nombre": "Número de factura y resolución DIAN",
+      "sp": "SPK_GENNUMEROFACTURA",
+      "metodo": null,
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "llamaSiguiente": [
+        "N5-ftr"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Consume consecutivo; si falla devuelve error severidad 1 y el motor sigue con N_FACTURA vacío (riesgo).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_ASIS.sql",
+          "linea": 686,
+          "nota": "SPK_FACTURA_ASIS pide número."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
+          "linea": 49,
+          "nota": "Errores sev1 :49/:81/:86."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_GENNUMEROFACTURA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_GENCONSECUTIVO",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N5-ftr",
+      "orden": 5,
+      "nombre": "Crear FTR/FTRD y marcar cargos",
+      "sp": "SPK_FACTURA_ASIS",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N6-contab"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR PROCEDENCIA SALUD, FTRD, HADMF, HPRED.FACTURADA=1, HADMAUT.N_FACTURA. Sin transacción.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_ASIS.sql",
+          "linea": 732,
+          "nota": "INSERT FTR."
+        },
+        {
+          "archivo": "sql/SPK_FACTURA_ASIS.sql",
+          "linea": 761,
+          "nota": "INSERT FTRD."
+        },
+        {
+          "archivo": "sql/SPK_FACTURA_ASIS.sql",
+          "linea": 812,
+          "nota": "HPRED FACTURADA=1."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURA_ASIS",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N6-contab",
+      "orden": 6,
+      "nombre": "Contabilizar la factura",
+      "sp": "SPK_NC_CONTAB_FTR",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N7-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Comprobante contable o encola FTRCO si CONTAB_FTR_JOB=SI.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURA_ASIS.sql",
+          "linea": 977,
+          "nota": "EXEC SPK_NC_CONTAB_FTR."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_NC_CONTAB_FTR",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N7-emision",
+      "orden": 7,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR queda ESTADO P lista para FE y cuenta de cobro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN encola FE (FACTE=1)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

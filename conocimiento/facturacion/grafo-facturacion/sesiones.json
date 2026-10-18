@@ -1,0 +1,201 @@
+{
+  "tramo": "sesiones",
+  "nombre": "Sesiones / terapias / oncología",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "Facturación citas (FTR_COL) · rama ONCO",
+  "documentoOrigen": {
+    "tabla": "CIT",
+    "claves": [
+      "CONSECUTIVO",
+      "IDAUTSES"
+    ],
+    "detalle": "CIT.IDAUTSES NOT NULL + HCATDIMOV; AUTSES/AUTSE. Excluidas de paquete y AUTPG."
+  },
+  "veredictoFichas": {
+    "usarDocumentacion": true,
+    "releerSqlHoy": true,
+    "motivo": "Facturación individual de sesión y reversa al liberar sin confirmar."
+  },
+  "nodos": [
+    {
+      "id": "N0-marcar",
+      "orden": 0,
+      "nombre": "Marcar sesiones (rama ONCO)",
+      "sp": "SPQ_FTR_COL · MARCAFACT",
+      "metodo": "MARCAFACT",
+      "llamaSiguiente": [
+        "N1-marcar-todo"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Marca CIT con IDAUTSES y HCATDIMOV.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 1065,
+          "nota": "MARCAFACT rama ONCO."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "MARCAFACT",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-marcar-todo",
+      "orden": 1,
+      "nombre": "Marcar todo / contar marcadas",
+      "sp": "SPQ_FTR_COL · MARCATODOMASI",
+      "metodo": "MARCATODOMASI",
+      "llamaSiguiente": [
+        "N2-facturar-masi"
+      ],
+      "ordenEstado": "por_confirmar",
+      "efecto": "Orden de pantalla deducido.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2130,
+          "nota": "MARCATODOMASI."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "MARCATODOMASI",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-facturar-masi",
+      "orden": 2,
+      "nombre": "Facturar lote",
+      "sp": "SPQ_FTR_COL · FACTURAR_MASI",
+      "metodo": "FACTURAR_MASI",
+      "llamaSiguiente": [
+        "N3-unifica"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "ONCO/CITCE → UNIFICAWEB.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2517,
+          "nota": "EXEC UNIFICAWEB (ONCO)."
+        },
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2539,
+          "nota": "EXEC UNIFICAWEB."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "FACTURAR_MASI",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-unifica",
+      "orden": 3,
+      "nombre": "Factura unificada",
+      "sp": "SPK_FACTURA_MASI_UNIFICAWEB",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N4-numeracion"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR por paciente.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPK_FACTURA_MASI_UNIFICAWEB.sql",
+          "linea": 139,
+          "nota": "Pide número."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURA_MASI_UNIFICAWEB",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-numeracion",
+      "orden": 4,
+      "nombre": "Número de factura y resolución DIAN",
+      "sp": "SPK_GENNUMEROFACTURA",
+      "metodo": null,
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "llamaSiguiente": [
+        "N5-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Consume consecutivo; si falla devuelve error severidad 1 y el motor sigue con N_FACTURA vacío (riesgo).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPK_FACTURA_MASI_UNIFICAWEB.sql",
+          "linea": 139,
+          "nota": "Pide número."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
+          "linea": 49,
+          "nota": "Errores sev1 :49/:81/:86."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_GENNUMEROFACTURA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_GENCONSECUTIVO",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N5-emision",
+      "orden": 5,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR queda ESTADO P lista para FE y cuenta de cobro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN encola FE (FACTE=1)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

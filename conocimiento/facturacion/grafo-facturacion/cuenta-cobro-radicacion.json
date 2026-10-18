@@ -1,0 +1,259 @@
+{
+  "tramo": "cuenta-cobro-radicacion",
+  "nombre": "Cuenta de cobro (FCXC) y radicación",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "Cartera · cuentas de cobro / radicación",
+  "documentoOrigen": {
+    "tabla": "FCXC",
+    "claves": [
+      "CNSCXC"
+    ],
+    "detalle": "FCXCD por factura; FCXCDV vencimientos."
+  },
+  "nodos": [
+    {
+      "id": "N0-envio",
+      "orden": 0,
+      "nombre": "Envío (ENT) → crear CXC",
+      "sp": "SPQ_ENT_COL · CREARCXC_ENT",
+      "metodo": "CREARCXC_ENT",
+      "llamaSiguiente": [
+        "N1-asignar"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Ruta por envío/auditoría.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/0100016477/SPQ_ENT_COL.sql",
+          "linea": 804,
+          "nota": "CREARCXC_ENT."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_ENT_COL",
+          "metodo": "CREARCXC_ENT",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N0-crud",
+      "orden": 0,
+      "nombre": "Crear cuenta de cobro",
+      "sp": "SPQ_FCXC_COL · CRUD_FCXC",
+      "metodo": "CRUD_FCXC",
+      "llamaSiguiente": [
+        "N1-asignar"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FCXC.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FCXC_COL.sql",
+          "linea": 53,
+          "nota": "CRUD_FCXC."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FCXC_COL",
+          "metodo": "CRUD_FCXC",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-asignar",
+      "orden": 1,
+      "nombre": "Asignar facturas",
+      "sp": "SPQ_FCXC_COL · ASIGNAR_FACT",
+      "metodo": "ASIGNAR_FACT",
+      "llamaSiguiente": [
+        "N2-cerrar"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FCXCD.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FCXC_COL.sql",
+          "linea": 225,
+          "nota": "ASIGNAR_FACT."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FCXC_COL",
+          "metodo": "ASIGNAR_FACT",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-cerrar",
+      "orden": 2,
+      "nombre": "Cerrar cuenta de cobro",
+      "sp": "SPQ_FCXC_COL · CIERRA_FCXC",
+      "metodo": "CIERRA_FCXC",
+      "llamaSiguiente": [
+        "N3-radicar",
+        "N3-multi"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FCXC cerrada.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FCXC_COL.sql",
+          "linea": 507,
+          "nota": "CIERRA_FCXC."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FCXC_COL",
+          "metodo": "CIERRA_FCXC",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-radicar",
+      "orden": 3,
+      "nombre": "Radicar",
+      "sp": "SPQ_FCXC_COL · RADICA_FCXC",
+      "metodo": "RADICA_FCXC",
+      "llamaSiguiente": [
+        "N4-entrega",
+        "N4-contab"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Fechas, periodo, cartera, notas pendientes, estado P. División multi-fecha con defecto (:635-645).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FCXC_COL.sql",
+          "linea": 568,
+          "nota": "RADICA_FCXC."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FCXC_COL",
+          "metodo": "RADICA_FCXC",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-multi",
+      "orden": 3,
+      "nombre": "Radicación multi-fecha",
+      "sp": "SPQ_FCXC_COL · PROCESAR_RADICACION_MULTI_FECHA",
+      "metodo": "PROCESAR_RADICACION_MULTI_FECHA",
+      "llamaSiguiente": [
+        "N4-entrega"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Divide por fecha correctamente (:848-867).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FCXC_COL.sql",
+          "linea": 747,
+          "nota": "PROCESAR_RADICACION_MULTI_FECHA."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FCXC_COL",
+          "metodo": "PROCESAR_RADICACION_MULTI_FECHA",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-contab",
+      "orden": 4,
+      "nombre": "Contabilizar radicación (CONTABCXC=SI)",
+      "sp": "SPK_CONTAB_RADICACXC",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N5-nrorad"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Periodo existe y abierto.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPK_CONTAB_RADICACXC.sql",
+          "linea": 51,
+          "nota": "Errores :51/:57."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_CONTAB_RADICACXC",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-entrega",
+      "orden": 4,
+      "nombre": "Entrega CXC",
+      "sp": "SPK_ENTREGA_CXC",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N5-nrorad"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FCXCDV, INDRECIBIDO=1, FTR.INDCXC=1.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPK_ENTREGA_CXC.sql",
+          "linea": 75,
+          "nota": "UPDATE FCXC recibido."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_ENTREGA_CXC",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N5-nrorad",
+      "orden": 5,
+      "nombre": "Número de radicado por factura",
+      "sp": "SPQ_FCXC_COL · NRORAD_FCXCD",
+      "metodo": "NRORAD_FCXCD",
+      "llamaSiguiente": [],
+      "ordenEstado": "por_confirmar",
+      "efecto": "Orden respecto a RADICA deducido.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FCXC_COL.sql",
+          "linea": 1125,
+          "nota": "NRORAD_FCXCD."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FCXC_COL",
+          "metodo": "NRORAD_FCXCD",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}
