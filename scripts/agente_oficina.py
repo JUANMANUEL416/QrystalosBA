@@ -215,8 +215,8 @@ def _sql_recorte(archivo: str) -> str:
     nombre = os.path.basename((archivo or "").strip())
     if not nombre:
         return ""
-    path = os.path.join(kb.SQL_ROOT, nombre)
-    if not os.path.isfile(path):
+    path = kb.buscar_sql_local(nombre)  # copia local sql/ o sql_refe/ (fuera de git)
+    if not path:
         return ""
     with open(path, encoding="utf-8", errors="replace") as fh:
         texto = fh.read()
@@ -296,7 +296,7 @@ def _documentar() -> None:
     if tarea.get("abierta") and archivo:
         sql = _sql_recorte(archivo)
         if not sql:
-            append_chat("__documentar__", "agente", f"No está {archivo} en sql/. Baje el script de hoy y vuelva a pedir la ficha.")
+            append_chat("__documentar__", "agente", f"No hay copia local de {archivo} (sql/ o sql_refe/, fuera de git). Léalo en DESAIX o bájelo a sql/ (no se sube al repositorio) y vuelva a pedir la ficha.")
             return
     else:
         sql = ""

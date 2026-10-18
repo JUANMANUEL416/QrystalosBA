@@ -4,7 +4,7 @@ Continúa **`OC-CONFIRMACION-RECEPCION.md`**. JSON: `catalogo-conf-entrada-cxp.j
 
 **Núcleo crítico (IEXI + KMCOM + cuadre CxP):** leer primero **`NUCLEO-CRITICO-IEXI-CXP.md`** (PC-N1 … PC-N5).
 
-SP: `sql/SPQ_IZSOL.sql` · `sql/SPK_CONFIRMARENTRADAS.sql` · `sql/SPK_INSERT_CXP_INV.sql`.
+SP: `SPQ_IZSOL` · `SPK_CONFIRMARENTRADAS` · `SPK_INSERT_CXP_INV`.
 
 ## 1. Confirmar entrada (`CONF_ENTRADA`)
 

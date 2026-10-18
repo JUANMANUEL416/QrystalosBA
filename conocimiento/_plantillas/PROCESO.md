@@ -3,7 +3,7 @@
 **Estado:** esqueleto | parcial | listo  
 **Módulo:** {{MODULO}}
 
-> Solo flujo y explicación. Los SP se bajan a `sql/` el día que se analicen.
+> Solo flujo y explicación. El cuerpo de los SP se lee de DESAIX o de la copia local `sql/`/`sql_refe/` (fuera de git); aquí solo queda el nombre del SP, sus métodos y validaciones (cita `SP:línea`).
 
 ## Resumen
 

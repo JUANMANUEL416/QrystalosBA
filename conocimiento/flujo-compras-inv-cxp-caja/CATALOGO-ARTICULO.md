@@ -1,6 +1,6 @@
 # Catálogo artículo — requisitos para el flujo de inventario
 
-Documento de referencia (2026-09-19). Detalle JSON: `catalogo-articulo.json`. SP: `sql/SPQ_IART.sql` (PREVERSION = 2.0.3).
+Documento de referencia (2026-09-19). Detalle JSON: `catalogo-articulo.json`. SP: `SPQ_IART` (PREVERSION = 2.0.3).
 
 ## Orden de configuración recomendado
 

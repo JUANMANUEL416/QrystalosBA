@@ -4,7 +4,7 @@
 **Módulo:** MCP_COL  
 **Ventanas:** `/cont/mcp`, `/cont/mcpe`
 
-> MCUE no está en INDICE_TABLAS. No inventar. Los SP se bajan a `sql/` el día que se analicen.
+> MCUE no está en INDICE_TABLAS. No inventar. El cuerpo de los SP se lee de DESAIX o de la copia local `sql/`/`sql_refe/` (fuera de git); aquí solo queda el nombre del SP, sus métodos y validaciones (cita `SP:línea`).
 
 ## Capas
 

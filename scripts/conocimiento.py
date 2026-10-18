@@ -16,6 +16,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPT_DIR)
 CONOCIMIENTO = os.path.join(ROOT, "conocimiento")
 SQL_ROOT = os.path.join(ROOT, "sql")
+# Copias locales de SP (fuera de git, ver .gitignore). Se leen si existen; nunca se exigen.
+SQL_REFE_ROOT = os.path.join(ROOT, "sql_refe")
 
 CAPAS_ESQUELETO = [
     {
@@ -1374,7 +1376,7 @@ def create_proceso(nombre: str, modulo: str = "", proceso_id: str = "") -> dict:
             fh.write(
                 f"# Proceso: {data['nombre']}\n\n"
                 f"**Estado:** esqueleto  \n**Módulo:** {data['modulo'] or '—'}\n\n"
-                "> Solo flujo y explicación. Los SP se bajan a sql/ el día que se analicen.\n\n"
+                "> Solo flujo y explicación. El cuerpo de los SP se lee de DESAIX o de la copia local sql/ (fuera de git); aquí solo nombre, métodos y validaciones (SP:línea).\n\n"
                 "## Capas\n\n1. Configuración\n2. Proceso propio\n"
                 "3. Lo que llega y completa\n4. Subproceso unido\n5. Envío a contabilidad\n"
             )
@@ -1400,7 +1402,7 @@ def create_proceso(nombre: str, modulo: str = "", proceso_id: str = "") -> dict:
             "capaId": "",
             "controlId": "",
             "titulo": f"{data['nombre']} · proceso nuevo (5 capas vacías)",
-            "detalle": "Completar explicación de cada capa y señalar los SP vigentes en sql/.",
+            "detalle": "Completar explicación de cada capa y señalar los SP vigentes (nombre y métodos).",
             "spNombre": "",
             "origen": "app",
         }
@@ -1498,17 +1500,39 @@ def cerrar_tarea() -> dict:
     return tarea
 
 
+def buscar_sql_local(archivo: str) -> str:
+    """Ruta de la copia local del SP (sql/ y luego sql_refe/**), o "" si no hay.
+
+    Las copias son locales y no se suben al repositorio; su ausencia no es error.
+    """
+    nombre = os.path.basename(archivo or "").lower()
+    if not nombre:
+        return ""
+    directo = os.path.join(SQL_ROOT, os.path.basename(archivo))
+    if os.path.isfile(directo):
+        return directo
+    for raiz in (SQL_ROOT, SQL_REFE_ROOT):
+        if not os.path.isdir(raiz):
+            continue
+        for base, _dirs, files in os.walk(raiz):
+            for f in files:
+                if f.lower() == nombre:
+                    return os.path.join(base, f)
+    return ""
+
+
 def documentar_sp(pendiente_id: str, archivo_sql: str, notas: str = "", proceso_id: str = "") -> dict:
     archivo = os.path.basename((archivo_sql or "").strip())
-    if not archivo.lower().endswith(".sql"):
-        return {"ok": False, "error": "Indique un archivo .sql (el vigente en sql/)."}
+    if archivo and not archivo.lower().endswith(".sql"):
+        archivo += ".sql"
+    if not archivo:
+        return {"ok": False, "error": "Indique el SP a documentar (nombre o archivo .sql)."}
 
-    path = os.path.join(SQL_ROOT, archivo)
-    if not os.path.isfile(path):
-        return {
-            "ok": False,
-            "error": f"No está {archivo} en sql/. Baje el SP de hoy a esa carpeta y reintente.",
-        }
+    path = buscar_sql_local(archivo)
+    if path:
+        origen_sql = f"copia local {os.path.relpath(path, ROOT).replace(os.sep, '/')} (fuera de git)"
+    else:
+        origen_sql = "sin copia local: leer el cuerpo de hoy en DESAIX (SQLIX, PREVERSION primero)"
 
     pendientes = load_pendientes()
     item = next((i for i in pendientes.get("items", []) if i.get("id") == pendiente_id), None)
@@ -1544,13 +1568,14 @@ def documentar_sp(pendiente_id: str, archivo_sql: str, notas: str = "", proceso_
         extra = f"Sustituye la tarea anterior ({prev.get('archivoSql')}).\n"
     texto = (
         f"{extra}"
-        f"Documentar SP **{archivo}** (vigente en sql/).\n"
+        f"Documentar SP **{archivo[:-4]}** ({origen_sql}).\n"
         f"Pendiente: {item.get('titulo') if item else pendiente_id or '— (sin pendiente; SP suelto)'}.\n"
         f"Proceso: {pid or '—'}.\n"
         f"{('Nota: ' + notas) if notas else ''}\n\n"
         "Leer el script de hoy. En conocimiento/{proceso}/sps.json documentar por METODO:\n"
         "  SP → METODO: hace (una frase), valida (lista), noValida (huecos), "
         "errores (textos KO), llama (SPK/SPQ anidados), efecto en el proceso, estado=leido.\n"
+        "Evidencia como SP:línea (p. ej. SPK_X:120), nunca una ruta sql/…; no subir .sql al repositorio. "
         "No copiar el cuerpo. Si el METODO no está en este SPQ, anotarlo en la cola (ELSE). "
         "Anidados faltantes → filas en pendientes. Actualizar el control en proceso.json solo si cambia el flujo."
         .replace("{proceso}", pid or "ID")

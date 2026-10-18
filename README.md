@@ -6,7 +6,7 @@ Proyecto de **coordinación técnica**. Recibe requerimientos del cliente, los a
 
 1. **Cola:** Guarde avalasesor en `cola/0100016198.html` → regístrelo en la app → **Abrir**.
 2. **Formulario:** Complete análisis (puede **dictar** en paso 3).
-3. **SQL:** Coloque scripts en **`sql/`** (carpeta fija) → confirme en paso 4.
+3. **SQL:** Coloque scripts en **`sql/`** (carpeta fija, local: está en `.gitignore`) → confirme en paso 4.
 4. **Revisión:** Copie prompt en Cursor. El agente lee cola + SQL del disco.
 5. **Histórico / aprobados:** Tabla de seguimiento; dictamen aprobado en `aprobados/{id-caso}/`.
 6. **Al cerrar caso:** **Archivar SQL** → scripts a `sql_refe/{ID-REQ}/`, carpeta `sql/` limpia.
@@ -34,8 +34,8 @@ QrystalosBA/
 ├── app/                    # GUI (menú central + analista)
 ├── conocimiento/           # Flujos de proceso (no cuerpos de SP)
 ├── cola/                   # HTML guardados de ixonline (Ctrl+S)
-├── sql/                    # Scripts SQL — carpeta fija de trabajo (SP del día)
-├── sql_refe/{ID-REQ}/      # SQL archivados al cerrar caso
+├── sql/                    # Scripts SQL — carpeta fija de trabajo (local, fuera de git)
+├── sql_refe/{ID-REQ}/      # SQL archivados al cerrar caso (local, fuera de git)
 ├── historico/registro.json # Histórico exportable
 ├── aprobados/{id-caso}/    # Dictámenes aprobados + imagenes/
 ├── dictamenes/             # Salida HTML del agente
@@ -57,7 +57,7 @@ Editar [`config/rutas.json`](config/rutas.json):
 
 ## SQL obligatorio antes del análisis
 
-Ver [`sql/README.md`](sql/README.md). Sin scripts en `sql/<ID-CASO>/`, el agente debe **pedirlos y detenerse**.
+Los cuerpos de SP **no van al repositorio** (cambian por versión): `sql/` y `sql_refe/` son copias locales en `.gitignore`. Se leen de esa copia o de DESAIX; la base de conocimiento guarda solo nombre del SP, métodos y validaciones, con evidencia `SP:línea`. Si falta el cuerpo y no está en DESAIX, el agente debe **pedirlo y detenerse**.
 
 Mínimo recomendado:
 - SP principal del flujo
