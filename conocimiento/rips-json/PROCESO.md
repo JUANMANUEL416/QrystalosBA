@@ -31,7 +31,7 @@ FE (useRipsJsonAsync / Validaciones / masivos)
                  │    ├─ CAPITADA=1 + TIPOCAP<4     → SPK_RIPS_JSON_FTR_CAPI
                  │    ├─ TIPOCAP=4 (capita o no)    → SPK_RIPS_JSON_FTR_CAPMASI
                  │    ├─ TIPOFAC=M + AUTPG          → SPK_RIPS_JSON_FTR_AUTPG
-                 │    ├─ TIPOFAC=M + NEDXC/NEDXS/NCDXPS/NSDXPS → SPK_RIPS_JSON_FTR_CITPAQ  (2.0.7)
+                 │    ├─ TIPOFAC=M + NEDXC/NEDXS/NCDXPS/NSDXPS → SPK_RIPS_JSON_FTR_CITPAQ  (confirmado 2.0.10)
                  │    ├─ TIPOFAC=M (resto)          → SPK_RIPS_JSON_FTR_MAS
                  │    └─ evento (no M, no capita)   → SPK_RIPS_JSON_FTR_IND
                  ├─ AJUSTE (CNSGLO o CNSFCT) + CUV obligatorio
