@@ -67,15 +67,15 @@ BEGIN
 END;
 
 /* ------------------------------------------------------------------
-   Catlogo CPCJ (KCOC y equivalente):
+   Catálogo CPCJ (KCOC y equivalente):
      02   = recaudo de copagos       ? TCOPAGO 01
      02-1 = recaudo de cuota moderadora ? TCOPAGO 02
    Reglas:
-   - Recibo vlido: FCJ.ESTADO = P, CERRADA = 1, clave no vaca.
+   - Recibo válido: FCJ.ESTADO = P, CERRADA = 1, clave no vacía.
    - Sin recibo ? VLR_COPAGO = 0.
    - Con recibo ? solo conceptos 02 y 02-1 (nunca el total del recibo).
    - TCOPAGO se alinea al concepto realmente recaudado cuando la clave
-     tiene un nico concepto (RIPS / DIAN).
+     tiene un único concepto (RIPS / DIAN).
    - HADM/INV enlazan por NOADMISION; el resto por NOPRESTACION.
      Se busca en FCJ.NOADMISION o FCJ.NOPRESTACION.
 IF OBJECT_ID('tempdb..#FTRDC_AJU') IS NOT NULL
