@@ -385,7 +385,7 @@ window.QrysSoporteConsultas = (function () {
 
   async function generarDocumento(silencioso) {
     if (!consultaId) return;
-    if (!silencioso) aviso("Gemini organiza la respuesta. El documento lleva el diagrama y el mockup del proceso. Puede tardar un minuto.");
+    if (!silencioso) aviso("Generando el documento con el texto del agente. Puede tardar un minuto.");
     await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/documento`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -436,61 +436,8 @@ window.QrysSoporteConsultas = (function () {
     }
   }
 
-  function pintarGemini(data) {
-    const el = $("scGeminiEstado");
-    if (!el) return;
-    el.textContent = data && data.configurado
-      ? "Clave cargada · …" + (data.sufijo || "") + ". Al generar el documento, Gemini lo organiza, lo pasa al lenguaje de las pantallas y agrega el flujo y las ilustraciones."
-      : "Sin clave de Gemini. Pégue la de Google AI y pulse Guardar clave.";
-  }
-
-  async function cargarGemini() {
-    try {
-      pintarGemini(await fetchJson("/api/soporte-consultas/gemini"));
-    } catch (e) {
-      pintarGemini(null);
-    }
-  }
-
-  async function guardarGemini() {
-    const campo = $("scGeminiClave");
-    const valor = (campo && campo.value || "").trim();
-    if (!valor) {
-      aviso("Pegue la clave de Gemini.", true);
-      return;
-    }
-    aviso("Guardando clave de Gemini…");
-    try {
-      const data = await fetchJson("/api/soporte-consultas/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ valor }),
-      });
-      if (campo) campo.value = "";
-      pintarGemini(data);
-      aviso("Clave de Gemini guardada. Solo la usa esta sección.");
-    } catch (e) {
-      aviso(e.message, true);
-    }
-  }
-
   async function generarIlustracion() {
-    if (!consultaId) return;
-    const texto = ($("scChatInput")?.value || "").trim();
-    aviso("Generando ilustración a partir de la respuesta oficial…");
-    try {
-      await fetchJson(`/api/soporte-consultas/${encodeURIComponent(consultaId)}/ilustracion`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: texto }),
-      });
-      const input = $("scChatInput");
-      if (input) input.value = "";
-      await refrescarPanel();
-      aviso("Ilustración lista. Al generar el documento queda en las capturas.");
-    } catch (e) {
-      aviso(e.message, true);
-    }
+    aviso("La ilustración la arma el modelo de imagen de Cursor, en el agente. Esta pantalla no llama a la API de Gemini.", true);
   }
 
   async function cargarLista() {
@@ -777,7 +724,6 @@ window.QrysSoporteConsultas = (function () {
       });
     });
 
-    $("scBtnGemini")?.addEventListener("click", () => guardarGemini());
     $("scBtnIlustracion")?.addEventListener("click", () => generarIlustracion());
     $("scBtnIrNueva")?.addEventListener("click", () => {
       showPanel("nueva");
@@ -923,7 +869,6 @@ window.QrysSoporteConsultas = (function () {
     setConsultaTabEnabled(!!consultaId);
     showPanel(consultaId ? "consulta" : "historial");
     cargarLista().catch((e) => aviso(e.message, true));
-    cargarGemini().catch(() => {});
     if (consultaId) refrescarPanel().catch(() => {});
   }
 

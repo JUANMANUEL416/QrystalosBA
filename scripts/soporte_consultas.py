@@ -32,10 +32,11 @@ Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, 
 1. Mensaje en **chat.json** (autor: `agente`).
 2. Borrador en **meta.json** → `respuestaOficial` (texto para PDF).
 3. **meta.json** → `proposito` (2–4 frases): nace de la **necesidad** (`preguntaInicial`) y resume qué entrega el documento según su **análisis** (no texto genérico).
-4. Cada **consulta SQL** en bloque ```sql … ``` o sección «BLOQUE N» con líneas ═══ (como dictámenes); la app la muestra en formato copiar/pegar. Esas consultas son para soporte interno.
-5. No implementar en Qrystalos2. No escribir en la base ni ejecutar procedimientos.
-6. Si hay servidor abajo, medir con SELECT de solo lectura (`scripts/auditoria_procesos.py`, `_resolve_server_db` y `_sqlcmd_query`) e incorporar conteos a la respuesta. No pedir al coordinador que los corra. No imprimir credenciales.
-7. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento).
+4. En una consulta de soporte, cada **consulta SQL** va en bloque ```sql … ```. Esas consultas son para soporte interno.
+5. Si `meta.json` trae `entregaRequerimiento` en true, el PDF usa la plantilla exclusiva `plantillas/entrega-requerimiento.html` (ChatGPT + ilustración). Todo el texto visible, avisos y rótulos de la ilustración van en español de Colombia. No incluya consultas SQL; quedan en el control de cambios.
+6. No implementar en Qrystalos2. No escribir en la base ni ejecutar procedimientos.
+7. Si hay servidor abajo, medir con SELECT de solo lectura (`scripts/auditoria_procesos.py`, `_resolve_server_db` y `_sqlcmd_query`) e incorporar conteos a la respuesta. No pedir al coordinador que los corra. No imprimir credenciales.
+8. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento). En una entrega de requerimiento, soporte interno no lleva SQL.
 
 Título: {meta.get("titulo") or ""}
 Cliente: {meta.get("cliente") or ""}
@@ -343,7 +344,7 @@ def html_capturas(sid: str) -> str:
         ".gif": "image/gif",
     }
     for img in meta.get("imagenes") or []:
-        if img.get("origen") == "gemini":
+        if img.get("origen") in ("gemini", "cursor"):
             continue
         nombre = Path(str(img.get("nombre") or "")).name
         path = carp / nombre
@@ -700,12 +701,43 @@ def _procesar_bloques_decorativos(text: str) -> str:
     return "".join(out_parts)
 
 
-def texto_respuesta_a_html(texto: str) -> str:
-    """Respuesta oficial → HTML con bloques SQL copiables (como dictámenes)."""
+def _quitar_consultas_sql(texto: str) -> str:
+    """Entrega de requerimiento: el PDF no lleva consultas SQL."""
+    t = _FENCE.sub(
+        lambda m: ""
+        if (m.group(1) or "").lower() in ("sql", "tsql", "mssql") or _looks_like_sql(m.group(2))
+        else m.group(0),
+        texto or "",
+    )
+    partes = []
+    for bloque in re.split(r"\n\s*\n", t):
+        if _looks_like_sql(bloque) or "═" in bloque:
+            continue
+        partes.append(bloque.strip())
+    return re.sub(r"\n{3,}", "\n\n", "\n\n".join(p for p in partes if p)).strip()
+
+
+def _partir_solucion(texto: str) -> tuple[str, str]:
+    """Separa «Solución realizada» del resto, para pintarla justo después de la necesidad."""
     t = (texto or "").replace("\r\n", "\n").strip()
+    marca = re.search(r"(?m)^##\s+Solución realizada\s*$", t)
+    if not marca:
+        return "", t
+    siguiente = re.search(r"(?m)^##\s+", t[marca.end() :])
+    if not siguiente:
+        return t[marca.end() :].strip(), ""
+    corte = marca.end() + siguiente.start()
+    return t[marca.end() : corte].strip(), t[corte:].strip()
+
+
+def texto_respuesta_a_html(texto: str, *, incluir_sql: bool = True) -> str:
+    """Respuesta oficial → HTML. La entrega de requerimiento no pinta consultas SQL."""
+    t = (texto or "").replace("\r\n", "\n").strip()
+    if not incluir_sql:
+        t = _quitar_consultas_sql(t)
     if not t:
         return '<p class="meta">(Sin texto)</p>'
-    if "═" in t and _SEP_DECOR.search(t):
+    if incluir_sql and "═" in t and _SEP_DECOR.search(t):
         return _procesar_bloques_decorativos(t)
     return _procesar_texto_plano(t)
 
@@ -792,7 +824,7 @@ def html_ilustraciones(sid: str) -> str:
     carp = carpeta_consulta(sid) / "imagenes"
     partes: list[str] = []
     for img in meta.get("imagenes") or []:
-        if img.get("origen") != "gemini":
+        if img.get("origen") not in ("gemini", "cursor"):
             continue
         nombre = Path(str(img.get("nombre") or "")).name
         path = carp / nombre
@@ -824,7 +856,7 @@ def _quitar_ilustraciones_gemini(sid: str) -> None:
     carp = carpeta_consulta(sid) / "imagenes"
     quedan = []
     for img in meta.get("imagenes") or []:
-        if img.get("origen") != "gemini":
+        if img.get("origen") not in ("gemini", "cursor"):
             quedan.append(img)
             continue
         path = carp / Path(str(img.get("nombre") or "")).name
@@ -900,39 +932,11 @@ def _guia_documentada(texto: str) -> dict:
 
 
 def preparar_presentacion(sid: str) -> dict:
-    """Pasa la respuesta oficial por Gemini: lenguaje de pantalla, flujo e ilustraciones."""
-    import gemini_ilustracion
-
+    """No llama a una API externa. El texto y las ilustraciones los deja el agente de Cursor."""
     meta = leer_meta(sid)
     oficial = (meta.get("respuestaOficial") or "").strip()
     if len(oficial) < 40:
         raise ValueError("Complete la respuesta oficial antes de generar el documento.")
-    if not gemini_ilustracion.clave():
-        raise ValueError("Falta la clave de Gemini en Consultas de soporte.")
-    guia = _guia_documentada(oficial)
-    pieza = gemini_ilustracion.organizar(oficial, guia.get("pantallas") or [])
-    _quitar_ilustraciones_gemini(sid)
-    for i, item in enumerate(pieza["ilustraciones"], start=1):
-        escena = (
-            "Esquema visual del flujo de Qrystalos, claro y sin datos de personas. "
-            "Dibuje solo estos pasos, en este orden, sin agregar pantallas que no estén nombradas: "
-            + item["escena"]
-        )
-        try:
-            mime, data = gemini_ilustracion.generar(escena)
-        except ValueError:
-            continue
-        imagen = guardar_imagen(sid, f"data:{mime};base64,{data}", f"flujo-{i}.png")
-        meta = leer_meta(sid)
-        for fila in meta.get("imagenes") or []:
-            if fila.get("nombre") == imagen.get("nombre"):
-                fila["origen"] = "gemini"
-                fila["titulo"] = item["titulo"]
-        _write_json(carpeta_consulta(sid) / "meta.json", meta)
-    meta = leer_meta(sid)
-    meta["documentoUsuario"] = pieza["texto"]
-    meta["flujoDocumento"] = pieza["flujo"]
-    _write_json(carpeta_consulta(sid) / "meta.json", meta)
     return meta
 
 
@@ -941,6 +945,11 @@ def generar_html_documento(
     logo_href: str = "/app/assets/logo-ixcolombia.svg",
     presentar: bool = False,
 ) -> tuple[str, dict]:
+    meta_pre = leer_meta(sid)
+    if meta_pre.get("entregaRequerimiento"):
+        import entrega_requerimiento as entrega
+
+        return entrega.generar_documento(sid, presentar=presentar)
     if presentar:
         preparar_presentacion(sid)
     meta = leer_meta(sid)
@@ -957,6 +966,23 @@ def generar_html_documento(
     flujo_simple = "" if diagrama else html_flujo(meta.get("flujoDocumento") or [])
     guia_html = diagrama + mockup + flujo_simple
     logo_src = _logo_embebido(logo_href)
+    entrega = bool(meta.get("entregaRequerimiento"))
+    solucion_txt, respuesta_resto = _partir_solucion(respuesta) if entrega else ("", respuesta)
+    solucion_html = (
+        texto_respuesta_a_html(solucion_txt, incluir_sql=False) if solucion_txt else ""
+    )
+    bloque_solucion = (
+        f'<section class="solution-card"><h2>Solución realizada</h2>{solucion_html}</section>'
+        if solucion_html
+        else ""
+    )
+    area = "Entrega de requerimiento" if entrega else "Business Analyst · Soporte Qrystalos"
+    kind = "Entrega de requerimiento" if entrega else "Guía de soporte"
+    eyebrow = "Qué quedó resuelto" if entrega else "Orientación funcional y operativa"
+    titulo_proposito = "Propósito de esta entrega" if entrega else "Propósito de esta guía"
+    titulo_manual = "Qué se entrega" if entrega else "Guía de solución"
+    pie = "Qrystalos BA · Entrega de requerimiento" if entrega else "Qrystalos BA · Documento de orientación para soporte"
+    etiqueta_id = "Entrega" if entrega else "Consulta"
 
     doc = f"""<!DOCTYPE html>
 <html lang="es">
@@ -1008,6 +1034,10 @@ def generar_html_documento(
     .question-card h2 {{ margin:0 0 5px; padding:0; border:0; font-size:8pt; color:var(--muted);
       text-transform:uppercase; letter-spacing:.08em; }}
     .question-card p {{ margin:.15rem 0; font-size:9.5pt; }}
+    .solution-card {{ background:#fff; border:1px solid #f5d4b2; border-left:4px solid var(--brand);
+      border-radius:8px; padding:14px 16px; margin:0 0 27px; }}
+    .solution-card h2 {{ margin:0 0 8px; padding:0; border:0; font-size:8pt; color:var(--brand-dark);
+      text-transform:uppercase; letter-spacing:.08em; }}
     .doc-capturas {{ display:flex; flex-direction:column; gap:12px; margin:12px 0 0; }}
     .doc-captura {{ margin:0; break-inside:avoid; page-break-inside:avoid; }}
     .doc-captura img {{ max-width:100%; height:auto; border:1px solid var(--line); border-radius:8px; }}
@@ -1101,23 +1131,23 @@ def generar_html_documento(
           <img class="brand-mark" src="{_esc(logo_src)}" alt="IX Colombia SAS">
           <div>
             <div class="brand-name">IX COLOMBIA SAS</div>
-            <div class="brand-area">Business Analyst · Soporte Qrystalos</div>
+            <div class="brand-area">{_esc(area)}</div>
           </div>
         </div>
-        <div class="doc-kind">Guía de soporte</div>
+        <div class="doc-kind">{_esc(kind)}</div>
       </div>
       <header class="title-block">
-        <p class="eyebrow">Orientación funcional y operativa</p>
+        <p class="eyebrow">{_esc(eyebrow)}</p>
         <h1>{_esc(meta.get('titulo'))}</h1>
       </header>
       <div class="doc-meta">
-        <div class="meta-item"><span class="meta-label">Consulta</span><span class="meta-value">{_esc(meta.get('id'))}</span></div>
+        <div class="meta-item"><span class="meta-label">{_esc(etiqueta_id)}</span><span class="meta-value">{_esc(meta.get('id'))}</span></div>
         <div class="meta-item"><span class="meta-label">Quién pregunta</span><span class="meta-value">{_esc(meta.get('solicitante') or '—')}</span></div>
         <div class="meta-item"><span class="meta-label">Cliente</span><span class="meta-value">{_esc(meta.get('cliente') or '—')}</span></div>
         <div class="meta-item"><span class="meta-label">Fecha</span><span class="meta-value">{_esc(hoy)}</span></div>
       </div>
       <section class="doc-purpose">
-        <h2>Propósito de esta guía</h2>
+        <h2>{_esc(titulo_proposito)}</h2>
         <p>{proposito_html}</p>
       </section>
       <section class="question-card">
@@ -1125,14 +1155,15 @@ def generar_html_documento(
         {_parrafos(meta.get('preguntaInicial') or '')}
         {html_capturas(sid)}
       </section>
-      <h2 class="manual-title"><span>✓</span> Guía de solución</h2>
+      {bloque_solucion}
+      <h2 class="manual-title"><span>✓</span> {_esc(titulo_manual)}</h2>
       <main class="manual-content">
       {guia_html}
       {html_ilustraciones(sid)}
-      {texto_respuesta_a_html(respuesta)}
+      {texto_respuesta_a_html(respuesta_resto if entrega else respuesta, incluir_sql=not entrega)}
       </main>
       <footer>
-        <span>Qrystalos BA · Documento de orientación para soporte</span>
+        <span>{_esc(pie)}</span>
         <span>Uso interno IX Colombia · {_esc(meta.get('id'))}</span>
       </footer>
     </div>
@@ -1162,7 +1193,7 @@ def ruta_pdf(sid: str) -> Path:
 
 def generar_pdf(sid: str) -> Path:
     meta = leer_meta(sid)
-    generar_html_documento(sid, presentar=not (meta.get("documentoUsuario") or "").strip())
+    generar_html_documento(sid, presentar=False)
     html_path = ruta_html(sid)
     import correo as mailer
 
