@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Integridad de los grafos de conocimiento.
 
-Cubre contabilidad, accidentes de tránsito e inventario.
+Cubre contabilidad, accidentes de tránsito, inventario y nómina.
 Revisa: ids únicos, llamaAnterior y llamaSiguiente apuntan a nodos que existen,
 sin huérfanos, sin ciclos y, en grafos con ordenEstado, que el id N<k> coincida con orden.
 
@@ -23,6 +23,7 @@ CARPETAS = (
     ROOT / "contabilidad" / "grafo-contabilizacion",
     ROOT / "acctran" / "grafo-acctran",
     ROOT / "inventario" / "grafo-inventario",
+    ROOT / "nomina" / "grafo-nomina",
 )
 
 
@@ -99,7 +100,7 @@ def validar(path: Path) -> tuple[list[str], list[str]]:
             dfs(i)
 
     avisos = []
-    if path.parent.name in ("grafo-acctran", "grafo-inventario"):
+    if path.parent.name in ("grafo-acctran", "grafo-inventario", "grafo-nomina"):
         for n in nodos:
             if _tiene_sp(n):
                 continue
