@@ -1,0 +1,224 @@
+{
+  "tramo": "financiero-capita",
+  "nombre": "Factura financiera: evento, cápita, PGP y relación FTRDC",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql_refe/xsql/SPQ_FTR_COL.sql y sql/ (ver evidenciaOrden)",
+  "pantalla": "Facturación · pestaña Facturas (FTRComponent · FACT_FACTURAR)",
+  "documentoOrigen": {
+    "tabla": "FTR",
+    "claves": [
+      "CNSFCT",
+      "N_FACTURA"
+    ],
+    "detalle": "Líneas FTRD (valor financiero) y, si cápita/PGP, relación FTRDC desde VWK_CARGOS_HADMAUTCIT."
+  },
+  "modalidades": [
+    {
+      "codigo": "CAPITADA=0",
+      "nombre": "Evento",
+      "regla": "Solo FTRD. No usa FTRDC."
+    },
+    {
+      "codigo": "CAPITADA=1 · PPT.PGP=0",
+      "nombre": "Cápita",
+      "regla": "TIPOCAP 1 Inicial, 2 Periodo, 3 Final, 4 Masiva. 1 no exige FTRDC; 2, 3 y 4 sí."
+    },
+    {
+      "codigo": "CAPITADA=1 · PPT.PGP=1",
+      "nombre": "PGP",
+      "regla": "Sin FTRDC no se encola DIAN ni se contabiliza."
+    }
+  ],
+  "nodos": [
+    {
+      "id": "N0-cabecera",
+      "orden": 0,
+      "nombre": "Nueva factura FINANCIERO",
+      "sp": "SPQ_FTR_COL · CREARFTR",
+      "metodo": "CREARFTR",
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_TOTALFACTURFIN"
+      ],
+      "llamaSiguiente": [
+        "N1-lineas",
+        "N2-relacion"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "INSERT FTR PROCEDENCIA=FINANCIERO. Secuencia TIPOCAP 1→2→3 si CAPIPGP=1 y PGPEVE=1; TIPOCAP=4 (masiva) no entra a esa secuencia (:416-421).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 332,
+          "nota": "CREARFTR."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 416,
+          "nota": "TIPOCAP 0 o 4: no valida secuencia Inicial/Periodo/Final."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 604,
+          "nota": "INSERT FTR."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "CREARFTR",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-lineas",
+      "orden": 1,
+      "nombre": "Líneas financieras FTRD",
+      "sp": "SPQ_FTR_COL · CRUDFTRD",
+      "metodo": "CRUDFTRD",
+      "llama": [
+        "SPK_TOTALFACTURFIN"
+      ],
+      "llamaSiguiente": [
+        "N3-totales"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "INSERT/UPDATE FTRD (servicio, cantidad, valor, IVA). Cápita no calcula IVA en CALCIMP_FTRD.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 894,
+          "nota": "INSERT FTRD."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "CRUDFTRD",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-relacion",
+      "orden": 2,
+      "nombre": "Relación capitada FTRDC",
+      "sp": "SPQ_FTR_COL · ADDFTRDC",
+      "metodo": "ADDFTRDC",
+      "llama": [
+        "SPK_ADDSERCAP",
+        "SPK_DELSERCAP",
+        "SPK_TOTALFACTURFIN"
+      ],
+      "llamaSiguiente": [
+        "N3-totales"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "ADD: INSERT FTRDC desde VWK_CARGOS (HADM/CIT/AUT/ONCO/INV) y marca orígenes FACTURADA=1. DEL: revierte. ADDFTRDC_MARCA hace lo mismo desde marcas masivas. REV_DUP_FTRDC lista duplicados si FTR_REV_DUP=SI.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 1002,
+          "nota": "ADDFTRDC → SPK_ADDSERCAP / DELSERCAP."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 3404,
+          "nota": "ADDFTRDC_MARCA INSERT FTRDC desde VWK_CARGOS."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPQ_FTR_COL.sql",
+          "linea": 5322,
+          "nota": "REV_DUP_FTRDC."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "ADDFTRDC",
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "ADDFTRDC_MARCA",
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_ADDSERCAP",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_DELSERCAP",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-totales",
+      "orden": 3,
+      "nombre": "Recalcular totales",
+      "sp": "SPK_TOTALFACTURFIN",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N4-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Rama capita: FTRDC↔VWK_CARGOS, CP_VLR_*, copago propio. Rama evento: SUM(FTRD).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_TOTALFACTURFIN.sql",
+          "linea": 1,
+          "nota": "Recálculo FTR/FTRD/FTRDC."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_TOTALFACTURFIN",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-emision",
+      "orden": 4,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "Capita/PGP TIPOCAP 2, 3, 4 y PGP: sin FTRDC, NOTI_DIAN KO. TIPOCAP=4 usa SPK_RIPS_JSON_FTR_CAPMASI. JSON externos: ver rips-externos.json.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN (si el script está en sql/; si no, sql_refe/xsql)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_RIPS_JSON_FTR_CAPMASI",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

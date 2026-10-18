@@ -1,0 +1,138 @@
+{
+  "tramo": "inventario",
+  "nombre": "Factura de inventario (PROCEDENCIA=INVENTARIO)",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql_refe · SPK_FAC_VENTA_INV / SPQ_IMOV_3 (ver evidenciaOrden)",
+  "pantalla": "Inventario → Venta a particulares → Factura INV (/inv/facturaInv) o mostrador (/inv/venta)",
+  "documentoOrigen": {
+    "tabla": "IMOV",
+    "claves": [
+      "CNSMOV"
+    ],
+    "detalle": "Salida confirmada (ESTADO=1, GENFACTURA=1, tipo VC o VE) → FTR PROCEDENCIA=INVENTARIO. El stock ya salió al confirmar; facturar no vuelve a tocar IEXI."
+  },
+  "grafoHermano": "conocimiento/inventario/grafo-inventario/ventas.json",
+  "noEs": [
+    "No es Nueva Factura FINANCIERO (pestaña Facturas).",
+    "Factura INV no cobra en caja; el recaudo es otro proceso.",
+    "Mostrador (VE) sí arma FCJ además de FTR."
+  ],
+  "nodos": [
+    {
+      "id": "N0-imov",
+      "orden": 0,
+      "nombre": "Salida confirmada facturable",
+      "sp": "SPQ_IMOV_3 · FACTURAR_IMOV",
+      "metodo": "FACTURAR_IMOV",
+      "llamaSiguiente": [
+        "N1-motor",
+        "N2-masiva"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "IMOV ESTADO=1, GENFACTURA=1, FACTURADA=0; cada ISAL tiene IEXI. Detalle de caminos VE/VC: inventario/grafo-inventario/ventas.json.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/inventario/sps.json",
+          "linea": 4771,
+          "nota": "SPQ_IMOV_3 · FACTURAR_IMOV (ficha leída)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_IMOV_3",
+          "metodo": "FACTURAR_IMOV",
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-motor",
+      "orden": 1,
+      "nombre": "Generar FTR INVENTARIO",
+      "sp": "SPK_FAC_VENTA_INV",
+      "metodo": null,
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "llamaSiguiente": [
+        "N3-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "INSERT FTR PROCEDENCIA=INVENTARIO TIPOFAC=I (:265) + FTRD desde ISAL. IMOV.N_FACTURA. Contabiliza. No descuenta stock.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/0100016349/SPK_FAC_VENTA_INV.sql",
+          "linea": 255,
+          "nota": "INSERT FTR."
+        },
+        {
+          "archivo": "sql_refe/0100016349/SPK_FAC_VENTA_INV.sql",
+          "linea": 265,
+          "nota": "PROCEDENCIA='INVENTARIO'."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FAC_VENTA_INV",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-masiva",
+      "orden": 2,
+      "nombre": "Factura INV masiva (opcional)",
+      "sp": "SPK_FAC_VENTA_INV_MASIVA",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N3-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Una FTR por tercero/plan agrupando IMOV MARCACONT+GENFACTURA=1 (FACTMASIVO_INV). Mismo PROCEDENCIA=INVENTARIO.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/inventario/sps.json",
+          "linea": 5653,
+          "nota": "SPK_FAC_VENTA_INV_MASIVA (ficha leída)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FAC_VENTA_INV_MASIVA",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-emision",
+      "orden": 3,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "La FTR INVENTARIO entra a DIAN/impresión desde Facturación. FEV-RIPS masivo la trata según reglas de procedencia; no nace en pestaña Facturas.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/inventario/grafo-inventario/ventas.json",
+          "linea": 15,
+          "nota": "Camino factura-inv-vc: IMOV VC → FTR."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

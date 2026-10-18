@@ -15,15 +15,13 @@
           "id": "CRUD_IMOV",
           "hace": "Crea o edita cabecera IMOV de entrada (PROCESO NUEVO/EDITAR). Genera CNSMOV con SPQ_GENSEQUENCE prefijo @MOV.",
           "valida": [
-            "NUEVO: PRI.CERRADO_INV=1 del ANO/MES de FECHAMOV → KO",
+            "NUEVO y EDITAR: PRI.CERRADO=1 o PRI.CERRADO_INV=1 del ANO/MES de FECHAMOV → KO",
             "EDITAR: IMOV.ESTADO=1 no se edita",
             "Tipo producción propia exige CNSTRAN (paciente)",
             "Compras/remisión: factura no duplicada si ya hay IMOV confirmado",
             "Si ASI_VAL_CCAF_CARGOS=SI y el tipo se contabiliza: existe KMCOM MOV_INVENTARIO para prefijo+CCOSTO+IDAREA"
           ],
           "noValida": [
-            "PRI.CERRADO (cierre contable general) en NUEVO ni EDITAR",
-            "CERRADO_INV al EDITAR (solo al insertar)",
             "Pendientes IMOV del mes"
           ],
           "errores": [
@@ -58,13 +56,12 @@
           "id": "CRUD_IMOV_SAL",
           "hace": "Crea o edita cabecera IMOV de salida. Único METODO IMOV que valida permiso por grupo USUSU.",
           "valida": [
-            "PRI.CERRADO=1 del ANO/MES de FECHAMOV → KO",
+            "PRI.CERRADO=1 o PRI.CERRADO_INV=1 del ANO/MES de FECHAMOV → KO (alta y edición)",
             "Bodega destino distinta en traslado IDTS",
             "FECHAMOV no mayor a hoy",
             "Periodos anteriores si MOV_PERIODOS_ANT=NO"
           ],
           "noValida": [
-            "PRI.CERRADO_INV",
             "Pendientes IMOV/ITRA/ISAL del mes"
           ],
           "errores": [
@@ -129,12 +126,12 @@
             "Si ESFARMACIA = SI: ningún artículo con costo cero",
             "Existencia suficiente por lote/pedido",
             "Si es Pick&Pack debe haber terminado picking/packing",
-            "Se ejecuta sin transacción externa y con bloqueo temporal de la bodega"
+            "Se ejecuta sin transacción externa y con bloqueo temporal de la bodega",
+            "Mes de hoy cerrado en PRI.CERRADO o CERRADO_INV: lo rechaza SPK_CONFIRMARSALIDAS antes de mover existencias"
           ],
-          "noValida": [
-            "No consulta PRI (periodo)"
-          ],
+          "noValida": [],
           "errores": [
+            "No se Permiten hacer Movimientos de Periodos Cerrados.",
             "No se puede confirmar: movimiento o bodega origen no encontrados.",
             "Picking parcial… / Debe finalizar packing…",
             "No se puede Confirmar el Movimiento. No se realizó entrega de al menos un(1) artículo.",
@@ -147,7 +144,7 @@
             "SPK_CONFIRMARSALIDAS",
             "SPQ_CEFM_CREA_AUT_DESDE_IMOV"
           ],
-          "efecto": "Salida confirmada vía SPK (IEXI/IMOV ESTADO=1). No consulta PRI.",
+          "efecto": "Salida confirmada vía SPK (IEXI/IMOV ESTADO=1). Si el mes de hoy está cerrado, no cambia existencias.",
           "capaId": "02-operacion",
           "gateId": "imov-salida",
           "estado": "leido",
@@ -166,17 +163,18 @@
           "hace": "Anula IMOV de salida. Farmacia: SPK_ANULAR_MOV_INV. Resto: UPDATE ESTADO=2 en IMOV/IMOVH según procedencia (INV, HTX/SALUD, CM_SOL/Consumo).",
           "valida": [
             "Farmacia: resultado ESTADO=2 del SPK",
+            "Confirmado (ESTADO=1) con el mes de hoy cerrado en PRI.CERRADO o CERRADO_INV → KO, sin anular",
             "HTX/SALUD: HADM.CERRADA=1",
             "CM_SOL/Consumo: sin IMOVH y IZSOL.ESTADO=2"
           ],
           "noValida": [
-            "PRI.CERRADO",
-            "PRI.CERRADO_INV",
+            "El pendiente (ESTADO distinto de 1) sí se puede anular con el mes cerrado",
             "IMOV ya contabilizado / MCP",
             "Fecha del movimiento",
             "Si ESFARMACIA no es exactamente 'SI', SPK_ANULAR_MOV_INV no anula una salida confirmada"
           ],
           "errores": [
+            "No se Permiten hacer Movimientos de Periodos Cerrados.",
             "El Movimiento NO se pudo Anular",
             "El N° de Admision No se encuentra cerrada totalmente…",
             "Movimiento no puede ser Anulado, Debe Deshacer la Entrega de la Solicitud.",
@@ -648,12 +646,13 @@
           "valida": [
             "IMOVH con detalle",
             "HADM cerrada facturable (salvo PROD/Consumo/CE/FORMEDCE/SECTOR=FORMULA)",
-            "IMOV.ESTADO≠1 (idempotente OK si ya confirmado)"
+            "IMOV.ESTADO≠1 (idempotente OK si ya confirmado)",
+            "Mes de la fecha de confirmación (hoy, o la de dispensación de la fórmula) sin fila PRI, o PRI.CERRADO / CERRADO_INV: lo rechaza SPK_CONFIRMASAL_CM antes de mover existencias (COESME644)"
           ],
-          "noValida": [
-            "PRI.CERRADO_INV"
-          ],
+          "noValida": [],
           "errores": [
+            "No existe periodo contable/inventario para AAAA/MM. No se puede confirmar la dispensación.",
+            "No se Permiten hacer Movimientos de Periodos Cerrados.",
             "La Admision se encuentra cerrada. No se puede generar movimientos",
             "No  Hay Ningún Articulo Para Confirmar"
           ],
@@ -761,12 +760,12 @@
             "Fecha factura y vence diligenciadas",
             "Todos los lotes con precio de costo",
             "Paciente obligatorio si el tipo lo exige",
-            "Si VALID_CCOSTO_CXP = SI: centro de costo con configuración CXP_COMPRAS"
+            "Si VALID_CCOSTO_CXP = SI: centro de costo con configuración CXP_COMPRAS",
+            "Mes de la fecha de confirmación cerrado en PRI.CERRADO o CERRADO_INV: lo rechaza SPK_CONFIRMARENTRADAS antes de abrir la transacción"
           ],
-          "noValida": [
-            "No consulta PRI"
-          ],
+          "noValida": [],
           "errores": [
+            "No se Permiten hacer Movimientos de Periodos Cerrados.",
             "Existen articulos sin Fecha de Vencimiento.",
             "El registro no cuenta con Detalle, para confirmar",
             "El detalle existe pero no está en estado confirmable…",
@@ -2989,7 +2988,7 @@
       "modelo": "IZSOL_TRANSITO",
       "estado": "leido",
       "fuente": "sql/SPQ_IZSOL_TRANSITO.sql",
-      "cola": "Loteo tránsito compras · TraerTransitoTempComponent. PREVERSION=2.0.3 idéntica 2026-09-19.",
+      "cola": "Loteo tránsito compras · TraerTransitoTempComponent. PREVERSION idéntica a 2.0.10 (2026-10-17).",
       "metodos": [
         {
           "id": "LEER_CUFE_LOTEO",
@@ -3059,7 +3058,7 @@
         },
         {
           "id": "AGREGAR_IART",
-          "hace": "Pre-guarda lote en MOV_TRAN: NOLOTE, fechas, PC_SINIVA, vencimiento mínimo IDINVDIASPARAVENCER. Con factura y CUFE el usuario digita el total sin IVA; el unitario queda a 4 decimales y el porcentaje de IVA sale de FCOMD.TIENEIVA/FACTORIVA.",
+          "hace": "Pre-guarda lote en MOV_TRAN: NOLOTE, fechas, PC_SINIVA, vencimiento mínimo IDINVDIASPARAVENCER. CANTIDAD entra como DECIMAL(14,2) y no consulta ITAR.MDECIMALES (hotfix COESME643, 2026-10-10: el lote parcial puede ser fracción, p. ej. 1.5). Con factura y CUFE el usuario digita cajas y el total sin IVA; la cantidad guardada es cajas × IART.UNID_VENTA, redondeada a 2, y el unitario queda a 4 decimales. El porcentaje de IVA sale de FCOMD.TIENEIVA/FACTORIVA.",
           "valida": [
             "NOLOTE obligatorio salvo hemoderivados",
             "Producto no vencido"
@@ -3189,6 +3188,9 @@
       "fuente": "IXONLINE/SQL (PREVERSION ≠ 2.0.7)",
       "cola": "PREVERSION ≠ 2.0.7 (+120 líneas): (1) corrige el total de bodega y de artículo al confirmar entradas con líneas ESTADO 9 (suma IDXB/IART; antes el total quedaba negativo y el artículo dejaba de listarse aunque el lote tuviera saldo); (2) Perú: devoluciones (IDINVMOVPREDEV / IDCINVMOVPREDEV) descuentan HPRED y reliquidan HPRE. Flujo compras → CxP sin cambio. PREVERSION ≠ 2.0.7 (+120 líneas): (1) corrige el total de bodega y de artículo al confirmar entradas con líneas ESTADO 9 (suma IDXB/IART; antes el total quedaba negativo y el artículo dejaba de listarse aunque el lote tuviera saldo); (2) Perú: devoluciones (IDINVMOVPREDEV / IDCINVMOVPREDEV) descuentan HPRED y reliquidan HPRE. Flujo compras → CxP sin cambio. SPQ_IZSOL CONF_ENTRADA. Sube IEXI; IMOV ESTADO=1. Al final, si CNSFCOM: SPK_FCOM_RECALCULA_RECEPCION.",
       "hace": "Confirma entrada de almacén ya creada (post tránsito o manual).",
+      "valida": [
+        "Mes de @FECHACONF (hoy sin milisegundos) con PRI.CERRADO o CERRADO_INV → RAISERROR antes de la transacción"
+      ],
       "llama": [
         "SPK_FCOM_RECALCULA_RECEPCION"
       ],
@@ -5549,14 +5551,14 @@
       "cola": "Núcleo salida: CONFIRMA_SALIDA (IMOV), GUARDA_VENTA, CONF_MOVIMIENTO (vía SPK_CONFIRMASAL_CM).",
       "hace": "Confirma IMOV salida: valida CCOSTO/CEN, KMCOM MOV_INVENTARIO DB+CR por IDTIPOMOV+CCOSTO, descuenta IEXI (según tipo), tránsito GENTRANSITO, opcional SPK_NC_CONTAB_INV o cola IMOVC si CONTABIMOV_JOB=SI.",
       "valida": [
+        "Mes de hoy con PRI.CERRADO o CERRADO_INV → RAISERROR y no toca IMOVH ni IEXI",
         "CCOSTO activo en CEN",
         "SECONTABILIZA=1 → KMCOM MOV_INVENTARIO CR y DB (PREFIJO=IDTIPOMOV, CCOSTO) — en script muestra IDMODELOCONT='01'",
         "Existencias / reglas traslado IDINVTRASLACTIVOS / devolución IDINVDEVPROVEEDOR"
       ],
-      "noValida": [
-        "PRI.CERRADO / CERRADO_INV"
-      ],
+      "noValida": [],
       "errores": [
+        "No se Permiten hacer Movimientos de Periodos Cerrados.",
         "Inconsistencia, no se encontro centro de costo asociado al Movimiento",
         "Inconsistencia. No existe configuración contable para confirmar el movimiento: MOV_INVENTARIO. Cuenta crédito/débito."
       ],
@@ -5589,13 +5591,18 @@
       "hace": "Confirma salida dispensación: SPK_PROCESA_IZSOLDT pendiente; UPDATE IDXB/IART (no IEXI lote vía CONFIRMARSALIDAS); IMOV ESTADO=1; GENTRANSITO→SPK_INSERTRANSITO; SPK_ACTUALIZA_KARDEX; SPK_NC_CONTAB_INV o IMOVC; cierra IZSOL; ONCO→HCATDIMOV; SENFER Perú→HPREP; actualiza IZSOLD/AUTE/AUTED cantidades dispensadas. Desde 2.0.5 el bloque que creaba HPREP de insumos (PREFIJOMATERIALES) está apagado con AND 1=2.",
       "valida": [
         "IMOV.NODOCUMENTO=CNSIZSOL",
-        "SECONTABILIZA según ITMO×IBOD"
+        "SECONTABILIZA según ITMO×IBOD",
+        "COESME644: tras FNK_CEFM_FECHATRANSCRIPCION, PRI de COMPANIA 01 + año/mes de @HOY; sin fila o CERRADO/CERRADO_INV → RAISERROR antes de SPK_PROCESA_IZSOLDT y de IDXB/IART"
       ],
       "noValida": [
-        "KMCOM MOV_INVENTARIO previo (distinto a SPK_CONFIRMARSALIDAS)",
-        "PRI periodo"
+        "KMCOM MOV_INVENTARIO previo (distinto a SPK_CONFIRMARSALIDAS)"
+      ],
+      "errores": [
+        "No existe periodo contable/inventario para AAAA/MM. No se puede confirmar la dispensación.",
+        "No se Permiten hacer Movimientos de Periodos Cerrados."
       ],
       "llama": [
+        "FNK_CEFM_FECHATRANSCRIPCION",
         "SPK_PROCESA_IZSOLDT",
         "SPK_INSERTRANSITO",
         "SPK_ACTUALIZA_KARDEX",
@@ -5603,16 +5610,17 @@
         "SPK_RELIQUIDA_PRESUPUESTO_PERU"
       ],
       "variablesUsvgs": [
+        "CEFM_FECHA_TRANS",
         "CONTABIMOV_JOB",
         "HADM_USA_ACTIVIDADES",
         "PREFIJOMATERIALES",
         "IXCOUNTRY",
         "INTERFAZ_INV"
       ],
-      "efecto": "Salida dispensación confirmada; existencias totales artículo/bodega; contabilidad MCP si SECONTABILIZA=1.",
+      "efecto": "Salida dispensación confirmada; existencias totales artículo/bodega; contabilidad MCP si SECONTABILIZA=1. Si PRI del mes de @HOY no existe o está cerrado, no cambia existencias ni ESTADO.",
       "capaId": "02-operacion",
       "gateId": "izsol-dispensacion",
-      "actualizado": "2026-10-04",
+      "actualizado": "2026-10-18",
       "metodos": [],
       "notaFicha": "Ficha a partir del cuerpo de hoy: métodos, tablas escritas, llamadas y mensajes KO extraídos del script; «hace» redactado a mano en los métodos clave y automático (marca fichaAutomatica) en el resto."
     },
@@ -5638,7 +5646,7 @@
         "SPK_FAC_IMPDEDUC",
         "SPK_NC_CONTAB_FTR"
       ],
-      "efecto": "FTR+FTRD; IMOV.N_FACTURA/NODOCUMENTO; contabiliza FTR (incluye costo INV vía FTR SPK)",
+      "efecto": "INSERT FTR PROCEDENCIA=INVENTARIO TIPOFAC=I (:265) + FTRD desde ISAL; IMOV.N_FACTURA/NODOCUMENTO; contabiliza FTR (incluye costo INV vía FTR SPK)",
       "capaId": "04-unido",
       "gateId": "venta-ftr-contab"
     },
@@ -7029,10 +7037,10 @@
             "Conteos 1, 2 y 3 cerrados",
             "Sin cantidades negativas",
             "Sin entradas ni salidas pendientes que toquen artículos del conteo",
-            "Centro de costo activo en la salida de ajuste"
+            "Centro de costo activo en la salida de ajuste",
+            "La salida de ajuste la confirma SPK_CONFIRMARSALIDAS: si el mes de hoy está cerrado, rechaza y APLICAR revierte"
           ],
           "noValida": [
-            "Periodo PRI",
             "KMCOM de la entrada (se exige al confirmarla después)"
           ],
           "errores": [
@@ -8995,10 +9003,16 @@
         {
           "id": "GUARDAR",
           "estado": "leido",
-          "hace": "Inserta o edita una línea de la orden (FCOMD) y recalcula totales de la cabecera (SPK_UPDATE_VLRS_FCOM).",
-          "valida": [],
+          "hace": "Inserta o edita una línea de la orden (FCOMD) y recalcula totales de la cabecera (SPK_UPDATE_VLRS_FCOM). CANTIDAD es DECIMAL(14,2). Si el tipo de artículo no tiene ITAR.MDECIMALES = 1, rechaza una cantidad con parte decimal.",
+          "valida": [
+            "Valor unitario > 0",
+            "Cantidad > 0",
+            "Decimales en cantidad solo con ITAR.MDECIMALES = 1"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": [
+            "Este tipo de artículo no permite cantidades con decimales."
+          ],
           "capaId": "03-alimentadores",
           "gateId": "fcom-recepcion-imov",
           "ventanaFe": "/inv/ordcom · Detalle",
@@ -9062,10 +9076,16 @@
         {
           "id": "INSERTA_FCOMD",
           "estado": "leido",
-          "hace": "Escribe en FCOMD; llama SPK_UPDATE_VLRS_FCOM.",
-          "valida": [],
+          "hace": "Agrega una línea desde Varios. CANTIDAD entra como DECIMAL(14,2). Si el tipo de artículo no tiene ITAR.MDECIMALES = 1, rechaza una cantidad con parte decimal. Llama SPK_UPDATE_VLRS_FCOM.",
+          "valida": [
+            "Cantidad > 0",
+            "Valor unitario > 0",
+            "Decimales en cantidad solo con ITAR.MDECIMALES = 1"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": [
+            "Este tipo de artículo no permite cantidades con decimales."
+          ],
           "fichaAutomatica": true,
           "llama": [
             "SPK_UPDATE_VLRS_FCOM"
@@ -9092,17 +9112,19 @@
         {
           "id": "GUARDAR_MASIVO",
           "estado": "leido",
-          "hace": "Carga varias líneas de una vez.",
+          "hace": "Carga varias líneas de una vez. CANTIDAD es DECIMAL(14,2). Si el tipo de artículo no tiene ITAR.MDECIMALES = 1, esa línea queda en KO y no se inserta.",
           "valida": [
             "Artículo existe",
             "Valor unitario > 0",
-            "Cantidad > 0"
+            "Cantidad > 0",
+            "Decimales en cantidad solo con ITAR.MDECIMALES = 1"
           ],
           "noValida": [],
           "errores": [
             "El artculo",
             "El valor unitario debe ser mayor a cero",
-            "La cantidad debe ser mayor a cero"
+            "La cantidad debe ser mayor a cero",
+            "Este tipo de artículo no permite cantidades con decimales."
           ],
           "capaId": "03-alimentadores",
           "gateId": "fcom-recepcion-imov",
@@ -9281,7 +9303,6 @@
             "Se insertó detalle en IMOVH"
           ],
           "noValida": [
-            "Periodo PRI",
             "KMCOM (se valida al confirmar)",
             "Que IDINVSIENT / IDINVSISAL sean del sentido correcto"
           ],
@@ -9525,9 +9546,11 @@
           "id": "(CUERPO)",
           "estado": "leido",
           "hace": "Anulación de farmacia. ENTRADA: si ESFARMACIA = 'SI' y el movimiento está confirmado, crea el movimiento contrario con el tipo FAR_MOVANULAENTRADA copiando IMOVH y lo confirma con SPK_CONFIRMARSALIDAS; siempre marca IMOV/IMOVH estado 2 y, si venía de una orden, devuelve FCOM a C (ENINVENTARIO = 0, ORDENCOMPRA = 0), borra ITRA/ITRAH de la orden y marca FCTZTE estado 2. SALIDA: si ESFARMACIA = 'SI' y está confirmada, crea la entrada contraria con FAR_MOVANULASALIDA desde ISAL y la confirma con SPK_CONFIRMARENTRADAS; si está pendiente solo marca estado 2; si la procedencia es HTX marca la hoja de tratamiento (CLASEANUINV = 1, SOLICITADO = 0) y anula IREP.",
-          "valida": [],
+          "valida": [
+            "ESTADO=1 y el mes de hoy con PRI.CERRADO o CERRADO_INV → RAISERROR y no arma el movimiento contrario"
+          ],
           "noValida": [
-            "Periodo PRI",
+            "El pendiente (ESTADO distinto de 1) sí se anula",
             "Si ESFARMACIA no es exactamente 'SI', una salida confirmada no se anula (solo se anula si la procedencia es HTX)",
             "No valida KMCOM antes de confirmar el contrario"
           ],
@@ -10879,9 +10902,14 @@
           "id": "CONFIRMAR",
           "estado": "leido",
           "hace": "Confirma la dispensación de la lista de trabajo: crea IMOV/IMOVH de salida, procesa (SPK_PROCESA_IZSOLDT, SPK_CONFIRMASAL_CM), devoluciones (IDEV, IDINVMOVPREDEV, SPK_CONFIRMARENTRADAS) e interfaz (SPK_XML_MOVIN si INTERFAZ_INV).",
-          "valida": [],
+          "valida": [
+            "Hereda SPK_CONFIRMASAL_CM (COESME644): PRI del año/mes de la fecha efectiva de confirmación (fórmula CEFM o reloj); sin periodo o CERRADO/CERRADO_INV no confirma"
+          ],
           "noValida": [],
-          "errores": [],
+          "errores": [
+            "No existe periodo contable/inventario para AAAA/MM. No se puede confirmar la dispensación.",
+            "No se Permiten hacer Movimientos de Periodos Cerrados."
+          ],
           "llama": [
             "SPK_CM_GENIMOV_SOL",
             "SPK_CONFIRMARENTRADAS",
