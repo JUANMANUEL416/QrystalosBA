@@ -39,7 +39,7 @@ Coordinador experto en:
 
 En **Analizar requerimiento**, el agente también rellena `contenido.cambioPropuestoSql` cuando el fix es SQL (fragmentos antes/después y validación).
 
-Los SP **no se archivan** en la base de procesos. En un REQ se bajan a `activo/{id-caso}/sql/` (o `solicitudes/{id}/sql/`). Documentar, sin caso, sigue usando `sql/`. Catálogo DESAIX `SQLIX`: PREVERSION primero.
+Los SP **no se archivan** en la base de procesos. En un REQ se bajan a `activo/{id-caso}/sql/` (o `solicitudes/{id}/sql/`). Documentar, sin caso, lee la copia local `sql/` (o `sql_refe/`) si existe, o DESAIX. `sql/` y `sql_refe/` están en `.gitignore`: son copias locales, nunca se suben al repositorio; las fichas citan `SP:línea` (p. ej. `SPK_FACTURA_ASIS:679`), no rutas `.sql`. Catálogo DESAIX `SQLIX`: PREVERSION primero.
 
 ## Regla principal
 

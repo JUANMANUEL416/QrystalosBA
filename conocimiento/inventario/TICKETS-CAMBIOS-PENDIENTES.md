@@ -13,7 +13,7 @@ Use esta lista para **validar en test** y **solicitar desarrollo** con criterios
 |-------|--------|
 | **Invariante** | INV-C06 |
 | **Objeto** | `SPK_CONFIRMARSALIDAS` |
-| **Fuente** | `sql/SPK_CONFIRMARSALIDAS.sql` (~L114–125) |
+| **Fuente** | `SPK_CONFIRMARSALIDAS` (~L114–125) |
 | **Síntoma** | Al confirmar salida con `SECONTABILIZA=1`, la validación previa exige KMCOM `MOV_INVENTARIO` con **`IDMODELOCONT='01'`** fijo. El cliente puede tener **USVGS IDMODELOCONTABLE** distinto; las cuentas reales en **SPK_NC_CONTAB_INV** pueden resolverse con otro modelo. |
 | **Riesgo** | Falso KO «No existe configuración contable… MOV_INVENTARIO» aunque KMCOM esté bien en el modelo del cliente; o validación pasada en `'01'` pero contabilización con modelo distinto. |
 | **Validar antes** | 1) Anotar `IDMODELOCONTABLE` en USVGS. 2) Confirmar salida contabilizable con CCOSTO real. 3) Comparar filas KMCOM CR/DB (`PREFIJO=IDTIPOMOV`, `CCOSTO`) en modelo `'01'` vs modelo USVGS. |
@@ -28,7 +28,7 @@ Use esta lista para **validar en test** y **solicitar desarrollo** con criterios
 | Campo | Valor |
 |-------|--------|
 | **Objeto** | `SPQ_IMOV_3` · METODO `GEN_DOCUMENTO` |
-| **Fuente** | `sql/SPQ_IMOV_3.sql` (~L542–586) |
+| **Fuente** | `SPQ_IMOV_3` (~L542–586) |
 | **Síntoma** | Tras validar periodo **PRI** y tercero **RPDX**, hay **`RETURN` incondicional** (L559); el bloque `--QUERY3` y el `SELECT 'OK'` posterior son **código muerto**. |
 | **FE** | `Qrystalos2` · `IndexComponent.vue` · `onGenDocumento` → `MODELO: IMOV_3`, callback vacío aunque llegue OK. |
 | **Validar antes** | Invocar GEN_DOCUMENTO con RPDX válido: comprobar que no devuelve OK/KO útil ni genera documento contable. |

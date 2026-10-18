@@ -694,7 +694,7 @@ Este turno (ya pegado; NO abra el chat.json):
 Orden de trabajo: (1) handoffs para conocimiento de la lista de arriba, alta primero: póngalo en_progreso, documente y deje respondido + respuesta (o bloqueado + motivo) en conocimiento/handoffs/cola.json; (2) la tarea abierta; (3) si no hay nada más, el primer pendiente de conocimiento/pendientes.json (ya viene ordenado por prioridad: lea solo las primeras líneas).
 {BUSQUEDA_KB}
 Una ficha leido exige valida, errores y efecto (o "no aplica"); si no los tiene, déjela parcial (validador: scripts/kb_validar.py).
-Si la tarea está abierta: lea sql/{{archivoSql}} de hoy y documente METODOs en conocimiento/{{procesoId}}/sps.json. proceso.json solo si cambia un control.
+Si la tarea está abierta: lea el cuerpo de hoy de {{archivoSql}} (copia local sql/ o sql_refe/ si existe; si no, DESAIX) y documente METODOs en conocimiento/{{procesoId}}/sps.json, con evidencia SP:línea. Nunca suba .sql al repositorio (sql/ y sql_refe/ están en .gitignore). proceso.json solo si cambia un control.
 Si no hay tarea: haga únicamente lo que pide el coordinador, en el proceso que nombre.
 Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 ni ejecute SQL.
 {_plan_subagentes(id_caso)}

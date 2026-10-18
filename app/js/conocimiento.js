@@ -543,7 +543,7 @@ window.QrysConocimiento = (function () {
     return `
       <article class="kb-metodo kb-metodo--${esc(st)}">
         <h5><code>${esc(m.id)}</code> ${pillEstado(st)}</h5>
-        ${m.hace ? `<p>${esc(m.hace)}</p>` : `<p class="hint compact">Aún no leído. Bajar el .sql a sql/ y pasarlo en Documentar.</p>`}
+        ${m.hace ? `<p>${esc(m.hace)}</p>` : `<p class="hint compact">Aún no leído. Leer el SP de hoy (DESAIX o copia local sql/, fuera de git) y pasarlo en Documentar.</p>`}
         ${valida ? `<p class="hint compact"><strong>Valida</strong></p>${valida}` : ""}
         ${noValida ? `<div class="kb-hueco"><strong>No valida (hueco)</strong>${noValida}</div>` : ""}
         ${errores ? `<p class="hint compact"><strong>Errores posibles (KO)</strong></p>${errores}` : ""}
@@ -1197,7 +1197,7 @@ window.QrysConocimiento = (function () {
     if (!archivo) {
       if (err) {
         err.hidden = false;
-        err.textContent = "Indique el .sql vigente (lista sql/ o el nombre del archivo). No es obligatorio marcar un pendiente.";
+        err.textContent = "Indique el SP vigente (lista de la copia local sql/ o su nombre). No es obligatorio marcar un pendiente.";
       }
       return;
     }

@@ -5,7 +5,7 @@
 **Ventanas:** Auditoría → Glosas (`/auditoria/Glosas`, `AdiGlosasPage.vue`) · Administrativo → Adm. glosas (`/admin/AdmGlosas`, `AdminGlosasPage.vue`) · origen en Recaudos (ingreso GLOSAS)  
 **Alcance:** ciclo administrativo de la glosa de cartera (CxC). Conciliaciones (FCONCI) y glosas de CxP son otros procesos.
 
-> Solo flujo y explicación. El cuerpo del SP se baja a `sql/` cuando se analiza; no se archiva aquí.
+> Solo flujo y explicación. El cuerpo del SP se lee de DESAIX o de la copia local `sql/` (fuera de git); no se archiva aquí.
 > Este `.md` no se vuelca al libro (`incluirProcesoMdEnLibro: false`): el libro usa `capitulosLibro` de `proceso.json`.
 
 ## Qué es

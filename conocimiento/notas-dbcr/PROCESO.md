@@ -5,7 +5,7 @@
 **Ventana:** Administrativo → Notas DB/CR · `/admin/notasdbcr` (`admin.notasdbcr`) · `NotasDBCRComponent.vue`  
 **Alcance:** notas de cuentas por cobrar (FNOT/FNOTD). Las notas a proveedores (FCXPDBCR) son otro proceso.
 
-> Solo flujo y explicación. El cuerpo del SP se baja a `sql/` cuando se analiza; no se archiva aquí.
+> Solo flujo y explicación. El cuerpo del SP se lee de DESAIX o de la copia local `sql/` (fuera de git); no se archiva aquí.
 > Este `.md` no se vuelca al libro (`incluirProcesoMdEnLibro: false`): el libro usa `capitulosLibro` de `proceso.json`.
 
 ## Qué es

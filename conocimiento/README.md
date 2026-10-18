@@ -16,7 +16,7 @@ Mapa de **flujos de proceso** para coordinar requerimientos y atender consultas 
 
 ## Qué no se guarda
 
-- Cuerpos de `SPQ_` / `SPK_` (se actualizan a diario: hay que bajarlos a `sql/` y pasarlos).
+- Cuerpos de `SPQ_` / `SPK_` (cambian por versión). Se leen de DESAIX o de la copia local `sql/` / `sql_refe/`, que está en `.gitignore` y nunca se sube. La ficha guarda nombre del SP, métodos y validaciones, con evidencia `SP:línea`.
 - Copias de `qrystalos.documentacion` ni de Qrystalos2. Esas fuentes se consultan **vivas** en cada análisis.
 
 ## Cómo se usa
@@ -38,7 +38,7 @@ Mapa de **flujos de proceso** para coordinar requerimientos y atender consultas 
 ## Regla para el agente
 
 1. En cada REQ: abrir `INDICE.json`, ubicar el proceso. Si no existe, crear esqueleto y dejar pendientes.
-2. No inventar flujo ni validaciones de SP sin el `.sql` de hoy en `sql/`.
+2. No inventar flujo ni validaciones de SP sin leer el cuerpo de hoy (DESAIX o copia local `sql/`, fuera de git). Citar la evidencia como `SP:línea`, nunca una ruta `sql/…`.
 3. Tras leer un SP: en `{proceso}/sps.json` documentar cada `METODO` (hace, valida, noValida, errores, llama, efecto). Actualizar el control en `proceso.json` solo si cambia el flujo. No copiar el script.
 4. Si faltan SP o capas: filas en `pendientes.json`.
 5. Releer `tarea.json` y `chat.json` cuando el coordinador documente desde la app.
