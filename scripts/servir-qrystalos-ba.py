@@ -2204,9 +2204,10 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             )
             if enfasis:
                 pedido += "\n\nÉnfasis, solo si ya está en el texto anterior: " + enfasis[:500]
-            mime, data = gemini_ilustracion.generar(pedido)
-            imagen = scconsulta.guardar_imagen(sid, f"data:{mime};base64,{data}", "ilustracion.png")
-            scconsulta.append_chat(sid, "agente", "Ilustración generada con Gemini.", [imagen])
+            raise ValueError(
+                "La ilustración la arma el modelo de imagen de Cursor, en el agente. "
+                "No se usa la API de Gemini."
+            )
         except FileNotFoundError:
             return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
         except ValueError as exc:
