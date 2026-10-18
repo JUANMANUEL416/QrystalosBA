@@ -213,7 +213,7 @@
       "icono": "lock",
       "color": "negative",
       "estilo": "push",
-      "descripcion": "Valida detalles y cuentas KMCOM; marca CERRADO, cuotas de libranza Pagada, provisión de vacaciones. Permiso BtnCerrarNomina. GENERATE_NOMINA con PROCESO=CLOSE → SPQ_CERRAR_NOMI."
+      "descripcion": "Valida detalles y cuentas KMCOM; marca CERRADO, cuotas de libranza Pagada y suma días disponibles de vacaciones (SPQ_PROCESO_VACACIONES · CIERRE; la provisión la calculan los conceptos). Permiso BtnCerrarNomina. GENERATE_NOMINA con PROCESO=CLOSE → SPQ_CERRAR_NOMI."
     },
     {
       "label": "Abrir Nomina",
@@ -1247,7 +1247,7 @@
           "num": "4",
           "tipo": "sistema",
           "titulo": "Cerrar",
-          "descripcion": "NPER y NIEPE CERRADO=1; cuotas PRSD Pagada; PRS saldo/estado; provisión de vacaciones del mes.",
+          "descripcion": "NPER y NIEPE CERRADO=1; cuotas PRSD Pagada; PRS saldo/estado; SPQ_PROCESO_VACACIONES · CIERRE suma los días disponibles de vacaciones (NEMPV.DIASG). La provisión la calculan los conceptos.",
           "rol": "Sistema",
           "pantalla": "",
           "tablas": [
@@ -1467,7 +1467,7 @@
       "imagenAlt": "Períodos, evento, adelanto, variables",
       "md": "| Acción | Pantalla | Qué hace | Bloqueo |\n|---|---|---|---|\n| Actualizar vacaciones | Vacaciones → empleado | Recalcula días causados a hoy (prorrateo 360) en NEMPV | — |\n| Nuevo evento | Vacaciones → Nuevo Evento | NEMPVD: fecha salida, días a pagar, disfrute, calendario (sábados/domingos/festivos), regreso, período | — |\n| Generar novedad | Vacaciones → evento | NEDIA del concepto NOMICODCON_VACA y recálculo; si cruza de mes parte en dos | «SE ENCUENTRA CERRADO, NO ES POSIBLE AGREGAR LA NOVEDAD» |\n| Deshacer / Anular | Vacaciones → evento | Devuelve los días | «…NO SERA POSIBLE DESHACER / ANULAR LA NOVEDAD» si cerrado |\n| Restablecer períodos | Vacaciones (permiso) | Rehace NEMPV del empleado | «Debe indicar el empleado…» |\n| Registrar adelanto | Adelanto cesantías | NACE Registrado + manual NPERC en período abierto; valor ≤ saldo | «Debe indicar un período de nómina abierto», «El valor del adelanto debe ser mayor a cero», «Ya existe un adelanto del mismo concepto en este período» |\n| Anular adelanto | Adelanto cesantías | NACE Anulado | «No se puede anular: el adelanto ya fue descontado en liquidación de cesantías/retiro» |",
       "puntosClave": [
-        "Al cerrar la nómina, SPQ_PROCESO_VACACIONES · CIERRE provisiona el mes; al abrir, ABRE lo revierte.",
+        "La provisión de vacaciones la calculan los conceptos de nómina. Al cerrar, SPQ_PROCESO_VACACIONES · CIERRE solo suma los días disponibles (NEMPV.DIASG += NDIAS/12); al abrir, ABRE los resta. La versión de sql/ no suma días: pendiente confirmar en DESAIX.",
         "El retiro toma los días pendientes de NEMPVD (PROCE=Retiro).",
         "Estados NACE: Registrado → EnNomina → Aplicado · Anulado."
       ]
@@ -1740,7 +1740,7 @@
             {
               "nombre": "SPQ_PROCESO_VACACIONES",
               "metodo": "CIERRE / ABRE",
-              "rol": "Provisión de vacaciones. Leído."
+              "rol": "Suma (CIERRE) o resta (ABRE) días disponibles de vacaciones en NEMPV.DIASG; no provisiona (eso lo hacen los conceptos). Leído; la versión de sql/ no trae empleados: pendiente confirmar en DESAIX."
             }
           ],
           "feSinSql": [],
@@ -1963,7 +1963,7 @@
           "id": "vacaciones-alimenta",
           "nombre": "Vacaciones → NEDIA / NEMPV",
           "explicacion": "/nom/Vacaciones: ACTUALIZA_VACACIONES recalcula causado; SPQ_NOM_NEMPV · GUARDAR inserta o edita el período NEMPV (PROCEDENCIA Manual, NDIAS = 15 × NVACACIONES del cargo) y llama ACTUALIZA; NEMPVD por evento lo escribe SPQ_NOM_VACACIONES; GENERA_NOVEDAD_VACACIONES crea NEDIA (NOMICODCON_VACA) y recalcula con SPQ_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC; si cruza de mes parte en dos (IDNOVEDADVACSIGMES/MESANTE). ELIMINAR/ANULAR solo con período abierto. RESTABLECER_PERIODOS rehace NEMPV.",
-          "invariante": "Días del retiro salen de NEMPVD (PROCE=Retiro). Cerrar provisiona el mes (CIERRE); abrir revierte (ABRE).",
+          "invariante": "Días del retiro salen de NEMPVD (PROCE=Retiro). Regla de negocio (confirmada por el usuario 2026-10-17): la provisión de vacaciones la calculan los conceptos de nómina; el cierre (SPQ_PROCESO_VACACIONES · CIERRE) solo acumula los días disponibles del empleado (NEMPV.DIASG) y ABRE los revierte.",
           "ventanasFe": "/nom/Vacaciones · VacacionesNominaComponent",
           "sps": [
             {

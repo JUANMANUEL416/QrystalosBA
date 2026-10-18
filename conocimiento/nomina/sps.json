@@ -794,7 +794,7 @@
             "@PROCESO='CIERRE'",
             "@NUMDOCR"
           ],
-          "hace": "Igual flujo ACTUALIZA más incremento DIASG += NDIAS/12 en último ítem NEMPV del empleado.",
+          "hace": "Igual flujo ACTUALIZA más DIASG += NDIAS/12 en el último ítem NEMPV del empleado: acumula los días disponibles del mes.",
           "valida": [],
           "noValida": [
             "Misma lógica base que ACTUALIZA"
@@ -804,7 +804,7 @@
             "FNK_DATEDIFF360",
             "FNK_VALORVARIABLE"
           ],
-          "efecto": "NEMPV actualizado con provisión mensual de vacaciones al cierre de período.",
+          "efecto": "NEMPV.DIASG del último ítem aumenta NDIAS/12 (días disponibles). No calcula provisión: la provisión la hacen los conceptos de nómina.",
           "capaId": "02-operacion",
           "gateId": "prenomina",
           "estado": "leido"
@@ -824,7 +824,7 @@
             "FNK_DATEDIFF360",
             "FNK_VALORVARIABLE"
           ],
-          "efecto": "NEMPV revertido al abrir período.",
+          "efecto": "NEMPV.DIASG del último ítem disminuye NDIAS/12 al abrir el período (reversa de los días sumados en CIERRE).",
           "capaId": "02-operacion",
           "gateId": "prenomina",
           "estado": "leido"
@@ -837,7 +837,7 @@
       "estado": "leido",
       "fuente": "sql/SPQ_PROCESO_VACACIONES.sql (leído 2026-10-17; versionado en 9ec647a)",
       "actualizado": "2026-10-17",
-      "nota": "Es el que ejecuta SPQ_LIQUIDACION (GENERATE_NOMINA CLOSE → 'CIERRE', línea 160; OPEN_NOMINA → 'ABRE', línea 233). Cuerpo distinto de SPK_PROCESO_VACACIONES (sql_refe/0100016359, el que llaman SPQ_NOM_VACACIONES, SPQ_NOM_NEMPV y SPK_CALCULAR_RETIROS). Confirmar en DESAIX qué versión corre.",
+      "nota": "Es el que ejecuta SPQ_LIQUIDACION (GENERATE_NOMINA CLOSE → 'CIERRE', línea 160; OPEN_NOMINA → 'ABRE', línea 233). Cuerpo distinto de SPK_PROCESO_VACACIONES (sql_refe/0100016359, el que llaman SPQ_NOM_VACACIONES, SPQ_NOM_NEMPV y SPK_CALCULAR_RETIROS). Confirmar en DESAIX qué versión corre. Regla de negocio (confirmada por el usuario 2026-10-17): la provisión de vacaciones la calculan los conceptos de nómina; el cierre (SPQ_PROCESO_VACACIONES · CIERRE) solo acumula los días disponibles del empleado (NEMPV.DIASG) y ABRE los revierte. Pendiente confirmar en DESAIX: la versión de sql/ no suma días (con @CNSPAGO y @NUMDOCR NULL el cursor filtra NEMP.NUMDOC = NULL y no trae empleados).",
       "tablas": [
         "NEMP",
         "NEDIA",
@@ -856,7 +856,7 @@
             "@PROCESO='CIERRE'",
             "@NUMDOCR (opcional)"
           ],
-          "hace": "Recalcula los períodos NEMPV del empleado: crea ítems anuales faltantes (NDIAS = 15 × NCARNG.NVACACIONES), prorratea DIASG con FNK_DATEDIFF360 hasta la fecha de corte (retiro o FECHAFIN del período), actualiza ESTADO y sincroniza DIASP con la suma de NEMPVD no anulados. Además suma NDIAS/12 a DIASG del último ítem NEMPV (provisión mensual).",
+          "hace": "Pensado para acumular días disponibles al cerrar: por cada empleado del cursor recalcula sus períodos NEMPV (crea ítems faltantes, prorratea DIASG, ESTADO, DIASP desde NEMPVD) y suma NDIAS/12 a DIASG del último ítem. Pendiente confirmar en DESAIX: la versión de sql/ no suma días (con @CNSPAGO y @NUMDOCR NULL el cursor filtra NEMP.NUMDOC = NULL y no trae empleados).",
           "valida": [
             "Con @CNSPAGO: cursor de empleados con NIEPE en el período, NEDIA IDEVENTO 'RET' en el período y NEMP.NUMDOC = @NUMDOCR",
             "Sin @CNSPAGO: empleados NEMP Activo (todos o solo @NUMDOCR)",
@@ -876,7 +876,7 @@
             "FNK_DATEDIFF360",
             "FNK_VALORVARIABLE"
           ],
-          "efecto": "UPDATE/INSERT/DELETE NEMPV; DIASG += NDIAS/12 en el último ítem. Sin efecto si el cursor sale vacío.",
+          "efecto": "Si el cursor trae empleados: NEMPV.DIASG += NDIAS/12 en el último ítem (días disponibles), más recálculo de ítems, ESTADO y DIASP. Con la llamada de SPQ_LIQUIDACION (@NUMDOCR NULL) no cambia nada. No es la provisión: esa la calculan los conceptos.",
           "capaId": "02-operacion",
           "gateId": "prenomina",
           "ventanaFe": "SPQ_LIQUIDACION · GENERATE_NOMINA (PROCESO=CLOSE)"
@@ -889,7 +889,7 @@
             "@PROCESO='ABRE'",
             "@NUMDOCR (opcional)"
           ],
-          "hace": "Recalcula los períodos NEMPV del empleado: crea ítems anuales faltantes (NDIAS = 15 × NCARNG.NVACACIONES), prorratea DIASG con FNK_DATEDIFF360 hasta la fecha de corte (retiro o FECHAFIN del período), actualiza ESTADO y sincroniza DIASP con la suma de NEMPVD no anulados. Además resta NDIAS/12 de DIASG del último ítem NEMPV (reversa de CIERRE).",
+          "hace": "Reversa de CIERRE: recalcula NEMPV del empleado y resta NDIAS/12 de DIASG del último ítem. Mismo cursor: con @NUMDOCR NULL no trae empleados (pendiente confirmar en DESAIX).",
           "valida": [
             "Con @CNSPAGO: cursor de empleados con NIEPE en el período, NEDIA IDEVENTO 'RET' en el período y NEMP.NUMDOC = @NUMDOCR",
             "Sin @CNSPAGO: empleados NEMP Activo (todos o solo @NUMDOCR)",
@@ -909,7 +909,7 @@
             "FNK_DATEDIFF360",
             "FNK_VALORVARIABLE"
           ],
-          "efecto": "UPDATE/INSERT/DELETE NEMPV; DIASG -= NDIAS/12 en el último ítem. Sin efecto si el cursor sale vacío.",
+          "efecto": "Si el cursor trae empleados: NEMPV.DIASG -= NDIAS/12 en el último ítem. Con la llamada de SPQ_LIQUIDACION · OPEN_NOMINA no cambia nada.",
           "capaId": "02-operacion",
           "gateId": "prenomina",
           "ventanaFe": "SPQ_LIQUIDACION · OPEN_NOMINA"
