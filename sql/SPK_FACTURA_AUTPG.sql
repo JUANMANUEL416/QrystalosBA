@@ -41,9 +41,9 @@ BEGIN
     SELECT @SYS_COMPUTERNAME = SYS_COMPUTERNAME FROM USUSU WITH (NOLOCK) WHERE USUARIO = @USUARIO
 
     -- ============================================================================
-    -- FASE 1: PREPARACI�N DE DATOS (SIN TRANSACCI�N - MINIMIZA BLOQUEOS)
+    -- FASE 1: PREPARACIÓN DE DATOS (SIN TRANSACCIÓN - MINIMIZA BLOQUEOS)
     -- ============================================================================
-    PRINT '=== FASE 1: PREPARACI�N DE DATOS (SIN TRANSACCI�N) ==='
+    PRINT '=== FASE 1: PREPARACIÓN DE DATOS (SIN TRANSACCIÓN) ==='
 
     CREATE TABLE #PacientesPrep (
         IDAFILIADO VARCHAR(20),
@@ -84,7 +84,7 @@ BEGIN
 		,CUENTA VARCHAR(16),ENRECAUDOS SMALLINT,IDAFILIADO VARCHAR(20), GRUPOFACTURA INT
         )
 
-    -- Validaci�n de resoluciones DIAN (SIN TRANSACCI�N - solo lectura)
+    -- Validación de resoluciones DIAN (SIN TRANSACCIÓN - solo lectura)
     IF @WITH_MARCA = 1
     BEGIN
         PRINT 'Validando sedes - modo con marca'
@@ -196,7 +196,7 @@ BEGIN
 
     PRINT 'Pacientes cargados: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
 
-    -- Validaci�n DIAN: consecutivos suficientes por sede antes de generar facturas
+    -- Validación DIAN: consecutivos suficientes por sede antes de generar facturas
     IF UPPER(DBO.FNK_VALORVARIABLE('BLOQUEADIAN')) = 'SI'
     BEGIN
         DECLARE @SedeDian VARCHAR(5), @CantFacSede INT, @ContinuaDian SMALLINT
@@ -218,28 +218,28 @@ BEGIN
             BEGIN
                 CLOSE cur_valida_dian
                 DEALLOCATE cur_valida_dian
-                RAISERROR('La sede %s agot� la numeraci�n autorizada por la DIAN. No se pueden generar m�s facturas.', 16, 1, @SedeDian)
+                RAISERROR('La sede %s agotó la numeración autorizada por la DIAN. No se pueden generar más facturas.', 16, 1, @SedeDian)
                 RETURN
             END
             IF @ContinuaDian = 6
             BEGIN
                 CLOSE cur_valida_dian
                 DEALLOCATE cur_valida_dian
-                RAISERROR('La sede %s no tiene consecutivos DIAN suficientes. Se requieren %d facturas y la resoluci�n vigente no cubre el rango.', 16, 1, @SedeDian, @CantFacSede)
+                RAISERROR('La sede %s no tiene consecutivos DIAN suficientes. Se requieren %d facturas y la resolución vigente no cubre el rango.', 16, 1, @SedeDian, @CantFacSede)
                 RETURN
             END
             IF @ContinuaDian = 2
             BEGIN
                 CLOSE cur_valida_dian
                 DEALLOCATE cur_valida_dian
-                RAISERROR('La resoluci�n DIAN de la sede %s est� vencida. No se puede continuar con la facturaci�n.', 16, 1, @SedeDian)
+                RAISERROR('La resolución DIAN de la sede %s está vencida. No se puede continuar con la facturación.', 16, 1, @SedeDian)
                 RETURN
             END
             IF @ContinuaDian = 3
             BEGIN
                 CLOSE cur_valida_dian
                 DEALLOCATE cur_valida_dian
-                RAISERROR('No existe resoluci�n DIAN disponible para la sede %s.', 16, 1, @SedeDian)
+                RAISERROR('No existe resolución DIAN disponible para la sede %s.', 16, 1, @SedeDian)
                 RETURN
             END
 
@@ -395,7 +395,7 @@ BEGIN
     SELECT @TOTAL_CARGOS_FTRDC1 = COUNT(1) FROM #FTRDC1
     PRINT 'Total cargos en #FTRDC1: ' + CAST(@TOTAL_CARGOS_FTRDC1 AS VARCHAR(10))
 
-    -- Obtener par�metros de configuraci�n (SIN TRANSACCI�N)
+    -- Obtener parámetros de configuración (SIN TRANSACCIÓN)
     SELECT @DV = DIASVTO, @TTEC = TIPOTERCONTABLE, @NODESCUENTACOPAGO = NODESCUENTACOPAGO
 	FROM PPT WITH (NOLOCK) WHERE IDTERCERO = @IDTERCERO AND IDPLAN = @IDPLAN
 
@@ -427,9 +427,9 @@ BEGIN
     SELECT @IDFORMATOFTR=IDFORFTRCE FROM PPT WITH (NOLOCK) WHERE IDTERCERO=@IDTERCERO AND IDPLAN=@IDPLAN
 
     -- ============================================================================
-    -- FASE 2: INSERCI�N/ACTUALIZACI�N (CON TRANSACCI�N CORTA)
+    -- FASE 2: INSERCIÓN/ACTUALIZACIÓN (CON TRANSACCIÓN CORTA)
     -- ============================================================================
-    PRINT '=== FASE 2: INSERCI�N CON TRANSACCI�N CORTA ==='
+    PRINT '=== FASE 2: INSERCIÓN CON TRANSACCIÓN CORTA ==='
     
     BEGIN TRY
         BEGIN TRANSACTION
@@ -449,7 +449,7 @@ BEGIN
 
             IF NULLIF(LTRIM(RTRIM(@N_FACTURA)), '') IS NULL
             BEGIN
-                RAISERROR('No se gener� el n�mero de factura (N_FACTURA) para la sede %s. Verifique la resoluci�n DIAN y los consecutivos disponibles.', 16, 1, @SedeGrupo)
+                RAISERROR('No se generó el número de factura (N_FACTURA) para la sede %s. Verifique la resolución DIAN y los consecutivos disponibles.', 16, 1, @SedeGrupo)
             END
 
 	        SET @CNSFTR = SPACE(20)
@@ -469,7 +469,7 @@ BEGIN
             WHERE NULLIF(LTRIM(RTRIM(N_FACTURA)), '') IS NULL
         )
         BEGIN
-            RAISERROR('Existen facturas sin n�mero (N_FACTURA vac�o o nulo). No se puede continuar con la inserci�n en FTR.', 16, 1)
+            RAISERROR('Existen facturas sin número (N_FACTURA vacío o nulo). No se puede continuar con la inserción en FTR.', 16, 1)
         END
 
         INSERT INTO #FTRD1(CNSFTR, FECHA, DB_CR, AREAPRESTACION, UBICACION, VR_TOTAL,
@@ -583,14 +583,14 @@ BEGIN
             AND A.ESTADO IN ('Autorizado','Autorizado Recuperado')
 
         COMMIT TRANSACTION
-        PRINT '=== TRANSACCI�N COMPLETADA EXITOSAMENTE ==='
+        PRINT '=== TRANSACCIÓN COMPLETADA EXITOSAMENTE ==='
 
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION
         
-        PRINT '=== ERROR EN LA TRANSACCI�N - ROLLBACK EJECUTADO ==='
+        PRINT '=== ERROR EN LA TRANSACCIÓN - ROLLBACK EJECUTADO ==='
         PRINT 'Los consecutivos de factura NO se perdieron (fueron revertidos)'
         
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE()
@@ -608,25 +608,25 @@ BEGIN
     END CATCH
 
     -- ============================================================================
-    -- FASE 3: CONTABILIZACI�N (FUERA DE TRANSACCI�N - PROCESO SECUNDARIO)
+    -- FASE 3: CONTABILIZACIÓN (FUERA DE TRANSACCIÓN - PROCESO SECUNDARIO)
     -- ============================================================================
-    PRINT '=== FASE 3: CONTABILIZACI�N ==='
+    PRINT '=== FASE 3: CONTABILIZACIÓN ==='
     
     DECLARE @CONTAB_POR_JOB VARCHAR(5) = DBO.FNK_VALORVARIABLE('CONTAB_FTR_JOB')
     
     IF @CONTAB_POR_JOB = 'SI'
     BEGIN
-        PRINT 'Contabilizaci�n delegada a JOB - Insertando en FTRCO...'
+        PRINT 'Contabilización delegada a JOB - Insertando en FTRCO...'
         
         INSERT INTO FTRCO(N_FACTURA, USUARIO, SYS_COMPUTERNAME, COMPANIA, SEDE)
         SELECT N_FACTURA, @USUARIO, @SYS_COMPUTERNAME, @COMPANIA, IDSEDE
         FROM #ConsecutivosGrupo
         
-        PRINT 'Facturas encoladas para contabilizaci�n por JOB: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
+        PRINT 'Facturas encoladas para contabilización por JOB: ' + CAST(@@ROWCOUNT AS VARCHAR(10))
     END
     ELSE
     BEGIN
-        PRINT 'Contabilizaci�n directa de facturas...'
+        PRINT 'Contabilización directa de facturas...'
         
         DECLARE CONTA_FTR_CURSOR CURSOR FOR
         SELECT N_FACTURA, IDSEDE
@@ -641,7 +641,7 @@ BEGIN
                 EXEC SPK_NC_CONTAB_FTR @N_FACTURA, @COMPANIA, @USUARIO, @SYS_COMPUTERNAME, @IDSEDE, ''         
             END TRY
             BEGIN CATCH
-                PRINT 'Advertencia: Error en contabilizaci�n de factura ' + @N_FACTURA + ': ' + ERROR_MESSAGE()
+                PRINT 'Advertencia: Error en contabilización de factura ' + @N_FACTURA + ': ' + ERROR_MESSAGE()
             END CATCH
          
             FETCH NEXT FROM CONTA_FTR_CURSOR INTO @N_FACTURA, @IDSEDE;

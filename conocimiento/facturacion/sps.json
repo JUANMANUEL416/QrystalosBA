@@ -1,7 +1,7 @@
 {
   "procesoId": "facturacion",
   "actualizado": "2026-10-18",
-  "nota": "2026-10-03: procedencias FTR y énfasis de factura financiera contrastados contra Qrystalos2 e IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 son idénticas para SPQ_SUBIR_AUTCOL y los diez objetos del mapa; IDANT 2.0.6. Confirmado HADM→SALUD, CIT→CI, AUT/NOPOS→CE, AUTPG→AUTPG y recibo/copago→CAJA.",
+  "nota": "2026-10-03: procedencias FTR y énfasis de factura financiera contrastados contra Qrystalos2 e IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 son idénticas para SPQ_SUBIR_AUTCOL y los diez objetos del mapa; IDANT 2.0.6. Confirmado HADM→SALUD, CIT→CI, AUT/NOPOS→CE, AUTPG→AUTPG y recibo/copago→CAJA. 2026-10-18: 18 objetos DESAIX PREVERSION=2.0.10 (idénticas a liberada) fichados; 5 defectos confirmados contra esa versión.",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
@@ -1937,13 +1937,14 @@
             "FECHARAD >= max F_FACTURA"
           ],
           "errores": [
-            "Fecha de Radicación Mayor...",
-            "Periodo Contable Cerrado",
-            "Cartera Cerrada",
-            "Notas Pendientes Por Aplicar",
-            "fecha de radicación es menor...",
-            "deben estar en estado P",
-            "ya Radicada"
+            "Fecha de Radicación Mayor a la Fecha Actual (:591)",
+            "Fecha de Radicación Menor a Dos periodos Contables (:595, si RAD_MAS2MESES=SI)",
+            "Periodo Contable  Cerrado, Radicación no Permitida (:599)",
+            "Cartera Cerrada, Radicación no Permitida (:603)",
+            "Una o Varias Facturas De Esta CXC Tienen Notas Pendientes Por Aplicar, Debe Aplicarlas Primero (:607)",
+            "La fecha de radicación es menor a la ultima fecha de las facturas relacionadas (:611)",
+            "Todas las facturas de la cuenta de cobro deben estar en estado P y no tener Nota Crédito. (:616)",
+            "Cuenta de Cobro ya Radicada o Presenta Inconsistencias (:737)"
           ],
           "capaId": "02-operacion",
           "gateId": "radicar-cuenta",
@@ -1952,7 +1953,13 @@
             "SPK_ENTREGA_CXC",
             "SPK_CONTAB_RADICACXC"
           ],
-          "efecto": "FCXC/FCXCD radicada; INDRECIBIDO=1"
+          "efecto": "FCXC/FCXCD radicada; SPK_ENTREGA_CXC; opcional SPK_CONTAB_RADICACXC si CONTABCXC=SI. Si hay RPDX multi-fecha, el primer grupo queda con defecto :635-645.",
+          "noValida": [
+            "CONFIRMADO DESAIX 2.0.10 :635-645: primer grupo de fecha del cursor hace UPDATE FCXCD SET CNSCXC=@CNSCXCN ANTES de asignar @CNSCXCN (sigue NULL). Desliga esas facturas de la cuenta original. Los grupos siguientes sí crean FCXC nueva (:652-672). El método correcto es PROCESAR_RADICACION_MULTI_FECHA (:747)."
+          ],
+          "defectosConfirmadosDesaix": [
+            "CONFIRMADO :635-645 desliga FCXCD del primer grupo de fecha (CNSCXC←NULL)."
+          ]
         },
         {
           "id": "PROCESAR_RADICACION_MULTI_FECHA",
@@ -1966,7 +1973,11 @@
           "llama": [
             "SPK_GENCONSECUTIVO",
             "SPK_ENTREGA_CXC"
-          ]
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Parte FCXC por FECHA1 de RPDX, crea CNSCXC nuevos y llama SPK_ENTREGA_CXC por cuenta. Camino correcto frente al defecto de RADICA_FCXC :635-645."
         },
         {
           "id": "CONTAB_FCXC",
@@ -2105,7 +2116,8 @@
           "gateId": "radicar-cuenta",
           "estado": "leido"
         }
-      ]
+      ],
+      "actualizado": "2026-10-18"
     },
     {
       "nombre": "SPQ_SIFTR_COL",
@@ -2663,7 +2675,7 @@
       "nombre": "SPK_GENNUMEROFACTURA",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
+      "fuente": "sql/SPK_GENNUMEROFACTURA.sql",
       "llamadoDesde": [
         "CREARFTR",
         "SPK_CREA_FACTURA_POS_CAJA",
@@ -2696,7 +2708,13 @@
       "llama": [
         "SPK_GENCONSECUTIVO"
       ],
-      "efecto": "Consume consecutivo USCXS con SPK_GENCONSECUTIVO (:89); devuelve @NVOCONSEC OUTPUT; DELETE/INSERT RPDX CNS='N_FACTURA' (:28/:187)."
+      "efecto": "Consume consecutivo USCXS con SPK_GENCONSECUTIVO (:89); devuelve @NVOCONSEC OUTPUT; DELETE/INSERT RPDX CNS='N_FACTURA' (:28/:187).",
+      "actualizado": "2026-10-18",
+      "defectosConfirmadosDesaix": [
+        "CONFIRMADO PREVERSION=2.0.10 idéntica a liberada: RAISERROR sev1 (no 16) en :49, :81 y :86 + RETURN. El llamador no recibe abort; N_FACTURA queda NULL/espacios y el motor sigue.",
+        "CONFIRMADO concurrencia :69-89: SELECT USCXS.CONSECUTIVO+1 y valida rango FDIAN ANTES de EXEC SPK_GENCONSECUTIVO. Dos sesiones pueden pasar el chequeo con el mismo @CNSNUEVO; la rama MPREFAC_CCOSTO (:98-110) no chequea rango."
+      ],
+      "cola": "Releído DESAIX PREVERSION=2.0.10. Defectos sev1 y carrera de consecutivo confirmados."
     },
     {
       "nombre": "SPK_ENTREGA_CXC",
@@ -3775,7 +3793,8 @@
         "PPT: TIPOTERCONTABLE, DIASVTO; SER paquete existe"
       ],
       "noValida": [
-        "PRI abierto (lo valida SPQ_AUTPG antes de EXEC)"
+        "PRI abierto (lo valida SPQ_AUTPG antes de EXEC)",
+        "CONFIRMADO DESAIX 2.0.10 :315-389: cargos CIT a #FTRDC1 sin filtro CIT.FACTURADA=0 (solo IDAUTSES IS NULL, plan/tercero). Cargos AUT medicamentos ESTADO=Pendiente + PREFIJOMEDICAMENTOS, sin AUTD.FACTURADA=0. Una cita/autorización ya facturada CI/CE puede volver a entrar en FTRDC de AUTPG."
       ],
       "errores": [
         "Existen sedes en este proceso de facturacion que no cuentan con resolucion vigente...",
@@ -3795,7 +3814,11 @@
       "efecto": "INSERT FTR (PROCEDENCIA=AUTPG, PAQUETE=1, TIPOFAC=M) + FTRD línea paquete + FTRDC cargos CIT/AUT; UPDATE AUTPG FACTURADO=1, N_FACTURA; contab directa SPK_NC_CONTAB_FTR o encola FTRCO si CONTAB_FTR_JOB=SI",
       "cola": "Cargos CIT/AUT consultados directo (no VWK_CARGOS_HADMAUTCIT_ART). AUT medicamentos: PREFIJOMEDICAMENTOS + ESTADO=Pendiente.",
       "gateId": "facturacion-programa-autpg",
-      "capaId": "02-operacion"
+      "capaId": "02-operacion",
+      "actualizado": "2026-10-18",
+      "defectosConfirmadosDesaix": [
+        "CONFIRMADO doble facturación AUTPG vs CI/CE: CIT :307-322 y AUT :380-389 no exigen FACTURADA=0. La TX :435-585 sí cubre INSERT FTR/FTRD/FTRDC + marca AUTPG (no es el defecto de huérfanas)."
+      ]
     },
     {
       "nombre": "SPK_FACTURACI_EVENTO_PAQ",
@@ -4143,7 +4166,7 @@
       "tipo": "SPK",
       "estado": "leido",
       "fuente": "sql/SPK_FACTURA_ASIS.sql",
-      "actualizado": "2026-10-03",
+      "actualizado": "2026-10-18",
       "gateId": "urg-hosp-factura",
       "capaId": "02-operacion",
       "hace": "Motor de factura individual o por corte desde admisión. Consume el staging RPDX preparado por FTR_HADM_COL e inserta FTR con PROCEDENCIA=SALUD y detalle FTRD.",
@@ -4155,9 +4178,28 @@
       "llama": [
         "SPK_GENNUMEROFACTURA",
         "SPK_GENCONSECUTIVO",
-        "SPK_NC_CONTAB_FTR"
+        "SPK_INSERT_TERDEAFI",
+        "FNK_VALIDA_TOPE_FACTURA",
+        "SPK_FAC_IMPDEDUC",
+        "SPK_PAGOSCAJA_QX",
+        "SPK_NC_CONTAB_FTR",
+        "SPK_CREACXP_ASIS",
+        "SPK_ENTREGA_FACTURA_PTTO"
       ],
-      "efecto": "INSERT/UPDATE FTR PROCEDENCIA=SALUD, INSERT FTRD, marca cargos de la admisión y puede contabilizar o encolar FTRCO."
+      "efecto": "INSERT/UPDATE FTR PROCEDENCIA=SALUD, INSERT FTRD, HADMF, HPRED.FACTURADA=1. PPT.NODESCUENTACOPAGO=1 deja VLR_COPAGOS=0 (cobra el copago al pagador). Luego PAGOSCAJA_QX, contab o FTRCO, CREACXP_ASIS y ENTREGA_FACTURA_PTTO.",
+      "errores": [
+        "Items Con Valores Cero o Negativos. (sev16, :657)",
+        "No existen items para Facturar, Me Devuelvo Posible Error  (sev16, :667)",
+        "El monto a Facturar Sobrepasa el Valor Autorizado, No se Puede Generar la Factura  (sev16, :674) — FNK_VALIDA_TOPE_FACTURA('SALUD')",
+        "La Factura ya Existe... Posible error de duplicidad (sev16, :804)"
+      ],
+      "noValida": [
+        "BEGIN TRAN está comentado (:679). INSERT FTR (:732) y FTRD (:761) quedan sin transacción; el RAISERROR :804 tras HADMF duplicada no hace ROLLBACK → FTR/FTRD huérfanas. CONFIRMADO DESAIX 2.0.10.",
+        "No comprueba N_FACTURA vacío tras SPK_GENNUMEROFACTURA (:686-689)"
+      ],
+      "defectosConfirmadosDesaix": [
+        "CONFIRMADO :679/--BEGIN TRAN y :804 sin ROLLBACK. FTR/FTRD pueden quedar sin HADMF."
+      ]
     },
     {
       "nombre": "SPK_CREA_FACTURA_POS_CAJA",
@@ -4868,6 +4910,701 @@
       "efecto": "INSERT RPDX con los mensajes.",
       "capaId": "02-operacion",
       "gateId": "urg-hosp-factura"
+    },
+    {
+      "nombre": "SPK_FACTURA_ASIS_T",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURA_ASIS_T.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPQ_FTR_HADM_COL · FACTHADM_TODO"
+      ],
+      "hace": "Recorre RPDX (CNS=@CNSRPDX, VALOR10=1) e invoca un motor por ítem/pagador: SPK_FACTURA_ASIS, o si CLASE_IPS=IPS_DOMI SPK_FACTURA_ADMISION_DOMI / _COPA.",
+      "valida": [
+        "Filas RPDX del lote con VALOR10=1 (:22-23)"
+      ],
+      "noValida": [
+        "No valida PRI, FDIAN ni cargos: lo deja al motor por ítem",
+        "SPK_FACTURA_ADMISION_DOMI / _COPA no leídos en este turno (pendiente)"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "SPK_FACTURA_ASIS",
+        "SPK_FACTURA_ADMISION_DOMI",
+        "SPK_FACTURA_ADMISION_DOMI_COPA"
+      ],
+      "efecto": "Una factura SALUD (o domiciliar) por cada pagador marcado en RPDX.",
+      "capaId": "02-operacion",
+      "gateId": "urg-hosp-factura",
+      "tablas": [
+        "RPDX"
+      ]
+    },
+    {
+      "nombre": "SPK_FACTURA_ASIS_CORTE",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURA_ASIS_CORTE.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPQ_FTR_HADM_COL · FACTHADM_ITEMCORTE"
+      ],
+      "hace": "Motor de factura por corte: cargos HPRED con HPRE.FECHA < @FECHACORTE (filtro @CENTROS). INSERT FTR PROCEDENCIA=SALUD TIPOFAC=I, FTRD, HADMF; marca HPRED.FACTURADA=1.",
+      "valida": [
+        "PPT.NODESCUENTACOPAGO, DIASVTO, TIPOTERCONTABLE (:674)",
+        "FAC_VALNOCOBRABLES=SI → no valor/cantidad <=0 (:644-653)",
+        "Reusa FTR ESTADO=L de la admisión si tiene <10 días (:656-661)"
+      ],
+      "noValida": [
+        "Sin BEGIN TRAN: INSERT FTR/FTRD y marca HPRED no son atómicos",
+        "Tras SPK_GENNUMEROFACTURA no comprueba N_FACTURA vacío (hereda sev1 :49/:81/:86)",
+        "No llama FNK_VALIDA_TOPE_FACTURA (sí lo hace SPK_FACTURA_ASIS)"
+      ],
+      "errores": [
+        "Items Con Valores Cero o Negativos. (sev16, :651)"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO",
+        "SPK_GENNUMEROFACTURA",
+        "SPK_PREFIJOFACTURA",
+        "SPK_FAC_IMPDEDUC",
+        "SPK_NC_CONTAB_FTR",
+        "SPK_CREACXP_ASIS"
+      ],
+      "efecto": "FTR SALUD de corte + FTRD + HADMF + HPRED.FACTURADA=1 N_FACTURA. Contab SPK_NC_CONTAB_FTR. SPK_PAGOSCAJA_QX está comentado (:950).",
+      "capaId": "02-operacion",
+      "gateId": "urg-hosp-factura",
+      "tablas": [
+        "FTR",
+        "FTRD",
+        "HPRE",
+        "HPRED",
+        "HADMF",
+        "PPT",
+        "FDIAN"
+      ]
+    },
+    {
+      "nombre": "SPK_ESTADO_CORTECUENTA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ESTADO_CORTECUENTA.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPQ_FTR_HADM_COL · PREPARAR_HADMCORTE"
+      ],
+      "hace": "Prechequeo del corte: deja inconvenientes en RPDX (no RAISERROR). Paralelo a SPK_ESTADO_ADMI, filtrado a HPRE.FECHA <= FECHACORTE+1 y @CENTROS.",
+      "valida": [
+        "Admisión abierta (si ya tiene alta: 'YA TIENE ALTA. DEBE FACTURARSE NORMALMENTE.')",
+        "PPT.PFACTURARIND<>0",
+        "Hay HPRED no facturados hasta la fecha de corte",
+        "Copago distribuido, cirugías liquidadas, HTX/inventario, apoyos DX, HAUT"
+      ],
+      "noValida": [
+        "No bloquea por RAISERROR: el llamador decide con el contenido de RPDX"
+      ],
+      "errores": [
+        "YA TIENE ALTA. DEBE FACTURARSE NORMALMENTE. (:30)",
+        "NO PERMITE FACTURAR INDIVIDUALMENTE. DEBE SER MASIVA (:39)",
+        "ADMISION SIN PRESTACIONES (CARGOS) (:48)",
+        "NO EXISTEN CARGOS PARA FACTURAR HASTA LA FECHA DE CORTE. (:72/:90)",
+        "COPAGO SIN DISTRIBUIR TOTALMENTE (:201)",
+        "CIRUGIA SIN LIQUIDAR (:211)",
+        "ACCIDENTE DE TRANSITO no se puede hacer corte. (:410)"
+      ],
+      "llama": [],
+      "efecto": "INSERT RPDX con mensajes. No cambia HADM/HPRED.",
+      "capaId": "02-operacion",
+      "gateId": "urg-hosp-factura",
+      "tablas": [
+        "HADM",
+        "HPRE",
+        "HPRED",
+        "PPT",
+        "RPDX"
+      ]
+    },
+    {
+      "nombre": "SPQ_FTR_CXC_SOAT",
+      "tipo": "SPQ",
+      "modelo": "FTR_CXC_SOAT",
+      "estado": "leido",
+      "fuente": "sql/SPQ_FTR_CXC_SOAT.sql",
+      "actualizado": "2026-10-18",
+      "cola": "4/4 leído. PREVERSION=liberada 2.0.10.",
+      "metodos": [
+        {
+          "id": "PREPARAR_HADM",
+          "estado": "leido",
+          "hace": "Arma topes SOAT (aseguradora/FONSAT) y llama SPQ_FTR_PROCESO_SOAT. Limpia UTISOAT/FACTURADA de HPRED de la admisión antes de repartir.",
+          "valida": [
+            "Existe HACTRAN del afiliado (:35-41)",
+            "Existe HACTRAND PROCEDENCIA=QX de la admisión (:43-49)",
+            "Tope disponible (HACTRAN.TOPE/TOPE1 − gastado)",
+            "Admisión sin ítems ya facturados al mismo tercero/plan (:121-129)"
+          ],
+          "errores": [
+            "NO EXISTE ACCIDENTE DE TRÁNSITO",
+            "NO EXISTE HACTRAND DE PROCEDENCIA QX",
+            "NO EXISTE VALOR DISPONIBLE PARA FACTURAR ESTA ADMISIÓN DE ACCIDENTE DE TRÁNSITO",
+            "ADMISION SOAT YA TIENE ITEMS FACTURADOS"
+          ],
+          "llama": [
+            "SPQ_FTR_PROCESO_SOAT"
+          ],
+          "efecto": "Staging SOAT por tope. Comentario en SQL: el UPDATE que pone FACTURADA=0 'podría causar problemas'.",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "FACTURAR_SOAT",
+          "estado": "leido",
+          "hace": "Factura SOAT de un pagador (aseguradora o FONSAT) vía SPK_FACTURA_SOAT.",
+          "valida": [
+            "PRI abierto y CERRADO_FAC=0 (:184-187)",
+            "PPT.TIPOTERCONTABLE del pagador (IDPLANFONSAT si es IDNITFONSAT) (:189-200)"
+          ],
+          "noValida": [
+            "FnValidaDian2: el IF 1=1 queda 'PENDIENTE REVISAR' (:201)"
+          ],
+          "errores": [
+            "PERIODO CONTABLE CERRADO O NO EXISTE %s, VERIFIQUE E INTENTELO DE NUEVO (sev16, :186)",
+            "INCONSISTENCIA CONTABLE, NO EXISTE TIPO TERCERO CONTABLE. REVISAR CONTRATO (sev16, :199)",
+            "OCURRIÓ UN ERROR AL MOMENTO DE FACTURAR"
+          ],
+          "llama": [
+            "SPK_FACTURA_SOAT"
+          ],
+          "efecto": "Motor SPK_FACTURA_SOAT (pendiente ficha propia).",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "FACTURAR_SOAT_TODO",
+          "estado": "leido",
+          "hace": "Igual que FACTURAR_SOAT para todos los pagadores del accidente (SPK_FACTURA_SOAT_TODO).",
+          "valida": [
+            "PRI abierto y CERRADO_FAC=0 (:264-267)",
+            "PPT.TIPOTERCONTABLE (:269-282)"
+          ],
+          "errores": [
+            "PERIODO CONTABLE CERRADO O NO EXISTE %s, VERIFIQUE E INTENTELO DE NUEVO (sev16, :266)",
+            "INCONSISTENCIA CONTABLE, NO EXISTE TIPO TERCERO CONTABLE. REVISAR CONTRATO (sev16, :281)",
+            "OCURRIÓ UN ERROR AL MOMENTO DE FACTURAR"
+          ],
+          "llama": [
+            "SPK_FACTURA_SOAT_TODO"
+          ],
+          "efecto": "Facturas SOAT de todos los tramos de tope.",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "TRANSFERIR_ITEM",
+          "estado": "leido",
+          "hace": "Mueve cantidad entre pagadores SOAT en HADM_S (BAJAR=aseguradora→ADRES/FONSAT; SUBIR=inverso).",
+          "valida": [
+            "CANTIDAD >0 y <= CANTIDAD_ORI en BAJAR (:332)"
+          ],
+          "errores": [
+            "no aplica (CATCH genérico)"
+          ],
+          "llama": [],
+          "efecto": "UPDATE HADM_S cantidades y VLR_SERVICI.",
+          "capaId": "02-operacion"
+        }
+      ]
+    },
+    {
+      "nombre": "SPK_FACTURACE_EVENTO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FACTURACE_EVENTO.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPK_FACTURACE_EVENTO_MASI"
+      ],
+      "hace": "Motor individual CE/evento: AUT+AUTD marcadas (MARCAFAC=1, MARCA=1) → FTR PROCEDENCIA=CE. Resta copago según PPT.NODESCUENTACOPAGO; IVA con FNK_VALOR_IMPUESTO; TCOPAGO con FNK_TRAE_TIPOCOPAGO(NOAUT,'CE').",
+      "valida": [
+        "IDPLAN no vacío (:38-42)",
+        "AUT.CNSFACT=@CNSRPDX, AUT.IDAUT=@NOREFERENCIA, no facturada, MARCAFAC=1, AUTD.MARCA=1 (:77-86)",
+        "PPT.DIASVTO, TIPOTERCONTABLE, NODESCUENTACOPAGO (:45-48)"
+      ],
+      "noValida": [
+        "Si no hay ítems (:88-92) hace PRINT+RETURN sin RAISERROR",
+        "Sin transacción alrededor de INSERT FTR/FTRD",
+        "No comprueba N_FACTURA vacío tras SPK_GENNUMEROFACTURA"
+      ],
+      "errores": [
+        "NO SE ESCOGIO PLAN DE FACTURACION. (sev16, :40)"
+      ],
+      "llama": [
+        "SPK_INSERT_TERDEAFI",
+        "SPK_GENCONSECUTIVO",
+        "SPK_GENNUMEROFACTURA",
+        "SPK_PREFIJOFACTURA",
+        "SPK_NC_CONTAB_FTR",
+        "FNK_VALOR_IMPUESTO",
+        "FNK_TRAE_TIPOCOPAGO"
+      ],
+      "efecto": "INSERT FTR CE + FTRD; marca AUT/AUTD; contab si CONTABFACCE_AUTOM.",
+      "capaId": "02-operacion",
+      "gateId": "facturacion-masiva-aut",
+      "tablas": [
+        "FTR",
+        "FTRD",
+        "AUT",
+        "AUTD",
+        "PPT",
+        "SER",
+        "FDIAN"
+      ]
+    },
+    {
+      "nombre": "SPK_FAC_MASIVA_TER",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_FAC_MASIVA_TER.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPK_FACTURACI_ESCIP_MASI"
+      ],
+      "hace": "Motor masivo por lote FMAS/FMASD: una FTR TIPOFAC=M, PROCEDENCIA=la de FMAS (SALUD/CI/CE/APLIM). Marca orígenes FACTURADA=1.",
+      "valida": [
+        "FMAS.CNSFMAS y FMASD con origen no facturado (HADM/CIT/AUTD FACTURADA=0)"
+      ],
+      "noValida": [
+        "Sin RAISERROR propio: si GENNUMEROFACTURA falla sev1, INSERT FTR con N_FACTURA de espacios",
+        "Sin transacción"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO",
+        "SPK_FAC_IMPDEDUC",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT FTR/FTRD; UPDATE HADM/HPRED o CIT o AUT/AUTD según procedencia; contab.",
+      "capaId": "02-operacion",
+      "tablas": [
+        "FMAS",
+        "FMASD",
+        "FTR",
+        "FTRD",
+        "HADM",
+        "HPRED",
+        "CIT",
+        "AUT",
+        "AUTD"
+      ]
+    },
+    {
+      "nombre": "SPK_PREFIJOFACTURA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PREFIJOFACTURA.sql",
+      "actualizado": "2026-10-18",
+      "hace": "Devuelve el prefijo USCXS de factura (@PRE OUTPUT): si BLOQUEADIAN=SI usa FDIAN.PREFIJO de la sede (PROCEDENCIA=FTR, VENCIDA=0) → '@FTR_'+prefijo; si no, MPREFIJOFAC/PREFIJOFAC[_sede].",
+      "valida": [
+        "FDIAN vigente de la sede cuando BLOQUEADIAN=SI (:11)"
+      ],
+      "noValida": [
+        "Si no hay prefijo FDIAN deja '@FTR_' sin error (:16-19)"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "@PRE = '@FTR_' o '@FTR_'+prefijo. No consume consecutivo.",
+      "capaId": "01-configuracion",
+      "gateId": "dian-firma",
+      "tablas": [
+        "FDIAN"
+      ]
+    },
+    {
+      "nombre": "SPK_PROXIMOCONSECUTIVO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PROXIMOCONSECUTIVO.sql",
+      "actualizado": "2026-10-18",
+      "hace": "Lee el siguiente consecutivo USCXS (CONSECUTIVO+1) sin incrementarlo. Si no hay fila, devuelve 1.",
+      "valida": [
+        "USCXS COMPANIA+IDSEDE+PREFIJO (:19-28)"
+      ],
+      "noValida": [
+        "No valida rango FDIAN",
+        "No crea la fila USCXS",
+        "Si @PREFIJO IS NULL solo hace PRINT (:14-17)"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "@NVOCONSEC OUTPUT. No escribe USCXS.",
+      "capaId": "01-configuracion",
+      "tablas": [
+        "USCXS"
+      ]
+    },
+    {
+      "nombre": "CreateSequenceIfNotExists",
+      "tipo": "SP",
+      "estado": "leido",
+      "fuente": "sql/CreateSequenceIfNotExists.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPQ_GENSEQUENCE"
+      ],
+      "hace": "Crea SEQUENCE dbo.SEQ_{IDSEDE}_{PREFIJO} si no existe, START WITH @InicialValue INCREMENT 1.",
+      "valida": [
+        "sys.sequences name=SEQ_sede_prefijo schema dbo (:9)"
+      ],
+      "noValida": [
+        "No sanitiza @IDSEDE/@PREFIJO (concatena en SQL dinámico)",
+        "No es el camino FTR: SPK_GENNUMEROFACTURA usa USCXS+SPK_GENCONSECUTIVO"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "sp_executesql"
+      ],
+      "efecto": "CREATE SEQUENCE si faltaba. No asigna número de factura.",
+      "capaId": "01-configuracion",
+      "tablas": []
+    },
+    {
+      "nombre": "SPK_AJUSTAR_TOTALES_DIAN",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_AJUSTAR_TOTALES_DIAN.sql",
+      "actualizado": "2026-10-18",
+      "hace": "Antes de DIAN en cápita: alinea FTRDC.VLR_COPAGO / TCOPAGO con recaudo real de caja (FCJ conceptos 02 copago → TCOPAGO 01; 02-1 moderadora → TCOPAGO 02) y recalcula totales con SPK_TOTALFACTURFIN.",
+      "valida": [
+        "FTR existe por CNSFCT (:38-42)",
+        "ESTADO=P, no NC, CAPITADA=1 (:44-55)",
+        "Hay FTRDC (:57-61)",
+        "COPAPROPIO=0 (:63-67)"
+      ],
+      "errores": [
+        "No se encontró la factura para CNSFTR %s. (sev16, :40)",
+        "La factura no está pendiente, es nota crédito o no es capitada. (sev16, :53)",
+        "No hay prestaciones en la relación de cápita (FTRDC). (sev16, :59)",
+        "La factura tiene copago propio activo. El valor enviado a la DIAN es el digitado por el usuario como anticipo; no se permite recalcular totales. (sev16, :65)"
+      ],
+      "llama": [
+        "SPK_TOTALFACTURFIN"
+      ],
+      "efecto": "UPDATE FTRDC copagos según FCJ; EXEC SPK_TOTALFACTURFIN.",
+      "capaId": "02-operacion",
+      "tablas": [
+        "FTR",
+        "FTRDC",
+        "FCJ",
+        "FCJD"
+      ]
+    },
+    {
+      "nombre": "SPK_ENTREGA_FACTURA_PTTO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ENTREGA_FACTURA_PTTO.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPK_FACTURA_ASIS",
+        "SPQ_FCXC_COL · PRESUPUESTO_FCXC"
+      ],
+      "hace": "Reconocimiento presupuestal por factura (PTRECO/PTRECOD) cuando PRESUP_TIPORECO=CUENTAC. Marca FTR.ENPRESUPUESTO=1.",
+      "valida": [
+        "USVGS PRESUP_CCOSTO no vacío (:62-66)",
+        "USVGS PRESUP_TIPORECO no vacío (:67-72)",
+        "Solo entra a crear PTRECO si PRESUP_TIPORECO='CUENTAC' (:73)"
+      ],
+      "errores": [
+        "No Esta Configurada la Variable de Presupuesto (sev16, :64)",
+        "No Esta Configurada la Variable de Tipo de Reconocimiento (sev16, :70)"
+      ],
+      "llama": [],
+      "efecto": "INSERT PTRECO/PTRECOD; UPDATE FTR ENPRESUPUESTO, CONSECUTIVOPTO, RECO.",
+      "capaId": "02-operacion",
+      "tablas": [
+        "FTR",
+        "PTPTO",
+        "PTRECO",
+        "PTRECOD",
+        "PLN"
+      ]
+    },
+    {
+      "nombre": "SPK_ENTREGA_CXC_PTTO",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_ENTREGA_CXC_PTTO.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPK_ENTREGA_CXC"
+      ],
+      "hace": "Reconocimiento presupuestal de la cuenta de cobro: rama PRESUP_TIPORECO=FACTURA (un PTRECO por factura) u otra (uno por plan o agrupado).",
+      "valida": [
+        "FCXC.ENPRESUPUESTO<>1 (:21-25)",
+        "PRESUP_CCOSTO y PRESUP_TIPORECO configuradas (:27-39)"
+      ],
+      "errores": [
+        "Esta Cuenta Por Cobrar Ya Se encuentra En Prepupuesto (sev16, :23)",
+        "No Esta Configurada la Variable de Presupuesto (sev16, :31)",
+        "No Esta Configurada la Variable de Tipo de Reconocimiento (sev16, :37)"
+      ],
+      "llama": [],
+      "efecto": "INSERT PTRECO/PTRECOD; UPDATE FTR y FCXC.ENPRESUPUESTO=1.",
+      "capaId": "02-operacion",
+      "tablas": [
+        "FCXC",
+        "FCXCD",
+        "FTR",
+        "PTPTO",
+        "PTRECO",
+        "PTRECOD"
+      ]
+    },
+    {
+      "nombre": "SPK_PAGOSCAJA_QX",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_PAGOSCAJA_QX.sql",
+      "actualizado": "2026-10-18",
+      "llamadoDesde": [
+        "SPK_FACTURA_ASIS"
+      ],
+      "hace": "Genera recibo de caja (TFCJ/TFCJD) por copago/cuota de la admisión (IDENTIFICADOR='FACTURA QX', PROCEDENCIA=SALUD) para que caja lo cobre.",
+      "valida": [
+        "FORMA_FAC<>IND o HADM.COPAGO=0; si COPAGO=1 RETURN (:35-47)",
+        "No hay FCJ ESTADO=P previo de ese cobro (:91-101)"
+      ],
+      "noValida": [
+        "Sin RAISERROR: si ya hay recibo solo marca HADM.COPAGO=1 y sale"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "efecto": "INSERT TFCJ/TFCJD (conceptos IDCJCOPA etc.); HADM.COPAGO=1.",
+      "capaId": "02-operacion",
+      "gateId": "factura-caja",
+      "tablas": [
+        "HADM",
+        "HPRED",
+        "TFCJ",
+        "TFCJD",
+        "FCJ"
+      ]
+    },
+    {
+      "nombre": "SPK_RELIQUIDACOPAGOQX",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_RELIQUIDACOPAGOQX.sql",
+      "actualizado": "2026-10-18",
+      "hace": "Reliquida copagos de la admisión: pone a 0 copago de HPRE/HPRED abiertos no facturados (no cirugía) y redistribuye: si hay COPAGONOAUTORIZACION+COPAGOVALOR (y no PERU) llama SPK_COPAGOHAQX; si no, SPK_COPAGOQX por ítem.",
+      "valida": [
+        "HPRE no cerrada, no cirugía, HPRED.FACTURADA=0 (:24-29)"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "SPK_COPAGOHAQX",
+        "SPK_COPAGOQX"
+      ],
+      "efecto": "UPDATE HPRED/HPRE copago y excedente. No factura.",
+      "capaId": "01-configuracion",
+      "tablas": [
+        "HADM",
+        "HPRE",
+        "HPRED"
+      ]
+    },
+    {
+      "nombre": "SPK_COMPARAR_RECAUDO_CAJA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql/SPK_COMPARAR_RECAUDO_CAJA.sql",
+      "actualizado": "2026-10-18",
+      "hace": "Informe de cruce FTRDC (cápita) vs recaudo FCJ/FCJD: copago TCOPAGO 01 ↔ concepto 02; moderadora 02 ↔ 02-1. HADM/INV enlazan por NOADMISION; resto por NOPRESTACION.",
+      "valida": [
+        "FTR por CNSFCT (:10-18)"
+      ],
+      "errores": [
+        "No se encontró la factura para CNSFTR %s. (sev16, :16)"
+      ],
+      "llama": [],
+      "efecto": "Solo lectura: resultsets comparativos. No actualiza FTR/FTRDC.",
+      "capaId": "02-operacion",
+      "tablas": [
+        "FTR",
+        "FTRDC",
+        "FCJ",
+        "FCJD"
+      ]
+    },
+    {
+      "nombre": "SPQ_PROCESO_JOB",
+      "tipo": "SPQ",
+      "modelo": "PROCESO_JOB",
+      "estado": "leido",
+      "fuente": "sql/SPQ_PROCESO_JOB.sql",
+      "actualizado": "2026-10-18",
+      "cola": "3/3 leído. Cola genérica (RIPS_JSON, CIERRE_PERIODO, …).",
+      "metodos": [
+        {
+          "id": "INICIAR_JOB",
+          "estado": "leido",
+          "hace": "Registra PROCESO_JOB ESTADO=PENDIENTE y devuelve CNS (prefijo @RPDX).",
+          "valida": [
+            "PARAMETROS.TIPO no vacío (:52-56)",
+            "USUSU con compañía (:63-67)"
+          ],
+          "errores": [
+            "TIPO es requerido para iniciar el proceso. (:54)",
+            "Usuario sin compañía asignada. (:65)"
+          ],
+          "llama": [
+            "SPK_GENCONSECUTIVO"
+          ],
+          "efecto": "INSERT PROCESO_JOB; SELECT OK, CNS, ESTADO=PENDIENTE.",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "ACTUALIZAR_ESTADO",
+          "estado": "leido",
+          "hace": "Actualiza ESTADO/ERROR_MESSAGE/RESULTADO_JSON del job (uso interno).",
+          "valida": [
+            "CNS requerido (:110-114)"
+          ],
+          "errores": [
+            "CNS es requerido. (:112)"
+          ],
+          "llama": [],
+          "efecto": "UPDATE PROCESO_JOB; fechas INICIO/FIN según estado.",
+          "capaId": "02-operacion"
+        },
+        {
+          "id": "CONSULTAR_ESTADO_JOB",
+          "estado": "leido",
+          "hace": "Lee PROCESO_JOB; si no, RPDX_JOBS (LIBROS_AUX).",
+          "valida": [
+            "CNS requerido (:149-153)"
+          ],
+          "errores": [
+            "CNS es requerido. (:151)",
+            "Job no encontrado. (:195)",
+            "Método no implementado: … (:204)"
+          ],
+          "llama": [],
+          "efecto": "SELECT estado, tiempos y RESULTADO_JSON.",
+          "capaId": "02-operacion"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALIDA_TOPE_FACTURA",
+      "tipo": "FN",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALIDA_TOPE_FACTURA.sql",
+      "actualizado": "2026-10-18",
+      "metodos": [
+        {
+          "id": "(función)",
+          "estado": "leido",
+          "hace": "Tope de valor por procedencia (TGEN TABLA=General, CAMPO=TOPEFACTURA, CODIGO=@PROCEDENCIA). Devuelve 1=ok, 0=excede.",
+          "valida": [
+            "Si hay fila TGEN con VALOR1>0, exige VALOR1>=@MONTO (:11-22)",
+            "Si no hay parametrización, permite (devuelve 1) (:24-28)"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "llama": [],
+          "efecto": "SMALLINT 0/1. Lo usa SPK_FACTURA_ASIS('SALUD', monto) :672.",
+          "capaId": "01-configuracion",
+          "tablas": [
+            "TGEN"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_TRAE_TIPOCOPAGO",
+      "tipo": "FN",
+      "estado": "leido",
+      "fuente": "sql/FNK_TRAE_TIPOCOPAGO.sql",
+      "actualizado": "2026-10-18",
+      "metodos": [
+        {
+          "id": "(función)",
+          "estado": "leido",
+          "hace": "Clasifica el copago de una prestación: 01 copago, 02 cuota moderadora, 03 prepagado, 05 sin copago. Lee CIT/AUT/HPRED/AUTPG según @PROCEDENCIA (CI/CE/SALUD/AUTPG).",
+          "valida": [
+            "Si VALORCOPAGO=0 → '05' (:55-58)",
+            "PLN.TIPOSISTEMA=Prepagado → '03' (:31-34)",
+            "COPAPROPIO=1: TIPOCOPAGO='M' → '02' si no '01' (:37-41)",
+            "Contributivo: MOCCD TIPODEPAGO=Moderadora con ese valor, o valores fijos 4700/19200/50300 → '02'; else '01' (:44-51)"
+          ],
+          "noValida": [
+            "Procedencia distinta de CI/CE/SALUD/AUTPG deja copago 0 y cae en '05'",
+            "Los valores 4700/19200/50300 están fijos en el cuerpo (no TGEN)"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "llama": [],
+          "efecto": "VARCHAR TCOPAGO para FTRD/FTRDC/RIPS.",
+          "capaId": "01-configuracion",
+          "tablas": [
+            "CIT",
+            "AUT",
+            "HPRED",
+            "AUTPG",
+            "PLN",
+            "MOCCD"
+          ]
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALOR_IMPUESTO",
+      "tipo": "FN",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALOR_IMPUESTO.sql",
+      "actualizado": "2026-10-18",
+      "metodos": [
+        {
+          "id": "(función)",
+          "estado": "leido",
+          "hace": "Función table-valued: vigencia de FIMPDV (IDIMPUESTO+IDCLASE+fecha+rango VALOR_INICIAL/FINAL). Devuelve ITEM, VALOR (%), CUENTA.",
+          "valida": [
+            "FECHA entre FECHAINI y FECHAFIN+1 (:25-26)",
+            "VALOR_ITEM en [VALOR_INICIAL, VALOR_FINAL] (VALOR_FINAL 0/NULL = sin techo) (:27-31)"
+          ],
+          "noValida": [
+            "TOP 1 sin ORDER BY si hay varios tramos vigentes",
+            "No aplica IVA si SER.IVA<>'SER' (eso lo decide el llamador)"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "llama": [],
+          "efecto": "Una fila FIMPDV o vacío. Usada en SPK_FACTURACE_EVENTO y SPK_FACTURACI_EVENTO_PAQ.",
+          "capaId": "01-configuracion",
+          "tablas": [
+            "FIMPDV"
+          ]
+        }
+      ]
     }
   ]
 }

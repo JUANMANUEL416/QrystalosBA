@@ -865,6 +865,21 @@
               "nombre": "SPQ_FTR_COL",
               "metodo": "VALIDADIAN2",
               "rol": "Wrapper FE: sede/CCOSTO → SPQ_VALIDADIAN2."
+            },
+            {
+              "nombre": "SPK_PREFIJOFACTURA",
+              "metodo": "(SP)",
+              "rol": "Prefijo USCXS '@FTR_'+FDIAN o PREFIJOFAC[_sede]. No consume consecutivo."
+            },
+            {
+              "nombre": "SPK_PROXIMOCONSECUTIVO",
+              "metodo": "(SP)",
+              "rol": "Lee USCXS.CONSECUTIVO+1 sin incrementarlo."
+            },
+            {
+              "nombre": "CreateSequenceIfNotExists",
+              "metodo": "(SP)",
+              "rol": "SEQUENCE SEQ_sede_prefijo. Lo usa SPQ_GENSEQUENCE; no es el camino FTR (ese es USCXS+SPK_GENCONSECUTIVO)."
             }
           ],
           "feSinSql": [
@@ -878,9 +893,51 @@
         {
           "id": "pagador-plan",
           "nombre": "Pagador, plan y contrato",
-          "explicacion": "La factura lleva el tercero (EPS/administradora), el plan y el contrato. Eso define tarifas y a quién se le cobra después.",
-          "invariante": "Sin tercero/plan coherentes no se arma una cuenta de cobro usable.",
-          "sps": []
+          "explicacion": "La factura lleva el tercero (EPS/administradora), el plan (PPT) y el tipo de tercero contable (TTEC: CUENTA/CUENTARAD). PPT define DIASVTO, TIPOTERCONTABLE, NODESCUENTACOPAGO, formato de factura y si PFACTURARIND=0 (solo masiva). Tope por procedencia: TGEN General/TOPEFACTURA vía FNK_VALIDA_TOPE_FACTURA (si no hay fila, permite).",
+          "invariante": "Sin PPT.TIPOTERCONTABLE no hay cuenta CxC (TTEC). PFACTURARIND=0 bloquea factura individual de admisión. Tope TGEN solo aplica si VALOR1>0.",
+          "sps": [
+            {
+              "nombre": "FNK_VALIDA_TOPE_FACTURA",
+              "metodo": "(función)",
+              "rol": "Tope TGEN TOPEFACTURA por procedencia. SPK_FACTURA_ASIS('SALUD')."
+            }
+          ]
+        },
+        {
+          "id": "copagos-cuotas",
+          "nombre": "Copagos y cuotas moderadoras",
+          "explicacion": "PPT.NODESCUENTACOPAGO=1: la factura al pagador NO resta el copago (FTRD.VLR_COPAGOS=0); el paciente se cobra aparte (caja QX/POS). =0: se descuenta del valor al contratante. FNK_TRAE_TIPOCOPAGO clasifica TCOPAGO: 01 copago, 02 cuota moderadora, 03 prepagado, 05 sin copago (CIT/AUT/HPRED/AUTPG). Reliquidación de admisión: SPK_RELIQUIDACOPAGOQX → SPK_COPAGOQX / SPK_COPAGOHAQX. Recibo QX: SPK_PAGOSCAJA_QX. En cápita, SPK_AJUSTAR_TOTALES_DIAN y SPK_COMPARAR_RECAUDO_CAJA cruzan TCOPAGO con FCJ (02=copago, 02-1=moderadora).",
+          "invariante": "TCOPAGO 01/02/03/05 sale de FNK_TRAE_TIPOCOPAGO, no de un catálogo TGEN. Moderadora contributiva: MOCCD TIPODEPAGO=Moderadora o valores fijos 4700/19200/50300 en el cuerpo de la función. COPAPROPIO=1 usa TIPOCOPAGO del origen ('M'→02).",
+          "sps": [
+            {
+              "nombre": "FNK_TRAE_TIPOCOPAGO",
+              "metodo": "(función)",
+              "rol": "01/02/03/05 según procedencia CI/CE/SALUD/AUTPG."
+            },
+            {
+              "nombre": "SPK_RELIQUIDACOPAGOQX",
+              "metodo": "(SP)",
+              "rol": "Redistribuye copago en HPRED abiertos de la admisión."
+            },
+            {
+              "nombre": "SPK_PAGOSCAJA_QX",
+              "metodo": "(SP)",
+              "rol": "TFCJ IDENTIFICADOR=FACTURA QX para cobrar copago de HADM."
+            }
+          ]
+        },
+        {
+          "id": "impuestos-fimpdv",
+          "nombre": "Impuestos de la línea (IVA)",
+          "explicacion": "Si SER.IVA='SER', el motor toma FIMPDV vigente con FNK_VALOR_IMPUESTO(IDIMPUESTO, IDCLASE, fecha, valor): porcentaje, ítem y cuenta. Lo usan SPK_FACTURACE_EVENTO y SPK_FACTURACI_EVENTO_PAQ. BASE_IVA_SERVICIOS=CONIVA resta el IVA del bruto; si no, lo suma como (valor×%/100).",
+          "invariante": "Sin fila FIMPDV vigente la línea va sin IVA (el SELECT TOP 1 de la función no lanza error). TOP 1 sin ORDER BY si hay varios tramos.",
+          "sps": [
+            {
+              "nombre": "FNK_VALOR_IMPUESTO",
+              "metodo": "(función)",
+              "rol": "Vigencia FIMPDV por impuesto/clase/fecha/rango de valor."
+            }
+          ]
         }
       ]
     },
