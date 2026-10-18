@@ -24,6 +24,7 @@ CARPETAS = (
     ROOT / "acctran" / "grafo-acctran",
     ROOT / "inventario" / "grafo-inventario",
     ROOT / "nomina" / "grafo-nomina",
+    ROOT / "facturacion" / "grafo-facturacion",
 )
 
 
@@ -100,7 +101,7 @@ def validar(path: Path) -> tuple[list[str], list[str]]:
             dfs(i)
 
     avisos = []
-    if path.parent.name in ("grafo-acctran", "grafo-inventario", "grafo-nomina"):
+    if path.parent.name in ("grafo-acctran", "grafo-inventario", "grafo-nomina", "grafo-facturacion"):
         for n in nodos:
             if _tiene_sp(n):
                 continue

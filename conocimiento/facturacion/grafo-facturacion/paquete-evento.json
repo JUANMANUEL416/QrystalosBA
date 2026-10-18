@@ -1,0 +1,245 @@
+{
+  "tramo": "paquete-evento",
+  "nombre": "Facturación por paquete / evento",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "AUTPG · facturar evento paquete; FTR_COL · paquete",
+  "documentoOrigen": {
+    "tabla": "CIT",
+    "claves": [
+      "CONSECUTIVO"
+    ],
+    "detalle": "CIT marcadas MARCAFAC=1, ENFACT=1; SER paquete."
+  },
+  "nodos": [
+    {
+      "id": "N0-marcar",
+      "orden": 0,
+      "nombre": "Marcar citas del paquete",
+      "sp": "SPQ_FTR_COL · MARCAFACT",
+      "metodo": "MARCAFACT",
+      "llamaSiguiente": [
+        "N1-evento-paq",
+        "N1-masipaq"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "CIT marcadas.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 1065,
+          "nota": "MARCAFACT."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "MARCAFACT",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-evento-paq",
+      "orden": 1,
+      "nombre": "Facturar evento paquete",
+      "sp": "SPQ_AUTPG · FACTURAR_EVENTO_PAQ",
+      "metodo": "FACTURAR_EVENTO_PAQ",
+      "llamaSiguiente": [
+        "N2-motor-paq"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Llama SPK_FACTURACI_EVENTO_PAQ.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_AUTPG.sql",
+          "linea": 1110,
+          "nota": "FACTURAR_EVENTO_PAQ."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_AUTPG",
+          "metodo": "FACTURAR_EVENTO_PAQ",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-masipaq",
+      "orden": 1,
+      "nombre": "Factura masiva paquete (FTR_COL)",
+      "sp": "SPQ_FTR_COL · FACTU_MASIPAQ",
+      "metodo": "FACTU_MASIPAQ",
+      "llamaSiguiente": [
+        "N2-escip-masi"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Llama SPK_FACTURACI_ESCIP_MASI.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 1322,
+          "nota": "EXEC SPK_FACTURACI_ESCIP_MASI."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "FACTU_MASIPAQ",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-motor-paq",
+      "orden": 2,
+      "nombre": "Motor paquete evento",
+      "sp": "SPK_FACTURACI_EVENTO_PAQ",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N3-numeracion"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "TX corta; INSERT FTR (:281) / FTRD (:310); CIT FACTURADA=1.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURACI_EVENTO_PAQ.sql",
+          "linea": 197,
+          "nota": "BEGIN TRAN."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURACI_EVENTO_PAQ",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-escip-masi",
+      "orden": 2,
+      "nombre": "FMAS/FMASD",
+      "sp": "SPK_FACTURACI_ESCIP_MASI",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N3-masiva-ter"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Arma FMAS; corta en CANT_FACPAQ_CIT.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPK_FACTURACI_ESCIP_MASI.sql",
+          "linea": 92,
+          "nota": "INSERT FMAS."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FACTURACI_ESCIP_MASI",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-masiva-ter",
+      "orden": 3,
+      "nombre": "Motor masivo por tercero",
+      "sp": "SPK_FAC_MASIVA_TER",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N4-emision"
+      ],
+      "ordenEstado": "por_confirmar",
+      "efecto": "Sin SQL en el repo (DESAIX).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql_refe/xsql/SPK_FACTURACI_ESCIP_MASI.sql",
+          "linea": 116,
+          "nota": "EXEC SPK_FAC_MASIVA_TER."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_FAC_MASIVA_TER",
+          "metodo": null,
+          "proceso": null,
+          "estado": "sin_sql_desaix"
+        }
+      ]
+    },
+    {
+      "id": "N3-numeracion",
+      "orden": 3,
+      "nombre": "Número de factura y resolución DIAN",
+      "sp": "SPK_GENNUMEROFACTURA",
+      "metodo": null,
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "llamaSiguiente": [
+        "N4-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Consume consecutivo; si falla devuelve error severidad 1 y el motor sigue con N_FACTURA vacío (riesgo).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_FACTURACI_EVENTO_PAQ.sql",
+          "linea": 220,
+          "nota": "Pide número sin revisar vacío."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
+          "linea": 49,
+          "nota": "Errores sev1 :49/:81/:86."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_GENNUMEROFACTURA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_GENCONSECUTIVO",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-emision",
+      "orden": 4,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR queda ESTADO P lista para FE y cuenta de cobro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN encola FE (FACTE=1)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "procesoId": "facturacion",
-  "actualizado": "2026-10-14T09:00:00",
+  "actualizado": "2026-10-18",
   "nota": "2026-10-03: procedencias FTR y énfasis de factura financiera contrastados contra Qrystalos2 e IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 son idénticas para SPQ_SUBIR_AUTCOL y los diez objetos del mapa; IDANT 2.0.6. Confirmado HADM→SALUD, CIT→CI, AUT/NOPOS→CE, AUTPG→AUTPG y recibo/copago→CAJA.",
   "sps": [
     {
@@ -523,7 +523,10 @@
             "SPK_FACTURACI_ESCIP",
             "SPK_FACTURA_MASI_UNIFICAWEB",
             "SPK_FACTURACE_EVENTO_MASI",
-            "SPK_FACTURACI_ESCMA"
+            "SPK_FACTURACI_ESCIN",
+            "SPK_FACTURACE_ESCIN",
+            "SPK_FACTURACI_ESCMA",
+            "SPK_FACTURACE_ESCMA"
           ],
           "valida": [
             "Marcas del usuario",
@@ -549,7 +552,7 @@
             "No hay citas marcadas"
           ],
           "llama": [
-            "SPK_FACTURACI_ESCIP"
+            "SPK_FACTURACI_ESCIP_MASI"
           ]
         },
         {
@@ -659,7 +662,7 @@
             "PRI abierto"
           ],
           "llama": [
-            "SPK_FACTURACE_EVENTO_MASI"
+            "SPK_FACTURACI_ESCIN"
           ]
         },
         {
@@ -1360,38 +1363,75 @@
         },
         {
           "id": "HADMAUT_DEL",
-          "estado": "parcial",
-          "hace": "Quita autorización vinculada HADM.",
+          "estado": "leido",
+          "hace": "Borra una autorización de la admisión (:556).",
           "capaId": "02-operacion",
-          "gateId": "urg-hosp-factura"
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "La autorización existe",
+            "HADMAUT sin N_FACTURA"
+          ],
+          "errores": [
+            " Nro de Autrorización no Encontrada ",
+            " El nro de Autorización ya fue Facturada no se Puede Borrar"
+          ],
+          "efecto": "DELETE HADMAUT."
         },
         {
           "id": "REORGANIZA_SOAT",
           "estado": "leido",
-          "hace": "Reorganiza cargos SOAT en admisión antes de facturar.",
+          "hace": "Quita la marca SOAT de los ítems no SOAT pendientes (:61).",
           "capaId": "02-operacion",
-          "gateId": "urg-hosp-factura"
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "HPRED sin facturar y no UTISOAT"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "UPDATE HPRED SET GFACSOAT=NULL."
         },
         {
           "id": "HADM_TIPOADM",
-          "estado": "parcial",
-          "hace": "Consulta catálogo tipos admisión (HTAD).",
+          "estado": "leido",
+          "hace": "Lista el catálogo de tipos de admisión HTAD (:29).",
           "capaId": "02-operacion",
-          "gateId": "urg-hosp-factura"
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "no aplica"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Solo lectura."
         },
         {
           "id": "HADM_LISTAAUT",
-          "estado": "parcial",
-          "hace": "Lista autorizaciones disponibles para HADM.",
+          "estado": "leido",
+          "hace": "Lista HADMAUT de la admisión con N_FACTURA vacío (:37).",
           "capaId": "02-operacion",
-          "gateId": "urg-hosp-factura"
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "HADMAUT.NOADMISION, N_FACTURA vacío"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Solo lectura."
         },
         {
           "id": "GET_HADMF",
-          "estado": "parcial",
-          "hace": "Datos cabecera facturación HADM (FTR/HADMF staging).",
+          "estado": "leido",
+          "hace": "Facturas de la admisión: HADMF + FTR + TER (:51).",
           "capaId": "02-operacion",
-          "gateId": "urg-hosp-factura"
+          "gateId": "urg-hosp-factura",
+          "valida": [
+            "no aplica"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Solo lectura."
         }
       ]
     },
@@ -2623,15 +2663,40 @@
       "nombre": "SPK_GENNUMEROFACTURA",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "sql/SPK_GENNUMEROFACTURA.sql",
+      "fuente": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
       "llamadoDesde": [
         "CREARFTR",
-        "SPK_FACTURACI_ESCMA"
+        "SPK_CREA_FACTURA_POS_CAJA",
+        "SPK_FACTURACE_CITAUT_COL",
+        "SPK_FACTURACE_ESCMA",
+        "SPK_FACTURACE_N",
+        "SPK_FACTURACI_ESCMA",
+        "SPK_FACTURACI_EVENTO_PAQ",
+        "SPK_FACTURA_ASIS",
+        "SPK_FACTURA_AUTPG",
+        "SPK_FACTURA_MASI_UNIFICAWEB",
+        "SPQ_FACTURACE_ESCMA"
       ],
       "hace": "Asigna N_FACTURA según FDIAN/resolución (BLOQUEADIAN, FACTSEDE); valida rango vigente.",
       "errores": [
-        "No Existe Resolucion de Facturas Vigente, No se Puede Continuar"
-      ]
+        "No Existe Resolucion de Facturas Vigente, No se Puede Continuar (sev1, :49)",
+        "Se ha terminado los consecutivos de facturacion Habilitados, No se puede Continuar (sev1, :81)",
+        "NO existe resolucion para este nro de factura, No se puede Continuar (sev1, :86)"
+      ],
+      "valida": [
+        "Resolución FDIAN vigente (PROCEDENCIA FTR; por sede si FACTSEDE=SI) (:38-52)",
+        "Rango CNSFINAL contra consecutivo leído antes de consumir (:69-86)",
+        "Prefijo: MPREFAC_CCOSTO / MPREFIJOFAC / PREFIJOFAC[_sede]; LONGFTRARS, FTRQUITACEROS"
+      ],
+      "noValida": [
+        "Errores con severidad 1 + RETURN: el llamador sigue con N_FACTURA vacío",
+        "Rama CCOSTO (:98-110) sin chequeo de rango FDIAN",
+        "RPDX 'N_FACTURA' global (:28/:187), sin clave de sesión"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "efecto": "Consume consecutivo USCXS con SPK_GENCONSECUTIVO (:89); devuelve @NVOCONSEC OUTPUT; DELETE/INSERT RPDX CNS='N_FACTURA' (:28/:187)."
     },
     {
       "nombre": "SPK_ENTREGA_CXC",
@@ -4413,6 +4478,396 @@
           ]
         }
       ]
+    },
+    {
+      "nombre": "SPK_FACTURACI_ESCIP",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACI_ESCIP.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTURAR_MASI (ACCION=1, CIT) :2447"
+      ],
+      "hace": "Facturación masiva de citas por afiliado: cursor sobre CIT marcadas del lote y llama SPK_FACTURACI_ESCMA (modo 'CUE') por cada afiliado.",
+      "valida": [
+        "CIT.IDTERCEROCA=@IDTERCEROCA1, FACTURADA 0/NULL, MARCAFAC=1, CNSFACT=@CNSRPDX, FACTURABLE=1 (:34-35)",
+        "Descuento < 100% o < VALORTOTAL (:36)",
+        "FACTSEDE=NO → usa IDSEDEPRINCIPAL (:22-24)"
+      ],
+      "errores": [
+        "no aplica (sin RAISERROR propio; los errores vienen de SPK_FACTURACI_ESCMA)"
+      ],
+      "llama": [
+        "SPK_FACTURACI_ESCMA"
+      ],
+      "efecto": "No escribe directamente; cada iteración genera FTR vía SPK_FACTURACI_ESCMA.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURACI_ESCIP_MASI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACI_ESCIP_MASI.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTU_MASIPAQ :1322"
+      ],
+      "hace": "Factura masiva por paquete de citas: arma FMAS/FMASD con las citas marcadas (hasta CANT_FACPAQ_CIT) y llama SPK_FAC_MASIVA_TER [sin SQL].",
+      "valida": [
+        "CIT marcadas del lote (MARCAFAC=1, CNSFACT)",
+        "Corte por CANT_FACPAQ_CIT: BREAK (:51-52)"
+      ],
+      "noValida": [
+        "Las citas que quedan fuera por el BREAK pierden la marca (:127) sin aviso"
+      ],
+      "errores": [
+        "no aplica (sin RAISERROR propio)"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO",
+        "SPK_FAC_MASIVA_TER"
+      ],
+      "efecto": "DELETE FMASD/FMAS no facturadas (:83-84); INSERT FMAS (:92) / FMASD (:97) con consecutivo @FMAS (:89); EXEC SPK_FAC_MASIVA_TER (:116); al final UPDATE CIT MARCAFAC=0, CNSFACT=NULL de todo el lote (:127).",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURACI_ESCIN",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACI_ESCIN.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTURAR_MASI (ACCION=3, CIT) :2565",
+        "SPQ_FTR_COL · FACTURAR_EVENTO_IMPORTADOS :5349"
+      ],
+      "hace": "Factura individual por cita del lote: recorre CIT marcadas y llama SPK_FACTURACE_N con PROC 'CI' (una FTR por cita).",
+      "valida": [
+        "CIT.CNSFACT=@CNSRPDX, MARCAFAC=1, FACTURABLE=1, VALORTOTAL>0, descuento < total (:41-45 / :57-61)",
+        "FACTSEDEPACIENTE=SI → sede del paciente (:22-33)"
+      ],
+      "errores": [
+        "no aplica (errores en SPK_FACTURACE_N)"
+      ],
+      "llama": [
+        "SPK_FACTURACE_N"
+      ],
+      "efecto": "Genera FTR por cita vía SPK_FACTURACE_N.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURACE_ESCIN",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACE_ESCIN.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTURAR_MASI (ACCION=3, AUT) :2582"
+      ],
+      "hace": "Factura individual por autorización del lote: cursor AUT marcadas → SPK_FACTURACE_N PROC 'CE'.",
+      "valida": [
+        "AUT.CNSFACT=@CNSRPDX, MARCAFAC=1, FACTURABLE=1, VALORTOTAL>0, descuento < total (:23-27)"
+      ],
+      "errores": [
+        "no aplica (errores en SPK_FACTURACE_N)"
+      ],
+      "llama": [
+        "SPK_FACTURACE_N"
+      ],
+      "efecto": "Genera FTR por autorización vía SPK_FACTURACE_N.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURACE_ESCMA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACE_ESCMA.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTURAR_MASI (ACCION=4, AUT) :2658"
+      ],
+      "hace": "Factura masiva de autorizaciones agrupadas (una FTR por tercero/plan). Versión SPK de SPQ_FACTURACE_ESCMA.",
+      "valida": [
+        "AUT/AUTD marcadas del lote (MARCAFAC, CNSFACT); cursor incluye FACTURADA 0 y 2 (parcial)",
+        "Resolución vía SPK_GENNUMEROFACTURA (:186/:260/:328/:505)"
+      ],
+      "noValida": [
+        "N_FACTURA en blanco tras SPK_GENNUMEROFACTURA (sev1)",
+        "AUT parciales (FACTURADA=2) en el UPDATE final"
+      ],
+      "errores": [
+        "no aplica (sin RAISERROR propio verificado; numeración sev1 no se revisa)"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_GENCONSECUTIVO",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT FTR/FTRD; UPDATE AUTD/AUT FACTURADA y N_FACTURA; UPDATE final de AUT solo si FACTURADA=0 (:661). Sin transacción.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURACE_EVENTO_MASI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACE_EVENTO_MASI.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTURAR_MASI (ACCION=1, AUT_EVENTO) :2499"
+      ],
+      "hace": "Facturación masiva de autorizaciones por evento: agrupa AUT del lote (CNSFACT = usuario) y llama SPK_FACTURACE_EVENTO [sin SQL].",
+      "valida": [
+        "AUT.IDTERCEROCA, IDPLAN, FACTURADA 0/NULL, MARCAFAC=1, CNSFACT=@CNSRPDX (:52-56)",
+        "FACTSEDE / IDSEDEPRINCIPAL (:23-25); FACTSEDEPACIENTE (:32)"
+      ],
+      "errores": [
+        "no aplica (errores en SPK_FACTURACE_EVENTO, sin SQL)"
+      ],
+      "llama": [
+        "SPK_FACTURACE_EVENTO"
+      ],
+      "efecto": "Delegado a SPK_FACTURACE_EVENTO (:85).",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURA_MASI_UNIFICAWEB",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURA_MASI_UNIFICAWEB.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · FACTURAR_MASI ACCION=1 (AUT :2476, ONCO/CITCE :2517/:2539/:2599)"
+      ],
+      "hace": "Factura unificada (una FTR) con los cargos marcados de un solo paciente: autorizaciones, citas CE y sesiones oncológicas.",
+      "valida": [
+        "Plan de facturación informado (:38)",
+        "Antes, en SPQ_FTR_COL · FACTURAR_MASI: autorizaciones con total > 0 (:2466) y un solo paciente (:2471)",
+        "Numeración vía SPK_GENNUMEROFACTURA (:139)"
+      ],
+      "noValida": [
+        "No revisa N_FACTURA en blanco tras sev1"
+      ],
+      "errores": [
+        "NO SE ESCOGIO PLAN DE FACTURACION. (:38)"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT FTR/FTRD; AUT FACTURADA=1 aunque no todas sus AUTD estén facturadas (:337); reutiliza CNSFACT como CNSFTR. Sin transacción.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FACTURACE_CITAUT_COL",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FACTURACE_CITAUT_COL.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_MASIVA_COL · FACTURAR_CITAUT :854"
+      ],
+      "hace": "Factura cita + autorización (CI) en una FTR; reutiliza número de FTR liberada (ESTADO='L').",
+      "valida": [
+        "CIT FACTURADA≠1 (FACTURADA=1 con N_FACTURA vacío se trata como 0, :127) y FACTURABLE≠0 (:140-150)",
+        "LIBERTER<>SI → FTR liberada de la misma cita (:100-105); LIBERTER=SI → TOP 1 FTR liberada del tercero de los últimos 2 días (:118-123)",
+        "Tope autorizado (:337); prefijo coherente con número (:412)"
+      ],
+      "noValida": [
+        "LIBERTER=SI reutiliza FTR liberada de otro paciente del mismo tercero (:118-123)"
+      ],
+      "errores": [
+        "No fueron Asignados items para Facturar",
+        "La sumatoria de los Items a Facturar Es Cero",
+        "El monto a Facturar Sobrepasa el Valor Autorizado, No se Puede Generar la Factura  (:337, FNK_VALIDA_TOPE_FACTURA)",
+        "Inconsistencia entre el prefijo de factura y el nro generado"
+      ],
+      "llama": [
+        "SPK_GENNUMEROFACTURA",
+        "SPK_NC_CONTAB_FTR"
+      ],
+      "efecto": "INSERT/UPDATE FTR, FTRD; marca CIT/AUT facturadas. Sin transacción.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_FAC_IMPDEDUC",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_FAC_IMPDEDUC.sql",
+      "llamadoDesde": [
+        "Motores de factura (con @NIT)",
+        "SPQ_FTR_COL :934/:989 (con @USUARIO)"
+      ],
+      "hace": "Recalcula impuestos/deducciones de la factura (FTRI) desde FIMPDV/FIMXT (TIPO 'D').",
+      "valida": [
+        "Vigencia FIMPDV contra GETDATE() (no F_FACTURA) (:18-43)"
+      ],
+      "noValida": [
+        "Parámetro tercero inconsistente entre llamadores (por confirmar)"
+      ],
+      "errores": [
+        "no aplica (sin RAISERROR)"
+      ],
+      "llama": [],
+      "efecto": "DELETE FTRI de la factura (:18) e INSERT FTRI (:31).",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_PROXIMONUMEROFACTURA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_PROXIMONUMEROFACTURA.sql",
+      "llamadoDesde": [
+        "SPQ_VALIDADIAN2"
+      ],
+      "hace": "Previsualiza el próximo N_FACTURA sin consumirlo (SPK_PROXIMOCONSECUTIVO) para validar la resolución DIAN.",
+      "valida": [
+        "Resolución vigente y rango CNSFINAL (:75/:80)"
+      ],
+      "noValida": [
+        "RPDX 'N_FACTURA' sin clave de sesión"
+      ],
+      "errores": [
+        "Se ha terminado los consecutivos de facturacion Habilitados, No se puede Continuar (sev1)",
+        "NO existe resolucion para este nro de factura, No se puede Continuar (sev1)"
+      ],
+      "llama": [
+        "SPK_PROXIMOCONSECUTIVO"
+      ],
+      "efecto": "DELETE RPDX CNS='N_FACTURA' global (:24); puede INSERT USCXS si falta el consecutivo (:61); deja el número en RPDX.",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_GENNUMERO_BOLETA",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_GENNUMERO_BOLETA.sql",
+      "llamadoDesde": [
+        "por confirmar"
+      ],
+      "hace": "Variante de SPK_GENNUMEROFACTURA para boletas: misma validación de resolución y consecutivo.",
+      "valida": [
+        "Resolución vigente, rango (:41/:75/:80)"
+      ],
+      "noValida": [
+        "Errores severidad 1: no detienen al llamador"
+      ],
+      "errores": [
+        "No Existe Resolucion de Facturas Vigente, No se Puede Continuar (sev1)",
+        "Se ha terminado los consecutivos de facturacion Habilitados, No se puede Continuar (sev1)",
+        "NO existe resolucion para este nro de factura, No se puede Continuar (sev1)"
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "efecto": "Consume consecutivo con SPK_GENCONSECUTIVO (:83).",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_LIBERA_FTR_COMER",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPK_LIBERA_FTR_COMER.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_COL · LIBERARFAC (factura comercial / inventario)"
+      ],
+      "hace": "Libera factura comercial: quita de la CXC, reversa comprobante contable y devuelve IMOV a no facturado.",
+      "valida": [
+        "Periodo contable abierto (:27, severidad 1 + RETURN)"
+      ],
+      "errores": [
+        "El periodo contable de la Factura no Esta Abierto o No Existe (sev1: el llamador lo ve como OK)"
+      ],
+      "llama": [],
+      "efecto": "DELETE FCXCDV/FCXCD (:34-35); FCXC Inactivo (:39); MCP/MCH anulados (:44-45); DELETE MCHE/MCPE; FTR CONTABILIZADA=0 (:53); IMOV FACTURADA=0 (:66); DELETE FTRD (:68).",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPQ_GENSEQUENCE",
+      "tipo": "SPQ",
+      "estado": "leido",
+      "fuente": "sql_refe/xsql/SPQ_GENSEQUENCE.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_MASIVA_COL · GEN_AUT_NOPOS_APLIMF"
+      ],
+      "hace": "Consecutivo por SEQUENCE de SQL Server (SequenceControl), alternativa a USCXS.",
+      "valida": [
+        "Si no existe SequenceControl para sede/prefijo, lo crea desde USCXS (:28-44)"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "CreateSequenceIfNotExists"
+      ],
+      "efecto": "INSERT SequenceControl (:40); CreateSequenceIfNotExists [sin SQL] (:44); NEXT VALUE por sp_executesql (:52).",
+      "capaId": "02-operacion",
+      "gateId": "factura-emision"
+    },
+    {
+      "nombre": "SPK_AFACTURAR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/0100012147/SPK_AFACTURAR.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_HADM_COL · PREPARAR_HADM"
+      ],
+      "hace": "Agrupa los cargos HPRED pendientes de la admisión por tercero/plan (PPT; FACTPORAFU vía PPTFTR/PPTFTRD) en RPDX para la pantalla.",
+      "valida": [
+        "HPRED no facturados de la admisión",
+        "Condición muerta COALESCE('','')='COPAGO' (:85)"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "DELETE/INSERT RPDX del usuario.",
+      "capaId": "02-operacion",
+      "gateId": "urg-hosp-factura"
+    },
+    {
+      "nombre": "SPK_AFACTURAR_CORTE",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/0100012147/SPK_AFACTURAR_CORTE.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_HADM_COL · PREPARAR_HADMCORTE"
+      ],
+      "hace": "Como SPK_AFACTURAR, pero solo con cargos hasta la fecha de corte.",
+      "valida": [
+        "HPRED no facturados con fecha ≤ fecha de corte"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "DELETE/INSERT RPDX.",
+      "capaId": "02-operacion",
+      "gateId": "urg-hosp-factura"
+    },
+    {
+      "nombre": "SPK_ESTADO_ADMI",
+      "tipo": "SPK",
+      "estado": "leido",
+      "fuente": "sql_refe/0100012147/SPK_ESTADO_ADMI.sql",
+      "llamadoDesde": [
+        "SPQ_FTR_HADM_COL · PREPARAR_HADM"
+      ],
+      "hace": "Prechequeo de la admisión antes de facturar: deja los inconvenientes en RPDX (no bloquea por RAISERROR).",
+      "valida": [
+        "Admisión con cargos, copago distribuido, cirugías liquidadas, entre otros (:41-498)"
+      ],
+      "errores": [
+        "ADMISION SIN PRESTACIONES (CARGOS)",
+        "COPAGO SIN DISTRIBUIR TOTALMENTE",
+        "CIRUGIA SIN LIQUIDAR"
+      ],
+      "llama": [],
+      "efecto": "INSERT RPDX con los mensajes.",
+      "capaId": "02-operacion",
+      "gateId": "urg-hosp-factura"
     }
   ]
 }

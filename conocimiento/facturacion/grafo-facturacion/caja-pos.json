@@ -1,0 +1,172 @@
+{
+  "tramo": "caja-pos",
+  "nombre": "Caja POS: copago / particular",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "Caja · cierre de recibo",
+  "documentoOrigen": {
+    "tabla": "FCJ",
+    "claves": [
+      "CNSFCJ"
+    ],
+    "detalle": "Recibo de caja."
+  },
+  "nodos": [
+    {
+      "id": "N0-cierre-recibo",
+      "orden": 0,
+      "nombre": "Cierre de recibo de caja",
+      "sp": "SPK_CIERRERECIBO_CAJA",
+      "metodo": null,
+      "llama": [
+        "SPK_CREA_FACTURA_POS_CAJA"
+      ],
+      "llamaSiguiente": [
+        "N1-pos"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Dispara la factura POS.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_CIERRERECIBO_CAJA.sql",
+          "linea": 1047,
+          "nota": "Llama SPK_CREA_FACTURA_POS_CAJA."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_CIERRERECIBO_CAJA",
+          "metodo": null,
+          "proceso": "caja",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_CREA_FACTURA_POS_CAJA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-pos",
+      "orden": 1,
+      "nombre": "Crear factura POS",
+      "sp": "SPK_CREA_FACTURA_POS_CAJA",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N2-numeracion"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Valida config particular (sev1 :83) y CCOSTO (:345).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_CREA_FACTURA_POS_CAJA.sql",
+          "linea": 83,
+          "nota": "Config particular."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_CREA_FACTURA_POS_CAJA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-numeracion",
+      "orden": 2,
+      "nombre": "Número de factura y resolución DIAN",
+      "sp": "SPK_GENNUMEROFACTURA",
+      "metodo": null,
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "llamaSiguiente": [
+        "N3-contab"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Consume consecutivo; si falla devuelve error severidad 1 y el motor sigue con N_FACTURA vacío (riesgo).",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_CREA_FACTURA_POS_CAJA.sql",
+          "linea": 350,
+          "nota": "Pide número; revisa vacío :352."
+        },
+        {
+          "archivo": "sql_refe/xsql/SPK_GENNUMEROFACTURA.sql",
+          "linea": 49,
+          "nota": "Errores sev1 :49/:81/:86."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_GENNUMEROFACTURA",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_GENCONSECUTIVO",
+          "metodo": null,
+          "proceso": "inventario",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-contab",
+      "orden": 3,
+      "nombre": "Contabilizar",
+      "sp": "SPK_NC_CONTAB_FTR",
+      "metodo": null,
+      "llamaSiguiente": [
+        "N4-emision"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Comprobante.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_CREA_FACTURA_POS_CAJA.sql",
+          "linea": 533,
+          "nota": "EXEC SPK_NC_CONTAB_FTR."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPK_NC_CONTAB_FTR",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N4-emision",
+      "orden": 4,
+      "nombre": "Continúa en emisión DIAN / RIPS (emision-dian-rips.json)",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "FTR queda ESTADO P lista para FE y cuenta de cobro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN encola FE (FACTE=1)."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}

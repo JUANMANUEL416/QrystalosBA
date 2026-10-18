@@ -1,0 +1,131 @@
+{
+  "tramo": "emision-dian-rips",
+  "nombre": "Emisión: factura electrónica DIAN y RIPS",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "sql/ y sql_refe/ (ver evidenciaOrden)",
+  "pantalla": "FTR_COL · DIAN / RIPS",
+  "documentoOrigen": {
+    "tabla": "FTR",
+    "claves": [
+      "N_FACTURA"
+    ],
+    "detalle": "FACTE 0→1→2; FTRE.CUFE; CUV RIPS."
+  },
+  "nodos": [
+    {
+      "id": "N0-noti-dian",
+      "orden": 0,
+      "nombre": "Encolar factura electrónica",
+      "sp": "SPQ_FTR_COL · NOTI_DIAN",
+      "metodo": "NOTI_DIAN",
+      "llamaSiguiente": [
+        "N1-fe-encolar"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "FACTE=1; 'Factura ya fue encolada', fecha igual a hoy.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 2751,
+          "nota": "NOTI_DIAN."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "NOTI_DIAN",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N1-fe-encolar",
+      "orden": 1,
+      "nombre": "Cola FE",
+      "sp": "SPQ_FTRFE_COL · FE_ENCOLAR",
+      "metodo": "FE_ENCOLAR",
+      "llamaSiguiente": [
+        "N2-rips"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "Envío; al aceptar FACTE=2 y CUFE en FTRE.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/facturacion/sps.json",
+          "linea": 911,
+          "nota": "Ficha SPQ_FTRFE_COL leída."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTRFE_COL",
+          "metodo": "FE_ENCOLAR",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N2-rips",
+      "orden": 2,
+      "nombre": "Generar RIPS JSON",
+      "sp": "SPQ_FTR_COL · RIPS_JSON",
+      "metodo": "RIPS_JSON",
+      "llama": [
+        "SPK_GENERAR_RIPS_JSON"
+      ],
+      "llamaSiguiente": [
+        "N3-cola-rips"
+      ],
+      "ordenEstado": "evidenciado",
+      "efecto": "SPK_GENERAR_RIPS_JSON exige FACTE=2.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPQ_FTR_COL.sql",
+          "linea": 3906,
+          "nota": "RIPS_JSON."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FTR_COL",
+          "metodo": "RIPS_JSON",
+          "proceso": "facturacion",
+          "estado": "leido"
+        },
+        {
+          "sp": "SPK_GENERAR_RIPS_JSON",
+          "metodo": null,
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    },
+    {
+      "id": "N3-cola-rips",
+      "orden": 3,
+      "nombre": "Cola RIPS → CUV",
+      "sp": "SPQ_FEVRIPS_COLA · TOMAR_LOTE",
+      "metodo": "TOMAR_LOTE",
+      "llamaSiguiente": [],
+      "ordenEstado": "evidenciado",
+      "efecto": "Lote enviado; CUV para radicar.",
+      "evidenciaOrden": [
+        {
+          "archivo": "conocimiento/rips-json/sps.json",
+          "linea": 168,
+          "nota": "Ficha SPQ_FEVRIPS_COLA leída."
+        }
+      ],
+      "fichas": [
+        {
+          "sp": "SPQ_FEVRIPS_COLA",
+          "metodo": "TOMAR_LOTE",
+          "proceso": "facturacion",
+          "estado": "leido"
+        }
+      ]
+    }
+  ]
+}
