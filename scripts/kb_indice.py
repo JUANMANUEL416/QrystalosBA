@@ -192,6 +192,7 @@ def generar() -> dict:
         ("inventario/grafo-inventario", "tramo"),
         ("acctran/grafo-acctran", "tramo"),
         ("nomina/grafo-nomina", "tramo"),
+        ("facturacion/grafo-facturacion", "tramo"),
     ):
         gdir = KB / Path(rel)
         if not gdir.is_dir():
