@@ -906,8 +906,8 @@
         {
           "id": "copagos-cuotas",
           "nombre": "Copagos y cuotas moderadoras",
-          "explicacion": "PPT.NODESCUENTACOPAGO=1: la factura al pagador NO resta el copago (FTRD.VLR_COPAGOS=0); el paciente se cobra aparte (caja QX/POS). =0: se descuenta del valor al contratante. FNK_TRAE_TIPOCOPAGO clasifica TCOPAGO: 01 copago, 02 cuota moderadora, 03 prepagado, 05 sin copago (CIT/AUT/HPRED/AUTPG). Reliquidación de admisión: SPK_RELIQUIDACOPAGOQX → SPK_COPAGOQX / SPK_COPAGOHAQX. Recibo QX: SPK_PAGOSCAJA_QX. En cápita, SPK_AJUSTAR_TOTALES_DIAN y SPK_COMPARAR_RECAUDO_CAJA cruzan TCOPAGO con FCJ (02=copago, 02-1=moderadora).",
-          "invariante": "TCOPAGO 01/02/03/05 sale de FNK_TRAE_TIPOCOPAGO, no de un catálogo TGEN. Moderadora contributiva: MOCCD TIPODEPAGO=Moderadora o valores fijos 4700/19200/50300 en el cuerpo de la función. COPAPROPIO=1 usa TIPOCOPAGO del origen ('M'→02).",
+          "explicacion": "PPT.NODESCUENTACOPAGO=1: la factura al pagador NO resta el copago (FTRD.VLR_COPAGOS=0); el paciente se cobra aparte (caja QX/POS). =0: se descuenta del valor al contratante. FNK_TRAE_TIPOCOPAGO clasifica TCOPAGO: 01 copago, 02 cuota moderadora, 03 prepagado, 05 sin copago (CIT/AUT/HPRED/AUTPG). Reliquidación de admisión: SPK_RELIQUIDACOPAGOQX → si hay COPAGONOAUT+COPAGOVALOR llama SPK_COPAGOHAQX (reparte el valor de la admisión); si no, SPK_COPAGOQX por ítem (MOCC/MOCCD). Recibo QX: SPK_PAGOSCAJA_QX. En cápita, SPK_AJUSTAR_TOTALES_DIAN y SPK_COMPARAR_RECAUDO_CAJA cruzan TCOPAGO con FCJ (02=copago, 02-1=moderadora).",
+          "invariante": "TCOPAGO 01/02/03/05 sale de FNK_TRAE_TIPOCOPAGO, no de un catálogo TGEN. Moderadora contributiva: MOCCD TIPODEPAGO=Moderadora o valores fijos 4700/19200/50300 en el cuerpo de la función. COPAPROPIO=1 usa TIPOCOPAGO del origen ('M'→02). COPAGOQX no abre transacción (BEGIN TRAN comentado).",
           "sps": [
             {
               "nombre": "FNK_TRAE_TIPOCOPAGO",
@@ -918,6 +918,16 @@
               "nombre": "SPK_RELIQUIDACOPAGOQX",
               "metodo": "(SP)",
               "rol": "Redistribuye copago en HPRED abiertos de la admisión."
+            },
+            {
+              "nombre": "SPK_COPAGOQX",
+              "metodo": "(SP)",
+              "rol": "Copago de un ítem HPRED con MOCC/MOCCD."
+            },
+            {
+              "nombre": "SPK_COPAGOHAQX",
+              "metodo": "(SP)",
+              "rol": "Reparte HADM.COPAGOVALOR entre HPRED no facturados."
             },
             {
               "nombre": "SPK_PAGOSCAJA_QX",
@@ -1127,8 +1137,8 @@
         {
           "id": "urg-hosp-factura",
           "nombre": "Fact. Urg-Hospi-Domi · admisión HADM",
-          "explicacion": "Pestaña **Fact. Urg-Hospi-Domi** (`FTRAComponent`, permiso FACT_HOSPIURG). PREPARAR_HADM valida alta, contrato y cargos; FACTHADM_ITEM/FACTHADM_TODO/FACTHADM_ITEMCORTE llaman SPK_FACTURA_ASIS. El origen es HADM, pero la cabecera queda **FTR.PROCEDENCIA=SALUD**.",
-          "invariante": "La admisión debe ser facturable, clase A y estar cerrada para factura final; cápita o PFACTURARIND=0 no se factura individualmente. Debe existir PRI abierto y HPRED pendiente.",
+          "explicacion": "Pestaña **Fact. Urg-Hospi-Domi** (`FTRAComponent`, permiso FACT_HOSPIURG). PREPARAR_HADM valida alta, contrato y cargos; FACTHADM_ITEM/FACTHADM_TODO/FACTHADM_ITEMCORTE llaman SPK_FACTURA_ASIS. Si CLASE_IPS=IPS_DOMI, ASIS_T deriva a SPK_FACTURA_ADMISION_DOMI / _COPA (numeración en TX GENBOLETAFACTURA; Perú boleta vs factura). Rama SOAT: SPQ_FTR_CXC_SOAT → PROCESO_SOAT (topes HADM_S/T) → FACTURA_SOAT / _TODO. El origen es HADM, pero la cabecera queda **FTR.PROCEDENCIA=SALUD**.",
+          "invariante": "La admisión debe ser facturable, clase A y estar cerrada para factura final; cápita o PFACTURARIND=0 no se factura individualmente. Debe existir PRI abierto y HPRED pendiente. SOAT reparte por TOPE1 (aseguradora), TOPE1+TOPE2 (ADRES) y resto EPS.",
           "ventanasFe": "/admin/facturacion · tab Fact. Urg-Hospi-Domi · permiso FACT_HOSPIURG",
           "sps": [
             {
@@ -1140,6 +1150,16 @@
               "nombre": "SPK_FACTURA_ASIS",
               "metodo": "(SP)",
               "rol": "Inserta FTR PROCEDENCIA=SALUD y sus FTRD."
+            },
+            {
+              "nombre": "SPK_FACTURA_ADMISION_DOMI",
+              "metodo": "(SP)",
+              "rol": "Motor domiciliario (CLASE_IPS=IPS_DOMI) con TX de numeración."
+            },
+            {
+              "nombre": "SPK_FACTURA_SOAT",
+              "metodo": "(SP)",
+              "rol": "Factura SOAT del tope 1 (aseguradora)."
             }
           ]
         },
