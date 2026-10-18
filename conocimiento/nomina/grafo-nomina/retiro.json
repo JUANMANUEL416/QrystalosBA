@@ -24,7 +24,7 @@
       "nombre": "Registrar el retiro de un empleado",
       "sp": "SPQ_NOM_NEDIA · GUARDAR",
       "metodo": "GUARDAR",
-      "llamaSiguiente": ["N4-liquidar"],
+      "llamaSiguiente": ["N4-prenomina"],
       "ordenEstado": "evidenciado",
       "efecto": "NEDIA del evento RET, NEMP.FECHARETIRO y NEMPHIS.",
       "evidenciaOrden": [
@@ -87,7 +87,7 @@
       "sp": "FRT_NEMP · RETIRAR_EMPLEADOS",
       "metodo": "RETIRAR_EMPLEADOS",
       "llamaAnterior": ["N2-validar"],
-      "llamaSiguiente": ["N4-liquidar"],
+      "llamaSiguiente": ["N4-prenomina"],
       "ordenEstado": "evidenciado",
       "efecto": "FECHARETIRO y NEDIA RET de las filas sin error. Devuelve los NUMDOC; no calcula valores.",
       "evidenciaOrden": [
@@ -102,14 +102,47 @@
       ]
     },
     {
-      "id": "N4-liquidar",
+      "id": "N4-prenomina",
       "orden": 4,
+      "nombre": "La prenómina dispara el cálculo del retiro",
+      "sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA",
+      "metodo": "PRENOMINA",
+      "llama": ["SPK_CALCULAR_RETIROS · CALCULAR_RETIROS"],
+      "llamaAnterior": ["N0-individual", "N3-retirar"],
+      "llamaSiguiente": ["N5-liquidar"],
+      "ordenEstado": "evidenciado",
+      "nota": "Ni NEDIA · GUARDAR ni RETIRAR_EMPLEADOS calculan valores: el cálculo entra al recalcular la prenómina del empleado. Con FORMALIQRETIROS distinto de OTRASIPS llama SPK_CALCULAR_RETIROS siempre; con OTRASIPS solo en ADD y si hay NEDIA RET en el período. También lo llama SPQ_ADDDEL_CONCEPTOS_DE_CARGOS (prenómina general, NUMDOC vacío).",
+      "efecto": "Recalcula NEMPF/NEMPFD del empleado e invoca el cálculo del retiro.",
+      "evidenciaOrden": [
+        {
+          "archivo": "sql/SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC.sql",
+          "linea": 247,
+          "nota": "FORMALIQRETIROS <> 'OTRASIPS': EXEC SPK_CALCULAR_RETIROS @CNSPAGO,@NUMDOC."
+        },
+        {
+          "archivo": "sql/SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC.sql",
+          "linea": 412,
+          "nota": "OTRASIPS: solo con OPERACION ADD y NEDIA RET del empleado en el período."
+        },
+        {
+          "archivo": "sql/SPQ_ADDDEL_CONCEPTOS_DE_CARGOS.sql",
+          "linea": 179,
+          "nota": "La prenómina general también lo llama (179 y 405) con NUMDOC vacío."
+        }
+      ],
+      "fichas": [
+        {"sp": "SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC", "metodo": "PRENOMINA", "proceso": "nomina", "estado": "leido"},
+        {"sp": "SPK_CALCULAR_RETIROS", "metodo": "CALCULAR_RETIROS", "proceso": "nomina", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N5-liquidar",
+      "orden": 5,
       "nombre": "Liquidar los conceptos del retiro",
       "sp": "SPK_CALCULAR_RETIROS · CALCULAR_RETIROS",
       "metodo": "CALCULAR_RETIROS",
       "llama": ["SPQ_ADELANTO_CESAN · APLICAR", "SPK_PROCESO_VACACIONES · ACTUALIZA"],
-      "llamaAnterior": ["N0-individual", "N3-retirar"],
-      "llamaSiguiente": ["N5-limpiar"],
+      "llamaAnterior": ["N4-prenomina"],
       "ordenEstado": "evidenciado",
       "nota": "Según FORMALIQRETIROS: estándar escribe en el staging; OTRASIPS escribe la provisión directo en NEMPFD. No lanza error si no hay retiros en el mes. Adelantos y días de vacaciones los llama este mismo procedimiento.",
       "efecto": "Líneas de prima, cesantías, intereses, vacaciones e indemnización del retiro.",
@@ -127,27 +160,36 @@
       ]
     },
     {
-      "id": "N5-limpiar",
-      "orden": 5,
-      "nombre": "Quitar la novedad y limpiar las líneas",
+      "id": "N6-reversa",
+      "orden": 6,
+      "nombre": "Reversa: borrar la novedad de retiro",
       "sp": "pendiente",
       "metodo": "pendiente",
       "estadoPaso": "pendiente",
-      "llamaAnterior": ["N4-liquidar"],
+      "llamaAnterior": ["N0-individual", "N3-retirar"],
       "ordenEstado": "por_confirmar",
-      "nota": "SPQ_NOM_NEDIA · ELIMINAR está leído y dice que, si era retiro, llama SPK_QUITANOV_RETIROS. Ese SPK no tiene ficha ni cuerpo en sql/. No se documenta aquí qué borra hasta bajarlo de DESAIX. No es el paso que sigue al liquidar: es la reversa.",
+      "nota": "Rama de reversa, no paso siguiente al liquidar. SPQ_NOM_NEDIA · ELIMINAR (leído) borra la NEDIA y, si el concepto es RET, ejecuta SPK_QUITANOV_RETIROS @CNSPAGO,@NUMDOC. Ese SPK no tiene ficha ni cuerpo en el repo: qué limpia queda pendiente hasta bajarlo de DESAIX.",
       "evidenciaOrden": [
         {
           "archivo": "conocimiento/nomina/proceso.json",
           "linea": 1408,
           "nota": "Borrar: quita la novedad y limpia con SPK_QUITANOV_RETIROS."
+        },
+        {
+          "archivo": "sql/SPQ_NOM_NEDIA.sql",
+          "linea": 104,
+          "nota": "ELIMINAR: IF @CODCONCEPTO = 'RET' → EXEC SPK_QUITANOV_RETIROS (106)."
         }
+      ],
+      "rama": "reversa",
+      "fichas": [
+        {"sp": "SPQ_NOM_NEDIA", "metodo": "ELIMINAR", "proceso": "nomina", "estado": "leido"}
       ]
     }
   ],
   "veredictoFichas": {
     "usarDocumentacion": true,
     "releerSqlHoy": true,
-    "motivo": "N5-limpiar espera SPK_QUITANOV_RETIROS. El alta individual y el masivo están leídos."
+    "motivo": "N6-reversa espera SPK_QUITANOV_RETIROS (DESAIX). El cálculo lo dispara la prenómina (N4). Alta individual y masivo están leídos."
   }
 }

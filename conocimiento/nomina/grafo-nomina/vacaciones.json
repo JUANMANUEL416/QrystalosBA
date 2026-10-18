@@ -25,7 +25,7 @@
       "sp": "SPQ_NOM_NEMPV · GUARDAR",
       "metodo": "GUARDAR",
       "llama": ["SPK_PROCESO_VACACIONES · ACTUALIZA"],
-      "llamaSiguiente": ["N1-solicitud"],
+      "llamaSiguiente": ["N1-solicitud", "N2-justificacion"],
       "ordenEstado": "evidenciado",
       "efecto": "INSERT o UPDATE NEMPV, procedencia Manual. Luego recalcula los períodos del empleado.",
       "evidenciaOrden": [
@@ -46,7 +46,7 @@
       "sp": "SPQ_NOM_NEMPVD · GUARDAR",
       "metodo": "GUARDAR",
       "llamaAnterior": ["N0-periodo"],
-      "llamaSiguiente": ["N2-justificacion"],
+      "llamaSiguiente": ["N3-liquidacion"],
       "ordenEstado": "evidenciado",
       "nota": "INSERTAR deja el evento en estado Nuevo y procedencia Novedad. Rechaza el período de nómina cerrado. La ficha no confirma qué pantalla lo llama.",
       "efecto": "INSERT o UPDATE NEMPVD. No mueve NEMPV.",
@@ -67,8 +67,7 @@
       "nombre": "Justificar días",
       "sp": "SPQ_NOM_NEMPVD · JUSTIFICA_VACACIONES",
       "metodo": "JUSTIFICA_VACACIONES",
-      "llamaAnterior": ["N1-solicitud"],
-      "llamaSiguiente": ["N3-liquidacion"],
+      "llamaAnterior": ["N0-periodo"],
       "ordenEstado": "evidenciado",
       "efecto": "NEMPVD en EnNomina, procedencia JustVaca. Suma los días a NEMPV.DIASP y puede dejar el período en Pagado.",
       "evidenciaOrden": [
@@ -76,11 +75,18 @@
           "archivo": "conocimiento/nomina/proceso.json",
           "linea": 1986,
           "nota": "JUSTIFICA_VACACIONES suma DIASP; ANULAR_JUSVAC los resta."
+        },
+        {
+          "archivo": "sql_refe/0100016522/SPQ_NOM_NEMPVD.sql",
+          "linea": 198,
+          "nota": "JUSTIFICA_VACACIONES inserta NEMPVD con ESTADO 'EnNomina' y PROCE 'JustVaca'."
         }
       ],
       "fichas": [
         {"sp": "SPQ_NOM_NEMPVD", "metodo": "JUSTIFICA_VACACIONES", "proceso": "nomina", "estado": "leido"}
-      ]
+      ],
+      "rama": "alterna",
+      "nota": "Rama aparte desde N0, no paso previo a N3: inserta NEMPVD ya en EnNomina (PROCE JustVaca), suma NEMPV.DIASP y no genera NEDIA. GENERA_NOVEDAD_VACACIONES solo toma eventos en estado Nuevo, así que no procesa una justificación."
     },
     {
       "id": "N3-liquidacion",
@@ -89,7 +95,7 @@
       "sp": "SPQ_NOM_VACACIONES · GENERA_NOVEDAD_VACACIONES",
       "metodo": "GENERA_NOVEDAD_VACACIONES",
       "llama": ["SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA"],
-      "llamaAnterior": ["N2-justificacion"],
+      "llamaAnterior": ["N1-solicitud"],
       "llamaSiguiente": ["N4-pago"],
       "ordenEstado": "evidenciado",
       "nota": "La ficha de este método nombra SPQ_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC. Ese nombre no tiene ficha. El recálculo leído es SPK_ADDDEL_CONCEPTOS_DE_CARGOS_NUMDOC · PRENOMINA.",
@@ -99,6 +105,11 @@
           "archivo": "conocimiento/nomina/proceso.json",
           "linea": 1965,
           "nota": "GENERA_NOVEDAD_VACACIONES crea la NEDIA y recalcula."
+        },
+        {
+          "archivo": "sql/SPQ_NOM_VACACIONES.sql",
+          "linea": 143,
+          "nota": "GENERA_NOVEDAD_VACACIONES lee NEMPVD WHERE ESTADO = 'Nuevo' (el que deja SPQ_NOM_NEMPVD · GUARDAR INSERTAR) y al final lo pasa a EnNomina (línea 346)."
         }
       ],
       "fichas": [
@@ -127,6 +138,6 @@
   "veredictoFichas": {
     "usarDocumentacion": true,
     "releerSqlHoy": true,
-    "motivo": "N4-pago no tiene SP propio. SPQ_NOM_NEMPVD está leído desde el archivo del REQ, no desde PREVERSION."
+    "motivo": "N4-pago no tiene SP propio. SPQ_NOM_NEMPVD está leído desde el archivo del REQ, no desde PREVERSION. N2 (justificación) es rama alterna: no genera novedad."
   }
 }
