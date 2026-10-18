@@ -37,7 +37,7 @@ WHERE CNSFCT = @CNSFTR;
 
 IF @N_FACTURA IS NULL
 BEGIN
-    RAISERROR(N'No se encontr la factura para CNSFTR %s.', 16, 1, @CNSFTR);
+    RAISERROR(N'No se encontró la factura para CNSFTR %s.', 16, 1, @CNSFTR);
     RETURN;
 END;
 
@@ -50,13 +50,13 @@ IF NOT EXISTS (
       AND COALESCE(CAPITADA, 0) = 1
 )
 BEGIN
-    RAISERROR(N'La factura no est pendiente, es nota crdito o no es capitada.', 16, 1);
+    RAISERROR(N'La factura no está pendiente, es nota crédito o no es capitada.', 16, 1);
     RETURN;
 END;
 
 IF NOT EXISTS (SELECT 1 FROM FTRDC WHERE CNSFTR = @CNSFTR)
 BEGIN
-    RAISERROR(N'No hay prestaciones en la relacin de cpita (FTRDC).', 16, 1);
+    RAISERROR(N'No hay prestaciones en la relación de cápita (FTRDC).', 16, 1);
     RETURN;
 END;
 
