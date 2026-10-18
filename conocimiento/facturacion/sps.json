@@ -1,6 +1,6 @@
 {
   "procesoId": "facturacion",
-  "actualizado": "2026-10-18",
+  "actualizado": "2026-10-18T15:20:00",
   "nota": "2026-10-03: procedencias FTR y énfasis de factura financiera contrastados contra Qrystalos2 e IXONLINE/SQL. PREVERSION y última cerrada 2.0.7 son idénticas para SPQ_SUBIR_AUTCOL y los diez objetos del mapa; IDANT 2.0.6. Confirmado HADM→SALUD, CIT→CI, AUT/NOPOS→CE, AUTPG→AUTPG y recibo/copago→CAJA. 2026-10-18: 18+7 objetos DESAIX PREVERSION=2.0.10 (idénticas a liberada) fichados (corte, masiva, numeración, caja QX, entrega PPTO, copagos/IVA, SOAT, DOMI, COPAGOQX/COPAGOHAQX). Cinco defectos confirmados (GENNUMEROFACTURA sev1, ASIS sin TX, consecutivo fuera de rango, RADICA_FCXC :635-645, AUTPG vs CI/CE).",
   "sps": [
     {
@@ -3189,9 +3189,9 @@
       "tipo": "SPK",
       "estado": "leido",
       "fuente": "SPK_RIPS_JSON_FTR_CAPMASI",
-      "actualizado": "2026-09-12T21:55:00",
+      "actualizado": "2026-10-18T15:20:00",
       "gateId": "rips-fev",
-      "hace": "JSON capitación masiva (TIPOCAP=4). Exige FTRDC. Si IDAFILIADO nulo, lo completa desde CIT/AUT/HADM.",
+      "hace": "JSON capitación masiva (TIPOCAP=4). Exige FTRDC. Si IDAFILIADO nulo, lo completa desde CIT/AUT/HADM. Omite estancias >48 h :862/:893. UPDATE HADM.FECHA si alta < ingreso :835-844.",
       "valida": [
         "Existe FTRDC del CNSFTR"
       ],
@@ -3202,7 +3202,11 @@
         "FNK_VALORVARIABLE",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. No persiste.",
+      "fallosConfirmados": [
+        "UPDATE HADM.FECHA si DATEDIFF hora/minuto alta-ingreso < 0 :835-844",
+        "Omite urgencias/hospitalización >48 h: DATEDIFF(HOUR,HADM.FECHA,HADM.FECHAALTAMED)<=48 :862 y :893"
+      ]
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_PGP",
@@ -3371,7 +3375,7 @@
       "tipo": "SPK",
       "estado": "leido",
       "fuente": "SPK_RIPS_JSON_NDBCR_IND",
-      "actualizado": "2026-09-12T21:55:00",
+      "actualizado": "2026-10-18T15:20:00",
       "gateId": "rips-fev",
       "hace": "JSON NC/ND. tipoNota TOTAL si NC + IDCONCEP_ANULAFTRCE + procedencia FACTURA; si no, PARCIAL. NC parcial no financiero puede recortar un ítem del JSON de la FV (vrServicio >= VR_NOTA). Recién nacidos vía FNK.",
       "valida": [
@@ -3386,8 +3390,13 @@
         "La Unidad de Medida de los Medicamentos no puede ser null (IUNI.HOMOLOGO_RIPS)"
       ],
       "defaults": [
-        "finalidadTecnologiaSalud: HPRE.FINALIDAD=10 o vacía → TGEN DATO1 o 15 (igual que IND)",
-        "tipoDiagnosticoPrincipal: si LEN<2 → 01"
+        "CIT AC finalidad default 12 :690-696 (no 15 ni 44)",
+        "AP finalidad default 16 :772",
+        "AUT finalidad default 12 :856-858",
+        "HADM AC finalidad default 15 :1043 (único bloque alineado con IND :1520)",
+        "causa consultas literal 38 :698/:860/:1044",
+        "modalidad consultas literal 01 :687/:1039",
+        "tipoDiagnosticoPrincipal: si no hay TIPODX conocido → 1 :1045-1051"
       ],
       "llama": [
         "FNK_VALORVARIABLE",
@@ -3395,7 +3404,8 @@
         "FNK_AttachedDocument",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. Persiste el despachador en FNOTJSON C/D."
+      "efecto": "OUTPUT @PLANO. Persiste el despachador en FNOTJSON C/D.",
+      "ser": "Finalidad TGEN.DATO1: CIT 12 :690; AP 16 :772; AUT 12 :856; HADM AC 15 :1043. No usa 44. Detalle canónico en rips-json."
     },
     {
       "nombre": "SPK_PERSISTIR_RIPSJSON_ENVIO",
