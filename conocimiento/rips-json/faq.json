@@ -1,7 +1,7 @@
 {
   "procesoId": "rips-json",
-  "actualizado": "2026-09-12T22:10:00",
-  "nota": "Semilla 2026-09-12 (árbol cerrado). El bot solo usa coincidencias con la pregunta actual.",
+  "actualizado": "2026-10-18T13:30:00",
+  "nota": "Semilla 2026-09-12; contraste DESAIX 2.0.10 el 2026-10-18. El bot solo usa coincidencias con la pregunta actual.",
   "items": [
     {
       "id": "rips-arbol-variante",
@@ -56,6 +56,24 @@
       "aceptadoEn": "2026-09-12T22:10:00",
       "mensajeId": "semilla-rips-config",
       "chatId": "c202609122210ripsjson"
+    },
+    {
+      "id": "rips-tipousuario-cum-ser-20261018",
+      "pregunta": "de dónde sale tipoUsuario CUM código de medicamentos y cómo se configura SER RIPS_CP grupo cups",
+      "respuesta": "## tipoUsuario, CUM y SER (DESAIX 2.0.10, 2026-10-18)\n\n**tipoUsuario**\n- Por defecto sale de **AFI** (`TIPOUSUARIO` de 2 dígitos o mapa `TIPOAFILIADO` → 05): MAS, PGP, CAPI, CAPMASI, CITPAQ.\n- **IND SALUD** y **SPK_VALID_CRUZADA_FEV**: pueden tomar **HADM.TIPOAFILIADO** del evento (si no es SOAT o el tercero es aseguradora); si no, AFI. IND :508-530, VALID_CRUZADA :113-130.\n- **AUTPG**: primero **AUTPG.TIPO_USUARIO**, luego AFI :299-313.\n- CAPI, si el código no está en 01-13, lo cambia a **05** :2061-2071.\n\n**CUM / medicamentos**\n- Orden habitual: `IART.IUM` → `IART.CODCUM` → `SER.CODCUM` → `SER.IDSERVICIO`. En SALUD IND, IUM solo cuenta si LEN≥10 :2022.\n- Si queda vacío, el JSON lleva vacío o el IDSERVICIO. UPDATE posterior IND :1645-1649 (AND/OR sin paréntesis).\n\n**SER y maestros**\n- `SER.CODIGORIPS` → `RIPS_CP.ARCHIVO` (AC/AM/AP/AT). **INNER JOIN**: sin homologar, el ítem no entra al JSON.\n- `SER.RIPS_GRUPO` default **02**, `SER.RIPS_CODIGO` default **325** IND :1672-1673.\n- `SER.CODCUPS` / `CODSISPRO` (si `RIPS_CODSISPRO=SI`) / `TIPOOTRO` / `MEDICAMENTOS`.\n- Vía: `HADM.VIAINGRESO` + TGEN o `FNK_RIPS_VIA_INGRESO` (01-14).\n- Recaudo: `FNK_RIPS_CONCEPTO_RECAUDO` o TGEN `RIPS_JSON.conceptoRecaudo`.",
+      "canal": "documentar",
+      "aceptadoEn": "2026-10-18T13:30:00",
+      "mensajeId": "desaix-rips-tu-cum-ser",
+      "chatId": "c20261018fevrips"
+    },
+    {
+      "id": "rips-fallos-velocidad-20261018",
+      "pregunta": "cuáles fallos FEVRIPS se confirman INNER JOIN RIPS_CP 48 horas CAPMASI CUM paréntesis async KO CITPAQ y cómo acelerar",
+      "respuesta": "## Fallos vs DESAIX 2.0.10 y velocidad\n\n**Confirmados**\n1. INNER JOIN `RIPS_CP` pierde servicios sin `SER.CODIGORIPS` (IND :983+ y el resto de hojas).\n2. MAS omite hospitalización/urgencias si `DATEDIFF<=48` h (:1389/:1421) y puede duplicar por `HCA.CLASE='HC'` en el WHERE de un LEFT JOIN.\n3. CAPMASI hace `UPDATE HADM.FECHA` si el alta es anterior al ingreso :835-844.\n4. IND UPDATE CUM sin paréntesis :1645-1649; en AT `vrUnitOS` y `vrServicio` ambos = `FTRD.VLR_SERVICI` con `cantidadOS=CIT.CANTIDADC` :1147.\n5. Job async marca COMPLETADO aunque GENERAR devuelva KO (result set, no RAISERROR) SPQ_FTR_COL :4277-4289. AJUSTE cápita no-PGP no regenera SPK_GENERAR :190-199.\n\n**Descartados**\n- Lista CITPAQ distinta: DESAIX :469 es NEDXC, NEDXS, NCDXPS, NSDXPS (igual que la KB).\n- `SPK_RIPS_PREVALIDAR_FTR_CAPI` no existe (comentario en CAPI, sin EXEC).\n\n**Top 5 velocidad**\n1. Sustituir cursores (IND/MAS/CAPI/CAPMASI/PGP) por INSERT SELECT + `FOR JSON PATH`.\n2. Dejar de llamar `FNK_LIMPIATEXTO` por fila (WHILE); persistir limpio o `TRANSLATE`.\n3. `LEFT JOIN RIPS_CP` + rechazo explícito, no INNER que silencia ítems.\n4. Quitar `UPDATE HADM` del generador JSON (CAPMASI).\n5. Cachear `FNK_VALORVARIABLE` al inicio (IND ya lo hace en parte :459-470).",
+      "canal": "documentar",
+      "aceptadoEn": "2026-10-18T13:30:00",
+      "mensajeId": "desaix-rips-fallos",
+      "chatId": "c20261018fevrips"
     }
   ]
 }

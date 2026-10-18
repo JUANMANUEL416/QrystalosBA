@@ -1,0 +1,110 @@
+{
+  "tramo": "fevrips-envio",
+  "nombre": "FEV-RIPS: marca, envío SISPRO, CUV y cola",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada)",
+  "pantalla": "FEVRIPSMasivoComponent · ValidacionesFEVRipsComponent · worker FEVRIPS_COLA",
+  "documentoOrigen": {
+    "tabla": "FTR",
+    "claves": ["CNSFCT"],
+    "detalle": "CUV y FRADICA_RIPS. Cola opcional FEVRIPS_COLA si FEVRIPS_MODO=MICROSERVICIO."
+  },
+  "noEs": [
+    "No arma el JSON (eso es fevrips-generacion).",
+    "No es DIAN ni radicar CXC.",
+    "No es RIPS plano TXT (SPQ_RIPS_COL)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-aptitud",
+      "orden": 0,
+      "nombre": "¿Hay worker microservicio?",
+      "sp": "SPQ_FEVRIPS_COLA · APTITUD",
+      "metodo": "APTITUD",
+      "llamaSiguiente": ["N1-marca"],
+      "ordenEstado": "evidenciado",
+      "efecto": "Veredicto MODO / URL / NIT / existe cola. Si MODO_INACTIVO el FE usa validación manual.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_FEVRIPS_COLA", "linea": 90, "nota": "APTITUD."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_FEVRIPS_COLA", "metodo": "APTITUD", "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-marca",
+      "orden": 1,
+      "nombre": "Marcar lote (grilla o cuenta)",
+      "sp": "SPQ_RIPS · MARCAFAC / MARCATODO / MARCAFCXC",
+      "metodo": "MARCATODO",
+      "llamaSiguiente": ["N2-cola"],
+      "ordenEstado": "evidenciado",
+      "efecto": "UPDATE FTR.MARCAFEVRIPS. MARCAFCXC exige FACTE=2, contabilizada, CUV vacío, no caja.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_RIPS", "linea": 422, "nota": "MARCAFAC."},
+        {"archivo": "SPQ_RIPS", "linea": 517, "nota": "MARCAFCXC."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_RIPS", "metodo": "MARCAFAC", "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPQ_RIPS", "metodo": "MARCATODO", "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPQ_RIPS", "metodo": "MARCAFCXC", "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-cola",
+      "orden": 2,
+      "nombre": "Cola microservicio (opcional)",
+      "sp": "SPQ_FEVRIPS_COLA · TOMAR_LOTE / ENCOLAR / SET_ESTADO",
+      "metodo": "TOMAR_LOTE",
+      "llamaSiguiente": ["N3-cuv"],
+      "ordenEstado": "evidenciado",
+      "efecto": "MERGE ESTADO=1; ENCOLAR es la salida de ESTADO 5 (error de validación). SET_ESTADO 2-5.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_FEVRIPS_COLA", "linea": 167, "nota": "TOMAR_LOTE."},
+        {"archivo": "SPQ_FEVRIPS_COLA", "linea": 448, "nota": "ENCOLAR."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_FEVRIPS_COLA", "metodo": "TOMAR_LOTE", "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPQ_FEVRIPS_COLA", "metodo": "ENCOLAR", "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPQ_FEVRIPS_COLA", "metodo": "SET_ESTADO", "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-cuv",
+      "orden": 3,
+      "nombre": "Guardar respuesta SISPRO (CUV)",
+      "sp": "SPQ_RIPS · SET_DATOS",
+      "metodo": "SET_DATOS",
+      "llamaSiguiente": ["N4-paquete"],
+      "ordenEstado": "evidenciado",
+      "efecto": "Si ResultState='true' (texto) escribe CUV y FRADICA_RIPS en FTR/FTRJSON. Si no, FTR_MAS_LOG FEVRIPS.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_RIPS", "linea": 77, "nota": "SET_DATOS."},
+        {"archivo": "SPQ_RIPS", "linea": 89, "nota": "ResultState como texto, no BIT."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_RIPS", "metodo": "SET_DATOS", "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-paquete",
+      "orden": 4,
+      "nombre": "Leer JSON/XML para ZIP o visor",
+      "sp": "SPQ_RIPS · GET_DATOS / GET_DATOS_XML_ATTACHEDDOCUMENT",
+      "metodo": "GET_DATOS",
+      "llama": ["FNK_AttachedDocument"],
+      "llamaSiguiente": [],
+      "llamaAnterior": ["N3-cuv"],
+      "ordenEstado": "evidenciado",
+      "efecto": "SELECT JSON_ENVIO, CUV, XML AttachedDocument. GET_CONFIG_EXPORT_RIPS nombra el ZIP. No radica.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_RIPS", "linea": 43, "nota": "GET_DATOS."},
+        {"archivo": "SPQ_RIPS", "linea": 297, "nota": "GET_DATOS_XML_ATTACHEDDOCUMENT."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_RIPS", "metodo": "GET_DATOS", "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPQ_RIPS", "metodo": "GET_DATOS_XML_ATTACHEDDOCUMENT", "proceso": "rips-json", "estado": "leido"}
+      ]
+    }
+  ]
+}

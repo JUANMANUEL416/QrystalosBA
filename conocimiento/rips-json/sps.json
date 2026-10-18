@@ -1,21 +1,21 @@
 {
   "procesoId": "rips-json",
-  "actualizado": "2026-10-03T16:40:00",
-  "nota": "Catálogo RIPS JSON / FEVRIPS. Árbol cerrado 2026-09-12; contraste 2026-10-03 con IXONLINE/SQL PREVERSION = 2.0.7 (idéntico a la liberada). Releídos: despachador, SPQ_RIPS SET_DATOS/GET_DATOS_XML, FTR_IND, FTR_MAS. No incluye armar FTR ni DIAN.",
+  "actualizado": "2026-10-18T13:30:00",
+  "nota": "Catálogo FEV-RIPS / RIPS JSON contrastado 2026-10-18 con IXONLINE/SQL PREVERSION = 2.0.10 (idéntica a la liberada; IDANT 2.0.9). Evidencia SP:línea. SPK_RIPS_PREVALIDAR_FTR_CAPI no existe en DESAIX (StopIteration). No incluye armar FTR ni DIAN. RIPS planos (SPQ_RIPS_COL / SPK_RIPS_ELIMINAR) son el circuito TXT, no el JSON SISPRO.",
   "sps": [
     {
       "nombre": "SPQ_FTR_COL",
       "tipo": "SPQ",
       "modelo": "FTR_COL",
       "estado": "leido",
-      "fuente": "SPQ_FTR_COL",
-      "notaArchivo": "Slim de este módulo: no documenta armar FTR ni DIAN.",
-      "cola": "Solo METODOs RIPS_JSON / INICIAR / EJECUTAR. El resto vive en facturacion/sps.json.",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "notaArchivo": "Slim de este módulo: solo METODOs RIPS_JSON / INICIAR / EJECUTAR.",
+      "cola": "El resto de FTR_COL vive en facturacion/sps.json.",
       "metodos": [
         {
           "id": "RIPS_JSON",
           "estado": "leido",
-          "hace": "Wrapper síncrono: lee CNSFCT, TIPODOC, GENERAR, SOLO_META del JSON y EXEC SPK_GENERAR_RIPS_JSON. No arma el RIPS.",
+          "hace": "Wrapper síncrono: lee CNSFCT, TIPODOC, GENERAR, SOLO_META y EXEC SPK_GENERAR_RIPS_JSON. No arma nodos RIPS.",
           "capaId": "02-operacion",
           "gateId": "generar-json",
           "valida": [
@@ -23,12 +23,19 @@
           ],
           "llama": [
             "SPK_GENERAR_RIPS_JSON"
+          ],
+          "errores": [
+            "Los KO los emite SPK_GENERAR_RIPS_JSON como result set (no RAISERROR)"
+          ],
+          "efecto": "Devuelve el result set del generador (OK/KO + JSON/XML).",
+          "evidencia": [
+            "SPQ_FTR_COL:4305-4328"
           ]
         },
         {
           "id": "INICIAR_RIPS_JSON_JOB",
           "estado": "leido",
-          "hace": "Si FNK_RIPS_JSON_USAR_ASYNC=0 devuelve USAR_ASYNC=0 (el FE cae a RIPS_JSON síncrono). Si hay job PENDIENTE/PROCESANDO mismo CNSFCT+TIPODOC → KO. Si no, encola PROCESO_JOB TIPO=RIPS_JSON vía SPQ_PROCESO_JOB · INICIAR_JOB.",
+          "hace": "Si FNK_RIPS_JSON_USAR_ASYNC=0 → OK USAR_ASYNC=0 (el FE cae a RIPS_JSON). Si hay job PENDIENTE/PROCESANDO mismo CNSFCT+TIPODOC → KO. Si no, encola PROCESO_JOB TIPO=RIPS_JSON.",
           "capaId": "02-operacion",
           "gateId": "generar-json",
           "errores": [
@@ -37,30 +44,53 @@
           "llama": [
             "FNK_RIPS_JSON_USAR_ASYNC",
             "SPQ_PROCESO_JOB"
+          ],
+          "valida": [
+            "FNK_RIPS_JSON_USAR_ASYNC",
+            "no hay job PENDIENTE/PROCESANDO del mismo documento"
+          ],
+          "efecto": "INSERT PROCESO_JOB vía SPQ_PROCESO_JOB · INICIAR_JOB, o USAR_ASYNC=0.",
+          "evidencia": [
+            "SPQ_FTR_COL:4190-4249"
           ]
         },
         {
           "id": "EJECUTAR_RIPS_JSON_ASYNC",
           "estado": "leido",
-          "hace": "Marca PROCESO_JOB PROCESANDO, EXEC SPK_GENERAR_RIPS_JSON, luego COMPLETADO o ERROR (ERROR_MESSAGE). Exige CNS del job.",
+          "hace": "Marca PROCESO_JOB PROCESANDO, SELECT OK PROCESANDO, EXEC SPK_GENERAR_RIPS_JSON, luego COMPLETADO si no hay excepción. GENERAR KO por result set no dispara CATCH.",
           "capaId": "02-operacion",
           "gateId": "generar-json",
           "errores": [
-            "CNS es requerido."
+            "CNS es requerido.",
+            "CATCH → PROCESO_JOB ESTADO=ERROR + ERROR_MESSAGE"
           ],
           "llama": [
             "SPK_GENERAR_RIPS_JSON"
+          ],
+          "valida": [
+            "CNS del job no vacío"
+          ],
+          "efecto": "PROCESO_JOB COMPLETADO aunque GENERAR haya devuelto KO (sin RAISERROR). Confirmado SPQ_FTR_COL:4277-4289.",
+          "evidencia": [
+            "SPQ_FTR_COL:4251-4303"
           ]
         }
-      ]
+      ],
+      "evidencia": [
+        "SPQ_FTR_COL:4190 INICIAR_RIPS_JSON_JOB",
+        "SPQ_FTR_COL:4251 EJECUTAR_RIPS_JSON_ASYNC",
+        "SPQ_FTR_COL:4305 RIPS_JSON"
+      ],
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPQ_RIPS",
       "tipo": "SPQ",
       "modelo": "RIPS",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
-      "cola": "10/10 METODOs leído 2026-09-06. Orquestador MODELO RIPS.",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "cola": "10 METODOs. Orquestador CUV / marca / XML.",
       "metodos": [
         {
           "id": "GET_DATOS",
@@ -70,14 +100,31 @@
           "valida": [
             "TIPODOC + CNSDOC"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "SELECT CUV, FRADICA_RIPS, JSON_RESPUESTA, JSON_ENVIO (FTRJSON o FNOTJSON).",
+          "evidencia": [
+            "SPQ_RIPS:43"
+          ]
         },
         {
           "id": "GET_MARCADOS",
-          "estado": "parcial",
+          "estado": "leido",
           "gateId": "enviar-cuv",
-          "hace": "Lista FTR marcadas MARCAFEVRIPS=1 del usuario sin CUV.",
-          "capaId": "02-operacion"
+          "hace": "Lista FTR con MARCAFEVRIPS=1 del usuario y CUV vacío.",
+          "capaId": "02-operacion",
+          "valida": [
+            "no aplica"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "SELECT de facturas marcadas. No escribe.",
+          "evidencia": [
+            "SPQ_RIPS:71"
+          ]
         },
         {
           "id": "SET_DATOS",
@@ -91,9 +138,13 @@
           "errores": [
             "KO + fila ERROR si excepción SQL"
           ],
-          "efecto": "FTR.CUV, FTR.FRADICA_RIPS; FNOT/FGLO en NC/ND/NA; limpia FTR_MAS_LOG FEVRIPS",
+          "efecto": "FTR.CUV/FRADICA_RIPS; FNOT/FGLO en NC/ND/NA; FTRJSON/FNOTJSON; si no es 'true' guarda FTR_MAS_LOG FEVRIPS.",
           "capaId": "02-operacion",
-          "releido": "2026-10-03 · PREVERSION 2.0.7"
+          "releido": "2026-10-03 · PREVERSION 2.0.7",
+          "evidencia": [
+            "SPQ_RIPS:77",
+            "SPQ_RIPS:89-92 ResultState texto"
+          ]
         },
         {
           "id": "GET_DATOS_XML",
@@ -104,7 +155,14 @@
             "CNSDOC + TIPODOC"
           ],
           "capaId": "02-operacion",
-          "releido": "2026-10-03 · PREVERSION 2.0.7"
+          "releido": "2026-10-03 · PREVERSION 2.0.7",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "XML_Base64 FEV desde FDIANR SendBillSync. No escribe.",
+          "evidencia": [
+            "SPQ_RIPS:285"
+          ]
         },
         {
           "id": "GET_DATOS_XML_ATTACHEDDOCUMENT",
@@ -116,14 +174,34 @@
             "FNK_VALORVARIABLE SINTAGXMLVERSION"
           ],
           "capaId": "02-operacion",
-          "releido": "2026-10-03 · PREVERSION 2.0.7"
+          "releido": "2026-10-03 · PREVERSION 2.0.7",
+          "valida": [
+            "CNSDOC + TIPODOC"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "AttachedDocument DIAN vía FNK_AttachedDocument. No escribe CUV.",
+          "evidencia": [
+            "SPQ_RIPS:297"
+          ]
         },
         {
           "id": "MARCAFAC",
-          "estado": "parcial",
+          "estado": "leido",
           "gateId": "enviar-cuv",
           "hace": "Toggle MARCAFEVRIPS/USUARIO_MARCAFEVRIPS en FTR por CNSFCT.",
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "CNSFCT"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "UPDATE FTR.MARCAFEVRIPS.",
+          "evidencia": [
+            "SPQ_RIPS:422"
+          ]
         },
         {
           "id": "MARCATODO",
@@ -133,14 +211,31 @@
           "valida": [
             "FILTROS no vacío — SQL dinámico"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "UPDATE FTR.MARCAFEVRIPS masivo.",
+          "evidencia": [
+            "SPQ_RIPS:455"
+          ]
         },
         {
           "id": "MARCATODO_VALIDADO",
           "estado": "leido",
           "gateId": "enviar-cuv",
           "hace": "SELECT CNSFCT,N_FACTURA por FILTROS (preview antes de marcar masivo).",
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "FILTROS"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "SELECT preview. No escribe.",
+          "evidencia": [
+            "SPQ_RIPS:492"
+          ]
         },
         {
           "id": "MARCAFCXC",
@@ -153,23 +248,42 @@
             "CUV vacío",
             "PROCEDENCIA<>CAJA"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Marca FTR de la cuenta FCXCD; desmarca previas del usuario.",
+          "evidencia": [
+            "SPQ_RIPS:517"
+          ]
         },
         {
           "id": "GET_CONFIG_EXPORT_RIPS",
           "estado": "leido",
           "gateId": "enviar-cuv",
           "hace": "Nomenclatura export ZIP: PPT.RIPS_NOMBRE_* , CUVTXT, NIT, prefijo/num factura, CUV. FV o NC/ND vía FNOT.",
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "no aplica"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Nomenclatura ZIP. No escribe.",
+          "evidencia": [
+            "SPQ_RIPS:581"
+          ]
         }
-      ]
+      ],
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPQ_FEVRIPS_COLA",
       "tipo": "SPQ",
       "modelo": "FEVRIPS_COLA",
       "estado": "leido",
-      "fuente": "SPQ_FEVRIPS_COLA",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
       "cola": "7/7 METODOs leído 2026-09-06. Tabla DBO.FEVRIPS_COLA. Activo si FEVRIPS_MODO=MICROSERVICIO.",
       "metodos": [
         {
@@ -180,7 +294,14 @@
           "errores": [
             "KO: MODO_INACTIVO, SIN_COLA, SIN_NIT, SIN_URL_PRODUCCION, SIN_URL_PRUEBA"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "no aplica"
+          ],
+          "efecto": "SELECT veredicto worker. No escribe.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:90"
+          ]
         },
         {
           "id": "TOMAR_LOTE",
@@ -189,9 +310,16 @@
           "hace": "MERGE candidatas FV (mismo predicado que masivo) → ESTADO=1 reclamado por WORKER. Fase 1 solo facturas.",
           "valida": [
             "WORKER obligatorio",
-            "FACTE=2, no caja, CUV vacío, FDIAN FTRELECTRONICA"
+            "FACTE=2, no caja, CUV vacío"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "MERGE FEVRIPS_COLA ESTADO=1 reclamado por WORKER.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:167"
+          ]
         },
         {
           "id": "SET_ESTADO",
@@ -201,7 +329,14 @@
           "valida": [
             "WORKER debe coincidir si se envía"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "UPDATE FEVRIPS_COLA.ESTADO (2 generando, 3 enviando, 4 error técnico, 5 validación).",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:272"
+          ]
         },
         {
           "id": "TOMAR_MANUAL",
@@ -211,7 +346,14 @@
           "errores": [
             "KO EN_PROCESO si worker u otro manual activo"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "no aplica"
+          ],
+          "efecto": "Reserva ESTADO=9 BLOQUEO_HASTA.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:319"
+          ]
         },
         {
           "id": "LIBERAR_MANUAL",
@@ -221,7 +363,14 @@
           "valida": [
             "Solo WORKER=MANUAL:usuario"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Suelta reserva; ESTADO_FINAL 0 o 5.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:399"
+          ]
         },
         {
           "id": "ENCOLAR",
@@ -231,23 +380,42 @@
           "errores": [
             "KO EN_PROCESO si colgada en 1-3 o manual vivo"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "no aplica"
+          ],
+          "efecto": "REPROCESAR=1, INTENTOS=0. Única salida de ESTADO 5.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:448"
+          ]
         },
         {
           "id": "ESTADOS",
           "estado": "leido",
           "gateId": "enviar-cuv",
           "hace": "Polling grilla: ESTADO 0-9 + desc + MINUTOS + WORKER + MENSAJE por lista DOCUMENTOS.",
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "valida": [
+            "no aplica"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "SELECT polling. No escribe.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COLA:522"
+          ]
         }
-      ]
+      ],
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPQ_FEVRIPS_COL",
       "tipo": "SPQ",
       "modelo": "FEVRIPS_COL",
       "estado": "leido",
-      "fuente": "SPQ_FEVRIPS_COL",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
       "cola": "1/1 METODO leído 2026-09-06.",
       "metodos": [
         {
@@ -256,20 +424,26 @@
           "gateId": "enviar-cuv",
           "hace": "Devuelve JSON_QUERY(JSON_ENVIO,'$.rips') + CUV desde FTRJSON por CNSFCT (factura base NA-RIPS).",
           "errores": [
-            "KO: No se Encontro el dato buscado..."
+            "KO: No se Encontro el dato buscado, verifique e intente de nuevo"
           ],
           "valida": [
             "Existe FTRJSON para CNSFCT"
           ],
-          "capaId": "02-operacion"
+          "capaId": "02-operacion",
+          "efecto": "SELECT JSON_QUERY(JSON_ENVIO,'$.rips') + CUV. No escribe.",
+          "evidencia": [
+            "SPQ_FEVRIPS_COL:24-41"
+          ]
         }
-      ]
+      ],
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_GENERAR_RIPS_JSON",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
       "llamadoDesde": [
         "FTR_COL · RIPS_JSON",
         "FTR_COL · EJECUTAR_RIPS_JSON_ASYNC",
@@ -278,35 +452,32 @@
         "useNotaAjusteJsonEnvio"
       ],
       "gateId": "rips-fev",
-      "hace": "Despacha el generador JSON por TIPODOC + FTR.CAPITADA + TIPOCAP + TIPOFAC + PROCEDENCIA + PPT.PGP. Arma XML FEV (FNK_AttachedDocument o FDIANR). Persiste con SPK_PERSISTIR_RIPSJSON_ENVIO. SOLO_META=SI: meta sin payload. GENERAR=NO reutiliza FTRJSON.JSON_ENVIO; si está vacío fuerza GENERAR=SI.",
+      "hace": "Despacha el generador JSON por TIPODOC + FTR.CAPITADA + TIPOCAP + TIPOFAC + PROCEDENCIA + PPT.PGP. Arma XML FEV (FNK_AttachedDocument o FDIANR). Persiste con SPK_PERSISTIR_RIPSJSON_ENVIO. SOLO_META=SI: meta sin payload. GENERAR=NO reutiliza FTRJSON.JSON_ENVIO.",
       "valida": [
         "FACTE=2 en FTR de la factura base",
-        "AJUSTE: CUV en FTRJSON/FTR (SISPRO)",
-        "NOTACR/NOTADB: FNOT.FACTE=2 del CNSFNOT"
+        "AJUSTE: CUV en SISPRO",
+        "NOTACR/NOTADB: FNOT.FACTE=2"
       ],
       "noValida": [
-        "No arma nodos RIPS (consultas, medicamentos…): eso es cada SPK_RIPS_JSON_*",
-        "AJUSTE capita no-PGP (TIPOCAP<4 o =4): no llama generador; devuelve JSON ya persistido"
+        "AJUSTE capita no-PGP (TIPOCAP<4 o =4): no llama generador; SELECT del JSON ya persistido SPK_GENERAR_RIPS_JSON:190-199",
+        "No arma nodos RIPS"
       ],
       "errores": [
-        "La Factura … No esta Registrada en el SISPRO, No se puede Continuar",
-        "La Nota DB-CR no Existe o no se ha Notificado a la Dian",
-        "La factura … no esta notificada a la DIAN (FACTE<>2)",
-        "No se encontro factura ni glosa para CNSFCT"
+        "La Factura … No esta Registrada en el SISPRO, No se puede Continuar SPK_GENERAR_RIPS_JSON:156-160",
+        "La Nota DB-CR no Existe o no se ha Notificado a la Dian :223-226"
       ],
       "dispatch": [
-        "FACTURA + CAPITADA=1 + PPT.PGP=1 → SPK_RIPS_JSON_FTR_PGP (@N_FACTURA)",
-        "FACTURA + CAPITADA=1 + TIPOCAP<4 → SPK_RIPS_JSON_FTR_CAPI",
-        "FACTURA + (CAPITADA=1 o 0) + TIPOCAP=4 → SPK_RIPS_JSON_FTR_CAPMASI",
-        "FACTURA + TIPOFAC=M + PROCEDENCIA=AUTPG → SPK_RIPS_JSON_FTR_AUTPG (@N_FACTURA, XML base64)",
-        "FACTURA + TIPOFAC=M + IDPLAN IN (NEDXC,NEDXS,NCDXPS,NSDXPS) → SPK_RIPS_JSON_FTR_CITPAQ",
-        "FACTURA + TIPOFAC=M (resto) → SPK_RIPS_JSON_FTR_MAS",
-        "FACTURA + evento (TIPOFAC≠M, no capita) → SPK_RIPS_JSON_FTR_IND",
-        "AJUSTE + CAPITADA=1 + PPT.PGP=1 → SPK_RIPS_JSON_AJUSTE_PGP (@CNSFACT) y RETURN",
-        "AJUSTE + CAPITADA=1 + no PGP → no genera (SELECT del JSON actual) y RETURN",
-        "AJUSTE + no capita → SPK_RIPS_JSON_AJUSTE_IND (@CNSFACT) y RETURN",
-        "NOTACR / NOTADB → SPK_RIPS_JSON_NDBCR_IND (@CNSFNOT); XML NC/ND",
-        "Código posterior (NOTAAJUSTE_PGP / NOTAAJUSTE_MAS): no se alcanza si AJUSTE ya hizo RETURN"
+        "FACTURA + PGP → FTR_PGP",
+        "FACTURA + TIPOCAP<4 → FTR_CAPI",
+        "FACTURA + TIPOCAP=4 → FTR_CAPMASI",
+        "FACTURA + TIPOFAC=M + AUTPG → FTR_AUTPG",
+        "FACTURA + TIPOFAC=M + IDPLAN IN (NEDXC,NEDXS,NCDXPS,NSDXPS) → FTR_CITPAQ SPK_GENERAR_RIPS_JSON:469 — misma lista que la KB; no hay divergencia",
+        "FACTURA + TIPOFAC=M resto → FTR_MAS",
+        "FACTURA evento → FTR_IND",
+        "AJUSTE + PGP → AJUSTE_PGP y RETURN",
+        "AJUSTE + capita no-PGP → no regenera :190-199",
+        "AJUSTE evento → AJUSTE_IND",
+        "NOTACR/NOTADB → NDBCR_IND"
       ],
       "llama": [
         "FNK_AttachedDocument",
@@ -324,33 +495,47 @@
         "SPK_RIPS_JSON_NOTAAJUSTE_MAS",
         "SPK_RIPS_JSON_NDBCR_IND"
       ],
-      "efecto": "OUTPUT RIPSJSON + XML; persiste JSON_ENVIO en FTRJSON/FNOTJSON si GENERAR=SI y hay JSON.",
+      "efecto": "OUTPUT RIPSJSON + XML; persiste JSON_ENVIO si GENERAR=SI.",
       "cola": "Árbol RIPS JSON cerrado 2026-09-12. Todas las hojas + FNK_RECIENNACIDOS leídas.",
-      "releido": "2026-10-03 · PREVERSION 2.0.7"
+      "releido": "2026-10-03 · PREVERSION 2.0.7",
+      "tipoUsuario": "No arma usuarios. Delega a cada hoja.",
+      "cum": "No arma medicamentos.",
+      "velocidad": "Despacho barato. El costo está en las hojas (cursores + FNK_LIMPIATEXTO por fila + concat @PLANO).",
+      "fallosConfirmados": [
+        "AJUSTE capita no-PGP no regenera SPK_GENERAR_RIPS_JSON:190-199"
+      ],
+      "fallosDescartados": [
+        "Lista CITPAQ distinta: DESAIX :469 es NEDXC,NEDXS,NCDXPS,NSDXPS — igual a la KB"
+      ],
+      "evidencia": [
+        "SPK_GENERAR_RIPS_JSON:156-160",
+        "SPK_GENERAR_RIPS_JSON:190-199",
+        "SPK_GENERAR_RIPS_JSON:469"
+      ],
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_IND",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
-      "actualizado": "2026-10-03T16:40:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "Arma el sobre {rips, xmlFevFile} de factura evento. Nodos: usuario + consultas, procedimientos, urgencias, hospitalizacion, medicamentos, otrosServicios, recienNacidos (FNK_RIPS_JSON_RECIENNACIDOS). Procedencias FTR/HADM/CIT/AUT (SALUD, CI, CE, ONCO, AUT).",
+      "hace": "JSON evento (TIPOFAC≠M, no cápita). Procedencias FTR/HADM/CIT/AUT (SALUD, CI, CE, ONCO, AUT). Nodos usuario + AC/AP/AU/AH/AM/AT + recienNacidos. INNER JOIN RIPS_CP por SER.CODIGORIPS. 30 INNER JOIN RIPS_CP; 7 cursores.",
       "valida": [
         "Existe FTR.N_FACTURA + NOREFERENCIA",
         "DOCIDAFILIADO no vacío",
-        "JSON resultante no NULL"
+        "JSON no NULL"
       ],
       "noValida": [
-        "Particular sí se reporta (el RETURN por IDPLANPART está comentado)",
+        "Particular sí se reporta (RETURN por IDPLANPART comentado)",
         "No exige CUV"
       ],
       "errores": [
-        "no se encontro FTR.N_FACTURA/NOREFERENCIA",
+        "no se encontro FTR.N_FACTURA/NOREFERENCIA :456",
         "DOCIDAFILIADO vacio",
-        "el JSON resultante quedó NULL",
-        "No se encontró la factura UBL dentro del AttachedDocument",
-        "No se encontró la procedencia de la factura"
+        "el JSON resultante quedó NULL"
       ],
       "defaults": [
         "tipoUsuario: AFI.TIPOUSUARIO (2 dígitos) o mapa TIPOAFILIADO (C/J=01, B=02, A=03, Sb=04, SR/SN/S/=05, TA=06, S/RE=07) else 05",
@@ -364,10 +549,11 @@
         "FNK_AttachedDocument",
         "FNK_RIPS_JSON_RECIENNACIDOS",
         "FNK_VALORVARIABLE",
-        "FNK_VALORVARIABLE (RIPS_CODSISPRO)",
-        "SPK_GUARDAR_ARCHIVO (solo si @URL_PATH)"
+        "FNK_LIMPIATEXTO",
+        "FNK_EXPLODE",
+        "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO = {rips, xmlFevFile}. No persiste (lo hace SPK_PERSISTIR_RIPSJSON_ENVIO).",
+      "efecto": "OUTPUT @PLANO = {rips, xmlFevFile}. No persiste.",
       "cambiosRecientes": [
         "SR20260922-001: paquete se detecta por <Value schemeName=\"salud_modalidad_pago.gc\" schemeID=\"01|02|03\"> en el AttachedDocument; modalidad 04 (evento) → @PAQUETE=0.",
         "SR20260922-001: lógica de valores invertida: con @PAQUETE=1 los valores de servicio van en 0; filtro HPRED.PAQUETE IN (0,2,3) si paquete, =0 si no; FTRD.PAQUETE=2 se incluye en paquete.",
@@ -379,16 +565,34 @@
         "tipoOS=05 con cantidad>1 se reporta de a una unidad (valor y copago prorrateados).",
         "Observación: en PREVERSION los acentos del cuerpo aparecen como '?' (p. ej. RAISERROR 'No se encontr? la factura UBL'). Verificar fuera de sqlcmd."
       ],
-      "releido": "2026-10-03 · PREVERSION 2.0.7"
+      "releido": "2026-10-03 · PREVERSION 2.0.7",
+      "tipoUsuario": "Parte de AFI.TIPOUSUARIO 2 dígitos o mapa TIPOAFILIADO → 05 SPK_RIPS_JSON_FTR_IND:483-495. Si PROCEDENCIA=SALUD: HADM.TIPOAFILIADO del evento cuando TIPOADM≠SOAT o el tercero es aseguradora; si no, AFI.TIPOUSUARIO. COALESCE no pisa con NULL; default 05 :508-530.",
+      "cum": "AM: COALESCE(IART.IUM, IART.CODCUM, SER.CODCUM) :1297; SALUD si IUM LEN<10 se ignora y cae a CODCUM/SER.CODCUM/IDSERVICIO :2022. UPDATE posterior :1641-1649: AND/OR sin paréntesis (ISNULL(cod)=' ' OR NOT LIKE '%-%') aplica a todo el JOIN. Si queda vacío tras COALESCE, el código queda vacío o IDSERVICIO.",
+      "ser": "SER.CODIGORIPS → RIPS_CP.ARCHIVO (AC/AM/AP/AT). Sin cuadre se pierde el ítem (INNER JOIN). SER.RIPS_GRUPO default 02, SER.RIPS_CODIGO default 325 :1672-1673. USVGS RIPS_CODSISPRO=SI prioriza SER.CODSISPRO. SER.CODCUPS, SER.TIPOOTRO, SER.MEDICAMENTOS.",
+      "velocidad": "7 cursores (consultas/procedimientos/otros05); FNK_LIMPIATEXTO y FNK_VALORVARIABLE por fila; INNER JOIN RIPS_CP 30 veces; JSON por concatenación. Corrección: set-based INSERT SELECT y LEFT JOIN RIPS_CP + rechazo explícito.",
+      "fallosConfirmados": [
+        "INNER JOIN RIPS_CP pierde servicios sin SER.CODIGORIPS :983+",
+        "UPDATE CUM sin paréntesis :1645-1649",
+        "vrUnitOS=vrServicio=FTRD.VLR_SERVICI con cantidadOS=CIT.CANTIDADC :1147 (unitario no dividido)"
+      ],
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_IND:483-530",
+        "SPK_RIPS_JSON_FTR_IND:1147",
+        "SPK_RIPS_JSON_FTR_IND:1297",
+        "SPK_RIPS_JSON_FTR_IND:1641-1649",
+        "SPK_RIPS_JSON_FTR_IND:1672-1673",
+        "SPK_RIPS_JSON_FTR_IND:2022"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_MAS",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "IXONLINE/SQL PREVERSION 2.0.7 (= liberada)",
-      "actualizado": "2026-10-03T16:40:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON masiva TIPOFAC=M (no AUTPG / no paquete CIT). Usuarios y servicios desde FTRD + CIT/AUT/HADM. conceptoRecaudo arranca 05.",
+      "hace": "JSON masiva TIPOFAC=M (no AUTPG / no CITPAQ). Usuarios y servicios desde FTRD+CIT/AUT/HADM. 7 cursores.",
       "valida": [
         "FTR.TIPOFAC=M",
         "Existe FTRD del CNSFTR"
@@ -398,6 +602,7 @@
       ],
       "llama": [
         "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
       "efecto": "OUTPUT @PLANO. No persiste.",
@@ -407,16 +612,32 @@
         "20260915: RIPS_CODSISPRO=SI prioriza SER.CODSISPRO.",
         "idMIPRES: AUT.IDMIPRESS o FTR.IDMIPRESS."
       ],
-      "releido": "2026-10-03 · PREVERSION 2.0.7"
+      "releido": "2026-10-03 · PREVERSION 2.0.7",
+      "tipoUsuario": "AFI.TIPOUSUARIO si llena; si no, mapa TIPOAFILIADO. No lee HADM.TIPOAFILIADO. SPK_RIPS_JSON_FTR_MAS:526+",
+      "cum": "AM: IART.CODCUM si llena, si no SER.CODCUM; no medicamento → SER.IDSERVICIO :983/:1074.",
+      "ser": "INNER JOIN RIPS_CP. RIPS_CODSISPRO=SI → SER.CODSISPRO.",
+      "velocidad": "Cursores JSCONSUL/JSPROCE + 7 PG_CURSOR al serializar. Corrección: FOR JSON PATH sobre tablas temp.",
+      "fallosConfirmados": [
+        "Hospitalización y urgencias exigen DATEDIFF(HOUR,FECHA,FECHAALTAMED)<=48 :1389 y :1421 — omite >48 h",
+        "LEFT JOIN HCA + HCA.CLASE='HC' AND PROCEDENCIA='QX' en WHERE duplica filas si hay varias HCA :1384-1392",
+        "INNER JOIN RIPS_CP pierde servicios"
+      ],
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_MAS:526",
+        "SPK_RIPS_JSON_FTR_MAS:983",
+        "SPK_RIPS_JSON_FTR_MAS:1389",
+        "SPK_RIPS_JSON_FTR_MAS:1421"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_CAPI",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_FTR_CAPI",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON capita clásica (TIPOCAP 1/2/3). Periodo: FECHACAP_INI / FECHACAP_FIN. TIPOCAP=2 busca factura anterior FACTE=2 del mismo tercero/plan. OUTPUT extra @REPORTE_VALIDACION.",
+      "hace": "JSON cápita clásica TIPOCAP 1/2/3. Periodo FECHACAP_INI/FIN. Comenta SPK_RIPS_PREVALIDAR_FTR_CAPI (objeto ausente en DESAIX) :1991-1994. tipoUsuario inválido → 05 :2061-2071.",
       "valida": [
         "TIPOCAP distinto de 0",
         "TIPOCAP distinto de 4",
@@ -429,18 +650,30 @@
       ],
       "llama": [
         "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
+        "FNK_RIPS_VIA_INGRESO",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. No persiste. No llama PREVALIDAR (solo comentario).",
+      "tipoUsuario": "AFI.TIPOUSUARIO o mapa TIPOAFILIADO :543-555. Si no es 01-13 de 2 dígitos, UPDATE a 05 :2061-2071. No lee HADM.",
+      "cum": "COALESCE SER.CODCUM / IART según segmento FTRDC.",
+      "ser": "INNER JOIN RIPS_CP. FNK_RIPS_VIA_INGRESO en vías :1980-1988.",
+      "velocidad": "VALI_CURSOR + 3 PG_CURSOR. Corrección: set-based + FOR JSON.",
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_CAPI:543-555",
+        "SPK_RIPS_JSON_FTR_CAPI:1991-1994",
+        "SPK_RIPS_JSON_FTR_CAPI:2061-2071"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_CAPMASI",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_FTR_CAPMASI",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON capitación masiva (TIPOCAP=4). Exige FTRDC. Si IDAFILIADO nulo, lo completa desde CIT/AUT/HADM.",
+      "hace": "JSON capitación masiva TIPOCAP=4. Exige FTRDC. Completa IDAFILIADO nulo desde CIT/AUT/HADM. UPDATE HADM.FECHA si alta < ingreso :835-844.",
       "valida": [
         "Existe FTRDC del CNSFTR"
       ],
@@ -449,18 +682,31 @@
       ],
       "llama": [
         "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. Además UPDATE HADM.FECHA de las admisiones FTRDC (efecto colateral).",
+      "tipoUsuario": "AFI.TIPOUSUARIO o mapa TIPOAFILIADO :398-410. No lee HADM.TIPOAFILIADO.",
+      "cum": "Medicamentos desde SER/IART en FTRDC.",
+      "ser": "INNER JOIN RIPS_CP.",
+      "velocidad": "Muchos cursores (JSCONSUL, JSPROCE, 7 PG). Corrección: quitar UPDATE HADM del generador JSON; set-based.",
+      "fallosConfirmados": [
+        "UPDATE HADM.FECHA si DATEDIFF hora/minuto alta-ingreso < 0 SPK_RIPS_JSON_FTR_CAPMASI:835-844"
+      ],
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_CAPMASI:398-410",
+        "SPK_RIPS_JSON_FTR_CAPMASI:835-844"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_PGP",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_FTR_PGP",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON factura PGP. Usuarios/servicios desde FTRDC (CIT/ONCO/APLIM/AUT/HADM). Completa IDAFILIADO nulo. Falla si documento de usuario queda vacío tras normalizar.",
+      "hace": "JSON factura PGP. Usuarios/servicios desde FTRDC (CIT/ONCO/APLIM/AUT/HADM). Completa IDAFILIADO nulo.",
       "valida": [
         "Existe FTRDC",
         "numDocumentoIdentificacion no vacío tras normalizar"
@@ -471,18 +717,28 @@
       ],
       "llama": [
         "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. No persiste.",
+      "tipoUsuario": "AFI.TIPOUSUARIO o mapa TIPOAFILIADO :591-603. No lee HADM.",
+      "cum": "COALESCE(SER.CODCUM, IART.CODCUM, (SELECT TOP 1 CODCUM FROM IART WHERE IDSERVICIO=…)) :1036.",
+      "ser": "INNER JOIN RIPS_CP.",
+      "velocidad": "VALI_CURSOR + 3 PG_CURSOR. Corrección: FOR JSON PATH.",
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_PGP:591-603",
+        "SPK_RIPS_JSON_FTR_PGP:1036"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_AUTPG",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_FTR_AUTPG",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON masiva de programa. Recibe XML base64 (el despachador se lo pasa). Prestador por SED.CODHABILITA. USVGS: RIPS_CITSOLOCUMPLIDA, PREFIJOMEDICAMENTOS, PGP_AUT_SOLODISPENSA.",
+      "hace": "JSON masiva de programa. XML base64 lo pasa el despachador. Prestador SED.CODHABILITA. USVGS RIPS_CITSOLOCUMPLIDA, PREFIJOMEDICAMENTOS, PGP_AUT_SOLODISPENSA.",
       "valida": [
         "FTR.TIPOFAC=M y PROCEDENCIA=AUTPG",
         "Existe FTRD",
@@ -495,18 +751,28 @@
       ],
       "llama": [
         "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. No persiste.",
+      "tipoUsuario": "AUTPG.TIPO_USUARIO del evento si llena; si no AFI.TIPOUSUARIO; si no mapa TIPOAFILIADO :299-313.",
+      "cum": "Medicamentos IART/SER según PGP_AUT_SOLODISPENSA.",
+      "ser": "INNER JOIN RIPS_CP. TGEN MED/TIPO_USUARIO CHECK2=1 sustituye silla por profesional :228-237.",
+      "velocidad": "Cursores de consultas/procedimientos. Corrección: set-based.",
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_AUTPG:299-313",
+        "SPK_RIPS_JSON_FTR_AUTPG:228-237"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_FTR_CITPAQ",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_FTR_CITPAQ",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON masiva de citas paquete: TIPOFAC=M + PAQUETE=1 + PROCEDENCIA=CI (planes NEDXC, NEDXS, NCDXPS y NSDXPS en el despachador desde 2.0.7).",
+      "hace": "JSON masiva citas paquete: TIPOFAC=M + PAQUETE=1 + PROCEDENCIA=CI. El despachador filtra planes NEDXC,NEDXS,NCDXPS,NSDXPS (SPK_GENERAR_RIPS_JSON:469).",
       "valida": [
         "Existe FTRD",
         "PAQUETE=1, PROCEDENCIA=CI, TIPOFAC=M",
@@ -519,22 +785,34 @@
       ],
       "llama": [
         "FNK_VALORVARIABLE",
+        "FNK_LIMPIATEXTO",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. No persiste."
+      "efecto": "OUTPUT @PLANO. No persiste.",
+      "tipoUsuario": "AFI.TIPOUSUARIO si llena; si no mapa TIPOAFILIADO :234.",
+      "cum": "No es el circuito de medicamentos CUM típico (citas paquete).",
+      "ser": "INNER JOIN RIPS_CP + SER.CODCUPS.",
+      "fallosDescartados": [
+        "Lista de planes distinta a la KB: DESAIX confirma NEDXC,NEDXS,NCDXPS,NSDXPS"
+      ],
+      "evidencia": [
+        "SPK_RIPS_JSON_FTR_CITPAQ:234",
+        "SPK_GENERAR_RIPS_JSON:469"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_AJUSTE_IND",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_AJUSTE_IND",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON nota de ajuste evento. Param @CNSGLO (el despachador manda CNSGLO o CNSFCT). Misma familia de nodos que IND + recién nacidos.",
+      "hace": "JSON nota de ajuste evento. Param @CNSGLO (despachador manda CNSGLO o CNSFCT). Misma familia IND + recién nacidos.",
       "valida": [
         "AttachedDocument / UBL de la factura base",
-        "Procedencia de la factura",
-        "IUNI.HOMOLOGO_RIPS en medicamentos"
+        "Procedencia",
+        "IUNI.HOMOLOGO_RIPS"
       ],
       "errores": [
         "No se encontró la factura UBL dentro del AttachedDocument",
@@ -548,14 +826,17 @@
         "FNK_AttachedDocument",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. Persiste el despachador como TIPODOC=AJUSTE → FNOTJSON CLASE=A."
+      "efecto": "OUTPUT @PLANO. Persiste el despachador TIPODOC=AJUSTE → FNOTJSON CLASE=A.",
+      "tipoUsuario": "Misma regla que IND (AFI + SALUD HADM).",
+      "cum": "IART.IUM/CODCUM + SER.CODCUM; exige IUNI.HOMOLOGO_RIPS.",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_AJUSTE_PGP",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_AJUSTE_PGP",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
       "hace": "JSON nota de ajuste PGP. Camino vivo del despachador (RETURN tras EXEC). Exige FTRDC.",
       "valida": [
@@ -568,16 +849,18 @@
         "FNK_VALORVARIABLE",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO."
+      "efecto": "OUTPUT @PLANO.",
+      "tipoUsuario": "AFI (como PGP).",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_NOTAAJUSTE_PGP",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_NOTAAJUSTE_PGP",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON tipo nota-ajuste PGP por CNSFCT de factura (no CNSGLO). Completa FTRDC.IDAFILIADO. USVGS FEVRIPS_INC_SINVLR, FTRDC_EXCUYSERPLAN, EPI_MEDICODEFAULT. En el despachador queda después del RETURN de AJUSTE: no se alcanza por FTR_COL.",
+      "hace": "JSON tipo nota-ajuste PGP por CNSFCT de factura (no CNSGLO). En el despachador queda después del RETURN de AJUSTE: no se alcanza por FTR_COL.",
       "valida": [
         "Existe FTRDC"
       ],
@@ -589,16 +872,18 @@
         "FNK_AttachedDocument",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. Caller vivo no visto en FTR_COL."
+      "efecto": "OUTPUT @PLANO. Caller vivo no visto en FTR_COL.",
+      "tipoUsuario": "AFI.",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_NOTAAJUSTE_MAS",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_NOTAAJUSTE_MAS",
-      "actualizado": "2026-09-12T21:58:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON nota-ajuste sobre factura masiva (TIPOFAC=M). Casi el mismo cuerpo que FTR_MAS (hasta el PRINT). Usuarios/servicios desde FTRD. recienNacidos lo arma en #RECIEN (no llama FNK_RIPS_JSON_RECIENNACIDOS). En el despachador queda después del RETURN de AJUSTE.",
+      "hace": "JSON nota-ajuste sobre factura masiva. Casi el mismo cuerpo que FTR_MAS. #RECIEN propio (no llama FNK). Tras RETURN de AJUSTE en el despachador.",
       "valida": [
         "FTR.TIPOFAC=M",
         "Existe FTRD"
@@ -613,16 +898,18 @@
         "FNK_VALORVARIABLE",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. Caller vivo no visto en FTR_COL."
+      "efecto": "OUTPUT @PLANO. Caller vivo no visto en FTR_COL.",
+      "tipoUsuario": "AFI (como MAS).",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_RIPS_JSON_NDBCR_IND",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_RIPS_JSON_NDBCR_IND",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "JSON NC/ND. tipoNota TOTAL si NC + IDCONCEP_ANULAFTRCE + procedencia FACTURA; si no, PARCIAL. NC parcial no financiero puede recortar un ítem del JSON de la FV (vrServicio >= VR_NOTA). Recién nacidos vía FNK.",
+      "hace": "JSON NC/ND. tipoNota TOTAL si NC + IDCONCEP_ANULAFTRCE + procedencia FACTURA; si no PARCIAL. Recién nacidos vía FNK.",
       "valida": [
         "Existe FTR de la nota",
         "IUNI.HOMOLOGO_RIPS en medicamentos"
@@ -644,16 +931,19 @@
         "FNK_AttachedDocument",
         "SPK_GUARDAR_ARCHIVO (si @URL_PATH)"
       ],
-      "efecto": "OUTPUT @PLANO. Persiste el despachador en FNOTJSON C/D."
+      "efecto": "OUTPUT @PLANO. Persiste el despachador en FNOTJSON C/D.",
+      "tipoUsuario": "Misma familia IND (AFI + SALUD HADM si aplica).",
+      "cum": "IART/SER; exige IUNI.HOMOLOGO_RIPS.",
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_PERSISTIR_RIPSJSON_ENVIO",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_PERSISTIR_RIPSJSON_ENVIO",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "Si JSON o CNSDOC vacío, sale. FACTURA → INSERT/UPDATE FTRJSON.JSON_ENVIO por CNSFCT. NOTACR/NOTADB/AJUSTE → FNOTJSON (CLASE C/D/A) por CNSFNOT.",
+      "hace": "Si JSON o CNSDOC vacío, sale. FACTURA → FTRJSON.JSON_ENVIO. NOTACR/NOTADB/AJUSTE → FNOTJSON CLASE C/D/A.",
       "valida": [
         "JSON_ENVIO y CNSDOC no vacíos",
         "TIPODOC ∈ FACTURA, NOTACR, NOTADB, AJUSTE"
@@ -663,36 +953,51 @@
         "Otro TIPODOC: RETURN sin error"
       ],
       "llama": [],
-      "efecto": "FTRJSON o FNOTJSON.JSON_ENVIO actualizado."
+      "efecto": "INSERT/UPDATE FTRJSON o FNOTJSON.JSON_ENVIO. SPK_PERSISTIR_RIPSJSON_ENVIO:14-51.",
+      "errores": [
+        "no aplica"
+      ],
+      "evidencia": [
+        "SPK_PERSISTIR_RIPSJSON_ENVIO:10-51"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "FNK_RIPS_JSON_USAR_ASYNC",
       "tipo": "FNK",
       "estado": "leido",
-      "fuente": "FNK_RIPS_JSON_USAR_ASYNC",
-      "actualizado": "2026-09-12T21:55:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "Decide si INICIAR_RIPS_JSON_JOB encola. Lee USVGS CONFIG_GENE_FEV (JSON). Sin config o no JSON → 1 (async). 0 si procedencia ∈ procedenciasSinAsync o VR_TOTAL < valorMinimoAsync.",
-      "valida": [],
+      "hace": "Decide cola. Lee USVGS CONFIG_GENE_FEV (JSON). Sin config o no JSON → 1. 0 si procedencia ∈ procedenciasSinAsync o VR_TOTAL < valorMinimoAsync.",
+      "valida": [
+        "no aplica"
+      ],
       "llama": [
         "FNK_VALORVARIABLE (CONFIG_GENE_FEV)"
       ],
-      "efecto": "BIT. No escribe."
+      "efecto": "BIT. No escribe. FNK_RIPS_JSON_USAR_ASYNC:16-77.",
+      "errores": [
+        "no aplica"
+      ],
+      "evidencia": [
+        "FNK_RIPS_JSON_USAR_ASYNC:16-77"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "FNK_RIPS_JSON_RECIENNACIDOS",
       "tipo": "FNK",
       "estado": "leido",
-      "fuente": "FNK_RIPS_JSON_RECIENNACIDOS",
-      "actualizado": "2026-09-12T22:00:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
-      "hace": "Devuelve UN objeto JSON de recién nacido (no array). Solo si hay exactamente 1 fila QXRCN de la admisión. 0 o >1 → ''. Datos: QXRCN + HADM.FECHAALTAMED. Documento/tipo: HCAO PROCESO=RNACIDO (NRODOCUMENTO/TIPODOC) → HCAD; si no, QXRCN.NRODOCUMENTO y CN.",
+      "hace": "Un objeto JSON de RN si hay exactamente 1 QXRCN de la admisión. 0 o >1 → ''. Datos QXRCN+HADM.FECHAALTAMED + HCAO RNACIDO.",
       "valida": [
-        "QXRCN.NOADMISION = @NOADMISION y COUNT=1"
+        "QXRCN.NOADMISION y COUNT=1"
       ],
       "noValida": [
-        "@N_FACTURA, @PROCEDENCA, @TIPODOC y @DOCIDAFILIADO se reciben y no se usan",
-        "No recorre varios recién nacidos"
+        "@N_FACTURA, @PROCEDENCA, @TIPODOC y @DOCIDAFILIADO se reciben y no se usan"
       ],
       "defaults": [
         "tipoDocumentoIdentificacion: HCAO TIPODOC o CN",
@@ -705,24 +1010,465 @@
         "CIE11 y codigoVIDA: siempre null"
       ],
       "llama": [],
-      "efecto": "VARCHAR con un objeto {…} o vacío. El caller lo mete en \"recienNacidos\":[ … ]."
+      "efecto": "VARCHAR objeto {…} o vacío.",
+      "errores": [
+        "no aplica"
+      ],
+      "consultaDesaix": "2026-10-18"
     },
     {
       "nombre": "SPK_GUARDAR_ARCHIVO",
       "tipo": "SPK",
       "estado": "leido",
-      "fuente": "SPK_GUARDAR_ARCHIVO",
-      "actualizado": "2026-09-12T21:58:00",
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
       "gateId": "rips-fev",
       "hace": "Escribe @String a disco (@Path\\@Filename) vía OLE Scripting.FileSystemObject. Las hojas RIPS solo lo llaman si @URL_PATH no es nulo (el despachador manda NULL).",
-      "valida": [],
+      "valida": [
+        "no aplica"
+      ],
       "errores": [
         "Error whilst opening/creating/writing/closing the file + descripción OLE"
       ],
       "llama": [
         "sp_OACreate / sp_OAMethod / sp_OADestroy"
       ],
-      "efecto": "Archivo en servidor SQL. No toca FTRJSON."
+      "efecto": "Archivo en servidor SQL. No toca FTRJSON. SPK_GUARDAR_ARCHIVO:23-54.",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "SPK_RIPS_PREVALIDAR_FTR_CAPI",
+      "tipo": "SPK",
+      "estado": "no_existe",
+      "hace": "No existe en DESAIX PREVERSION ni 2.0.10 (sqlix StopIteration). CAPI solo lo menciona en comentario :1991-1994; no hay EXEC.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "efecto": "no aplica — objeto ausente",
+      "evidencia": [
+        "DESAIX 2026-10-18 no_existe",
+        "SPK_RIPS_JSON_FTR_CAPI:1991-1994 comentario"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "SPK_VALID_CRUZADA_FEV",
+      "tipo": "SPK",
+      "estado": "leido",
+      "gateId": "rips-fev",
+      "hace": "Valida cobertura PLN.TIPOVOLUNTARIO, modalidad CNT/PPT y tipoUsuario contra RIPS_VALID_COBERTURA / RIPS_VALID_COB_MOD / RIPS_VALID_COB_TU. RAISERROR si falla.",
+      "tipoUsuario": "SALUD: HADM.TIPOAFILIADO si TIPOADM≠SOAT o tercero aseguradora; si no AFI.TIPOUSUARIO :113-130. Resto: AFI.TIPOUSUARIO :130.",
+      "valida": [
+        "Cobertura activa en RIPS_VALID_COBERTURA",
+        "Modalidad si @VALIDAR_MODALIDAD=1",
+        "Tipo usuario en RIPS_VALID_COB_TU"
+      ],
+      "errores": [
+        "COB_INVALIDA",
+        "MOD_INVALIDA",
+        "TU_INVALIDO — RAISERROR 16,1 :215"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE (IDTARIFASOAT, TERCATASEGURADORA)"
+      ],
+      "efecto": "No escribe tablas. Interrumpe al llamador si hay errores.",
+      "nota": "Ningún motor FEVRIPS de este lote hace EXEC SPK_VALID_CRUZADA_FEV (solo está el objeto). Posible llamador en cola FEV/XML no visto aquí.",
+      "evidencia": [
+        "SPK_VALID_CRUZADA_FEV:113-130",
+        "SPK_VALID_CRUZADA_FEV:145-215"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "SPQ_RIPS_COL",
+      "tipo": "SPQ",
+      "modelo": "RIPS_COL",
+      "estado": "leido",
+      "hace": "Circuito RIPS planos TXT (RRIPS_*/RIPS/RIPSD), no JSON SISPRO. METODOs CREAR_ENVIO, PREVAL_ENVIO, GENERAR_ENVIO, DESHACER_ENVIO, ENVIAR_RIPS, ELIMINAR_RIPS, tramas Perú, etc.",
+      "valida": [
+        "Es el Control RIPS (/admin/ControlRips), no FEV-RIPS JSON"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "efecto": "Tablas RRIPS_* / RIPS / RIPSD. Llama SPK_RIPS_ELIMINAR en ELIMINAR_RIPS :1231.",
+      "evidencia": [
+        "SPQ_RIPS_COL:45 CREAR_ENVIO",
+        "SPQ_RIPS_COL:1231 ELIMINAR_RIPS"
+      ],
+      "metodos": [
+        {
+          "id": "ELIMINAR_RIPS",
+          "estado": "leido",
+          "hace": "Llama SPK_RIPS_ELIMINAR del envío TXT.",
+          "valida": [
+            "no aplica"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Borra RRIPS_* y resetea RIPS.ESTADO.",
+          "evidencia": [
+            "SPQ_RIPS_COL:1231"
+          ]
+        }
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "SPK_RIPS_ELIMINAR",
+      "tipo": "SPK",
+      "estado": "leido",
+      "hace": "Borra RRIPS_AF/AD/US/CT/AC/AP/AH/AU/AM/AN/AT del ENVIO (Colombia) o TRAMA_* (Perú). Limpia FTRD.CODEVAL. Si RIPSDESHACERTODO=SI borra RIPSD. UPDATE RIPS ENVIADO=N ESTADO=01.",
+      "valida": [
+        "ENVIO + IDTERCERO"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE (IXCOUNTRY, RIPSDESHACERTODO)"
+      ],
+      "efecto": "DELETE RRIPS_*; UPDATE FTRD.CODEVAL; UPDATE RIPS. SPK_RIPS_ELIMINAR:16-56.",
+      "evidencia": [
+        "SPK_RIPS_ELIMINAR:16-56"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_RIPS_CONCEPTO_RECAUDO",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "conceptoRecaudo 01/02/05: sin copago → 05; TCOPAGO 02 o MOCCD Moderadora → 02; TCOPAGO 01 → 01; HADM vacío/05 → 01; CONCEPTO_PLAN 01/02 → ese; else 01.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR(2). No escribe. FNK_RIPS_CONCEPTO_RECAUDO:14-37.",
+      "evidencia": [
+        "FNK_RIPS_CONCEPTO_RECAUDO:14-37"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_RIPS_VIA_INGRESO",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Normaliza vía a 01-14 SISPRO. Vacío/null → 01. Un dígito → 0N. Fuera de catálogo → 01.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR(2). FNK_RIPS_VIA_INGRESO:14-44.",
+      "evidencia": [
+        "FNK_RIPS_VIA_INGRESO:14-44"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_RIPS_FECHA_EN_PERIODO",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Clampa una fecha-hora string al periodo @FECHAINICAP/@FECHAFINCAP (cápita/PGP).",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR(16) o el original si no parsea. FNK_RIPS_FECHA_EN_PERIODO:17-21.",
+      "evidencia": [
+        "FNK_RIPS_FECHA_EN_PERIODO:17-40"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_JSON_EDADYTIPODOC",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Sugiere tipo de documento por edad (CN/RC/TI/CC). Fuera de esos tipos → 'true'. Fechas inválidas → 'ERROR'.",
+      "valida": [
+        "FechaNacimiento y FechaAtencion no nulas y atención ≥ nacimiento"
+      ],
+      "errores": [
+        "ERROR si fechas inválidas"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR: 'true' | 'RC' | 'TI' | 'CC' | 'ERROR'. FNK_JSON_EDADYTIPODOC:13-40.",
+      "evidencia": [
+        "FNK_JSON_EDADYTIPODOC:13-40"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_EXPLODE",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Table-valued: parte un string por delimitador. Usado al normalizar CUM con guiones (IND :1651).",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "Tabla WORDID/WORD. No escribe maestros.",
+      "evidencia": [
+        "FNK_EXPLODE:1-20",
+        "SPK_RIPS_JSON_FTR_IND:1651"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_GETDATE",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "GETDATE truncado a minuto. Si USVGS FECHAACTUALSQL='-5' usa zona -05:00.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [
+        "FNK_VALORVARIABLE"
+      ],
+      "efecto": "datetime. No escribe.",
+      "evidencia": [
+        "FNK_GETDATE:8-13"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_VALORVARIABLE",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Lee USVGS.DATO por IDVARIABLE. Las hojas RIPS la llaman muchas veces por ejecución (cada fila en algunos predicados).",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR. No escribe. FNK_VALORVARIABLE:8-12.",
+      "velocidad": "Escalar por llamada. Corrección: leer variables una vez al inicio (ya lo hacen parcialmente IND :459-470).",
+      "evidencia": [
+        "FNK_VALORVARIABLE:8-12"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_LIMPIATEXTO",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Quita acentos y deja solo el alfabeto @regex (WHILE carácter a carácter). Autorizaciones, CUM, nombres.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR. No escribe. Cuello de botella por fila.",
+      "velocidad": "WHILE por carácter + por llamada. Corrección: TRANSLATE/REPLACE set-based o persistir limpio al grabar el dato.",
+      "evidencia": [
+        "FNK_LIMPIATEXTO:1-40"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "FNK_AttachedDocument",
+      "tipo": "FNK",
+      "estado": "leido",
+      "hace": "Arma AttachedDocument DIAN (FV/NC/ND) con CUFE/CUDE. El despachador lo pasa a xmlFevFile (base64).",
+      "valida": [
+        "CNSDOC + TIPODOC FV/NC/ND"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "VARCHAR XML. No persiste RIPS.",
+      "evidencia": [
+        "FNK_AttachedDocument:35-40"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "VWK_HCADX_PIVOT",
+      "tipo": "VWK",
+      "estado": "leido",
+      "hace": "Pivota HCADX.IDDX 1-10 por CONSECUTIVO (DX1..DX10). Apoyo a diagnósticos relacionados.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "Vista. No escribe. VWK_HCADX_PIVOT:1-30.",
+      "evidencia": [
+        "VWK_HCADX_PIVOT:1-30"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "VWK_CARGOS_HADMAUTCIT_ART",
+      "tipo": "VWK",
+      "estado": "leido",
+      "hace": "Une cargos CIT/AUT/HADM con SER/AFI (CODCUPS, cantidades, copago). Apoyo a relación de servicios, no al JSON FEV.",
+      "valida": [
+        "no aplica"
+      ],
+      "errores": [
+        "no aplica"
+      ],
+      "llama": [],
+      "efecto": "Vista. No escribe.",
+      "evidencia": [
+        "VWK_CARGOS_HADMAUTCIT_ART:1-25"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "SPQ_JSON",
+      "tipo": "SPQ",
+      "modelo": "JSON",
+      "estado": "leido",
+      "hace": "Dispatcher genérico: EXEC SPQ_{MODELO} @JSON. Log API_LOG (o LOG_KRY si Perú/ARTmédica). CATCH → KO + ERROR.",
+      "valida": [
+        "ISJSON(@JSON)=1"
+      ],
+      "errores": [
+        "Json: Formato Erroneo",
+        "KO + ERROR_MESSAGE del SPQ destino"
+      ],
+      "llama": [
+        "SPQ_{MODELO} dinámico"
+      ],
+      "efecto": "INSERT API_LOG. SPQ_Json:14-83.",
+      "evidencia": [
+        "SPQ_JSON:14-83"
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
+    },
+    {
+      "nombre": "SPQ_PROCESO_JOB",
+      "tipo": "SPQ",
+      "modelo": "PROCESO_JOB",
+      "estado": "leido",
+      "hace": "Cola genérica. INICIAR_JOB inserta PROCESO_JOB PENDIENTE (consecutivo @RPDX). Usado por INICIAR_RIPS_JSON_JOB.",
+      "valida": [
+        "TIPO no vacío",
+        "usuario con compañía"
+      ],
+      "errores": [
+        "TIPO es requerido para iniciar el proceso.",
+        "Usuario sin compañía asignada.",
+        "CNS es requerido."
+      ],
+      "llama": [
+        "SPK_GENCONSECUTIVO"
+      ],
+      "efecto": "INSERT/UPDATE PROCESO_JOB. SPQ_PROCESO_JOB:41-89.",
+      "evidencia": [
+        "SPQ_PROCESO_JOB:41-89"
+      ],
+      "metodos": [
+        {
+          "id": "INICIAR_JOB",
+          "estado": "leido",
+          "hace": "Encola job PENDIENTE.",
+          "valida": [
+            "TIPO",
+            "USUSU.COMPANIA"
+          ],
+          "errores": [
+            "TIPO es requerido para iniciar el proceso.",
+            "Usuario sin compañía asignada."
+          ],
+          "efecto": "INSERT PROCESO_JOB ESTADO=PENDIENTE.",
+          "evidencia": [
+            "SPQ_PROCESO_JOB:41-89"
+          ]
+        },
+        {
+          "id": "ACTUALIZAR_ESTADO",
+          "estado": "leido",
+          "hace": "UPDATE ESTADO / ERROR_MESSAGE / RESULTADO_JSON.",
+          "valida": [
+            "CNS"
+          ],
+          "errores": [
+            "CNS es requerido."
+          ],
+          "efecto": "UPDATE PROCESO_JOB.",
+          "evidencia": [
+            "SPQ_PROCESO_JOB:95"
+          ]
+        },
+        {
+          "id": "CONSULTAR_ESTADO_JOB",
+          "estado": "leido",
+          "hace": "SELECT estado del job.",
+          "valida": [
+            "CNS"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "SELECT. No escribe.",
+          "evidencia": [
+            "SPQ_PROCESO_JOB:142"
+          ]
+        }
+      ],
+      "fuente": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada 2.0.10; IDANT 2.0.9)",
+      "actualizado": "2026-10-18T13:30:00",
+      "consultaDesaix": "2026-10-18"
     }
   ]
 }

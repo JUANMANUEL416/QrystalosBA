@@ -1,0 +1,182 @@
+{
+  "tramo": "fevrips-generacion",
+  "nombre": "FEV-RIPS: generar JSON por procedencia",
+  "actualizado": "2026-10-18",
+  "fuenteSql": "IXONLINE/SQL PREVERSION 2.0.10 (= liberada)",
+  "pantalla": "ValidacionesFEVRipsComponent · useRipsJsonAsync · FEVRIPSMasivo",
+  "documentoOrigen": {
+    "tabla": "FTRJSON",
+    "claves": ["CNSFCT"],
+    "detalle": "Sobre {rips, xmlFevFile}. Notas en FNOTJSON (C/D/A). Precondición FTR.FACTE=2."
+  },
+  "noEs": [
+    "No es DIAN (FACTE / NOTI_DIAN).",
+    "No es RIPS plano TXT (SPQ_RIPS_COL / ControlRips).",
+    "No radica FCXC ni genera CUV (eso es fevrips-envio)."
+  ],
+  "nodos": [
+    {
+      "id": "N0-wrapper",
+      "orden": 0,
+      "nombre": "Pantalla: RIPS_JSON síncrono o job",
+      "sp": "SPQ_FTR_COL · RIPS_JSON / INICIAR_RIPS_JSON_JOB",
+      "metodo": "RIPS_JSON",
+      "llama": ["FNK_RIPS_JSON_USAR_ASYNC", "SPQ_PROCESO_JOB"],
+      "llamaSiguiente": ["N1-async"],
+      "ordenEstado": "evidenciado",
+      "efecto": "Si CONFIG_GENE_FEV pide async, encola PROCESO_JOB TIPO=RIPS_JSON. Si no, el FE llama RIPS_JSON síncrono.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_FTR_COL", "linea": 4190, "nota": "INICIAR_RIPS_JSON_JOB."},
+        {"archivo": "SPQ_FTR_COL", "linea": 4305, "nota": "RIPS_JSON síncrono."},
+        {"archivo": "FNK_RIPS_JSON_USAR_ASYNC", "linea": 16, "nota": "CONFIG_GENE_FEV."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_FTR_COL", "metodo": "INICIAR_RIPS_JSON_JOB", "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPQ_FTR_COL", "metodo": "RIPS_JSON", "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N1-async",
+      "orden": 1,
+      "nombre": "Ejecutar job (o caer al síncrono)",
+      "sp": "SPQ_FTR_COL · EJECUTAR_RIPS_JSON_ASYNC",
+      "metodo": "EJECUTAR_RIPS_JSON_ASYNC",
+      "llama": ["SPK_GENERAR_RIPS_JSON"],
+      "llamaSiguiente": ["N2-despachar"],
+      "ordenEstado": "evidenciado",
+      "efecto": "PROCESANDO y luego COMPLETADO si no hay excepción. Un KO de GENERAR por result set (sin RAISERROR) deja el job COMPLETADO.",
+      "evidenciaOrden": [
+        {"archivo": "SPQ_FTR_COL", "linea": 4251, "nota": "EJECUTAR_RIPS_JSON_ASYNC."},
+        {"archivo": "SPQ_FTR_COL", "linea": 4287, "nota": "UPDATE COMPLETADO tras EXEC sin CATCH."}
+      ],
+      "fichas": [
+        {"sp": "SPQ_FTR_COL", "metodo": "EJECUTAR_RIPS_JSON_ASYNC", "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N2-despachar",
+      "orden": 2,
+      "nombre": "Despachar hoja por TIPODOC / cápita / TIPOFAC",
+      "sp": "SPK_GENERAR_RIPS_JSON",
+      "metodo": null,
+      "llama": [
+        "SPK_RIPS_JSON_FTR_IND",
+        "SPK_RIPS_JSON_FTR_MAS",
+        "SPK_RIPS_JSON_FTR_PGP",
+        "SPK_RIPS_JSON_FTR_CAPI",
+        "SPK_RIPS_JSON_FTR_CAPMASI",
+        "SPK_RIPS_JSON_FTR_AUTPG",
+        "SPK_RIPS_JSON_FTR_CITPAQ",
+        "SPK_RIPS_JSON_AJUSTE_IND",
+        "SPK_RIPS_JSON_AJUSTE_PGP",
+        "SPK_RIPS_JSON_NDBCR_IND"
+      ],
+      "llamaSiguiente": ["N3-evento", "N4-masiva", "N5-capita", "N6-notas"],
+      "ordenEstado": "evidenciado",
+      "efecto": "Elige hoja. AJUSTE capita no-PGP no regenera (devuelve JSON persistido). CITPAQ si IDPLAN IN NEDXC,NEDXS,NCDXPS,NSDXPS.",
+      "evidenciaOrden": [
+        {"archivo": "SPK_GENERAR_RIPS_JSON", "linea": 190, "nota": "AJUSTE cápita no-PGP: SELECT del JSON actual."},
+        {"archivo": "SPK_GENERAR_RIPS_JSON", "linea": 469, "nota": "CITPAQ planes NEDXC/NEDXS/NCDXPS/NSDXPS."}
+      ],
+      "fichas": [
+        {"sp": "SPK_GENERAR_RIPS_JSON", "metodo": null, "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N3-evento",
+      "orden": 3,
+      "nombre": "Hoja evento (IND)",
+      "sp": "SPK_RIPS_JSON_FTR_IND",
+      "metodo": null,
+      "llama": ["FNK_RIPS_JSON_RECIENNACIDOS", "FNK_LIMPIATEXTO"],
+      "llamaSiguiente": ["N7-persistir"],
+      "ordenEstado": "evidenciado",
+      "efecto": "JSON usuario+AC/AP/AU/AH/AM/AT. tipoUsuario AFI; SALUD puede tomar HADM.TIPOAFILIADO. INNER JOIN RIPS_CP.",
+      "evidenciaOrden": [
+        {"archivo": "SPK_RIPS_JSON_FTR_IND", "linea": 483, "nota": "tipoUsuario AFI + mapa TIPOAFILIADO."},
+        {"archivo": "SPK_RIPS_JSON_FTR_IND", "linea": 508, "nota": "SALUD: HADM.TIPOAFILIADO vs AFI."},
+        {"archivo": "SPK_RIPS_JSON_FTR_IND", "linea": 1645, "nota": "UPDATE CUM sin paréntesis."}
+      ],
+      "fichas": [
+        {"sp": "SPK_RIPS_JSON_FTR_IND", "metodo": null, "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N4-masiva",
+      "orden": 4,
+      "nombre": "Hojas masiva / AUTPG / CITPAQ",
+      "sp": "SPK_RIPS_JSON_FTR_MAS",
+      "metodo": null,
+      "llama": ["SPK_RIPS_JSON_FTR_AUTPG", "SPK_RIPS_JSON_FTR_CITPAQ"],
+      "llamaSiguiente": ["N7-persistir"],
+      "ordenEstado": "evidenciado",
+      "efecto": "MAS: tipoUsuario AFI; omite hospitalización >48 h. AUTPG: AUTPG.TIPO_USUARIO. CITPAQ: planes fijos del despachador.",
+      "evidenciaOrden": [
+        {"archivo": "SPK_RIPS_JSON_FTR_MAS", "linea": 1421, "nota": "DATEDIFF<=48 h hospitalización."},
+        {"archivo": "SPK_RIPS_JSON_FTR_AUTPG", "linea": 299, "nota": "tipoUsuario AUTPG.TIPO_USUARIO luego AFI."}
+      ],
+      "fichas": [
+        {"sp": "SPK_RIPS_JSON_FTR_MAS", "metodo": null, "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPK_RIPS_JSON_FTR_AUTPG", "metodo": null, "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPK_RIPS_JSON_FTR_CITPAQ", "metodo": null, "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N5-capita",
+      "orden": 5,
+      "nombre": "Hojas PGP / CAPI / CAPMASI",
+      "sp": "SPK_RIPS_JSON_FTR_PGP",
+      "metodo": null,
+      "llama": ["SPK_RIPS_JSON_FTR_CAPI", "SPK_RIPS_JSON_FTR_CAPMASI"],
+      "llamaSiguiente": ["N7-persistir"],
+      "ordenEstado": "evidenciado",
+      "efecto": "tipoUsuario AFI. CAPI corrige tipoUsuario inválido a 05. CAPMASI UPDATE HADM.FECHA si alta < ingreso. PREVALIDAR_FTR_CAPI no existe en DESAIX.",
+      "evidenciaOrden": [
+        {"archivo": "SPK_RIPS_JSON_FTR_CAPI", "linea": 2061, "nota": "tipoUsuario inválido → 05."},
+        {"archivo": "SPK_RIPS_JSON_FTR_CAPMASI", "linea": 835, "nota": "UPDATE HADM.FECHA."}
+      ],
+      "fichas": [
+        {"sp": "SPK_RIPS_JSON_FTR_PGP", "metodo": null, "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPK_RIPS_JSON_FTR_CAPI", "metodo": null, "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPK_RIPS_JSON_FTR_CAPMASI", "metodo": null, "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N6-notas",
+      "orden": 6,
+      "nombre": "Notas NC/ND/ajuste",
+      "sp": "SPK_RIPS_JSON_NDBCR_IND",
+      "metodo": null,
+      "llama": ["SPK_RIPS_JSON_AJUSTE_IND", "SPK_RIPS_JSON_AJUSTE_PGP"],
+      "llamaSiguiente": ["N7-persistir"],
+      "ordenEstado": "evidenciado",
+      "efecto": "NC/ND: NDBCR_IND. AJUSTE evento: AJUSTE_IND. AJUSTE PGP: AJUSTE_PGP. AJUSTE cápita no-PGP no llega aquí (el despachador ya hizo RETURN).",
+      "evidenciaOrden": [
+        {"archivo": "SPK_GENERAR_RIPS_JSON", "linea": 219, "nota": "NOTACR/NOTADB → NDBCR_IND."},
+        {"archivo": "SPK_GENERAR_RIPS_JSON", "linea": 166, "nota": "AJUSTE PGP → AJUSTE_PGP."}
+      ],
+      "fichas": [
+        {"sp": "SPK_RIPS_JSON_NDBCR_IND", "metodo": null, "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPK_RIPS_JSON_AJUSTE_IND", "metodo": null, "proceso": "rips-json", "estado": "leido"},
+        {"sp": "SPK_RIPS_JSON_AJUSTE_PGP", "metodo": null, "proceso": "rips-json", "estado": "leido"}
+      ]
+    },
+    {
+      "id": "N7-persistir",
+      "orden": 7,
+      "nombre": "Persistir JSON_ENVIO",
+      "sp": "SPK_PERSISTIR_RIPSJSON_ENVIO",
+      "metodo": null,
+      "llamaSiguiente": [],
+      "llamaAnterior": ["N3-evento", "N4-masiva", "N5-capita", "N6-notas"],
+      "ordenEstado": "evidenciado",
+      "efecto": "FACTURA → FTRJSON. NOTACR/NOTADB/AJUSTE → FNOTJSON C/D/A. No escribe CUV.",
+      "evidenciaOrden": [
+        {"archivo": "SPK_PERSISTIR_RIPSJSON_ENVIO", "linea": 14, "nota": "FTRJSON / FNOTJSON."}
+      ],
+      "fichas": [
+        {"sp": "SPK_PERSISTIR_RIPSJSON_ENVIO", "metodo": null, "proceso": "rips-json", "estado": "leido"}
+      ]
+    }
+  ]
+}

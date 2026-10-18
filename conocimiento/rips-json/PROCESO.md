@@ -1,6 +1,6 @@
 # Proceso: Facturación · RIPS JSON / FEVRIPS
 
-**Estado:** parcial (árbol de generación cerrado 2026-09-12)  
+**Estado:** completo (contrastado DESAIX PREVERSION = 2.0.10 el 2026-10-18)  
 **Módulo:** RIPS_JSON · Administrativo → Facturación / FEVRIPS  
 **Hermano:** `conocimiento/facturacion/` (armar FTR, DIAN, empaque, radicar). Aquí solo el JSON SISPRO.
 
