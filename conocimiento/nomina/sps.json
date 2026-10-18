@@ -835,9 +835,9 @@
       "nombre": "SPQ_PROCESO_VACACIONES",
       "tipo": "SPQ",
       "estado": "leido",
-      "fuente": "sql/SPQ_PROCESO_VACACIONES.sql (leído 2026-10-17; versionado en 9ec647a)",
+      "fuente": "sql/SPQ_PROCESO_VACACIONES.sql (IXONLINE/SQL, PREVERSION = última Cerrada 2.0.10, idénticas, leído 2026-10-17)",
       "actualizado": "2026-10-17",
-      "nota": "Es el que ejecuta SPQ_LIQUIDACION (GENERATE_NOMINA CLOSE → 'CIERRE', línea 160; OPEN_NOMINA → 'ABRE', línea 233). Cuerpo distinto de SPK_PROCESO_VACACIONES (sql_refe/0100016359, el que llaman SPQ_NOM_VACACIONES, SPQ_NOM_NEMPV y SPK_CALCULAR_RETIROS). Confirmar en DESAIX qué versión corre. Regla de negocio (confirmada por el usuario 2026-10-17): la provisión de vacaciones la calculan los conceptos de nómina; el cierre (SPQ_PROCESO_VACACIONES · CIERRE) solo acumula los días disponibles del empleado (NEMPV.DIASG) y ABRE los revierte. Pendiente confirmar en DESAIX: la versión de sql/ no suma días (con @CNSPAGO y @NUMDOCR NULL el cursor filtra NEMP.NUMDOC = NULL y no trae empleados).",
+      "nota": "Es el que ejecuta SPQ_LIQUIDACION (GENERATE_NOMINA CLOSE → 'CIERRE', línea 160; OPEN_NOMINA → 'ABRE', línea 233). Cuerpo distinto de SPK_PROCESO_VACACIONES (sql_refe/0100016359, el que llaman SPQ_NOM_VACACIONES, SPQ_NOM_NEMPV y SPK_CALCULAR_RETIROS). Confirmado en DESAIX el 2026-10-17: PREVERSION y la Cerrada 2.0.10 son idénticas. Regla de negocio (confirmada por el usuario 2026-10-17): la provisión de vacaciones la calculan los conceptos de nómina; el cierre (SPQ_PROCESO_VACACIONES · CIERRE) solo acumula los días disponibles del empleado (NEMPV.DIASG) y ABRE los revierte. Con @CNSPAGO y @NUMDOCR NULL el cursor filtra NEMP.NUMDOC = NULL y no trae empleados, así que ese camino no suma días.",
       "tablas": [
         "NEMP",
         "NEDIA",
@@ -856,7 +856,7 @@
             "@PROCESO='CIERRE'",
             "@NUMDOCR (opcional)"
           ],
-          "hace": "Pensado para acumular días disponibles al cerrar: por cada empleado del cursor recalcula sus períodos NEMPV (crea ítems faltantes, prorratea DIASG, ESTADO, DIASP desde NEMPVD) y suma NDIAS/12 a DIASG del último ítem. Pendiente confirmar en DESAIX: la versión de sql/ no suma días (con @CNSPAGO y @NUMDOCR NULL el cursor filtra NEMP.NUMDOC = NULL y no trae empleados).",
+          "hace": "Pensado para acumular días disponibles al cerrar: por cada empleado del cursor recalcula sus períodos NEMPV (crea ítems faltantes, prorratea DIASG, ESTADO, DIASP desde NEMPVD) y suma NDIAS/12 a DIASG del último ítem. Confirmado en DESAIX (PREVERSION = Cerrada 2.0.10): con @CNSPAGO y @NUMDOCR NULL el cursor filtra NEMP.NUMDOC = NULL y no trae empleados, así que no suma días.",
           "valida": [
             "Con @CNSPAGO: cursor de empleados con NIEPE en el período, NEDIA IDEVENTO 'RET' en el período y NEMP.NUMDOC = @NUMDOCR",
             "Sin @CNSPAGO: empleados NEMP Activo (todos o solo @NUMDOCR)",
@@ -889,7 +889,7 @@
             "@PROCESO='ABRE'",
             "@NUMDOCR (opcional)"
           ],
-          "hace": "Reversa de CIERRE: recalcula NEMPV del empleado y resta NDIAS/12 de DIASG del último ítem. Mismo cursor: con @NUMDOCR NULL no trae empleados (pendiente confirmar en DESAIX).",
+          "hace": "Reversa de CIERRE: recalcula NEMPV del empleado y resta NDIAS/12 de DIASG del último ítem. Mismo cursor: con @NUMDOCR NULL no trae empleados. Confirmado en DESAIX (PREVERSION = Cerrada 2.0.10).",
           "valida": [
             "Con @CNSPAGO: cursor de empleados con NIEPE en el período, NEDIA IDEVENTO 'RET' en el período y NEMP.NUMDOC = @NUMDOCR",
             "Sin @CNSPAGO: empleados NEMP Activo (todos o solo @NUMDOCR)",
@@ -4401,6 +4401,106 @@
           "capaId": "03-alimentadores",
           "gateId": "vacaciones-alimenta",
           "ventanaFe": "Vacaciones · anular justificación (pantalla no confirmada)"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_LIQUIDAR_NOMI",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_LIQUIDAR_NOMI.sql (IXONLINE/SQL, PREVERSION = última Cerrada 2.0.10, idénticas, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
+      "nota": "No es FNK_LIQUIDAR_NOMI_NEMP. Esta no recibe NUMDOC: arma todas las líneas liquidables del CNSPAGO. La llama SPQ_LIQUIDAR_NOMI.",
+      "tablas": ["NPER", "NPPAG", "NEMPF", "NEMPFD", "NEMP", "TER", "NCON", "NCARNG", "NCAR", "AFU", "CEN", "NPRF", "NPLA", "PRS", "NEMPDA"],
+      "metodos": [
+        {
+          "id": "LIQUIDAR_NOMI",
+          "estado": "leido",
+          "hace": "Función de tabla. Lee FECHAINI y FECHAFIN del CNSPAGO y devuelve una fila por línea NEMPFD con LIQUIDAR=Si, con empleado, área, cargo, concepto, valores y parafiscal. El histórico sale de FNK_INFO_NEMPHIS a la fecha fin, no de FNK_INFO_NEMPHIS_NEMP.",
+          "valida": [
+            "Solo NEMPFD.LIQUIDAR = Si",
+            "NEMPHIS.FECHAMOV menor o igual a la fecha fin del período"
+          ],
+          "noValida": [
+            "No filtra un NUMDOC: devuelve todos los empleados del período",
+            "No recalcula: copia lo que ya está en NEMPFD",
+            "No exige NPER.CERRADO"
+          ],
+          "errores": "no aplica",
+          "llama": ["FNK_INFO_NEMPHIS", "FNK_NOMBRE_MES"],
+          "efecto": "Tabla con las líneas que SPQ_LIQUIDAR_NOMI vuelca a NIEPE/NIEPED. Completa CODFINANCIACION desde PRS y, si no, desde NEMPDA.",
+          "capaId": "02-operacion",
+          "gateId": "liquidacion"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_ANTIGUEDAD",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_ANTIGUEDAD.sql (IXONLINE/SQL, PREVERSION = última Cerrada 2.0.10, idénticas, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
+      "metodos": [
+        {
+          "id": "ANTIGUEDAD",
+          "estado": "leido",
+          "hace": "DATEDIFF entre dos fechas. Formato D días, M meses, A años.",
+          "valida": ["El formato es D, M o A"],
+          "noValida": ["Otro formato devuelve NULL. No redondea ni usa el calendario 360."],
+          "errores": "no aplica",
+          "llama": [],
+          "efecto": "Un número. Lo usa el motor cuando la definición valida antigüedad.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALOR_NCONDC",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALOR_NCONDC.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
+      "nota": "Versión anterior a FNK_VALOR_NCONDC_RUN. Llama FNK_CALCULO_VALORCONCEPTO_NOM y mira NEMPFD ya grabado, no el staging de la sesión.",
+      "tablas": ["NCONDC", "NEMPFD"],
+      "metodos": [
+        {
+          "id": "VALOR_NCONDC",
+          "estado": "leido",
+          "hace": "Suma el valor empleado de cada concepto base de NCONDC. Si REQUIERELIQ es 1, solo calcula la base cuando ya hay línea de ese concepto en NEMPFD del período.",
+          "valida": ["REQUIERELIQ = 1 exige una fila previa en NEMPFD"],
+          "noValida": [
+            "No usa NEMPFD_RUN ni HOST_NAME",
+            "No trata el retiro con FNK_VALOR_CONCEP_RETIRO_RUN"
+          ],
+          "errores": "no aplica",
+          "llama": ["FNK_CALCULO_VALORCONCEPTO_NOM"],
+          "efecto": "Un escalar. El motor vigente de prenómina usa FNK_VALOR_NCONDC_RUN, no esta.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina"
+        }
+      ]
+    },
+    {
+      "nombre": "FNK_VALOR_NCONDTC",
+      "tipo": "FNK",
+      "estado": "leido",
+      "fuente": "sql/FNK_VALOR_NCONDTC.sql (IXONLINE/SQL, leído 2026-10-17)",
+      "actualizado": "2026-10-17",
+      "nota": "Versión anterior a FNK_VALOR_NCONDTC_RUN. La operación / no protege la división por cero.",
+      "tablas": ["NCONDTC"],
+      "metodos": [
+        {
+          "id": "VALOR_NCONDTC",
+          "estado": "leido",
+          "hace": "Recorre NCONDTC y acumula valor empleado del concepto base por el factor, con operación +, -, * o /.",
+          "valida": [],
+          "noValida": ["La división no comprueba que el valor sea distinto de cero"],
+          "errores": "no aplica (la división por cero la lanza el motor de SQL)",
+          "llama": ["FNK_CALCULO_VALORCONCEPTO_NOM"],
+          "efecto": "Un escalar. El motor vigente usa FNK_VALOR_NCONDTC_RUN.",
+          "capaId": "02-operacion",
+          "gateId": "prenomina"
         }
       ]
     }
