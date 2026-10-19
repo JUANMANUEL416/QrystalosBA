@@ -507,10 +507,7 @@ def append_chat(id_caso: str, autor: str, texto: str) -> None:
     if es_soporte_consulta(id_caso):
         import soporte_consultas as sc
 
-        if autor == "sistema":
-            sc.append_chat(id_caso, "soporte", f"[sistema] {texto}")
-        else:
-            sc.append_chat(id_caso, autor, texto)
+        sc.append_chat(id_caso, autor, texto)
         return
     msg = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
@@ -842,6 +839,7 @@ Lea del disco, en este orden:
 Reglas:
 - Español. NO implemente en Qrystalos2. NO escriba en la base del cliente ni ejecute procedimientos.
 - Si meta.json trae validarEnBase en true, mida en la base antes de cerrar la respuesta. Use servidorId y baseDatos. La conexión es solo lectura: scripts/auditoria_procesos.py (_resolve_server_db y _sqlcmd_query), solo SELECT o SET NOCOUNT. No imprima credenciales ni las copie al chat ni al PDF. Si validarEnBase es true y falta servidor o base, pídalos y deténgase. Si validarEnBase no está marcado, no conecte salvo que el chat lo pida.
+- **Límite de mediciones:** máximo 3 intentos de conexión a la base y 5 minutos totales. Si la consulta falla o no completa tras 3 intentos, detenga las mediciones, informe el problema en chat y deje la consulta SQL sugerida en respuestaOficial para que soporte la ejecute manualmente. No reintente indefinidamente.
 - Incorpore conteos y dos o tres filas clave en respuestaOficial. No pida al coordinador que corra sqlcmd ni que pegue resultados: esa medición es suya. Si no hay servidor para ese cliente, dígalo y deje las consultas; no invente filas.
 - Escriba en data/soporte-consultas/{id_caso}/chat.json (autor: agente, campo en). No borre mensajes previos.
 - Actualice data/soporte-consultas/{id_caso}/meta.json → **respuestaOficial** con el texto listo para entregar (informe claro: reportes, pantallas, pasos DIAN, criterios de inclusión/exclusión de copagos, etc.).

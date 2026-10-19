@@ -182,28 +182,52 @@ window.QrysSoporteConsultas = (function () {
     if (!box || !label) return;
     if (!bot || !bot.estado) {
       box.classList.add("hidden");
+      habilitarControlesChat(true);
       return;
     }
     const st = bot.estado;
     box.classList.remove("hidden", "is-working", "is-error");
-    if (st === "trabajando" && bot.pidVivo) {
+    const trabajando = (st === "trabajando" && bot.pidVivo);
+    
+    if (trabajando) {
       box.classList.add("is-working");
       label.textContent = "Agente trabajando";
       if (detail) detail.textContent = "El chat se actualiza solo.";
+      habilitarControlesChat(false);
       return;
     }
     if (st === "listo") {
       label.textContent = "Agente listo";
       if (detail) detail.textContent = "Puede escribir o pedir un ajuste.";
+      habilitarControlesChat(true);
       return;
     }
     if (st === "error" || st === "sin_clave") {
       box.classList.add("is-error");
       label.textContent = st === "sin_clave" ? "Falta API key" : "Agente con error";
       if (detail) detail.textContent = bot.error || "Revise bot.log y .env";
+      habilitarControlesChat(true);
       return;
     }
     box.classList.add("hidden");
+    habilitarControlesChat(true);
+  }
+
+  function habilitarControlesChat(habilitar) {
+    const btn = $("scBtnChatEnviar");
+    const ajuste = $("scBtnPedirAgente");
+    const input = $("scChatInput");
+    const img = $("scBtnAdjuntar");
+    const analisis = $("scBtnAnalisis");
+    const ilu = $("scBtnIlustracion");
+    const req = $("scBtnRequerimiento");
+    if (btn) btn.disabled = !habilitar;
+    if (ajuste) ajuste.disabled = !habilitar;
+    if (input) input.disabled = !habilitar;
+    if (img) img.disabled = !habilitar;
+    if (analisis) analisis.disabled = !habilitar;
+    if (ilu) ilu.disabled = !habilitar;
+    if (req) req.disabled = !habilitar;
   }
 
   function formatChatBody(texto) {
@@ -578,7 +602,10 @@ window.QrysSoporteConsultas = (function () {
     }
     await cargarLista();
     await abrirConsulta(sid);
-    aviso(porSubir.length ? "Consulta creada con la captura. Pulse el análisis." : "Consulta creada. Pulse el análisis.");
+    const mensaje = porSubir.length 
+      ? `Consulta creada con ${porSubir.length} captura(s). Pulse el análisis.`
+      : "Consulta creada. Pulse el análisis.";
+    aviso(mensaje);
   }
 
   async function enviarChat() {

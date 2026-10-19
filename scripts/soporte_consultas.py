@@ -29,14 +29,15 @@ Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, 
 4. Ficha con estado distinto de `leido`, o grafo/flujo que no cubre la pregunta: no complete el hueco. Diga en el chat y en `respuestaOficial` qué falta y que no puede afirmarlo. Encole el handoff a Conocimiento. No devuelva un atajo, un procedimiento parecido ni un paso que el sistema no tenga documentado.
 
 ## Entregables
-1. Mensaje en **chat.json** (autor: `agente`).
+1. Mensaje en **chat.json** (autor: `agente`). **Importante:** los mensajes en chat.json deben escribirse con el campo `en` para la marca temporal; este valor es asignado por el servidor, no lo invente ni escriba un valor arbitrario. Use la función append_chat que lo asigna automáticamente.
 2. Borrador en **meta.json** → `respuestaOficial` (texto para PDF).
 3. **meta.json** → `proposito` (2–4 frases): nace de la **necesidad** (`preguntaInicial`) y resume qué entrega el documento según su **análisis** (no texto genérico).
 4. En una consulta de soporte, cada **consulta SQL** va en bloque ```sql … ```. Esas consultas son para soporte interno.
 5. Si `meta.json` trae `entregaRequerimiento` en true, el PDF usa la plantilla exclusiva `plantillas/entrega-requerimiento.html` (ChatGPT + ilustración). Todo el texto visible, avisos y rótulos de la ilustración van en español de Colombia. No incluya consultas SQL; quedan en el control de cambios.
 6. No implementar en Qrystalos2. No escribir en la base ni ejecutar procedimientos.
 7. Si hay servidor abajo, medir con SELECT de solo lectura (`scripts/auditoria_procesos.py`, `_resolve_server_db` y `_sqlcmd_query`) e incorporar conteos a la respuesta. No pedir al coordinador que los corra. No imprimir credenciales.
-8. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento). En una entrega de requerimiento, soporte interno no lleva SQL.
+8. **Límite de mediciones:** máximo **3 intentos** de conexión a la base y **5 minutos** totales. Si la consulta falla o no completa tras 3 intentos, detenga las mediciones, informe el problema en chat y deje la consulta SQL sugerida en `respuestaOficial` para que soporte la ejecute manualmente. No reintente indefinidamente.
+9. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento). En una entrega de requerimiento, soporte interno no lleva SQL.
 
 Título: {meta.get("titulo") or ""}
 Cliente: {meta.get("cliente") or ""}
@@ -366,6 +367,12 @@ def append_chat(sid: str, autor: str, texto: str, imagenes: list | None = None) 
     if autor not in _AUTORES:
         autor = "soporte"
     texto = (texto or "").strip()
+    
+    # Si el texto viene con el prefijo [sistema] pero autor no es sistema, corregirlo
+    if texto.startswith("[sistema] ") and autor != "sistema":
+        texto = texto[len("[sistema] "):]
+        autor = "sistema"
+    
     imgs = _imagenes_validas(sid, imagenes)
     if not texto and not imgs:
         raise ValueError("Mensaje vacío.")
