@@ -101,9 +101,93 @@
             "No se generó el IZSOL."
           ],
           "llama": ["SPQ_GENSEQUENCE", "SPK_GENCONSECUTIVO", "FNK_VALORVARIABLE", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_FECHA_AUT", "FNK_CEFM_PERSONAL_AT"],
-          "efecto": "Actualiza CEFM a AUDITADO con el centro del equipo si lo hubo. Inserta AUTE/AUTED (periodo 1 En farmacia, el resto Pendiente). Inserta IZSOL clase TRANS_CE, estado 1, NOADMISION = afiliado, sin centro ni área, y IZSOLD del periodo 1 en estado 1. Enlaza AUTE.CNSIZSOL. IDAUT queda NULL.",
+          "efecto": "Actualiza CEFM a AUDITADO. Si el JSON trae CNSCARGA (máximo 16), el centro y el área salen de IBOD de la bodega del pedido y ese consecutivo queda en IZSOL.CNSIZSOLM. Sin CNSCARGA, el centro sigue saliendo del equipo. Inserta AUTE/AUTED (periodo 1 En farmacia, el resto Pendiente). Inserta IZSOL clase TRANS_CE, estado 1, NOADMISION = afiliado, y IZSOLD del periodo 1 en estado 1. Enlaza AUTE.CNSIZSOL. IDAUT queda NULL.",
           "tablas": ["CEFM", "CEFMD", "AUTE", "AUTED", "IZSOL", "IZSOLD", "UBEQ", "IBOD", "SED", "SER", "USUSU"],
           "controlId": "transcripcion-auditar"
+        },
+        {
+          "id": "RESOLVER_CARGA",
+          "hace": "Contrasta filas del Excel de dispensación con paciente, bodega, CUM, médico, IPS y diagnóstico. No graba fórmulas ni pedidos.",
+          "estado": "leido",
+          "valida": [
+            "Llega un arreglo FILAS",
+            "El documento existe una sola vez en AFI",
+            "La bodega existe, su sede es 29, 33, 34 o 35 y tiene centro de costo",
+            "El CUM corresponde a un solo artículo activo con servicio activo",
+            "El diagnóstico está en MDX, el médico en CEFMMED y la IPS en CEFMEPS",
+            "NO PBS trae MIPRES y la línea tiene cantidad entregada"
+          ],
+          "noValida": [
+            "No crea CEFM, IZSOL ni AUT",
+            "No da de alta médicos ni IPS que falten"
+          ],
+          "errores": [
+            "No llegaron filas para resolver."
+          ],
+          "llama": [],
+          "efecto": "Devuelve cada fila con los identificadores resueltos o el texto de lo que falta. Un artículo sin servicio activo no es error: la línea usa el artículo. YA_CARGADA marca un número de fórmula ya auditado.",
+          "tablas": ["AFI", "IBOD", "IART", "SER", "CEFMMED", "CEFMEPS", "MDX", "PPT", "CEFM"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "INICIAR_CARGA",
+          "hace": "Abre la cabecera CEFMCAR de una subida de dispensación.",
+          "estado": "leido",
+          "valida": ["El consecutivo cabe en 16 caracteres", "Si se reemplaza, la carga no tiene fórmulas ya generadas", "No hay otro envío con estado distinto de generada"],
+          "noValida": ["No lee el Excel"],
+          "errores": ["Falta crear las tablas de la carga.", "Ese consecutivo de carga ya existe.", "La carga ya tiene fórmulas generadas.", "Hay un envío pendiente de corregir. Termínelo o bórrelo antes de crear otro."],
+          "llama": [],
+          "efecto": "Inserta o reemplaza CEFMCAR.",
+          "tablas": ["CEFMCAR", "CEFMCARD"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "VALIDAR_CARGA",
+          "hace": "Escribe en cada fila del detalle el error y la corrección. El artículo sin servicio activo no se marca.",
+          "estado": "leido",
+          "valida": ["La carga existe", "La bodega asignada existe y su sede está permitida"],
+          "noValida": ["No crea fórmulas"],
+          "errores": ["La carga no existe."],
+          "llama": [],
+          "efecto": "Actualiza CEFMCARD.ERROR, CORRECCION y los identificadores resueltos. Actualiza el conteo de la cabecera.",
+          "tablas": ["CEFMCAR", "CEFMCARD", "AFI", "IBOD", "IART", "SER", "CEFMMED", "CEFMEPS", "MDX"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "CARGA_ABIERTA",
+          "hace": "Trae el envío de dispensación que todavía no está generado.",
+          "estado": "leido",
+          "valida": ["Existe la tabla CEFMCAR"],
+          "noValida": ["No crea ni borra cargas"],
+          "errores": ["Falta crear las tablas de la carga. Ejecute CEFMCAR_TABLAS.sql."],
+          "llama": [],
+          "efecto": "Devuelve la cabecera más reciente con estado distinto de GENERADA, o ninguna fila.",
+          "tablas": ["CEFMCAR"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "HISTORICO_CARGAS",
+          "hace": "Lista las subidas de dispensación, abiertas y ya generadas.",
+          "estado": "leido",
+          "valida": ["Existe la tabla CEFMCAR"],
+          "noValida": ["No modifica datos"],
+          "errores": ["Falta crear las tablas de la carga. Ejecute CEFMCAR_TABLAS.sql."],
+          "llama": [],
+          "efecto": "Devuelve consecutivo, fecha, archivo, estado, líneas y errores.",
+          "tablas": ["CEFMCAR"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "BORRAR_CARGA",
+          "hace": "Elimina un envío y su detalle cuando todavía no generó fórmulas.",
+          "estado": "leido",
+          "valida": ["La carga existe", "Ninguna fila del detalle tiene CNSCEFM"],
+          "noValida": ["No anula fórmulas ya creadas"],
+          "errores": ["La carga no existe.", "El envío ya tiene fórmulas generadas. No se puede borrar."],
+          "llama": [],
+          "efecto": "DELETE de CEFMCARD y CEFMCAR de ese consecutivo.",
+          "tablas": ["CEFMCAR", "CEFMCARD"],
+          "controlId": "transcripcion-carga"
         },
         {
           "id": "TRAER_DE_AUTE",
@@ -311,9 +395,9 @@
       "tipo": "SP",
       "estado": "leido",
       "fuente": "IXONLINE/SQL (PREVERSION = 2.0.10, idéntica a la cerrada; IDANT 2.0.9)",
-      "actualizado": "2026-10-17",
+      "actualizado": "2026-10-18",
       "cola": "Lo llama SPK_CONFIRMASAL_CM después del comprobante, al confirmar una salida de transcripción.",
-      "hace": "Crea la autorización de facturación a partir del movimiento ya confirmado. En transcripción el afiliado sale de la fórmula ligada a la solicitud. El detalle es una línea por artículo dispensado. El plan queda en el plan del afiliado y el contratante lo fija otra vez el procedimiento. El centro y el área salen de la fórmula o, si faltan, del equipo de quien confirma.",
+      "hace": "Crea la autorización de facturación a partir del movimiento ya confirmado. En transcripción el afiliado sale de la fórmula ligada a la solicitud. El detalle es una línea por artículo dispensado. El plan queda en el plan del afiliado y el contratante lo fija otra vez el procedimiento. El centro y el área salen de la fórmula o, si faltan, del equipo de quien confirma. Si la solicitud trae CNSIZSOLM, lo copia a AUT.NOADMISIONCE. El CUM del artículo dispensado queda en AUTD.CODCUM_DISP.",
       "valida": [
         "CNSMOV informado y movimiento confirmado",
         "La solicitud es TRANS_CE, FORMEDCE, CE manual o CE cuyo NOADMISION es un afiliado y no una autorización",

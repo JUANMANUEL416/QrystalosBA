@@ -39,5 +39,5 @@ su contabilidad en el libro de Inventario.
 ## Hallazgos 2026-10-04
 
 - Cobro en FORMEDCE / TRANS_CE: `SPK_GENCOBRO_INSCENTRAL` inserta HPRE con FK a HADM y esas procedencias guardan el afiliado; la validación está comentada.
-- Permisos ModificarCopago / Particular / CBodega se leen de `Brw:BrwVerSolicitudes_InvPeru` en cualquier país.
+- Permisos ModificarCopago / Particular / CBodega: Perú usa `Brw:BrwVerSolicitudes_InvPeru`; el resto usa `MENUQ_INVENTARIO` (bugfix/COESME647).
 - Presupuesto de materiales apagado en la confirmación (INV-TCK-04); en Perú `CONF_MOVIMIENTO` sí bloquea si hay HPREP sin aprobar.

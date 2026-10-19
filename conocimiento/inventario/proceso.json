@@ -22,7 +22,7 @@
     "../flujo-compras-inv-cxp-caja/USVGS-INVENTARIO.md",
     "COESME643-flujo-loteo-factura.pdf"
   ],
-  "actualizado": "2026-10-14T10:20:00",
+  "actualizado": "2026-10-18T16:20:00",
   "notaSql": "2026-10-04. Liberada 2.0.7 (IDANT 2.0.6). Se bajó PREVERSION de 39 objetos del módulo (catálogo IXONLINE/SQL). Idénticos a 2.0.7 salvo SPQ_IZSOL (+FORMATO_TRANSFUSION, presupuesto Perú, centro de costo HBALI), SPK_CONFIRMARENTRADAS (corrige total IDXB/IART con líneas ESTADO 9; devoluciones Perú), SPK_CONFIRMASAL_CM (completa CCOSTO/IDAREA en TRANS_CE; quita un AND 1=2) y SPQ_IARTO. Frente a la ficha 2.0.5: SPQ_IART ya liberó IART_SER_UNICO. Variables leídas en pruebas: IDINVMOV_COMPRAS=02, IDINVMOV_REMISION_EN=22, IDINVENTA_PARTICULAR=VE, IDINVMOVVENTAFACTURA=VC, IDINVDEVPROVEEDOR=05, IDINVSALVENCIDOS=07, IDTS=14, IDTE=13, IDINVTRASLOTESAL/ENT=24/25, IDINVSIENT/SISAL=SI/SA, IDINVTPROPIA=PR, IDINVTFSA=21, IDMOVPICKPACK=14,VC. ESFARMACIA vale «SIP» en pruebas (el SP compara con «SI»). 2026-10-10: loteo con factura en el control imov-transito (Todos, faltante, catálogo, IDIMP_IVA, CUFE repetido en RADIAN).",
   "alcanceHasta": "Desde el tipo de bodega hasta la CxP automática y la contabilización; venta al público hasta factura y recibo de caja. Grafo operativo Fase 1: 16 tramos (compras, movimientos, dispensación, conteo, devolución, vencidos, Pick & Pack, ajustes, custodia, satélites). El detalle clínico de solicitudes vive en el proceso hermano «dispensacion»; custodia en «custodia-medicamentos»; CxP en «cxp-fcxp».",
   "flujoResumen": "Configuración (ITBOD → IBOD → ITMO ↔ USVGS → ITAR → catálogos → IART → IDXB) → Compras (ILPRE → ICTZ → FCOM C → CONFIRMAR_ORDEN P → ITRA/ITRAH → loteo → ON_ACEPTA_TRANSITO → IMOV 0 → CONF_ENTRADA → IEXI/IDXB + FCXP → FCOM R/I) → Salidas (IMOV salida / traslado 14→13 / dispensación IZSOL → CONFIRMA_SALIDA o CONFIRMASAL_CM → IEXI) → Conteo (IFIS → listados → 3 conteos → APLICAR ajustes) → Venta (PRESELL → GUARDA_VENTA → IMOV VE + FTR + FCJ) → Contabilidad (OM INV / CxP / FTR).",
@@ -102,7 +102,7 @@
       "ruta": "inv.conf.iart",
       "path": "/inv/conf/iart",
       "vue": "IARTComponent (pestañas Datos Básicos, Datos Adicionales, Alertas, Códigos de Barras, Diagnósticos UNIRS, Unidosis)",
-      "entrada": "MODELO IART: GUARDAR, VALIDA_SERVICIO(_HIJO), GET_CONTADOR, CAMBIAR_ESTADO, TRANSFERIR_ARTICULO, GUARDAR_FABRICANTE, CRUD_IARTK, CRUDITXA, CRUDIARTDX, EXPORTAR. Permisos boton_de_nuevo_articulo, boton_de_editar_articulo, BTN_NUEVO_SKU, BTN_EDITAR_SKU, BTN_CARGAR_PRECIO_REGULADO, CrearFab, TRASLADA_IART."
+      "entrada": "MODELO IART: GUARDAR, VALIDA_SERVICIO(_HIJO), GET_CONTADOR, CAMBIAR_ESTADO, TRANSFERIR_ARTICULO, GUARDAR_FABRICANTE, CRUD_IARTK, CRUDITXA, CRUDIARTDX, EXPORTAR. Permisos boton_de_nuevo_articulo, boton_de_editar_articulo, BTN_NUEVO_SKU, BTN_EDITAR_SKU, BTN_CARGAR_PRECIO_REGULADO, CrearFab, TRASLADA_IART, IART_VER_PCOSTO. El Excel (IART · EXPORTAR) solo incluye PCOSTO si el grupo tiene IART_VER_PCOSTO; si no, se quita la columna. La grilla de pantalla no muestra PCOSTO."
     },
     {
       "uso": "Lista de precios (compras)",
@@ -137,7 +137,7 @@
       "ruta": "inv.izsol_2",
       "path": "/inv/sol_2",
       "vue": "SolicitudesPage → IndexComponent / DispensarComponent",
-      "entrada": "MODELO IZSOL / IZSOL_2: AGREGAR → ENTREGAR → PROCESAR → CONF_MOVIMIENTO. Detalle en el proceso «dispensacion»."
+      "entrada": "MODELO IZSOL / IZSOL_2: AGREGAR → ENTREGAR → PROCESAR → CONF_MOVIMIENTO. Impresión PDF de solicitudes clase Consumo y SENFER: imprimirSolicitudInsumo → useIZSOL · onInsumos (logo DPRCOL, ítems IZSOLD, firmas). Detalle clínico en el proceso «dispensacion»."
     },
     {
       "uso": "Canastas de cirugía",
@@ -221,7 +221,7 @@
       "ruta": "inv.gastosxconsumo / movcargamasiva",
       "path": "/inv/gastosxconsumo",
       "vue": "GastosConsumoComponent",
-      "entrada": "MODELO IZSOL (GUARDAR_SOLICITUD, CONFIRMAR_SOLICITUD, DESHACER_PEDIDO, BORRAR_SOLICITUD), IZSOLD, IZSOL_2 · CANTIDADES_INICIO_OM. Tipos 08 / 8A."
+      "entrada": "MODELO IZSOL (GUARDAR_SOLICITUD, CONFIRMAR_SOLICITUD, DESHACER_PEDIDO, BORRAR_SOLICITUD), IZSOLD, IZSOL_2 · CANTIDADES_INICIO_OM. Tipos 08 / 8A. Impresión: onPrint / onImprimirRegistro delegan a useIZSOL · onInsumos (mismo PDF que Solicitudes, clase Consumo)."
     },
     {
       "uso": "Cotización comercial",
@@ -360,7 +360,7 @@
         {
           "id": "iart-maestro",
           "nombre": "Tipo de artículo y artículo (ITAR / IART / SER)",
-          "explicacion": "ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, concentración, riesgo, IVA), el prefijo del consecutivo y la cuenta. IART GUARDAR genera el código, puede crear el servicio SER (para facturar) y la presentación hija apunta a su principal (IDARTICULOPRIN). Con IART_SER_UNICO = SI (liberado en 2.0.7) no se repite CUM ni descripción. Botón Generar Servicios en ITAR crea SER para todo el tipo. Precio regulado: la pantalla llama IART · CARGAR_PRECIO_REGULADO y ese método no existe en SPQ_IART (pendiente).",
+          "explicacion": "ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, concentración, riesgo, IVA), el prefijo del consecutivo y la cuenta. IART GUARDAR genera el código, puede crear el servicio SER (para facturar) y la presentación hija apunta a su principal (IDARTICULOPRIN). El SKU (artículo por fabricante, PRINCIPAL=0) copia el IDITAR del principal al crearse. Un cambio posterior del tipo del principal no actualiza los SKU ya creados, y la ventana Artículos por fabricante no muestra Tipo Artículo. La lista de Artículos solo trae principales; la presentación sale si se filtra por CUM o registro INVIMA, y ahí Editar con la lupa de Tipo Artículo guarda el tipo de esa fila. Trasladar Artículo cambia el principal (IDSERVICIO), no el tipo. Con IART_SER_UNICO = SI (liberado en 2.0.7) no se repite CUM ni descripción. Botón Generar Servicios en ITAR crea SER para todo el tipo. Precio regulado: la pantalla llama IART · CARGAR_PRECIO_REGULADO y ese método no existe en SPQ_IART (pendiente).",
           "invariante": "Artículo activo, con tipo coherente y servicio cuando se factura. No se borra si está en alguna bodega (IDXB). DEINVNODESER configurada.",
           "ventanasFe": [
             "/inv/conf/itar",
@@ -381,7 +381,7 @@
             {
               "nombre": "SPQ_IART",
               "metodo": "CAMBIAR_ESTADO / TRANSFERIR_ARTICULO / GUARDAR_FABRICANTE",
-              "rol": "Estado con LOG_IART, cambio de tipo, fabricante como tercero."
+              "rol": "Estado con LOG_IART. TRANSFERIR_ARTICULO mueve el SKU a otro principal y no cambia el tipo. GUARDAR_FABRICANTE crea el fabricante como tercero."
             },
             {
               "nombre": "SPQ_IART",
@@ -447,7 +447,7 @@
         {
           "id": "imov-entrada",
           "nombre": "Entrada de almacén y confirmación",
-          "explicacion": "Entrada manual (CRUD_IMOV + CRUD_IMOVH) o entrada que viene del tránsito de compras (ya en estado 0). Al confirmar (CONF_ENTRADA → SPK_CONFIRMARENTRADAS) se exige fecha de vencimiento en todas las líneas, factura no duplicada con fechas, costo en todos los lotes, paciente si el tipo lo pide y, con VALID_CCOSTO_CXP = SI, centro de costo con cuenta CXP_COMPRAS. El SPK crea IEXI (con PCOSTO base DIAN en recepción de OC), suma IDXB/IART, cierra ITRA, actualiza kardex, pasa la orden a R o I y, si el tipo es 02/22/SI con proveedor, crea la CxP (FCXP + SPK_INSERT_CXP_INV + impuestos). Contabiliza en línea solo si CONTABIMOV_JOB ≠ SI.",
+          "explicacion": "Entrada manual (CRUD_IMOV + CRUD_IMOVH) o entrada que viene del tránsito de compras (ya en estado 0). Buscar Artículo, en el saldo inicial y en el resto de entradas manuales, lista artículos con estado Activo cuyo tipo de artículo tiene acceso Si en la seguridad de la bodega del encabezado. Si el artículo maneja principal, la lista trae el SKU y no el principal. Al confirmar (CONF_ENTRADA → SPK_CONFIRMARENTRADAS) se exige fecha de vencimiento en todas las líneas, factura no duplicada con fechas, costo en todos los lotes, paciente si el tipo lo pide y, con VALID_CCOSTO_CXP = SI, centro de costo con cuenta CXP_COMPRAS. El SPK crea IEXI (con PCOSTO base DIAN en recepción de OC), suma IDXB/IART, cierra ITRA, actualiza kardex, pasa la orden a R o I y, si el tipo es 02/22/SI con proveedor, crea la CxP (FCXP + SPK_INSERT_CXP_INV + impuestos). Contabiliza en línea solo si CONTABIMOV_JOB ≠ SI.",
           "invariante": "Ninguna línea sin lote, vencimiento ni costo. Cuentas KMCOM MOV_INVENTARIO y CXP_COMPRAS presentes para el tipo/centro/área. La entrada confirmada no se edita: se anula o se devuelve.",
           "ventanasFe": [
             "/inv/ges"
@@ -804,7 +804,7 @@
         {
           "id": "izsol-dispensacion",
           "nombre": "Solicitud de farmacia → salida",
-          "explicacion": "La solicitud IZSOL (clases CE, TRANS_CE, 24HORAS, APLIM, OMEDICA, SENFER, Consumo) se atiende en Solicitudes: AGREGAR → ENTREGAR (picking IZSOLDT por lote) → PROCESAR → CONF_MOVIMIENTO (SPK_CONFIRMASAL_CM), que descuenta, cobra copago si aplica y puede cerrar la solicitud. Deshacer entrega requiere permiso y motivo y no procede si enfermería ya recibió. Canastas de cirugía y gasto por consumo son solicitudes especiales. El detalle clínico está en el proceso «dispensacion».",
+          "explicacion": "La solicitud IZSOL (clases CE, TRANS_CE, 24HORAS, APLIM, OMEDICA, SENFER, Consumo) se atiende en Solicitudes: AGREGAR → ENTREGAR (picking IZSOLDT por lote) → PROCESAR → CONF_MOVIMIENTO (SPK_CONFIRMASAL_CM), que descuenta, cobra copago si aplica y puede cerrar la solicitud. Deshacer entrega requiere permiso y motivo y no procede si enfermería ya recibió. Canastas de cirugía y gasto por consumo son solicitudes especiales. La clase Consumo se imprime desde Solicitudes (ícono de fila) y desde Gasto por consumo con el mismo PDF useIZSOL · onInsumos. El detalle clínico está en el proceso «dispensacion».",
           "invariante": "Admisión abierta, solicitud vigente y no anulada, copago recaudado cuando se exige, medicamento no suspendido ni pendiente PROA.",
           "ventanasFe": [
             "/inv/sol_2",
@@ -1744,7 +1744,7 @@
       "icono": "medication",
       "color": "primary",
       "estilo": "outline",
-      "descripcion": "Alta y edición del maestro IART (permisos boton_de_nuevo_articulo, boton_de_editar_articulo). Presentaciones (SKU) con BTN_NUEVO_SKU / BTN_EDITAR_SKU y precio regulado con BTN_CARGAR_PRECIO_REGULADO."
+      "descripcion": "Alta y edición del maestro IART (permisos boton_de_nuevo_articulo, boton_de_editar_articulo). Presentaciones (SKU) con BTN_NUEVO_SKU / BTN_EDITAR_SKU y precio regulado con BTN_CARGAR_PRECIO_REGULADO. El Excel incluye PCOSTO solo con IART_VER_PCOSTO."
     },
     {
       "label": "Generar Servicios",
@@ -2068,6 +2068,15 @@
       "fraseUsuario": "crear bodega",
       "control": "IBODComponent",
       "metodo": "IBOD · GUARDAR / IBODS · GUARDAR"
+    },
+    {
+      "necesidad": "Ver los SKU activos al buscar el artículo de un saldo inicial u otra entrada manual",
+      "donde": "Inventario → Configuración → Bodegas → abrir la bodega del encabezado de Inventario → Seguridad → agregar. Tipo de seguridad = tipos de artículo, Acceso = Si, elegir el tipo y Guardar.",
+      "condicion": "El artículo está Activo. El tipo que se autoriza es el de esa fila: en una presentación (SKU) no basta el tipo del principal.",
+      "noEs": "No es Artículo por bodega ni Actualizar existencias. Estar activo en el maestro no lo pone en la lista.",
+      "fraseUsuario": "SKU no aparece en saldo inicial",
+      "control": "IMOVComponetNew",
+      "metodo": "lectura IART por IBODS tipo de artículo; la regla se guarda con IBODS · GUARDAR"
     },
     {
       "necesidad": "Crear un tipo de movimiento y que el sistema lo use",

@@ -3230,14 +3230,16 @@
       "metodos": [
         {
           "id": "GUARDAR",
-          "hace": "Alta o edición del artículo. Genera el consecutivo con el prefijo del tipo (PRECNS + MCNS, NRO_ESPACIOS_ITARCNS). Puede crear el servicio SER (CREARSER) y registrar precio en lista ILPRED. Si cambia el estado y CAMBIO_ART_ESTADO = SI deja rastro en LOG_IART. Si INTERFAZ_INV está activa marca para la interfaz.",
+          "hace": "Alta o edición del artículo. Genera el consecutivo con el prefijo del tipo (PRECNS + MCNS, NRO_ESPACIOS_ITARCNS). Puede crear el servicio SER (CREARSER) y registrar precio en lista ILPRED. Si cambia el estado y CAMBIO_ART_ESTADO = SI deja rastro en LOG_IART. Si INTERFAZ_INV está activa marca para la interfaz. PROCESO INSERTAR_HERMANO crea el SKU (presentación por fabricante, PRINCIPAL=0) y copia el IDITAR del principal en ese momento. PROCESO EDITAR cambia el IDITAR solo de ese artículo. PROCESO EDITAR_HERMANO escribe el IDITAR que traiga el JSON; si viene vacío conserva el del SKU.",
           "valida": [
             "Artículo principal (IDARTICULOPRIN) obligatorio cuando es presentación hija",
             "DEINVNODESER configurada; el principal no puede tener ese servicio",
             "Con IART_SER_UNICO = SI no repite CUM ni descripción entre activos (ya liberado en 2.0.7)"
           ],
           "noValida": [
-            "No valida existencias ni bodegas"
+            "No valida existencias ni bodegas",
+            "Cambiar el tipo del principal no actualiza el IDITAR de los SKU ya creados",
+            "La ventana Artículos por fabricante no muestra Tipo Artículo"
           ],
           "errores": [
             "El tipo de artículo no tiene prefijo de consecutivo (PRECNS). Revise la configuración en ITAR.",
@@ -3250,7 +3252,7 @@
           "llama": [
             "SPK_GENCONSECUTIVO"
           ],
-          "efecto": "INSERT/UPDATE IART; PCOSTO/EXISTOTAL=0 al crear. En PREVERSION (no en 2.0.5), con IART_SER_UNICO=SI rechaza CUM o descripción repetidos entre artículos activos.",
+          "efecto": "INSERT/UPDATE IART de la fila guardada; PCOSTO/EXISTOTAL=0 al crear. El tipo nuevo del principal no se copia a los SKU existentes. En PREVERSION (no en 2.0.5), con IART_SER_UNICO=SI rechaza CUM o descripción repetidos entre artículos activos.",
           "capaId": "01-configuracion",
           "gateId": "iart-maestro",
           "estado": "leido",
@@ -3424,10 +3426,17 @@
         {
           "id": "GET_ARTICULOS_X_FABRICANTE",
           "estado": "leido",
-          "hace": "Lista las presentaciones (hijos) de un artículo principal por fabricante.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "hace": "Lista las presentaciones (SKU, PRINCIPAL=0) de un artículo principal, con el fabricante y el IDITAR propio de cada una. Con ESFARMACIA=SI y sin interfaz SAP, el código del SKU empieza por el del principal. No reescribe el tipo.",
+          "valida": [
+            "no aplica"
+          ],
+          "noValida": [
+            "No actualiza el tipo del SKU"
+          ],
+          "errores": [
+            "no aplica"
+          ],
+          "efecto": "Solo lectura.",
           "capaId": "01-configuracion",
           "gateId": "iart-maestro",
           "llama": [],
@@ -3539,10 +3548,19 @@
         {
           "id": "TRANSFERIR_ARTICULO",
           "estado": "leido",
-          "hace": "Mueve el artículo a otro tipo/servicio (IART + SER). Permiso TRASLADA_IART.",
-          "valida": [],
-          "noValida": [],
-          "errores": [],
+          "hace": "Reasigna el SKU a otro artículo principal: IART.IDSERVICIO del origen pasa a ser el artículo destino y SER.IDREFERENCIA del SKU apunta a ese destino. Permiso TRASLADA_IART. La pantalla es Trasladar Artículo, dentro de Artículos por fabricante.",
+          "valida": [
+            "Artículo de origen obligatorio",
+            "Artículo de destino obligatorio"
+          ],
+          "noValida": [
+            "No cambia el tipo de artículo (IDITAR) del SKU ni del principal"
+          ],
+          "errores": [
+            "EL ARTICULO DE ORIGEN ES OBLIGATORIO",
+            "EL ARTICULO DE DESTINO ES OBLIGATORIO"
+          ],
+          "efecto": "UPDATE IART.IDSERVICIO y SER.IDREFERENCIA. El IDITAR queda igual.",
           "capaId": "01-configuracion",
           "gateId": "iart-maestro",
           "llama": [],
@@ -3554,13 +3572,32 @@
         {
           "id": "EXPORTAR",
           "estado": "leido",
-          "hace": "Exporta el catálogo de artículos a Excel.",
-          "valida": [],
+          "hace": "Excel del maestro IART (botón Excel en /inv/conf/iart). Segundo recordset filtrado por tipo y estado. PCOSTO solo si VER_PCOSTO=1 y USGRUH MENUQ_INVENTARIO / IART_VER_PCOSTO; si no, se elimina la columna.",
+          "valida": [
+            "VER_PCOSTO=1 en el JSON",
+            "USGRUH del grupo del usuario: IART_VER_PCOSTO = 1"
+          ],
           "noValida": [],
           "errores": [],
           "capaId": "01-configuracion",
           "gateId": "iart-maestro",
-          "llama": []
+          "ventanaFe": "/inv/conf/iart",
+          "llama": [],
+          "efecto": "OK + filas. Sin permiso no viaja PCOSTO (no se pone en cero). PRECIO_REGULADO y ALTO_COSTO siguen. El front también quita PCOSTO del Excel si el permiso no está activo.",
+          "usvgs": [],
+          "tablas": [
+            "IART",
+            "ITAR",
+            "ICLA",
+            "ICLAH",
+            "IGRU",
+            "IPAC",
+            "IFFA",
+            "ICCN",
+            "IUNI",
+            "IGEN",
+            "TER"
+          ]
         },
         {
           "id": "CRUD_IARTK",
@@ -3637,8 +3674,8 @@
         "CAMBIO_ART_ESTADO",
         "CRUD_* tablas auxiliares"
       ],
-      "actualizado": "2026-10-04",
-      "notaFicha": "Ficha a partir del cuerpo de hoy: métodos, tablas escritas, llamadas y mensajes KO extraídos del script; «hace» redactado a mano en los métodos clave y automático (marca fichaAutomatica) en el resto."
+      "actualizado": "2026-10-19",
+      "notaFicha": "Ficha a partir del cuerpo de hoy: métodos, tablas escritas, llamadas y mensajes KO extraídos del script; «hace» redactado a mano en los métodos clave y automático (marca fichaAutomatica) en el resto. 2026-10-19: GUARDAR no propaga el tipo del principal a los SKU ya creados; TRANSFERIR_ARTICULO cambia el principal (IDSERVICIO), no el IDITAR."
     },
     {
       "nombre": "SPQ_ILPRE",
@@ -5912,7 +5949,7 @@
         {
           "id": "GUARDAR",
           "estado": "leido",
-          "hace": "Agrega una regla de seguridad a la bodega: usuario con acceso, tipo de artículo permitido, etc. (pestaña Seguridad).",
+          "hace": "Agrega una regla de seguridad a la bodega: usuario con acceso, tipo de artículo permitido, etc. (pestaña Seguridad). En Movimientos, Buscar Artículo de una entrada (incluido el saldo inicial) solo lista artículos activos cuyo tipo tiene, en la bodega del encabezado, una regla de tipo de artículo con acceso Si. Si el artículo maneja principal, la lista trae el SKU y no el principal.",
           "valida": [
             "No repetir la misma regla"
           ],
