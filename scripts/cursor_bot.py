@@ -189,7 +189,7 @@ def load_cursor_api_keys() -> list[tuple[str, str]]:
         out.append((label, k))
 
     for name in _nombres_clave({**env, **os.environ}):
-        _add(name, os.environ.get(name) or env.get(name) or "")
+        _add(name, env.get(name) or os.environ.get(name) or "")
 
     if os.path.isfile(ENV_PATH):
         with open(ENV_PATH, encoding="utf-8") as fh:
