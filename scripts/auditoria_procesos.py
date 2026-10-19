@@ -2,14 +2,22 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV = ROOT / ".env.local"
 CONFIG_SERV = ROOT / "config" / "servidores-auditoria.json"
+
+# Límites de mediciones para consultas de soporte
+MAX_MEDICIONES_POR_CONSULTA = int(os.environ.get("SOPORTE_MAX_MEDICIONES", "3"))
+MAX_TIEMPO_MEDICION_SEG = int(os.environ.get("SOPORTE_MAX_TIEMPO_MEDICION", "300"))  # 5 min
+
+_contadores_medicion: dict[str, dict] = {}  # {consulta_id: {"intentos": n, "inicio": time()}}
 FLUJO_DIR = ROOT / "conocimiento" / "flujo-compras-inv-cxp-caja"
 RECAUDOS_DIR = ROOT / "conocimiento" / "flujo-recaudos-cartera-contab"
 RAD_CXC_DIR = ROOT / "conocimiento" / "flujo-rad-cxc-contab"
@@ -124,24 +132,6 @@ def _load_credencial(credencial_env: str) -> tuple[str, str, str, str]:
     return f"{host},{port}", user, pwd, ""
 
 
-def _resolve_server_db(servidor_id: str, base_datos: str) -> tuple[str, str, str, str]:
-    cfg = _read_json(CONFIG_SERV, {"servidores": []})
-    match = next((s for s in cfg.get("servidores") or [] if s.get("id") == servidor_id), None)
-    if not match:
-        raise ValueError(f"Servidor desconocido: {servidor_id}")
-    server, user, pwd, _ = _load_credencial(match.get("credencialEnv") or "servidor9")
-    db = (base_datos or "").strip()
-    if not db:
-        env_db = (match.get("baseDatosEnv") or "dbservidor9").strip()
-        for line in ENV.read_text(encoding="utf-8").splitlines():
-            if line.strip().startswith(env_db + "="):
-                db = line.split("=", 1)[1].strip()
-                break
-    if not db:
-        raise ValueError("Indique base de datos")
-    return server, user, pwd, db
-
-
 def _sqlcmd_query(server: str, user: str, pwd: str, db: str, query: str) -> str:
     q = query.strip()
     upper = re.sub(r"\s+", " ", q.upper())
@@ -202,7 +192,88 @@ def _esc(val: str) -> str:
     return (val or "").replace("'", "''")
 
 
-def _resolve_cnsfcom(server, user, pwd, db, parametro: str, tipo: str) -> str | None:
+def _iniciar_medicion_consulta(consulta_id: str) -> None:
+    """Inicia el contador de mediciones para una consulta de soporte."""
+    if consulta_id not in _contadores_medicion:
+        _contadores_medicion[consulta_id] = {"intentos": 0, "inicio": time.time()}
+
+
+def _verificar_limite_medicion(consulta_id: str) -> None:
+    """Verifica si se ha alcanzado el límite de mediciones.
+    
+    Raises:
+        RuntimeError: Si se superó el límite de intentos o tiempo total.
+    """
+    if not consulta_id or not consulta_id.startswith("sc"):
+        # No aplicar límites a otras operaciones
+        return
+    
+    _iniciar_medicion_consulta(consulta_id)
+    contador = _contadores_medicion[consulta_id]
+    contador["intentos"] += 1
+    
+    tiempo_transcurrido = time.time() - contador["inicio"]
+    
+    if contador["intentos"] > MAX_MEDICIONES_POR_CONSULTA:
+        raise RuntimeError(
+            f"Límite de mediciones alcanzado: {MAX_MEDICIONES_POR_CONSULTA} intentos. "
+            "Detenga las mediciones e informe el problema en el chat. "
+            "Deje la consulta SQL sugerida en respuestaOficial para ejecución manual por soporte."
+        )
+    
+    if tiempo_transcurrido > MAX_TIEMPO_MEDICION_SEG:
+        mins = MAX_TIEMPO_MEDICION_SEG // 60
+        raise RuntimeError(
+            f"Límite de tiempo de medición alcanzado: {mins} minutos. "
+            "Detenga las mediciones e informe el problema en el chat. "
+            "Deje la consulta SQL sugerida en respuestaOficial para ejecución manual por soporte."
+        )
+
+
+def _limpiar_contador_medicion(consulta_id: str) -> None:
+    """Limpia el contador de mediciones al completar exitosamente."""
+    if consulta_id in _contadores_medicion:
+        del _contadores_medicion[consulta_id]
+
+
+def _resolve_server_db(server_id: str, db_name: str = "") -> tuple[str, str, str, str]:
+    """Resuelve credenciales desde config. Retorna (server, user, pwd, db).
+    
+    Para consultas de soporte, también verifica límites de mediciones.
+    """
+    # Extraer consulta_id si server_id tiene el formato "server_id|consulta_id"
+    consulta_id = ""
+    if "|" in server_id:
+        server_id, consulta_id = server_id.split("|", 1)
+        _verificar_limite_medicion(consulta_id)
+    
+    cfg = _read_json(CONFIG_SERV, {"servidores": []})
+    srv = next((s for s in cfg.get("servidores") or [] if s.get("id") == server_id), None)
+    if not srv:
+        raise ValueError(f"Servidor {server_id} no configurado")
+    
+    server = srv.get("servidor") or srv.get("host") or ""
+    user = srv.get("usuario") or srv.get("user") or ""
+    pwd = srv.get("password") or srv.get("pwd") or ""
+    
+    if not server or not user or not pwd:
+        raise ValueError(f"Credenciales incompletas para {server_id}")
+    
+    db = db_name or ""
+    if not db:
+        env_db = (srv.get("baseDatosEnv") or "").strip()
+        if env_db and ENV.is_file():
+            for line in ENV.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(env_db + "="):
+                    db = line.split("=", 1)[1].strip()
+                    break
+        if not db:
+            db = srv.get("baseDatosDefault") or ""
+    
+    if not db:
+        raise ValueError(f"Base de datos no especificada para {server_id}")
+    
+    return server, user, pwd, db
     val = (parametro or "").strip()
     if not val:
         return None

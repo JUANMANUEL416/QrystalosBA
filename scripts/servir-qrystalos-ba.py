@@ -2243,7 +2243,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         texto = (body.get("texto") or "").strip()
         autor = (body.get("autor") or "soporte").strip().lower()
         imagenes = body.get("imagenes") if isinstance(body.get("imagenes"), list) else None
+        
         try:
+            # Siempre guardar el mensaje del usuario inmediatamente
             msg = scconsulta.append_chat(sid, autor, texto, imagenes)
             chat = scconsulta.leer_chat(sid)
             return self._json({"ok": True, "mensaje": msg, "mensajes": chat.get("mensajes", [])})
