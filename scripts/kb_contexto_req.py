@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Preselección de contexto KB para análisis de requerimientos.
 
 Reduce de ~100 tool calls (5-7 min) a ~15 (1-2 min) al proporcionar
@@ -9,8 +10,14 @@ from __future__ import annotations
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
+
+# Force UTF-8 output
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Añadir scripts al path para kb_buscar/kb_indice
 if str(Path(__file__).resolve().parent) not in sys.path:
@@ -22,6 +29,43 @@ import kb_indice
 ROOT = Path(__file__).resolve().parent.parent
 KB = ROOT / "conocimiento"
 MAX_CHARS_CONTEXTO = 12000  # Límite de tamaño del contexto preseleccionado
+MIN_SCORE_THRESHOLD = 3  # Puntaje mínimo para considerar un proceso relevante
+
+# Stopwords: tokens cortos/genéricos que no aportan al matching
+STOPWORDS = {
+    "si", "no", "de", "del", "la", "el", "los", "las", "un", "una", "en", 
+    "con", "por", "para", "que", "cuando", "donde", "como", "desde", "hasta",
+    "saldo", "movimiento", "sistema", "error", "problema"
+}
+
+# Keywords de dominio por proceso (peso fuerte)
+DOMAIN_KEYWORDS = {
+    "inventario": {"sku", "bodega", "kardex", "entrada", "salida", "articulo", "stock", 
+                   "existencia", "lote", "vencimiento", "compras", "orden", "cotizacion",
+                   "proveedor", "devolucion", "conteo", "ajuste", "transito", "traslado",
+                   "dispensacion", "farmacia", "venta", "particular"},
+    "caja": {"cajero", "recibo", "efectivo", "datáfono", "datafono", "cheque", "consignacion",
+             "turno", "apertura", "cierre", "cuadre", "egreso", "reembolso", "forma", "pago",
+             "ventanilla", "sesion", "menor"},
+    "bancos": {"banco", "cuenta", "extracto", "conciliacion", "cheque", "consignacion", 
+               "transferencia", "tarjeta", "credito", "debito", "extracto"},
+    "facturacion": {"factura", "rips", "evento", "capita", "pgp", "autorizacion", "radicacion",
+                    "glosa", "cartera", "nota", "debito", "credito", "dian", "fev"},
+    "nomina": {"nomina", "empleado", "concepto", "devengado", "deduccion", "seguridad", "social",
+               "parafiscal", "liquidacion", "incapacidad", "vacaciones", "prestacion"},
+    "contabilidad": {"asiento", "comprobante", "mayor", "balance", "auxiliar", "niif", "puc",
+                     "causacion", "centro", "costo", "periodo", "cierre"},
+}
+
+
+def _normalizar_texto(texto: str) -> str:
+    """Normaliza texto: quita acentos, minúsculas."""
+    if not texto:
+        return ""
+    # Normalizar unicode (NFD) y quitar marcas diacríticas
+    nfd = unicodedata.normalize('NFD', texto)
+    sin_acentos = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
+    return sin_acentos.lower()
 
 
 def _extraer_terminos_req(texto: str) -> set[str]:
@@ -31,18 +75,21 @@ def _extraer_terminos_req(texto: str) -> set[str]:
         return set()
     
     terminos = set()
+    texto_norm = _normalizar_texto(texto)
     
-    # Siglas técnicas (3+ letras mayúsculas)
+    # Siglas técnicas (3+ letras mayúsculas) - mantener original
     for sigla in re.findall(r"\b[A-Z][A-Z0-9_]{2,}\b", texto):
-        terminos.add(sigla)
+        # Filtrar stopwords en mayúsculas como SI (saldo inicial vs if)
+        if sigla.lower() not in STOPWORDS or len(sigla) > 3:
+            terminos.add(sigla)
     
     # Nombres de SP/tablas (SP*, FN*, VWK_*)
     for sp in re.findall(r"\b(SP[QK]_[A-Z0-9_]+|FN[QK]_[A-Z0-9_]+|VWK_[A-Z0-9_]+)\b", texto):
         terminos.add(sp)
     
-    # Términos de negocio (5+ letras, español)
-    for palabra in re.findall(r"\b[a-záéíóúñ]{5,}\b", texto.lower()):
-        if palabra not in {"cuando", "desde", "hasta", "donde", "puede", "debe", "hacer", "tiene", "todos"}:
+    # Términos de negocio (4+ letras, español) - normalizado
+    for palabra in re.findall(r"\b[a-záéíóúñ]{4,}\b", texto_norm):
+        if palabra not in STOPWORDS:
             terminos.add(palabra)
     
     # Rutas de pantalla
@@ -196,21 +243,79 @@ def preseleccionar_contexto(req_texto: str, proceso_id: str = "") -> dict:
     else:
         procesos_candidatos = {proceso_id}
     
-    # Si hay múltiples candidatos, tomar los 2 más relevantes
-    if len(procesos_candidatos) > 2:
-        # Priorizar por estado completo y por coincidencia de términos
+    # Scoring de procesos candidatos
+    if procesos_candidatos:
         idx_gen = kb_indice._leer(KB / "INDICE.json", {}) or {}
         meta_procs = {(p.get("id") or p.get("carpeta")): p for p in idx_gen.get("procesos") or []}
         
         def score_proceso(pid):
+            """Score basado en: id/nombre/módulo (peso fuerte), keywords dominio, términos del REQ."""
             meta = meta_procs.get(pid) or {}
-            estado_score = 2 if meta.get("estado") == "completo" else (1 if meta.get("estado") == "parcial" else 0)
-            nombre = (meta.get("nombre") or "").lower()
-            resumen = (meta.get("resumen") or "").lower()
-            match_score = sum(1 for t in terminos if t.lower() in nombre or t.lower() in resumen)
-            return (estado_score, match_score)
+            score = 0
+            
+            # 1. Match exacto en id/carpeta (peso 10)
+            pid_norm = _normalizar_texto(pid)
+            for t in terminos:
+                t_norm = _normalizar_texto(str(t))
+                if t_norm and t_norm == pid_norm:
+                    score += 10
+            
+            # 2. Match en nombre del proceso (peso 8)
+            nombre = _normalizar_texto(meta.get("nombre") or "")
+            for t in terminos:
+                t_norm = _normalizar_texto(str(t))
+                if t_norm and len(t_norm) >= 4 and t_norm in nombre:
+                    score += 8
+            
+            # 3. Match en módulo (peso 7)
+            modulo = _normalizar_texto(meta.get("modulo") or "")
+            for t in terminos:
+                t_norm = _normalizar_texto(str(t))
+                if t_norm and len(t_norm) >= 4 and t_norm in modulo:
+                    score += 7
+            
+            # 4. Match con keywords de dominio del proceso (peso 5)
+            domain_kws = DOMAIN_KEYWORDS.get(pid, set())
+            for t in terminos:
+                t_norm = _normalizar_texto(str(t))
+                if t_norm in domain_kws:
+                    score += 5
+            
+            # 5. Match en resumen (peso 2)
+            resumen = _normalizar_texto(meta.get("resumen") or "")
+            for t in terminos:
+                t_norm = _normalizar_texto(str(t))
+                if t_norm and len(t_norm) >= 4 and t_norm in resumen:
+                    score += 2
+            
+            # 6. Match en nombres de archivos grafo (peso 6)
+            grafo_idx = meta.get("grafoIndice") or ""
+            if grafo_idx:
+                grafo_idx_norm = _normalizar_texto(grafo_idx)
+                for t in terminos:
+                    t_norm = _normalizar_texto(str(t))
+                    if t_norm and len(t_norm) >= 4 and t_norm in grafo_idx_norm:
+                        score += 6
+            
+            # 7. Estado del proceso (desempate)
+            if meta.get("estado") == "completo":
+                score += 1
+            elif meta.get("estado") in ("documentado", "parcial"):
+                score += 0.5
+            
+            return score
         
-        procesos_candidatos = set(sorted(procesos_candidatos, key=score_proceso, reverse=True)[:2])
+        # Ordenar por score y filtrar por umbral mínimo
+        scored = [(pid, score_proceso(pid)) for pid in procesos_candidatos]
+        scored_filtered = [(pid, s) for pid, s in scored if s >= MIN_SCORE_THRESHOLD]
+        scored_filtered.sort(key=lambda x: x[1], reverse=True)
+        
+        if not scored_filtered:
+            # Ningún proceso alcanza el umbral mínimo
+            procesos_candidatos = set()
+        else:
+            # Tomar los top 2
+            procesos_candidatos = set(pid for pid, _ in scored_filtered[:2])
     
     # Construir contexto compacto
     contexto = {
@@ -309,6 +414,11 @@ def formato_prompt(contexto: dict) -> str:
 def main(argv: list[str]) -> int:
     """CLI para testing."""
     import argparse
+    
+    # Ensure UTF-8 stdout
+    if sys.stdout.encoding != 'utf-8':
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--req", required=True, help="Texto del requerimiento")
