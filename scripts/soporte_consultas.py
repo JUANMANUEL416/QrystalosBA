@@ -29,7 +29,7 @@ Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, 
 4. Ficha con estado distinto de `leido`, o grafo/flujo que no cubre la pregunta: no complete el hueco. Diga en el chat y en `respuestaOficial` qué falta y que no puede afirmarlo. Encole el handoff a Conocimiento. No devuelva un atajo, un procedimiento parecido ni un paso que el sistema no tenga documentado.
 
 ## Entregables
-1. Mensaje en **chat.json** (autor: `agente`). **Importante:** los mensajes en chat.json deben escribirse con el campo `en` para la marca temporal; este valor es asignado por el servidor, no lo invente ni escriba un valor arbitrario. Use la función append_chat que lo asigna automáticamente.
+1. Mensaje en **chat.json** (autor: `agente`). **IMPORTANTE: NO escriba directamente en chat.json.** Use la escritura normal de sus respuestas; el servidor las capturará y asignará timestamp (`en`) e ID automáticamente tras el turno. Cualquier timestamp que invente será corregido.
 2. Borrador en **meta.json** → `respuestaOficial` (texto para PDF).
 3. **meta.json** → `proposito` (2–4 frases): nace de la **necesidad** (`preguntaInicial`) y resume qué entrega el documento según su **análisis** (no texto genérico).
 4. En una consulta de soporte, cada **consulta SQL** va en bloque ```sql … ```. Esas consultas son para soporte interno.
@@ -360,6 +360,71 @@ def html_capturas(sid: str) -> str:
     if not partes:
         return ""
     return '<div class="doc-capturas">' + "".join(partes) + "</div>"
+
+
+def normalizar_timestamps_chat(sid: str) -> int:
+    """Normaliza timestamps y IDs de mensajes del agente tras un turno.
+    
+    Corrige mensajes con:
+    - Timestamp futuro, faltante o fuera del rango razonable
+    - ID faltante o duplicado
+    
+    Retorna la cantidad de mensajes corregidos.
+    """
+    chat = leer_chat(sid)
+    mensajes = chat.get("mensajes") or []
+    if not mensajes:
+        return 0
+    
+    ahora = datetime.now()
+    corregidos = 0
+    ids_vistos: set[str] = set()
+    
+    for msg in mensajes:
+        if msg.get("autor") != "agente":
+            if msg.get("id"):
+                ids_vistos.add(msg["id"])
+            continue
+        
+        cambio_msg = False
+        
+        # Validar timestamp
+        en = msg.get("en")
+        try:
+            if en:
+                ts = datetime.fromisoformat(str(en))
+                # Si es futuro o más de 7 días atrás, corregir
+                delta = (ahora - ts).total_seconds()
+                if delta < 0 or delta > 7 * 24 * 3600:
+                    raise ValueError("Timestamp fuera de rango")
+            else:
+                raise ValueError("Timestamp faltante")
+        except (ValueError, TypeError):
+            # Timestamp inválido: usar ahora
+            msg["en"] = ahora.isoformat(timespec="seconds")
+            cambio_msg = True
+        
+        # Validar ID
+        msg_id = msg.get("id")
+        if not msg_id or msg_id in ids_vistos:
+            # Generar nuevo ID único
+            base_id = ahora.strftime("%Y%m%d%H%M%S%f")
+            contador = 0
+            while f"{base_id}a{contador}" in ids_vistos:
+                contador += 1
+            msg["id"] = f"{base_id}a{contador}"
+            ids_vistos.add(msg["id"])
+            cambio_msg = True
+        else:
+            ids_vistos.add(msg_id)
+        
+        if cambio_msg:
+            corregidos += 1
+    
+    if corregidos > 0:
+        _write_json(carpeta_consulta(sid) / "chat.json", chat)
+    
+    return corregidos
 
 
 def append_chat(sid: str, autor: str, texto: str, imagenes: list | None = None) -> dict:

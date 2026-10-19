@@ -2244,20 +2244,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         autor = (body.get("autor") or "soporte").strip().lower()
         imagenes = body.get("imagenes") if isinstance(body.get("imagenes"), list) else None
         
-        # Si hay un turno activo, no guardar ahora; se guarda para el siguiente turno
-        from cursor_bot import leer_estado_bot
-        bot = leer_estado_bot(sid)
-        if bot.get("estado") == "trabajando" and bot.get("pidVivo"):
-            # Turno activo: las imágenes se acumulan en meta para procesarse después
-            if imagenes:
-                meta = scconsulta.leer_meta(sid)
-                pendientes = meta.get("imagenesPendientes") or []
-                pendientes.extend(imagenes)
-                scconsulta.actualizar_meta(sid, imagenesPendientes=pendientes)
-            chat = scconsulta.leer_chat(sid)
-            return self._json({"ok": True, "mensaje": None, "mensajes": chat.get("mensajes", [])})
-        
         try:
+            # Siempre guardar el mensaje del usuario inmediatamente
             msg = scconsulta.append_chat(sid, autor, texto, imagenes)
             chat = scconsulta.leer_chat(sid)
             return self._json({"ok": True, "mensaje": msg, "mensajes": chat.get("mensajes", [])})

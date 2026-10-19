@@ -1629,6 +1629,16 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
                         "El bot terminó pero no dejó mensaje en el Chat. Reintente o escriba de nuevo.",
                     )
 
+            # Normalizar timestamps de consultas de soporte tras el turno del agente
+            if es_soporte_consulta(id_caso):
+                try:
+                    import soporte_consultas as sc
+                    corregidos = sc.normalizar_timestamps_chat(id_caso)
+                    if corregidos > 0:
+                        print(f"[soporte] Corregidos {corregidos} timestamp(s) del agente en {id_caso}", flush=True)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[soporte] No se pudo normalizar timestamps: {exc}", flush=True)
+
             _reindexar_kb()
             write_bot(id_caso, estado="listo", error="", terminadoEn=_now())
             return 0

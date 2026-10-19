@@ -187,7 +187,13 @@ window.QrysSoporteConsultas = (function () {
     }
     const st = bot.estado;
     box.classList.remove("hidden", "is-working", "is-error");
-    const trabajando = (st === "trabajando" && bot.pidVivo);
+    
+    // Verificar si el heartbeat está obsoleto (más de 30s sin actualizar)
+    const heartbeatStale = bot.heartbeatEn 
+      ? (Date.now() - new Date(bot.heartbeatEn).getTime()) > 30000
+      : false;
+    
+    const trabajando = (st === "trabajando" && bot.pidVivo && !heartbeatStale);
     
     if (trabajando) {
       box.classList.add("is-working");
@@ -196,6 +202,16 @@ window.QrysSoporteConsultas = (function () {
       habilitarControlesChat(false);
       return;
     }
+    
+    // Si el heartbeat está obsoleto, considerar el proceso colgado
+    if (st === "trabajando" && heartbeatStale) {
+      box.classList.add("is-error");
+      label.textContent = "Proceso sin respuesta";
+      if (detail) detail.textContent = "El agente no responde. Recargue la página.";
+      habilitarControlesChat(true);
+      return;
+    }
+    
     if (st === "listo") {
       label.textContent = "Agente listo";
       if (detail) detail.textContent = "Puede escribir o pedir un ajuste.";
@@ -223,7 +239,15 @@ window.QrysSoporteConsultas = (function () {
     const req = $("scBtnRequerimiento");
     if (btn) btn.disabled = !habilitar;
     if (ajuste) ajuste.disabled = !habilitar;
-    if (input) input.disabled = !habilitar;
+    if (input) {
+      input.disabled = !habilitar;
+      // Bloquear paste/drop mientras esté deshabilitado
+      if (!habilitar) {
+        input.dataset.bloqueado = "1";
+      } else {
+        delete input.dataset.bloqueado;
+      }
+    }
     if (img) img.disabled = !habilitar;
     if (analisis) analisis.disabled = !habilitar;
     if (ilu) ilu.disabled = !habilitar;
@@ -824,6 +848,11 @@ window.QrysSoporteConsultas = (function () {
     }
 
     function onPegar(ev, destino) {
+      const input = ev.target;
+      if (input && input.dataset.bloqueado === "1") {
+        ev.preventDefault();
+        return;
+      }
       const files = archivosImagen(ev.clipboardData);
       if (!files.length) return;
       ev.preventDefault();
