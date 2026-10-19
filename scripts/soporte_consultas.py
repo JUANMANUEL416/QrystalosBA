@@ -913,7 +913,7 @@ def html_ilustraciones(sid: str) -> str:
     carp = carpeta_consulta(sid) / "imagenes"
     partes: list[str] = []
     for img in meta.get("imagenes") or []:
-        if img.get("origen") not in ("gemini", "cursor"):
+        if img.get("origen") not in ("gemini", "cursor", "openai"):
             continue
         nombre = Path(str(img.get("nombre") or "")).name
         path = carp / nombre
@@ -945,7 +945,7 @@ def _quitar_ilustraciones_gemini(sid: str) -> None:
     carp = carpeta_consulta(sid) / "imagenes"
     quedan = []
     for img in meta.get("imagenes") or []:
-        if img.get("origen") not in ("gemini", "cursor"):
+        if img.get("origen") not in ("gemini", "cursor", "openai"):
             quedan.append(img)
             continue
         path = carp / Path(str(img.get("nombre") or "")).name

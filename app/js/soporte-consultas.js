@@ -485,7 +485,38 @@ window.QrysSoporteConsultas = (function () {
   }
 
   async function generarIlustracion() {
-    aviso("La ilustración la arma el modelo de imagen de Cursor, en el agente. Esta pantalla no llama a la API de Gemini.", true);
+    if (!consultaId) return;
+    
+    const btn = $("scGenerarIlustracion");
+    if (!btn) return;
+    
+    const textoOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Generando...";
+    
+    try {
+      const resp = await fetch(`/api/soporte-consultas/${consultaId}/ilustracion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "" })
+      });
+      
+      const data = await resp.json();
+      
+      if (data.ok) {
+        aviso(`Ilustración generada: ${data.total || 1} imagen(es) con OpenAI.`);
+        await cargarPanel();
+      } else if (data.usarCursor) {
+        aviso("Para casos de capacitación, genere las ilustraciones con el agente de Cursor.", true);
+      } else {
+        aviso(data.mensaje || "Error generando ilustración", true);
+      }
+    } catch (e) {
+      aviso("La ilustración la arma el modelo de imagen de Cursor, en el agente.", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
   }
 
   async function cargarLista() {
