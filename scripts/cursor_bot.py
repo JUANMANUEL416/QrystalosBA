@@ -1198,16 +1198,38 @@ async def _esperar_turno_previo(client, agent_id: str, id_caso: str) -> bool:
         return True
     t0 = time.time()
     print(f"[turno] esperando {len(vivos)} turno(s) anterior(es) de {agent_id}", flush=True)
-    write_bot(id_caso, fase="esperando turno anterior", heartbeatEn=_now())
-    append_chat(id_caso, "sistema", "Esperando que termine el turno anterior de este chat; luego sigo con su mensaje.")
-    for r in vivos:
-        resto = ESPERA_TURNO_PREVIO_SEC - (time.time() - t0)
-        if resto <= 0:
-            break
+    
+    # Posponer el aviso de espera: solo si el wait lleva >15 s
+    UMBRAL_AVISO_SEC = 15
+    aviso_posteado = {"flag": False}
+    
+    # Task para postear el aviso después del umbral
+    async def postear_aviso_diferido():
+        await asyncio.sleep(UMBRAL_AVISO_SEC)
+        if not aviso_posteado["flag"]:
+            write_bot(id_caso, fase="esperando turno anterior", heartbeatEn=_now())
+            append_chat(id_caso, "sistema", "Esperando que termine el turno anterior de este chat; luego sigo con su mensaje.")
+            aviso_posteado["flag"] = True
+    
+    task_aviso = asyncio.create_task(postear_aviso_diferido())
+    
+    try:
+        for r in vivos:
+            resto = ESPERA_TURNO_PREVIO_SEC - (time.time() - t0)
+            if resto <= 0:
+                break
+            try:
+                await asyncio.wait_for(client.wait_live_run(r.id), timeout=resto)
+            except Exception:  # noqa: BLE001
+                pass
+    finally:
+        # Cancelar el task de aviso si aún no se posteó
+        task_aviso.cancel()
         try:
-            await asyncio.wait_for(client.wait_live_run(r.id), timeout=resto)
-        except Exception:  # noqa: BLE001
+            await task_aviso
+        except asyncio.CancelledError:
             pass
+    
     restantes = await _runs_vivos(client, agent_id)
     if restantes and time.time() - t0 < 10:
         # wait_live_run volvio enseguida: nadie esta ejecutando ese turno (quedo huerfano
