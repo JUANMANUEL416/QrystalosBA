@@ -30,7 +30,7 @@ DEFINIDOS = [
         "motores": ["local", "cursor"],
         "modeloLocal": "",
         "modos": ["normal", "soporte"],
-        "nota": "Modo soporte: consulta formal en data/soporte-consultas/{id} con respuestaOficial. No reescribe la base.",
+        "nota": "Modo soporte: respuesta en palabras de pantalla. Si validarEnBase está marcado, dice la causa y cómo corregirla; si el tramo no está documentado, lo lee, deja la ficha y avisa en pendientes. No reescribe la base del cliente.",
     },
     {
         "id": "requerimientos",
@@ -122,7 +122,7 @@ SUBAGENTES = [
     {"id": "consultas-respuesta", "padre": "consultas", "modo": "normal", "orden": 3, "nombre": "Respuesta", "hace": "Redacta la respuesta del chat.", "motor": "cursor", "motores": ["local", "cursor"]},
     {"id": "consultas-escalar", "padre": "consultas", "modo": "normal", "orden": 4, "nombre": "Escalar", "hace": "Si la ficha falta o no es 'leido': handoff a Conocimiento. No abre Qrystalos2.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "soporte-indice", "padre": "consultas", "modo": "soporte", "orden": 1, "nombre": "Índice y fichas", "hace": "Contrasta la pregunta con la base vía índice.", "motor": "cursor", "motores": ["cursor"]},
-    {"id": "soporte-respuesta", "padre": "consultas", "modo": "soporte", "orden": 2, "nombre": "Respuesta oficial", "hace": "Redacta respuestaOficial y responde el chat de la consulta.", "motor": "cursor", "motores": ["cursor"]},
+    {"id": "soporte-respuesta", "padre": "consultas", "modo": "soporte", "orden": 2, "nombre": "Respuesta oficial", "hace": "Redacta la explicación. Si hay que validar la base, también diagnostica el caso y deja cómo resolverlo.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "soporte-escalar", "padre": "consultas", "modo": "soporte", "orden": 3, "nombre": "Escalar", "hace": "Hueco en la base: handoff a Conocimiento.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "prueba-base", "padre": "prueba-req", "modo": "prueba", "orden": 1, "nombre": "Base", "hace": "Contrasta el requerimiento con la ficha del control.", "motor": "cursor", "motores": ["cursor"]},
     {"id": "prueba-fuente", "padre": "prueba-req", "modo": "prueba", "orden": 2, "nombre": "Fuente", "hace": "Revisa en Qrystalos2 el cambio que el desarrollador dice haber hecho.", "motor": "cursor", "motores": ["cursor"]},

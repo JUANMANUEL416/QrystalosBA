@@ -26,24 +26,22 @@ Responder la consulta interna contrastando **conocimiento/** (INDICE, procesos, 
 1. `data/soporte-consultas/{sid}/meta.json` y `chat.json`
 2. `conocimiento/_indice_busqueda.json` — ubique proceso, control y la ficha. Abra solo esa línea. No lea un `sps.json` entero.
 3. El guion de ese proceso: `conocimiento/{{proceso}}/proceso.json` (resumen, ventanas y controles) y el grafo de ese mismo proceso (`grafo-*/`, nodos en el orden del archivo). La respuesta sigue ese orden. No reordene pasos ni traiga un paso de otro proceso.
-4. Ficha con estado distinto de `leido`, o grafo/flujo que no cubre la pregunta: no complete el hueco. Diga en el chat y en `respuestaOficial` qué falta y que no puede afirmarlo. Encole el handoff a Conocimiento. No devuelva un atajo, un procedimiento parecido ni un paso que el sistema no tenga documentado.
+4. Sin validar en base: ficha distinta de `leido`, o grafo que no cubre la pregunta: no complete el hueco. Diga en el chat y en `respuestaOficial` qué falta. Encole el handoff. Con validar en base, ese hueco se lee y se documenta (ver abajo). No devuelva un atajo ni un paso de otro proceso.
 
 ## Entregables
-1. Mensaje en **chat.json** (autor: `agente`). **IMPORTANTE: NO escriba directamente en chat.json.** Use la escritura normal de sus respuestas; el servidor las capturará y asignará timestamp (`en`) e ID automáticamente tras el turno. Cualquier timestamp que invente será corregido.
+1. Mensaje en **chat.json** (autor: `agente`). No escriba `en` ni `id`, o déjelos como vengan: la app asigna la hora y el id reales al terminar el turno y corrige cualquier valor inventado.
 2. Borrador en **meta.json** → `respuestaOficial` (texto para PDF).
 3. **meta.json** → `proposito` (2–4 frases): nace de la **necesidad** (`preguntaInicial`) y resume qué entrega el documento según su **análisis** (no texto genérico).
 4. En una consulta de soporte, cada **consulta SQL** va en bloque ```sql … ```. Esas consultas son para soporte interno.
 5. Si `meta.json` trae `entregaRequerimiento` en true, el PDF usa la plantilla exclusiva `plantillas/entrega-requerimiento.html` (ChatGPT + ilustración). Todo el texto visible, avisos y rótulos de la ilustración van en español de Colombia. No incluya consultas SQL; quedan en el control de cambios.
 6. No implementar en Qrystalos2. No escribir en la base ni ejecutar procedimientos.
-7. Si hay servidor abajo, medir con SELECT de solo lectura (`scripts/auditoria_procesos.py`, `_resolve_server_db` y `_sqlcmd_query`) e incorporar conteos a la respuesta. No pedir al coordinador que los corra. No imprimir credenciales.
-8. **Límite de mediciones:** máximo **3 intentos** de conexión a la base y **5 minutos** totales. Si la consulta falla o no completa tras 3 intentos, detenga las mediciones, informe el problema en chat y deje la consulta SQL sugerida en `respuestaOficial` para que soporte la ejecute manualmente. No reintente indefinidamente.
-9. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento). En una entrega de requerimiento, soporte interno no lleva SQL.
+7. **Límite de mediciones:** máximo **3 intentos** de conexión a la base y **5 minutos** totales. Si la consulta falla o no completa tras 3 intentos, detenga las mediciones, informe el problema en chat y deje la consulta SQL sugerida en `respuestaOficial` para que soporte la ejecute manualmente. No reintente indefinidamente.
+8. **proposito** y la sección final de pasos distinguen **Para el cliente** (pantallas) y **Para soporte interno** (lo medido y el escalamiento). En una entrega de requerimiento, soporte interno no lleva SQL.
 
 Título: {meta.get("titulo") or ""}
 Cliente: {meta.get("cliente") or ""}
-Validar en base: {"sí, solo lectura" if meta.get("validarEnBase") else "no"}
 Servidor: {meta.get("servidorId") or "—"} · base {meta.get("baseDatos") or "—"}
-{_bloque_capturas(sid, meta)}"""
+{_bloque_validar_base(meta)}{_bloque_capturas(sid, meta)}"""
 
 
 def escribir_instruccion(sid: str) -> None:
@@ -215,6 +213,25 @@ _IMG_MIME = {
 }
 _IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _IMG_MAX = 8 * 1024 * 1024
+
+
+def _bloque_validar_base(meta: dict) -> str:
+    if not meta.get("validarEnBase"):
+        return (
+            "\nValidar en base: no. No conecte a una base salvo que el chat lo pida. "
+            "Responda con la explicación del proceso.\n"
+        )
+    return """
+Validar en base: sí, solo lectura. Atienda esta consulta como soporte.
+
+La respuesta oficial se lee sola, en palabras de la pantalla. Abra con la causa y siga con lo que la persona debe hacer. Ejemplo de tono, no de este caso: «En la configuración de ese contrato no hay paquetes. Por eso la lista sale vacía y el valor queda en cero. El paquete se configura en la contratación: se elige el contrato, Excepción Servicios, Nuevo, se marca Paquete y se guarda el detalle.»
+
+No abra con el grafo, el nodo, el método ni con lo que la documentación nombra o deja de nombrar. No escriba «no clasifico», «no invento» ni «no puedo afirmar» como respuesta. Nombres de procedimiento, vista y medición van solo en una sección corta **Para soporte interno**.
+
+Mida con SELECT en el servidor y la base de arriba (`scripts/auditoria_procesos.py`, `_resolve_server_db` y `_sqlcmd_query`). No imprima credenciales. No escriba en la base. Si la medición no corre, igual responda la causa que ya se ve en la captura; deje una línea en soporte interno.
+
+Si el tramo que explica la causa no está en el índice o su ficha no es `leido`: léalo (SQL en DESAIX, pantalla en Qrystalos2), escriba esa ficha y, si es vista, la descripción en el diccionario. Si queda más de ese objeto sin leer, deje un ítem abierto en `conocimiento/pendientes.json`. La respuesta al usuario no espera ese pendiente y no habla del hueco.
+"""
 
 
 def _bloque_capturas(sid: str, meta: dict) -> str:

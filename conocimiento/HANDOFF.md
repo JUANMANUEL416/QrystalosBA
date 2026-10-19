@@ -66,4 +66,4 @@ Tres agentes — **Conocimiento**, **Consultas** y **Requerimientos** — se coo
 
 - Cada agente escribe solo lo de su rol (ver `.cursor/rules/agente-*.mdc`).
 - Un handoff lleva solo `contexto` mínimo, nunca el historial del chat.
-- Conocimiento no abre `activo/`; Requerimientos y Consultas no escriben `sps.json`; Consultas no dictamina.
+- Conocimiento no abre `activo/`; Consultas no dictamina. Consultas escribe `sps.json` solo con `validarEnBase` y solo la ficha del objeto que acaba de leer para responder. Si queda más por documentar, deja un ítem abierto en `pendientes.json`. El resto de `sps.json` / `proceso.json` lo escribe Conocimiento.

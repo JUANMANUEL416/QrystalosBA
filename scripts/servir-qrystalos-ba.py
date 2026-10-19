@@ -2355,18 +2355,28 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             scconsulta.escribir_instruccion(sid)
             meta = scconsulta.leer_meta(sid)
             ahora = datetime.now().isoformat(timespec="seconds")
-            scconsulta.append_chat(
-                sid,
-                "coordinador",
-                "Analice esta consulta contrastando conocimiento/ (procesos, DIAN, copagos, facturación, caja, "
-                "recaudos según aplique). Redacte respuestaOficial en meta.json y resuma en el chat.",
-            )
-            scconsulta.append_chat(
-                sid,
-                "sistema",
-                "El agente está contrastando con la base de conocimiento. En unos minutos verá la respuesta en el chat "
-                "y el borrador en «Respuesta oficial».",
-            )
+            if meta.get("validarEnBase"):
+                pedido = (
+                    "Atienda esta consulta como soporte. La respuesta abre con la causa en palabras "
+                    "de la pantalla y sigue con los pasos para corregirla. Mida la base en solo lectura. "
+                    "Si el tramo no está documentado, léalo, deje la ficha y, si queda más, un pendiente. "
+                    "No responda con el grafo ni con «no está documentado»."
+                )
+                aviso = (
+                    "El agente está revisando el caso en la base del cliente. La respuesta dirá la causa "
+                    "y cómo corregirla en la pantalla."
+                )
+            else:
+                pedido = (
+                    "Analice esta consulta contrastando conocimiento/ (procesos, DIAN, copagos, facturación, caja, "
+                    "recaudos según aplique). Redacte respuestaOficial en meta.json y resuma en el chat."
+                )
+                aviso = (
+                    "El agente está contrastando con la base de conocimiento. En unos minutos verá la respuesta en el chat "
+                    "y el borrador en «Respuesta oficial»."
+                )
+            scconsulta.append_chat(sid, "coordinador", pedido)
+            scconsulta.append_chat(sid, "sistema", aviso)
             bot = agentes_panel.lanzar("soporte-consultas", sid, "soporte-consulta-analisis")
             if not bot.get("ok"):
                 scconsulta.append_chat(
@@ -2391,6 +2401,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             imagenes = body.get("imagenes") if isinstance(body.get("imagenes"), list) else None
             if nota or imagenes:
                 scconsulta.append_chat(sid, "coordinador", nota, imagenes)
+            scconsulta.escribir_instruccion(sid)
             scconsulta.append_chat(
                 sid,
                 "sistema",
