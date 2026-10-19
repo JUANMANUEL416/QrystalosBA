@@ -643,10 +643,12 @@ def _bloque_handoffs(id_caso: str, motivo: str) -> str:
 
 
 def prompt_turno(id_caso: str, motivo: str) -> str:
-    return _prompt_base(id_caso, motivo)
+    prompt, _ = _prompt_base(id_caso, motivo)
+    return prompt
 
 
-def _prompt_base(id_caso: str, motivo: str) -> str:
+def _prompt_base(id_caso: str, motivo: str) -> tuple[str, list[str]]:
+    """Genera el prompt y devuelve (prompt_texto, procesos_kb_preseleccionados)."""
     if es_conocimiento(id_caso, motivo):
         canal = canal_de(id_caso, motivo)
         sid = kb_sid(id_caso)
@@ -666,7 +668,7 @@ def _prompt_base(id_caso: str, motivo: str) -> str:
             "Solo abra FE/docs/.sql si la ficha de ESE proceso no cubre el pedido; dígalo en una línea."
         )
         if canal == "consultas":
-            return f"""Eres el agente de Consultas de Qrystalos BA. UN turno corto y termina. Sin shell ni web.
+            return (f"""Eres el agente de Consultas de Qrystalos BA. UN turno corto y termina. Sin shell ni web.
 {prohibido}
 
 Este turno (ya pegado; NO abra el chat.json):
@@ -679,8 +681,8 @@ Este turno (ya pegado; NO abra el chat.json):
 Si la base no alcanza: NO abra Qrystalos2 ni la documentación. Responda lo que la base sí cubre, diga «Escalado a Conocimiento (ho-…)» y agregue el handoff en conocimiento/handoffs/cola.json: de consultas, para conocimiento, tipo documentar_metodo o confirmar_hueco, contexto {{proceso, sp, metodo, pregunta literal, evidencia}}. Si ya hay uno abierto igual, súmele vecesPedido en vez de duplicar.
 Responda en {ruta} autor agente, campo "en". Español. No invente columnas ni SP.
 {_plan_subagentes(id_caso)}
-"""
-        return f"""Eres el agente de Conocimiento (Documentar) de Qrystalos BA. UN turno y termina. Sin barrido, sin shell ni web.
+""", [])
+        return (f"""Eres el agente de Conocimiento (Documentar) de Qrystalos BA. UN turno y termina. Sin barrido, sin shell ni web.
 {prohibido}
 
 Este turno (ya pegado; NO abra el chat.json):
@@ -695,8 +697,9 @@ Si la tarea está abierta: lea el cuerpo de hoy de {{archivoSql}} (copia local s
 Si no hay tarea: haga únicamente lo que pide el coordinador, en el proceso que nombre.
 Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 ni ejecute SQL.
 {_plan_subagentes(id_caso)}
-"""
+""", [])
     extra = ""
+    procesos_kb_ids: list[str] = []
     if motivo == "contabilidad":
         extra = (
             "- Motivo de este turno: VALIDAR CONTABILIDAD. Contraste el texto del coordinador "
@@ -704,12 +707,31 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "Si el texto es incompleto o contradice MCUE/CON, marque observado y pida el dato que falte."
         )
     elif motivo == "analizar-req":
+        # Preselección de contexto KB (reduce ~100 tool calls a ~15)
+        contexto_kb = ""
+        procesos_kb_ids = []
+        try:
+            import kb_contexto_req
+            sol_data = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
+            req_texto = str(sol_data.get("contenido", {}).get("requerimiento") or "")
+            proceso_id = str(sol_data.get("sql", {}).get("procesoId") or "")
+            if req_texto:
+                ctx = kb_contexto_req.preseleccionar_contexto(req_texto, proceso_id)
+                contexto_kb = kb_contexto_req.formato_prompt(ctx)
+                if ctx.get("procesos"):
+                    procesos_kb_ids = [p["id"] for p in ctx["procesos"]]
+                    print(f"[kb_contexto] preseleccionados: {', '.join(procesos_kb_ids)}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[kb_contexto] no se pudo preseleccionar: {exc}", flush=True)
+        
         extra = (
             "- Motivo: ANÁLISIS DEL REQUERIMIENTO orientado a SOLUCIÓN (no dictamen HTML).\n"
-            "- Método obligatorio (en este orden):\n"
+            + (f"\n{contexto_kb}\n\n" if contexto_kb else "")
+            + "- Método obligatorio (en este orden):\n"
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
-            "  2) Contrastar con conocimiento/: INDICE → proceso → proceso.json + sps.json "
-            "vía conocimiento/_indice_busqueda.json (solo las fichas del control; y sql_refe si hace falta la línea exacta). "
+            "  2) Contrastar con el CONTEXTO KB PRESELECCIONADO (arriba). Si no alcanza, "
+            "buscar vía conocimiento/_indice_busqueda.json (solo las fichas del control; "
+            "y sql_refe si hace falta la línea exacta). "
             "SOLO DESPUÉS, y únicamente para huecos de la base: SQL → DESAIX; código fuente → Qrystalos2; al final qrystalos.documentacion; "
             "cada hueco va como handoff a Conocimiento (conocimiento/handoffs/cola.json).\n"
             "  2b) PASO 0 ¿YA EXISTE?: texto del REQ ≠ captura. Inventariar TODOS los "
@@ -730,6 +752,8 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "impresión). Si el SP del fix no está en sps.json, deje metodosDocumentados "
             "vacío o solo los que sí aplican, pida el .sql y anote en brechaAnalisis.sps. "
             "Tabla en el Chat: SP · METODO · estado · rol en el fix.\n"
+            "- PRESUPUESTO ESTRICTO: máximo ~15 tool calls (read/grep/glob). No barridos. "
+            "Use el contexto KB preseleccionado. Escriba criterios/análisis apenas tenga lo mínimo.\n"
             "- Responda en chat.json (autor: agente) con el mismo resumen: problema → causa "
             "(según KB) → solución → CA/alcance/restricciones → SPs a usar; si escribió "
             "cambioPropuestoSql, indíquelo en una línea.\n"
@@ -758,7 +782,7 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "- No termine sin haber escrito esos campos en solicitud.json."
         )
     elif motivo in ("revisar-sql", "revisar-sql-chat"):
-        return f"""Eres el agente de revisión SQL de Qrystalos BA. Un turno y termina.
+        return (f"""Eres el agente de revisión SQL de Qrystalos BA. Un turno y termina.
 
 Revisión: {id_caso}
 
@@ -780,14 +804,14 @@ Reglas:
 - Si el modo es chat, responda solo lo que el coordinador acaba de preguntar, con los archivos de esta revisión.
 
 Al terminar, el último mensaje de chat.json debe ser suyo (autor: agente).
-"""
+""", [])
     elif motivo in ("prueba-req", "prueba-req-chat"):
         accion = (
             "PRUEBA: contraste la entrega y deje el veredicto."
             if motivo == "prueba-req"
             else "AJUSTE: responda lo último del coordinador y, si cambia el criterio, actualice el veredicto."
         )
-        return f"""Eres el agente que prueba requerimientos entregados en Qrystalos BA. UN turno y termina.
+        return (f"""Eres el agente que prueba requerimientos entregados en Qrystalos BA. UN turno y termina.
 
 Prueba: {id_caso}
 Turno: {accion}
@@ -813,14 +837,14 @@ Reglas:
 - No invente columnas ni procedimientos. Si un dato no está, dígalo y rechace solo lo que el requerimiento pedía y no aparece.
 
 Al terminar, el último mensaje útil de chat.json debe ser suyo y meta.json debe tener veredicto y veredictoTexto.
-"""
+""", [])
     elif motivo in ("soporte-consulta-analisis", "soporte-consulta-chat"):
         accion = (
             "ANÁLISIS INICIAL: contraste la pregunta con conocimiento/ y proponga respuesta completa."
             if motivo == "soporte-consulta-analisis"
             else "AJUSTE: responda lo último del coordinador/soporte en el chat y refine la respuesta."
         )
-        return f"""Eres el agente de consultas de soporte de Qrystalos BA. UN turno y termina.
+        return (f"""Eres el agente de consultas de soporte de Qrystalos BA. UN turno y termina.
 
 Consulta: {id_caso}
 Turno: {accion}
@@ -856,9 +880,9 @@ Reglas:
 - OpenAI no interviene.
 
 Al terminar, el último mensaje útil de chat.json debe ser suyo (autor: agente) y respuestaOficial debe tener borrador actualizado.
-"""
+""", [])
     elif motivo == "solicitar-req":
-        return f"""Eres el agente BA/funcional de Qrystalos BA. Solicitud para el comité.
+        return (f"""Eres el agente BA/funcional de Qrystalos BA. Solicitud para el comité.
 
 ID: {id_caso}
 
@@ -885,10 +909,10 @@ Reglas:
 
 Al terminar, el último mensaje relevante de chat.json debe ser suyo (autor: agente).
 {_plan_subagentes(id_caso)}
-"""
+""", [])
     elif motivo == "material":
         carpeta = _carpeta_caso(id_caso)
-        return f"""Eres quien redacta material para quien usa Qrystalos. UN turno y termina.
+        return (f"""Eres quien redacta material para quien usa Qrystalos. UN turno y termina.
 
 Caso: {id_caso}
 Carpeta: {carpeta}
@@ -903,10 +927,10 @@ Reglas:
 - Resuma en {carpeta}/chat.json (autor: agente) qué quedó.
 
 Al terminar, el último mensaje del chat es suyo y documento.md existe.
-"""
+""", [])
     elif motivo == "mockup-ventana":
         carpeta = _carpeta_caso(id_caso)
-        return f"""Eres quien arma la ventana de muestra de Qrystalos. UN turno y termina.
+        return (f"""Eres quien arma la ventana de muestra de Qrystalos. UN turno y termina.
 
 Caso: {id_caso}
 Carpeta: {carpeta}
@@ -919,10 +943,10 @@ Carpeta: {carpeta}
 6. Avise en {carpeta}/chat.json (autor: agente) con la ruta.
 
 Al terminar, el HTML existe y el último mensaje del chat es suyo.
-"""
+""", [])
     elif motivo == "presentacion":
         carpeta = _carpeta_caso(id_caso)
-        return f"""Eres quien prepara el guion de capacitación de Qrystalos. UN turno y termina.
+        return (f"""Eres quien prepara el guion de capacitación de Qrystalos. UN turno y termina.
 
 Caso: {id_caso}
 Carpeta: {carpeta}
@@ -934,8 +958,8 @@ Escriba un guion hablado, en el orden de la pantalla: qué muestra, qué hace la
 Guárdelo en {carpeta}/material/guion-capacitacion.md y resuma en {carpeta}/chat.json (autor: agente).
 
 No invente pasos. Si falta un tramo, escriba «no documentado».
-"""
-    return f"""Eres el agente de coordinación de Qrystalos BA. Trabaja SOLO este caso.
+""", [])
+    return (f"""Eres el agente de coordinación de Qrystalos BA. Trabaja SOLO este caso.
 
 ID caso: {id_caso}
 Motivo: {motivo}
@@ -968,7 +992,7 @@ Reglas:
 
 Al terminar, el último mensaje relevante de chat.json debe ser suyo (autor: agente).
 {_plan_subagentes(id_caso)}
-"""
+""", procesos_kb_ids)
 
 
 def _local_opts(motivo: str = "chat"):
@@ -1132,6 +1156,7 @@ class _Tiempos:
         self.primer_evento: float | None = None
         self.herramientas: dict[str, int] = {}
         self.archivos: dict[str, int] = {}
+        self.procesos_kb: list[str] = []
 
     def marca(self, fase: str, **extra) -> None:
         ahora = time.time()
@@ -1159,10 +1184,11 @@ class _Tiempos:
         pe = f"{self.primer_evento:.1f}s" if self.primer_evento is not None else "-"
         herr = ", ".join(f"{k}×{v}" for k, v in sorted(self.herramientas.items(), key=lambda x: -x[1])[:6])
         top = ", ".join(f"{k}×{v}" for k, v in sorted(self.archivos.items(), key=lambda x: -x[1])[:6])
+        kb_procs = ", ".join(self.procesos_kb) if self.procesos_kb else "-"
         print(
             f"[tiempos] {self.motivo} total={total:.1f}s {fases} primer_evento={pe} "
             f"herramientas={sum(self.herramientas.values())} ({herr or '-'}) "
-            f"prompt_chars={self.extra.get('chars', '-')} archivos: {top or '-'}",
+            f"prompt_chars={self.extra.get('chars', '-')} kb_preseleccionados={kb_procs} archivos: {top or '-'}",
             flush=True,
         )
 
@@ -1584,7 +1610,8 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             write_json(agente_path(id_caso), meta_out)
             write_bot(id_caso, agentId=agent.agent_id, modelo=modelo_id(motivo), fast=usa_fast(motivo))
 
-            prompt = prompt_turno(id_caso, motivo)
+            prompt, procesos_kb = _prompt_base(id_caso, motivo)
+            t.procesos_kb = procesos_kb
             t.marca("prompt", chars=len(prompt))
             try:
                 run = await _send_esperando_turno(client, agent, prompt, id_caso)
