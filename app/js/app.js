@@ -169,50 +169,54 @@
   }
 
   function isAnalisisEnCurso() {
-    const ov = $("#analisisLoadingOverlay");
-    return ov && !ov.hidden;
+    const banner = $("#analisisStatusBanner");
+    return banner && !banner.hidden;
   }
 
   function showAnalisisLoading(titulo, detalle, idCaso) {
-    const ov = $("#analisisLoadingOverlay");
-    if (!ov) return;
-    if ($("#analisisLoadingTitle")) $("#analisisLoadingTitle").textContent = titulo || "Analizando requerimiento";
-    if ($("#analisisLoadingDetail")) $("#analisisLoadingDetail").textContent = detalle || "";
-    if ($("#analisisLoadingCaso")) {
-      $("#analisisLoadingCaso").textContent = idCaso ? `Caso: ${idCaso}` : "";
+    const banner = $("#analisisStatusBanner");
+    if (!banner) return;
+    if ($("#analisisStatusTitle")) $("#analisisStatusTitle").textContent = titulo || "Agente trabajando";
+    if ($("#analisisStatusDetail")) $("#analisisStatusDetail").textContent = detalle || "";
+    if ($("#analisisStatusCaso")) {
+      $("#analisisStatusCaso").textContent = idCaso ? `Caso: ${idCaso}` : "";
     }
-    ov.hidden = false;
-    document.body.classList.add("analisis-loading-active");
-    window.__qrysOcupado = true;
+    banner.hidden = false;
+    habilitarControlesFormulario(false);
   }
 
   function updateAnalisisLoadingDetalle(texto) {
-    const el = $("#analisisLoadingDetail");
+    const el = $("#analisisStatusDetail");
     if (el && texto) el.textContent = texto;
   }
 
   function hideAnalisisLoading() {
-    const ov = $("#analisisLoadingOverlay");
-    if (ov) ov.hidden = true;
-    document.body.classList.remove("analisis-loading-active");
-    window.__qrysOcupado = false;
+    const banner = $("#analisisStatusBanner");
+    if (banner) banner.hidden = true;
+    habilitarControlesFormulario(true);
+  }
+
+  function habilitarControlesFormulario(habilitar) {
+    const btn = $("#btnAnalizarRequerimiento");
+    const btnValidar = $("#btnValidarContabilidad");
+    const btnActivar = $("#btnActivarAnalisis");
+    const btnCerrar = $("#btnCerrarFase1");
+    const btnEnviarCorreo = $("#btnEnviarCorreo");
+    
+    if (btn) btn.disabled = !habilitar;
+    if (btnValidar) btnValidar.disabled = !habilitar;
+    if (btnActivar) btnActivar.disabled = !habilitar;
+    if (btnCerrar) btnCerrar.disabled = !habilitar;
+    if (btnEnviarCorreo) btnEnviarCorreo.disabled = !habilitar;
   }
 
   window.QrysOcupado = {
     mostrar: showAnalisisLoading,
     ocultar: hideAnalisisLoading,
     activo() {
-      return !!window.__qrysOcupado;
+      return isAnalisisEnCurso();
     },
   };
-
-  document.addEventListener("click", (e) => {
-    if (!window.__qrysOcupado) return;
-    const ov = $("#analisisLoadingOverlay");
-    if (ov && !ov.hidden && ov.contains(e.target)) return;
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
 
   function bindMainTabs() {
     $$(".main-tab").forEach((tab) => {
@@ -2961,7 +2965,9 @@
     if (location.protocol === "file:") {
       return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
     }
-    if (isAnalisisEnCurso()) return;
+    if (isAnalisisEnCurso()) {
+      return alert("Este caso ya tiene un análisis en curso. Espere a que termine o recargue el caso.");
+    }
     saveToStorage();
     switchToFormulario();
     goStep(2);
@@ -3265,7 +3271,9 @@
     if (location.protocol === "file:") {
       return alert("Ejecute abrir-app.bat y abra http://localhost:8765/app/");
     }
-    if (isAnalisisEnCurso()) return;
+    if (isAnalisisEnCurso()) {
+      return alert("Este caso ya tiene un análisis en curso. Espere a que termine o recargue el caso.");
+    }
     captureCriteriosOriginales();
     saveToStorage();
     switchToFormulario();
