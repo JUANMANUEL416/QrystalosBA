@@ -86,6 +86,80 @@ def test_preseleccion_inferir_proceso():
     print("✓ Test inferencia de proceso: OK")
 
 
+def test_regression_inventario_sku():
+    """Regresión: REQ de inventario debe preseleccionar 'inventario', no bancos/caja."""
+    print("\nTest REGRESIÓN: SKU inventario (real case)...")
+    
+    req = """
+    revisión del listado maestro de SKU que no se visualizan en el 
+    movimiento SI - Saldo Inicial Entrada en el sistema de inventario
+    """
+    
+    contexto = kb_contexto_req.preseleccionar_contexto(req, "")
+    
+    if not contexto.get("procesos"):
+        print("  ⚠ No se preseleccionó ningún proceso (score < umbral)")
+        print("  FALLO: Debería preseleccionar 'inventario'")
+        assert False, "Debe preseleccionar 'inventario' para REQ con SKU/movimiento/entrada"
+    
+    proc_ids = [p["id"] for p in contexto["procesos"]]
+    print(f"  Procesos preseleccionados: {', '.join(proc_ids)}")
+    
+    # El primer proceso debe ser inventario
+    assert proc_ids[0] == "inventario", \
+        f"El primer proceso debe ser 'inventario', no '{proc_ids[0]}'"
+    
+    # No debe incluir bancos ni caja
+    assert "bancos" not in proc_ids, "No debe preseleccionar 'bancos' para este REQ"
+    assert "caja" not in proc_ids, "No debe preseleccionar 'caja' para este REQ"
+    
+    print("✓ Test regresión inventario: OK")
+
+
+def test_positive_caja():
+    """Positivo: REQ de caja debe preseleccionar 'caja'."""
+    print("\nTest POSITIVO: Caja...")
+    
+    req = """
+    El cajero no puede abrir su turno. Aparece error al intentar 
+    ingresar a la ventanilla. El sistema indica que la caja no está 
+    configurada en el equipo.
+    """
+    
+    contexto = kb_contexto_req.preseleccionar_contexto(req, "")
+    
+    assert contexto.get("procesos"), "Debe preseleccionar al menos un proceso"
+    
+    proc_ids = [p["id"] for p in contexto["procesos"]]
+    print(f"  Procesos preseleccionados: {', '.join(proc_ids)}")
+    
+    assert "caja" in proc_ids, "Debe preseleccionar 'caja' para este REQ"
+    
+    print("✓ Test positivo caja: OK")
+
+
+def test_positive_bancos():
+    """Positivo: REQ de bancos debe preseleccionar 'bancos'."""
+    print("\nTest POSITIVO: Bancos...")
+    
+    req = """
+    La conciliación bancaria no cuadra. El extracto del banco muestra
+    movimientos que no aparecen en el sistema. Hay cheques pendientes
+    de cobro que no se reflejan correctamente.
+    """
+    
+    contexto = kb_contexto_req.preseleccionar_contexto(req, "")
+    
+    assert contexto.get("procesos"), "Debe preseleccionar al menos un proceso"
+    
+    proc_ids = [p["id"] for p in contexto["procesos"]]
+    print(f"  Procesos preseleccionados: {', '.join(proc_ids)}")
+    
+    assert "bancos" in proc_ids, "Debe preseleccionar 'bancos' para este REQ"
+    
+    print("✓ Test positivo bancos: OK")
+
+
 def test_formato_prompt():
     """Verifica que el formato del prompt sea válido."""
     print("\nTest 4: Formato del prompt...")
@@ -192,6 +266,9 @@ def main():
         test_extraer_terminos()
         test_preseleccion_con_proceso()
         test_preseleccion_inferir_proceso()
+        test_regression_inventario_sku()
+        test_positive_caja()
+        test_positive_bancos()
         test_formato_prompt()
         test_limite_tamano()
         test_resumen_sps()
