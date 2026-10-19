@@ -195,9 +195,25 @@ def ilustrar(sid: str, prompt: str, pie: str = "") -> dict | None:
     carp = sc.carpeta_consulta(sid) / "imagenes"
     carp.mkdir(parents=True, exist_ok=True)
     dest = carp / "entrega-ilustracion.png"
-    result = oai.generar_imagen(_prompt_imagen(prompt), str(dest))
-    if not result.get("ok"):
+    
+    try:
+        result = oai.generar_imagen(_prompt_imagen(prompt), str(dest))
+        if not result.get("ok"):
+            # Log el error pero no fallar el documento completo
+            sc.append_chat(
+                sid,
+                "sistema",
+                f"No se pudo generar ilustración con OpenAI: {result.get('mensaje', 'Error desconocido')}"
+            )
+            return None
+    except Exception as e:
+        sc.append_chat(
+            sid,
+            "sistema",
+            f"Error generando ilustración: {str(e)}"
+        )
         return None
+    
     item = {
         "nombre": dest.name,
         "url": f"/api/soporte-consultas/{sid}/imagen/{dest.name}",

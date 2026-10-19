@@ -73,6 +73,23 @@ Mínimo recomendado:
 
 Ver secciones en `plantillas/dictamen.html`: requerimiento, análisis, dictamen, cambios, pruebas (dev/coordinador/soporte), fuentes.
 
+## Ilustraciones de capacitación
+
+Para casos de **capacitación** (manual, guía, tutorial), las ilustraciones se generan con **OpenAI Images** (modelo configurable en `.env`):
+
+- **Detección automática:** `meta.tipo='capacitacion'`, palabras clave en `preguntaInicial`, o existe `material/guion-capacitacion.md`
+- **Generación:** Mapa mental de temas + diagramas por sección del guion (máximo 3)
+- **Configuración:** `OPENAI_IMAGE_MODEL` en `.env` (por defecto `gpt-image-1`)
+- **Fallback:** Si OpenAI falla o no hay clave, mensaje en chat y flujo normal de Cursor
+
+Variables de entorno:
+```bash
+OPENAI_API_KEY=sk-proj-...
+OPENAI_IMAGE_MODEL=gpt-image-1
+```
+
+Casos **no-capacitación** mantienen el flujo actual (agente de Cursor).
+
 ## Lo que este proyecto NO hace
 
 - No implementa en Qrystalos2, backend ni BD.

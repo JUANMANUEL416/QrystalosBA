@@ -2189,6 +2189,32 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "JSON inválido"}, 400)
         try:
             meta = scconsulta.leer_meta(sid)
+            
+            # Detectar casos de capacitación
+            import capacitacion_ilustracion as cap_ilustra
+            carpeta = scconsulta.carpeta_consulta(sid)
+            
+            if cap_ilustra._es_capacitacion(meta, carpeta):
+                # Caso de capacitación: usar OpenAI
+                result = cap_ilustra.generar_ilustraciones(sid, meta)
+                if not result.get("ok"):
+                    # Si OpenAI falla, avisar y caer al flujo normal de Cursor
+                    scconsulta.append_chat(
+                        sid,
+                        "sistema",
+                        f"No se pudo generar ilustración con OpenAI: {result.get('mensaje', 'Error desconocido')}. "
+                        "Use el agente de Cursor para generar la ilustración."
+                    )
+                    return self._json({
+                        "ok": False,
+                        "error": "openai_fallback",
+                        "mensaje": result.get("mensaje", "Error generando con OpenAI"),
+                        "usarCursor": True
+                    }, 200)
+                
+                return self._json(result)
+            
+            # Casos normales: Cursor agent
             oficial = (meta.get("respuestaOficial") or "").strip()
             if len(oficial) < 40:
                 raise ValueError(
