@@ -94,6 +94,24 @@ ESCENAS_BLOQUES = {
         "documentación de medicamentos transferidos desde farmacia central a farmacia "
         "satélite."
     ),
+    
+    "contabilizacion-entrada-compra": (
+        "Contador hospitalario en pantalla de orden de movimiento contable revisando "
+        "comprobantes de entrada de inventario: verificando cuentas contables DB/CR, "
+        "centros de costo y valores de medicamentos y dispositivos médicos recibidos."
+    ),
+    
+    "salida-dispensacion-servicios": (
+        "Proceso de dispensación farmacéutica en hospital: farmaceuta entregando medicamentos "
+        "a urgencias, enfermería recibiendo, verificación de cantidades y lotes en sistema "
+        "de gestión hospitalaria."
+    ),
+    
+    "traslado-entre-bodegas": (
+        "Traslado interno de medicamentos entre farmacias hospitalarias: auxiliar de farmacia "
+        "trasladando contenedor seguro de medicamentos controlados desde farmacia central a "
+        "farmacia satélite de piso, documentación de tránsito."
+    ),
 }
 
 
