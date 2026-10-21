@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INV: no duplicar MCP y marcar IMOV al contabilizar — Dictamen técnico Qrystalos</title>
+  <style>
+    :root { --primary:#E67817; --secondary:#CB500F; --border:#000; --bg:#fff8ee; --text:#1a1a1a; --muted:#5d4e37; --warn:#b7950b; --danger:#922b21; --ok:#1e8449; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:"Segoe UI",Tahoma,sans-serif; font-size:14px; line-height:1.6; color:var(--text); background:var(--bg); padding:2rem; }
+    .container { max-width:960px; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:4px; padding:2.5rem; }
+    .brand-bar { height:6px; background:#E67817; margin:-2.5rem -2.5rem 1.15rem; }
+    .brand-head { display:flex; align-items:center; gap:12px; margin-bottom:1rem; }
+    .brand-mark { height:56px; width:auto; background:#000; border-radius:8px; }
+    .brand-name { font-size:1.05rem; font-weight:700; color:#2c2c2c; letter-spacing:.06em; }
+    .brand-sub { font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.1em; }
+    header { border-bottom:3px solid var(--primary); padding-bottom:1.5rem; margin-bottom:2rem; }
+    header h1 { font-size:1.5rem; color:var(--primary); margin-bottom:.5rem; }
+    .meta-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem 1.5rem; margin-top:1rem; font-size:.9rem; }
+    .meta-item label { display:block; font-weight:600; color:var(--muted); font-size:.75rem; text-transform:uppercase; }
+    .badge { display:inline-block; padding:.15rem .6rem; border-radius:3px; font-size:.8rem; font-weight:600; background:#fef9e7; color:var(--warn); border:1px solid var(--warn); }
+    section { margin-bottom:2rem; }
+    section h2 { font-size:1.1rem; color:var(--primary); border-bottom:1px solid var(--border); padding-bottom:.4rem; margin-bottom:1rem; }
+    section h3 { font-size:.95rem; color:var(--secondary); margin:1rem 0 .5rem; }
+    .content-block { background:var(--bg); border-left:4px solid var(--secondary); padding:1rem 1.25rem; margin-bottom:1rem; white-space:pre-wrap; }
+    .alert { background:#fef9e7; border:1px solid var(--warn); border-left:4px solid var(--warn); padding:1rem 1.25rem; margin-bottom:1rem; }
+    table { width:100%; border-collapse:collapse; margin:.75rem 0; font-size:.9rem; }
+    th, td { border:1px solid var(--border); padding:.5rem .75rem; text-align:left; vertical-align:top; }
+    th { background:var(--primary); color:#fff; }
+    tr:nth-child(even) { background:#f4f6f7; }
+    ul, ol { margin:.5rem 0 .5rem 1.5rem; }
+    .checklist { list-style:none; margin-left:0; }
+    .checklist li { padding-left:1.5rem; position:relative; margin-bottom:.35rem; }
+    .checklist li::before { content:"☐"; position:absolute; left:0; color:var(--muted); }
+    .impacto-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin:1rem 0; }
+    .impacto-grid-1 { grid-template-columns:1fr; max-width:280px; }
+    .impacto-card { border:1px solid var(--border); border-radius:4px; padding:.75rem; text-align:center; }
+    .impacto-card .label { font-size:.75rem; color:var(--muted); text-transform:uppercase; }
+    .impacto-card .value { font-size:1.1rem; font-weight:700; margin-top:.25rem; }
+    .impacto-si { color:var(--danger); }
+    .impacto-no { color:var(--ok); }
+    .impacto-parcial { color:var(--warn); }
+    code { background:#eef2f3; padding:.1rem .35rem; border-radius:3px; font-size:.85em; }
+    pre.sql-spec { background:#1e1e1e; color:#d4d4d4; padding:1rem; overflow-x:auto; font-size:.82rem; line-height:1.45; border-radius:4px; margin:.75rem 0; white-space:pre-wrap; }
+    .diagrama-flujo-block { background:#f4f6f8; border:1px dashed var(--border); border-radius:4px; padding:1rem 1.25rem; }
+    footer { margin-top:2rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.8rem; color:var(--muted); text-align:center; }
+    html, body, .container, th, .badge, .brand-bar, .diagrama-incrustado { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print { body{background:#fff8ee;padding:8px} .container{border:1px solid #000;padding:1.5rem} th{background:#E67817!important;color:#fff!important} }
+    .diagrama-incrustado .df-flow { display:flex; flex-wrap:wrap; align-items:stretch; gap:.45rem .35rem; padding:.85rem; background:#faf6f0; border:1px dashed #e4d5c0; border-radius:6px; margin-bottom:.85rem; }
+    .diagrama-incrustado .df-node { flex:1 1 130px; min-width:115px; max-width:200px; border-radius:6px; padding:.55rem .65rem; border:1px solid #e4d5c0; background:#fff; }
+    .diagrama-incrustado .df-node .k { font-weight:700; font-size:.82rem; margin-bottom:.2rem; }
+    .diagrama-incrustado .df-node .d { font-size:.78rem; color:#5d4e37; line-height:1.35; }
+    .diagrama-incrustado .df-user { border-color:#E67817; background:#fff4e8; }
+    .diagrama-incrustado .df-vue { border-color:#3d7ea6; }
+    .diagrama-incrustado .df-api { border-color:#6b4c9a; background:#f7f2fc; }
+    .diagrama-incrustado .df-sql { border-color:#1e8449; background:#f2faf5; }
+    .diagrama-incrustado .df-out { border-color:#CB500F; background:#fff0e4; }
+    .diagrama-incrustado .df-arrow { align-self:center; color:#E67817; font-weight:700; }
+    .diagrama-incrustado .df-split { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; margin-bottom:.85rem; }
+    .diagrama-incrustado .df-box { border:1px solid #e4d5c0; border-radius:6px; padding:.75rem .85rem; }
+    .diagrama-incrustado .df-hoy { background:#fdf2f2; border-color:#e6b0aa; }
+    .diagrama-incrustado .df-ok { background:#eafaf1; border-color:#a9dfbf; }
+    .diagrama-incrustado .df-ctrl { border:1px solid #E67817; border-radius:6px; padding:.65rem .85rem; margin-top:.5rem; }
+    .diagrama-incrustado .df-meta { color:#5d4e37; font-size:.8rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="brand-bar"></div>
+  <div class="brand-head">
+    <img class="brand-mark" src="../app/assets/logo-ixcolombia.png" alt="IX Colombia SAS">
+    <div>
+      <div class="brand-name">IX COLOMBIA SAS</div>
+      <div class="brand-sub">Business Analyst · Qrystalos</div>
+    </div>
+  </div>
+  <header>
+    <h1>INV: no duplicar MCP y marcar IMOV al contabilizar</h1>
+    <p style="color:var(--muted)">Dictamen técnico — Qrystalos BA · REQ 0100016789 · Origen SR20261016-003</p>
+    <div class="meta-grid">
+      <div class="meta-item"><label>ID caso</label><span>20261019-0100016789</span></div>
+      <div class="meta-item"><label>Cliente</label><span>Comité de Estudios Médicos (CEM)</span></div>
+      <div class="meta-item"><label>Módulo</label><span>Inventario · IMOV (Otros módulos / OM Inventario)</span></div>
+      <div class="meta-item"><label>Desarrollador</label><span>ANDRE CARBAJAL</span></div>
+      <div class="meta-item"><label>Coordinador / BA</label><span>JOSE MANUEL JIMENEZ</span></div>
+      <div class="meta-item"><label>Rama</label><span>bugfix/COESME657</span></div>
+      <div class="meta-item"><label>Prioridad / tipo</label><span>1 - Alta · Performance</span></div>
+      <div class="meta-item"><label>Estado</label><span class="badge">Propuesto</span></div>
+      <div class="meta-item"><label>Fecha</label><span>19/10/2026</span></div>
+    </div>
+  </header>
+
+  <section id="requerimiento">
+    <h2>1. Requerimiento del cliente</h2>
+    <div class="content-block">Cuando un movimiento de inventario ya tiene comprobante (por OM Inventario u otro camino) y luego entra a la cola del job nocturno, el sistema genera un segundo comprobante INV por el mismo movimiento. Queda doble comprobante definitivo, el movimiento no queda bien marcado y el usuario ve dos asientos del mismo valor.
+
+Caso CEM: movimiento 3500012974 (bodega 079, tipo 06 dispensación): comprobante 0158000000100001 (sede 01, 2026-10-03) y comprobante 3563000000007733 (sede 35, 2026-10-04 00:02).
+
+Con la variable de contabilización en job activa, la confirmación deja la cola con número de comprobante vacío. OM Inventario puede contabilizar primero y dejar comprobante definitivo. El job nocturno recorre la cola pendiente y vuelve a contabilizar sin preguntar si ya hay comprobante INV ni si el movimiento ya está contabilizado.
+
+Qué se espera: el job no reprocese movimientos ya contabilizados; el generador no inserte otro encabezado si ya existe comprobante INV no anulado para el movimiento (reutilizar el número y marcar el movimiento cuando corresponda); al cerrar el comprobante, la revisión sigue marcando contabilizado o en error según el resultado. No anular en este desarrollo los comprobantes duplicados que ya existen.</div>
+  </section>
+
+  <section id="analisis">
+    <h2>2. Análisis del coordinador</h2>
+    <div class="content-block">Clasificación: defecto. El control de contabilizar el movimiento de inventario (OM Inventario y job nocturno) existe y falla: no hay acción de usuario que impida el segundo asiento.
+
+Proceso inventario · control «Contabilizar movimiento de inventario (OM)». Invariante de negocio: un movimiento no debe duplicarse en comprobantes INV definitivos.
+
+Caminos relevantes:
+1. Confirmar la salida con contabilización en job: inserta cola con número vacío; no llama al generador en línea si la variable lo indica.
+2. OM Inventario contabiliza en el día: llama al generador con número vacío del proceso masivo; puede dejar comprobante definitivo y no marca la cola como procesada.
+3. Job nocturno: recorre cola con procesado vacío, ejecuta el generador con número vacío y sede de la cola, sin mirar si el movimiento ya está contabilizado ni si ya hay MCP/MCPE INV.
+4. Generador: con número vacío pide consecutivo e inserta borrador; la antiduplicación documentada en renglones no evita un segundo encabezado por el mismo movimiento.
+5. Revisión del comprobante: al cerrar marca el movimiento contabilizado o en error; un consecutivo nuevo distinto sí queda como segundo comprobante.
+
+Solución acordada: IXONLINE/SQL SPK_NC_CONTAB_INV (reutilizar comprobante INV del movimiento antes de pedir número) y SPK_CONTAB_INV_JOB (no volver a llamar si ya hay comprobante definitivo o movimiento contabilizado; si solo hay borrador, marcar cola sin forzar contabilizado). Fuera de alcance: pantalla, masivo, venta unificada, anular duplicados históricos.</div>
+  </section>
+
+  <section id="validar-antes">
+    <h2>Validar antes de desarrollar</h2>
+    <div class="alert"><strong>Obligatorio.</strong> Antes de codificar, contrastar PREVERSION de SPK_NC_CONTAB_INV y SPK_CONTAB_INV_JOB con la última liberada. Si el generador ya reutiliza el MCP o MCPE INV del mismo movimiento y no inserta otro encabezado, y el job ya no vuelve a llamar en ese caso, no hay desarrollo. Probar un movimiento ya contabilizado por OM Inventario: el job no debe crear un segundo comprobante.</div>
+    <ul>
+      <li>Reproducir el escenario en el ambiente del cliente (rama bugfix/COESME657).</li>
+      <li>Confirmar con datos reales que el error sigue ocurriendo y no se corrigió en un trabajo previo.</li>
+      <li>Si ya funciona: no aplicar la propuesta; informar que el proceso está correcto.</li>
+      <li>Si se reproduce: recién entonces iniciar el desarrollo de este dictamen.</li>
+    </ul>
+  </section>
+
+  <section id="contabilidad">
+    <h2>3. Contabilidad</h2>
+    <div class="impacto-grid impacto-grid-1">
+      <div class="impacto-card">
+        <div class="label">Afecta contabilidad</div>
+        <div class="value impacto-si">Sí</div>
+      </div>
+    </div>
+    <h3>Cómo lo afecta</h3>
+    <div class="content-block">Un mismo movimiento de inventario puede quedar con dos comprobantes INV del mismo valor y números distintos. El arreglo impide ese segundo encabezado. No cambia las cuentas del asiento (KMCOM MOV_INVENTARIO) ni el cuadre del periodo.</div>
+    <h3>Desarrollo contable</h3>
+    <div class="content-block">SPK_NC_CONTAB_INV, con número vacío, reutiliza el MCP o el MCPE de procedencia INV cuya referencia es el movimiento, antes de pedir consecutivo. SPK_CONTAB_INV_JOB no vuelve a llamar si el movimiento ya está contabilizado o ya tiene comprobante definitivo; si solo hay borrador, marca la cola y no lo deja como contabilizado. SPK_NC_REVISAMCPE sigue marcando contabilizado al cerrar y en error si el borrador no pasa; no se agrega otra marca después de esa revisión.</div>
+    <h3>Validación del agente</h3>
+    <div class="content-block">Estado: observado. Afecta comprobante INV (definitivo y borrador), referencia = movimiento. La ficha del generador documenta antiduplicado en renglones, no en encabezado MCP/MCPE: con número vacío hoy pide consecutivo e inserta otro borrador. La revisión del comprobante marca contabilizado al cerrar y en error si el borrador no pasa; por eso no se debe forzar contabilizado después. El job no está fichado en la base de procesos; el análisis del REQ confirma cursor sobre cola pendiente, llamada con número vacío y manejo de error que solo mira borrador. Antes de codificar hay que confirmar que PREVERSION sigue con el hueco.</div>
+  </section>
+
+  <section id="dictamen">
+    <h2>4. Dictamen técnico</h2>
+    <div class="impacto-grid">
+      <div class="impacto-card"><div class="label">Frontend</div><div class="value impacto-no">No</div></div>
+      <div class="impacto-card"><div class="label">API / Backend</div><div class="value impacto-no">No</div></div>
+      <div class="impacto-card"><div class="label">SQL Server</div><div class="value impacto-si">Sí</div></div>
+    </div>
+
+    <h3>Resumen ejecutivo</h3>
+    <div class="content-block">Corregir la doble contabilización INV cuando OM Inventario contabiliza en el día y el job nocturno reprocesa la misma cola. Publicar SPK_NC_CONTAB_INV y SPK_CONTAB_INV_JOB: reutilizar comprobante existente antes de abrir otro encabezado; el job marca la cola procesada sin llamar al generador si ya hay MCP no anulado o el movimiento ya está contabilizado; si solo hay borrador MCPE, completar número si falta, marcar cola y no marcar contabilizado. Sin cambio de pantalla ni de API. Los dos comprobantes del caso 3500012974 no se anulan en este REQ.</div>
+
+    <h3>Trazabilidad</h3>
+    <table>
+      <thead><tr><th>Paso proc.</th><th>Origen</th><th>IXONLINE/SQL</th><th>Estado doc.</th><th>Rol en el fix</th></tr></thead>
+      <tbody>
+        <tr><td>Confirmar salida (job SI)</td><td>Confirmación movimiento</td><td>SPK_CONFIRMASAL_CM → cola IMOVC</td><td>Referencia REQ</td><td>Sin cambio; deja cola pendiente</td></tr>
+        <tr><td>Contabilizar desde OM</td><td>Otros módulos · Inventario</td><td>SPK_NC_CONTAB_INV</td><td>leído (inventario)</td><td><strong>Antes de consecutivo: buscar MCP/MCPE INV del movimiento</strong></td></tr>
+        <tr><td>Job nocturno</td><td>SQL Agent / servicio</td><td>SPK_CONTAB_INV_JOB → SPK_NC_CONTAB_INV</td><td>cuerpo leído en REQ</td><td><strong>Salida temprana si ya contabilizado o ya hay MCP</strong></td></tr>
+        <tr><td>Cierre comprobante</td><td>Flujo contable</td><td>SPK_NC_REVISAMCPE</td><td>contabilidad (referencia)</td><td>Sin cambio; marca IMOV 1 o 2</td></tr>
+        <tr><td>Venta unificada</td><td>Facturación + costo</td><td>SPK_NC_CONTAB_INV (acciones con número)</td><td>leído</td><td>Fuera de alcance si número informado</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Criterios de aceptación</h3>
+    <ol>
+      <li>Un movimiento INV no queda con dos comprobantes definitivos no anulados. Si el número llega vacío y ya hay comprobante definitivo de ese movimiento, no se abre otro borrador.</li>
+      <li>Si el movimiento ya está contabilizado o ya tiene comprobante definitivo, el job marca la cola como procesada y no llama al generador. El número del movimiento solo se completa si está vacío.</li>
+      <li>Si solo hay borrador, el job no abre otro encabezado y marca la cola. No lo deja como contabilizado.</li>
+      <li>El cierre exitoso sigue marcando el movimiento (lo hace la revisión del comprobante). Si el borrador queda con error, sigue marcado en error. No se fuerza contabilizado después de esa revisión.</li>
+      <li>Si el tipo o la bodega no se contabilizan, el job saca la fila de la cola y no la reintenta. Quien contabilice desde OM sigue viendo el aviso de que ese movimiento no se contabiliza.</li>
+      <li>La venta unificada, cuando el número de la factura ya viene informado, y las acciones de abrir, adicionar o cerrar con número informado, siguen igual.</li>
+      <li>El movimiento 3500012974 no recibe un tercer comprobante. Los dos que ya existen no se anulan en este desarrollo.</li>
+    </ol>
+
+    <h3>Alcance y restricciones</h3>
+    <p><strong>Alcance:</strong> SPK_NC_CONTAB_INV y SPK_CONTAB_INV_JOB. El arreglo del generador también protege OM Inventario (mismo procedimiento, número vacío).</p>
+    <p><strong>Fuera:</strong> anular comprobantes duplicados existentes, cambiar variable del job, confirmación de salida, venta unificada, cuenta por pagar, facturación, revisión del comprobante (salvo no agregar marcas extra), pantalla y procedimiento masivo.</p>
+    <p><strong>Restricciones:</strong> no ejecutar en CEM desde la oficina; publicar en PREVERSION o ventana SQL acordada; no recorrer histórico; no poner contabilizado después de revisión ni cuando solo hay borrador; no quitar aviso OM cuando no se contabiliza; rama bugfix/COESME657.</p>
+  </section>
+
+  <section id="diagrama-flujo">
+    <h2>4.5 Diagrama de flujo</h2>
+    <div class="diagrama-flujo-block diagrama-incrustado">
+      <p class="df-meta">Proceso inventario · control Contabilizar movimiento (OM) · REQ 0100016789. No se generó diagrama adjunto en el formulario; mapa resumido del defecto y la propuesta.</p>
+      <div class="df-flow">
+        <div class="df-node df-user"><div class="k">Día</div><div class="d">Confirmar dispensación → cola IMOVC (número vacío) o OM Inventario contabiliza</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-sql"><div class="k">Generador</div><div class="d">SPK_NC_CONTAB_INV · MCP/MCPE PROCEDENCIA INV · REFERENCIA = movimiento</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-sql"><div class="k">Noche</div><div class="d">SPK_CONTAB_INV_JOB · cola PROCESADO vacío</div></div>
+        <div class="df-arrow">→</div>
+        <div class="df-node df-out"><div class="k">Hoy (defecto)</div><div class="d">Segundo consecutivo · IMOV apunta al último número</div></div>
+      </div>
+      <div class="df-split">
+        <div class="df-box df-hoy"><h3>Hoy</h3><p>Job llama al generador con número vacío sin mirar MCP ni IMOV.CONTABILIZADA. Segundo comprobante (sedes distintas posibles).</p></div>
+        <div class="df-box df-ok"><h3>Propuesto</h3><p>Generador reutiliza INV del movimiento antes de consecutivo. Job marca cola y no ejecuta si ya hay definitivo o contabilizado; borrador solo completa número sin marcar contabilizado.</p></div>
+      </div>
+      <article class="df-ctrl">
+        <h3>Control: Contabilizar movimiento de inventario (OM)</h3>
+        <p class="df-meta"><strong>Invariante:</strong> IMOV confirmado, tipo y bodega contabilizables, sin duplicar comprobante INV definitivo por movimiento.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="normativa">
+    <h2>4.6 Normativa adjunta</h2>
+    <div class="content-block">No se adjuntó resolución, circular ni anexo técnico para este requerimiento.</div>
+  </section>
+
+  <section id="cambios">
+    <h2>5. Cambios propuestos</h2>
+
+    <h3>5.0 En palabras simples (negocio)</h3>
+    <div class="content-block">Hoy, con la contabilización de inventario en job, confirmar el movimiento deja el pendiente para la noche y no arma el comprobante en el momento. Si alguien lo contabiliza en el día, el proceso de la noche no se entera y arma otro comprobante del mismo valor. El movimiento queda apuntando al segundo.
+
+Propuesta: si el movimiento ya tiene comprobante, el proceso de la noche lo deja quieto y no crea otro. Si el número llega vacío y el comprobante ya existe, se usa ese número. Un comprobante que quedó con error no se presenta como contabilizado.</div>
+
+    <h3>5.1 Detalle técnico — Frontend (Qrystalos2)</h3>
+    <p><strong>Sin cambio.</strong> OM Inventario y Otros módulos siguen invocando la contabilización existente; el efecto esperado es coherencia de <code>IMOV.CONTABILIZADA</code> y número de comprobante en consultas habituales. Mockup de referencia UX (estado contable en grilla OM) queda en material del caso para capacitación, no es entregable de desarrollo.</p>
+
+    <h3>5.2 Detalle técnico — SQL Server</h3>
+    <ul>
+      <li><strong>IXONLINE/SQL SPK_NC_CONTAB_INV:</strong> con <code>@NROCOMPROBANTE</code> vacío, antes de pedir consecutivo e insertar MCPE, buscar MCP no anulado y luego MCPE con <code>PROCEDENCIA='INV'</code> y referencia al movimiento. Si hay MCP: actualizar movimiento (contabilizado y número) y salir. Si solo MCPE: actualizar número si falta, no marcar contabilizado, salir. No agregar <code>UPDATE IMOV.CONTABILIZADA</code> después de SPK_NC_REVISAMCPE.</li>
+      <li><strong>IXONLINE/SQL SPK_CONTAB_INV_JOB:</strong> por cada fila de cola pendiente, leer <code>IMOV.CONTABILIZADA</code>, <code>SECONTABILIZA</code> y comprobantes INV existentes. Si ya contabilizado o hay MCP: completar número solo si vacío, marcar cola procesada, no ejecutar generador. Si solo MCPE: marcar cola, no contabilizado forzado. Si no se contabiliza tipo/bodega: marcar cola sin reintento. Ajustar bloque CATCH para considerar MCP además de MCPE.</li>
+      <li><strong>Tablas tocadas (lectura/escritura):</strong> IMOV, IMOVC, IMOVCE, MCP, MCPE — columnas ya usadas: contabilizado, número comprobante, procesado cola, anulado, procedencia, referencia.</li>
+      <li><strong>Sin cambio de esquema.</strong></li>
+    </ul>
+
+    <h3>5.2.1 Fragmentos SQL (especificación)</h3>
+    <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem;">Especificación para desarrollo en IXONLINE/SQL. No ejecutar desde la oficina de coordinación.</p>
+    <pre class="sql-spec">-- IXONLINE/SQL · SPK_NC_CONTAB_INV
+-- Especificación. Contrastar PREVERSION antes de codificar.
+-- Hoy, si @NROCOMPROBANTE llega vacío, pide consecutivo e inserta MCPE
+-- con PROCEDENCIA='INV' y REFERENCIA1=@CNSMOV. No busca un comprobante de ese movimiento.
+-- ANTES de SPK_GENCONSECUTIVO / INSERT MCPE:
+
+SELECT TOP 1 @NROCOMPROBANTE = NROCOMPROBANTE
+FROM MCP
+WHERE PROCEDENCIA = 'INV' AND REFERENCIA1 = @CNSMOV AND COALESCE(ANULADO, 0) = 0
+ORDER BY FECHA ASC;
+-- Si hay fila: UPDATE IMOV SET CONTABILIZADA=1, NROCOMPROBANTE=@NROCOMPROBANTE; RETURN.
+
+SELECT TOP 1 @NROCOMPROBANTE = NROCOMPROBANTE
+FROM MCPE
+WHERE PROCEDENCIA = 'INV' AND REFERENCIA1 = @CNSMOV
+ORDER BY FECHA ASC;
+-- Si hay fila: UPDATE IMOV SET NROCOMPROBANTE=@NROCOMPROBANTE; RETURN.
+-- No abrir un segundo borrador y no poner CONTABILIZADA=1.
+
+-- No agregar UPDATE IMOV.CONTABILIZADA=1 después de SPK_NC_REVISAMCPE.
+-- Ese procedimiento ya deja 1 si el borrador pasa a MCP y 2 si queda en error.
+
+-- IXONLINE/SQL · SPK_CONTAB_INV_JOB
+-- Hoy: cursor IMOVC WHERE PROCESADO IS NULL;
+-- EXEC SPK_NC_CONTAB_INV con el número de la cola (vacío), sin mirar IMOV ni MCP.
+-- CATCH: solo si existe MCPE INV del movimiento marca PROCESADO; si no, inserta IMOVCE.
+-- Antes del EXEC, por cada fila:
+
+SELECT @YA = COALESCE(CONTABILIZADA,0), @SE = COALESCE(SECONTABILIZA,0)
+FROM IMOV WHERE CNSMOV=@CNSMOV;
+
+SELECT TOP 1 @NRO_MCP = NROCOMPROBANTE FROM MCP
+WHERE PROCEDENCIA='INV' AND REFERENCIA1=@CNSMOV AND COALESCE(ANULADO,0)=0
+ORDER BY FECHA ASC;
+
+SELECT TOP 1 @NRO_MCPE = NROCOMPROBANTE FROM MCPE
+WHERE PROCEDENCIA='INV' AND REFERENCIA1=@CNSMOV
+ORDER BY FECHA ASC;
+
+-- Si @YA=1 o @NRO_MCP tiene valor: completar IMOV.NROCOMPROBANTE solo si está vacío,
+--   CONTABILIZADA=1 solo si hay MCP no anulado, marcar IMOVC.PROCESADO, borrar IMOVCE, no EXEC.
+-- Si no hay MCP y sí hay MCPE: completar el número solo si está vacío, no poner CONTABILIZADA=1,
+--   marcar PROCESADO, no EXEC.
+-- Si @SE=0: marcar PROCESADO y no EXEC. El generador conserva el aviso para OM.
+-- Si no: EXEC SPK_NC_CONTAB_INV @CNSMOV,@USUARIO,@SYS_COMPUTERNAME,@COMPANIA,@SEDE,@NROCOMPROBANTE OUTPUT;
+--   marcar PROCESADO y borrar IMOVCE. No tocar CONTABILIZADA: lo deja la revisión (1 o 2).
+-- CATCH: si hay MCP no anulado o MCPE INV, marcar PROCESADO y no insertar IMOVCE.
+--   CONTABILIZADA=1 solo si hay MCP no anulado.
+
+-- Validación, solo lectura:
+-- SELECT NROCOMPROBANTE, ESTADO, ANULADO FROM MCP
+--  WHERE PROCEDENCIA='INV' AND REFERENCIA1='3500012974';
+-- SELECT CONTABILIZADA, NROCOMPROBANTE, SECONTABILIZA FROM IMOV WHERE CNSMOV='3500012974';
+-- SELECT ITEM, PROCESADO, NROCOMPROBANTE FROM IMOVC WHERE CNSMOV='3500012974';</pre>
+
+    <h3>5.3 Detalle técnico — Backend (qrystalos.server)</h3>
+    <p><strong>Sin cambio.</strong> La contabilización desde OM sigue el contrato JSON existente hacia SPQ de contabilidad / invocación directa de SPK según despliegue actual; el fix es solo en procedimientos almacenados.</p>
+  </section>
+
+  <section id="consideraciones">
+    <h2>6. Qué tener en cuenta</h2>
+    <ul>
+      <li>Variable <code>CONTABIMOV_JOB=SI</code>: la confirmación encola; OM en el día es el camino que dispara el escenario de duplicado.</li>
+      <li>Dos sedes en comprobantes (quien contabilizó vs sede en cola) es síntoma del segundo consecutivo, no un requisito aparte.</li>
+      <li>Reversar uno de los dos comprobantes del caso 3500012974 es tarea de contabilidad, fuera de este REQ.</li>
+      <li>No marcar contabilizado cuando solo existe borrador con error: la revisión del comprobante ya deja estado 2.</li>
+      <li>Venta unificada (<code>CONTAB_GASTOVEN_UNI</code>) con número informado: no regresar.</li>
+      <li>Riesgo de regresión: movimientos que nunca pasaron por OM y solo usan job deben seguir generando comprobante la primera noche.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas-dev">
+    <h2>7. Pruebas del desarrollador</h2>
+    <ul class="checklist">
+      <li>Contrastar PREVERSION vs última liberada para SPK_NC_CONTAB_INV y SPK_CONTAB_INV_JOB.</li>
+      <li>Movimiento contabilizado por OM con cola pendiente: ejecutar job → no segundo MCP, cola PROCESADO, IMOV coherente.</li>
+      <li>Solo borrador MCPE INV del movimiento: job marca cola, IMOV sin CONTABILIZADA=1 forzado.</li>
+      <li>Movimiento SECONTABILIZA=0 o bodega no contabiliza: job marca cola, OM sigue mostrando aviso.</li>
+      <li>Primer contabilizado solo por job (sin OM previo): happy path intacto.</li>
+      <li>Venta unificada con número de factura informado: sin cambio.</li>
+      <li>Consultas solo lectura sobre 3500012974: no tercer comprobante tras despliegue.</li>
+      <li>Bloque CATCH del job con MCP existente: no insertar IMOVCE duplicado.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas-coord">
+    <h2>8. Pruebas del coordinador</h2>
+    <ul class="checklist">
+      <li>Reproducir en copia CEM o pruebas: confirmar con job SI + contabilizar mismo movimiento en OM el mismo día.</li>
+      <li>Verificar un solo MCP no anulado tras paso nocturno (o cola cerrada sin nuevo encabezado).</li>
+      <li>Contraste REQ vs criterios de aceptación del formulario (lista completa).</li>
+      <li>Borde: movimiento con borrador en error — no debe mostrarse como contabilizado.</li>
+      <li>Confirmar que no se pidió anular los dos comprobantes históricos del caso referencia.</li>
+    </ul>
+  </section>
+
+  <section id="pruebas-soporte">
+    <h2>9. Pruebas de soporte</h2>
+    <ul class="checklist">
+      <li>Solo lectura: IMOV (CONTABILIZADA, NROCOMPROBANTE), IMOVC (PROCESADO), MCP/MCPE INV por REFERENCIA1 = movimiento.</li>
+      <li>Si el usuario reporta «doble comprobante» posterior al fix: capturar CNSMOV, fechas OM vs job, variable job, sedes.</li>
+      <li>Duplicados anteriores al despliegue: escalar a contabilidad para reversión; no script masivo en este REQ.</li>
+      <li>Rollback: restaurar versión anterior de los dos SP en la rama acordada; cola IMOVC puede requerir marcar PROCESADO manual bajo supervisión L3.</li>
+      <li>Material de capacitación del caso (OM + job) para explicar comportamiento esperado post-fix.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Generado por Qrystalos BA — Oficina de coordinación Qrystalos · 19/10/2026 · Business Analyst: JOSE MANUEL JIMENEZ
+  </footer>
+</div>
+</body>
+</html>
