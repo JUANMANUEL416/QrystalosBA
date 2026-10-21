@@ -11,7 +11,17 @@ Crear y configurar bodegas (farmacia, bodega central, carro de paro, etc.) con s
 **Tabla:** `IBOD`
 **Frontend:** `/inv/conf/itbod`, `/inv/conf/ibod`
 
-ITBOD agrupa bodegas (farmacéuticas, carro de paro, botiquín, administrativas). IBOD lleva sede, centro de costo, bodega que pide (IDBODEGAPIDE, obligatoria para solicitar compras), MUEVEEXISTENCIAS, VALIDASTOCK, NOCONTABILIZA, ESDECUSTODIA, MANEJA_PICKPACK, COMPRASOL. Seguridad IBODS: qué usuarios entran (BODEGASELECT) y qué tipos de artículo acepta. Los catálogos (ICLA/ICLAH/IGRU, IGEN+ITGEN, IFFA, ICCN, IPAC, IUNI) solo se borran si nadie los usa.
+### 🏥 **Clasificación y configuración**
+
+ITBOD agrupa tipos de bodegas: farmacéuticas, carro de paro, botiquín, bodegas administrativas. Cada bodega (IBOD) se configura con sede, centro de costo y bodega que pide (IDBODEGAPIDE, obligatoria para generar solicitudes de compra).
+
+### 🔹 **Control operativo**
+
+Los campos MUEVEEXISTENCIAS, VALIDASTOCK, NOCONTABILIZA, ESDECUSTODIA, MANEJA_PICKPACK y COMPRASOL definen el comportamiento operativo y contable de la bodega.
+
+### 🔐 **Seguridad y catálogos**
+
+IBODS controla qué usuarios pueden ingresar (BODEGASELECT) y qué tipos de artículo acepta. Los catálogos maestros (ICLA/ICLAH/IGRU, IGEN+ITGEN, IFFA, ICCN, IPAC, IUNI) solo se eliminan si no están en uso.
 
 
 ## 📋 Campos relevantes

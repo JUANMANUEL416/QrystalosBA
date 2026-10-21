@@ -4,6 +4,16 @@
 import sys
 from pathlib import Path
 
+# --- Reconfigurar stdout/stderr a UTF-8 con errors='replace' ---
+# Bajo servicio Windows LocalSystem con consola cp1252, los emojis/✓/✗
+# causan UnicodeEncodeError. Reconfigurar al importar este módulo.
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # Ignorar si ya está reconfigurado
+
 # Añadir scripts/ al path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "scripts"))
