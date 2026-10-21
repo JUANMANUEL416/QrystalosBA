@@ -14,6 +14,15 @@ Uso:
 import sys
 from pathlib import Path
 
+# --- Reconfigurar stdout/stderr a UTF-8 con errors='replace' ---
+# Protege contra UnicodeEncodeError en consolas cp1252 (Windows service)
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # Añadir scripts/ al path
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
