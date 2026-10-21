@@ -15,10 +15,18 @@ Carga .env del proyecto igual que cursor_bot.py (os.environ gana).
 import os
 import json
 import base64
+import hashlib
 import re
 import sys
 from pathlib import Path
 from typing import Optional
+
+# Importar escenas de bloques
+try:
+    from capacitacion_escenas import obtener_escena_bloque, validar_prompt_sin_codigos
+    ESCENAS_DISPONIBLE = True
+except ImportError:
+    ESCENAS_DISPONIBLE = False
 
 # --- Reconfigurar stdout/stderr a UTF-8 con errors='replace' ---
 # Bajo servicio Windows LocalSystem con consola cp1252, los emojis/✓/✗
@@ -382,10 +390,63 @@ def generar_mapa_mental_svg(tema: str, conceptos: list[dict]) -> str:
     return "\n".join(svg_lines)
 
 
+def _hash_prompt(prompt: str) -> str:
+    """Genera hash MD5 de un prompt para versionado de caché."""
+    return hashlib.md5(prompt.encode('utf-8')).hexdigest()[:16]
+
+
+def _verificar_cache_valido(cache_path: Path, prompt: str) -> bool:
+    """Verifica si el cache es válido comparando hash del prompt.
+    
+    Returns:
+        True si el cache existe y el prompt no ha cambiado
+    """
+    if not cache_path or not cache_path.exists():
+        return False
+    
+    # Buscar archivo de metadatos
+    meta_path = cache_path.parent / f"{cache_path.stem}.meta.json"
+    
+    if not meta_path.exists():
+        # Cache viejo sin metadata → invalidar
+        return False
+    
+    try:
+        meta = json.loads(meta_path.read_text(encoding='utf-8'))
+        prompt_hash = _hash_prompt(prompt)
+        
+        if meta.get("prompt_hash") == prompt_hash:
+            return True
+        else:
+            print(f"    → Cache invalidado (prompt cambió)")
+            return False
+    except Exception:
+        return False
+
+
+def _guardar_metadata_cache(cache_path: Path, prompt: str):
+    """Guarda metadata del cache con hash del prompt."""
+    if not cache_path:
+        return
+    
+    meta_path = cache_path.parent / f"{cache_path.stem}.meta.json"
+    
+    try:
+        meta = {
+            "prompt_hash": _hash_prompt(prompt),
+            "prompt": prompt[:200],  # Primeros 200 chars para referencia
+            "timestamp": __import__('datetime').datetime.now().isoformat()
+        }
+        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding='utf-8')
+    except Exception as e:
+        print(f"    ⚠️  Error guardando metadata: {e}")
+
+
 def generar_ilustracion_completa(
     titulo: str,
     descripcion: str,
-    cache_path: Optional[Path] = None
+    cache_path: Optional[Path] = None,
+    bloque_id: Optional[str] = None
 ) -> Optional[str]:
     """Genera ilustración usando el mejor método disponible y devuelve data URI.
     
@@ -395,19 +456,44 @@ def generar_ilustracion_completa(
     3. SVG local (fallback)
     
     Args:
-        titulo: Título del bloque
-        descripcion: Descripción detallada
+        titulo: Título del bloque (limpio, sin códigos)
+        descripcion: Descripción detallada (no se usa si hay escena)
         cache_path: Ruta para cachear (PNG)
+        bloque_id: ID del bloque (ej: tipos-de-articulo-itar) para obtener escena
     
     Returns:
         Data URI de la imagen (PNG o SVG) o None
     """
-    # Verificar cache primero
-    if cache_path and cache_path.exists():
+    # Obtener escena descriptiva (sin códigos técnicos)
+    if ESCENAS_DISPONIBLE and bloque_id:
+        escena_visual = obtener_escena_bloque(bloque_id, titulo, descripcion)
+    else:
+        # Fallback: usar descripción limpia (sin códigos)
+        escena_visual = descripcion
+    
+    # Crear prompt limpio (sin códigos de tabla)
+    prompt_base = (
+        f"Professional clean illustration for hospital pharmacy warehouse inventory. "
+        f"Scene: {escena_visual}. "
+        f"Style: clean, professional, soft hospital colors. "
+        f"STRICTLY NO text, flags, languages, weapons, ammunition, military items. "
+        f"ONLY medical/healthcare inventory items and healthcare staff."
+    )
+    
+    # Validar prompt antes de usar
+    if ESCENAS_DISPONIBLE:
+        valido, problemas = validar_prompt_sin_codigos(prompt_base)
+        if not valido:
+            print(f"    ⚠️  ADVERTENCIA: Prompt contiene elementos prohibidos:")
+            for p in problemas:
+                print(f"        - {p}")
+    
+    # Verificar cache con versionado
+    if cache_path and _verificar_cache_valido(cache_path, prompt_base):
         try:
             img_data = cache_path.read_bytes()
             img_b64 = base64.b64encode(img_data).decode("utf-8")
-            print(f"    ✓ Ilustración (cache): {cache_path.name}")
+            print(f"    ✓ Ilustración (cache válido): {cache_path.name}")
             return f"data:image/png;base64,{img_b64}"
         except Exception as e:
             print(f"    ⚠️  Error leyendo cache: {e}")
@@ -429,22 +515,14 @@ def generar_ilustracion_completa(
     
     if proveedor == "gemini" and gemini_key and gemini_tiene_cuota:
         print(f"      → Intentando con Gemini...")
-        # Contexto de salud para ilustraciones - ENDURECIDO
-        prompt = (
-            f"Professional clean illustration for hospital inventory management system (IPS/hospital in Colombia). "
-            f"CONTEXT: Hospital pharmacy warehouse, medical inventory (medications, medical devices, surgical supplies, "
-            f"laboratory reagents, nutrition products, medical consumables). Healthcare staff (pharmacists, doctors, nurses). "
-            f"TOPIC: {titulo}. {descripcion}. "
-            f"STYLE: Clean, professional, soft hospital colors (hospital blue, health green, white). "
-            f"STRICTLY FORBIDDEN: Text, flags, languages, weapons, ammunition, military items, non-medical items. "
-            f"ONLY medical/healthcare inventory items."
-        )
-        data_uri = generar_ilustracion_gemini(prompt)
+        # Usar prompt limpio sin códigos (ya creado arriba con escena)
+        data_uri = generar_ilustracion_gemini(prompt_base)
         if data_uri:
-            # Guardar en cache si es posible
+            # Guardar en cache con metadata
             if cache_path:
                 try:
                     _guardar_data_uri_como_png(data_uri, cache_path)
+                    _guardar_metadata_cache(cache_path, prompt_base)
                     print(f"    ✓ Ilustración generada con Gemini y guardada en {cache_path.name}")
                 except Exception as e:
                     print(f"    ✓ Ilustración generada con Gemini (no se pudo cachear: {e})")
@@ -459,15 +537,8 @@ def generar_ilustracion_completa(
         print(f"      → Intentando con OpenAI...")
         openai_model = _get_env("OPENAI_IMAGE_MODEL", "gpt-image-1")
         print(f"        Modelo: {openai_model}")
-        # Contexto de salud para ilustraciones - ENDURECIDO
-        prompt = (
-            f"Professional clean illustration for hospital inventory management system in Colombia. "
-            f"Hospital pharmacy warehouse inventory: medications, medical devices, surgical supplies, laboratory reagents. "
-            f"Topic: {titulo}. {descripcion}. "
-            f"Style: clean, professional, soft hospital colors. "
-            f"FORBIDDEN: text, flags, languages, weapons, ammunition, military items. ONLY medical inventory items."
-        )
-        url = generar_ilustracion_openai(prompt, openai_model)
+        # Usar prompt limpio sin códigos (ya creado arriba con escena)
+        url = generar_ilustracion_openai(prompt_base, openai_model)
         if url:
             # Descargar y convertir a data URI
             try:
@@ -476,6 +547,7 @@ def generar_ilustracion_completa(
                 if data_uri:
                     if cache_path:
                         _guardar_data_uri_como_png(data_uri, cache_path)
+                        _guardar_metadata_cache(cache_path, prompt_base)
                         print(f"    ✓ Ilustración generada con OpenAI y guardada en {cache_path.name}")
                     else:
                         print(f"    ✓ Ilustración generada con OpenAI")

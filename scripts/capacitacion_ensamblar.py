@@ -270,7 +270,8 @@ def _obtener_visuales_bloque(bloque_id: str, bloque_meta: dict, log: bool = True
                 data_uri = visuales.generar_ilustracion_completa(
                     titulo=titulo,
                     descripcion=descripcion,
-                    cache_path=ilustracion_path
+                    cache_path=ilustracion_path,
+                    bloque_id=bloque_id  # Pasar ID del bloque para obtener escena
                 )
                 
                 if data_uri:
