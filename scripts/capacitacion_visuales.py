@@ -459,48 +459,90 @@ def _guardar_data_uri_como_png(data_uri: str, output_path: Path) -> None:
 
 def generar_ilustracion_openai(
     prompt: str,
-    modelo: str = "dall-e-3",
+    modelo: str = "gpt-image-1",
     tamano: str = "1024x1024"
 ) -> Optional[str]:
-    """Genera ilustración con OpenAI DALL-E.
+    """Genera ilustración con OpenAI usando urllib (sin paquete openai).
+    
+    Usa https://api.openai.com/v1/images/generations con response_format=b64_json.
     
     Args:
         prompt: Descripción de la imagen
-        modelo: Modelo a usar (dall-e-2, dall-e-3)
-        tamano: Tamaño de la imagen
+        modelo: Modelo a usar (gpt-image-1, gpt-image-2)
+        tamano: Tamaño de la imagen (1024x1024, 1536x1024, etc)
     
     Returns:
-        URL de la imagen o None si falla
+        Data URI de la imagen o None si falla
     """
-    try:
-        import openai
-        api_key = _get_env("OPENAI_API_KEY")
-        if not api_key:
-            print(f"    ⚠️  OPENAI_API_KEY no disponible")
-            return None
-        
-        openai.api_key = api_key
-        
-        response = openai.Image.create(
-            model=modelo,
-            prompt=prompt,
-            n=1,
-            size=tamano
-        )
-        
-        url = response['data'][0]['url']
-        print(f"        ✓ OpenAI generó imagen: {url[:60]}...")
-        return url
-    except ImportError:
-        print(f"        ✗ Paquete 'openai' no instalado (pip install openai)")
+    import urllib.request
+    import urllib.error
+    
+    api_key = _get_env("OPENAI_API_KEY")
+    if not api_key:
+        print(f"        ✗ OPENAI_API_KEY no disponible")
         return None
+    
+    base_url = _get_env("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    
+    body = {
+        "model": modelo,
+        "prompt": prompt[:3900],
+        "size": tamano,
+        "n": 1,
+        "response_format": "b64_json"  # gpt-image-1 devuelve b64_json
+    }
+    
+    req = urllib.request.Request(
+        f"{base_url}/images/generations",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        
+        # gpt-image-1 devuelve b64_json
+        fila = (data.get("data") or [{}])[0]
+        b64 = (fila.get("b64_json") or "").strip()
+        
+        if not b64:
+            # Intentar con url si no hay b64_json
+            url = (fila.get("url") or "").strip()
+            if url:
+                print(f"        ✓ OpenAI generó URL (descargando): {url[:60]}...")
+                with urllib.request.urlopen(url, timeout=60) as img_resp:
+                    img_data = img_resp.read()
+                    b64 = base64.b64encode(img_data).decode("utf-8")
+            else:
+                print(f"        ✗ OpenAI no devolvió imagen (ni b64_json ni url)")
+                return None
+        
+        print(f"        ✓ OpenAI generó imagen ({len(b64)} chars base64, ~{len(b64)*3//4//1024} KB)")
+        return f"data:image/png;base64,{b64}"
+    
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        try:
+            detalle = exc.read().decode("utf-8", errors="replace")[:300]
+        except:
+            detalle = str(exc)
+        print(f"        ✗ Error OpenAI (HTTP {status}): {detalle}")
+        
+        # Reintentar con tamaño 1024x1024 si falla con otro tamaño
+        if tamano != "1024x1024":
+            print(f"        → Reintentando con tamaño 1024x1024...")
+            return generar_ilustracion_openai(prompt, modelo, "1024x1024")
+        
+        return None
+    
     except Exception as e:
-        # Capturar error HTTP si existe
-        error_msg = str(e)
-        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
-            print(f"        ✗ Error OpenAI (HTTP {e.response.status_code}): {error_msg}")
-        else:
-            print(f"        ✗ Error OpenAI: {error_msg}")
+        error_msg = str(e)[:300]
+        print(f"        ✗ Error OpenAI: {error_msg}")
         return None
 
 
@@ -508,89 +550,133 @@ def generar_ilustracion_gemini(
     prompt: str,
     modelo: str = None
 ) -> Optional[str]:
-    """Genera ilustración con Google Gemini Imagen.
+    """Genera ilustración con Google Gemini usando urllib (sin paquete google-generativeai).
+    
+    Usa API REST v1beta/models/{model}:generateContent con responseModalities IMAGE.
     
     Args:
         prompt: Descripción de la imagen
         modelo: Modelo a usar (si None, usa GEMINI_IMAGE_MODEL de .env)
     
     Returns:
-        Data URL de la imagen o None si falla
+        Data URI de la imagen o None si falla
     """
-    try:
-        import google.generativeai as genai
-        
-        api_key = _get_env("GEMINI_API_KEY")
-        if not api_key:
-            print(f"    ⚠️  GEMINI_API_KEY no disponible")
-            return None
-        
-        if modelo is None:
-            modelo = _get_env("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
-        
-        # Modelos disponibles con fallback
-        modelos = [
-            modelo,
-            "gemini-3.1-flash-image",
-            "gemini-3-pro-image",
-            "gemini-2.5-flash-image"
-        ]
-        # Eliminar duplicados manteniendo orden
-        modelos = list(dict.fromkeys(modelos))
-        
-        genai.configure(api_key=api_key)
-        
-        # Intentar con cada modelo
-        for modelo_actual in modelos:
-            try:
-                print(f"        Probando modelo: {modelo_actual}")
-                # Usar Gemini para generar imagen con responseModalities IMAGE
-                model = genai.GenerativeModel(modelo_actual)
-                response = model.generate_content(
-                    prompt,
-                    generation_config={
-                        "temperature": 0.7,
-                        "max_output_tokens": 1024,
-                        "response_modalities": ["IMAGE"]
-                    }
-                )
-                
-                # Gemini devuelve la imagen en response.parts
-                if response.parts:
-                    for part in response.parts:
-                        if hasattr(part, 'inline_data') and part.inline_data:
-                            # Convertir a data URL
-                            image_data = part.inline_data.data
-                            mime_type = part.inline_data.mime_type
-                            b64_data = base64.b64encode(image_data).decode('utf-8')
-                            print(f"        ✓ Gemini generó imagen ({len(image_data)} bytes, {mime_type})")
-                            return f"data:{mime_type};base64,{b64_data}"
-                
-                # Si llegamos aquí, no hubo imagen inline
-                print(f"        ✗ {modelo_actual}: respuesta sin imagen inline_data")
-                continue
-            
-            except Exception as e:
-                # Capturar error HTTP/API si existe
-                error_msg = str(e)
-                if "429" in error_msg or "quota" in error_msg.lower():
-                    print(f"        ✗ {modelo_actual}: Cuota excedida o rate limit")
-                elif "401" in error_msg or "403" in error_msg or "auth" in error_msg.lower():
-                    print(f"        ✗ {modelo_actual}: Error de autenticación (revisar GEMINI_API_KEY)")
-                elif "404" in error_msg or "not found" in error_msg.lower():
-                    print(f"        ✗ {modelo_actual}: Modelo no disponible en esta cuenta")
-                else:
-                    print(f"        ✗ {modelo_actual}: {error_msg}")
-                continue
-        
+    import urllib.request
+    import urllib.error
+    
+    api_key = _get_env("GEMINI_API_KEY")
+    if not api_key:
+        print(f"        ✗ GEMINI_API_KEY no disponible")
         return None
     
-    except ImportError:
-        print("  ⚠️  google-generativeai no instalado (pip install google-generativeai)")
-        return None
-    except Exception as e:
-        print(f"  ⚠️  Error con Gemini Images: {e}")
-        return None
+    if modelo is None:
+        modelo = _get_env("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+    
+    # Modelos disponibles con fallback
+    modelos = [
+        modelo,
+        "gemini-3.1-flash-image",
+        "gemini-3-pro-image",
+        "gemini-2.5-flash-image"
+    ]
+    # Eliminar duplicados manteniendo orden
+    modelos = list(dict.fromkeys(modelos))
+    
+    # Intentar con cada modelo
+    for modelo_actual in modelos:
+        try:
+            print(f"        Probando modelo: {modelo_actual}")
+            
+            # Endpoint: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_actual}:generateContent?key={api_key}"
+            
+            body = {
+                "contents": [{
+                    "parts": [{
+                        "text": prompt[:2000]
+                    }]
+                }],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1024,
+                    "responseModalities": ["IMAGE"]  # Nota: puede necesitar ["TEXT", "IMAGE"] según el modelo
+                }
+            }
+            
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            
+            # Parsear respuesta: candidates[0].content.parts[].inlineData{mimeType,data}
+            candidates = data.get("candidates", [])
+            if not candidates:
+                print(f"        ✗ {modelo_actual}: No hay candidates en respuesta")
+                continue
+            
+            content = candidates[0].get("content", {})
+            parts = content.get("parts", [])
+            
+            if not parts:
+                print(f"        ✗ {modelo_actual}: No hay parts en respuesta")
+                continue
+            
+            # Buscar inlineData (camelCase)
+            for part in parts:
+                inline_data = part.get("inlineData")
+                if inline_data:
+                    mime_type = inline_data.get("mimeType", "image/png")
+                    b64_data = inline_data.get("data", "").strip()
+                    
+                    if b64_data:
+                        # Decodificar para obtener tamaño
+                        try:
+                            img_bytes = base64.b64decode(b64_data)
+                            print(f"        ✓ Gemini generó imagen ({len(img_bytes)} bytes, {mime_type})")
+                            return f"data:{mime_type};base64,{b64_data}"
+                        except:
+                            pass
+            
+            print(f"        ✗ {modelo_actual}: Respuesta sin inlineData")
+            continue
+        
+        except urllib.error.HTTPError as exc:
+            status = exc.code
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+                # Parsear JSON de error si existe
+                try:
+                    error_json = json.loads(error_body)
+                    error_msg = error_json.get("error", {}).get("message", error_body[:300])
+                except:
+                    error_msg = error_body[:300]
+            except:
+                error_msg = str(exc)
+            
+            print(f"        ✗ {modelo_actual} (HTTP {status}): {error_msg}")
+            
+            # Clasificar error
+            if status == 401 or status == 403:
+                print(f"          → Error de autenticación (revisar GEMINI_API_KEY)")
+            elif status == 404:
+                print(f"          → Modelo no disponible en esta cuenta")
+            elif status == 429:
+                print(f"          → Cuota excedida o rate limit")
+            
+            continue
+        
+        except Exception as e:
+            error_msg = str(e)[:300]
+            print(f"        ✗ {modelo_actual}: {error_msg}")
+            continue
+    
+    print(f"        ✗ Ningún modelo de Gemini funcionó")
+    return None
 
 
 def generar_infografia_svg_fallback(titulo: str, items: list[str]) -> str:
