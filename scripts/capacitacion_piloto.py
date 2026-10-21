@@ -1,4 +1,7 @@
-"""Genera los bloques piloto para capacitación: Inventario y Orden de compra."""
+"""Genera los bloques piloto para capacitación: Inventario y Orden de compra.
+
+Versión 2: Bloques granulares (una tabla maestra = un bloque).
+"""
 import json
 import sys
 from pathlib import Path
@@ -7,25 +10,38 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import capacitacion_bloques as bloques
+import capacitacion_pedagogico as pedagogico
 
 
 def generar_piloto():
-    """Genera bloques desde la KB para el piloto."""
+    """Genera bloques desde la KB para el piloto.
+    
+    Versión 2: Bloques granulares (una tabla maestra = un bloque).
+    """
     resultados = []
     
-    # Proceso: inventario y orden de compra
-    # Los bloques se generan desde los controles reales documentados en la KB
-    
-    print("Generando bloques piloto...")
+    print("Generando bloques piloto (granulares)...")
     print("=" * 60)
     
-    # Lista de bloques a generar desde controles de inventario
-    # (proceso_id, control_id, descripción)
-    controles_inventario = [
-        ("inventario", "catalogo-configuracion", "Tipos de bodega, bodegas y catálogos"),
-        ("inventario", "catalogo-itmo", "Tipos de movimiento y variables USVGS"),
-        ("inventario", "iart-maestro", "Tipo de artículo y artículo (ITAR / IART / SER)"),
-        ("inventario", "imov-entrada", "Entrada de almacén y confirmación"),
+    # Bloques granulares: cada tabla maestra es un bloque independiente
+    # (proceso_id, tabla, título, control_padre_id)
+    bloques_granulares_inventario = [
+        # Configuración de bodegas (2 bloques)
+        ("inventario", "ITBOD", "Tipos de bodega (ITBOD)", "catalogo-configuracion"),
+        ("inventario", "IBOD", "Bodegas (IBOD)", "catalogo-configuracion"),
+        
+        # Configuración de movimientos (2 bloques)
+        ("inventario", "ITMO", "Tipos de movimiento (ITMO)", "catalogo-itmo"),
+        ("inventario", "USVGS", "Variables de sistema (USVGS)", "catalogo-itmo"),
+        
+        # Configuración de artículos (4 bloques)
+        ("inventario", "ITAR", "Tipos de artículo (ITAR)", "iart-maestro"),
+        ("inventario", "IART", "Artículos (IART)", "iart-maestro"),
+        ("inventario", "SER", "Servicios (SER)", "iart-maestro"),
+        ("inventario", "IDXB", "Artículo por bodega (IDXB)", "iart-maestro"),
+        
+        # Entrada de almacén
+        ("inventario", "imov-entrada", "Entrada de almacén y confirmación", "imov-entrada"),
     ]
     
     # Bloques desde el flujo de compras (proceso transversal)
@@ -52,23 +68,34 @@ def generar_piloto():
         ("flujo-compras-inv-cxp-caja", "imov_entrada", "Confirmar entrada inventario", None),
     ]
     
-    # Generar bloques desde controles
-    for proceso_id, control_id, desc in controles_inventario:
-        print(f"\n{desc}...")
+    # Generar bloques granulares
+    for proceso_id, tabla, titulo, control_padre_id in bloques_granulares_inventario:
+        print(f"\n{titulo}...")
         print(f"  Proceso: {proceso_id}")
-        print(f"  Control: {control_id}")
+        print(f"  Tabla: {tabla}")
         
-        resultado = bloques.generar_bloque_desde_control(
-            proceso_id=proceso_id,
-            control_id=control_id,
-            forzar=False
-        )
+        # Usar función granular para tablas, o desde control para otros
+        if tabla in ["ITBOD", "IBOD", "ITMO", "USVGS", "ITAR", "IART", "SER", "IDXB"]:
+            resultado = bloques.generar_bloque_desde_tabla(
+                proceso_id=proceso_id,
+                tabla=tabla,
+                titulo=titulo,
+                control_padre_id=control_padre_id,
+                forzar=False
+            )
+        else:
+            # Entrada de almacén usa el control directamente
+            resultado = bloques.generar_bloque_desde_control(
+                proceso_id=proceso_id,
+                control_id=tabla,  # Aquí tabla es realmente control_id
+                forzar=False
+            )
         
         if resultado.get("ok"):
             print(f"  ✓ Bloque generado: {resultado['bloque_id']}")
             resultados.append({
                 "proceso": proceso_id,
-                "fuente": control_id,
+                "fuente": tabla,
                 "bloque_id": resultado["bloque_id"],
                 "ok": True
             })
@@ -78,7 +105,7 @@ def generar_piloto():
                 print(f"  • Bloque ya existe: {resultado.get('bloque_id')}")
                 resultados.append({
                     "proceso": proceso_id,
-                    "fuente": control_id,
+                    "fuente": tabla,
                     "bloque_id": resultado.get("bloque_id"),
                     "ok": True
                 })
@@ -87,7 +114,7 @@ def generar_piloto():
                 print(f"    {resultado.get('mensaje', '')}")
                 resultados.append({
                     "proceso": proceso_id,
-                    "fuente": control_id,
+                    "fuente": tabla,
                     "ok": False,
                     "error": error
                 })

@@ -127,6 +127,175 @@ def _inferir_tema_proceso(proceso: dict) -> str | None:
     return None
 
 
+def generar_bloque_desde_tabla(
+    proceso_id: str,
+    tabla: str,
+    titulo: str,
+    control_padre_id: str,
+    forzar: bool = False
+) -> dict:
+    """Genera un bloque granular desde una tabla específica.
+    
+    Args:
+        proceso_id: ID del proceso en conocimiento/
+        tabla: Nombre de la tabla (ej: "ITAR", "IART", "SER")
+        titulo: Título del bloque
+        control_padre_id: ID del control padre que contiene esta tabla
+        forzar: Si True, regenera aunque ya exista y esté estable
+    
+    Returns:
+        Resultado con ok, bloque_id y mensaje
+    """
+    proceso = cargar_proceso(proceso_id)
+    if not proceso:
+        return {
+            "ok": False,
+            "error": "proceso_no_existe",
+            "mensaje": f"No se encontró el proceso '{proceso_id}' en la KB."
+        }
+    
+    # Buscar el control padre
+    control = None
+    capa_encontrada = None
+    for capa in proceso.get("capas", []):
+        for ctrl in capa.get("controles", []):
+            if ctrl.get("id") == control_padre_id:
+                control = ctrl
+                capa_encontrada = capa
+                break
+        if control:
+            break
+    
+    if not control:
+        return {
+            "ok": False,
+            "error": "control_no_existe",
+            "mensaje": f"No se encontró el control '{control_padre_id}' en el proceso '{proceso_id}'."
+        }
+    
+    # Generar ID del bloque (basado en la tabla)
+    bloque_id = _slug(f"{titulo}")
+    bloque_dir = BLOQUES_DIR / bloque_id
+    
+    # Verificar si ya existe y es estable
+    if bloque_dir.exists() and not forzar:
+        bloque_existente = obtener_bloque(bloque_id)
+        if bloque_existente and bloque_existente.get("estable"):
+            return {
+                "ok": False,
+                "error": "bloque_estable",
+                "bloque_id": bloque_id,
+                "mensaje": f"El bloque '{bloque_id}' ya existe y está marcado como estable. Use forzar=True para regenerar."
+            }
+    
+    # Inferir tema
+    tema = _inferir_tema_proceso(proceso)
+    temas = [tema] if tema else []
+    
+    # Crear metadatos del bloque
+    bloque_meta = {
+        "id": bloque_id,
+        "titulo": titulo,
+        "version": "2.0.0",  # Versión 2: granular
+        "temas": temas,
+        "procesos": [proceso_id],
+        "orden": {
+            tema: capa_encontrada.get("numero", 1) if tema else 1
+        },
+        "prerrequisitos": _inferir_prerrequisitos(tabla),
+        "variantes": [],
+        "duracionEstimada": "20min",
+        "fuente": {
+            "proceso": proceso_id,
+            "capa": capa_encontrada.get("id") if capa_encontrada else None,
+            "control_padre": control_padre_id,
+            "tabla": tabla,
+            "actualizado": proceso.get("actualizado", datetime.now().isoformat())
+        },
+        "palabrasClave": [tabla] + _extraer_palabras_clave(control),
+        "estable": False,
+        "generado": datetime.now().isoformat(timespec="seconds")
+    }
+    
+    # Extraer SPs desde la KB
+    sps_asociados = _extraer_sps_tabla(proceso_id, tabla, control)
+    
+    # Agregar SPs al control (para que pedagogico los pueda usar)
+    control_con_sps = control.copy()
+    control_con_sps["sps"] = sps_asociados
+    
+    # Generar contenido pedagógico
+    try:
+        import capacitacion_pedagogico as pedagogico
+        contenido_md = pedagogico.generar_contenido_tabla(
+            tabla, titulo, proceso, control_con_sps, None, audiencia="todas"
+        )
+    except Exception as e:
+        # Fallback a contenido simple
+        contenido_md = _generar_contenido_control(proceso, capa_encontrada, control)
+    
+    # Crear directorio del bloque
+    bloque_dir.mkdir(parents=True, exist_ok=True)
+    imagenes_dir = bloque_dir / "imagenes"
+    imagenes_dir.mkdir(exist_ok=True)
+    
+    # Guardar metadatos
+    with open(bloque_dir / "bloque.json", "w", encoding="utf-8") as f:
+        json.dump(bloque_meta, f, indent=2, ensure_ascii=False)
+    
+    # Guardar contenido
+    (bloque_dir / "contenido.md").write_text(contenido_md, encoding="utf-8")
+    
+    return {
+        "ok": True,
+        "bloque_id": bloque_id,
+        "bloque_dir": str(bloque_dir),
+        "mensaje": f"Bloque '{bloque_id}' generado exitosamente."
+    }
+
+
+def _inferir_prerrequisitos(tabla: str) -> list[str]:
+    """Infiere prerrequisitos basados en la tabla."""
+    prereqs = {
+        "IART": ["tipos-de-articulo-itar"],
+        "SER": ["articulos-iart"],
+        "IDXB": ["articulos-iart", "bodegas-ibod"],
+        "IBOD": ["tipos-de-bodega-itbod"],
+    }
+    return prereqs.get(tabla, [])
+
+
+def _extraer_sps_tabla(proceso_id: str, tabla: str, control: dict) -> list[dict]:
+    """Extrae los SPs asociados a una tabla desde la KB (sps.json).
+    
+    Retorna lista de diccionarios con: nombre, metodo, rol
+    """
+    sps_json = CONOCIMIENTO / proceso_id / "sps.json"
+    if not sps_json.exists():
+        return []
+    
+    try:
+        data = json.loads(sps_json.read_text(encoding="utf-8"))
+        sps_list = data.get("sps", [])
+        
+        sps_asociados = []
+        for sp in sps_list:
+            # Buscar SPs que operan en esta tabla
+            if sp.get("modelo") == tabla or (sp.get("nombre", "").startswith(f"SPQ_{tabla}")):
+                metodos = sp.get("metodos", [])
+                for metodo in metodos:
+                    sps_asociados.append({
+                        "nombre": sp.get("nombre", ""),
+                        "metodo": metodo.get("id", ""),
+                        "rol": metodo.get("hace", "")
+                    })
+        
+        return sps_asociados
+    except Exception as e:
+        print(f"  ⚠️  Error al extraer SPs: {e}")
+        return []
+
+
 def generar_bloque_desde_paso(
     proceso_id: str,
     paso_id: str,

@@ -1458,7 +1458,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 body.get("titulo"),
                 body.get("formato", "html"),
                 body.get("incluirIndice", True),
-                body.get("incluirImagenes", True)
+                body.get("incluirImagenes", True),
+                body.get("audiencia", "usuario-final")
             )
             return self._json(resultado, 200 if resultado.get("ok") else 400)
 

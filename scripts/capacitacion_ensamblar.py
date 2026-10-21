@@ -25,7 +25,8 @@ def ensamblar_documento(
     titulo: str | None = None,
     formato: str = "html",
     incluir_indice: bool = True,
-    incluir_imagenes: bool = True
+    incluir_imagenes: bool = True,
+    audiencia: str = "usuario-final"
 ) -> dict:
     """Ensambla un documento de capacitación desde bloques.
     
@@ -36,6 +37,7 @@ def ensamblar_documento(
         formato: "html", "docx" o "ambos"
         incluir_indice: Si True, genera índice al inicio
         incluir_imagenes: Si True, incrusta imágenes en el documento
+        audiencia: "usuario-final" | "soporte-desarrollo"
     
     Returns:
         {
@@ -43,6 +45,7 @@ def ensamblar_documento(
             "archivo_html": str,  # Ruta si formato incluye html
             "archivo_docx": str,  # Ruta si formato incluye docx
             "bloques": list[str],  # IDs en orden
+            "audiencia": str,  # Audiencia del documento
             "error": str  # Solo si ok=False
         }
     """
@@ -80,13 +83,14 @@ def ensamblar_documento(
         "ok": True,
         "bloques": orden,
         "titulo": titulo,
-        "agregados": deps.get("agregados", [])
+        "agregados": deps.get("agregados", []),
+        "audiencia": audiencia
     }
     
     # Generar HTML
     if formato in ("html", "ambos"):
         archivo_html = SALIDA_DIR / f"{nombre_base}.html"
-        html_content = _generar_html(tema, titulo, orden, incluir_indice, incluir_imagenes)
+        html_content = _generar_html(tema, titulo, orden, incluir_indice, incluir_imagenes, audiencia)
         archivo_html.write_text(html_content, encoding="utf-8")
         # Devolver URL relativa para el navegador (no ruta del sistema)
         resultado["archivo_html"] = f"capacitacion/documentos/{nombre_base}.html"
@@ -113,12 +117,61 @@ def _slug(texto: str) -> str:
     return texto.strip("-")[:50]
 
 
+def _filtrar_por_audiencia(contenido_md: str, audiencia: str) -> str:
+    """Filtra el contenido markdown según la audiencia.
+    
+    Usuario final: elimina secciones entre <!-- AUDIENCIA: soporte-desarrollo --> y <!-- /AUDIENCIA -->
+                   y limpia referencias explícitas a SPs
+    Soporte y desarrollo: mantiene todo
+    """
+    import re
+    
+    if audiencia == "soporte-desarrollo":
+        # Mantener todo, solo quitar marcadores
+        contenido_md = contenido_md.replace("<!-- AUDIENCIA: soporte-desarrollo -->", "")
+        contenido_md = contenido_md.replace("<!-- /AUDIENCIA -->", "")
+        return contenido_md
+    
+    # Usuario final: eliminar secciones técnicas marcadas
+    patron_seccion = r'<!-- AUDIENCIA: soporte-desarrollo -->.*?<!-- /AUDIENCIA -->'
+    contenido_md = re.sub(patron_seccion, '', contenido_md, flags=re.DOTALL)
+    
+    # Usuario final: limpiar referencias explícitas a SPs del resto del texto
+    contenido_md = _limpiar_referencias_sps(contenido_md)
+    
+    return contenido_md
+
+
+def _limpiar_referencias_sps(texto: str) -> str:
+    """Elimina o reemplaza referencias técnicas a stored procedures.
+    
+    Estrategia: Eliminar frases completas que mencionen SPs técnicos.
+    """
+    import re
+    
+    # Patrón para detectar menciones a SPs
+    # Ejemplos: "SPQ_IART", "SPK_CONFIRMAR", "SP_PROCESAR"
+    patron_sp = r'\b(SPQ_|SPK_|SP_)[A-Z_0-9]+\b'
+    
+    # Dividir en oraciones
+    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    
+    # Filtrar oraciones que NO contengan referencias a SPs
+    oraciones_limpias = []
+    for oracion in oraciones:
+        if not re.search(patron_sp, oracion, re.IGNORECASE):
+            oraciones_limpias.append(oracion)
+    
+    return ' '.join(oraciones_limpias)
+
+
 def _generar_html(
     tema: dict | None,
     titulo: str,
     bloques_ids: list[str],
     incluir_indice: bool,
-    incluir_imagenes: bool
+    incluir_imagenes: bool,
+    audiencia: str = "usuario-final"
 ) -> str:
     """Genera el HTML del documento ensamblado."""
     lineas = []
@@ -164,6 +217,9 @@ def _generar_html(
             continue
         
         contenido_md = bloques.leer_contenido_bloque(bloque_id)
+        
+        # Filtrar contenido por audiencia
+        contenido_md = _filtrar_por_audiencia(contenido_md, audiencia)
         
         lineas.append(f'  <section class="bloque" id="bloque-{bloque_id}">')
         lineas.append(f'    <div class="bloque-numero">Módulo {i}</div>')
