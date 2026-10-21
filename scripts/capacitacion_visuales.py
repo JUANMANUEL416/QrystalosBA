@@ -219,25 +219,27 @@ def _crear_prompt_mapa_mental(tema: str, conceptos: list[dict]) -> str:
         for c in conceptos
     ])
     
-    return f"""Genera un mapa mental SVG profesional para sistema hospitalario/IPS en Colombia:
+    return f"""Generate professional SVG mind map for hospital inventory management system (IPS/hospital Colombia):
 
-Tema central: {tema}
+Central topic: {tema}
 
-Conceptos (ramas):
+Branches (concepts):
 {conceptos_texto}
 
-Contexto: Sistema de información hospitalario - farmacia, medicamentos, insumos médicos, personal de salud.
+CONTEXT: Hospital information system - pharmacy warehouse, medications, medical devices, surgical supplies, laboratory reagents, healthcare staff.
 
-Requisitos:
+Requirements:
 1. SVG standalone (800x600px)
-2. Nodo central destacado con el tema
-3. Colores profesionales del sector salud: azul hospital (#2980B9), verde salud (#27AE60), blanco (#ECF0F1), gris claro (#BDC3C7)
-4. Texto legible (fuente sans-serif, 14-18px)
-5. Iconos SVG médicos simples: cruz médica, pastilla, jeringa, clipboard, estetoscopio
-6. Diseño radial equilibrado
-7. Líneas curvas conectando el centro con las ramas
+2. Central node highlighted with topic
+3. Professional healthcare colors: hospital blue (#2980B9), health green (#27AE60), white (#ECF0F1), light gray (#BDC3C7)
+4. Readable text (sans-serif font, 14-18px)
+5. Simple medical SVG icons: medical cross, pill, syringe, clipboard, stethoscope
+6. Balanced radial design
+7. Curved lines connecting center to branches
 
-Genera SOLO el código SVG completo, sin explicaciones ni texto fuera del SVG."""
+FORBIDDEN: flags, language symbols, weapons, military items. ONLY medical/healthcare inventory context.
+
+Generate ONLY complete SVG code, no explanations."""
 
 
 def _crear_prompt_infografia(tema: str, conceptos: list[dict]) -> str:
@@ -249,25 +251,27 @@ def _crear_prompt_infografia(tema: str, conceptos: list[dict]) -> str:
     
     items_texto = "\n".join(items)
     
-    return f"""Genera una infografía SVG profesional para sistema hospitalario/IPS en Colombia:
+    return f"""Generate professional SVG infographic for hospital inventory system (IPS/hospital Colombia):
 
-Título: {tema}
+Title: {tema}
 
-Contenido:
+Content:
 {items_texto}
 
-Contexto: Sistema de información hospitalario - farmacia, medicamentos, insumos médicos.
+CONTEXT: Hospital information system - pharmacy warehouse inventory, medications, medical devices, surgical supplies, laboratory reagents.
 
-Requisitos:
+Requirements:
 1. SVG standalone (800x1200px, vertical)
-2. Título grande arriba con cruz médica
-3. Secciones con iconos médicos SVG: pastilla, jeringa, clipboard, cruz, estetoscopio
-4. Colores del sector salud: azul hospital (#2980B9), verde salud (#27AE60), blanco (#ECF0F1)
-5. Jerarquía visual clara (tamaños de fuente)
-6. Márgenes y espaciado generoso
-7. Fondo blanco o degradado azul muy sutil
+2. Large title at top with medical cross
+3. Sections with medical SVG icons: pill, syringe, clipboard, cross, stethoscope
+4. Healthcare colors: hospital blue (#2980B9), health green (#27AE60), white (#ECF0F1)
+5. Clear visual hierarchy (font sizes)
+6. Generous margins and spacing
+7. White background or very subtle blue gradient
 
-Genera SOLO el código SVG completo, sin explicaciones."""
+FORBIDDEN: flags, language symbols, weapons, military items. ONLY medical/healthcare inventory items.
+
+Generate ONLY complete SVG code, no explanations.
 
 
 def _crear_prompt_diagrama(tema: str, conceptos: list[dict]) -> str:
@@ -275,25 +279,27 @@ def _crear_prompt_diagrama(tema: str, conceptos: list[dict]) -> str:
     pasos = [f"{i+1}. {c.get('titulo', '')}" for i, c in enumerate(conceptos)]
     pasos_texto = "\n".join(pasos)
     
-    return f"""Genera un diagrama de flujo SVG profesional para sistema hospitalario/IPS:
+    return f"""Generate professional SVG flowchart for hospital inventory system (IPS/hospital):
 
-Proceso: {tema}
+Process: {tema}
 
-Pasos:
+Steps:
 {pasos_texto}
 
-Contexto: Flujo operativo en farmacia hospitalaria / sistema de información médico.
+CONTEXT: Hospital pharmacy warehouse operational flow / medical information system inventory process.
 
-Requisitos:
+Requirements:
 1. SVG standalone (1000x600px)
-2. Cajas rectangulares con bordes redondeados
-3. Flechas conectando los pasos
-4. Numeración visible en cada paso con icono médico pequeño
-5. Colores del sector salud: inicio (verde #27AE60), pasos (azul hospital #2980B9), fin (gris #7F8C8D)
-6. Texto centrado en cada caja, legible
-7. Layout horizontal o vertical según número de pasos
+2. Rectangular boxes with rounded borders
+3. Arrows connecting steps
+4. Visible numbering in each step with small medical icon
+5. Healthcare colors: start (green #27AE60), steps (hospital blue #2980B9), end (gray #7F8C8D)
+6. Centered text in each box, readable
+7. Horizontal or vertical layout depending on number of steps
 
-Genera SOLO el código SVG completo, sin explicaciones."""
+FORBIDDEN: flags, language symbols, weapons, military items. ONLY medical/healthcare inventory operations.
+
+Generate ONLY complete SVG code, no explanations."""
 
 
 def generar_mapa_mental_svg(tema: str, conceptos: list[dict]) -> str:
@@ -423,13 +429,15 @@ def generar_ilustracion_completa(
     
     if proveedor == "gemini" and gemini_key and gemini_tiene_cuota:
         print(f"      → Intentando con Gemini...")
-        # Contexto de salud para ilustraciones
+        # Contexto de salud para ilustraciones - ENDURECIDO
         prompt = (
-            f"Ilustración profesional y limpia para sistema hospitalario/IPS en Colombia. "
-            f"Contexto: farmacia hospitalaria, medicamentos, insumos médicos, personal de salud (médicos, enfermeras, farmaceutas). "
-            f"Tema: {titulo}. {descripcion}. "
-            f"Estilo: limpio, profesional, colores suaves (azul hospital, verde salud, blanco). "
-            f"SIN texto en la imagen, solo elementos visuales."
+            f"Professional clean illustration for hospital inventory management system (IPS/hospital in Colombia). "
+            f"CONTEXT: Hospital pharmacy warehouse, medical inventory (medications, medical devices, surgical supplies, "
+            f"laboratory reagents, nutrition products, medical consumables). Healthcare staff (pharmacists, doctors, nurses). "
+            f"TOPIC: {titulo}. {descripcion}. "
+            f"STYLE: Clean, professional, soft hospital colors (hospital blue, health green, white). "
+            f"STRICTLY FORBIDDEN: Text, flags, languages, weapons, ammunition, military items, non-medical items. "
+            f"ONLY medical/healthcare inventory items."
         )
         data_uri = generar_ilustracion_gemini(prompt)
         if data_uri:
@@ -451,12 +459,13 @@ def generar_ilustracion_completa(
         print(f"      → Intentando con OpenAI...")
         openai_model = _get_env("OPENAI_IMAGE_MODEL", "gpt-image-1")
         print(f"        Modelo: {openai_model}")
-        # Contexto de salud para ilustraciones
+        # Contexto de salud para ilustraciones - ENDURECIDO
         prompt = (
-            f"Clean professional illustration for hospital information system in Colombia. "
-            f"Context: hospital pharmacy, medications, medical supplies, healthcare staff. "
+            f"Professional clean illustration for hospital inventory management system in Colombia. "
+            f"Hospital pharmacy warehouse inventory: medications, medical devices, surgical supplies, laboratory reagents. "
             f"Topic: {titulo}. {descripcion}. "
-            f"Style: clean, professional, soft hospital colors. NO text in image."
+            f"Style: clean, professional, soft hospital colors. "
+            f"FORBIDDEN: text, flags, languages, weapons, ammunition, military items. ONLY medical inventory items."
         )
         url = generar_ilustracion_openai(prompt, openai_model)
         if url:

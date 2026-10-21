@@ -1,5 +1,16 @@
 # Artículos (IART)
 
+
+## 🔹 Variables de configuración
+
+| Código | Descripción | Valor | Efecto |
+|--------|-------------|-------|--------|
+| `DEINVNODESER` | Define artículos que NO generan servicio al crear | Pendiente validar | Evita crear SER automáticamente para ciertos tipos de artículo |
+| `ESFARMACIA` | Indica si la bodega es farmacia (para dispensación) | SI o SIP (según institución) | Habilita reglas de dispensación farmacéutica |
+| `IART_SER_UNICO` | Evita duplicar código CUM o descripción de medicamentos | SI (desde v2.0.7) | No permite crear artículos con CUM o descripción repetida |
+
+> **💡 Tip:** Los valores mostrados son códigos habituales. Cada institución puede configurar los propios en USVGS.
+
 ## 🎯 Objetivo
 
 Crear y configurar artículos (medicamentos, insumos, dispositivos) con su información básica, precios, costos, y asociación a servicios facturables.
