@@ -47,6 +47,8 @@ import informe_contab_sesiones as icinforme  # noqa: E402
 import soporte_consultas as scconsulta  # noqa: E402
 import gemini_ilustracion  # noqa: E402
 import prueba_req as prreq  # noqa: E402
+import capacitacion_bloques as capbloques  # noqa: E402
+import capacitacion_ensamblar as capensamblar  # noqa: E402
 
 ROOT = os.path.dirname(SCRIPT_DIR)
 SQL_ROOT = os.path.join(ROOT, "sql")
@@ -1010,6 +1012,30 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if parts == ["api", "agentes"]:
             return self._json(self._payload_agentes())
+        
+        # GET /api/capacitacion/temas
+        if parts == ["api", "capacitacion", "temas"]:
+            temas_data = capbloques.cargar_temas()
+            return self._json({"ok": True, "temas": temas_data.get("temas", [])})
+        
+        # GET /api/capacitacion/bloques?tema=inventario
+        if parts == ["api", "capacitacion", "bloques"]:
+            tema_id = (parse_qs(parsed.query).get("tema") or [""])[0]
+            if tema_id:
+                bloques = capbloques.listar_bloques_por_tema(tema_id)
+            else:
+                bloques = capbloques.listar_bloques()
+            return self._json({"ok": True, "bloques": bloques})
+        
+        # GET /api/capacitacion/bloque/{id}
+        if len(parts) == 4 and parts[:3] == ["api", "capacitacion", "bloque"]:
+            bloque_id = unquote(parts[3])
+            bloque = capbloques.obtener_bloque(bloque_id)
+            if bloque:
+                contenido = capbloques.leer_contenido_bloque(bloque_id)
+                return self._json({"ok": True, "bloque": bloque, "contenido": contenido})
+            else:
+                return self._json({"ok": False, "error": "Bloque no encontrado"}, 404)
 
         if parts == ["api", "servidores", "estado"]:
             token = self.headers.get("X-Ba-Sesion") or ""
@@ -1390,6 +1416,51 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if parts == ["api", "agentes"]:
             return self._post_agentes()
+        
+        # POST /api/capacitacion/generar-bloque
+        if parts == ["api", "capacitacion", "generar-bloque"]:
+            try:
+                body = self._read_json_body()
+            except json.JSONDecodeError:
+                return self._json({"error": "JSON inválido"}, 400)
+            
+            resultado = capbloques.generar_bloque_desde_control(
+                body.get("procesoId", ""),
+                body.get("controlId", ""),
+                body.get("capaNumero"),
+                body.get("forzar", False)
+            )
+            return self._json(resultado, 200 if resultado.get("ok") else 400)
+        
+        # POST /api/capacitacion/generar-ilustracion
+        if parts == ["api", "capacitacion", "generar-ilustracion"]:
+            try:
+                body = self._read_json_body()
+            except json.JSONDecodeError:
+                return self._json({"error": "JSON inválido"}, 400)
+            
+            resultado = capbloques.generar_ilustracion_bloque(
+                body.get("bloqueId", ""),
+                body.get("regenerar", False)
+            )
+            return self._json(resultado, 200 if resultado.get("ok") else 400)
+        
+        # POST /api/capacitacion/ensamblar
+        if parts == ["api", "capacitacion", "ensamblar"]:
+            try:
+                body = self._read_json_body()
+            except json.JSONDecodeError:
+                return self._json({"error": "JSON inválido"}, 400)
+            
+            resultado = capensamblar.ensamblar_documento(
+                body.get("temaId", ""),
+                body.get("bloquesIds", []),
+                body.get("titulo"),
+                body.get("formato", "html"),
+                body.get("incluirIndice", True),
+                body.get("incluirImagenes", True)
+            )
+            return self._json(resultado, 200 if resultado.get("ok") else 400)
 
         if parts == ["api", "servidores", "entrar"]:
             return self._post_servidores_entrar()

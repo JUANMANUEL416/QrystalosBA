@@ -65,6 +65,11 @@ window.QrysConocimiento = (function () {
       title: "Prueba req",
       desc: "Contrasta la entrega del desarrollador y cierra con entrega o devolución.",
     },
+    capacitacion: {
+      icon: "school",
+      title: "Capacitación",
+      desc: "Sistema modular tipo rompecabezas: seleccione bloques y genere el manual completo.",
+    },
   };
   const ESTADO_UI = {
     consultas: {
