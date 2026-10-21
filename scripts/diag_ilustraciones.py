@@ -46,9 +46,9 @@ def diagnosticar():
     
     print(f"   Variables encontradas:")
     print(f"     CAPACITACION_IMAGE_PROVIDER = {proveedor}")
-    print(f"     GEMINI_API_KEY = {'✓ configurada (...{gemini_key[-4:]})' if gemini_key else '✗ no encontrada'}")
+    print(f"     GEMINI_API_KEY = {'✓ configurada' if gemini_key else '✗ no encontrada'}")
     print(f"     GEMINI_IMAGE_MODEL = {gemini_model}")
-    print(f"     OPENAI_API_KEY = {'✓ configurada (...{openai_key[-4:]})' if openai_key else '✗ no encontrada'}")
+    print(f"     OPENAI_API_KEY = {'✓ configurada' if openai_key else '✗ no encontrada'}")
     print(f"     OPENAI_IMAGE_MODEL = {openai_model}")
     print()
     
