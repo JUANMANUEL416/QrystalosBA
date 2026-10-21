@@ -47,6 +47,33 @@ def _get_env(key: str, default: str = "") -> str:
     return os.environ.get(key) or _ENV_FILE.get(key) or default
 
 
+# --- Cache de estado de cuota Gemini (evita reintentar si 429) ---
+_GEMINI_SIN_CUOTA_CACHE = {
+    "timestamp": 0,
+    "duracion_minutos": 5  # Cachear 5 minutos
+}
+
+
+def _gemini_tiene_cuota() -> bool:
+    """Verifica si Gemini tiene cuota disponible (usa cache de 5 min tras 429)."""
+    import time
+    ahora = time.time()
+    ultimo_429 = _GEMINI_SIN_CUOTA_CACHE["timestamp"]
+    duracion_seg = _GEMINI_SIN_CUOTA_CACHE["duracion_minutos"] * 60
+    
+    if ultimo_429 > 0 and (ahora - ultimo_429) < duracion_seg:
+        # Todavía en periodo de cache
+        return False
+    
+    return True
+
+
+def _marcar_gemini_sin_cuota():
+    """Marca que Gemini dio 429 (sin cuota) para cachear el estado."""
+    import time
+    _GEMINI_SIN_CUOTA_CACHE["timestamp"] = time.time()
+
+
 def generar_visual_con_cursor(
     tipo: str,
     tema: str,
@@ -372,7 +399,12 @@ def generar_ilustracion_completa(
     print(f"      GEMINI_API_KEY: {'✓ disponible' if gemini_key else '✗ no configurada'}")
     print(f"      OPENAI_API_KEY: {'✓ disponible' if openai_key else '✗ no configurada'}")
     
-    if proveedor == "gemini" and gemini_key:
+    # Verificar cache de cuota Gemini
+    gemini_tiene_cuota = _gemini_tiene_cuota()
+    if not gemini_tiene_cuota:
+        print(f"      ⚠️  Gemini sin cuota (cacheado), pasando directo a OpenAI")
+    
+    if proveedor == "gemini" and gemini_key and gemini_tiene_cuota:
         print(f"      → Intentando con Gemini...")
         prompt = f"Ilustración educativa para capacitación: {titulo}. {descripcion}"
         data_uri = generar_ilustracion_gemini(prompt)
@@ -488,8 +520,8 @@ def generar_ilustracion_openai(
         "model": modelo,
         "prompt": prompt[:3900],
         "size": tamano,
-        "n": 1,
-        "response_format": "b64_json"  # gpt-image-1 devuelve b64_json
+        "n": 1
+        # Nota: gpt-image-1 devuelve b64_json por defecto, no necesita response_format
     }
     
     req = urllib.request.Request(
@@ -666,7 +698,10 @@ def generar_ilustracion_gemini(
             elif status == 404:
                 print(f"          → Modelo no disponible en esta cuenta")
             elif status == 429:
-                print(f"          → Cuota excedida o rate limit")
+                print(f"          → Cuota excedida (cacheando estado, pasando a OpenAI)")
+                # Marcar cache de sin cuota y NO reintentar con otros modelos
+                _marcar_gemini_sin_cuota()
+                return None
             
             continue
         
