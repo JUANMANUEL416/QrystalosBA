@@ -478,7 +478,7 @@
         {
           "id": "imov-salida",
           "nombre": "Salida de almacén",
-          "explicacion": "CRUD_IMOV_SAL valida permiso sobre el tipo y la bodega destino, fecha y periodo. Se arma la entrega por lote (CRUD_IART / ENTREGA_ISAL con código de barras / IMPORTAR_ARTICULOS) y CONFIRMA_ENTREGA copia IVA del lote a ISAL. CONFIRMA_SALIDA exige al menos una entrega, existencia por lote considerando reservas Pick&Pack, y con ESFARMACIA = SI ningún costo cero; descuenta IEXI, llama SPK_CONFIRMARSALIDAS y deja ESTADO 1. ANULAR_SALIDA usa SPK_ANULAR_MOV_INV y no deja anular si la solicitud de origen no está cerrada. Traslado entre lotes (Informes → TRASLADAR_LOTE) genera salida 24 + entrada 25 confirmadas en el acto.",
+          "explicacion": "En Nueva Salida la lista solo ofrece tipos Débito activos con permiso de la bodega (Seguridad, tipo de movimiento, Acceso Si) y deja por fuera los de IDINVDEVPROVEEDOR, IDINVMOVCONSUMO e IDINVMOVREP aunque ese permiso exista. CRUD_IMOV_SAL valida permiso sobre el tipo y la bodega destino, fecha y periodo. Se arma la entrega por lote (CRUD_IART / ENTREGA_ISAL con código de barras / IMPORTAR_ARTICULOS) y CONFIRMA_ENTREGA copia IVA del lote a ISAL. CONFIRMA_SALIDA exige al menos una entrega, existencia por lote considerando reservas Pick&Pack, y con ESFARMACIA = SI ningún costo cero; descuenta IEXI, llama SPK_CONFIRMARSALIDAS y deja ESTADO 1. ANULAR_SALIDA usa SPK_ANULAR_MOV_INV y no deja anular si la solicitud de origen no está cerrada. Traslado entre lotes (Informes → TRASLADAR_LOTE) genera salida 24 + entrada 25 confirmadas en el acto.",
           "invariante": "Sin entregas no hay confirmación. Existencia real por lote ≥ cantidad. Movimiento confirmado o anulado no admite cambios de detalle.",
           "ventanasFe": [
             "/inv/ges",
@@ -804,7 +804,7 @@
         {
           "id": "izsol-dispensacion",
           "nombre": "Solicitud de farmacia → salida",
-          "explicacion": "La solicitud IZSOL (clases CE, TRANS_CE, 24HORAS, APLIM, OMEDICA, SENFER, Consumo) se atiende en Solicitudes: AGREGAR → ENTREGAR (picking IZSOLDT por lote) → PROCESAR → CONF_MOVIMIENTO (SPK_CONFIRMASAL_CM), que descuenta, cobra copago si aplica y puede cerrar la solicitud. Deshacer entrega requiere permiso y motivo y no procede si enfermería ya recibió. Canastas de cirugía y gasto por consumo son solicitudes especiales. La clase Consumo se imprime desde Solicitudes (ícono de fila) y desde Gasto por consumo con el mismo PDF useIZSOL · onInsumos. El detalle clínico está en el proceso «dispensacion».",
+          "explicacion": "La solicitud IZSOL (clases CE, TRANS_CE, 24HORAS, APLIM, OMEDICA, SENFER, Consumo) se atiende en Solicitudes: AGREGAR → ENTREGAR (picking IZSOLDT por lote) → PROCESAR → CONF_MOVIMIENTO (SPK_CONFIRMASAL_CM), que descuenta, cobra copago si aplica y puede cerrar la solicitud. Deshacer entrega requiere permiso y motivo y no procede si enfermería ya recibió. Canastas de cirugía y gasto por consumo son solicitudes especiales. El gasto por consumo se configura en Configuración → Gastos por consumo (módulo, tipos de artículo y centros de costo) y la bodega debe tener ¿Maneja gasto por consumo?; la solicitud se arma en Gasto por consumo (Nueva Solicitud, Sector, Solicito a, Procesar Solicitud), no en Nueva Salida. La clase Consumo se imprime desde Solicitudes (ícono de fila) y desde Gasto por consumo con el mismo PDF useIZSOL · onInsumos. El detalle clínico está en el proceso «dispensacion».",
           "invariante": "Admisión abierta, solicitud vigente y no anulada, copago recaudado cuando se exige, medicamento no suspendido ni pendiente PROA.",
           "ventanasFe": [
             "/inv/sol_2",
@@ -1288,7 +1288,7 @@
           "num": 1,
           "tipo": "accion",
           "titulo": "Crear la salida",
-          "descripcion": "Tipo de movimiento (Débito), bodega destino si es traslado, fecha, paciente o centro de costo según el tipo. El sistema valida permiso sobre el tipo y la bodega destino, fecha no futura y periodo.",
+          "descripcion": "Tipo de movimiento (Débito), bodega destino si es traslado, fecha, paciente o centro de costo según el tipo. El sistema valida permiso sobre el tipo y la bodega destino, fecha no futura y periodo. Nueva Salida no ofrece el tipo de devolución a proveedor ni el de gasto por consumo aunque la bodega tenga el permiso.",
           "rol": "Bodega / Farmacia",
           "pantalla": "Movimientos",
           "tablas": [
@@ -2077,6 +2077,15 @@
       "fraseUsuario": "SKU no aparece en saldo inicial",
       "control": "IMOVComponetNew",
       "metodo": "lectura IART por IBODS tipo de artículo; la regla se guarda con IBODS · GUARDAR"
+    },
+    {
+      "necesidad": "Ver el tipo 05 al dar una salida en Movimientos",
+      "donde": "No se elige en Movimientos → Nueva Salida. La devolución a proveedor va en Inventario → Procesos → Devolución a proveedor, desde la orden de compra ya ingresada. El gasto por consumo va en Inventario → Gasto por consumo.",
+      "condicion": "Nueva Salida deja por fuera el tipo de devolución a proveedor, el de consumo y el de IDINVMOVREP, aunque la bodega tenga el permiso en Seguridad (tipo de movimiento, Acceso Si).",
+      "noEs": "No se corrige volviendo a marcar el permiso de la bodega.",
+      "fraseUsuario": "el movimiento 05 no me aparece cuando se va a dar salida",
+      "control": "IMOVComponetNew",
+      "metodo": "lista de Nueva Salida; la devolución se arma con DEVOLU_PROVEEDOR · GUARDA_REGISTRO"
     },
     {
       "necesidad": "Crear un tipo de movimiento y que el sistema lo use",

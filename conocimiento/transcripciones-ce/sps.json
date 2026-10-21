@@ -47,7 +47,7 @@
             "La fórmula debe tener al menos un medicamento.",
             "Hay medicamentos repetidos. AUT no admite el mismo servicio dos veces. Deje una sola línea por medicamento.",
             "NO POS marcado: configure la variable PREFIJOMEDNOPOS (o PREF_MED_NOPOS).",
-            "La sede de dispensación debe ser 29, 33, 34 o 35.",
+            "La sede de dispensación debe ser 26, 29, 33, 34 o 35.",
             "Debe indicar la fecha de transcripción.",
             "La fecha de transcripción no puede ser futura.",
             "La fórmula no existe.",
@@ -61,7 +61,7 @@
         },
         {
           "id": "AUDITAR",
-          "hace": "Envía a farmacia una fórmula Ingresada: periodos de entrega y la solicitud del primer periodo. Deja la autorización para cuando se confirme la salida.",
+          "hace": "Envía a farmacia una fórmula Ingresada: periodos de entrega y la solicitud del primer periodo. Si el JSON trae CNSCARGA, también crea AUT y AUTD de ese pedido y deja el id en la fórmula y en el periodo 1. Sin carga, la autorización sigue naciendo al confirmar la salida.",
           "estado": "leido",
           "valida": [
             "La fórmula está Ingresada",
@@ -78,7 +78,7 @@
           "noValida": [
             "No exige centro ni área. Los copia de UBEQ y, si el equipo no está, la fórmula sigue sin ellos",
             "No escribe centro ni área en IZSOL",
-            "No crea AUT. Deja CEFM.IDAUT vacío",
+            "Sin CNSCARGA no crea AUT y deja CEFM.IDAUT vacío",
             "La cantidad pedida es la del periodo 1, no CANTIDAD_TOTAL de la fórmula",
             "PQR o NO POS ignoran la bodega de la pantalla y usan la bodega fija del procedimiento"
           ],
@@ -89,7 +89,7 @@
             "Falta la fecha de transcripción para auditar esta fórmula.",
             "La fecha de transcripción no puede ser futura.",
             "Si la fórmula es NO POS debe indicar el número MIPRES.",
-            "La sede de dispensación debe ser 29, 33, 34 o 35.",
+            "La sede de dispensación debe ser 26, 29, 33, 34 o 35.",
             "Debe indicar el tipo y el documento del médico.",
             "NO POS: la fórmula no tiene número MIPRES.",
             "NO POS marcado: configure la variable PREFIJOMEDNOPOS (o PREF_MED_NOPOS).",
@@ -98,11 +98,15 @@
             "No se pudieron crear los periodos AUTE.",
             "No hay AUTE periodo 1 para armar IZSOLD.",
             "AUTED periodo 1 no produjo renglones de IZSOLD (servicio sin IDARTICULO o cantidad 0).",
-            "No se generó el IZSOL."
+            "No se generó el IZSOL.",
+            "Falta el procedimiento SPQ_CEFM_CREA_AUT_CARGA.",
+            "No se pudo crear la autorización de la carga.",
+            "Subquery returned more than 1 value: el tipo de afiliado debe salir del afiliado de esa fórmula (CEFM.IDAFILIADO), no de todos los afiliados.",
+            "The conversion of a varchar data type to a datetime: el número de fórmula no es una fecha. 1899-12-30 es la fecha vacía del Excel y se cambia por la fecha de dispensación."
           ],
-          "llama": ["SPQ_GENSEQUENCE", "SPK_GENCONSECUTIVO", "FNK_VALORVARIABLE", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_FECHA_AUT", "FNK_CEFM_PERSONAL_AT"],
-          "efecto": "Actualiza CEFM a AUDITADO. Si el JSON trae CNSCARGA (máximo 16), el centro y el área salen de IBOD de la bodega del pedido y ese consecutivo queda en IZSOL.CNSIZSOLM. Sin CNSCARGA, el centro sigue saliendo del equipo. Inserta AUTE/AUTED (periodo 1 En farmacia, el resto Pendiente). Inserta IZSOL clase TRANS_CE, estado 1, NOADMISION = afiliado, y IZSOLD del periodo 1 en estado 1. Enlaza AUTE.CNSIZSOL. IDAUT queda NULL.",
-          "tablas": ["CEFM", "CEFMD", "AUTE", "AUTED", "IZSOL", "IZSOLD", "UBEQ", "IBOD", "SED", "SER", "USUSU"],
+          "llama": ["SPQ_GENSEQUENCE", "SPK_GENCONSECUTIVO", "FNK_VALORVARIABLE", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_FECHA_AUT", "FNK_CEFM_PERSONAL_AT", "SPQ_CEFM_CREA_AUT_CARGA"],
+          "efecto": "Actualiza CEFM a AUDITADO. Si el JSON trae CNSCARGA (máximo 16), el centro y el área salen de IBOD de la bodega del pedido y ese consecutivo queda en IZSOL.CNSIZSOLM. Sin CNSCARGA, el centro sigue saliendo del equipo y CEFM.IDAUT queda vacío. Inserta AUTE/AUTED (periodo 1 En farmacia, el resto Pendiente). Inserta IZSOL clase TRANS_CE, estado 1, NOADMISION = afiliado, y IZSOLD del periodo 1 en estado 1. Enlaza AUTE.CNSIZSOL. Con CNSCARGA e IDAUT, no inserta otra autorización: valida que exista, la escribe en CEFM y en el periodo 1, y llena AUT.CNSMOV con la solicitud. Sin IDAUT y con CNSCARGA llama SPQ_CEFM_CREA_AUT_CARGA. Si esa autorización falla, borra el pedido y los periodos; la autorización que ya existía no se borra y la fórmula sigue Ingresada.",
+          "tablas": ["CEFM", "CEFMD", "AUTE", "AUTED", "IZSOL", "IZSOLD", "AUT", "AUTD", "UBEQ", "IBOD", "SED", "SER", "USUSU"],
           "controlId": "transcripcion-auditar"
         },
         {
@@ -112,8 +116,8 @@
           "valida": [
             "Llega un arreglo FILAS",
             "El documento existe una sola vez en AFI",
-            "La bodega existe, su sede es 29, 33, 34 o 35 y tiene centro de costo",
-            "El CUM corresponde a un solo artículo activo con servicio activo",
+            "La bodega existe, su sede es 26, 29, 33, 34 o 35 y tiene centro de costo",
+            "El CUM corresponde a un solo IART con ESTADO Activo. El estado vacío o inactivo no cuenta como repetido",
             "El diagnóstico está en MDX, el médico en CEFMMED y la IPS en CEFMEPS",
             "NO PBS trae MIPRES y la línea tiene cantidad entregada"
           ],
@@ -145,12 +149,36 @@
           "id": "VALIDAR_CARGA",
           "hace": "Escribe en cada fila del detalle el error y la corrección. El artículo sin servicio activo no se marca.",
           "estado": "leido",
-          "valida": ["La carga existe", "La bodega asignada existe y su sede está permitida"],
+          "valida": ["La carga existe", "Cada llamada revisa un lote de líneas para no cortar la conexión. Si SOLO_ERRADOS viene en 1, solo vuelve a mirar las filas que ya tienen error. Al cerrar, cuenta los errores y marca el medicamento repetido en la fórmula", "La bodega viene en el archivo, existe y su sede está permitida. Si viene vacía y el paciente, la fórmula y el medicamento ya tienen cargo en AUT en el mismo periodo, la línea queda marcada como ya atendida: no cuenta como error para generar y no se vuelve a crear en la fórmula. Si viene vacía y no está en ese periodo, hay que pedir la bodega al cliente y esa fila sale en la hoja Sin bodega", "El CUM repetido solo mira IART activos. Si CODIGO PRODUCTO del archivo coincide con uno solo de ellos, usa ese artículo"],
           "noValida": ["No crea fórmulas"],
           "errores": ["La carga no existe."],
           "llama": [],
           "efecto": "Actualiza CEFMCARD.ERROR, CORRECCION y los identificadores resueltos. Actualiza el conteo de la cabecera.",
           "tablas": ["CEFMCAR", "CEFMCARD", "AFI", "IBOD", "IART", "SER", "CEFMMED", "CEFMEPS", "MDX"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "APLICAR_BODEGA_CARGA",
+          "hace": "Escribe en el detalle la bodega que el cliente completó en el archivo de errores.",
+          "estado": "leido",
+          "valida": ["La carga sigue abierta", "La carga no tiene fórmulas generadas", "Llegan filas con ID y BODEGA"],
+          "noValida": ["No valida paciente, CUM ni sede", "No crea fórmulas"],
+          "errores": ["La carga no está abierta.", "La carga ya tiene fórmulas generadas.", "No llegaron bodegas para aplicar."],
+          "llama": [],
+          "efecto": "Actualiza CEFMCARD.BODEGA de las filas cuyo ID viene en el lote y cuya bodega no está vacía.",
+          "tablas": ["CEFMCAR", "CEFMCARD"],
+          "controlId": "transcripcion-carga"
+        },
+        {
+          "id": "ERRORES_CARGA",
+          "hace": "Arma el archivo de errores del envío por lotes: el detalle, y en otra llamada los artículos activos duplicados, las IPS por crear y los médicos por crear.",
+          "estado": "leido",
+          "valida": ["La carga existe", "Cada llamada de errores trae un lote de filas. Los artículos duplicados salen de a 25 CUM. Las IPS y los médicos van en llamadas aparte"],
+          "noValida": ["No corrige el detalle", "No crea IPS ni médicos"],
+          "errores": ["La carga no existe."],
+          "llama": [],
+          "efecto": "Devuelve las filas con error, con el nombre de bodega de la homologación. Luego los artículos activos con el mismo CUM, las IPS que no están activas y los médicos que no están activos.",
+          "tablas": ["CEFMCAR", "CEFMCARD", "IART", "SER", "CEFMEPS", "CEFMMED"],
           "controlId": "transcripcion-carga"
         },
         {
@@ -403,7 +431,8 @@
         "La solicitud es TRANS_CE, FORMEDCE, CE manual o CE cuyo NOADMISION es un afiliado y no una autorización",
         "Se resuelve afiliado",
         "Hay líneas dispensadas en IMOVH",
-        "Hay consecutivo de autorización"
+        "Hay consecutivo de autorización",
+        "Si la solicitud ya tiene AUT (AUT.CNSMOV = solicitud y MANUALCE = 1, o AUTE.IDAUT de esa solicitud), no inserta otra. Solo llena AUT.CNSIMOV si venía vacío"
       ],
       "noValida": [
         "No rechaza centro ni área vacíos",
@@ -425,10 +454,81 @@
         "INSERT AUTD."
       ],
       "llama": ["FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FECHA_AUT", "FNK_VALORVARIABLE", "SPK_GENCONSECUTIVO"],
-      "efecto": "INSERT AUT (facturable, no facturada) y AUTD por artículo de IMOVH. Puede insertar un SER mínimo si el artículo no existe como servicio. Después el llamador copia centro y área de esa AUT al movimiento, ya con el comprobante emitido.",
+      "efecto": "Si la solicitud ya tiene autorización de la carga, no inserta y solo llena CNSIMOV. Si no, INSERT AUT (facturable, no facturada) y AUTD por artículo de IMOVH. Puede insertar un SER mínimo si el artículo no existe como servicio. Después el llamador copia centro y área de esa AUT al movimiento, ya con el comprobante emitido.",
       "tablas": ["AUT", "AUTD", "IMOV", "IMOVH", "IZSOL", "CEFM", "AUTE", "AFI", "SER", "PRE", "PLN", "UBEQ"],
       "controlId": "transcripcion-aut",
       "metodos": []
+    },
+    {
+      "nombre": "SPQ_CEFM_CREA_AUT_CARGA",
+      "tipo": "SP",
+      "estado": "leido",
+      "fuente": "SQL/SPQ_CEFM_CREA_AUT_CARGA.sql",
+      "actualizado": "2026-10-20",
+      "cola": "Lo llama AUDITAR de SPQ_CEFM solo cuando el JSON trae CNSCARGA, después de crear el pedido.",
+      "hace": "Crea la autorización de facturación del pedido de la carga, antes de que farmacia confirme la salida. El detalle sale de IZSOLD. Deja el id en CEFM.IDAUT y en AUTE.IDAUT del periodo 1. AUT.CNSMOV queda con la solicitud y MANUALCE en 1, para que al confirmar no se abra otra.",
+      "valida": [
+        "Fórmula y solicitud informadas",
+        "La solicitud es clase TRANS_CE",
+        "La fórmula tiene afiliado",
+        "Hay líneas con cantidad en IZSOLD",
+        "Hay prefijo en PRE y consecutivo de autorización",
+        "Si la fórmula o la solicitud ya tienen AUT vigente, no inserta otra"
+      ],
+      "noValida": [
+        "No exige movimiento de inventario",
+        "No escribe IZSOL.NOADMISION (sigue el afiliado)",
+        "No pasa el periodo 1 a Dispensado",
+        "No llena AUT.CNSIMOV: eso lo hace la confirmación"
+      ],
+      "errores": [
+        "Debe indicar la fórmula y la solicitud.",
+        "La fórmula no existe.",
+        "La solicitud de la carga no es de transcripción.",
+        "La fórmula no tiene afiliado.",
+        "NO POS: configure la variable PREFIJOMEDNOPOS (o PREF_MED_NOPOS).",
+        "No hay prefijo de medicamentos (PREFIJOMEDICAMENTOS) ni en el servicio.",
+        "La solicitud no tiene medicamentos para autorizar.",
+        "No se pudo generar consecutivo AUT/AUTF.",
+        "INSERT AUT.",
+        "INSERT AUTD."
+      ],
+      "llama": ["FNK_CEFM_FINALIDAD_DX", "FNK_CEFM_TIPOAFILIADO", "FNK_CEFM_FECHA_AUT", "FNK_CEFM_PERSONAL_AT", "FNK_VALORVARIABLE", "SPQ_GENSEQUENCE", "SPK_GENCONSECUTIVO", "SPK_COPAGO_AUT_CEHOSP", "FNK_VLRAUTORIZACION"],
+      "efecto": "INSERT AUT facturable, no facturada, entregada, con la fecha de dispensación de la fórmula. INSERT AUTD por artículo del pedido. El CUM de la línea entregada queda en AUTD.CODCUM_DISP y, si existe, en AUTD.DOCUM_DISP. El valor unitario de AUTD sale de CEFMCARD.VLR_UNITARIO, el precio del archivo. No consulta la tarifa. CEFM.IDAUT y AUTE.IDAUT del periodo 1 quedan con ese id. AUT.NOADMISIONCE queda con el consecutivo de la carga.",
+      "tablas": ["AUT", "AUTD", "IZSOL", "IZSOLD", "CEFM", "AUTE", "AFI", "SER", "IART", "PRE", "PLN", "ESP"],
+      "controlId": "transcripcion-aut",
+      "metodos": []
+    },
+    {
+      "nombre": "SPQ_CEFM_AUT_CARGA",
+      "tipo": "procedimiento",
+      "hace": "Botón Generar autorizaciones. Crea solo AUT y AUTD de las líneas que no tienen IDAUT ni CNSCEFM, y escribe el id en CEFMCARD.IDAUT. Si la fórmula ya tiene CEFM.IDAUT, lo copia y no inserta otra.",
+      "valida": [
+        "La carga viene informada",
+        "Existe CEFMCARD.IDAUT",
+        "La fórmula tiene afiliado, sede, prefijo en PRE y al menos un medicamento con cantidad",
+        "No repite una autorización ya guardada en la fórmula"
+      ],
+      "noValida": [
+        "No crea CEFM ni el pedido IZSOL",
+        "No llena AUT.CNSMOV",
+        "No consulta la tarifa: el valor sale de VLR_UNITARIO",
+        "No cambia el plan de la línea por el plan del afiliado"
+      ],
+      "errores": [
+        "Debe indicar la carga.",
+        "Falta la columna CEFMCARD.IDAUT.",
+        "La fórmula no tiene afiliado.",
+        "La fórmula no tiene sede.",
+        "No hay prefijo de medicamentos en PRE.",
+        "La fórmula no tiene medicamentos con cantidad.",
+        "No se pudo generar consecutivo AUT/AUTF."
+      ],
+      "llama": ["FNK_VALORVARIABLE", "SPQ_GENSEQUENCE", "SPK_GENCONSECUTIVO"],
+      "efecto": "INSERT AUT facturable, pendiente, entregada, sin movimiento de inventario. AUT.NOADMISIONCE queda con el consecutivo de la carga. AUTD lleva cantidad, valor unitario del archivo y CUM en CODCUM_DISP. CEFMCARD.IDAUT queda con ese id en todas las líneas de la fórmula.",
+      "tablas": ["CEFMCARD", "CEFM", "AUT", "AUTD", "SER", "IART", "PRE"],
+      "controlId": "transcripcion-aut-carga",
+      "metodos": ["AUTORIZAR_CARGA"]
     }
   ]
 }
