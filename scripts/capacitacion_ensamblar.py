@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,13 @@ BLOQUES_DIR = CAPACITACION / "bloques"
 SALIDA_DIR = CAPACITACION / "documentos"
 
 import capacitacion_bloques as bloques
+
+# Intentar importar generador de visuales (opcional)
+try:
+    import capacitacion_visuales as visuales
+    VISUALES_DISPONIBLE = True
+except ImportError:
+    VISUALES_DISPONIBLE = False
 
 
 def ensamblar_documento(
@@ -142,6 +150,117 @@ def _filtrar_por_audiencia(contenido_md: str, audiencia: str) -> str:
     return contenido_md
 
 
+def _obtener_logo_data_uri() -> str:
+    """Obtiene el logo de IX Colombia como data URI.
+    
+    Returns:
+        Data URI del logo PNG o cadena vacía si no existe
+    """
+    logo_path = ROOT / "app" / "assets" / "logo-ixcolombia.png"
+    
+    if not logo_path.exists():
+        # Intentar SVG
+        logo_path = ROOT / "app" / "assets" / "logo-ixcolombia.svg"
+        if not logo_path.exists():
+            return ""
+    
+    try:
+        if logo_path.suffix == ".svg":
+            svg_content = logo_path.read_text(encoding="utf-8")
+            svg_b64 = base64.b64encode(svg_content.encode("utf-8")).decode("utf-8")
+            return f"data:image/svg+xml;base64,{svg_b64}"
+        else:
+            img_data = logo_path.read_bytes()
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            return f"data:image/png;base64,{img_b64}"
+    except Exception as e:
+        print(f"  ⚠️  Error cargando logo: {e}")
+        return ""
+
+
+def _obtener_visuales_bloque(bloque_id: str, bloque_meta: dict, log: bool = True) -> dict:
+    """Obtiene o genera las visuales de un bloque (mapa mental + ilustración).
+    
+    Returns:
+        dict con 'mapa_mental' (data URI SVG) e 'ilustracion' (data URI imagen)
+    """
+    resultado = {
+        "mapa_mental": None,
+        "ilustracion": None
+    }
+    
+    bloque_dir = BLOQUES_DIR / bloque_id
+    
+    # 1. Mapa mental SVG (siempre debe existir en visuales/)
+    mapa_path = bloque_dir / "visuales" / "mapa-mental.svg"
+    if mapa_path.exists():
+        try:
+            svg_content = mapa_path.read_text(encoding="utf-8")
+            # Convertir a data URI
+            svg_b64 = base64.b64encode(svg_content.encode("utf-8")).decode("utf-8")
+            resultado["mapa_mental"] = f"data:image/svg+xml;base64,{svg_b64}"
+            if log:
+                print(f"    ✓ Mapa mental: {mapa_path.name}")
+        except Exception as e:
+            if log:
+                print(f"    ⚠️  Error leyendo mapa mental: {e}")
+    else:
+        if log:
+            try:
+                ruta_relativa = mapa_path.relative_to(ROOT)
+            except ValueError:
+                ruta_relativa = mapa_path
+            print(f"    ⚠️  No existe mapa mental en {ruta_relativa}")
+    
+    # 2. Ilustración (intentar generar si no existe en cache)
+    ilustracion_path = bloque_dir / "visuales" / "ilustracion.png"
+    
+    if ilustracion_path.exists():
+        # Usar cache
+        try:
+            img_data = ilustracion_path.read_bytes()
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            resultado["ilustracion"] = f"data:image/png;base64,{img_b64}"
+            if log:
+                print(f"    ✓ Ilustración (cache): {ilustracion_path.name}")
+        except Exception as e:
+            if log:
+                print(f"    ⚠️  Error leyendo ilustración: {e}")
+    else:
+        # Intentar generar
+        if VISUALES_DISPONIBLE:
+            if log:
+                print(f"    Generando ilustración para {bloque_meta['titulo']}...")
+            
+            try:
+                # Preparar contexto del bloque
+                titulo = bloque_meta.get("titulo", "")
+                descripcion = bloque_meta.get("descripcion", titulo)
+                
+                # Intentar generar
+                data_uri = visuales.generar_ilustracion_completa(
+                    titulo=titulo,
+                    descripcion=descripcion,
+                    cache_path=ilustracion_path
+                )
+                
+                if data_uri:
+                    resultado["ilustracion"] = data_uri
+                    if log:
+                        print(f"    ✓ Ilustración generada y guardada")
+                else:
+                    if log:
+                        print(f"    ⚠️  No se pudo generar ilustración")
+            except Exception as e:
+                if log:
+                    print(f"    ⚠️  Error generando ilustración: {e}")
+        else:
+            if log:
+                print(f"    ⚠️  Visuales no disponible, no se puede generar ilustración")
+    
+    return resultado
+
+
 def _limpiar_referencias_sps(texto: str) -> str:
     """Elimina o reemplaza referencias técnicas a stored procedures.
     
@@ -204,15 +323,25 @@ def _generar_html(
     lineas.append("</head>")
     lineas.append("<body>")
     
-    # Portada
+    # Botón flotante para descargar PDF
+    lineas.append('''  <button class="btn-pdf" onclick="window.print()" title="Descargar como PDF">
+      📄 Descargar PDF
+    </button>''')
+    
+    # Portada (banda compacta)
+    logo_data_uri = _obtener_logo_data_uri()
+    
     lineas.append('  <div class="portada">')
-    lineas.append('    <div class="portada-logo">')
-    lineas.append('      <img src="../app/assets/logo-ixcolombia.png" alt="IX Colombia" />')
-    lineas.append('    </div>')
-    lineas.append(f'    <h1 class="portada-titulo">{titulo}</h1>')
+    lineas.append('    <div class="portada-contenido">')
+    if logo_data_uri:
+        lineas.append(f'      <img class="portada-logo" src="{logo_data_uri}" alt="IX Colombia" />')
+    lineas.append('      <div class="portada-texto">')
+    lineas.append(f'        <h1 class="portada-titulo">{titulo}</h1>')
     if tema:
-        lineas.append(f'    <p class="portada-subtitulo">{tema.get("descripcion", "")}</p>')
-    lineas.append(f'    <p class="portada-fecha">Generado: {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>')
+        lineas.append(f'        <p class="portada-subtitulo">{tema.get("descripcion", "")}</p>')
+    lineas.append(f'        <p class="portada-fecha">📅 {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>')
+    lineas.append('      </div>')
+    lineas.append('    </div>')
     lineas.append('  </div>')
     
     # Índice
@@ -233,30 +362,68 @@ def _generar_html(
         if not bloque_meta:
             continue
         
+        print(f"\n  Bloque {i}/{len(bloques_ids)}: {bloque_meta['titulo']}")
+        
         contenido_md = bloques.leer_contenido_bloque(bloque_id)
         
         # Filtrar contenido por audiencia
         contenido_md = _filtrar_por_audiencia(contenido_md, audiencia)
         
-        lineas.append(f'  <section class="bloque" id="bloque-{bloque_id}">')
-        lineas.append(f'    <div class="bloque-numero">Módulo {i}</div>')
-        lineas.append(f'    <h2 class="bloque-titulo">{bloque_meta["titulo"]}</h2>')
+        # Obtener visuales del bloque
+        visuales_bloque = _obtener_visuales_bloque(bloque_id, bloque_meta) if incluir_imagenes else {}
         
-        # Imágenes del bloque (antes del contenido)
-        if incluir_imagenes:
-            imagenes = bloque_meta.get("imagenes", [])
-            if imagenes:
-                lineas.append('    <div class="bloque-imagenes">')
-                for img in imagenes:
-                    img_path = BLOQUES_DIR / bloque_id / "imagenes" / img["nombre"]
-                    if img_path.exists():
-                        # Incrustar como data URI
-                        img_data = base64.b64encode(img_path.read_bytes()).decode("utf-8")
-                        lineas.append(f'      <figure class="bloque-imagen bloque-imagen-{img["tipo"]}">')
-                        lineas.append(f'        <img src="data:image/png;base64,{img_data}" alt="{img["titulo"]}" />')
-                        lineas.append(f'        <figcaption>{img["titulo"]}</figcaption>')
-                        lineas.append('      </figure>')
-                lineas.append('    </div>')
+        # Obtener prerrequisitos
+        prerreqs = bloque_meta.get("prerrequisitos", [])
+        
+        lineas.append(f'  <section class="bloque" id="bloque-{bloque_id}">')
+        
+        # Encabezado del bloque (tarjeta con color)
+        lineas.append('    <div class="bloque-encabezado">')
+        lineas.append(f'      <div class="bloque-numero">📚 Módulo {i}</div>')
+        lineas.append(f'      <h2 class="bloque-titulo">{bloque_meta["titulo"]}</h2>')
+        
+        # Chips de info
+        lineas.append('      <div class="bloque-chips">')
+        
+        # Audiencia
+        if audiencia == "usuario-final":
+            lineas.append('        <span class="chip chip-audiencia">👤 Usuario Final</span>')
+        else:
+            lineas.append('        <span class="chip chip-audiencia">🔧 Soporte</span>')
+        
+        # Prerrequisitos
+        if prerreqs:
+            for prereq_id in prerreqs[:2]:  # Máximo 2
+                prereq_meta = bloques.obtener_bloque(prereq_id)
+                if prereq_meta:
+                    titulo_corto = prereq_meta["titulo"][:30]
+                    lineas.append(f'        <span class="chip chip-prereq">📌 {titulo_corto}</span>')
+        
+        # Duración
+        duracion = bloque_meta.get("duracionEstimada", "")
+        if duracion:
+            lineas.append(f'        <span class="chip chip-duracion">⏱️ {duracion}</span>')
+        
+        lineas.append('      </div>')
+        lineas.append('    </div>')
+        
+        # Imágenes del bloque (mapa mental + ilustración)
+        if incluir_imagenes and (visuales_bloque.get("mapa_mental") or visuales_bloque.get("ilustracion")):
+            lineas.append('    <div class="bloque-visuales">')
+            
+            if visuales_bloque.get("mapa_mental"):
+                lineas.append('      <figure class="visual-mapa-mental">')
+                lineas.append(f'        <img src="{visuales_bloque["mapa_mental"]}" alt="Mapa mental: {bloque_meta["titulo"]}" />')
+                lineas.append('        <figcaption>🗺️ Mapa conceptual</figcaption>')
+                lineas.append('      </figure>')
+            
+            if visuales_bloque.get("ilustracion"):
+                lineas.append('      <figure class="visual-ilustracion">')
+                lineas.append(f'        <img src="{visuales_bloque["ilustracion"]}" alt="Ilustración: {bloque_meta["titulo"]}" />')
+                lineas.append('        <figcaption>🎨 Ilustración</figcaption>')
+                lineas.append('      </figure>')
+            
+            lineas.append('    </div>')
         
         # Contenido Markdown → HTML simple
         contenido_html = _markdown_simple_a_html(contenido_md)
@@ -283,7 +450,7 @@ def _generar_html(
 
 
 def _css_documento() -> str:
-    """Estilos CSS embebidos para el documento."""
+    """Estilos CSS embebidos para el documento (diseño moderno con tarjetas)."""
     return """  <style>
     * {
       margin: 0;
@@ -295,39 +462,73 @@ def _css_documento() -> str:
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
       color: #2C3E50;
-      background: #F8F9FA;
+      background: #F5F7FA;
     }
     
+    /* Botón flotante para PDF */
+    .btn-pdf {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: linear-gradient(135deg, #E67817 0%, #F39C12 100%);
+      color: white;
+      border: none;
+      padding: 1rem 1.5rem;
+      border-radius: 50px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(230, 120, 23, 0.4);
+      transition: all 0.3s;
+      z-index: 1000;
+    }
+    
+    .btn-pdf:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(230, 120, 23, 0.5);
+    }
+    
+    /* Portada compacta (banda delgada) */
     .portada {
       background: linear-gradient(135deg, #E67817 0%, #F39C12 100%);
       color: white;
-      padding: 4rem 2rem;
-      text-align: center;
-      page-break-after: always;
+      padding: 1.5rem 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    .portada-logo img {
-      max-width: 200px;
-      margin-bottom: 2rem;
+    .portada-contenido {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    
+    .portada-logo {
+      width: 80px;
+      height: auto;
       filter: brightness(0) invert(1);
     }
     
+    .portada-texto {
+      flex: 1;
+    }
+    
     .portada-titulo {
-      font-size: 3rem;
+      font-size: 1.8rem;
       font-weight: 700;
-      margin-bottom: 1rem;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+      margin-bottom: 0.25rem;
     }
     
     .portada-subtitulo {
-      font-size: 1.3rem;
-      margin-bottom: 2rem;
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
       opacity: 0.95;
     }
     
     .portada-fecha {
-      font-size: 1rem;
-      opacity: 0.9;
+      font-size: 0.9rem;
+      opacity: 0.85;
     }
     
     .indice {
@@ -386,64 +587,94 @@ def _css_documento() -> str:
       color: #E67817;
     }
     
+    /* Bloque como tarjeta con encabezado de color */
     .bloque {
       background: white;
-      padding: 3rem 2rem;
       margin: 2rem auto;
-      max-width: 900px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-width: 1000px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      overflow: hidden;
       page-break-inside: avoid;
     }
     
-    .bloque-numero {
-      display: inline-block;
-      background: #E67817;
+    .bloque-encabezado {
+      background: linear-gradient(135deg, #E67817 0%, #F39C12 100%);
       color: white;
-      padding: 0.3rem 1rem;
-      border-radius: 20px;
-      font-size: 0.9rem;
+      padding: 1.5rem 2rem;
+    }
+    
+    .bloque-numero {
+      font-size: 0.85rem;
       font-weight: 600;
-      margin-bottom: 1rem;
+      opacity: 0.95;
+      margin-bottom: 0.5rem;
     }
     
     .bloque-titulo {
-      font-size: 2.2rem;
-      color: #2C3E50;
-      margin-bottom: 2rem;
-      border-bottom: 3px solid #E67817;
-      padding-bottom: 0.5rem;
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
     }
     
-    .bloque-imagenes {
+    .bloque-chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 1rem;
-      margin-bottom: 2rem;
+      gap: 0.5rem;
     }
     
-    .bloque-imagen {
-      flex: 1;
-      min-width: 300px;
+    .chip {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(10px);
+    }
+    
+    .chip-audiencia {
+      background: rgba(52,152,219,0.3);
+    }
+    
+    .chip-prereq {
+      background: rgba(155,89,182,0.3);
+    }
+    
+    .chip-duracion {
+      background: rgba(46,204,113,0.3);
+    }
+    
+    /* Visuales (mapa mental + ilustración) */
+    .bloque-visuales {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 1.5rem;
+      padding: 2rem;
+      background: #F8F9FA;
+    }
+    
+    .visual-mapa-mental,
+    .visual-ilustracion {
       text-align: center;
     }
     
-    .bloque-imagen img {
+    .visual-mapa-mental img,
+    .visual-ilustracion img {
       max-width: 100%;
       height: auto;
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      background: white;
+      padding: 1rem;
     }
     
-    .bloque-imagen figcaption {
-      margin-top: 0.5rem;
+    .visual-mapa-mental figcaption,
+    .visual-ilustracion figcaption {
+      margin-top: 0.75rem;
       font-size: 0.9rem;
-      color: #7F8C8D;
-      font-style: italic;
-    }
-    
-    .bloque-imagen-mapa_mental {
-      flex-basis: 100%;
+      font-weight: 600;
+      color: #E67817;
     }
     
     .bloque-contenido {
@@ -451,18 +682,33 @@ def _css_documento() -> str:
       line-height: 1.8;
     }
     
+    .bloque-contenido {
+      padding: 2rem;
+    }
+    
+    .bloque-contenido h1 {
+      color: #2C3E50;
+      font-size: 1.8rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 2px solid #E0E0E0;
+      padding-bottom: 0.5rem;
+    }
+    
     .bloque-contenido h2 {
-      color: #34495E;
+      color: #E67817;
       margin-top: 2rem;
       margin-bottom: 1rem;
-      font-size: 1.6rem;
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
     
     .bloque-contenido h3 {
       color: #5D6D7E;
       margin-top: 1.5rem;
       margin-bottom: 0.8rem;
-      font-size: 1.3rem;
+      font-size: 1.2rem;
     }
     
     .bloque-contenido p {
@@ -513,6 +759,130 @@ def _css_documento() -> str:
       color: inherit;
     }
     
+    /* Tablas mejoradas */
+    .bloque-contenido table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .bloque-contenido thead {
+      background: linear-gradient(135deg, #E67817 0%, #F39C12 100%);
+      color: white;
+    }
+    
+    .bloque-contenido th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    
+    .bloque-contenido td {
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid #E0E0E0;
+    }
+    
+    .bloque-contenido tbody tr:hover {
+      background: #FFF5E6;
+    }
+    
+    .bloque-contenido tbody tr:last-child td {
+      border-bottom: none;
+    }
+    
+    /* Cajas especiales (Importante, Tip, Error) */
+    .bloque-contenido blockquote {
+      border-left: 4px solid #E67817;
+      padding: 1rem 1rem 1rem 3rem;
+      margin: 1.5rem 0;
+      border-radius: 8px;
+      position: relative;
+      background: #FFF5E6;
+    }
+    
+    .bloque-contenido blockquote::before {
+      content: "💡";
+      position: absolute;
+      left: 1rem;
+      top: 1rem;
+      font-size: 1.5rem;
+    }
+    
+    /* Listas numeradas con círculos */
+    .bloque-contenido ol {
+      counter-reset: paso-counter;
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    .bloque-contenido ol > li {
+      counter-increment: paso-counter;
+      position: relative;
+      padding-left: 3rem;
+      margin-bottom: 1rem;
+    }
+    
+    .bloque-contenido ol > li::before {
+      content: counter(paso-counter);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 2rem;
+      height: 2rem;
+      background: #E67817;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 1rem;
+    }
+    
+    /* Listas anidadas: estilo normal */
+    .bloque-contenido ol ol,
+    .bloque-contenido ol ul {
+      margin-left: 2rem;
+      margin-top: 0.5rem;
+      list-style: disc;
+    }
+    
+    .bloque-contenido ol ol {
+      list-style: decimal;
+    }
+    
+    /* Autoevaluación (details) */
+    .bloque-contenido details {
+      background: #F0F4F8;
+      border: 2px solid #E67817;
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1.5rem 0;
+    }
+    
+    .bloque-contenido summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #E67817;
+      padding: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .bloque-contenido summary::before {
+      content: "▶";
+      transition: transform 0.3s;
+    }
+    
+    .bloque-contenido details[open] summary::before {
+      transform: rotate(90deg);
+    }
+    
     .bloque-transicion {
       text-align: center;
       font-size: 2rem;
@@ -533,14 +903,48 @@ def _css_documento() -> str:
       margin-bottom: 0.5rem;
     }
     
+    /* Estilos para impresión / PDF */
     @media print {
-      .portada, .indice, .bloque {
-        box-shadow: none;
+      body {
+        background: white;
+      }
+      
+      .btn-pdf {
+        display: none;
+      }
+      
+      .portada {
+        page-break-after: always;
+      }
+      
+      .indice {
+        page-break-after: always;
+      }
+      
+      .bloque {
         page-break-inside: avoid;
+        page-break-after: always;
+        box-shadow: none;
+        border: 1px solid #E0E0E0;
       }
       
       .bloque-transicion {
         display: none;
+      }
+      
+      .bloque-visuales {
+        page-break-inside: avoid;
+      }
+      
+      .visual-mapa-mental img,
+      .visual-ilustracion img {
+        max-height: 400px;
+        object-fit: contain;
+      }
+      
+      a {
+        color: #2C3E50;
+        text-decoration: underline;
       }
     }
   </style>"""
