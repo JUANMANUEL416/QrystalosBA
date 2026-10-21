@@ -145,7 +145,8 @@ def _filtrar_por_audiencia(contenido_md: str, audiencia: str) -> str:
 def _limpiar_referencias_sps(texto: str) -> str:
     """Elimina o reemplaza referencias técnicas a stored procedures.
     
-    Estrategia: Eliminar frases completas que mencionen SPs técnicos.
+    Estrategia: Eliminar frases completas que mencionen SPs técnicos,
+    preservando la estructura de párrafos y encabezados markdown.
     """
     import re
     
@@ -153,16 +154,32 @@ def _limpiar_referencias_sps(texto: str) -> str:
     # Ejemplos: "SPQ_IART", "SPK_CONFIRMAR", "SP_PROCESAR"
     patron_sp = r'\b(SPQ_|SPK_|SP_)[A-Z_0-9]+\b'
     
-    # Dividir en oraciones
-    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    # Dividir en párrafos (separados por línea en blanco)
+    # Esto preserva encabezados markdown que deben ir separados
+    parrafos = re.split(r'\n\n+', texto)
     
-    # Filtrar oraciones que NO contengan referencias a SPs
-    oraciones_limpias = []
-    for oracion in oraciones:
-        if not re.search(patron_sp, oracion, re.IGNORECASE):
-            oraciones_limpias.append(oracion)
+    parrafos_limpios = []
+    for parrafo in parrafos:
+        # Si es encabezado markdown, mantenerlo siempre
+        if parrafo.strip().startswith('#'):
+            parrafos_limpios.append(parrafo)
+            continue
+        
+        # Dividir párrafo en oraciones
+        oraciones = re.split(r'(?<=[.!?])\s+', parrafo)
+        
+        # Filtrar oraciones que NO contengan referencias a SPs
+        oraciones_limpias = []
+        for oracion in oraciones:
+            if not re.search(patron_sp, oracion, re.IGNORECASE):
+                oraciones_limpias.append(oracion)
+        
+        # Si quedan oraciones, unirlas con espacio
+        if oraciones_limpias:
+            parrafos_limpios.append(' '.join(oraciones_limpias))
     
-    return ' '.join(oraciones_limpias)
+    # Unir párrafos con doble salto de línea
+    return '\n\n'.join(parrafos_limpios)
 
 
 def _generar_html(
@@ -530,102 +547,67 @@ def _css_documento() -> str:
 
 
 def _markdown_simple_a_html(md: str) -> str:
-    """Convierte Markdown simple a HTML.
+    """Convierte Markdown a HTML usando librería markdown con extensiones.
     
-    Soporta: títulos, párrafos, listas, blockquotes, código inline y bloques.
+    Soporta: títulos, párrafos, listas, tablas, blockquotes, código, etc.
+    Fallback a conversor simple si markdown no está instalado.
     """
-    lineas = md.split("\n")
+    try:
+        import markdown
+        
+        # Usar extensiones para tablas, listas numeradas, atributos, etc.
+        md_processor = markdown.Markdown(extensions=[
+            'tables',          # Soporte para tablas
+            'fenced_code',     # Bloques de código con ```
+            'nl2br',           # Saltos de línea → <br>
+            'sane_lists',      # Listas numeradas y no numeradas mejoradas
+            'attr_list'        # Atributos en elementos
+        ])
+        
+        return md_processor.convert(md)
+    
+    except ImportError:
+        # Fallback a conversor simple si markdown no está instalado
+        return _markdown_fallback_simple(md)
+
+
+def _markdown_fallback_simple(md: str) -> str:
+    """Conversor markdown simple como fallback si la librería no está disponible."""
     html = []
+    lineas = md.split("\n")
     en_lista = False
-    en_blockquote = False
-    en_codigo = False
     
     for linea in lineas:
-        # Bloques de código
-        if linea.strip().startswith("```"):
-            if not en_codigo:
-                html.append("<pre><code>")
-                en_codigo = True
-            else:
-                html.append("</code></pre>")
-                en_codigo = False
-            continue
+        stripped = linea.strip()
         
-        if en_codigo:
-            html.append(_escape_html(linea))
-            continue
-        
-        # Blockquote
-        if linea.strip().startswith(">"):
-            if not en_blockquote:
-                html.append("<blockquote>")
-                en_blockquote = True
-            texto = linea.strip()[1:].strip()
-            html.append(f"<p>{_procesar_inline(texto)}</p>")
-            continue
-        elif en_blockquote:
-            html.append("</blockquote>")
-            en_blockquote = False
-        
-        # Títulos
-        if linea.startswith("### "):
-            html.append(f"<h3>{_procesar_inline(linea[4:])}</h3>")
-            continue
-        elif linea.startswith("## "):
-            html.append(f"<h2>{_procesar_inline(linea[3:])}</h2>")
-            continue
-        elif linea.startswith("# "):
-            html.append(f"<h1>{_procesar_inline(linea[2:])}</h1>")
-            continue
-        
+        # Encabezados
+        if stripped.startswith("### "):
+            html.append(f"<h3>{_escape_html(stripped[4:])}</h3>")
+        elif stripped.startswith("## "):
+            html.append(f"<h2>{_escape_html(stripped[3:])}</h2>")
+        elif stripped.startswith("# "):
+            html.append(f"<h1>{_escape_html(stripped[2:])}</h1>")
         # Listas
-        if linea.strip().startswith("- ") or linea.strip().startswith("* "):
+        elif stripped.startswith("- ") or stripped.startswith("* "):
             if not en_lista:
                 html.append("<ul>")
                 en_lista = True
-            texto = linea.strip()[2:]
-            html.append(f"<li>{_procesar_inline(texto)}</li>")
-            continue
-        elif en_lista:
-            html.append("</ul>")
-            en_lista = False
-        
+            html.append(f"<li>{_escape_html(stripped[2:])}</li>")
         # Párrafo
-        if linea.strip():
-            html.append(f"<p>{_procesar_inline(linea)}</p>")
+        elif stripped:
+            if en_lista:
+                html.append("</ul>")
+                en_lista = False
+            html.append(f"<p>{_escape_html(stripped)}</p>")
         else:
-            html.append("")
+            if en_lista:
+                html.append("</ul>")
+                en_lista = False
     
-    # Cerrar tags abiertos
     if en_lista:
         html.append("</ul>")
-    if en_blockquote:
-        html.append("</blockquote>")
-    if en_codigo:
-        html.append("</code></pre>")
     
     return "\n".join(html)
-
-
-def _procesar_inline(texto: str) -> str:
-    """Procesa formatos inline: **negrita**, `código`, etc."""
-    # Código inline (antes de negrita/cursiva, no escapar contenido)
-    partes = []
-    ultimo = 0
-    for match in re.finditer(r"`([^`]+)`", texto):
-        partes.append(_escape_html(texto[ultimo:match.start()]))
-        partes.append(f"<code>{_escape_html(match.group(1))}</code>")
-        ultimo = match.end()
-    partes.append(_escape_html(texto[ultimo:]))
-    texto = "".join(partes)
-    
-    # Negrita
-    texto = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", texto)
-    
-    # Cursiva (solo * solitarios)
-    texto = re.sub(r"(?<!\*)\*([^*]+)\*", r"<em>\1</em>", texto)
-    
-    return texto
 
 
 def _escape_html(texto: str) -> str:
