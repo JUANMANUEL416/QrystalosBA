@@ -1481,6 +1481,26 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 body.get("audiencia", "usuario-final")
             )
             return self._json(resultado, 200 if resultado.get("ok") else 400)
+        
+        # POST /api/capacitacion/generar-pdf
+        # Genera PDF en servidor con Edge/Chrome headless
+        if parts == ["api", "capacitacion", "generar-pdf"]:
+            try:
+                body = self._read_json_body()
+            except json.JSONDecodeError:
+                return self._json({"error": "JSON inválido"}, 400)
+            
+            # Ensamblar documento en formato PDF
+            resultado = capensamblar.ensamblar_documento(
+                body.get("temaId", ""),
+                body.get("bloquesIds", []),
+                body.get("titulo"),
+                formato="pdf",  # Forzar formato PDF
+                incluir_indice=body.get("incluirIndice", True),
+                incluir_imagenes=body.get("incluirImagenes", True),
+                audiencia=body.get("audiencia", "usuario-final")
+            )
+            return self._json(resultado, 200 if resultado.get("ok") else 400)
 
         if parts == ["api", "servidores", "entrar"]:
             return self._post_servidores_entrar()

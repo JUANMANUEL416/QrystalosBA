@@ -11,7 +11,31 @@ Configurar los tipos de artículo que definen el comportamiento de los artículo
 **Tabla:** `ITAR`
 **Frontend:** `/inv/conf/itar`, `/inv/conf/iart`
 
-ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, concentración, riesgo, IVA), el prefijo del consecutivo y la cuenta. IART GUARDAR genera el código, puede crear el servicio SER (para facturar) y la presentación hija apunta a su principal (IDARTICULOPRIN). El SKU (artículo por fabricante, PRINCIPAL=0) copia el IDITAR del principal al crearse. Un cambio posterior del tipo del principal no actualiza los SKU ya creados, y la ventana Artículos por fabricante no muestra Tipo Artículo. La lista de Artículos solo trae principales; la presentación sale si se filtra por CUM o registro INVIMA, y ahí Editar con la lupa de Tipo Artículo guarda el tipo de esa fila. Trasladar Artículo cambia el principal (IDSERVICIO), no el tipo. Con IART_SER_UNICO = SI (liberado en 2.0.7) no se repite CUM ni descripción. Botón Generar Servicios en ITAR crea SER para todo el tipo. Precio regulado: la pantalla llama IART · CARGAR_PRECIO_REGULADO y ese método no existe en SPQ_IART (pendiente).
+### 💊 **Configuración del tipo de artículo**
+
+ITAR define qué datos pide el sistema para cada artículo: lote, fecha de vencimiento, clase terapéutica, principio activo (genérico), concentración, nivel de riesgo e IVA. También configura el prefijo del consecutivo automático y la cuenta contable asociada.
+
+### 🔢 **Generación automática de códigos**
+
+Cuando se guarda un artículo (IART · GUARDAR), el sistema genera automáticamente el código según el prefijo configurado en ITAR. Este proceso puede crear también el servicio SER vinculado para facturación hospitalaria.
+
+### 📦 **Artículos principal y presentaciones (SKU)**
+
+Los artículos pueden tener una estructura jerárquica: un artículo principal y múltiples presentaciones o SKU (artículos por fabricante). La presentación hija apunta a su principal mediante IDARTICULOPRIN. Al crear el SKU, se copia el IDITAR del principal.
+
+> **⚠️ Importante:** Un cambio posterior del tipo del artículo principal NO actualiza los SKU ya creados. La ventana "Artículos por fabricante" no muestra el campo Tipo Artículo.
+
+### 🔍 **Búsqueda y filtros especiales**
+
+La lista de artículos muestra por defecto solo los principales. Las presentaciones aparecen cuando se filtra por código CUM (medicamentos regulados) o registro INVIMA. Al editar desde esa vista, el botón de búsqueda de Tipo Artículo guarda el tipo de esa fila específica.
+
+### 🏥 **Operaciones especiales**
+
+- **Trasladar Artículo:** Cambia el servicio principal vinculado (IDSERVICIO), pero NO cambia el tipo de artículo.
+- **Variable IART_SER_UNICO = SI** (desde v2.0.7): Evita duplicar códigos CUM o descripciones de medicamentos.
+- **Botón "Generar Servicios"** en ITAR: Crea servicios SER para todos los artículos de ese tipo.
+
+> **💡 Tip:** La funcionalidad de precio regulado aún está pendiente (IART · CARGAR_PRECIO_REGULADO no existe en SPQ_IART).
 
 
 ## 📋 Campos relevantes
