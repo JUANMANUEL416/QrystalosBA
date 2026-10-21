@@ -16,8 +16,19 @@ import os
 import json
 import base64
 import re
+import sys
 from pathlib import Path
 from typing import Optional
+
+# --- Reconfigurar stdout/stderr a UTF-8 con errors='replace' ---
+# Bajo servicio Windows LocalSystem con consola cp1252, los emojis/✓/✗
+# causan UnicodeEncodeError. Reconfigurar al importar este módulo.
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # Ignorar si ya está reconfigurado
 
 
 # --- Carga de .env (prioridad: os.environ > archivo .env) ---
