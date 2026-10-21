@@ -6,6 +6,7 @@ scripts/capacitacion_ilustracion.py para ilustraciones.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from datetime import datetime
@@ -234,6 +235,12 @@ def generar_bloque_desde_tabla(
         # Fallback a contenido simple
         contenido_md = _generar_contenido_control(proceso, capa_encontrada, control)
     
+    # Generar visuales (mapa mental + ilustración)
+    try:
+        _generar_visuales_bloque(bloque_dir, bloque_id, titulo, contenido_md)
+    except Exception as e:
+        print(f"  ⚠️  Error al generar visuales: {e}")
+    
     # Crear directorio del bloque
     bloque_dir.mkdir(parents=True, exist_ok=True)
     imagenes_dir = bloque_dir / "imagenes"
@@ -263,6 +270,79 @@ def _inferir_prerrequisitos(tabla: str) -> list[str]:
         "IBOD": ["tipos-de-bodega-itbod"],
     }
     return prereqs.get(tabla, [])
+
+
+def _generar_visuales_bloque(
+    bloque_dir: Path,
+    bloque_id: str,
+    titulo: str,
+    contenido_md: str
+) -> None:
+    """Genera visuales (mapa mental + ilustración) para un bloque.
+    
+    Args:
+        bloque_dir: Directorio del bloque
+        bloque_id: ID del bloque
+        titulo: Título del bloque
+        contenido_md: Contenido markdown del bloque
+    """
+    try:
+        import capacitacion_visuales as visuales
+        
+        # Directorio para visuales
+        visuales_dir = bloque_dir / "visuales"
+        visuales_dir.mkdir(exist_ok=True)
+        
+        # Extraer conceptos del contenido
+        conceptos = visuales.extraer_conceptos_para_mapa({}, contenido_md)
+        
+        # 1. Generar mapa mental (siempre, con cache)
+        print(f"  → Generando mapa mental...")
+        cache_mapa = visuales_dir / "mapa-mental.svg"
+        
+        mapa_svg = visuales.generar_visual_con_cursor(
+            "mapa-mental",
+            titulo,
+            conceptos,
+            cache_mapa
+        )
+        
+        if not mapa_svg:
+            # Fallback a SVG local
+            mapa_svg = visuales.generar_mapa_mental_svg(titulo, conceptos)
+            cache_mapa.write_text(mapa_svg, encoding="utf-8")
+        
+        print(f"     ✓ Mapa mental: {cache_mapa.name}")
+        
+        # 2. Generar ilustración (solo si hay providers configurados)
+        if any([
+            os.getenv("CURSOR_API_KEY"),
+            os.getenv("OPENAI_API_KEY"),
+            os.getenv("GEMINI_API_KEY")
+        ]):
+            print(f"  → Generando ilustración...")
+            cache_ilustracion = visuales_dir / "ilustracion.html"
+            
+            # Extraer descripción para ilustración
+            descripcion = f"Ilustración educativa sobre {titulo}"
+            if conceptos:
+                items = [c.get('titulo', '') for c in conceptos[:3]]
+                descripcion += f": {', '.join(items)}"
+            
+            ilustracion = visuales.generar_ilustracion_completa(
+                titulo,
+                descripcion,
+                cache_ilustracion
+            )
+            
+            if ilustracion:
+                cache_ilustracion.write_text(ilustracion, encoding="utf-8")
+                print(f"     ✓ Ilustración: {cache_ilustracion.name}")
+        
+    except ImportError:
+        print(f"  ⚠️  Módulo capacitacion_visuales no disponible")
+    except Exception as e:
+        print(f"  ⚠️  Error generando visuales: {e}")
 
 
 def _extraer_sps_tabla(proceso_id: str, tabla: str, control: dict) -> list[dict]:

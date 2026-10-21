@@ -16,6 +16,23 @@ Estructura pedagógica:
 from typing import Any
 
 
+def _agregar_seccion(lineas: list[str], titulo: str, nivel: int = 2) -> None:
+    """Helper para agregar encabezado de sección con línea en blanco previa.
+    
+    Args:
+        lineas: Lista de líneas donde agregar
+        titulo: Texto del encabezado
+        nivel: Nivel del encabezado (2 = ##, 3 = ###)
+    """
+    # Asegurar línea en blanco antes del encabezado
+    if lineas and lineas[-1].strip():
+        lineas.append("")
+    
+    prefix = "#" * nivel
+    lineas.append(f"{prefix} {titulo}")
+    lineas.append("")
+
+
 def generar_contenido_tabla(
     tabla: str,
     titulo: str,
@@ -49,6 +66,7 @@ def generar_contenido_tabla(
     lineas.append("")
     lineas.append(objetivo)
     lineas.append("")
+    lineas.append("")  # Línea extra antes del siguiente encabezado
     
     # 3. Contexto
     lineas.append("## 📍 Contexto")
@@ -63,6 +81,7 @@ def generar_contenido_tabla(
     lineas.append("")
     lineas.append(control.get("explicacion", ""))
     lineas.append("")
+    lineas.append("")  # Línea extra antes del siguiente encabezado
     
     # 4. Campos relevantes (solo decisivos y de formulario)
     campos = _extraer_campos_relevantes(tabla, control, documentos_kb)
@@ -450,13 +469,35 @@ def _generar_ejemplo(tabla: str) -> str:
 def _generar_resumen(tabla: str, campos: list[dict], pasos: list[str]) -> str:
     """Genera un resumen ejecutivo del bloque."""
     decisivos = [c for c in campos if c.get("decisivo")]
-    return f"""**{tabla}** es {'una tabla decisiva' if decisivos else 'una tabla de configuración'} que define {'el comportamiento' if decisivos else 'la información'} de {'los artículos' if 'ART' in tabla else 'las bodegas' if 'BOD' in tabla else 'los movimientos' if 'ITMO' in tabla else 'el sistema'} en inventario.
-
-**Campos clave:** {', '.join(c['nombre'] for c in decisivos[:3])} (cambian el comportamiento del sistema)
-
-**Proceso:** {len(pasos)} pasos desde configuración hasta operación
-
-**Prerrequisitos:** {'Ninguno (configuración base)' if tabla in ['ITAR', 'ITBOD', 'ITMO', 'USVGS'] else f'Requiere {tabla[1:] if tabla.startswith("I") else "configuración previa"}'}"""
+    
+    lineas = []
+    
+    # Descripción
+    tipo_tabla = 'una tabla decisiva' if decisivos else 'una tabla de configuración'
+    entidad = 'los artículos' if 'ART' in tabla else 'las bodegas' if 'BOD' in tabla else 'los movimientos' if 'ITMO' in tabla else 'el sistema'
+    lineas.append(f"**{tabla}** es {tipo_tabla} que define el comportamiento de {entidad} en inventario.")
+    lineas.append("")
+    
+    # Campos clave
+    if decisivos:
+        campos_texto = ', '.join(c['nombre'] for c in decisivos[:3])
+        lineas.append(f"**Campos clave:** {campos_texto} (cambian el comportamiento del sistema)")
+    else:
+        lineas.append(f"**Campos clave:** Configuración básica")
+    lineas.append("")
+    
+    # Proceso
+    lineas.append(f"**Proceso:** {len(pasos)} pasos desde configuración hasta operación")
+    lineas.append("")
+    
+    # Prerrequisitos
+    if tabla in ['ITAR', 'ITBOD', 'ITMO', 'USVGS']:
+        prereq = 'Ninguno (configuración base)'
+    else:
+        prereq = f'Requiere {tabla[1:] if tabla.startswith("I") else "configuración previa"}'
+    lineas.append(f"**Prerrequisitos:** {prereq}")
+    
+    return "\n".join(lineas)
 
 
 def _generar_quiz(tabla: str, campos: list[dict]) -> list[dict]:

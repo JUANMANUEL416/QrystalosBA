@@ -530,102 +530,22 @@ def _css_documento() -> str:
 
 
 def _markdown_simple_a_html(md: str) -> str:
-    """Convierte Markdown simple a HTML.
+    """Convierte Markdown a HTML usando librería markdown con extensiones.
     
-    Soporta: títulos, párrafos, listas, blockquotes, código inline y bloques.
+    Soporta: títulos, párrafos, listas, tablas, blockquotes, código, etc.
     """
-    lineas = md.split("\n")
-    html = []
-    en_lista = False
-    en_blockquote = False
-    en_codigo = False
+    import markdown
     
-    for linea in lineas:
-        # Bloques de código
-        if linea.strip().startswith("```"):
-            if not en_codigo:
-                html.append("<pre><code>")
-                en_codigo = True
-            else:
-                html.append("</code></pre>")
-                en_codigo = False
-            continue
-        
-        if en_codigo:
-            html.append(_escape_html(linea))
-            continue
-        
-        # Blockquote
-        if linea.strip().startswith(">"):
-            if not en_blockquote:
-                html.append("<blockquote>")
-                en_blockquote = True
-            texto = linea.strip()[1:].strip()
-            html.append(f"<p>{_procesar_inline(texto)}</p>")
-            continue
-        elif en_blockquote:
-            html.append("</blockquote>")
-            en_blockquote = False
-        
-        # Títulos
-        if linea.startswith("### "):
-            html.append(f"<h3>{_procesar_inline(linea[4:])}</h3>")
-            continue
-        elif linea.startswith("## "):
-            html.append(f"<h2>{_procesar_inline(linea[3:])}</h2>")
-            continue
-        elif linea.startswith("# "):
-            html.append(f"<h1>{_procesar_inline(linea[2:])}</h1>")
-            continue
-        
-        # Listas
-        if linea.strip().startswith("- ") or linea.strip().startswith("* "):
-            if not en_lista:
-                html.append("<ul>")
-                en_lista = True
-            texto = linea.strip()[2:]
-            html.append(f"<li>{_procesar_inline(texto)}</li>")
-            continue
-        elif en_lista:
-            html.append("</ul>")
-            en_lista = False
-        
-        # Párrafo
-        if linea.strip():
-            html.append(f"<p>{_procesar_inline(linea)}</p>")
-        else:
-            html.append("")
+    # Usar extensiones para tablas, listas numeradas, atributos, etc.
+    md_processor = markdown.Markdown(extensions=[
+        'tables',          # Soporte para tablas
+        'fenced_code',     # Bloques de código con ```
+        'nl2br',           # Saltos de línea → <br>
+        'sane_lists',      # Listas numeradas y no numeradas mejoradas
+        'attr_list'        # Atributos en elementos
+    ])
     
-    # Cerrar tags abiertos
-    if en_lista:
-        html.append("</ul>")
-    if en_blockquote:
-        html.append("</blockquote>")
-    if en_codigo:
-        html.append("</code></pre>")
-    
-    return "\n".join(html)
-
-
-def _procesar_inline(texto: str) -> str:
-    """Procesa formatos inline: **negrita**, `código`, etc."""
-    # Código inline (antes de negrita/cursiva, no escapar contenido)
-    partes = []
-    ultimo = 0
-    for match in re.finditer(r"`([^`]+)`", texto):
-        partes.append(_escape_html(texto[ultimo:match.start()]))
-        partes.append(f"<code>{_escape_html(match.group(1))}</code>")
-        ultimo = match.end()
-    partes.append(_escape_html(texto[ultimo:]))
-    texto = "".join(partes)
-    
-    # Negrita
-    texto = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", texto)
-    
-    # Cursiva (solo * solitarios)
-    texto = re.sub(r"(?<!\*)\*([^*]+)\*", r"<em>\1</em>", texto)
-    
-    return texto
+    return md_processor.convert(md)
 
 
 def _escape_html(texto: str) -> str:
