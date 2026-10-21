@@ -1,5 +1,15 @@
 # Tipos de artículo (ITAR)
 
+
+## 🔹 Variables de configuración
+
+| Código | Descripción | Valor | Efecto |
+|--------|-------------|-------|--------|
+| `DEINVNODESER` | Define artículos que NO generan servicio al crear | Pendiente validar | Evita crear SER automáticamente para ciertos tipos de artículo |
+| `IART_SER_UNICO` | Evita duplicar código CUM o descripción de medicamentos | SI (desde v2.0.7) | No permite crear artículos con CUM o descripción repetida |
+
+> **💡 Tip:** Los valores mostrados son códigos habituales. Cada institución puede configurar los propios en USVGS.
+
 ## 🎯 Objetivo
 
 Configurar los tipos de artículo que definen el comportamiento de los artículos en inventario: si lotean, si tienen fecha de vencimiento, si manejan IVA, el consecutivo automático y las reglas de control de stock.
@@ -71,7 +81,13 @@ La lista de artículos muestra por defecto solo los principales. Las presentacio
 
 ## 💡 Tips
 
-- Crear primero los tipos más comunes: Medicamentos (loteo+vencimiento+IVA), Insumos (solo loteo), Dispositivos (sin loteo ni vencimiento)
+- Crear primero los tipos más comunes en el sector salud:
+  - **Medicamentos** (loteo + vencimiento + IVA): analgésicos, antibióticos, antiinflamatorios
+  - **Dispositivos médicos** (solo loteo): jeringas, equipos de venoclisis, sondas
+  - **Material médico-quirúrgico** (sin loteo ni vencimiento): instrumental quirúrgico, equipos
+  - **Reactivos de laboratorio** (loteo + vencimiento): reactivos químicos, kits de diagnóstico
+  - **Insumos de nutrición** (loteo + vencimiento): suplementos nutricionales, fórmulas enterales
+  - **Papelería y aseo** (sin loteo ni vencimiento): papel, jabones, desinfectantes
 - El prefijo (PRECNS) no se puede cambiar después de crear artículos de ese tipo
 - Si MPRINCIPAL=1, permite crear SKUs (ej: Acetaminofén 500mg principal, Acetaminofén Genven 500mg SKU)
 

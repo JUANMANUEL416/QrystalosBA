@@ -1,5 +1,15 @@
 # Artículo por bodega (IDXB)
 
+
+## 🔹 Variables de configuración
+
+| Código | Descripción | Valor | Efecto |
+|--------|-------------|-------|--------|
+| `DEINVNODESER` | Define artículos que NO generan servicio al crear | Pendiente validar | Evita crear SER automáticamente para ciertos tipos de artículo |
+| `IART_SER_UNICO` | Evita duplicar código CUM o descripción de medicamentos | SI (desde v2.0.7) | No permite crear artículos con CUM o descripción repetida |
+
+> **💡 Tip:** Los valores mostrados son códigos habituales. Cada institución puede configurar los propios en USVGS.
+
 ## 🎯 Objetivo
 
 Asociar artículos a bodegas con punto de reorden, máximo y mínimo para control de stock.
