@@ -11,7 +11,17 @@ Definir los tipos de bodega que agrupan las bodegas por su naturaleza (farmacéu
 **Tabla:** `ITBOD`
 **Frontend:** `/inv/conf/itbod`, `/inv/conf/ibod`
 
-ITBOD agrupa bodegas (farmacéuticas, carro de paro, botiquín, administrativas). IBOD lleva sede, centro de costo, bodega que pide (IDBODEGAPIDE, obligatoria para solicitar compras), MUEVEEXISTENCIAS, VALIDASTOCK, NOCONTABILIZA, ESDECUSTODIA, MANEJA_PICKPACK, COMPRASOL. Seguridad IBODS: qué usuarios entran (BODEGASELECT) y qué tipos de artículo acepta. Los catálogos (ICLA/ICLAH/IGRU, IGEN+ITGEN, IFFA, ICCN, IPAC, IUNI) solo se borran si nadie los usa.
+### 🏥 **Tipos de bodega**
+
+ITBOD define tipos para agrupar bodegas: farmacéuticas, carro de paro, botiquín, bodegas administrativas. Cada tipo configura el comportamiento de las bodegas que lo usan.
+
+### 📦 **Configuración de bodegas (IBOD)**
+
+Cada bodega individual lleva sede, centro de costo y bodega que pide (IDBODEGAPIDE, obligatoria para solicitar compras). Los campos MUEVEEXISTENCIAS, VALIDASTOCK, NOCONTABILIZA, ESDECUSTODIA, MANEJA_PICKPACK y COMPRASOL controlan su operación.
+
+### 🔐 **Seguridad y catálogos**
+
+IBODS define qué usuarios pueden ingresar (BODEGASELECT) y qué tipos de artículo acepta. Los catálogos (ICLA/ICLAH/IGRU, IGEN+ITGEN, IFFA, ICCN, IPAC, IUNI) solo se eliminan si no están en uso.
 
 
 ## ⚠️ Importante

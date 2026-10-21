@@ -11,6 +11,7 @@ window.QrysCapacitacion = (function() {
   let bloquesSeleccionados = new Set();
   let temaActual = null;
   let ensamblando = false;
+  let ultimoDocumento = null; // Almacena datos del último documento generado
 
   // Inicialización
   async function init() {
@@ -126,8 +127,12 @@ window.QrysCapacitacion = (function() {
             <div class="resultado-acciones">
               <a id="resultadoLink" class="btn btn-principal" target="_blank">
                 <span class="material-symbols-outlined">download</span>
-                Descargar documento
+                Descargar HTML
               </a>
+              <button id="btnDescargarPDF" class="btn btn-principal" onclick="window.QrysCapacitacion.descargarPDF()">
+                <span class="material-symbols-outlined">picture_as_pdf</span>
+                Descargar PDF
+              </button>
               <button class="btn btn-secundario" onclick="window.QrysCapacitacion.volverTemas()">
                 Nueva capacitación
               </button>
@@ -378,7 +383,80 @@ window.QrysCapacitacion = (function() {
     linkElem.href = url;
     linkElem.setAttribute('download', nombreArchivo);
     
+    // Guardar datos para generar PDF
+    ultimoDocumento = {
+      temaId: temaActual.id,
+      bloquesIds: data.bloques,
+      titulo: `Capacitación: ${temaActual.nombre}`,
+      audiencia: data.audiencia || 'usuario-final'
+    };
+    
     console.log('[Capacitacion] Documento generado:', url);
+  }
+
+  // Genera y descarga PDF usando el endpoint del servidor
+  async function descargarPDF() {
+    if (!ultimoDocumento) {
+      mostrarError('No hay documento para generar PDF');
+      return;
+    }
+
+    const btnPDF = document.getElementById('btnDescargarPDF');
+    const textoOriginal = btnPDF.innerHTML;
+    
+    btnPDF.disabled = true;
+    btnPDF.innerHTML = `
+      <span class="spinner"></span>
+      Generando PDF...
+    `;
+
+    try {
+      const resp = await fetch('/api/capacitacion/generar-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          temaId: ultimoDocumento.temaId,
+          bloquesIds: ultimoDocumento.bloquesIds,
+          titulo: ultimoDocumento.titulo,
+          incluirIndice: true,
+          incluirImagenes: true,
+          audiencia: ultimoDocumento.audiencia
+        })
+      });
+
+      const data = await resp.json();
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Error al generar PDF');
+      }
+
+      if (data.archivo_pdf) {
+        // PDF generado correctamente en servidor
+        const pdfUrl = `/${data.archivo_pdf}`;
+        const nombrePDF = data.archivo_pdf.split('/').pop();
+        
+        // Descargar PDF
+        const link = document.createElement('a');
+        link.href = pdfUrl;
+        link.download = nombrePDF;
+        link.click();
+        
+        console.log('[Capacitacion] PDF descargado:', pdfUrl);
+      } else if (data.pdf_fallback === 'window.print') {
+        // Fallback: abrir HTML para imprimir
+        const htmlUrl = `/${data.archivo_html}`;
+        window.open(htmlUrl, '_blank');
+        alert('No se pudo generar el PDF en el servidor. Use Ctrl+P para imprimir el documento.');
+      } else {
+        throw new Error('No se recibió archivo PDF ni fallback');
+      }
+    } catch (err) {
+      console.error('[Capacitacion] Error al generar PDF:', err);
+      mostrarError('Error al generar PDF: ' + err.message);
+    } finally {
+      btnPDF.disabled = false;
+      btnPDF.innerHTML = textoOriginal;
+    }
   }
 
   // Muestra un error
@@ -392,7 +470,8 @@ window.QrysCapacitacion = (function() {
     seleccionarTema,
     toggleBloque,
     volverTemas,
-    ensamblar
+    ensamblar,
+    descargarPDF
   };
 })();
 
