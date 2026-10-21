@@ -401,7 +401,7 @@ def generar_ilustracion_gemini(
         modelo: Modelo a usar (si None, usa GEMINI_IMAGE_MODEL de .env)
     
     Returns:
-        URL de la imagen o None si falla
+        Data URL de la imagen o None si falla
     """
     try:
         import google.generativeai as genai
@@ -411,30 +411,51 @@ def generar_ilustracion_gemini(
             return None
         
         if modelo is None:
-            modelo = os.getenv("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-001")
+            modelo = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+        
+        # Modelos disponibles con fallback
+        modelos = [
+            modelo,
+            "gemini-3.1-flash-image",
+            "gemini-3-pro-image",
+            "gemini-2.5-flash-image"
+        ]
+        # Eliminar duplicados manteniendo orden
+        modelos = list(dict.fromkeys(modelos))
         
         genai.configure(api_key=api_key)
         
-        # Usar Gemini para generar imagen
-        model = genai.GenerativeModel(modelo)
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.7,
-                "max_output_tokens": 1024
-            }
-        )
-        
-        # Gemini devuelve la URL de la imagen generada
-        if response.parts:
-            for part in response.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    # Convertir a data URL
-                    import base64
-                    image_data = part.inline_data.data
-                    mime_type = part.inline_data.mime_type
-                    b64_data = base64.b64encode(image_data).decode('utf-8')
-                    return f"data:{mime_type};base64,{b64_data}"
+        # Intentar con cada modelo
+        for modelo_actual in modelos:
+            try:
+                # Usar Gemini para generar imagen con responseModalities IMAGE
+                model = genai.GenerativeModel(modelo_actual)
+                response = model.generate_content(
+                    prompt,
+                    generation_config={
+                        "temperature": 0.7,
+                        "max_output_tokens": 1024,
+                        "response_modalities": ["IMAGE"]
+                    }
+                )
+                
+                # Gemini devuelve la imagen en response.parts
+                if response.parts:
+                    for part in response.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            # Convertir a data URL
+                            import base64
+                            image_data = part.inline_data.data
+                            mime_type = part.inline_data.mime_type
+                            b64_data = base64.b64encode(image_data).decode('utf-8')
+                            return f"data:{mime_type};base64,{b64_data}"
+                
+                # Si llegamos aquí, intentar siguiente modelo
+                continue
+            
+            except Exception as e:
+                print(f"  ⚠️  Error con {modelo_actual}: {e}")
+                continue
         
         return None
     

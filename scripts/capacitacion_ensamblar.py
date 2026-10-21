@@ -145,7 +145,8 @@ def _filtrar_por_audiencia(contenido_md: str, audiencia: str) -> str:
 def _limpiar_referencias_sps(texto: str) -> str:
     """Elimina o reemplaza referencias técnicas a stored procedures.
     
-    Estrategia: Eliminar frases completas que mencionen SPs técnicos.
+    Estrategia: Eliminar frases completas que mencionen SPs técnicos,
+    preservando la estructura de párrafos y encabezados markdown.
     """
     import re
     
@@ -153,16 +154,32 @@ def _limpiar_referencias_sps(texto: str) -> str:
     # Ejemplos: "SPQ_IART", "SPK_CONFIRMAR", "SP_PROCESAR"
     patron_sp = r'\b(SPQ_|SPK_|SP_)[A-Z_0-9]+\b'
     
-    # Dividir en oraciones
-    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    # Dividir en párrafos (separados por línea en blanco)
+    # Esto preserva encabezados markdown que deben ir separados
+    parrafos = re.split(r'\n\n+', texto)
     
-    # Filtrar oraciones que NO contengan referencias a SPs
-    oraciones_limpias = []
-    for oracion in oraciones:
-        if not re.search(patron_sp, oracion, re.IGNORECASE):
-            oraciones_limpias.append(oracion)
+    parrafos_limpios = []
+    for parrafo in parrafos:
+        # Si es encabezado markdown, mantenerlo siempre
+        if parrafo.strip().startswith('#'):
+            parrafos_limpios.append(parrafo)
+            continue
+        
+        # Dividir párrafo en oraciones
+        oraciones = re.split(r'(?<=[.!?])\s+', parrafo)
+        
+        # Filtrar oraciones que NO contengan referencias a SPs
+        oraciones_limpias = []
+        for oracion in oraciones:
+            if not re.search(patron_sp, oracion, re.IGNORECASE):
+                oraciones_limpias.append(oracion)
+        
+        # Si quedan oraciones, unirlas con espacio
+        if oraciones_limpias:
+            parrafos_limpios.append(' '.join(oraciones_limpias))
     
-    return ' '.join(oraciones_limpias)
+    # Unir párrafos con doble salto de línea
+    return '\n\n'.join(parrafos_limpios)
 
 
 def _generar_html(
@@ -533,19 +550,64 @@ def _markdown_simple_a_html(md: str) -> str:
     """Convierte Markdown a HTML usando librería markdown con extensiones.
     
     Soporta: títulos, párrafos, listas, tablas, blockquotes, código, etc.
+    Fallback a conversor simple si markdown no está instalado.
     """
-    import markdown
+    try:
+        import markdown
+        
+        # Usar extensiones para tablas, listas numeradas, atributos, etc.
+        md_processor = markdown.Markdown(extensions=[
+            'tables',          # Soporte para tablas
+            'fenced_code',     # Bloques de código con ```
+            'nl2br',           # Saltos de línea → <br>
+            'sane_lists',      # Listas numeradas y no numeradas mejoradas
+            'attr_list'        # Atributos en elementos
+        ])
+        
+        return md_processor.convert(md)
     
-    # Usar extensiones para tablas, listas numeradas, atributos, etc.
-    md_processor = markdown.Markdown(extensions=[
-        'tables',          # Soporte para tablas
-        'fenced_code',     # Bloques de código con ```
-        'nl2br',           # Saltos de línea → <br>
-        'sane_lists',      # Listas numeradas y no numeradas mejoradas
-        'attr_list'        # Atributos en elementos
-    ])
+    except ImportError:
+        # Fallback a conversor simple si markdown no está instalado
+        return _markdown_fallback_simple(md)
+
+
+def _markdown_fallback_simple(md: str) -> str:
+    """Conversor markdown simple como fallback si la librería no está disponible."""
+    html = []
+    lineas = md.split("\n")
+    en_lista = False
     
-    return md_processor.convert(md)
+    for linea in lineas:
+        stripped = linea.strip()
+        
+        # Encabezados
+        if stripped.startswith("### "):
+            html.append(f"<h3>{_escape_html(stripped[4:])}</h3>")
+        elif stripped.startswith("## "):
+            html.append(f"<h2>{_escape_html(stripped[3:])}</h2>")
+        elif stripped.startswith("# "):
+            html.append(f"<h1>{_escape_html(stripped[2:])}</h1>")
+        # Listas
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            if not en_lista:
+                html.append("<ul>")
+                en_lista = True
+            html.append(f"<li>{_escape_html(stripped[2:])}</li>")
+        # Párrafo
+        elif stripped:
+            if en_lista:
+                html.append("</ul>")
+                en_lista = False
+            html.append(f"<p>{_escape_html(stripped)}</p>")
+        else:
+            if en_lista:
+                html.append("</ul>")
+                en_lista = False
+    
+    if en_lista:
+        html.append("</ul>")
+    
+    return "\n".join(html)
 
 
 def _escape_html(texto: str) -> str:

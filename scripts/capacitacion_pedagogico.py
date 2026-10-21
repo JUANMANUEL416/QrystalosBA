@@ -13,6 +13,7 @@ Estructura pedagógica:
 - Resumen
 - Autoevaluación
 """
+import re
 from typing import Any
 
 
@@ -79,7 +80,11 @@ def generar_contenido_tabla(
         lineas.append(f"**Frontend:** {', '.join(f'`{r}`' for r in rutas_fe[:2])}")
     
     lineas.append("")
-    lineas.append(control.get("explicacion", ""))
+    # Limpiar explicación: asegurar que no tenga ## pegados al final
+    explicacion = control.get("explicacion", "")
+    # Si la explicación termina con un encabezado markdown, separarlo
+    explicacion = re.sub(r'([^.\n])\s*##\s+', r'\1\n\n## ', explicacion)
+    lineas.append(explicacion)
     lineas.append("")
     lineas.append("")  # Línea extra antes del siguiente encabezado
     
