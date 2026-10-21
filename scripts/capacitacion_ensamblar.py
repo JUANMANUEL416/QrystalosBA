@@ -25,7 +25,8 @@ def ensamblar_documento(
     titulo: str | None = None,
     formato: str = "html",
     incluir_indice: bool = True,
-    incluir_imagenes: bool = True
+    incluir_imagenes: bool = True,
+    variantes_seleccionadas: dict[str, str] | None = None
 ) -> dict:
     """Ensambla un documento de capacitación desde bloques.
     
@@ -36,6 +37,7 @@ def ensamblar_documento(
         formato: "html", "docx" o "ambos"
         incluir_indice: Si True, genera índice al inicio
         incluir_imagenes: Si True, incrusta imágenes en el documento
+        variantes_seleccionadas: Dict {bloque_id: variante_id} para bloques con variantes
     
     Returns:
         {
@@ -46,8 +48,9 @@ def ensamblar_documento(
             "error": str  # Solo si ok=False
         }
     """
-    # Resolver dependencias
-    deps = bloques.resolver_dependencias(bloques_ids)
+    # Resolver dependencias con variantes
+    variantes = variantes_seleccionadas or {}
+    deps = bloques.resolver_dependencias_con_variantes(bloques_ids, variantes)
     if not deps["ok"]:
         return {
             "ok": False,
@@ -56,6 +59,7 @@ def ensamblar_documento(
         }
     
     orden = deps["orden"]
+    variantes_aplicadas = deps.get("variantes", {})
     
     # Cargar tema
     temas_data = bloques.cargar_temas()
@@ -86,9 +90,10 @@ def ensamblar_documento(
     # Generar HTML
     if formato in ("html", "ambos"):
         archivo_html = SALIDA_DIR / f"{nombre_base}.html"
-        html_content = _generar_html(tema, titulo, orden, incluir_indice, incluir_imagenes)
+        html_content = _generar_html(tema, titulo, orden, incluir_indice, incluir_imagenes, variantes_aplicadas)
         archivo_html.write_text(html_content, encoding="utf-8")
         resultado["archivo_html"] = str(archivo_html)
+        resultado["variantes"] = variantes_aplicadas
     
     # Generar DOCX (futuro)
     if formato in ("docx", "ambos"):
@@ -117,7 +122,8 @@ def _generar_html(
     titulo: str,
     bloques_ids: list[str],
     incluir_indice: bool,
-    incluir_imagenes: bool
+    incluir_imagenes: bool,
+    variantes: dict[str, str] | None = None
 ) -> str:
     """Genera el HTML del documento ensamblado."""
     lineas = []
@@ -157,6 +163,7 @@ def _generar_html(
         lineas.append('  </div>')
     
     # Contenido de cada bloque
+    variantes = variantes or {}
     for i, bloque_id in enumerate(bloques_ids, 1):
         bloque_meta = bloques.obtener_bloque(bloque_id)
         if not bloque_meta:
@@ -166,7 +173,16 @@ def _generar_html(
         
         lineas.append(f'  <section class="bloque" id="bloque-{bloque_id}">')
         lineas.append(f'    <div class="bloque-numero">Módulo {i}</div>')
-        lineas.append(f'    <h2 class="bloque-titulo">{bloque_meta["titulo"]}</h2>')
+        
+        # Título con variante si aplica
+        titulo_bloque = bloque_meta["titulo"]
+        variante_id = variantes.get(bloque_id)
+        if variante_id and bloque_meta.get("variantes"):
+            variante = next((v for v in bloque_meta["variantes"] if v.get("id") == variante_id), None)
+            if variante:
+                titulo_bloque = f"{titulo_bloque} — {variante['nombre']}"
+        
+        lineas.append(f'    <h2 class="bloque-titulo">{titulo_bloque}</h2>')
         
         # Imágenes del bloque (antes del contenido)
         if incluir_imagenes:

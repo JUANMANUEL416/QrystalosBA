@@ -131,7 +131,8 @@ def generar_bloque_desde_control(
     proceso_id: str,
     control_id: str,
     capa_numero: int | None = None,
-    forzar: bool = False
+    forzar: bool = False,
+    variantes: list[dict] | None = None
 ) -> dict:
     """Genera un bloque de capacitación desde un control de la KB.
     
@@ -140,6 +141,7 @@ def generar_bloque_desde_control(
         control_id: ID del control dentro del proceso
         capa_numero: Número de la capa (opcional, se infiere si falta)
         forzar: Si True, regenera aunque ya exista y esté estable
+        variantes: Lista de variantes del bloque (ej. manual vs desde cotización)
     
     Returns:
         Resultado con ok, bloque_id y mensaje
@@ -201,7 +203,7 @@ def generar_bloque_desde_control(
             tema: capa_encontrada.get("numero", 1) if tema else 1
         },
         "prerrequisitos": [],
-        "variantes": [],
+        "variantes": variantes or [],
         "duracionEstimada": "30min",
         "fuente": {
             "proceso": proceso_id,
@@ -329,6 +331,113 @@ def listar_bloques_por_tema(tema_id: str) -> list[dict]:
     bloques_tema.sort(key=lambda b: b.get("orden", {}).get(tema_id, 999))
     
     return bloques_tema
+
+
+def resolver_dependencias_con_variantes(
+    bloques_seleccionados: list[str],
+    variantes_seleccionadas: dict[str, str]
+) -> dict:
+    """Resuelve dependencias considerando variantes de entrada.
+    
+    Args:
+        bloques_seleccionados: IDs de bloques a incluir
+        variantes_seleccionadas: Dict {bloque_id: variante_id}
+    
+    Returns:
+        {
+            "ok": bool,
+            "orden": list[str],
+            "agregados": list[str],
+            "variantes": dict[str, str]  # variantes aplicadas
+        }
+    """
+    todos_bloques = {b["id"]: b for b in listar_bloques()}
+    
+    # Verificar que existen
+    faltantes = [bid for bid in bloques_seleccionados if bid not in todos_bloques]
+    if faltantes:
+        return {
+            "ok": False,
+            "error": "bloques_no_existen",
+            "faltantes": faltantes
+        }
+    
+    # Agregar prerrequisitos considerando variantes
+    necesarios = set(bloques_seleccionados)
+    por_procesar = list(bloques_seleccionados)
+    variantes_aplicadas = dict(variantes_seleccionadas)
+    
+    while por_procesar:
+        bloque_id = por_procesar.pop(0)
+        bloque = todos_bloques.get(bloque_id)
+        if not bloque:
+            continue
+        
+        # Revisar si tiene variantes y si la seleccionada omite prerrequisitos
+        variantes = bloque.get("variantes", [])
+        variante_id = variantes_aplicadas.get(bloque_id)
+        
+        if variante_id and variantes:
+            # Buscar la variante
+            variante = next((v for v in variantes if v.get("id") == variante_id), None)
+            if variante and variante.get("omite_prerrequisitos"):
+                # Esta variante no requiere los prerrequisitos normales
+                continue
+        
+        # Agregar prerrequisitos normales
+        for prereq in bloque.get("prerrequisitos", []):
+            if prereq not in necesarios:
+                necesarios.add(prereq)
+                por_procesar.append(prereq)
+    
+    # Ordenar topológicamente
+    orden = []
+    pendientes = list(necesarios)
+    iteraciones = 0
+    max_iter = len(necesarios) * 2
+    
+    while pendientes and iteraciones < max_iter:
+        iteraciones += 1
+        agregados = []
+        
+        for bid in pendientes:
+            bloque = todos_bloques.get(bid)
+            if not bloque:
+                continue
+            
+            # Considerar variantes en prerrequisitos
+            prereqs = bloque.get("prerrequisitos", [])
+            variante_id = variantes_aplicadas.get(bid)
+            
+            if variante_id:
+                variante = next((v for v in bloque.get("variantes", []) if v.get("id") == variante_id), None)
+                if variante and variante.get("omite_prerrequisitos"):
+                    prereqs = []
+            
+            if all(p in orden for p in prereqs):
+                orden.append(bid)
+                agregados.append(bid)
+        
+        for bid in agregados:
+            pendientes.remove(bid)
+    
+    if pendientes:
+        return {
+            "ok": False,
+            "error": "dependencias_circulares",
+            "pendientes": pendientes
+        }
+    
+    # Reportar prerrequisitos agregados
+    prereqs_agregados = [bid for bid in orden if bid not in bloques_seleccionados]
+    
+    return {
+        "ok": True,
+        "orden": orden,
+        "agregados": prereqs_agregados,
+        "total": len(orden),
+        "variantes": variantes_aplicadas
+    }
 
 
 def resolver_dependencias(bloques_seleccionados: list[str]) -> dict:

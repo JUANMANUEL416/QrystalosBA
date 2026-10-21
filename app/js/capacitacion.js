@@ -9,6 +9,7 @@ window.QrysCapacitacion = (function() {
   let temas = [];
   let bloques = [];
   let bloquesSeleccionados = new Set();
+  let variantesSeleccionadas = {}; // {bloque_id: variante_id}
   let temaActual = null;
   let ensamblando = false;
 
@@ -192,13 +193,18 @@ window.QrysCapacitacion = (function() {
       return;
     }
 
-    lista.innerHTML = bloques.map((bloque, index) => `
-      <div class="bloque-item ${bloquesSeleccionados.has(bloque.id) ? 'seleccionado' : ''}">
+    lista.innerHTML = bloques.map((bloque, index) => {
+      const tieneVariantes = bloque.variantes && bloque.variantes.length > 0;
+      const seleccionado = bloquesSeleccionados.has(bloque.id);
+      const varianteSeleccionada = variantesSeleccionadas[bloque.id];
+      
+      return `
+      <div class="bloque-item ${seleccionado ? 'seleccionado' : ''}">
         <label class="bloque-checkbox">
           <input 
             type="checkbox" 
             value="${bloque.id}"
-            ${bloquesSeleccionados.has(bloque.id) ? 'checked' : ''}
+            ${seleccionado ? 'checked' : ''}
             onchange="window.QrysCapacitacion.toggleBloque('${bloque.id}')"
           />
           <span class="bloque-numero">${index + 1}</span>
@@ -206,6 +212,25 @@ window.QrysCapacitacion = (function() {
         
         <div class="bloque-info">
           <h4>${bloque.titulo}</h4>
+          
+          ${tieneVariantes && seleccionado ? `
+            <div class="bloque-variantes-selector">
+              <label class="variantes-label">
+                <span class="material-symbols-outlined">alt_route</span>
+                Variante:
+              </label>
+              <select 
+                class="variantes-select" 
+                onchange="window.QrysCapacitacion.seleccionarVariante('${bloque.id}', this.value)"
+              >
+                ${bloque.variantes.map(v => `
+                  <option value="${v.id}" ${varianteSeleccionada === v.id ? 'selected' : ''}>
+                    ${v.nombre}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          ` : ''}
           
           ${bloque.prerrequisitos && bloque.prerrequisitos.length > 0 ? `
             <div class="bloque-prereq">
@@ -223,7 +248,7 @@ window.QrysCapacitacion = (function() {
               ${bloque.duracionEstimada || '30min'}
             </span>
             
-            ${bloque.variantes && bloque.variantes.length > 0 ? `
+            ${tieneVariantes ? `
               <span class="bloque-variantes">
                 <span class="material-symbols-outlined">alt_route</span>
                 ${bloque.variantes.length} variante(s)
@@ -239,7 +264,8 @@ window.QrysCapacitacion = (function() {
           </div>
         </div>
       </div>
-    `).join('');
+      `;
+    }).join('');
 
     actualizarContadorSeleccionados();
   }
@@ -248,20 +274,27 @@ window.QrysCapacitacion = (function() {
   function toggleBloque(bloqueId) {
     if (bloquesSeleccionados.has(bloqueId)) {
       bloquesSeleccionados.delete(bloqueId);
+      delete variantesSeleccionadas[bloqueId];
     } else {
       bloquesSeleccionados.add(bloqueId);
+      
+      // Seleccionar variante por defecto si tiene
+      const bloque = bloques.find(b => b.id === bloqueId);
+      if (bloque && bloque.variantes && bloque.variantes.length > 0) {
+        variantesSeleccionadas[bloqueId] = bloque.variantes[0].id;
+      }
     }
     
-    actualizarContadorSeleccionados();
-    
-    // Actualizar visualmente
-    const items = document.querySelectorAll('.bloque-item');
-    items.forEach(item => {
-      const checkbox = item.querySelector('input[type="checkbox"]');
-      if (checkbox && checkbox.value === bloqueId) {
-        item.classList.toggle('seleccionado', bloquesSeleccionados.has(bloqueId));
-      }
-    });
+    // Re-renderizar para mostrar/ocultar selector de variantes
+    renderizarBloques();
+  }
+  
+  // Selecciona una variante para un bloque
+  function seleccionarVariante(bloqueId, varianteId) {
+    if (bloquesSeleccionados.has(bloqueId)) {
+      variantesSeleccionadas[bloqueId] = varianteId;
+      console.log(`[Capacitacion] Variante seleccionada: ${bloqueId} -> ${varianteId}`);
+    }
   }
 
   // Actualiza el contador y habilita/deshabilita el botón
@@ -312,7 +345,8 @@ window.QrysCapacitacion = (function() {
           titulo: `Capacitación: ${temaActual.nombre}`,
           formato: 'html',
           incluirIndice: true,
-          incluirImagenes: true
+          incluirImagenes: true,
+          variantesSeleccionadas: variantesSeleccionadas
         })
       });
 
@@ -371,6 +405,7 @@ window.QrysCapacitacion = (function() {
     init,
     seleccionarTema,
     toggleBloque,
+    seleccionarVariante,
     volverTemas,
     ensamblar
   };
