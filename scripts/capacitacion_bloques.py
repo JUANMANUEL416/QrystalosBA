@@ -127,6 +127,110 @@ def _inferir_tema_proceso(proceso: dict) -> str | None:
     return None
 
 
+def generar_bloque_desde_paso(
+    proceso_id: str,
+    paso_id: str,
+    titulo: str,
+    forzar: bool = False
+) -> dict:
+    """Genera un bloque desde un paso del proceso (sin buscar en capas/controles).
+    
+    Args:
+        proceso_id: ID del proceso en conocimiento/
+        paso_id: ID del paso dentro de proceso.json → pasos[]
+        titulo: Título para el bloque
+        forzar: Si True, regenera aunque ya exista y esté estable
+    
+    Returns:
+        Resultado con ok, bloque_id y mensaje
+    """
+    proceso = cargar_proceso(proceso_id)
+    if not proceso:
+        return {
+            "ok": False,
+            "error": "proceso_no_existe",
+            "mensaje": f"No se encontró el proceso '{proceso_id}' en la KB."
+        }
+    
+    # Buscar el paso
+    paso = None
+    for p in proceso.get("pasos", []):
+        if p.get("id") == paso_id:
+            paso = p
+            break
+    
+    if not paso:
+        return {
+            "ok": False,
+            "error": "paso_no_existe",
+            "mensaje": f"No se encontró el paso '{paso_id}' en el proceso '{proceso_id}'."
+        }
+    
+    # Generar ID del bloque
+    bloque_id = _slug(titulo)
+    bloque_dir = BLOQUES_DIR / bloque_id
+    
+    # Verificar si ya existe y es estable
+    if bloque_dir.exists() and not forzar:
+        bloque_existente = obtener_bloque(bloque_id)
+        if bloque_existente and bloque_existente.get("estable"):
+            return {
+                "ok": False,
+                "error": "bloque_estable",
+                "bloque_id": bloque_id,
+                "mensaje": f"El bloque '{bloque_id}' ya existe y está marcado como estable. Use forzar=True para regenerar."
+            }
+    
+    # Inferir tema
+    tema = _inferir_tema_proceso(proceso)
+    temas = [tema] if tema else []
+    
+    # Crear metadatos del bloque
+    bloque_meta = {
+        "id": bloque_id,
+        "titulo": titulo,
+        "version": "1.0.0",
+        "temas": temas,
+        "procesos": [proceso_id],
+        "orden": {
+            tema: paso.get("orden", 1) if tema else 1
+        },
+        "prerrequisitos": [],
+        "variantes": [],
+        "duracionEstimada": "30min",
+        "fuente": {
+            "proceso": proceso_id,
+            "paso": paso_id,
+            "actualizado": proceso.get("actualizado", datetime.now().isoformat())
+        },
+        "palabrasClave": _extraer_palabras_clave_paso(paso),
+        "estable": False,
+        "generado": datetime.now().isoformat(timespec="seconds")
+    }
+    
+    # Generar contenido Markdown
+    contenido_md = _generar_contenido_paso(proceso, paso, titulo)
+    
+    # Crear directorio del bloque
+    bloque_dir.mkdir(parents=True, exist_ok=True)
+    imagenes_dir = bloque_dir / "imagenes"
+    imagenes_dir.mkdir(exist_ok=True)
+    
+    # Guardar metadatos
+    with open(bloque_dir / "bloque.json", "w", encoding="utf-8") as f:
+        json.dump(bloque_meta, f, indent=2, ensure_ascii=False)
+    
+    # Guardar contenido
+    (bloque_dir / "contenido.md").write_text(contenido_md, encoding="utf-8")
+    
+    return {
+        "ok": True,
+        "bloque_id": bloque_id,
+        "bloque_dir": str(bloque_dir),
+        "mensaje": f"Bloque '{bloque_id}' generado exitosamente."
+    }
+
+
 def generar_bloque_desde_control(
     proceso_id: str,
     control_id: str,
@@ -256,6 +360,85 @@ def _extraer_palabras_clave(control: dict) -> list[str]:
             palabras.add(nombre_sp)
     
     return sorted(list(palabras))
+
+
+def _extraer_palabras_clave_paso(paso: dict) -> list[str]:
+    """Extrae palabras clave de un paso."""
+    palabras = set()
+    
+    # Del nombre
+    nombre = paso.get("nombre", "")
+    palabras.update(re.findall(r"\b[A-Z]{3,}\b", nombre))
+    
+    # De la nota
+    nota = paso.get("nota", "")
+    palabras.update(re.findall(r"\b[A-Z]{3,}\b", nota))
+    
+    # De las tablas
+    for tabla in paso.get("tablas", []):
+        palabras.add(tabla)
+    
+    # De los SPs
+    for sp in paso.get("sps", []):
+        palabras.add(sp)
+    
+    return sorted(list(palabras))
+
+
+def _generar_contenido_paso(proceso: dict, paso: dict, titulo: str) -> str:
+    """Genera el contenido Markdown desde un paso del proceso."""
+    lineas = []
+    
+    # Título
+    lineas.append(f"# {titulo}")
+    lineas.append("")
+    
+    # Contexto del proceso
+    lineas.append("## Contexto")
+    lineas.append("")
+    lineas.append(f"**Proceso:** {proceso.get('nombre', '')}")
+    lineas.append(f"**Orden:** {paso.get('orden', '')}")
+    lineas.append("")
+    
+    # Nota/explicación
+    if paso.get("nota"):
+        lineas.append("## Explicación")
+        lineas.append("")
+        lineas.append(paso["nota"])
+        lineas.append("")
+    
+    # Qrystalos2
+    qrystalos2 = paso.get("qrystalos2", {})
+    if qrystalos2:
+        lineas.append("## En Qrystalos")
+        lineas.append("")
+        if qrystalos2.get("path"):
+            lineas.append(f"**Ruta:** `{qrystalos2['path']}`")
+        if qrystalos2.get("vue"):
+            lineas.append(f"**Componente:** {qrystalos2['vue']}")
+        if qrystalos2.get("modelo"):
+            lineas.append(f"**Modelo:** {qrystalos2['modelo']}")
+        if qrystalos2.get("metodos"):
+            lineas.append(f"**Métodos:** {', '.join(f'`{m}`' for m in qrystalos2['metodos'])}")
+        lineas.append("")
+    
+    # Tablas
+    tablas = paso.get("tablas", [])
+    if tablas:
+        lineas.append("## Tablas")
+        lineas.append("")
+        lineas.append(", ".join(f"`{t}`" for t in tablas))
+        lineas.append("")
+    
+    # SPs
+    sps = paso.get("sps", [])
+    if sps:
+        lineas.append("## Procedimientos almacenados")
+        lineas.append("")
+        lineas.append(", ".join(f"`{sp}`" for sp in sps))
+        lineas.append("")
+    
+    return "\n".join(lineas)
 
 
 def _generar_contenido_control(proceso: dict, capa: dict | None, control: dict) -> str:

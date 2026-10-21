@@ -300,6 +300,28 @@ código en bloque
     print("✅ Test Markdown: OK\n")
 
 
+def test_piloto_genera_bloques():
+    """Test: El piloto debe generar bloques reales (no 0)."""
+    print("Test 7: Piloto genera bloques...")
+    
+    import capacitacion_piloto
+    
+    # Ejecutar generación del piloto
+    resultados = capacitacion_piloto.generar_piloto()
+    
+    # Contar bloques generados
+    bloques_ok = sum(1 for r in resultados if r.get("ok"))
+    
+    print(f"  Bloques generados: {bloques_ok}")
+    print(f"  Bloques omitidos: {len(resultados) - bloques_ok}")
+    
+    # El test FALLA si se generaron 0 bloques
+    assert bloques_ok > 0, f"El piloto generó 0 bloques (total: {len(resultados)}). Revisar IDs de controles/pasos en la KB."
+    
+    print("  ✓ Piloto genera bloques correctamente")
+    print("✅ Test piloto: OK\n")
+
+
 if __name__ == "__main__":
     try:
         test_cargar_temas()
@@ -308,6 +330,7 @@ if __name__ == "__main__":
         test_resolver_dependencias()
         test_ensamblar_documento()
         test_markdown_a_html()
+        test_piloto_genera_bloques()
         
         print("\n" + "=" * 60)
         print("✅ Todos los tests de capacitación pasaron correctamente")
