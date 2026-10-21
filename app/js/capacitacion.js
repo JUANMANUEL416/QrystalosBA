@@ -354,11 +354,15 @@ window.QrysCapacitacion = (function() {
 
     mensajeElem.textContent = mensaje;
     
-    // El archivo está en capacitacion/documentos/
+    // El servidor devuelve una URL relativa lista para usar
+    // (ej: "capacitacion/documentos/20261021-115754-inventario.html")
+    const url = `/${data.archivo_html}`;
     const nombreArchivo = data.archivo_html.split('/').pop();
-    linkElem.href = `/capacitacion/documentos/${nombreArchivo}`;
     
-    console.log('[Capacitacion] Documento generado:', data.archivo_html);
+    linkElem.href = url;
+    linkElem.setAttribute('download', nombreArchivo);
+    
+    console.log('[Capacitacion] Documento generado:', url);
   }
 
   // Muestra un error

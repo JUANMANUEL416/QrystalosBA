@@ -88,7 +88,8 @@ def ensamblar_documento(
         archivo_html = SALIDA_DIR / f"{nombre_base}.html"
         html_content = _generar_html(tema, titulo, orden, incluir_indice, incluir_imagenes)
         archivo_html.write_text(html_content, encoding="utf-8")
-        resultado["archivo_html"] = str(archivo_html)
+        # Devolver URL relativa para el navegador (no ruta del sistema)
+        resultado["archivo_html"] = f"capacitacion/documentos/{nombre_base}.html"
     
     # Generar DOCX (futuro)
     if formato in ("docx", "ambos"):
