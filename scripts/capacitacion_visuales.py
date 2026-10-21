@@ -304,54 +304,102 @@ def generar_mapa_mental_svg(tema: str, conceptos: list[dict]) -> str:
 
 
 def generar_ilustracion_completa(
-    tema: str,
+    titulo: str,
     descripcion: str,
     cache_path: Optional[Path] = None
 ) -> Optional[str]:
-    """Genera ilustración usando el mejor método disponible.
+    """Genera ilustración usando el mejor método disponible y devuelve data URI.
     
     Orden de prioridad:
-    1. Cursor AI (infografía SVG)
-    2. Proveedor de imágenes configurado (OpenAI DALL-E o Gemini Imagen)
+    1. Gemini (default recomendado) - Genera imagen y devuelve data URI
+    2. OpenAI - Genera imagen y devuelve data URI
     3. SVG local (fallback)
     
     Args:
-        tema: Tema de la ilustración
+        titulo: Título del bloque
         descripcion: Descripción detallada
-        cache_path: Ruta para cachear
+        cache_path: Ruta para cachear (PNG)
     
     Returns:
-        Código SVG, URL de imagen o None
+        Data URI de la imagen (PNG o SVG) o None
     """
-    # 1. Intentar con Cursor AI (infografía SVG)
-    if os.getenv("CURSOR_API_KEY"):
-        conceptos = [{"titulo": tema, "items": [descripcion]}]
-        svg_cursor = generar_visual_con_cursor(
-            "infografia",
-            tema,
-            conceptos,
-            cache_path
-        )
-        if svg_cursor:
-            return svg_cursor
+    # Verificar cache primero
+    if cache_path and cache_path.exists():
+        try:
+            img_data = cache_path.read_bytes()
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            return f"data:image/png;base64,{img_b64}"
+        except Exception:
+            pass
     
-    # 2. Intentar con proveedor de imágenes configurado
-    proveedor = os.getenv("CAPACITACION_IMAGE_PROVIDER", "openai").lower()
+    # 1. Proveedor configurado (Gemini default)
+    proveedor = os.getenv("CAPACITACION_IMAGE_PROVIDER", "gemini").lower()
     
-    if proveedor == "gemini":
-        url = generar_ilustracion_gemini(descripcion)
+    if proveedor == "gemini" and os.getenv("GEMINI_API_KEY"):
+        prompt = f"Ilustración educativa para capacitación: {titulo}. {descripcion}"
+        data_uri = generar_ilustracion_gemini(prompt)
+        if data_uri:
+            # Guardar en cache si es posible
+            if cache_path:
+                try:
+                    _guardar_data_uri_como_png(data_uri, cache_path)
+                except Exception as e:
+                    print(f"    ⚠️  No se pudo cachear: {e}")
+            return data_uri
+    
+    # 2. OpenAI fallback
+    if os.getenv("OPENAI_API_KEY"):
+        openai_model = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
+        prompt = f"Educational illustration for: {titulo}. {descripcion}"
+        url = generar_ilustracion_openai(prompt, openai_model)
         if url:
-            return f'<img src="{url}" alt="{tema}" style="max-width: 100%; height: auto;" />'
-    else:
-        # Default: OpenAI
-        openai_model = os.getenv("OPENAI_IMAGE_MODEL")
-        if openai_model and os.getenv("OPENAI_API_KEY"):
-            url = generar_ilustracion_openai(descripcion, openai_model)
-            if url:
-                return f'<img src="{url}" alt="{tema}" style="max-width: 100%; height: auto;" />'
+            # Descargar y convertir a data URI
+            try:
+                data_uri = _descargar_imagen_como_data_uri(url)
+                if data_uri and cache_path:
+                    _guardar_data_uri_como_png(data_uri, cache_path)
+                return data_uri
+            except Exception as e:
+                print(f"    ⚠️  Error descargando imagen OpenAI: {e}")
     
-    # 3. Fallback: SVG local
-    return generar_infografia_svg_fallback(tema, [descripcion])
+    # 3. Fallback SVG local
+    svg = generar_infografia_svg_fallback(titulo, [descripcion])
+    if svg:
+        svg_b64 = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
+        return f"data:image/svg+xml;base64,{svg_b64}"
+    
+    return None
+
+
+def _descargar_imagen_como_data_uri(url: str) -> Optional[str]:
+    """Descarga una imagen desde URL y la convierte a data URI (usando urllib)."""
+    try:
+        import urllib.request
+        
+        with urllib.request.urlopen(url, timeout=30) as response:
+            img_data = response.read()
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            
+            # Detectar tipo MIME del header
+            content_type = response.headers.get('Content-Type', 'image/png')
+            return f"data:{content_type};base64,{img_b64}"
+    except Exception as e:
+        print(f"    ⚠️  Error descargando imagen: {e}")
+        return None
+
+
+def _guardar_data_uri_como_png(data_uri: str, output_path: Path) -> None:
+    """Guarda un data URI como archivo PNG."""
+    try:
+        # Extraer el base64 del data URI
+        if "base64," in data_uri:
+            b64_data = data_uri.split("base64,", 1)[1]
+            img_data = base64.b64decode(b64_data)
+            
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(img_data)
+    except Exception as e:
+        print(f"    ⚠️  Error guardando imagen: {e}")
 
 
 def generar_ilustracion_openai(
