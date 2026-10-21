@@ -362,7 +362,9 @@ def html_capturas(sid: str) -> str:
         ".gif": "image/gif",
     }
     for img in meta.get("imagenes") or []:
-        if img.get("origen") in ("gemini", "cursor"):
+        if img.get("origen") in ("gemini", "cursor", "openai"):
+            continue
+        if img.get("tipo") in ("mapa_mental", "seccion"):
             continue
         nombre = Path(str(img.get("nombre") or "")).name
         path = carp / nombre
@@ -909,21 +911,32 @@ def _html_figura(path: Path, titulo: str) -> str:
 
 
 def html_ilustraciones(sid: str) -> str:
+    """Una sola sección. El pie dice qué pantalla muestra la figura."""
     meta = leer_meta(sid)
     carp = carpeta_consulta(sid) / "imagenes"
     partes: list[str] = []
     for img in meta.get("imagenes") or []:
+        if img.get("enDocumento") is False:
+            continue
         if img.get("origen") not in ("gemini", "cursor", "openai"):
+            continue
+        if img.get("tipo") == "mapa_mental":
             continue
         nombre = Path(str(img.get("nombre") or "")).name
         path = carp / nombre
         if not path.is_file():
             continue
-        titulo = str(img.get("titulo") or nombre)
+        titulo = str(img.get("pie") or img.get("titulo") or nombre).strip()
         partes.append(_html_figura(path, titulo))
     if not partes:
         return ""
-    return '<div class="doc-capturas">' + "".join(partes) + "</div>"
+    return (
+        '<section class="doc-ilustraciones">'
+        "<h2>Ilustraciones del recorrido</h2>"
+        "<p>Cada figura muestra un tramo del paso a paso. El pie dice qué pantalla es.</p>"
+        '<div class="doc-capturas">' + "".join(partes) + "</div>"
+        "</section>"
+    )
 
 
 def html_flujo(pasos: list) -> str:
@@ -1131,6 +1144,8 @@ def generar_html_documento(
     .doc-captura {{ margin:0; break-inside:avoid; page-break-inside:avoid; }}
     .doc-captura img {{ max-width:100%; height:auto; border:1px solid var(--line); border-radius:8px; }}
     .doc-captura figcaption {{ margin-top:4px; color:var(--muted); font-size:8pt; }}
+    .doc-ilustraciones {{ margin:0 0 8px; }}
+    .doc-ilustraciones .doc-captura figcaption {{ color:var(--text); font-size:9.5pt; line-height:1.45; margin-top:6px; }}
     .manual-title {{ display:flex; align-items:center; gap:10px; margin:0 0 16px; color:var(--ink);
       font-size:15pt; border-bottom:2px solid var(--ink); padding-bottom:8px; }}
     .manual-title span {{ display:grid; place-items:center; width:25px; height:25px; border-radius:6px;

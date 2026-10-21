@@ -160,22 +160,11 @@ def main() -> None:
             {
                 "additional_context": texto,
                 "agent_message": (
-                    f"{len(pend)} mensaje(s) pendiente(s) en el Chat de la app. "
-                    "Responda en chat.json; no pida que los peguen."
+                    f"{len(pend)} mensaje(s) pendiente(s) en el Chat del caso de requerimiento. "
+                    "Responda solo en el chat.json de ese caso; no lo copie al chat de consultas."
                 ),
             }
         )
-        return
-
-    if casos:
-        ids = ", ".join(item[0] for item in casos[:3])
-        texto = (
-            f"Caso(s) activo(s): {ids}. El coordinador escribe solo en el Chat de la app. "
-            "Si responde en Cursor, deje el mismo resumen en activo/{id-caso}/chat.json (autor: agente)."
-        )
-        if extra:
-            texto += "\n\n" + extra
-        _out({"additional_context": texto})
         return
 
     if extra:
