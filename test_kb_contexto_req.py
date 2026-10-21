@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Tests para la preselección de contexto KB en analizar-req."""
 import json
 import sys
 from pathlib import Path
+
+# Force UTF-8 output to avoid Windows cp1252 crashes
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Añadir scripts al path
 ROOT = Path(__file__).resolve().parent
@@ -260,6 +266,91 @@ def test_json_output():
     print("✓ Test salida JSON: OK")
 
 
+def test_integration_cursor_bot_prompt():
+    """INTEGRACIÓN: cursor_bot.py debe incluir contexto preseleccionado en el prompt."""
+    print("\nTest INTEGRACIÓN: Prompt de analizar-req con contexto KB...")
+    
+    import os
+    import tempfile
+    import shutil
+    
+    # Crear carpeta temporal para activo/
+    tmp_root = Path(tempfile.mkdtemp(prefix="qrystba_test_"))
+    try:
+        tmp_activo = tmp_root / "activo"
+        tmp_activo.mkdir()
+        
+        # Caso de prueba: inventario (mismo REQ del test de regresión)
+        id_caso = "20261021-test-inventario"
+        caso_dir = tmp_activo / id_caso
+        caso_dir.mkdir()
+        
+        # solicitud.json con requerimiento de inventario
+        solicitud = {
+            "identificacion": {"idCaso": id_caso},
+            "contenido": {
+                "titulo": "Revisión listado maestro SKU",
+                "requerimiento": (
+                    "revisión del listado maestro de SKU que no se visualizan en el "
+                    "movimiento SI - Saldo Inicial Entrada en el sistema de inventario"
+                ),
+                "descripcion": "Los artículos no aparecen en el kardex de entrada",
+                "criteriosAceptacion": "Todos los SKU deben aparecer en el listado de SI",
+            },
+            "sql": {
+                "procesoId": "",  # Vacío para probar inferencia
+                "usarDocumentacion": False,
+                "metodosDocumentados": [],
+            },
+        }
+        
+        with open(caso_dir / "solicitud.json", "w", encoding="utf-8") as f:
+            json.dump(solicitud, f, ensure_ascii=False, indent=2)
+        
+        # Mock temporal de caso_dir para cursor_bot
+        import cursor_bot
+        
+        # Guardar el ROOT original y reemplazarlo temporalmente
+        original_root = cursor_bot.ROOT
+        original_activo = cursor_bot.ACTIVO
+        cursor_bot.ROOT = str(tmp_root)
+        cursor_bot.ACTIVO = str(tmp_activo)
+        
+        try:
+            # Generar el prompt de analizar-req
+            prompt, procesos_kb = cursor_bot._prompt_base(id_caso, "analizar-req")
+            
+            # Verificar que se preseleccionó 'inventario'
+            assert procesos_kb, "Debe devolver lista de procesos preseleccionados"
+            assert "inventario" in procesos_kb, \
+                f"Debe preseleccionar 'inventario', pero retornó: {procesos_kb}"
+            
+            # Verificar que el prompt contiene el contexto KB
+            assert "CONTEXTO KB PRESELECCIONADO" in prompt, \
+                "El prompt debe contener la sección de contexto KB"
+            assert "inventario" in prompt.lower(), \
+                "El prompt debe mencionar el proceso 'inventario'"
+            assert "PRESUPUESTO" in prompt, \
+                "El prompt debe contener la instrucción de presupuesto"
+            
+            # Verificar que el prompt NO dice "no se preseleccionó"
+            assert "No se preseleccionó contexto" not in prompt, \
+                "El prompt no debe indicar falta de contexto cuando sí hay"
+            
+            print(f"  ✓ Procesos preseleccionados: {', '.join(procesos_kb)}")
+            print(f"  ✓ Longitud del prompt: {len(prompt)} caracteres")
+            print("✓ Test integración cursor_bot: OK")
+            
+        finally:
+            # Restaurar ROOT original
+            cursor_bot.ROOT = original_root
+            cursor_bot.ACTIVO = original_activo
+    
+    finally:
+        # Limpiar carpeta temporal
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 def main():
     """Ejecutar todos los tests."""
     try:
@@ -273,6 +364,7 @@ def main():
         test_limite_tamano()
         test_resumen_sps()
         test_json_output()
+        test_integration_cursor_bot_prompt()  # Nuevo test de integración
         
         print("\n✅ Todos los tests de kb_contexto_req pasaron correctamente")
         return 0

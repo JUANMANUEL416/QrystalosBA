@@ -712,21 +712,44 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
         procesos_kb_ids = []
         try:
             import kb_contexto_req
+            import traceback
             sol_data = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
-            req_texto = str(sol_data.get("contenido", {}).get("requerimiento") or "")
+            contenido = sol_data.get("contenido") or {}
+            # Construir texto completo del REQ: título + requerimiento + descripción + criterios
+            partes = []
+            for campo in ("titulo", "requerimiento", "descripcion", "criteriosAceptacion"):
+                txt = str(contenido.get(campo) or "").strip()
+                if txt:
+                    partes.append(txt)
+            req_texto = " ".join(partes)
             proceso_id = str(sol_data.get("sql", {}).get("procesoId") or "")
             if req_texto:
+                print(f"[kb_contexto] req_texto ({len(req_texto)} chars): {req_texto[:120]}...", flush=True)
                 ctx = kb_contexto_req.preseleccionar_contexto(req_texto, proceso_id)
                 contexto_kb = kb_contexto_req.formato_prompt(ctx)
                 if ctx.get("procesos"):
                     procesos_kb_ids = [p["id"] for p in ctx["procesos"]]
                     print(f"[kb_contexto] preseleccionados: {', '.join(procesos_kb_ids)}", flush=True)
+                else:
+                    # No se preseleccionó ningún proceso: log scores para debug
+                    top_scores = getattr(ctx, "_debug_scores", [])[:3] if hasattr(ctx, "_debug_scores") else []
+                    if top_scores:
+                        scores_str = ", ".join(f"{p}={s:.1f}" for p, s in top_scores)
+                        print(f"[kb_contexto] ninguno (score bajo): {scores_str}", flush=True)
+                    else:
+                        print("[kb_contexto] preseleccionados: ninguno", flush=True)
+            else:
+                print("[kb_contexto] error: req_texto vacío (campos titulo/requerimiento/descripcion/criteriosAceptacion no tienen texto)", flush=True)
         except Exception as exc:  # noqa: BLE001
-            print(f"[kb_contexto] no se pudo preseleccionar: {exc}", flush=True)
+            print(f"[kb_contexto] error: {exc}", flush=True)
+            traceback.print_exc()
         
         extra = (
             "- Motivo: ANÁLISIS DEL REQUERIMIENTO orientado a SOLUCIÓN (no dictamen HTML).\n"
-            + (f"\n{contexto_kb}\n\n" if contexto_kb else "")
+            + (f"\n{contexto_kb}\n\n" if contexto_kb else 
+               "\nNo se preseleccionó contexto KB específico. Use conocimiento/_indice_busqueda.json "
+               "buscando términos clave del REQ (SP, METODO, tabla, pantalla) y abra SOLO las fichas "
+               "relevantes. NO lea sps.json enteros ni barra conocimiento/. Presupuesto ~15 tool calls.\n\n")
             + "- Método obligatorio (en este orden):\n"
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
             "  2) Contrastar con el CONTEXTO KB PRESELECCIONADO (arriba). Si no alcanza, "
