@@ -27,3 +27,7 @@ ITMO define Débito (salida) o Crédito (entrada), si afecta costo o promedio, s
 **Proceso:** 0 pasos desde configuración hasta operación
 
 **Prerrequisitos:** Ninguno (configuración base)
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+<!-- /AUDIENCIA -->

@@ -36,3 +36,7 @@ ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, con
 **Proceso:** 0 pasos desde configuración hasta operación
 
 **Prerrequisitos:** Requiere configuración previa
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+<!-- /AUDIENCIA -->

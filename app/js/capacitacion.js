@@ -94,6 +94,18 @@ window.QrysCapacitacion = (function() {
             <div class="seleccionados-info">
               <span id="contadorSeleccionados">0 bloques seleccionados</span>
             </div>
+            <div class="audiencia-selector">
+              <label for="audienciaSelect">Audiencia:</label>
+              <select id="audienciaSelect" class="audiencia-select">
+                <option value="usuario-final">Usuario final</option>
+                <option value="soporte-desarrollo">Soporte y desarrollo</option>
+              </select>
+              <span class="audiencia-info">ℹ️</span>
+              <div class="audiencia-tooltip">
+                <strong>Usuario final:</strong> Manual sin referencias técnicas a stored procedures.<br>
+                <strong>Soporte y desarrollo:</strong> Incluye detalles técnicos de SPs y métodos.
+              </div>
+            </div>
             <button 
               class="btn btn-principal"
               id="btnEnsamblar"
@@ -303,6 +315,9 @@ window.QrysCapacitacion = (function() {
     `;
 
     try {
+      const audienciaSelect = document.getElementById('audienciaSelect');
+      const audiencia = audienciaSelect ? audienciaSelect.value : 'usuario-final';
+      
       const resp = await fetch('/api/capacitacion/ensamblar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -312,7 +327,8 @@ window.QrysCapacitacion = (function() {
           titulo: `Capacitación: ${temaActual.nombre}`,
           formato: 'html',
           incluirIndice: true,
-          incluirImagenes: true
+          incluirImagenes: true,
+          audiencia: audiencia
         })
       });
 

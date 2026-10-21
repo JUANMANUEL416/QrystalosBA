@@ -27,3 +27,22 @@ ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, con
 **Proceso:** 0 pasos desde configuración hasta operación
 
 **Prerrequisitos:** Requiere DXB
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+## 🔧 Referencia técnica (Soporte y Desarrollo)
+
+### Stored Procedures
+
+Esta tabla es gestionada por los siguientes procedimientos almacenados:
+
+#### `SPQ_IDXB`
+
+**Propósito:** Alta, edición o borrado del artículo en la bodega (IDXB): stock mínimo, máximo, punto de reorden, requiere autorización, días de sugerido.
+
+**Métodos:**
+
+- `CRUD_IDXB`: Create/Read/Update/Delete completo
+
+
+<!-- /AUDIENCIA -->

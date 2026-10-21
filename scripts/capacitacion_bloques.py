@@ -217,11 +217,18 @@ def generar_bloque_desde_tabla(
         "generado": datetime.now().isoformat(timespec="seconds")
     }
     
+    # Extraer SPs desde la KB
+    sps_asociados = _extraer_sps_tabla(proceso_id, tabla, control)
+    
+    # Agregar SPs al control (para que pedagogico los pueda usar)
+    control_con_sps = control.copy()
+    control_con_sps["sps"] = sps_asociados
+    
     # Generar contenido pedagógico
     try:
         import capacitacion_pedagogico as pedagogico
         contenido_md = pedagogico.generar_contenido_tabla(
-            tabla, titulo, proceso, control, None
+            tabla, titulo, proceso, control_con_sps, None, audiencia="todas"
         )
     except Exception as e:
         # Fallback a contenido simple
@@ -256,6 +263,37 @@ def _inferir_prerrequisitos(tabla: str) -> list[str]:
         "IBOD": ["tipos-de-bodega-itbod"],
     }
     return prereqs.get(tabla, [])
+
+
+def _extraer_sps_tabla(proceso_id: str, tabla: str, control: dict) -> list[dict]:
+    """Extrae los SPs asociados a una tabla desde la KB (sps.json).
+    
+    Retorna lista de diccionarios con: nombre, metodo, rol
+    """
+    sps_json = CONOCIMIENTO / proceso_id / "sps.json"
+    if not sps_json.exists():
+        return []
+    
+    try:
+        data = json.loads(sps_json.read_text(encoding="utf-8"))
+        sps_list = data.get("sps", [])
+        
+        sps_asociados = []
+        for sp in sps_list:
+            # Buscar SPs que operan en esta tabla
+            if sp.get("modelo") == tabla or (sp.get("nombre", "").startswith(f"SPQ_{tabla}")):
+                metodos = sp.get("metodos", [])
+                for metodo in metodos:
+                    sps_asociados.append({
+                        "nombre": sp.get("nombre", ""),
+                        "metodo": metodo.get("id", ""),
+                        "rol": metodo.get("hace", "")
+                    })
+        
+        return sps_asociados
+    except Exception as e:
+        print(f"  ⚠️  Error al extraer SPs: {e}")
+        return []
 
 
 def generar_bloque_desde_paso(

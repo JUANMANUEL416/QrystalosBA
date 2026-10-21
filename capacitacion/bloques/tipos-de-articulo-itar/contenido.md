@@ -83,3 +83,62 @@ ITAR dice qué datos pide el artículo (lote, vencimiento, clase, genérico, con
    <details><summary>Ver respuesta</summary>
    No. El prefijo queda fijo porque ya se usó para generar códigos de artículos (IDARTICULO).
    </details>
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+## 🔧 Referencia técnica (Soporte y Desarrollo)
+
+### Stored Procedures
+
+Esta tabla es gestionada por los siguientes procedimientos almacenados:
+
+#### `SPQ_ITAR`
+
+**Propósito:** Crea el tipo de artículo: qué pide el artículo (clase, principio activo, forma, concentración, unidad, fecha de vencimiento, lote, stock, riesgo, IVA), prefijo del consecutivo y cuenta contable.
+
+**Métodos:**
+
+- `GUARDAR`: Inserta o actualiza registro
+
+#### `SPQ_ITAR`
+
+**Propósito:** Escribe en ITAR.
+
+**Métodos:**
+
+- `ACTUALIZAR`: Modifica registro existente
+
+#### `SPQ_ITAR`
+
+**Propósito:** Borra el tipo de artículo.
+
+**Métodos:**
+
+- `ELIMINAR`: Elimina registro (con validaciones)
+
+#### `SPQ_ITAR`
+
+**Propósito:** Consulta / listado (sin escritura).
+
+**Métodos:**
+
+- `GET_IDITAR`: Obtiene información
+
+#### `SPQ_ITAR`
+
+**Propósito:** Exporta a Excel la tarifa de los artículos del tipo (KEXCEL_FILL).
+
+**Métodos:**
+
+- `TARI_EXPORTAR_EXCEL`: Exporta a Excel/archivo
+
+#### `SPQ_ITAR`
+
+**Propósito:** Escribe en KEXCEL_FILL; llama SPQ_GENSEQUENCE.
+
+**Métodos:**
+
+- `TARD_EXPORTAR_EXCEL`: Exporta a Excel/archivo
+
+
+<!-- /AUDIENCIA -->

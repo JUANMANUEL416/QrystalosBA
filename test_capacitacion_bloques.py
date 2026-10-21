@@ -250,8 +250,12 @@ Este es un bloque de prueba.
             assert resultado.get("ok"), f"Debe ensamblar: {resultado.get('error')}"
             assert "archivo_html" in resultado
             
-            archivo_html = Path(resultado["archivo_html"])
-            assert archivo_html.exists(), "Debe crear archivo HTML"
+            # archivo_html es una URL relativa, pero en el test está en SALIDA_DIR temporal
+            archivo_html_url = resultado["archivo_html"]
+            nombre_archivo = archivo_html_url.split('/')[-1]
+            # El archivo está en el SALIDA_DIR temporal del test
+            archivo_html = ensamblar.SALIDA_DIR / nombre_archivo
+            assert archivo_html.exists(), f"Debe crear archivo HTML: {archivo_html}"
             
             html = archivo_html.read_text(encoding="utf-8")
             assert "Documento de prueba" in html

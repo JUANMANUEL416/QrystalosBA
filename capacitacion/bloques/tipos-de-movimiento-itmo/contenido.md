@@ -37,3 +37,38 @@ ITMO define Débito (salida) o Crédito (entrada), si afecta costo o promedio, s
 **Proceso:** 0 pasos desde configuración hasta operación
 
 **Prerrequisitos:** Ninguno (configuración base)
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+## 🔧 Referencia técnica (Soporte y Desarrollo)
+
+### Stored Procedures
+
+Esta tabla es gestionada por los siguientes procedimientos almacenados:
+
+#### `SPQ_ITMO`
+
+**Propósito:** Crea el tipo de movimiento: código (2), descripción, TIPO Débito (salida) / Crédito (entrada), tipo opuesto si genera tránsito, comprobante si se contabiliza, banderas AFECTACOSTO, AFECTAPROM, SECONTABILIZA, GENTRANSITO, OCULTARCOSTOS, MPROVEEDOR, PIDEVALOR.
+
+**Métodos:**
+
+- `GUARDAR`: Inserta o actualiza registro
+
+#### `SPQ_ITMO`
+
+**Propósito:** Escribe en ITMO.
+
+**Métodos:**
+
+- `ACTUALIZAR`: Modifica registro existente
+
+#### `SPQ_ITMO`
+
+**Propósito:** Borra el tipo de movimiento.
+
+**Métodos:**
+
+- `ELIMINAR`: Elimina registro (con validaciones)
+
+
+<!-- /AUDIENCIA -->

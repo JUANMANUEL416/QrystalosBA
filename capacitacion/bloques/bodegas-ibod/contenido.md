@@ -83,3 +83,94 @@ ITBOD agrupa bodegas (farmacéuticas, carro de paro, botiquín, administrativas)
    <details><summary>Ver respuesta</summary>
    Valida que haya existencia disponible antes de permitir una salida, evitando saldos negativos.
    </details>
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+## 🔧 Referencia técnica (Soporte y Desarrollo)
+
+### Stored Procedures
+
+Esta tabla es gestionada por los siguientes procedimientos almacenados:
+
+#### `SPQ_IBOD`
+
+**Propósito:** Lista las bodegas a las que el usuario tiene acceso (IBODS TIPO USUSU con ACCESO SI). Es la lista que ven todas las pantallas de inventario.
+
+**Métodos:**
+
+- `BODEGASELECT`: Operación específica de negocio
+
+#### `SPQ_IBOD`
+
+**Propósito:** Asocia el equipo del usuario (UBEQ) a una bodega: la bodega por defecto de la estación.
+
+**Métodos:**
+
+- `UPDATEBODEGAUSER`: Operación específica de negocio
+
+#### `SPQ_IBOD`
+
+**Propósito:** Consulta / listado (sin escritura).
+
+**Métodos:**
+
+- `BODEGAUSERASIG`: Operación específica de negocio
+
+#### `SPQ_IBOD`
+
+**Propósito:** Crea la bodega: tipo (ITBOD), sede, centro de costo, bodega que pide (IDBODEGAPIDE), banderas MUEVEEXISTENCIAS, VALIDASTOCK, CONSUMO, NOCONTABILIZA, ESDECUSTODIA, MANEJA_PICKPACK.
+
+**Métodos:**
+
+- `GUARDAR`: Inserta o actualiza registro
+
+#### `SPQ_IBOD`
+
+**Propósito:** Escribe en IBOD.
+
+**Métodos:**
+
+- `ACTUALIZAR`: Modifica registro existente
+
+#### `SPQ_IBOD`
+
+**Propósito:** Borra la bodega.
+
+**Métodos:**
+
+- `ELIMINAR`: Elimina registro (con validaciones)
+
+#### `SPQ_IBODS`
+
+**Propósito:** Consulta / listado (sin escritura).
+
+**Métodos:**
+
+- `GET_TIPO_SEGURIDAD`: Obtiene información
+
+#### `SPQ_IBODS`
+
+**Propósito:** Agrega una regla de seguridad a la bodega: usuario con acceso, tipo de artículo permitido, etc. (pestaña Seguridad). En Movimientos, Buscar Artículo de una entrada (incluido el saldo inicial) solo lista artículos activos cuyo tipo tiene, en la bodega del encabezado, una regla de tipo de artículo con acceso Si. Si el artículo maneja principal, la lista trae el SKU y no el principal.
+
+**Métodos:**
+
+- `GUARDAR`: Inserta o actualiza registro
+
+#### `SPQ_IBODS`
+
+**Propósito:** Escribe en IBODS.
+
+**Métodos:**
+
+- `ACTUALIZAR`: Modifica registro existente
+
+#### `SPQ_IBODS`
+
+**Propósito:** Escribe en IBODS.
+
+**Métodos:**
+
+- `ELIMINAR`: Elimina registro (con validaciones)
+
+
+<!-- /AUDIENCIA -->

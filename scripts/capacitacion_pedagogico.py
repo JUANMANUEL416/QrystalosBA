@@ -21,7 +21,8 @@ def generar_contenido_tabla(
     titulo: str,
     proceso: dict,
     control: dict,
-    documentos_kb: list[str] = None
+    documentos_kb: list[str] = None,
+    audiencia: str = "todas"
 ) -> str:
     """Genera contenido pedagógico para una tabla específica.
     
@@ -31,9 +32,10 @@ def generar_contenido_tabla(
         proceso: Diccionario del proceso desde conocimiento/
         control: Diccionario del control desde proceso.json
         documentos_kb: Lista de rutas a documentos MD relacionados
+        audiencia: "usuario-final" | "soporte-desarrollo" | "todas"
     
     Returns:
-        Contenido markdown pedagógico
+        Contenido markdown pedagógico filtrado por audiencia
     """
     lineas = []
     
@@ -156,6 +158,19 @@ def generar_contenido_tabla(
         lineas.append("")
         for gap in gaps:
             lineas.append(f"- {gap}")
+        lineas.append("")
+    
+    # 13. Referencia técnica (solo audiencia: soporte-desarrollo)
+    if audiencia in ["soporte-desarrollo", "todas"]:
+        lineas.append("<!-- AUDIENCIA: soporte-desarrollo -->")
+        lineas.append("")
+        sps_tecnicos = _generar_seccion_tecnica_sps(control)
+        if sps_tecnicos:
+            lineas.append("## 🔧 Referencia técnica (Soporte y Desarrollo)")
+            lineas.append("")
+            lineas.append(sps_tecnicos)
+            lineas.append("")
+        lineas.append("<!-- /AUDIENCIA -->")
         lineas.append("")
     
     return "\n".join(lineas)
@@ -488,3 +503,108 @@ def _identificar_gaps(campos: list[dict]) -> list[str]:
         if "pendiente" in campo.get("descripcion", "").lower():
             gaps.append(f"Campo {campo['nombre']}: verificar si aparece en formulario")
     return gaps
+
+
+def _generar_seccion_tecnica_sps(control: dict) -> str:
+    """Genera la sección técnica de SPs (solo para soporte-desarrollo).
+    
+    No copia SQL fuente. Solo nombre, propósito global y métodos desde KB.
+    """
+    sps = control.get("sps", [])
+    if not sps:
+        return ""
+    
+    lineas = []
+    lineas.append("### Stored Procedures")
+    lineas.append("")
+    lineas.append("Esta tabla es gestionada por los siguientes procedimientos almacenados:")
+    lineas.append("")
+    
+    for sp in sps:
+        nombre = sp.get("nombre", "")
+        metodo = sp.get("metodo", "")
+        rol = sp.get("rol", "")
+        
+        if not nombre:
+            continue
+        
+        lineas.append(f"#### `{nombre}`")
+        lineas.append("")
+        
+        if rol:
+            lineas.append(f"**Propósito:** {rol}")
+            lineas.append("")
+        
+        if metodo:
+            # Parsear métodos (ej: "GUARDAR / ELIMINAR / TARI_EXPORTAR_EXCEL")
+            metodos = [m.strip() for m in metodo.split('/')]
+            lineas.append("**Métodos:**")
+            lineas.append("")
+            
+            for m in metodos:
+                # Explicar método común
+                explicacion = _explicar_metodo(m)
+                lineas.append(f"- `{m}`: {explicacion}")
+            
+            lineas.append("")
+    
+    return "\n".join(lineas)
+
+
+def _explicar_metodo(metodo: str) -> str:
+    """Explica brevemente qué hace un método común."""
+    explicaciones = {
+        "GUARDAR": "Inserta o actualiza registro",
+        "ACTUALIZAR": "Modifica registro existente",
+        "ELIMINAR": "Elimina registro (con validaciones)",
+        "CRUD": "Create/Read/Update/Delete completo",
+        "VALIDA": "Valida datos antes de guardar",
+        "GET": "Obtiene información",
+        "LISTAR": "Lista registros",
+        "EXPORTAR": "Exporta a Excel/archivo",
+        "IMPORTAR": "Importa desde Excel/archivo",
+        "PROCESAR": "Ejecuta proceso de negocio",
+        "CONFIRMAR": "Confirma y aplica cambios",
+        "ANULAR": "Anula operación",
+        "CERRAR": "Cierra período/documento",
+        "ABRIR": "Reabre para edición",
+    }
+    
+    # Buscar palabra clave
+    metodo_upper = metodo.upper()
+    for clave, expl in explicaciones.items():
+        if clave in metodo_upper:
+            return expl
+    
+    return "Operación específica de negocio"
+
+
+def _limpiar_referencias_tecnicas(texto: str) -> str:
+    """Limpia referencias técnicas a SPs del texto (para usuario final).
+    
+    Mantiene la información funcional pero elimina menciones explícitas a SPQ_*, SPK_*, SP_.
+    """
+    import re
+    
+    # Patrones de referencias técnicas
+    patrones = [
+        # Referencia directa: "en SPQ_IART" -> "en el procedimiento"
+        (r'\ben\s+(SPQ_|SPK_|SP_)[A-Z_0-9]+\b', 'en el sistema'),
+        # "SPQ_IART ·" -> eliminar
+        (r'(SPQ_|SPK_|SP_)[A-Z_0-9]+\s*·\s*', ''),
+        # "llama SPQ_IART" -> "llama al procedimiento correspondiente"
+        (r'llama\s+(SPQ_|SPK_|SP_)[A-Z_0-9]+', 'llama al procedimiento correspondiente'),
+        # Solo el nombre del SP -> eliminar frase
+        (r'\.\s*[^.]*\b(SPQ_|SPK_|SP_)[A-Z_0-9]+[^.]*\.', '.'),
+    ]
+    
+    texto_limpio = texto
+    for patron, reemplazo in patrones:
+        texto_limpio = re.sub(patron, reemplazo, texto_limpio, flags=re.IGNORECASE)
+    
+    # Limpiar espacios múltiples
+    texto_limpio = re.sub(r'\s+', ' ', texto_limpio)
+    # Limpiar puntos dobles
+    texto_limpio = re.sub(r'\.\.+', '.', texto_limpio)
+    
+    return texto_limpio.strip()

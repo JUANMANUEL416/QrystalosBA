@@ -26,3 +26,38 @@ ITBOD agrupa bodegas (farmacéuticas, carro de paro, botiquín, administrativas)
 **Proceso:** 0 pasos desde configuración hasta operación
 
 **Prerrequisitos:** Ninguno (configuración base)
+
+<!-- AUDIENCIA: soporte-desarrollo -->
+
+## 🔧 Referencia técnica (Soporte y Desarrollo)
+
+### Stored Procedures
+
+Esta tabla es gestionada por los siguientes procedimientos almacenados:
+
+#### `SPQ_ITBOD`
+
+**Propósito:** Crea el tipo de bodega (ITBOD).
+
+**Métodos:**
+
+- `GUARDAR`: Inserta o actualiza registro
+
+#### `SPQ_ITBOD`
+
+**Propósito:** Escribe en ITBOD.
+
+**Métodos:**
+
+- `ACTUALIZAR`: Modifica registro existente
+
+#### `SPQ_ITBOD`
+
+**Propósito:** Borra el tipo de bodega.
+
+**Métodos:**
+
+- `ELIMINAR`: Elimina registro (con validaciones)
+
+
+<!-- /AUDIENCIA -->
