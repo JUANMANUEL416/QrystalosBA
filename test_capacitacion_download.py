@@ -27,10 +27,10 @@ def test_ensamblar_devuelve_url_relativa():
     ensamblar.SALIDA_DIR = temp_dir
     
     try:
-        # Simular ensamblado con bloques mock
+        # Simular ensamblado con bloques granulares actuales
         resultado = ensamblar.ensamblar_documento(
             tema_id="inventario",
-            bloques_ids=["tipos-de-bodega-bodegas-y-catalogos"],
+            bloques_ids=["tipos-de-bodega-itbod"],
             titulo="Test Manual",
             formato="html"
         )
