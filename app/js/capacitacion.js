@@ -221,39 +221,27 @@ window.QrysCapacitacion = (function() {
           <span class="bloque-numero">${index + 1}</span>
         </label>
         
-        <div class="bloque-info">
+        ${bloque.icono ? `
+          <span class="bloque-icono-visual">${bloque.icono}</span>
+        ` : `
+          <span class="bloque-icono-visual material-symbols-outlined">description</span>
+        `}
+        
+        <div class="bloque-titulo">
           <h4>${bloque.titulo}</h4>
-          
           ${bloque.prerrequisitos && bloque.prerrequisitos.length > 0 ? `
             <div class="bloque-prereq">
-              <span class="material-symbols-outlined">link</span>
               Requiere: ${bloque.prerrequisitos.map(p => {
                 const prereq = bloques.find(b => b.id === p);
                 return prereq ? prereq.titulo : p;
               }).join(', ')}
             </div>
-          ` : ''}
-          
-          <div class="bloque-meta">
-            <span class="bloque-duracion">
-              <span class="material-symbols-outlined">schedule</span>
-              ${bloque.duracionEstimada || '30min'}
-            </span>
-            
-            ${bloque.variantes && bloque.variantes.length > 0 ? `
-              <span class="bloque-variantes">
-                <span class="material-symbols-outlined">alt_route</span>
-                ${bloque.variantes.length} variante(s)
-              </span>
-            ` : ''}
-            
-            ${bloque.imagenes && bloque.imagenes.length > 0 ? `
-              <span class="bloque-imagenes">
-                <span class="material-symbols-outlined">image</span>
-                ${bloque.imagenes.length} imagen(es)
-              </span>
-            ` : ''}
-          </div>
+          ` : '<div class="bloque-prereq-vacio"></div>'}
+        </div>
+        
+        <div class="bloque-duracion">
+          <span class="material-symbols-outlined">schedule</span>
+          ${bloque.duracionEstimada || '30min'}
         </div>
       </div>
     `).join('');
