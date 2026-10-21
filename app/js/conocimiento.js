@@ -30,6 +30,11 @@ window.QrysConocimiento = (function () {
       title: "Documentar",
       desc: "Pendientes, SP de hoy y Chat de la base de procesos.",
     },
+    capacitacion: {
+      icon: "school",
+      title: "Capacitación",
+      desc: "Bloques modulares tipo rompecabezas para manuales.",
+    },
     auditoria: {
       icon: "fact_check",
       title: "Auditoría de procesos",
@@ -305,7 +310,7 @@ window.QrysConocimiento = (function () {
     if (shell) {
       shell.hidden = false;
       shell.removeAttribute("hidden");
-      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar", "modo-auditoria", "modo-agentes", "modo-revisar-sql", "modo-servidores", "modo-informe-contab", "modo-soporte-consultas", "modo-prueba-req");
+      shell.classList.remove("modo-analista", "modo-consultas", "modo-documentar", "modo-solicitar", "modo-capacitacion", "modo-auditoria", "modo-agentes", "modo-revisar-sql", "modo-servidores", "modo-informe-contab", "modo-soporte-consultas", "modo-prueba-req");
       shell.classList.add(`modo-${mode}`);
     }
     const inicio = $("#btnInicioHub");
@@ -334,6 +339,16 @@ window.QrysConocimiento = (function () {
       if (v) v.classList.add("active");
       refreshDocumentar();
       startChatPoll();
+    } else if (mode === "capacitacion") {
+      stopChatPoll();
+      if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
+      ["view-cola", "view-formulario", "view-chat", "view-historico"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("active");
+      });
+      const v = $("#view-capacitacion");
+      if (v) v.classList.add("active");
+      if (window.QrysCapacitacion) window.QrysCapacitacion.init();
     } else if (mode === "auditoria") {
       stopChatPoll();
       if (window.QrysSolicitar) window.QrysSolicitar.stopPoll();
@@ -1565,7 +1580,7 @@ window.QrysConocimiento = (function () {
     } catch (_) {
       mode = "hub";
     }
-    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar" || mode === "revisar-sql" || mode === "auditoria" || mode === "agentes" || mode === "servidores" || mode === "informe-contab" || mode === "soporte-consultas" || mode === "prueba-req") {
+    if (mode === "analista" || mode === "consultas" || mode === "documentar" || mode === "solicitar" || mode === "capacitacion" || mode === "revisar-sql" || mode === "auditoria" || mode === "agentes" || mode === "servidores" || mode === "informe-contab" || mode === "soporte-consultas" || mode === "prueba-req") {
       enterMode(mode);
     } else {
       showHub();
