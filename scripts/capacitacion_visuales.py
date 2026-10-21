@@ -272,7 +272,7 @@ Requirements:
 FORBIDDEN: flags, language symbols, weapons, military items. ONLY medical/healthcare inventory items.
 
 Generate ONLY complete SVG code, no explanations.
-
+"""
 
 def _crear_prompt_diagrama(tema: str, conceptos: list[dict]) -> str:
     """Crea prompt para generar diagrama de flujo con Cursor AI."""
