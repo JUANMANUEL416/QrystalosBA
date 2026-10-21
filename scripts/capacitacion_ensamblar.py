@@ -37,6 +37,13 @@ try:
 except ImportError:
     VISUALES_DISPONIBLE = False
 
+# Intentar importar generador de PDF (opcional)
+try:
+    import capacitacion_pdf as pdf_gen
+    PDF_DISPONIBLE = True
+except ImportError:
+    PDF_DISPONIBLE = False
+
 
 def ensamblar_documento(
     tema_id: str,
@@ -107,12 +114,23 @@ def ensamblar_documento(
     }
     
     # Generar HTML
-    if formato in ("html", "ambos"):
+    html_content = None
+    if formato in ("html", "ambos", "pdf"):
         archivo_html = SALIDA_DIR / f"{nombre_base}.html"
         html_content = _generar_html(tema, titulo, orden, incluir_indice, incluir_imagenes, audiencia)
         archivo_html.write_text(html_content, encoding="utf-8")
         # Devolver URL relativa para el navegador (no ruta del sistema)
         resultado["archivo_html"] = f"capacitacion/documentos/{nombre_base}.html"
+    
+    # Generar PDF (si está disponible)
+    if formato == "pdf" and PDF_DISPONIBLE and html_content:
+        pdf_path = pdf_gen.generar_pdf_documento(html_content, f"{nombre_base}.pdf")
+        if pdf_path:
+            resultado["archivo_pdf"] = f"capacitacion/documentos/{nombre_base}.pdf"
+        else:
+            # Fallback: devolver HTML para window.print
+            resultado["archivo_pdf"] = None
+            resultado["pdf_fallback"] = "window.print"
     
     # Generar DOCX (futuro)
     if formato in ("docx", "ambos"):
@@ -942,19 +960,56 @@ def _css_documento() -> str:
         display: none;
       }
       
+      /* Evitar saltos que dejen hojas en blanco */
+      .bloque-contenido,
       .bloque-visuales {
         page-break-inside: avoid;
+        break-inside: avoid;
       }
       
+      figure, .importante, .tip, .ejemplo {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      
+      /* Solo salto ANTES de bloques si es necesario */
+      h2 {
+        page-break-before: auto;
+        break-before: auto;
+      }
+      
+      h2:first-child {
+        page-break-before: avoid;
+        break-before: avoid;
+      }
+      
+      /* Imágenes adaptables para PDF */
       .visual-mapa-mental img,
       .visual-ilustracion img {
-        max-height: 400px;
-        object-fit: contain;
+        max-width: 100% !important;
+        max-height: 45vh !important;
+        height: auto !important;
+        object-fit: contain !important;
+      }
+      
+      figure img {
+        max-height: 9cm !important;
       }
       
       a {
         color: #2C3E50;
         text-decoration: underline;
+      }
+      
+      /* Asegurar tablas visibles */
+      table {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      
+      tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
     }
   </style>"""

@@ -219,23 +219,25 @@ def _crear_prompt_mapa_mental(tema: str, conceptos: list[dict]) -> str:
         for c in conceptos
     ])
     
-    return f"""Genera un mapa mental SVG profesional con este contenido:
+    return f"""Genera un mapa mental SVG profesional para sistema hospitalario/IPS en Colombia:
 
 Tema central: {tema}
 
 Conceptos (ramas):
 {conceptos_texto}
 
+Contexto: Sistema de información hospitalario - farmacia, medicamentos, insumos médicos, personal de salud.
+
 Requisitos:
 1. SVG standalone (800x600px)
 2. Nodo central destacado con el tema
-3. Ramas con colores diferentes (#3498DB, #E74C3C, #F39C12, #27AE60, #9B59B6)
+3. Colores profesionales del sector salud: azul hospital (#2980B9), verde salud (#27AE60), blanco (#ECF0F1), gris claro (#BDC3C7)
 4. Texto legible (fuente sans-serif, 14-18px)
-5. Iconos SVG simples para cada rama
+5. Iconos SVG médicos simples: cruz médica, pastilla, jeringa, clipboard, estetoscopio
 6. Diseño radial equilibrado
 7. Líneas curvas conectando el centro con las ramas
 
-Genera SOLO el código SVG completo, sin explicaciones."""
+Genera SOLO el código SVG completo, sin explicaciones ni texto fuera del SVG."""
 
 
 def _crear_prompt_infografia(tema: str, conceptos: list[dict]) -> str:
@@ -247,23 +249,25 @@ def _crear_prompt_infografia(tema: str, conceptos: list[dict]) -> str:
     
     items_texto = "\n".join(items)
     
-    return f"""Genera una infografía SVG moderna sobre:
+    return f"""Genera una infografía SVG profesional para sistema hospitalario/IPS en Colombia:
 
 Título: {tema}
 
 Contenido:
 {items_texto}
 
+Contexto: Sistema de información hospitalario - farmacia, medicamentos, insumos médicos.
+
 Requisitos:
 1. SVG standalone (800x1200px, vertical)
-2. Título grande arriba
-3. Secciones con iconos SVG (check, estrella, info, etc.)
-4. Paleta de colores profesional (#2C3E50, #3498DB, #E74C3C, #F39C12)
+2. Título grande arriba con cruz médica
+3. Secciones con iconos médicos SVG: pastilla, jeringa, clipboard, cruz, estetoscopio
+4. Colores del sector salud: azul hospital (#2980B9), verde salud (#27AE60), blanco (#ECF0F1)
 5. Jerarquía visual clara (tamaños de fuente)
 6. Márgenes y espaciado generoso
-7. Fondo degradado sutil
+7. Fondo blanco o degradado azul muy sutil
 
-Genera SOLO el código SVG completo."""
+Genera SOLO el código SVG completo, sin explicaciones."""
 
 
 def _crear_prompt_diagrama(tema: str, conceptos: list[dict]) -> str:
@@ -271,23 +275,25 @@ def _crear_prompt_diagrama(tema: str, conceptos: list[dict]) -> str:
     pasos = [f"{i+1}. {c.get('titulo', '')}" for i, c in enumerate(conceptos)]
     pasos_texto = "\n".join(pasos)
     
-    return f"""Genera un diagrama de flujo SVG para:
+    return f"""Genera un diagrama de flujo SVG profesional para sistema hospitalario/IPS:
 
 Proceso: {tema}
 
 Pasos:
 {pasos_texto}
 
+Contexto: Flujo operativo en farmacia hospitalaria / sistema de información médico.
+
 Requisitos:
 1. SVG standalone (1000x600px)
 2. Cajas rectangulares con bordes redondeados
 3. Flechas conectando los pasos
-4. Numeración visible en cada paso
-5. Colores: inicio (#27AE60), pasos (#3498DB), fin (#E74C3C)
-6. Texto centrado en cada caja
+4. Numeración visible en cada paso con icono médico pequeño
+5. Colores del sector salud: inicio (verde #27AE60), pasos (azul hospital #2980B9), fin (gris #7F8C8D)
+6. Texto centrado en cada caja, legible
 7. Layout horizontal o vertical según número de pasos
 
-Genera SOLO el código SVG completo."""
+Genera SOLO el código SVG completo, sin explicaciones."""
 
 
 def generar_mapa_mental_svg(tema: str, conceptos: list[dict]) -> str:
@@ -417,7 +423,14 @@ def generar_ilustracion_completa(
     
     if proveedor == "gemini" and gemini_key and gemini_tiene_cuota:
         print(f"      → Intentando con Gemini...")
-        prompt = f"Ilustración educativa para capacitación: {titulo}. {descripcion}"
+        # Contexto de salud para ilustraciones
+        prompt = (
+            f"Ilustración profesional y limpia para sistema hospitalario/IPS en Colombia. "
+            f"Contexto: farmacia hospitalaria, medicamentos, insumos médicos, personal de salud (médicos, enfermeras, farmaceutas). "
+            f"Tema: {titulo}. {descripcion}. "
+            f"Estilo: limpio, profesional, colores suaves (azul hospital, verde salud, blanco). "
+            f"SIN texto en la imagen, solo elementos visuales."
+        )
         data_uri = generar_ilustracion_gemini(prompt)
         if data_uri:
             # Guardar en cache si es posible
@@ -438,7 +451,13 @@ def generar_ilustracion_completa(
         print(f"      → Intentando con OpenAI...")
         openai_model = _get_env("OPENAI_IMAGE_MODEL", "gpt-image-1")
         print(f"        Modelo: {openai_model}")
-        prompt = f"Educational illustration for: {titulo}. {descripcion}"
+        # Contexto de salud para ilustraciones
+        prompt = (
+            f"Clean professional illustration for hospital information system in Colombia. "
+            f"Context: hospital pharmacy, medications, medical supplies, healthcare staff. "
+            f"Topic: {titulo}. {descripcion}. "
+            f"Style: clean, professional, soft hospital colors. NO text in image."
+        )
         url = generar_ilustracion_openai(prompt, openai_model)
         if url:
             # Descargar y convertir a data URI
