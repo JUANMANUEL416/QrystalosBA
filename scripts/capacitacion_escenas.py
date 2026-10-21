@@ -112,6 +112,141 @@ ESCENAS_BLOQUES = {
         "trasladando contenedor seguro de medicamentos controlados desde farmacia central a "
         "farmacia satélite de piso, documentación de tránsito."
     ),
+    
+    # Bloques de compras
+    "generacion-cxp-automatica": (
+        "Sistema hospitalario generando automáticamente cuenta por pagar desde entrada de "
+        "compra: pantalla mostrando detalle de factura proveedor con base gravable, IVA y "
+        "total por cada línea de medicamentos recibidos."
+    ),
+    
+    "contabilizacion-cxp": (
+        "Contador en pantalla de orden de movimiento comprobantes: revisando y contabilizando "
+        "cuentas por pagar de proveedores farmacéuticos con cuentas contables y valores."
+    ),
+    
+    "cufe-radian-compras": (
+        "Proceso de sincronización CUFE y documentos electrónicos: farmaceuta revisando "
+        "facturas electrónicas de proveedores con código CUFE, verificando con plataforma "
+        "RADIAN para trazabilidad de documentos."
+    ),
+    
+    # Bloques de salidas
+    "salida-manual-consumo": (
+        "Registro manual de salida de inventario hospitalario: auxiliar de farmacia ingresando "
+        "consumo de medicamentos para área de urgencias en pantalla de movimientos."
+    ),
+    
+    "contabilizacion-salidas": (
+        "Contador revisando movimientos de salida de inventario para contabilizar: verificando "
+        "valores de consumo de medicamentos y dispositivos médicos con cuentas contables."
+    ),
+    
+    "devolucion-interna": (
+        "Enfermería devolviendo medicamentos no utilizados a farmacia hospitalaria: auxiliar "
+        "recibiendo y registrando devolución en sistema, verificando lotes y cantidades."
+    ),
+    
+    "devolucion-proveedor": (
+        "Farmaceuta preparando devolución de medicamentos vencidos a proveedor: empacando "
+        "productos con documentación de salida y generación de nota crédito."
+    ),
+    
+    "ajustes-inventario": (
+        "Proceso de ajuste tras conteo físico: farmaceuta corrigiendo diferencias entre "
+        "existencias del sistema y cantidades físicas contadas en estantes de farmacia."
+    ),
+    
+    # Tipos de movimiento
+    "tipo-mov-traslado-salida": (
+        "Salida para traslado entre bodegas: auxiliar preparando medicamentos para envío "
+        "desde farmacia central a farmacia satélite, registrando tránsito en sistema."
+    ),
+    
+    "tipo-mov-traslado-entrada": (
+        "Recepción de traslado en bodega destino: farmaceuta aceptando y confirmando "
+        "entrada de medicamentos trasladados desde otra farmacia del hospital."
+    ),
+    
+    "tipo-mov-compra": (
+        "Entrada de compra desde orden: farmaceuta confirmando recepción de medicamentos "
+        "pedidos a proveedor, verificando contra orden de compra y factura."
+    ),
+    
+    "tipo-mov-remision": (
+        "Entrada por remisión de proveedor: recepción de medicamentos con remisión "
+        "sin factura inmediata, registro en sistema hospitalario."
+    ),
+    
+    "tipo-mov-prestamo": (
+        "Entrada de medicamentos en préstamo de proveedor: farmaceuta registrando "
+        "productos recibidos temporalmente para atención de emergencias."
+    ),
+    
+    "tipo-mov-si": (
+        "Entrada alterna al sistema: registro de medicamentos ingresados por ruta "
+        "especial o directa desde cliente, farmaceuta verificando documentación."
+    ),
+    
+    "tipo-mov-dispensacion": (
+        "Dispensación desde solicitud médica: farmaceuta entregando medicamentos "
+        "autorizados por prescripción, enfermería recibiendo para administración."
+    ),
+    
+    "tipo-mov-cirugia": (
+        "Salida de medicamentos e insumos para quirófano: auxiliar preparando kit "
+        "quirúrgico con anestésicos, material estéril y dispositivos médicos."
+    ),
+    
+    "tipo-mov-venta-retail": (
+        "Venta al público en farmacia hospitalaria: vendedor atendiendo a particular, "
+        "registrando medicamentos vendidos con recibo de caja y factura."
+    ),
+    
+    "tipo-mov-venta-factura": (
+        "Venta con facturación electrónica: proceso de venta a particular con "
+        "generación de factura DIAN y registro contable unificado."
+    ),
+    
+    "tipo-mov-venta-particular": (
+        "Venta directa a particular: atención rápida en ventanilla de farmacia "
+        "con registro de medicamentos vendidos sin fórmula médica."
+    ),
+    
+    "tipo-mov-devolucion-cliente": (
+        "Cliente devolviendo medicamento: vendedor de farmacia recibiendo producto "
+        "no utilizado con factura original, reversando venta en sistema."
+    ),
+    
+    "tipo-mov-traslado-af": (
+        "Traslado de inventario a activos fijos: registro de equipos médicos que "
+        "pasan de inventario consumible a activo fijo institucional."
+    ),
+    
+    "tipo-mov-pickpack": (
+        "Proceso pick and pack en bodega: preparación y empaque de pedido completo "
+        "de medicamentos para despacho a entidad externa o sucursal."
+    ),
+    
+    "tipo-mov-traslado-lote": (
+        "Traslado específico de lote entre bodegas: movimiento de lote concreto de "
+        "medicamento con número de lote y vencimiento entre ubicaciones."
+    ),
+    
+    "tipo-mov-devolucion-ce-cx": (
+        "Devolución desde áreas clínicas: enfermería de consulta externa o "
+        "hospitalización devolviendo medicamentos no administrados a farmacia."
+    ),
+    
+    "tipo-mov-obsequios": (
+        "Entrada de medicamentos por obsequio: farmaceuta registrando productos "
+        "donados o de cortesía recibidos sin costo de proveedor."
+    ),
+    
+    "tipo-mov-anulacion-salida": (
+        "Anulación de salida previa: farmaceuta reversando salida registrada "
+        "incorrectamente, devolviendo medicamentos a existencias disponibles."
+    ),
 }
 
 
