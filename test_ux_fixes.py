@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Tests para verificar las correcciones de UX (waiting notice delay)."""
 import asyncio
 import json
@@ -8,6 +9,11 @@ import tempfile
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Force UTF-8 output to avoid Windows cp1252 crashes
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Añadir scripts al path
 ROOT = Path(__file__).resolve().parent
