@@ -237,7 +237,7 @@ def _obtener_visuales_bloque(bloque_id: str, bloque_meta: dict, log: bool = True
                 titulo = bloque_meta.get("titulo", "")
                 descripcion = bloque_meta.get("descripcion", titulo)
                 
-                # Intentar generar
+                # Intentar generar (logs en capacitacion_visuales.py)
                 data_uri = visuales.generar_ilustracion_completa(
                     titulo=titulo,
                     descripcion=descripcion,
@@ -246,11 +246,10 @@ def _obtener_visuales_bloque(bloque_id: str, bloque_meta: dict, log: bool = True
                 
                 if data_uri:
                     resultado["ilustracion"] = data_uri
-                    if log:
-                        print(f"    ✓ Ilustración generada y guardada")
+                    # El log detallado ya se imprimió en generar_ilustracion_completa()
                 else:
                     if log:
-                        print(f"    ⚠️  No se pudo generar ilustración")
+                        print(f"    ✗ No se generó ilustración (ver logs arriba)")
             except Exception as e:
                 if log:
                     print(f"    ⚠️  Error generando ilustración: {e}")

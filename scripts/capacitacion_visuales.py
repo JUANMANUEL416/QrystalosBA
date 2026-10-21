@@ -2,13 +2,15 @@
 """
 Generador de elementos visuales para capacitaciones:
 - Mapas mentales y diagramas (Cursor AI → SVG/Mermaid)
-- Ilustraciones tipo dibujo (OpenAI Images API)
+- Ilustraciones tipo dibujo (Gemini/OpenAI Images API)
 - Fallback SVG local
 
 Orden de prioridad (configurable en .env):
-1. Cursor AI SDK (CURSOR_API_KEY) - Genera SVG/infografías de calidad
-2. OpenAI Images (OPENAI_API_KEY) - Solo para ilustraciones tipo dibujo
+1. Gemini (default recomendado) - Genera imágenes
+2. OpenAI Images - Respaldo
 3. Generador SVG local - Respaldo final
+
+Carga .env del proyecto igual que cursor_bot.py (os.environ gana).
 """
 import os
 import json
@@ -16,6 +18,33 @@ import base64
 import re
 from pathlib import Path
 from typing import Optional
+
+
+# --- Carga de .env (prioridad: os.environ > archivo .env) ---
+def _parse_env(path: str) -> dict:
+    """Lee .env y devuelve dict de variables (sin sobrescribir os.environ)."""
+    values = {}
+    if not os.path.isfile(path):
+        return values
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            values[key.strip()] = val.strip().strip('"').strip("'")
+    return values
+
+
+# Cargar .env al importar (os.environ ya tiene prioridad)
+ROOT = Path(__file__).resolve().parents[1]
+ENV_PATH = ROOT / ".env"
+_ENV_FILE = _parse_env(str(ENV_PATH))
+
+
+def _get_env(key: str, default: str = "") -> str:
+    """Obtiene variable: os.environ gana sobre .env."""
+    return os.environ.get(key) or _ENV_FILE.get(key) or default
 
 
 def generar_visual_con_cursor(
@@ -43,14 +72,14 @@ def generar_visual_con_cursor(
             pass
     
     # Verificar API key
-    cursor_api_key = os.getenv("CURSOR_API_KEY")
+    cursor_api_key = _get_env("CURSOR_API_KEY")
     if not cursor_api_key:
         print("  ⚠️  CURSOR_API_KEY no configurada, usando fallback")
         return None
     
     # Modelos disponibles (configurables en .env)
     # Orden de prioridad según CAPACITACION_VISUAL_MODEL
-    modelo_preferido = os.getenv("CAPACITACION_VISUAL_MODEL", "gpt-5.6-sol-medium")
+    modelo_preferido = _get_env("CAPACITACION_VISUAL_MODEL", "gpt-5.6-sol-medium")
     modelos_fallback = [
         "gpt-5.6-sol-medium",
         "claude-sonnet-5-5-medium",
@@ -328,14 +357,23 @@ def generar_ilustracion_completa(
         try:
             img_data = cache_path.read_bytes()
             img_b64 = base64.b64encode(img_data).decode("utf-8")
+            print(f"    ✓ Ilustración (cache): {cache_path.name}")
             return f"data:image/png;base64,{img_b64}"
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"    ⚠️  Error leyendo cache: {e}")
     
     # 1. Proveedor configurado (Gemini default)
-    proveedor = os.getenv("CAPACITACION_IMAGE_PROVIDER", "gemini").lower()
+    proveedor = _get_env("CAPACITACION_IMAGE_PROVIDER", "gemini").lower()
+    gemini_key = _get_env("GEMINI_API_KEY")
+    openai_key = _get_env("OPENAI_API_KEY")
     
-    if proveedor == "gemini" and os.getenv("GEMINI_API_KEY"):
+    print(f"    Intentando generar ilustración...")
+    print(f"      Proveedor configurado: {proveedor}")
+    print(f"      GEMINI_API_KEY: {'✓ disponible' if gemini_key else '✗ no configurada'}")
+    print(f"      OPENAI_API_KEY: {'✓ disponible' if openai_key else '✗ no configurada'}")
+    
+    if proveedor == "gemini" and gemini_key:
+        print(f"      → Intentando con Gemini...")
         prompt = f"Ilustración educativa para capacitación: {titulo}. {descripcion}"
         data_uri = generar_ilustracion_gemini(prompt)
         if data_uri:
@@ -343,31 +381,48 @@ def generar_ilustracion_completa(
             if cache_path:
                 try:
                     _guardar_data_uri_como_png(data_uri, cache_path)
+                    print(f"    ✓ Ilustración generada con Gemini y guardada en {cache_path.name}")
                 except Exception as e:
-                    print(f"    ⚠️  No se pudo cachear: {e}")
+                    print(f"    ✓ Ilustración generada con Gemini (no se pudo cachear: {e})")
+            else:
+                print(f"    ✓ Ilustración generada con Gemini")
             return data_uri
+        else:
+            print(f"      ✗ Gemini no generó imagen (ver logs arriba)")
     
     # 2. OpenAI fallback
-    if os.getenv("OPENAI_API_KEY"):
-        openai_model = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
+    if openai_key:
+        print(f"      → Intentando con OpenAI...")
+        openai_model = _get_env("OPENAI_IMAGE_MODEL", "gpt-image-1")
+        print(f"        Modelo: {openai_model}")
         prompt = f"Educational illustration for: {titulo}. {descripcion}"
         url = generar_ilustracion_openai(prompt, openai_model)
         if url:
             # Descargar y convertir a data URI
             try:
+                print(f"        Descargando imagen desde URL...")
                 data_uri = _descargar_imagen_como_data_uri(url)
-                if data_uri and cache_path:
-                    _guardar_data_uri_como_png(data_uri, cache_path)
-                return data_uri
+                if data_uri:
+                    if cache_path:
+                        _guardar_data_uri_como_png(data_uri, cache_path)
+                        print(f"    ✓ Ilustración generada con OpenAI y guardada en {cache_path.name}")
+                    else:
+                        print(f"    ✓ Ilustración generada con OpenAI")
+                    return data_uri
             except Exception as e:
-                print(f"    ⚠️  Error descargando imagen OpenAI: {e}")
+                print(f"      ✗ Error descargando imagen OpenAI: {e}")
+        else:
+            print(f"      ✗ OpenAI no generó URL (ver logs arriba)")
     
     # 3. Fallback SVG local
+    print(f"      → Usando generador SVG local (fallback)")
     svg = generar_infografia_svg_fallback(titulo, [descripcion])
     if svg:
         svg_b64 = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
+        print(f"    ✓ Ilustración generada con SVG local")
         return f"data:image/svg+xml;base64,{svg_b64}"
     
+    print(f"    ✗ No se pudo generar ilustración (ningún método funcionó)")
     return None
 
 
@@ -419,8 +474,9 @@ def generar_ilustracion_openai(
     """
     try:
         import openai
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = _get_env("OPENAI_API_KEY")
         if not api_key:
+            print(f"    ⚠️  OPENAI_API_KEY no disponible")
             return None
         
         openai.api_key = api_key
@@ -432,9 +488,19 @@ def generar_ilustracion_openai(
             size=tamano
         )
         
-        return response['data'][0]['url']
+        url = response['data'][0]['url']
+        print(f"        ✓ OpenAI generó imagen: {url[:60]}...")
+        return url
+    except ImportError:
+        print(f"        ✗ Paquete 'openai' no instalado (pip install openai)")
+        return None
     except Exception as e:
-        print(f"  ⚠️  Error con OpenAI Images: {e}")
+        # Capturar error HTTP si existe
+        error_msg = str(e)
+        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            print(f"        ✗ Error OpenAI (HTTP {e.response.status_code}): {error_msg}")
+        else:
+            print(f"        ✗ Error OpenAI: {error_msg}")
         return None
 
 
@@ -454,12 +520,13 @@ def generar_ilustracion_gemini(
     try:
         import google.generativeai as genai
         
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = _get_env("GEMINI_API_KEY")
         if not api_key:
+            print(f"    ⚠️  GEMINI_API_KEY no disponible")
             return None
         
         if modelo is None:
-            modelo = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+            modelo = _get_env("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
         
         # Modelos disponibles con fallback
         modelos = [
@@ -476,6 +543,7 @@ def generar_ilustracion_gemini(
         # Intentar con cada modelo
         for modelo_actual in modelos:
             try:
+                print(f"        Probando modelo: {modelo_actual}")
                 # Usar Gemini para generar imagen con responseModalities IMAGE
                 model = genai.GenerativeModel(modelo_actual)
                 response = model.generate_content(
@@ -492,17 +560,27 @@ def generar_ilustracion_gemini(
                     for part in response.parts:
                         if hasattr(part, 'inline_data') and part.inline_data:
                             # Convertir a data URL
-                            import base64
                             image_data = part.inline_data.data
                             mime_type = part.inline_data.mime_type
                             b64_data = base64.b64encode(image_data).decode('utf-8')
+                            print(f"        ✓ Gemini generó imagen ({len(image_data)} bytes, {mime_type})")
                             return f"data:{mime_type};base64,{b64_data}"
                 
-                # Si llegamos aquí, intentar siguiente modelo
+                # Si llegamos aquí, no hubo imagen inline
+                print(f"        ✗ {modelo_actual}: respuesta sin imagen inline_data")
                 continue
             
             except Exception as e:
-                print(f"  ⚠️  Error con {modelo_actual}: {e}")
+                # Capturar error HTTP/API si existe
+                error_msg = str(e)
+                if "429" in error_msg or "quota" in error_msg.lower():
+                    print(f"        ✗ {modelo_actual}: Cuota excedida o rate limit")
+                elif "401" in error_msg or "403" in error_msg or "auth" in error_msg.lower():
+                    print(f"        ✗ {modelo_actual}: Error de autenticación (revisar GEMINI_API_KEY)")
+                elif "404" in error_msg or "not found" in error_msg.lower():
+                    print(f"        ✗ {modelo_actual}: Modelo no disponible en esta cuenta")
+                else:
+                    print(f"        ✗ {modelo_actual}: {error_msg}")
                 continue
         
         return None
