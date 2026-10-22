@@ -57,11 +57,7 @@ Cuando un módulo (facturación, caja, CxP, bancos, inventario, nómina) intenta
 
 ## Variables de configuración (USVGS)
 
-| Código | Descripción | Valor habitual | Efecto |
-|--------|-------------|----------------|--------|
-| `CONTAB_ENVIA_A_ERRADOS` | Envía comprobantes con errores a errados | `SI` | Si `NO`, rechaza la operación sin crear el comprobante |
-| `CONTAB_DIAGNOSTICA_AUTO` | Diagnóstico automático al entrar a errados | `SI` | Ejecuta `DIAGNOSTICAR_ERRORES` automáticamente al crear el errado |
-| `CONTAB_PERMITE_EDITAR_ERRADO` | Permite editar líneas de errados | `NO` | Si `SI`, el contador puede editar las líneas a mano; si `NO`, solo reconstrucción |
+**Pendiente validar:** No se encontraron variables USVGS específicas para comprobantes errados en la base de conocimiento. El flujo de diagnóstico y reconstrucción se hace directamente en los SPs (`SPQ_MCPE_COL → DIAGNOSTICAR_ERRORES`, `SPQ_MCPE_COL → RECONSTRUIR`, `SPK_NC_REVISAMCPE`).
 
 ## Usuario final
 
