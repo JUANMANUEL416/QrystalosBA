@@ -58,11 +58,12 @@ El flujo de registro de una cuenta por pagar es:
 
 | Código | Descripción | Valor habitual | Efecto |
 |--------|-------------|----------------|--------|
-| `CXP_CALCULA_IVA_AUTO` | Calcula IVA automáticamente | `SI` | Consulta `FIMPDV` y calcula IVA según el tipo de bien/servicio |
-| `CXP_CALCULA_RETENCIONES` | Calcula retenciones automáticamente | `SI` | Aplica retención en la fuente, ICA e IVA retenido según régimen del tercero |
-| `CXP_EXIGE_ENTRADA_INV` | Exige entrada de inventario | `NO` | Si `SI`, no permite contabilizar CxP de compras sin entrada de inventario vinculada |
-| `CXP_VALIDA_CUADRE` | Valida cuadre al contabilizar | `SI` | Rechaza contabilización si suma de líneas ≠ valor cabecera |
-| `CERRADO_CXP` | Periodo CxP cerrado | `0` = abierto, `1` = cerrado | Si está cerrado, no se registran CxP con fecha en ese período |
+| `CERRADO_CXP` | Periodo CxP cerrado | `0` = abierto, `1` = cerrado | Si está cerrado, no se registran CxP con fecha en ese período (campo de `FCARTH` y `PRI`) |
+
+**Pendiente validar:**
+- Cálculo automático de IVA y retenciones: se hace en el SP pero no se encontró variable USVGS que lo active/desactive
+- Validación de cuadre: se hace en `CONTABILIZAR_FCXP` pero no se encontró variable específica
+- Exigencia de entrada de inventario: validación interna del SP
 
 ## Usuario final
 

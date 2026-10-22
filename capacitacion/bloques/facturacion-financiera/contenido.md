@@ -74,10 +74,11 @@ El procedimiento `SPK_TOTALFACTURFIN` recalcula los totales de la factura (suma 
 | Código | Descripción | Valor habitual | Efecto |
 |--------|-------------|----------------|--------|
 | `IDFORMATOFTRFINANCIE` | Formato de impresión para factura financiera | `1`, `2`, `3` | Define la plantilla de impresión (con o sin datos del paciente, con o sin tarifas) |
-| `CAPITA_EXIGE_FTRDC` | Cápita exige relación de prestaciones | `TIPOCAP=2,3,4` | Si `TIPOCAP` está en esta lista, rechaza la factura si no tiene líneas en `FTRDC` |
-| `FTR_VALIDA_CONTRATO_VIGENTE` | Valida que el contrato esté vigente | `SI` | Rechaza factura si el contrato está vencido |
-| `FTR_CALCULA_IVA_AUTO` | Calcula IVA automáticamente al agregar línea | `SI` | Consulta `FIMPDV` y `FNK_VALOR_IMPUESTO` para calcular IVA según servicio y contrato |
-| `GENNUMEROFACTURA_PREFIJO` | Prefijo del número de factura | `FV`, `FC` | Prefijo según tipo de factura (venta, cápita) |
+
+**Pendiente validar:**
+- Validación de cápita con relación FTRDC (TIPOCAP 2, 3, 4): la documentación indica que "sin FTRDC no debe enviarse a contabilidad ni a DIAN" pero no se encontró la variable USVGS que controla esto
+- Cálculo automático de IVA: se hace con `FNK_VALOR_IMPUESTO` pero no se encontró variable de activación automática
+- Validación de contrato vigente: se hace en `CREARFTR` pero no se encontró variable USVGS específica
 
 ## Usuario final
 
@@ -168,9 +169,9 @@ El procedimiento `SPK_TOTALFACTURFIN` recalcula los totales de la factura (suma 
 - **Valida:** resolución DIAN activa para la sede (`FDIAN.PROCEDENCIA=FTR`, `ACTIVO=1`).
 - **Qué hace:**
   - Consulta `FDIAN` para la sede, incrementa el consecutivo, verifica que no supere el rango autorizado.
-  - Retorna el número de factura con prefijo y consecutivo (ej. `FV001234`).
+  - Retorna el número de factura con prefijo y consecutivo (ej. número generado según FDIAN).
 - **Errores típicos:**
-  - "Consecutivo fuera de rango autorizado por DIAN" (cuando el consecutivo supera `RANFIN`).
+  - "Consecutivo fuera de rango autorizado por DIAN".
 
 ### Ejemplos reales del sector salud
 
@@ -180,7 +181,7 @@ El facturador crea una Nueva Factura para un paciente con plan `POS Compensar` (
 - Cantidad: `1`
 - Valor unitario: `$45.000` (busca tarifa en `CPRE`)
 
-El sistema calcula IVA `$0` (servicios médicos exentos), total `$45.000`. Al guardar, asigna número `FV001234`, valida periodo contable abierto y resolución DIAN. La factura queda en borrador; el auditor la revisa y el coordinador pulsa Contabilizar.
+El sistema calcula IVA `$0` (servicios médicos exentos), total `$45.000`. Al guardar, asigna número de factura según FDIAN, valida periodo contable abierto y resolución DIAN. La factura queda en borrador; el auditor la revisa y el coordinador pulsa Contabilizar.
 
 **Ejemplo 2 — Factura cápita Periodo para ARS:**
 La IPS factura el mes de octubre bajo contrato cápita con `Salud Total ARS`. El facturador crea Nueva Factura:

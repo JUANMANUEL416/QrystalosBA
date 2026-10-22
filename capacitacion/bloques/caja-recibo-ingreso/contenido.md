@@ -57,12 +57,7 @@ Cuando un paciente es atendido en la IPS y debe pagar su copago, cuota moderador
 
 ## Variables de configuración (USVGS)
 
-| Código | Descripción | Valor habitual | Efecto |
-|--------|-------------|----------------|--------|
-| `CAJA_EXIGE_PACIENTE` | Exige identificar al paciente | `SI` | No permite confirmar recibo sin afiliado registrado |
-| `CAJA_GENERA_FTR_POS` | Genera factura POS automáticamente | `SI` | Al confirmar copago, crea la factura POS |
-| `CAJA_VALIDA_CUADRE_FP` | Valida que formas de pago cuadren | `SI` | Rechaza confirmación si suma de formas ≠ valor del recibo |
-| `CAJA_PERMITE_VUELTOS` | Permite registrar vueltos | `SI` | Si el paciente paga con efectivo mayor al valor del recibo, el sistema calcula el vuelto |
+**Pendiente validar:** No se encontraron variables USVGS específicas para recibos de ingreso en la base de conocimiento. Las validaciones se hacen directamente en los SPs (`SPQ_CONF_CAJA → CONFIRMAR_RECIBO`, `SPK_CREA_FACTURA_POS_CAJA`).
 
 ## Usuario final
 

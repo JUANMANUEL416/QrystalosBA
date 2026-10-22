@@ -58,13 +58,7 @@ El flujo de facturación desde admisión es:
 
 ## Variables de configuración (USVGS)
 
-| Código | Descripción | Valor habitual | Efecto |
-|--------|-------------|----------------|--------|
-| `FACTURA_ALTA_COMPLETA` | Factura automática al dar alta | `SI` | Si está en `SI`, al marcar egreso del paciente se dispara automáticamente la facturación |
-| `FACTURA_PERMITE_CORTE` | Habilita cortes parciales de facturación | `SI` | Permite facturar por tramos en admisiones largas |
-| `FACTURA_VALIDA_AUTORIZACION` | Exige autorización para servicios no POS | `SI` | Rechaza facturar un cargo sin autorización vigente |
-| `RIPS_OBLIGATORIO_FACTURA` | Exige RIPS generados antes de contabilizar | `SI` | Bloquea la contabilización si no se han producido los RIPS JSON |
-| `CARGOS_DUPLICADOS_ALERTA` | Alerta si hay cargos duplicados | `SI` | Muestra advertencia al auditor si detecta mismo servicio, misma fecha, mismo paciente más de una vez |
+**Pendiente validar:** No se encontraron variables USVGS específicas para facturación desde admisión en la base de conocimiento. Las validaciones se hacen directamente en los SPs (`SPK_FACTURA_ASIS`, `SPK_FACTURA_ASIS_CORTE`).
 
 ## Usuario final
 
@@ -89,7 +83,7 @@ El flujo de facturación desde admisión es:
 - **Propósito:** facturar una admisión completa (urgencias, hospitalización, domiciliaria).
 - **Valida:**
   - Admisión existe (`HADM.IDHADM`).
-  - Admisión tiene alta médica (`F_EGRESO` no nulo) o se permite facturar sin egreso (variable `FACTURA_SIN_EGRESO`).
+  - Admisión tiene alta médica (`F_EGRESO` no nulo) o se permite facturar sin egreso (validación interna del SP).
   - Cargos `HPRE`/`HPRED` tienen tarifa (`CPRE`/`COPS`) y están autorizados (si aplica).
   - Periodo contable abierto para la fecha de la factura.
   - Resolución DIAN configurada para la sede.
@@ -101,8 +95,8 @@ El flujo de facturación desde admisión es:
   - Llama `SPK_TOTALFACTURFIN` para calcular totales.
 - **Errores típicos:**
   - "Admisión no tiene alta médica" (falta `F_EGRESO`).
-  - "Cargo sin tarifa: código CUPS `890201` no está en `CPRE`".
-  - "Servicio no autorizado: falta autorización para procedimiento `X`".
+  - "Cargo sin tarifa: código CUPS no está en `CPRE`".
+  - "Servicio no autorizado: falta autorización para procedimiento".
 
 #### `SPK_FACTURA_ASIS`
 - **Propósito:** facturar una admisión o un grupo de admisiones de forma masiva.
@@ -146,7 +140,7 @@ Un paciente ingresa a urgencias por trauma en accidente de tránsito. Se registr
 - Sutura simple (`120301`): `$150.000`
 - Medicamentos (analgésicos, antibióticos): `$45.000`
 
-Al dar el alta (4 horas después), el facturador pulsa Facturar admisión. El sistema crea la factura `FV001235` con `PROCEDENCIA=SALUD`, total `$395.000`, genera RIPS JSON y marca la admisión como `FACTURADO=1`. La factura se envía a la aseguradora SOAT con el FURIPS (Formato Único de Reclamación).
+Al dar el alta (4 horas después), el facturador pulsa Facturar admisión. El sistema crea la factura con `PROCEDENCIA=SALUD`, total `$395.000`, genera RIPS JSON y marca la admisión como `FACTURADO=1`. La factura se envía a la aseguradora SOAT con el FURIPS (Formato Único de Reclamación).
 
 **Ejemplo 2 — Factura de hospitalización con corte:**
 Un paciente con plan `Coomeva EPS` ingresa a hospitalización por neumonía el `2026-10-01`. Durante 15 días se registran cargos diarios:
@@ -155,10 +149,10 @@ Un paciente con plan `Coomeva EPS` ingresa a hospitalización por neumonía el `
 - Procedimientos (broncoscopia, radiografías, laboratorios): `$1.200.000`
 - Medicamentos (antibióticos IV, oxígeno, sueros): `$1.800.000`
 
-Total acumulado: `$6.500.000`. El auditor decide hacer un corte al día 10 para facilitar la radicación ante la EPS. El facturador pulsa Facturar corte con fecha `2026-10-10`. El sistema factura los cargos del `2026-10-01` al `2026-10-10`, genera factura `FV001236` con `$4.300.000`, marca esos cargos como facturados y deja la admisión abierta (`FACTURADO=2`). Al alta definitiva (`2026-10-15`), se facturan los cargos restantes del día 11 al 15, generando factura `FV001237` con `$2.200.000`. La admisión queda `FACTURADO=1`.
+Total acumulado: `$6.500.000`. El auditor decide hacer un corte al día 10 para facilitar la radicación ante la EPS. El facturador pulsa Facturar corte con fecha `2026-10-10`. El sistema factura los cargos del `2026-10-01` al `2026-10-10`, genera factura con `$4.300.000`, marca esos cargos como facturados y deja la admisión abierta (`FACTURADO=2`). Al alta definitiva (`2026-10-15`), se facturan los cargos restantes del día 11 al 15, generando otra factura con `$2.200.000`. La admisión queda `FACTURADO=1`.
 
 **Ejemplo 3 — Rechazo por cargo no autorizado:**
-Un paciente con plan `Nueva EPS` está hospitalizado. Se registra un cargo de tomografía contrastada (`876101`) por `$800.000`. El cargo no tiene autorización previa. Al intentar facturar, el sistema valida `FACTURA_VALIDA_AUTORIZACION=SI`, detecta que falta la autorización y rechaza con error "Servicio no autorizado: falta autorización para procedimiento `876101`". El facturador solicita la autorización a la EPS, la registra en el sistema y luego vuelve a facturar.
+Un paciente con plan `Nueva EPS` está hospitalizado. Se registra un cargo de tomografía contrastada (`876101`) por `$800.000`. El cargo no tiene autorización previa. Al intentar facturar, el sistema detecta que falta la autorización y rechaza con error "Servicio no autorizado: falta autorización para procedimiento `876101`". El facturador solicita la autorización a la EPS, la registra en el sistema y luego vuelve a facturar.
 
 ## Pendiente validar
 

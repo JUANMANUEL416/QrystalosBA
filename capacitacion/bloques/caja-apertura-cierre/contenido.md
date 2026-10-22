@@ -63,12 +63,7 @@ Antes de recibir pagos o efectuar egresos, el cajero debe **abrir la sesión de 
 
 ## Variables de configuración (USVGS)
 
-| Código | Descripción | Valor habitual | Efecto |
-|--------|-------------|----------------|--------|
-| `CAJA_EXIGE_BASE` | Exige base inicial al abrir | `SI` | No permite abrir caja sin ingresar base inicial |
-| `CAJA_CUADRE_AUTO` | Cuadre automático al cerrar | `SI` | Calcula automáticamente la diferencia |
-| `CAJA_FALTANTE_MAX` | Faltante máximo permitido | `$5.000` | Si el faltante supera este valor, exige autorización del supervisor |
-| `CAJA_REEMBOLSO_AUTO` | Reembolso automático de caja menor | `SI` | Al cerrar, si hay caja menor usada, genera automáticamente el reembolso |
+**Pendiente validar:** No se encontraron variables USVGS específicas para apertura/cierre de caja en la base de conocimiento. La validación de base inicial, cuadre y reembolso se hace directamente en los SPs (`SPQ_CONF_CAJA → APERTURA_CAJA`, `SPQ_CONF_CAJA_2 → CIERRE_CAJA`, `SPQ_CONF_CAJA_2 → CUADRE_CAJA`).
 
 ## Usuario final
 

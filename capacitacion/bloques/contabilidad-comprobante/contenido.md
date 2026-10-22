@@ -55,12 +55,7 @@ El **comprobante contable** (`MCP` cabecera, `MCH` líneas) es el registro del a
 
 ## Variables de configuración (USVGS)
 
-| Código | Descripción | Valor habitual | Efecto |
-|--------|-------------|----------------|--------|
-| `CONTAB_VALIDA_CUADRE` | Valida cuadre al confirmar | `SI` | Rechaza confirmación si débitos ≠ créditos |
-| `CONTAB_PERMITE_TERCERO_INACTIVO` | Permite tercero inactivo | `NO` | Rechaza líneas con tercero inactivo |
-| `CONTAB_EXIGE_CCOSTO` | Exige centro de costo | `SI` | Rechaza líneas sin centro de costo en cuentas de gastos |
-| `CONTAB_CONFIRMA_AUTO` | Confirmación automática | `NO` | Si `SI`, los comprobantes de módulos se confirman automáticamente (no pasan por borrador) |
+**Pendiente validar:** No se encontraron variables USVGS específicas para comprobantes contables en la base de conocimiento. Las validaciones de cuadre, tercero activo, centro de costo se hacen directamente en los SPs (`SPK_REVISAR_COMPROBANTE`, `SPQ_MCP_COL → CONFIRMAR_MASIVO`).
 
 ## Usuario final
 

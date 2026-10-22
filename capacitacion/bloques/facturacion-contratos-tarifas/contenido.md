@@ -51,12 +51,7 @@ Al facturar, el sistema busca primero la tarifa específica en `CPRE` o `COPS`; 
 
 ## Variables de configuración (USVGS)
 
-| Código | Descripción | Valor habitual | Efecto |
-|--------|-------------|----------------|--------|
-| `FTR_VALIDAR_TARIFA` | Exige tarifa específica al facturar | `SI` | Si está en `SI`, rechaza la factura si no encuentra tarifa en `CPRE` o `COPS` ni en manual tarifario |
-| `FTR_MANUAL_TARIFARIO` | Manual tarifario genérico | `SOAT`, `ISS`, `PARTICULAR` | Define el manual de precios de respaldo cuando no hay tarifa específica |
-| `FTR_CONTRATO_OBLIGATORIO` | Exige contrato vigente al facturar | `SI` | Valida que el contrato esté activo y dentro de su vigencia |
-| `CAPITA_EXIGE_FTRDC` | Cápita exige relación de prestaciones | `TIPOCAP=2,3,4` | Factura cápita solo pasa si tiene líneas en `FTRDC` (relaciona afiliados y servicios) |
+**Pendiente validar:** No se encontraron variables USVGS específicas para contratos y tarifas en la base de conocimiento. La validación de tarifas y contratos vigentes se hace directamente en los SPs `SPK_BUSCAR_TARIFA` y `SPQ_FTR_COL → CREARFTR`.
 
 ## Usuario final
 
@@ -101,7 +96,7 @@ Al facturar, el sistema busca primero la tarifa específica en `CPRE` o `COPS`; 
 - **Propósito:** CRUD de paquetes tarifarios.
 - **Métodos:** `CREA_COPS`, `EDITA_COPS`, `LISTA_COPS`, `AGREGA_PRESTACION_PAQUETE`.
 - **Valida:** contrato existe; prestaciones del paquete están registradas.
-- **Qué hace:** inserta o actualiza `COPS` y sus líneas `COPSD` (prestaciones incluidas en el paquete).
+- **Qué hace:** inserta o actualiza `COPS` y sus líneas de detalle (prestaciones incluidas en el paquete).
 - **Errores:** "Paquete debe incluir al menos una prestación", "Prestación duplicada en el paquete".
 
 #### `SPK_BUSCAR_TARIFA`
@@ -116,9 +111,9 @@ Al facturar, el sistema busca primero la tarifa específica en `CPRE` o `COPS`; 
 La IPS firma un contrato con **Compensar EPS** para atender régimen contributivo. El contrato se registra con vigencia 2026-01-01 a 2026-12-31, responsable `Compensar EPS`, régimen `Contributivo`. Se crea el plan `POS Compensar` con `CAPITADA=0` (evento). Se cargan tarifas específicas:
 - Consulta general (`890201`): $45.000
 - Ecografía obstétrica (`881101`): $120.000
-- Cesárea paquete (`PAQCESA`): $3.500.000 (incluye honorarios, sala, anestesia, hospitalización 3 días).
+- Cesárea en paquete: $3.500.000 (incluye honorarios, sala, anestesia, hospitalización 3 días).
 
-Al facturar una cesárea, el sistema busca el paquete `PAQCESA` en `COPS` y aplica el precio global; las prestaciones individuales quedan relacionadas en `FTRDC` para RIPS.
+Al facturar una cesárea, el sistema busca el paquete en `COPS` y aplica el precio global; las prestaciones individuales quedan relacionadas en `FTRDC` para RIPS.
 
 **Ejemplo 2 — Contrato cápita con ARS:**
 La IPS tiene un contrato de **cápita** con **Salud Total ARS**. Se registra el plan `Cápita Salud Total` con `CAPITADA=1`, `PGP=0`. El pago es mensual por afiliado cubierto. Al facturar, se usa `TIPOCAP=2` (periodo intermedio) y se relacionan todas las atenciones del mes en `FTRDC`: consultas, procedimientos, medicamentos POS. La factura lleva el valor fijo capitado; las prestaciones son soporte para RIPS y auditoría.
