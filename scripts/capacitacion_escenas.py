@@ -247,6 +247,182 @@ ESCENAS_BLOQUES = {
         "Anulación de salida previa: farmaceuta reversando salida registrada "
         "incorrectamente, devolviendo medicamentos a existencias disponibles."
     ),
+    
+    # Facturación
+    "facturacion-configuracion": (
+        "Configuración de módulo de facturación: administrador definiendo tarifas, "
+        "convenios con pagadores, códigos CUPS y parámetros de facturación hospitalaria."
+    ),
+    "facturacion-registro": (
+        "Registro de factura hospitalaria: facturador ingresando eventos de atención, "
+        "procedimientos, medicamentos y exámenes con valores según contrato."
+    ),
+    "facturacion-validacion": (
+        "Validación de factura antes de radicar: revisor verificando RIPS, soportes "
+        "clínicos y cumplimiento de contrato con pagador."
+    ),
+    "facturacion-contabilizacion": (
+        "Contabilización de factura hospitalaria: contador generando comprobante "
+        "contable con cuentas de ingreso y cartera por cobrar."
+    ),
+    "facturacion-reportes": (
+        "Reportes de facturación: usuario consultando facturas por periodo, pagador, "
+        "estado y valores facturados en sistema hospitalario."
+    ),
+    
+    # Caja
+    "caja-configuracion": (
+        "Configuración de cajas: administrador definiendo cajas, medios de pago, "
+        "conceptos de ingreso y egreso en sistema hospitalario."
+    ),
+    "caja-registro": (
+        "Registro de movimiento de caja: cajero recibiendo pago de particular o "
+        "pagador, generando recibo de caja con medio de pago."
+    ),
+    "caja-validacion": (
+        "Validación y cuadre de caja: cajero verificando recibos del día contra "
+        "efectivo y medios de pago antes de cierre de caja."
+    ),
+    "caja-contabilizacion": (
+        "Contabilización de movimientos de caja: contador generando comprobante "
+        "contable de recaudos e ingresos a bancos."
+    ),
+    "caja-reportes": (
+        "Reportes de caja: cajero o supervisor consultando movimientos, cuadre "
+        "diario y medios de pago recibidos."
+    ),
+    
+    # CxP
+    "cxp-fcxp-configuracion": (
+        "Configuración de cuentas por pagar: administrador definiendo proveedores, "
+        "formas de pago y parámetros de autorización de pagos."
+    ),
+    "cxp-fcxp-registro": (
+        "Registro de cuenta por pagar: auxiliar ingresando factura de proveedor "
+        "con valores, retenciones e impuestos en sistema."
+    ),
+    "cxp-fcxp-validacion": (
+        "Validación y autorización de cuenta por pagar: supervisor revisando "
+        "factura proveedor y autorizando orden de pago."
+    ),
+    "cxp-fcxp-contabilizacion": (
+        "Contabilización de cuenta por pagar: contador generando comprobante "
+        "contable con pasivo y cuentas de gasto o activo."
+    ),
+    "cxp-fcxp-reportes": (
+        "Reportes de cuentas por pagar: tesorero consultando saldos por proveedor, "
+        "vencimientos y pagos programados."
+    ),
+    
+    # Contabilidad
+    "contabilidad-configuracion": (
+        "Configuración de contabilidad: contador definiendo plan de cuentas, centros "
+        "de costo, periodos contables y parámetros de cierre."
+    ),
+    "contabilidad-registro": (
+        "Registro de comprobante contable: contador ingresando asiento manual "
+        "con débitos, créditos y centro de costo."
+    ),
+    "contabilidad-validacion": (
+        "Validación de comprobante: contador verificando cuadre de débitos y "
+        "créditos, cuentas correctas y documentos soporte."
+    ),
+    "contabilidad-contabilizacion": (
+        "Contabilización y cierre: contador cerrando periodo contable, generando "
+        "estados financieros y balance de comprobación."
+    ),
+    "contabilidad-reportes": (
+        "Reportes contables: contador consultando balance general, estado de "
+        "resultados y libros auxiliares por periodo."
+    ),
+    
+    # Recaudos
+    "recaudos-configuracion": (
+        "Configuración de recaudos: administrador definiendo pagadores, bancos, "
+        "conceptos de pago y parámetros de conciliación."
+    ),
+    "recaudos-registro": (
+        "Registro de recaudo: auxiliar de cartera ingresando pago recibido de "
+        "pagador con número de transacción y cuenta bancaria."
+    ),
+    "recaudos-validacion": (
+        "Validación y aplicación de recaudo: auxiliar aplicando pago a facturas "
+        "pendientes, verificando valores y glosas."
+    ),
+    "recaudos-contabilizacion": (
+        "Contabilización de recaudo: contador generando comprobante contable "
+        "de ingreso a banco y disminución de cartera."
+    ),
+    "recaudos-reportes": (
+        "Reportes de recaudos: cartera consultando pagos por periodo, pagador, "
+        "saldos pendientes y antigüedad de cartera."
+    ),
+    
+    # Glosas
+    "glosas-configuracion": (
+        "Configuración de glosas: administrador definiendo tipos de glosa, causales, "
+        "responsables y flujo de respuesta."
+    ),
+    "glosas-registro": (
+        "Registro de glosa: auxiliar de cartera ingresando glosa recibida de pagador "
+        "con causal, valor glosado y facturas afectadas."
+    ),
+    "glosas-validacion": (
+        "Validación y respuesta de glosa: coordinador médico revisando glosa, "
+        "preparando respuesta con soportes clínicos."
+    ),
+    "glosas-contabilizacion": (
+        "Contabilización de glosa: contador ajustando cartera y generando "
+        "provisión contable de glosas pendientes de respuesta."
+    ),
+    "glosas-reportes": (
+        "Reportes de glosas: cartera consultando glosas por estado, pagador, "
+        "causal, valores glosados y recuperados."
+    ),
+    
+    # Radicaciones
+    "radicaciones-configuracion": (
+        "Configuración de radicaciones: administrador definiendo pagadores, "
+        "formatos de radicación y documentos soporte requeridos."
+    ),
+    "radicaciones-registro": (
+        "Registro de radicación: facturador preparando paquete de radicación "
+        "con facturas, RIPS y soportes para envío a pagador."
+    ),
+    "radicaciones-validacion": (
+        "Validación de radicación: revisor verificando completitud de RIPS, "
+        "facturas y documentos antes de radicar ante pagador."
+    ),
+    "radicaciones-contabilizacion": (
+        "Contabilización de radicación: contador registrando cartera radicada "
+        "y generando reporte de cuentas por cobrar."
+    ),
+    "radicaciones-reportes": (
+        "Reportes de radicaciones: cartera consultando facturas radicadas por "
+        "pagador, fecha, estado y valores pendientes de pago."
+    ),
+    
+    # Nómina
+    "nomina-configuracion": (
+        "Configuración de nómina: administrador de recursos humanos definiendo "
+        "conceptos, deducciones, aportes y parámetros de liquidación."
+    ),
+    "nomina-registro": (
+        "Registro de novedades de nómina: auxiliar ingresando incapacidades, "
+        "horas extras, bonificaciones y deducciones del periodo."
+    ),
+    "nomina-validacion": (
+        "Validación y liquidación de nómina: contador liquidando nómina mensual "
+        "con conceptos, deducciones y aportes parafiscales."
+    ),
+    "nomina-contabilizacion": (
+        "Contabilización de nómina: contador generando comprobante contable "
+        "de gastos de personal y provisiones laborales."
+    ),
+    "nomina-reportes": (
+        "Reportes de nómina: recursos humanos consultando liquidación por empleado, "
+        "centro de costo, conceptos pagados y deducciones aplicadas."
+    ),
 }
 
 
