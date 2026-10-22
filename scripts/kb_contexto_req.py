@@ -59,6 +59,8 @@ DOMAIN_KEYWORDS = {
                "parafiscal", "liquidacion", "incapacidad", "vacaciones", "prestacion"},
     "contabilidad": {"asiento", "comprobante", "mayor", "balance", "auxiliar", "niif", "puc",
                      "causacion", "centro", "costo", "periodo", "cierre"},
+    "presupuesto": {"presupuesto", "ppto", "ejecucion", "apropiacion", "cdp", "rp", "compromiso",
+                    "disponibilidad", "registro", "vigencia", "ordenacion", "gasto"},
 }
 
 
@@ -72,14 +74,32 @@ def _normalizar_texto(texto: str) -> str:
     return sin_acentos.lower()
 
 
-def _extraer_terminos_req(texto: str) -> set[str]:
-    """Extrae términos clave del requerimiento para buscar en la KB."""
+def _extraer_terminos_req(texto: str) -> tuple[set[str], list[str]]:
+    """
+    Extrae términos clave del requerimiento para buscar en la KB.
+    
+    Returns:
+        (terminos_set, tags_inicio): términos generales y tags al inicio del texto
+    """
     texto = (texto or "").strip()
     if not texto:
-        return set()
+        return (set(), [])
     
     terminos = set()
     texto_norm = _normalizar_texto(texto)
+    
+    # Tags de módulo al inicio (antes de '—' o ':' o primeras 80 chars)
+    tags_inicio = []
+    primera_linea = texto.split('\n')[0][:100]
+    if '—' in primera_linea or ':' in primera_linea:
+        # Formato "PPTO — PRESUPUESTO Error..." o "CARTERA: problema..."
+        separador = '—' if '—' in primera_linea else ':'
+        prefijo = primera_linea.split(separador)[0].strip()
+        # Extraer palabras/siglas del prefijo
+        for palabra in re.findall(r'\b[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9_]+\b', prefijo):
+            if len(palabra) >= 3:
+                tags_inicio.append(palabra)
+                terminos.add(palabra)
     
     # Siglas técnicas (3+ letras mayúsculas) - mantener original
     for sigla in re.findall(r"\b[A-Z][A-Z0-9_]{2,}\b", texto):
@@ -100,7 +120,7 @@ def _extraer_terminos_req(texto: str) -> set[str]:
     for ruta in re.findall(r"/[a-z]+/[a-z\-]+", texto.lower()):
         terminos.add(ruta)
     
-    return terminos
+    return (terminos, tags_inicio)
 
 
 def _cargar_proceso_meta(proceso_id: str) -> dict:
@@ -212,13 +232,15 @@ def preseleccionar_contexto(req_texto: str, proceso_id: str = "") -> dict:
     Returns:
         dict con proceso, sps, controles, grafos, rutas para abrir si hace falta
     """
-    terminos = _extraer_terminos_req(req_texto)
+    terminos, tags_inicio = _extraer_terminos_req(req_texto)
     
     # Si no hay proceso_id, intentar inferirlo por términos
     procesos_candidatos = set()
     if not proceso_id:
         idx = kb_buscar._cargar_indice()
-        for termino in list(terminos)[:10]:  # Limitar búsquedas
+        # Ordenar terminos para hacer búsquedas deterministas
+        terminos_ordenados = sorted(terminos)
+        for termino in terminos_ordenados[:10]:  # Limitar búsquedas
             resultado = kb_buscar.buscar(termino, limite=3)
             if not resultado.get("ok"):
                 continue
@@ -253,26 +275,39 @@ def preseleccionar_contexto(req_texto: str, proceso_id: str = "") -> dict:
         meta_procs = {(p.get("id") or p.get("carpeta")): p for p in idx_gen.get("procesos") or []}
         
         def score_proceso(pid):
-            """Score basado en: id/nombre/módulo (peso fuerte), keywords dominio, términos del REQ."""
+            """Score basado en: tags inicio (peso máximo), id/nombre/módulo (peso fuerte), keywords dominio, términos del REQ."""
             meta = meta_procs.get(pid) or {}
             score = 0
             
-            # 1. Match exacto en id/carpeta (peso 10)
+            # 0. PRIORIDAD: Match con tags de inicio del texto (peso 20)
+            # Ejemplo: "PPTO — PRESUPUESTO Error..." debe priorizar presupuesto
             pid_norm = _normalizar_texto(pid)
+            nombre = _normalizar_texto(meta.get("nombre") or "")
+            modulo = _normalizar_texto(meta.get("modulo") or "")
+            
+            for tag in tags_inicio:
+                tag_norm = _normalizar_texto(tag)
+                if tag_norm:
+                    # Match exacto con id/carpeta
+                    if tag_norm == pid_norm:
+                        score += 20
+                    # Match en nombre o módulo
+                    elif tag_norm in nombre or tag_norm in modulo:
+                        score += 15
+            
+            # 1. Match exacto en id/carpeta (peso 10)
             for t in terminos:
                 t_norm = _normalizar_texto(str(t))
                 if t_norm and t_norm == pid_norm:
                     score += 10
             
             # 2. Match en nombre del proceso (peso 8)
-            nombre = _normalizar_texto(meta.get("nombre") or "")
             for t in terminos:
                 t_norm = _normalizar_texto(str(t))
                 if t_norm and len(t_norm) >= 4 and t_norm in nombre:
                     score += 8
             
             # 3. Match en módulo (peso 7)
-            modulo = _normalizar_texto(meta.get("modulo") or "")
             for t in terminos:
                 t_norm = _normalizar_texto(str(t))
                 if t_norm and len(t_norm) >= 4 and t_norm in modulo:
@@ -310,9 +345,10 @@ def preseleccionar_contexto(req_texto: str, proceso_id: str = "") -> dict:
             return score
         
         # Ordenar por score y filtrar por umbral mínimo
-        scored = [(pid, score_proceso(pid)) for pid in procesos_candidatos]
+        # Hacer determinista: ordenar también por pid para desempatar
+        scored = [(pid, score_proceso(pid)) for pid in sorted(procesos_candidatos)]
         scored_filtered = [(pid, s) for pid, s in scored if s >= MIN_SCORE_THRESHOLD]
-        scored_filtered.sort(key=lambda x: x[1], reverse=True)
+        scored_filtered.sort(key=lambda x: (-x[1], x[0]))  # Score desc, pid asc (determinista)
         
         if not scored_filtered:
             # Ningún proceso alcanza el umbral mínimo

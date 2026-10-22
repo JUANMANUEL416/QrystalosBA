@@ -10,6 +10,7 @@ Valida:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -26,6 +27,65 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import cursor_bot
+
+
+class TestWatchdogInactividad(unittest.IsolatedAsyncioTestCase):
+    """Prueba el watchdog de inactividad durante stream."""
+    
+    async def test_watchdog_detecta_inactividad(self):
+        """Debe detectar cuando no llegan eventos y lanzar InactividadError."""
+        # Mock run con stream que se bloquea sin emitir eventos
+        mock_run = MagicMock()
+        
+        async def stream_bloqueado():
+            # Emitir un evento inicial
+            yield MagicMock(type="message", status="running")
+            # Luego bloquearse indefinidamente
+            await asyncio.sleep(10)  # Mucho más de INACTIVIDAD_SEC
+            # No debería llegar aquí si el watchdog funciona
+            yield MagicMock(type="tool_call")  # pragma: no cover
+        
+        mock_run.stream = lambda: stream_bloqueado()
+        mock_run.wait = AsyncMock(return_value=MagicMock(status="completed"))
+        
+        # Mock _Tiempos
+        mock_tiempos = MagicMock()
+        mock_tiempos.evento = MagicMock()
+        mock_tiempos.marca = MagicMock()
+        
+        # Temporalmente reducir INACTIVIDAD_SEC para test rápido
+        import cursor_bot as cb
+        original_timeout = cb.INACTIVIDAD_SEC
+        cb.INACTIVIDAD_SEC = 0.5  # 0.5 segundo para test
+        
+        try:
+            with self.assertRaises(cb.InactividadError) as ctx:
+                await cb._consumir_run(mock_run, mock_tiempos)
+            # Verificar el mensaje de error
+            self.assertIn("Sin eventos por", str(ctx.exception))
+        finally:
+            cb.INACTIVIDAD_SEC = original_timeout
+    
+    async def test_watchdog_no_interfiere_con_eventos_normales(self):
+        """Debe permitir streams con eventos regulares."""
+        mock_run = MagicMock()
+        
+        async def stream_con_eventos():
+            for i in range(3):
+                yield MagicMock(type="tool_call", status="completed")
+                await asyncio.sleep(0.05)
+        
+        mock_run.stream = lambda: stream_con_eventos()
+        mock_run.wait = AsyncMock(return_value=MagicMock(status="completed"))
+        
+        mock_tiempos = MagicMock()
+        mock_tiempos.evento = MagicMock()
+        mock_tiempos.marca = MagicMock()
+        
+        # No debe lanzar excepción
+        result = await cursor_bot._consumir_run(mock_run, mock_tiempos)
+        self.assertIsNotNone(result)
+        self.assertEqual(mock_tiempos.evento.call_count, 3)
 
 
 class TestReintentos(unittest.IsolatedAsyncioTestCase):
@@ -263,6 +323,34 @@ class TestPreseleccionKB(unittest.TestCase):
         
         self.assertEqual(inline, "")
         self.assertEqual(procesos_ids, [])
+    
+    def test_preseleccion_determinista_ppto(self):
+        """
+        Regresión: 'PPTO — PRESUPUESTO Error...' debe preseleccionar 'presupuesto'
+        determinísticamente, no 'caja, presupuesto' en un run y 'nomina' en otro.
+        """
+        req_texto = "PPTO — PRESUPUESTO Error en informe de ejecución presupuestal en módulo de presupuesto"
+        
+        try:
+            import kb_contexto_req
+            
+            # Ejecutar 5 veces para verificar determinismo
+            resultados = []
+            for _ in range(5):
+                ctx = kb_contexto_req.preseleccionar_contexto(req_texto, proceso_id="")
+                procesos_ids = [p["id"] for p in ctx.get("procesos", [])]
+                resultados.append(procesos_ids)
+            
+            # Todos los resultados deben ser idénticos
+            self.assertTrue(all(r == resultados[0] for r in resultados), 
+                          f"Preselección no determinista: {resultados}")
+            
+            # Debe incluir 'presupuesto' como primer resultado (prioridad por tag inicio)
+            if resultados[0]:
+                self.assertEqual(resultados[0][0], "presupuesto",
+                               f"Debe priorizar 'presupuesto' por tag de inicio, obtuvo: {resultados[0]}")
+        except ImportError:
+            self.skipTest("kb_contexto_req no disponible")
 
 
 class TestCapacitacionJSON(unittest.TestCase):
