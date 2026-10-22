@@ -40,6 +40,8 @@ TIMEOUT_KB_SEC = 12 * 60
 # Turnos que Conocimiento/Consultas reutilizan su sesión antes de abrir una nueva (0 = sesión nueva cada turno).
 KB_TURNOS_SESION = int(os.environ.get("CURSOR_BOT_KB_TURNOS", "6") or 6)
 TIMEOUT_CASO_SEC = 45 * 60
+# Watchdog de inactividad: si no llegan eventos por N segundos durante stream, cancelar y reintentar
+INACTIVIDAD_SEC = int(os.environ.get("CURSOR_BOT_INACTIVIDAD_SEC", "180") or 180)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -1372,13 +1374,68 @@ class _Tiempos:
         )
 
 
+class InactividadError(Exception):
+    """El run no emitió eventos por INACTIVIDAD_SEC segundos."""
+    pass
+
+
 async def _consumir_run(run, t: "_Tiempos"):
-    """Lee el stream (para medir) y devuelve el resultado final como run.wait()."""
+    """
+    Lee el stream (para medir) y devuelve el resultado final como run.wait().
+    Si no llegan eventos por INACTIVIDAD_SEC segundos, lanza InactividadError.
+    """
+    import asyncio
+    
+    ultimo_evento = [time.time()]  # Usar lista para modificar desde tareas
+    
+    async def watchdog():
+        """Monitorea inactividad y lanza excepción si se excede el umbral."""
+        while True:
+            await asyncio.sleep(10)  # Verificar cada 10s
+            if time.time() - ultimo_evento[0] > INACTIVIDAD_SEC:
+                sin_eventos = int(time.time() - ultimo_evento[0])
+                raise InactividadError(f"Sin eventos por {sin_eventos}s")
+    
+    async def consumir_stream():
+        """Consume el stream y actualiza ultimo_evento."""
+        try:
+            async for msg in run.stream():
+                ultimo_evento[0] = time.time()
+                t.evento(msg)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[tiempos] stream no disponible: {type(exc).__name__}: {exc}", flush=True)
+    
+    # Ejecutar stream y watchdog en paralelo
+    watchdog_task = asyncio.create_task(watchdog())
+    stream_task = asyncio.create_task(consumir_stream())
+    
     try:
-        async for msg in run.stream():
-            t.evento(msg)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[tiempos] stream no disponible: {type(exc).__name__}: {exc}", flush=True)
+        # Esperar a que termine el stream o el watchdog detecte inactividad
+        done, pending = await asyncio.wait(
+            {stream_task, watchdog_task},
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # Si el watchdog terminó primero, significa que hubo inactividad
+        if watchdog_task in done:
+            stream_task.cancel()
+            # Propagar la excepción del watchdog
+            await watchdog_task
+        else:
+            # Stream terminó normalmente
+            watchdog_task.cancel()
+            await stream_task  # Propagar cualquier excepción del stream
+            
+    finally:
+        # Limpiar tareas pendientes
+        for task in [stream_task, watchdog_task]:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+    
     t.marca("run")
     return await run.wait()
 
@@ -1822,41 +1879,96 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
                 return 2
             t.marca("send")
             write_bot(id_caso, runId=getattr(run, "id", None) or getattr(run, "run_id", None))
-            try:
-                result = await asyncio.wait_for(_consumir_run(run, t), timeout=timeout_sec)
-            except CursorAgentError as exc:
-                print(_aviso_fallo_cursor(exc), flush=True)
+            
+            # === MEJORA: Watchdog de inactividad con reintento ===
+            intento_inactividad = 0
+            max_intentos_inactividad = 2
+            
+            while intento_inactividad < max_intentos_inactividad:
                 try:
-                    vivo = await client.get_run(run.id)
-                    estado_run = str(getattr(vivo, "status", "") or "").lower()
-                except Exception:
-                    estado_run = ""
-                if estado_run in ("running", "queued", "creating"):
+                    result = await asyncio.wait_for(_consumir_run(run, t), timeout=timeout_sec)
+                    break  # Éxito
+                except InactividadError as exc:
+                    sin_eventos = int(str(exc).split()[-1].rstrip('s')) if 'por' in str(exc) else INACTIVIDAD_SEC
+                    print(f"[inactividad] sin eventos {sin_eventos}s, run cancelado, relanzando", flush=True)
+                    
+                    # Cancelar run inactivo
                     try:
-                        result = await asyncio.wait_for(client.wait_live_run(run.id), timeout=180)
+                        if hasattr(run, "cancel"):
+                            await run.cancel()
                     except Exception:
-                        await _soltar_turnos_vivos(client, getattr(agent, "agent_id", "") or "")
+                        pass
+                    
+                    intento_inactividad += 1
+                    if intento_inactividad >= max_intentos_inactividad:
+                        write_bot(
+                            id_caso,
+                            estado="error",
+                            error=f"El turno se quedó inactivo {max_intentos_inactividad} veces (sin eventos por {sin_eventos}s)",
+                            terminadoEn=_now(),
+                        )
+                        append_chat(
+                            id_caso,
+                            "sistema",
+                            f"El bot se detuvo tras {max_intentos_inactividad} intentos sin actividad. "
+                            "Reintente desde el Chat o contacte soporte.",
+                        )
+                        return 2
+                    
+                    # Reintentar: resume si es posible, sino create
+                    agent_id_anterior = agent.agent_id
+                    try:
+                        agent = await _intentar_con_reintentos_async(
+                            f"resume({agent_id_anterior[:8]},after-inactividad)", 
+                            lambda: AsyncAgent.resume(agent_id_anterior, options, client=client)
+                        )
+                    except Exception:
+                        agent = await _intentar_con_reintentos_async(
+                            "create(after-inactividad)", 
+                            lambda: AsyncAgent.create(options, client=client)
+                        )
+                    
+                    # Relanzar turno
+                    run = await _intentar_con_reintentos_async(
+                        "send(after-inactividad)",
+                        lambda: _send_esperando_turno(client, agent, prompt, id_caso)
+                    )
+                    write_bot(id_caso, runId=getattr(run, "id", None) or getattr(run, "run_id", None))
+                    
+                except CursorAgentError as exc:
+                    print(_aviso_fallo_cursor(exc), flush=True)
+                    try:
+                        vivo = await client.get_run(run.id)
+                        estado_run = str(getattr(vivo, "status", "") or "").lower()
+                    except Exception:
+                        estado_run = ""
+                    if estado_run in ("running", "queued", "creating"):
+                        try:
+                            result = await asyncio.wait_for(client.wait_live_run(run.id), timeout=180)
+                            break
+                        except Exception:
+                            await _soltar_turnos_vivos(client, getattr(agent, "agent_id", "") or "")
+                            raise
+                    else:
                         raise
-                else:
-                    raise
-            except TimeoutError:
-                try:
-                    if hasattr(run, "cancel"):
-                        await run.cancel()
-                except Exception:
-                    pass
-                write_bot(
-                    id_caso,
-                    estado="error",
-                    error=f"El turno superó {timeout_sec // 60} min y se canceló.",
-                    terminadoEn=_now(),
-                )
-                append_chat(
-                    id_caso,
-                    "sistema",
-                    "El turno se cortó por tiempo máximo para no seguir gastando tokens. Vuelva a enviar si hace falta.",
-                )
-                return 2
+                except TimeoutError:
+                    try:
+                        if hasattr(run, "cancel"):
+                            await run.cancel()
+                    except Exception:
+                        pass
+                    write_bot(
+                        id_caso,
+                        estado="error",
+                        error=f"El turno superó {timeout_sec // 60} min y se canceló.",
+                        terminadoEn=_now(),
+                    )
+                    append_chat(
+                        id_caso,
+                        "sistema",
+                        "El turno se cortó por tiempo máximo para no seguir gastando tokens. Vuelva a enviar si hace falta.",
+                    )
+                    return 2
             status = getattr(result, "status", None) or ""
             if str(status) in ("error", "RunStatus.error"):
                 write_bot(id_caso, estado="error", error="El agente falló a mitad del turno", terminadoEn=_now())
