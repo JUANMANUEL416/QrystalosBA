@@ -6,6 +6,66 @@ Elimina códigos técnicos (ITAR, IART, etc.) que confunden a las IA de imagen.
 
 # Mapa: bloque_id -> escena visual descriptiva en español (contexto salud)
 ESCENAS_BLOQUES = {
+    # Facturación
+    "facturacion-contratos-tarifas": (
+        "Mesa de negociación entre director de IPS y representante de EPS revisando "
+        "contrato de prestación de atención en salud. Tarifarios impresos con precios "
+        "de consultas, procedimientos, medicamentos. Documentos firmados y manuales "
+        "tarifarios sobre la mesa."
+    ),
+    
+    "facturacion-financiera": (
+        "Escritorio de facturadora hospitalaria con monitor mostrando formulario de factura "
+        "electrónica, campos de plan de salud, valor capitado, relación de prestaciones. "
+        "Documentos con logos de EPS y planes de salud al lado."
+    ),
+    
+    "facturacion-admision": (
+        "Área de facturación hospitalaria: facturas de urgencias y hospitalización apiladas, "
+        "monitor con detalles de admisión (estancia, procedimientos, medicamentos). Personal "
+        "revisando historia clínica y cargos médicos antes de generar factura."
+    ),
+    
+    # Cuentas por Pagar
+    "cxp-registro-factura": (
+        "Escritorio de auxiliar contable con facturas de proveedores (farmacéuticas, "
+        "distribuidores médicos), calculadora, monitor mostrando sistema de cuentas por "
+        "pagar. Sellos de recibido y revisado sobre las facturas."
+    ),
+    
+    "cxp-orden-pago": (
+        "Tesorería hospitalaria: tesorera revisando orden de pago en computador, chequera "
+        "al lado, comprobantes de egreso de caja, formularios bancarios de transferencia "
+        "listos para firmar."
+    ),
+    
+    # Caja
+    "caja-apertura-cierre": (
+        "Caja de recepción de pagos en IPS: cajera contando efectivo inicial en la gaveta, "
+        "datáfono encendido, talonario de recibos de caja, monitor con sistema de caja "
+        "mostrando apertura de turno."
+    ),
+    
+    "caja-recibo-ingreso": (
+        "Ventanilla de caja hospitalaria: paciente entregando dinero, cajera imprimiendo "
+        "recibo de caja con copago, datáfono procesando pago con tarjeta, formulario "
+        "visible de recibo de ingreso en pantalla."
+    ),
+    
+    # Contabilidad
+    "contabilidad-comprobante": (
+        "Escritorio de contador: monitor con asiento contable (débitos y créditos), "
+        "plan único de cuentas impreso, comprobante de egreso, comprobante de ingreso, "
+        "documentos soporte, calculadora con suma de débitos y créditos."
+    ),
+    
+    "contabilidad-errados": (
+        "Oficina de contabilidad: monitor con tabla de comprobantes errados resaltados en "
+        "rojo, mensajes de error visibles (tercero inactivo, no cuadra), contador revisando "
+        "catálogo de cuentas y corrigiendo configuración."
+    ),
+    
+    # Inventario (existentes)
     "tipos-de-articulo-itar": (
         "Estantería de farmacia hospitalaria con secciones claramente separadas para "
         "medicamentos, dispositivos médicos, material médico-quirúrgico, reactivos de "
