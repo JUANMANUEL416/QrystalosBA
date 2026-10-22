@@ -121,6 +121,148 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+# ========== MEJORAS DE RENDIMIENTO ==========
+
+def _truncar_sensiblemente(texto: str, max_chars: int) -> str:
+    """Trunca texto en límite de caracteres, cortando en salto de línea si es posible."""
+    if len(texto) <= max_chars:
+        return texto
+    truncado = texto[:max_chars]
+    ultimo_salto = truncado.rfind('\n')
+    if ultimo_salto > max_chars * 0.7:  # Si hay salto en el último 30%
+        return truncado[:ultimo_salto] + "\n...(truncado)"
+    return truncado + "...(truncado)"
+
+
+def _contexto_inline_solicitud(id_caso: str, max_chars: int = 4000) -> str:
+    """Copia compacta de solicitud.json para inline en el prompt."""
+    sol_path = os.path.join(caso_dir(id_caso), "solicitud.json")
+    if not os.path.isfile(sol_path):
+        return ""
+    try:
+        sol = read_json(sol_path, {})
+        # Campos clave para el análisis
+        contenido = sol.get("contenido", {})
+        sql_info = sol.get("sql", {})
+        
+        compacto = {
+            "titulo": contenido.get("titulo", ""),
+            "requerimiento": contenido.get("requerimiento", ""),
+            "descripcion": contenido.get("descripcion", ""),
+            "criteriosAceptacion": contenido.get("criteriosAceptacion", ""),
+            "alcance": contenido.get("alcance", ""),
+            "restricciones": contenido.get("restricciones", ""),
+            "analisis": contenido.get("analisis", ""),
+            "recomendacion": contenido.get("recomendacion", ""),
+            "cambioPropuestoSimple": contenido.get("cambioPropuestoSimple", ""),
+            "sql": {
+                "procesoId": sql_info.get("procesoId", ""),
+                "usarDocumentacion": sql_info.get("usarDocumentacion", False),
+                "metodosDocumentados": sql_info.get("metodosDocumentados", [])[:10]  # Máx 10
+            }
+        }
+        texto = json.dumps(compacto, ensure_ascii=False, indent=2)
+        return _truncar_sensiblemente(texto, max_chars)
+    except Exception:
+        return ""
+
+
+def _contexto_inline_chat(id_caso: str, max_mensajes: int = 10, max_chars: int = 3000) -> str:
+    """Últimos N mensajes de chat.json para inline en el prompt."""
+    chat_path = os.path.join(caso_dir(id_caso), "chat.json")
+    if not os.path.isfile(chat_path):
+        return ""
+    try:
+        mensajes = read_json(chat_path, [])
+        if not isinstance(mensajes, list):
+            return ""
+        ultimos = mensajes[-max_mensajes:] if len(mensajes) > max_mensajes else mensajes
+        texto = json.dumps(ultimos, ensure_ascii=False, indent=2)
+        return _truncar_sensiblemente(texto, max_chars)
+    except Exception:
+        return ""
+
+
+def _contexto_inline_cola(id_caso: str, max_chars: int = 1000) -> str:
+    """Entrada de este caso en conocimiento/handoffs/cola.json para inline."""
+    cola_path = os.path.join(CONOCIMIENTO, "handoffs", "cola.json")
+    if not os.path.isfile(cola_path):
+        return ""
+    try:
+        cola = read_json(cola_path, [])
+        if not isinstance(cola, list):
+            return ""
+        # Buscar entrada del caso
+        entrada = next((item for item in cola if item.get("caso") == id_caso), None)
+        if not entrada:
+            return ""
+        texto = json.dumps(entrada, ensure_ascii=False, indent=2)
+        return _truncar_sensiblemente(texto, max_chars)
+    except Exception:
+        return ""
+
+
+def _contexto_inline_kb(req_texto: str, proceso_id: str, max_chars: int = 3000) -> tuple[str, list[str]]:
+    """
+    Mejora de kb_contexto: scoring más robusto contra _indice_busqueda.json.
+    Retorna (texto_inline, lista_procesos_ids).
+    """
+    try:
+        import kb_contexto_req
+        ctx = kb_contexto_req.preseleccionar_contexto(req_texto, proceso_id)
+        procesos_ids = [p["id"] for p in ctx.get("procesos", [])]
+        if procesos_ids:
+            # Formato compacto para inline
+            texto = "**Contexto KB preseleccionado:**\n"
+            for p in ctx.get("procesos", []):
+                texto += f"- Proceso: {p['id']} (score: {p.get('score', 0):.1f})\n"
+                if p.get("ventanas"):
+                    texto += f"  Ventanas: {', '.join(p['ventanas'][:3])}\n"
+                if p.get("sps_metodos"):
+                    texto += f"  SPs: {', '.join(p['sps_metodos'][:5])}\n"
+            return (_truncar_sensiblemente(texto, max_chars), procesos_ids)
+        return ("", [])
+    except Exception as exc:
+        print(f"[_contexto_inline_kb] error: {exc}", flush=True)
+        return ("", [])
+
+
+async def _intentar_con_reintentos_async(operacion: str, func_async, max_intentos: int = 3):
+    """
+    Reintenta operación async con backoff exponencial para errores de red/5xx.
+    No reintenta auth ni 4xx.
+    """
+    import asyncio
+    from cursor_sdk import AuthenticationError, CursorAgentError
+    
+    esperas = [2, 5, 12]  # segundos
+    
+    for intento in range(max_intentos):
+        try:
+            return await func_async()
+        except AuthenticationError:
+            # No reintentar errores de auth
+            raise
+        except CursorAgentError as exc:
+            # Detectar errores de red/5xx
+            msg = str(exc).lower()
+            es_red = any(keyword in msg for keyword in ['network', 'timeout', 'connection', 'internal'])
+            
+            if not es_red or intento == max_intentos - 1:
+                raise
+            
+            espera = esperas[intento] if intento < len(esperas) else 12
+            print(f"[{operacion}] intento {intento + 1}/{max_intentos} falló: {exc}", flush=True)
+            print(f"[{operacion}] reintentando en {espera}s...", flush=True)
+            await asyncio.sleep(espera)
+        except Exception as exc:
+            # Otros errores: no reintentar
+            raise
+
+
+# ========== FIN MEJORAS DE RENDIMIENTO ==========
+
+
 def _parse_env(path: str) -> dict:
     values = {}
     if not os.path.isfile(path):
@@ -707,7 +849,13 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "Si el texto es incompleto o contradice MCUE/CON, marque observado y pida el dato que falte."
         )
     elif motivo == "analizar-req":
-        # Preselección de contexto KB (reduce ~100 tool calls a ~15)
+        # === MEJORA 1: Contexto inline ===
+        # Precarga solicitud.json, chat.json, cola.json y KB relevante en el prompt
+        inline_solicitud = _contexto_inline_solicitud(id_caso, max_chars=4000)
+        inline_chat = _contexto_inline_chat(id_caso, max_mensajes=10, max_chars=3000)
+        inline_cola = _contexto_inline_cola(id_caso, max_chars=1000)
+        
+        # === MEJORA 2: Mejor preselección KB con scoring mejorado ===
         contexto_kb = ""
         procesos_kb_ids = []
         try:
@@ -725,31 +873,39 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             proceso_id = str(sol_data.get("sql", {}).get("procesoId") or "")
             if req_texto:
                 print(f"[kb_contexto] req_texto ({len(req_texto)} chars): {req_texto[:120]}...", flush=True)
-                ctx = kb_contexto_req.preseleccionar_contexto(req_texto, proceso_id)
-                contexto_kb = kb_contexto_req.formato_prompt(ctx)
-                if ctx.get("procesos"):
-                    procesos_kb_ids = [p["id"] for p in ctx["procesos"]]
+                inline_kb_texto, procesos_kb_ids = _contexto_inline_kb(req_texto, proceso_id, max_chars=3000)
+                if procesos_kb_ids:
+                    contexto_kb = inline_kb_texto
                     print(f"[kb_contexto] preseleccionados: {', '.join(procesos_kb_ids)}", flush=True)
                 else:
-                    # No se preseleccionó ningún proceso: log scores para debug
-                    top_scores = getattr(ctx, "_debug_scores", [])[:3] if hasattr(ctx, "_debug_scores") else []
-                    if top_scores:
-                        scores_str = ", ".join(f"{p}={s:.1f}" for p, s in top_scores)
-                        print(f"[kb_contexto] ninguno (score bajo): {scores_str}", flush=True)
-                    else:
-                        print("[kb_contexto] preseleccionados: ninguno", flush=True)
+                    # No se preseleccionó ningún proceso: log para debug
+                    print("[kb_contexto] preseleccionados: ninguno", flush=True)
             else:
                 print("[kb_contexto] error: req_texto vacío (campos titulo/requerimiento/descripcion/criteriosAceptacion no tienen texto)", flush=True)
         except Exception as exc:  # noqa: BLE001
             print(f"[kb_contexto] error: {exc}", flush=True)
             traceback.print_exc()
         
+        # Construir bloque de contexto inline
+        bloque_inline = ""
+        if inline_solicitud or inline_chat or inline_cola or contexto_kb:
+            bloque_inline = "\n**CONTEXTO PRE-CARGADO (NO vuelva a leer estos archivos salvo que necesite un detalle truncado):**\n\n"
+            if inline_solicitud:
+                bloque_inline += f"**solicitud.json (compacto):**\n```json\n{inline_solicitud}\n```\n\n"
+            if inline_chat:
+                bloque_inline += f"**chat.json (últimos mensajes):**\n```json\n{inline_chat}\n```\n\n"
+            if inline_cola:
+                bloque_inline += f"**cola.json (entrada de este caso):**\n```json\n{inline_cola}\n```\n\n"
+            if contexto_kb:
+                bloque_inline += f"{contexto_kb}\n\n"
+        
         extra = (
             "- Motivo: ANÁLISIS DEL REQUERIMIENTO orientado a SOLUCIÓN (no dictamen HTML).\n"
-            + (f"\n{contexto_kb}\n\n" if contexto_kb else 
-               "\nNo se preseleccionó contexto KB específico. Use conocimiento/_indice_busqueda.json "
+            + bloque_inline
+            + ("\nNo se preseleccionó contexto KB específico. Use conocimiento/_indice_busqueda.json "
                "buscando términos clave del REQ (SP, METODO, tabla, pantalla) y abra SOLO las fichas "
-               "relevantes. NO lea sps.json enteros ni barra conocimiento/. Presupuesto ~15 tool calls.\n\n")
+               "relevantes. NO lea sps.json enteros ni barra conocimiento/. Presupuesto ~15 tool calls.\n\n" 
+               if not contexto_kb else "")
             + "- Método obligatorio (en este orden):\n"
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
             "  2) Contrastar con el CONTEXTO KB PRESELECCIONADO (arriba). Si no alcanza, "
@@ -1605,20 +1761,31 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
         agent = None
         if agent_id:
             try:
-                agent = await AsyncAgent.resume(agent_id, options, client=client)
+                # === MEJORA 3: Reintentos en resume ===
+                agent = await _intentar_con_reintentos_async(
+                    f"resume({agent_id[:8]})", 
+                    lambda: AsyncAgent.resume(agent_id, options, client=client)
+                )
                 t.marca("resume")
             except AgentBusyError:
                 # La sesión tiene un turno en curso: esperarlo (nunca cancelarlo) y reanudar.
                 await _esperar_turno_previo(client, agent_id, id_caso)
                 try:
-                    agent = await AsyncAgent.resume(agent_id, options, client=client)
+                    agent = await _intentar_con_reintentos_async(
+                        f"resume({agent_id[:8]},after-wait)", 
+                        lambda: AsyncAgent.resume(agent_id, options, client=client)
+                    )
                     t.marca("resume")
                 except Exception:
                     agent = None
             except Exception:
                 agent = None
         if agent is None:
-            agent = await AsyncAgent.create(options, client=client)
+            # === MEJORA 3: Reintentos en create ===
+            agent = await _intentar_con_reintentos_async(
+                "create", 
+                lambda: AsyncAgent.create(options, client=client)
+            )
             t.marca("create")
 
         try:
@@ -1637,7 +1804,11 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             t.procesos_kb = procesos_kb
             t.marca("prompt", chars=len(prompt))
             try:
-                run = await _send_esperando_turno(client, agent, prompt, id_caso)
+                # === MEJORA 3: Reintentos en send ===
+                run = await _intentar_con_reintentos_async(
+                    "send",
+                    lambda: _send_esperando_turno(client, agent, prompt, id_caso)
+                )
             except Exception as exc:  # noqa: BLE001
                 if not _es_turno_activo(exc):
                     raise
