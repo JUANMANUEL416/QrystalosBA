@@ -1486,8 +1486,116 @@
     });
   }
 
+  const NOMBRES_SECCION = {
+    1: "General",
+    2: "Requerimiento",
+    3: "Análisis",
+    4: "SQL",
+    5: "Cierre",
+  };
+
+  function prepararAcordeon() {
+    $$("#formSolicitud > .panel").forEach((panel) => {
+      if (panel.dataset.acordeon) return;
+      const step = String(panel.dataset.panel || "");
+      const details = document.createElement("details");
+      details.className = "caso-fold";
+      details.dataset.fold = step;
+      details.open = step === "1";
+      const summary = document.createElement("summary");
+      summary.className = "caso-fold-sum";
+      summary.innerHTML =
+        `<span class="caso-fold-title"><span class="caso-fold-n">${step}</span> ${NOMBRES_SECCION[step] || "Sección"}</span>` +
+        `<span class="fold-badge" data-fold-badge="${step}">Pendiente</span>`;
+      const body = document.createElement("div");
+      body.className = "caso-fold-body";
+      while (panel.firstChild) body.appendChild(panel.firstChild);
+      details.appendChild(summary);
+      details.appendChild(body);
+      panel.appendChild(details);
+      panel.dataset.acordeon = "1";
+      panel.classList.add("active");
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        currentStep = Number(step);
+        pintarRail();
+      });
+    });
+    $$("#stepper .step").forEach((btn) => {
+      if (btn.querySelector(".step-state")) return;
+      const mark = document.createElement("span");
+      mark.className = "step-state";
+      mark.dataset.stepState = btn.dataset.step || "";
+      btn.appendChild(mark);
+    });
+  }
+
+  function estadoSeccion(step) {
+    if (step === 5) {
+      const faltan = faltantesActivarAnalisis();
+      return faltan.length
+        ? { ok: false, texto: `${faltan.length} pendiente${faltan.length === 1 ? "" : "s"}` }
+        : { ok: true, texto: "Listo" };
+    }
+    if (step === 4) {
+      return sqlPasoListoParaActivar()
+        ? { ok: true, texto: "Listo" }
+        : { ok: false, texto: "Falta SQL" };
+    }
+    const missing = getRequiredForStep(step).filter(({ el }) => !el?.value?.trim());
+    if (step === 2 && !val("#requerimiento") && !archivoColaVinculado) {
+      missing.push({ label: "Requerimiento" });
+    }
+    if (step === 3 && $("#chkAfectaContabilidad")?.checked && !val("#contComoAfecta")) {
+      missing.push({ label: "Contabilidad" });
+    }
+    return missing.length
+      ? { ok: false, texto: `Falta ${missing.length}` }
+      : { ok: true, texto: "Listo" };
+  }
+
+  function pintarEstadoSecciones() {
+    for (let step = 1; step <= totalSteps; step++) {
+      const estado = estadoSeccion(step);
+      const badge = document.querySelector(`[data-fold-badge="${step}"]`);
+      if (badge) {
+        badge.textContent = estado.texto;
+        badge.classList.toggle("is-ok", estado.ok);
+      }
+      const mark = document.querySelector(`[data-step-state="${step}"]`);
+      if (mark) mark.textContent = estado.ok ? "Listo" : "Falta";
+    }
+  }
+
+  function pintarRail() {
+    $$(".step").forEach((s) => {
+      const n = Number(s.dataset.step);
+      const estado = estadoSeccion(n);
+      s.classList.toggle("active", n === currentStep);
+      s.classList.toggle("done", estado.ok);
+      s.classList.toggle("warn", !estado.ok);
+    });
+    const etiqueta = NOMBRES_SECCION[currentStep] || "";
+    const indicator = $("#stepIndicator");
+    if (indicator) indicator.textContent = etiqueta;
+    const prev = $("#btnPrev");
+    const next = $("#btnNext");
+    if (prev) prev.disabled = currentStep === 1;
+    if (next) next.textContent = currentStep === totalSteps ? "Ver pendientes" : "Siguiente sección";
+  }
+
   function bindForm() {
-    $("#btnNext").addEventListener("click", () => goStep(currentStep + 1));
+    prepararAcordeon();
+    $("#btnNext").addEventListener("click", () => {
+      if (currentStep >= totalSteps) {
+        updateAll();
+        const cierre = document.querySelector('.caso-fold[data-fold="5"]');
+        if (cierre) cierre.open = true;
+        $("#validacionResumen")?.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      goStep(currentStep + 1);
+    });
     $("#btnPrev").addEventListener("click", () => goStep(currentStep - 1));
     $("#btnNuevo").addEventListener("click", resetForm);
     $("#btnAddOpcion").addEventListener("click", () => addOpcion("", ""));
@@ -4171,22 +4279,16 @@
 
   function goStep(step) {
     if (step < 1 || step > totalSteps) return;
-    if (isAnalisisEnCurso() && step !== currentStep) return;
-    if (step > currentStep && !validateStep(currentStep, true)) return;
     if (currentStep === 2 && step !== 2) captureCriteriosOriginales();
     if (currentStep === 3 && step !== 3) captureCriteriosTrasAnalisis();
     currentStep = step;
-    $$(".panel").forEach((p) => p.classList.toggle("active", Number(p.dataset.panel) === step));
-    $$(".step").forEach((s) => {
-      const n = Number(s.dataset.step);
-      s.classList.toggle("active", n === step);
-      s.classList.toggle("done", n < step && validateStep(n, false));
-    });
-    $("#btnPrev").disabled = step === 1;
-    $("#btnNext").textContent = step === totalSteps ? "Finalizar" : "Siguiente";
-    $("#stepIndicator").textContent = `Paso ${step} de ${totalSteps}`;
-    const wizardScroll = $(".wizard-scroll");
-    if (wizardScroll) wizardScroll.scrollTop = 0;
+    const fold = document.querySelector(`.caso-fold[data-fold="${step}"]`);
+    if (fold) {
+      fold.open = true;
+      fold.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+    pintarRail();
+    pintarEstadoSecciones();
     if (step === totalSteps) updateAll();
     if (step === 4) {
       leerCarpetaSql(true);
@@ -4753,6 +4855,8 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
 
     updateCriteriosHint();
     renderCriteriosComparacion();
+    pintarEstadoSecciones();
+    pintarRail();
   }
 
   function renderOpciones() {
