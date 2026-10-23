@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -146,8 +147,17 @@ def _contexto_inline_solicitud(id_caso: str, max_chars: int = 4000) -> str:
         # Campos clave para el análisis
         contenido = sol.get("contenido", {})
         sql_info = sol.get("sql", {})
+        proyecto = sol.get("proyecto") if isinstance(sol.get("proyecto"), dict) else {}
+        ident = sol.get("identificacion") if isinstance(sol.get("identificacion"), dict) else {}
+        cola = sol.get("cola") if isinstance(sol.get("cola"), dict) else {}
+        archivos = contenido.get("archivosAnalisis") if isinstance(contenido.get("archivosAnalisis"), list) else []
+        imagenes = contenido.get("imagenesAnalisis") if isinstance(contenido.get("imagenesAnalisis"), list) else []
         
         compacto = {
+            "idReq": ident.get("idReq") or cola.get("idReq") or "",
+            "proyecto": proyecto.get("nombre") or "",
+            "modulo": proyecto.get("modulo") or "",
+            "rutaPantalla": proyecto.get("rutaPantalla") or "",
             "titulo": contenido.get("titulo", ""),
             "requerimiento": contenido.get("requerimiento", ""),
             "descripcion": contenido.get("descripcion", ""),
@@ -157,6 +167,8 @@ def _contexto_inline_solicitud(id_caso: str, max_chars: int = 4000) -> str:
             "analisis": contenido.get("analisis", ""),
             "recomendacion": contenido.get("recomendacion", ""),
             "cambioPropuestoSimple": contenido.get("cambioPropuestoSimple", ""),
+            "normativa": [a.get("nombre") for a in archivos if isinstance(a, dict) and a.get("nombre")][:6],
+            "imagenes": [i.get("nombre") for i in imagenes if isinstance(i, dict) and i.get("nombre")][:6],
             "sql": {
                 "procesoId": sql_info.get("procesoId", ""),
                 "usarDocumentacion": sql_info.get("usarDocumentacion", False),
@@ -175,30 +187,56 @@ def _contexto_inline_chat(id_caso: str, max_mensajes: int = 10, max_chars: int =
     if not os.path.isfile(chat_path):
         return ""
     try:
-        mensajes = read_json(chat_path, [])
+        data = read_json(chat_path, {"mensajes": []})
+        if isinstance(data, dict):
+            mensajes = data.get("mensajes") or []
+        elif isinstance(data, list):
+            mensajes = data
+        else:
+            return ""
         if not isinstance(mensajes, list):
             return ""
-        ultimos = mensajes[-max_mensajes:] if len(mensajes) > max_mensajes else mensajes
+        utiles = []
+        for msg in mensajes:
+            if not isinstance(msg, dict):
+                continue
+            autor = str(msg.get("autor") or "")
+            texto_msg = str(msg.get("texto") or "").strip()
+            if autor == "sistema" or not texto_msg:
+                continue
+            utiles.append({"autor": autor, "texto": texto_msg[:500]})
+        ultimos = utiles[-max_mensajes:] if len(utiles) > max_mensajes else utiles
         texto = json.dumps(ultimos, ensure_ascii=False, indent=2)
         return _truncar_sensiblemente(texto, max_chars)
     except Exception:
         return ""
 
 
-def _contexto_inline_cola(id_caso: str, max_chars: int = 1000) -> str:
-    """Entrada de este caso en conocimiento/handoffs/cola.json para inline."""
-    cola_path = os.path.join(CONOCIMIENTO, "handoffs", "cola.json")
-    if not os.path.isfile(cola_path):
-        return ""
+def _texto_plano_html(html: str) -> str:
+    """Texto visible de la cola del aval. Sin etiquetas."""
+    limpio = re.sub(r"(?is)<(script|style)\b.*?>.*?</\1>", " ", html or "")
+    limpio = re.sub(r"(?is)<[^>]+>", " ", limpio)
+    limpio = re.sub(r"&nbsp;|&#160;", " ", limpio)
+    limpio = re.sub(r"\s+", " ", limpio)
+    return limpio.strip()
+
+
+def _contexto_inline_cola(id_caso: str, max_chars: int = 1500) -> str:
+    """Texto del HTML de aval guardado en cola/, no la cola de handoffs."""
     try:
-        cola = read_json(cola_path, [])
-        if not isinstance(cola, list):
+        sol = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
+        cola = sol.get("cola") if isinstance(sol, dict) else {}
+        ruta = str((cola or {}).get("rutaCola") or "").strip().replace("\\", "/")
+        if not ruta:
             return ""
-        # Buscar entrada del caso
-        entrada = next((item for item in cola if item.get("caso") == id_caso), None)
-        if not entrada:
+        path = ruta if os.path.isabs(ruta) else os.path.join(ROOT, ruta.lstrip("/"))
+        if not os.path.isfile(path):
             return ""
-        texto = json.dumps(entrada, ensure_ascii=False, indent=2)
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            raw = fh.read(200_000)
+        texto = _texto_plano_html(raw)
+        if not texto:
+            return ""
         return _truncar_sensiblemente(texto, max_chars)
     except Exception:
         return ""
@@ -800,24 +838,46 @@ def _bloque_precarga_req(id_caso: str) -> tuple[str, str, list[str]]:
     """Recorte del caso y de la base para ubicar o analizar. No es el análisis."""
     inline_solicitud = _contexto_inline_solicitud(id_caso, max_chars=4000)
     inline_chat = _contexto_inline_chat(id_caso, max_mensajes=10, max_chars=3000)
-    inline_cola = _contexto_inline_cola(id_caso, max_chars=1000)
+    inline_cola = _contexto_inline_cola(id_caso, max_chars=1500)
     contexto_kb = ""
+    mapa_txt = ""
     procesos_kb_ids: list[str] = []
     try:
         sol_data = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
         contenido = sol_data.get("contenido") or {}
+        proyecto = sol_data.get("proyecto") if isinstance(sol_data.get("proyecto"), dict) else {}
         partes = []
         for campo in ("titulo", "requerimiento", "descripcion", "criteriosAceptacion"):
             txt = str(contenido.get(campo) or "").strip()
             if txt:
                 partes.append(txt)
+        ruta = str(proyecto.get("rutaPantalla") or "").strip()
+        modulo = str(proyecto.get("modulo") or "").strip()
+        if ruta:
+            partes.append(ruta)
+        if modulo:
+            partes.append(modulo)
         req_texto = " ".join(partes)
         proceso_id = str((sol_data.get("sql") or {}).get("procesoId") or "")
         ubicacion = contenido.get("ubicacion") if isinstance(contenido.get("ubicacion"), dict) else {}
         if not proceso_id:
             proceso_id = str(ubicacion.get("procesoId") or "")
-        if req_texto:
+        if req_texto or ruta:
             print(f"[kb_contexto] req_texto ({len(req_texto)} chars): {req_texto[:120]}...", flush=True)
+            import kb_contexto_req
+
+            mapa = kb_contexto_req.mapa_ubicacion(
+                req_texto, ruta=ruta, modulo=modulo, proceso_id=proceso_id
+            )
+            mapa_txt = kb_contexto_req.formato_mapa(mapa)
+            if mapa.get("tramos"):
+                primero = mapa["tramos"][0]
+                print(
+                    f"[kb_contexto] mapa: {primero.get('proceso')} · {primero.get('id')}",
+                    flush=True,
+                )
+                if primero.get("rutaCoincide") and primero.get("proceso"):
+                    proceso_id = primero["proceso"]
             inline_kb_texto, procesos_kb_ids = _contexto_inline_kb(req_texto, proceso_id, max_chars=8000)
             if procesos_kb_ids:
                 contexto_kb = inline_kb_texto
@@ -830,14 +890,16 @@ def _bloque_precarga_req(id_caso: str) -> tuple[str, str, list[str]]:
         print(f"[kb_contexto] error: {exc}", flush=True)
         traceback.print_exc()
     bloque_inline = ""
-    if inline_solicitud or inline_chat or inline_cola or contexto_kb:
+    if mapa_txt or inline_solicitud or inline_chat or inline_cola or contexto_kb:
         bloque_inline = "\n**CONTEXTO PRE-CARGADO (NO vuelva a leer estos archivos salvo que necesite un detalle truncado):**\n\n"
+        if mapa_txt:
+            bloque_inline += mapa_txt + "\n\n"
         if inline_solicitud:
             bloque_inline += f"**solicitud.json (compacto):**\n```json\n{inline_solicitud}\n```\n\n"
         if inline_chat:
             bloque_inline += f"**chat.json (últimos mensajes):**\n```json\n{inline_chat}\n```\n\n"
         if inline_cola:
-            bloque_inline += f"**cola.json (entrada de este caso):**\n```json\n{inline_cola}\n```\n\n"
+            bloque_inline += f"**Cola del aval (texto del HTML):**\n{inline_cola}\n\n"
         if contexto_kb:
             bloque_inline += f"{contexto_kb}\n\n"
     return bloque_inline, contexto_kb, procesos_kb_ids
@@ -988,12 +1050,17 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
                 + "\n\n"
             )
         if motivo == "ubicar-req":
+            hay_mapa = "MAPA PARA UBICAR" in bloque_inline and "Tramos: ninguno coincide" not in bloque_inline
             extra = (
                 "- Motivo: UBICAR EL FLUJO. Paso 1 de 2. El paso 2 arranca solo. No escriba la solución.\n"
+                "El MAPA PARA UBICAR ya cruzó la ruta, el módulo y el texto con los tramos de la base. "
+                "Elija de esa lista. Si un tramo dice RUTA, ese es el flujo. "
+                "No abra otro proceso para buscar un procedimiento parecido.\n"
                 + bloque_inline
-                + ("\nNo se preseleccionó un proceso. Busque en conocimiento/_indice_busqueda.json "
-                   "la clave del REQ y abra solo esa ficha. Un solo proceso.\n\n"
-                   if not contexto_kb else "")
+                + ("\nNo se preseleccionó un proceso ni un tramo. Busque en conocimiento/_indice_busqueda.json "
+                   "la clave del REQ y abra solo esa ficha. Un solo proceso. "
+                   "Si tampoco está, deje estado=pregunta y pida la pantalla.\n\n"
+                   if not contexto_kb and not hay_mapa else "")
                 + _contrato_ubicacion()
             )
         else:

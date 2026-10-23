@@ -30,7 +30,7 @@ El coordinador no interviene entre este paso y el siguiente.
 
 Escriba solicitud.json → contenido.ubicacion, en este orden:
 1. procesoId: un solo id de la base (por ejemplo inventario). No deje dos módulos.
-2. flujo: el recorrido dentro de ese proceso en el que participa el requerimiento (el grafo o el control, no el módulo entero).
+2. flujo: una fila del MAPA PARA UBICAR (el id del tramo). Si la fila dice RUTA, ese es el flujo. No use el módulo entero ni un tramo cuya pantalla es otra. Si el mapa no trae tramo ni pantalla, deje estado=pregunta y pida la pantalla.
 3. pieza.tipo: ventana, boton, proceso, sp o metodo. pieza.nombre: cómo se llama esa pieza.
 4. recursos: lo que hace falta para analizar ESA pieza, nada más. Cada recurso tiene tipo y cual.
    - ventana: la pantalla.

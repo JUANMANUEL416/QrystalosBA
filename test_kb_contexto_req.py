@@ -268,6 +268,126 @@ def test_json_output():
     print("✓ Test salida JSON: OK")
 
 
+def test_mapa_gesventa():
+    """La ruta /inv/gesventa cae en el tramo ventas de inventario, no en un hermano."""
+    print("\nTest MAPA: gestión de ventas /inv/gesventa...")
+
+    req = (
+        "En gestión de ventas la nota crédito de una devolución no reingresa el artículo"
+    )
+    mapa = kb_contexto_req.mapa_ubicacion(req, ruta="/inv/gesventa", modulo="INVENTARIO")
+
+    assert mapa.get("tramos"), "Debe haber tramos"
+    primero = mapa["tramos"][0]
+    assert primero["proceso"] == "inventario", primero
+    assert primero["id"] == "ventas", primero
+    assert primero.get("rutaCoincide"), "La ruta debe marcar el tramo"
+    assert "SPQ_VENTAFAR" in (primero.get("controlClave") or "")
+    assert mapa.get("pantallas"), "La pantalla debe estar en el índice"
+    assert mapa["pantallas"][0]["proceso"] == "inventario"
+    assert "GestionVentaPage" in (mapa["pantallas"][0].get("vue") or "")
+    assert any("gesventa" in (item.get("item") or "") for item in mapa.get("menu") or []), mapa.get("menu")
+
+    texto = kb_contexto_req.formato_mapa(mapa)
+    assert "MAPA PARA UBICAR" in texto
+    assert "RUTA inventario · ventas" in texto
+    assert "/inv/gesventa" in texto
+
+    sku = kb_contexto_req.mapa_ubicacion(
+        "el listado maestro de SKU no se ve en el movimiento de saldo inicial del sistema de inventario",
+        modulo="INVENTARIO",
+    )
+    assert sku.get("procesos") == ["inventario"], sku.get("procesos")
+    assert not sku.get("tramos"), sku.get("tramos")
+    assert sku.get("ambiguo"), "Sin ruta no se cierra el tramo"
+    texto_sku = kb_contexto_req.formato_mapa(sku)
+    assert "estado=pregunta" in texto_sku
+    assert "facturacion" not in texto_sku
+
+    orden = kb_contexto_req.mapa_ubicacion(
+        "No se puede confirmar la orden de compra",
+        ruta="/inv/ordcom",
+        modulo="INVENTARIO",
+    )
+    assert orden["tramos"][0]["id"] == "ordenes-compra", orden["tramos"][0]
+    assert orden["tramos"][0]["proceso"] == "inventario"
+
+    print(f"  ✓ tramo {primero['id']} · {primero['controlClave'][:60]}")
+    print("✓ Test mapa gesventa: OK")
+
+
+def test_prompt_ubicar_trae_mapa():
+    """El paso ubicar recibe ruta, chat, cola del aval y el tramo, no la cola de handoffs."""
+    print("\nTest PROMPT ubicar: mapa + formulario + chat + cola...")
+
+    import os
+    import tempfile
+    import shutil
+    import cursor_bot
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="qrystba_ubicar_"))
+    try:
+        (tmp_root / "activo").mkdir()
+        (tmp_root / "cola").mkdir()
+        id_caso = "20261023-test-gesventa"
+        caso_dir = tmp_root / "activo" / id_caso
+        caso_dir.mkdir()
+        (tmp_root / "cola" / "REQ-VENTA.html").write_text(
+            "<html><body><p>Radicado de gestión de ventas con nota crédito del mostrador</p></body></html>",
+            encoding="utf-8",
+        )
+        solicitud = {
+            "identificacion": {"idCaso": id_caso, "idReq": "REQ-VENTA"},
+            "proyecto": {
+                "nombre": "Clínica demo",
+                "modulo": "INVENTARIO",
+                "rutaPantalla": "/inv/gesventa",
+            },
+            "cola": {"rutaCola": "cola/REQ-VENTA.html", "idReq": "REQ-VENTA"},
+            "contenido": {
+                "titulo": "Nota crédito en gestión de ventas",
+                "requerimiento": "La nota crédito de una devolución no reingresa el artículo",
+            },
+            "sql": {"procesoId": "", "usarDocumentacion": False, "metodosDocumentados": []},
+        }
+        (caso_dir / "solicitud.json").write_text(
+            json.dumps(solicitud, ensure_ascii=False), encoding="utf-8"
+        )
+        (caso_dir / "chat.json").write_text(
+            json.dumps({
+                "mensajes": [
+                    {"autor": "coordinador", "texto": "Confirmo que la pantalla es gestión de ventas"},
+                    {"autor": "sistema", "texto": "este aviso no debe ubicarse"},
+                ]
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        original_root = cursor_bot.ROOT
+        original_activo = cursor_bot.ACTIVO
+        cursor_bot.ROOT = str(tmp_root)
+        cursor_bot.ACTIVO = str(tmp_root / "activo")
+        try:
+            prompt, procesos = cursor_bot._prompt_base(id_caso, "ubicar-req")
+            assert "MAPA PARA UBICAR" in prompt
+            assert "RUTA inventario · ventas" in prompt
+            assert "rutaPantalla" in prompt and "/inv/gesventa" in prompt
+            assert "REQ-VENTA" in prompt
+            assert "Confirmo que la pantalla es gestión de ventas" in prompt
+            assert "este aviso no debe ubicarse" not in prompt
+            assert "Radicado de gestión de ventas con nota crédito" in prompt
+            assert "Cola del aval" in prompt
+            assert "PASO 1 DE 2" in prompt
+            assert procesos == ["inventario"], procesos
+            print(f"  ✓ procesos {', '.join(procesos)} · prompt {len(prompt)} caracteres")
+            print("✓ Test prompt ubicar: OK")
+        finally:
+            cursor_bot.ROOT = original_root
+            cursor_bot.ACTIVO = original_activo
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 def test_integration_cursor_bot_prompt():
     """INTEGRACIÓN: cursor_bot.py debe incluir contexto preseleccionado en el prompt."""
     print("\nTest INTEGRACIÓN: Prompt de analizar-req con contexto KB...")
@@ -374,7 +494,9 @@ def main():
         test_limite_tamano()
         test_resumen_sps()
         test_json_output()
-        test_integration_cursor_bot_prompt()  # Nuevo test de integración
+        test_mapa_gesventa()
+        test_prompt_ubicar_trae_mapa()
+        test_integration_cursor_bot_prompt()
         
         print("\n✅ Todos los tests de kb_contexto_req pasaron correctamente")
         return 0
