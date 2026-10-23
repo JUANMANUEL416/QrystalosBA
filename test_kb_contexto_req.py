@@ -166,6 +166,25 @@ def test_positive_bancos():
     print("✓ Test positivo bancos: OK")
 
 
+def test_nota_rips_muestra_que_ya_va_a_la_dian():
+    print("\nTest: la nota RIPS ya notificada a la DIAN entra al recorte...")
+    items = kb_contexto_req._resumir_cubiertas(
+        "rips-json",
+        {"nota", "credito", "ministerio", "dian", "cufe"},
+    )
+    blob = " ".join(
+        " ".join(str(item.get(clave) or "") for clave in ("necesidad", "donde", "condicion", "metodo", "noEs"))
+        for item in items
+    )
+    assert "DIAN" in blob
+    assert "NC / ND" in blob or "Validar Notas" in blob
+    prompt = kb_contexto_req.formato_prompt(
+        {"procesos": [{"id": "rips-json", "nombre": "RIPS", "modulo": "RIPS", "estado": "completo", "yaCubiertas": items}]}
+    )
+    assert "condición:" in prompt
+    print("✓ La condición de la nota (DIAN) queda en el recorte")
+
+
 def test_formato_prompt():
     """Verifica que el formato del prompt sea válido."""
     print("\nTest 4: Formato del prompt...")
@@ -584,6 +603,7 @@ def main():
         test_regression_inventario_sku()
         test_positive_caja()
         test_positive_bancos()
+        test_nota_rips_muestra_que_ya_va_a_la_dian()
         test_formato_prompt()
         test_limite_tamano()
         test_resumen_sps()

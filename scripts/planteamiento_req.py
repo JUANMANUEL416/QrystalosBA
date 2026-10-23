@@ -61,10 +61,11 @@ def contrato_prompt(modo: str = "analisis") -> str:
     criterios = "criterios" if modo == "comite" else "criteriosAceptacion"
     return f"""PLANTEAMIENTO (obligatorio; un resumen de una frase no cierra el turno):
 Escriba {donde} con estos datos, y el mismo contenido en los campos de texto:
-- clasificacion: capacitacion, defecto o hueco.
-- flujoHoy: cuatro pasos — pantalla y botón o estado; MODELO y METODO; procedimiento y qué hace ese tramo; tabla o salida.
-- causa: la condición que falla o falta, citada de la ficha (procedimiento y METODO) o del bloque SQL leído. Si es capacitación, la ruta y la condición del camino que ya existe.
-- cambio.negocio: qué pasa hoy y qué se propone, en palabras de la pantalla, sin nombres de procedimiento.
+- clasificacion: capacitacion, defecto o hueco. Sale de lo que el proceso ya hace, no del texto del pedido.
+- yaExiste: lista de lo que el control ya hace y toca este pedido. Cada ítem tiene donde (pantalla y botón), condicion y queHace. Cópielo de las necesidades ya cubiertas y de la ficha, con la condición y el método. Si ninguna coincide, el ítem dice qué caminos revisó y por qué no cubren el pedido.
+- flujoHoy: empieza por ese camino que ya existe. Después, pantalla y botón o estado; MODELO y METODO; procedimiento y qué hace ese tramo; tabla o salida. El síntoma del ticket no es el flujo de hoy.
+- causa: la condición que falla o falta, citada de la ficha (procedimiento y METODO) o del bloque SQL leído. Si es capacitación, la ruta y la condición del camino que ya existe. No escriba «sale vacío», «no se envía» o «no puede reportar» si la ficha dice que ese envío ya ocurre.
+- cambio.negocio: primero lo que la pantalla ya hace (el camino de yaExiste). Después, solo el tramo que la ficha muestra que todavía falta. Sin nombres de procedimiento. CUFE de la DIAN, CUV del Ministerio y radicación son caminos distintos: si la nota ya se envía a la DIAN y el CUFE se genera, eso queda en el flujo de hoy y no se vuelve a proponer.
 - cambio.frontend: archivo Vue y condición, o «Sin cambio FE».
 - cambio.sql: objeto, METODO y qué bloque cambia, o «Sin cambio SQL».
 - cambio.backend: MODELO y METODO, o «Sin cambio API».
@@ -74,7 +75,7 @@ Escriba {donde} con estos datos, y el mismo contenido en los campos de texto:
 Vuelque eso en el formulario: analisis (flujo de hoy y causa, no una paráfrasis del pedido), recomendacion (cambio por capa), cambioPropuestoSimple (el negocio), {criterios} (un criterio por línea), alcance y restricciones.
 
 Profundidad, sin barrer la base:
-1. Clasifique después de ver todos los caminos del control, incluidas las necesidades ya cubiertas. No se quede con las casillas del formulario ni con la captura.
+1. Clasifique después de ver todos los caminos del control, incluidas las necesidades ya cubiertas (dónde, condición y método). No se quede con las casillas del formulario, la captura ni el texto del pedido. Si ese camino ya envía, genera o valida, la clasificación de esa parte es capacitación y el cambio no la vuelve a construir.
 2. Abra la ficha completa del METODO de este cambio (hace, valida, noValida, errores, llama, efecto). El recorte del contexto no alcanza para redactar el cambio.
 3. Si el cambio es SQL (defecto o hueco, impacto Sí o Parcial): lea el cuerpo de ESE METODO en la carpeta del caso o bájelo, y escriba cambioPropuestoSql con ---ANTES--- (el bloque de hoy) y ---SUGERIDO--- (el bloque propuesto), más una consulta de comprobación. No invente el SQL desde el resumen de la ficha. Una ficha en estado leido sirve para clasificar; no reemplaza el bloque.
 4. Si el cambio es de pantalla: abra el Vue de esa ruta y nombre el archivo, el v-if o el estado, y el llamado AppStore.json.
@@ -279,6 +280,35 @@ def _cambio(campos: dict) -> dict:
     return cambio if isinstance(cambio, dict) else {}
 
 
+def texto_ya_existe(plan: dict) -> str:
+    """Camino que el proceso ya cubre, escrito por el análisis antes del cambio."""
+    if not isinstance(plan, dict):
+        return ""
+    items = plan.get("yaExiste")
+    partes: list[str] = []
+    if isinstance(items, str):
+        partes.append(items)
+    elif isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict):
+                partes.append(
+                    " ".join(
+                        str(item.get(clave) or "")
+                        for clave in ("donde", "condicion", "queHace", "noEs")
+                    )
+                )
+            else:
+                partes.append(str(item))
+    return " ".join(parte.strip() for parte in partes if str(parte).strip())
+
+
+_QUEJA_DE_PEDIDO = re.compile(
+    r"sale vac[ií]o|no puede reportar|no se env[ií]a|no genera|no puede enviar|no se puede",
+    re.I,
+)
+_CAMINO_YA_HECHO = re.compile(r"\b(cufe|dian|cuv|notificad)", re.I)
+
+
 def evaluar(sol: dict, modo: str = "analisis") -> dict:
     """Devuelve ok y la lista de lo que falta para que un desarrollador pueda trabajar."""
     if not isinstance(sol, dict):
@@ -287,6 +317,13 @@ def evaluar(sol: dict, modo: str = "analisis") -> dict:
     planteamiento = campos["planteamiento"]
     faltantes: list[str] = []
     clasificacion = _clasificacion(contenido, campos)
+    ya = texto_ya_existe(planteamiento)
+    if len(ya) < 40:
+        faltantes.append(
+            "Falta lo que el proceso ya hace (planteamiento.yaExiste): pantalla, condición y efecto. "
+            "Si la nota ya se envía a la DIAN y el CUFE se genera, eso se escribe ahí. "
+            "No copie el pedido como si fuera el comportamiento de hoy."
+        )
     if not clasificacion:
         faltantes.append(
             "Clasifique el requerimiento: capacitación, defecto o hueco "
@@ -322,6 +359,17 @@ def evaluar(sol: dict, modo: str = "analisis") -> dict:
         )
     elif negocio.lower() in _GENERICAS:
         faltantes.append("El cambio es una frase genérica. Nombre el control y el bloque que se toca.")
+    elif (
+        _QUEJA_DE_PEDIDO.search(negocio)
+        and _CAMINO_YA_HECHO.search(ya)
+        and not _CAMINO_YA_HECHO.search(negocio)
+    ):
+        faltantes.append(
+            "El cambio en palabras simples repite el pedido (archivo vacío, no se envía, no se puede reportar) "
+            "y no reconoce el camino que ya existe. Si la nota ya se envía a la DIAN y el CUFE se genera, "
+            "eso queda en el flujo de hoy. El cambio solo habla de lo que la ficha muestra que todavía falta, "
+            "y cita ese método."
+        )
 
     if clasificacion != "capacitacion" and _impacto(contenido, "impactoSql"):
         sql = campos["sql"]

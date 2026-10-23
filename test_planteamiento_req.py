@@ -43,6 +43,13 @@ def _defecto_sql():
                 "estado": "listo",
             },
             "planteamiento": {
+                "yaExiste": [
+                    {
+                        "donde": "Notas DB/CR, al aplicar la nota de devolución parcial",
+                        "condicion": "La nota ya se crea y el detalle guarda el IVA",
+                        "queHace": "La cabecera de la nota ya se graba al aplicar. El detalle ya trae el IVA.",
+                    }
+                ],
                 "clasificacion": "defecto",
                 "flujoHoy": [
                     "Gestión de ventas, devolución parcial",
@@ -176,6 +183,13 @@ def test_comite_sin_bloque():
         "propuesta": "Hoy la cabecera no incluye el IVA del detalle y debe incluirlo al generar la nota.",
         "criterios": "La cabecera cuadra con el detalle.\nUna nota vieja no se toca.",
         "planteamiento": {
+            "yaExiste": [
+                {
+                    "donde": "Notas DB/CR",
+                    "condicion": "La nota ya se aplica",
+                    "queHace": "La nota ya se genera y el detalle ya guarda el IVA de cada línea.",
+                }
+            ],
             "clasificacion": "defecto",
             "flujoHoy": ["Notas", "GEN_NC", "SPQ_GESVENTA graba FNOT"],
             "causa": "GEN_NC graba la cabecera con la base y deja el IVA solo en el detalle de la nota.",
@@ -184,6 +198,27 @@ def test_comite_sin_bloque():
     revision = planteamiento_req.evaluar(sol, modo="comite")
     assert revision["ok"] is False
     assert any("cambioPropuestoSql" in item for item in revision["faltantes"])
+
+
+def test_no_copia_el_pedido_si_la_nota_ya_va_a_la_dian():
+    sol = _defecto_sql()
+    plan = sol["contenido"]["planteamiento"]
+    plan["yaExiste"] = [
+        {
+            "donde": "FEV/NC/NA-RIPS, pestaña NC / ND, Validar Notas",
+            "condicion": "La nota ya está notificada a la DIAN y el CUFE ya se generó",
+            "queHace": "La nota crédito que anula la factura ya se envía a la DIAN y el CUFE queda generado.",
+        }
+    ]
+    queja = (
+        "Hoy, al validar ante el Ministerio una nota crédito que anula por completo la factura, "
+        "el archivo RIPS sale vacío y el envío no puede reportar la anulación."
+    )
+    plan["cambio"]["negocio"] = queja
+    sol["contenido"]["cambioPropuestoSimple"] = queja
+    revision = planteamiento_req.evaluar(sol)
+    assert revision["ok"] is False
+    assert any("ya existe" in item for item in revision["faltantes"])
 
 
 def main():
@@ -197,6 +232,7 @@ def main():
     test_ubicacion_sin_mapa_no_sigue()
     test_sp_de_otro_flujo()
     test_comite_sin_bloque()
+    test_no_copia_el_pedido_si_la_nota_ya_va_a_la_dian()
     print("ok planteamiento_req")
     return 0
 

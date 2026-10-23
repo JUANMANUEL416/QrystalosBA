@@ -50,8 +50,15 @@ def _sol(**extra):
             "participan": [{"sp": "SPQ_GESVENTA", "metodo": "GEN_NC"}],
             "estado": "listo",
         },
-        "planteamiento": {
-            "clasificacion": "defecto",
+            "planteamiento": {
+                "yaExiste": [
+                    {
+                        "donde": "Notas DB/CR, al aplicar la nota de devolución parcial",
+                        "condicion": "La nota ya se crea y el detalle guarda el IVA",
+                        "queHace": "La cabecera de la nota ya se graba al aplicar. El detalle ya trae el IVA.",
+                    }
+                ],
+                "clasificacion": "defecto",
             "flujoHoy": [
                 "Gestión de ventas, devolución parcial",
                 "GESVENTA · GEN_NC",
@@ -136,6 +143,23 @@ def test_validar_antes_y_contabilidad_solo_si_aplican():
     assert "Validación del agente" in html
 
 
+def test_seccion_50_empieza_por_lo_que_ya_hace():
+    sol = _sol()
+    sol["contenido"]["planteamiento"]["yaExiste"] = [
+        {
+            "donde": "FEV/NC/NA-RIPS, pestaña NC / ND, Validar Notas",
+            "condicion": "La nota ya está notificada a la DIAN",
+            "queHace": "La nota crédito ya se envía a la DIAN y el CUFE queda generado.",
+        }
+    ]
+    html = dictamen_html.render(sol, "20261023-prueba")
+    bloque = html.split("5.0 En palabras simples", 1)[1][:900]
+    assert "Hoy el sistema ya lo hace" in bloque
+    assert "CUFE" in bloque
+    assert "DIAN" in bloque
+    assert bloque.find("CUFE") < bloque.find("Aparte de ese camino")
+
+
 def test_no_escribe_si_el_planteamiento_esta_corto():
     sol = _sol()
     sol["contenido"]["planteamiento"] = {}
@@ -165,6 +189,7 @@ def test_genera_y_no_pisa_un_html_escrito_a_mano():
 
 if __name__ == "__main__":
     test_plantilla_oficial_sin_contabilidad_ni_rutas()
+    test_seccion_50_empieza_por_lo_que_ya_hace()
     test_validar_antes_y_contabilidad_solo_si_aplican()
     test_no_escribe_si_el_planteamiento_esta_corto()
     test_genera_y_no_pisa_un_html_escrito_a_mano()

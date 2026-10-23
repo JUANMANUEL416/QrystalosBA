@@ -116,6 +116,9 @@ def _analisis(sol: dict) -> str:
     partes = []
     if clas:
         partes.append("Clasificación: " + clas + ".")
+    ya = _publicar(" ".join(_lineas_ya_existe(sol))).strip()
+    if ya:
+        partes.append("Lo que el proceso ya hace: " + ya)
     flujo = plan.get("flujoHoy") if isinstance(plan.get("flujoHoy"), list) else []
     pasos = [str(paso).strip() for paso in flujo if str(paso).strip()]
     if pasos:
@@ -127,6 +130,42 @@ def _analisis(sol: dict) -> str:
     if analisis:
         partes.append(analisis)
     return _publicar("\n\n".join(partes) or "Pendiente de análisis.")
+
+
+def _lineas_ya_existe(sol: dict) -> list[str]:
+    plan = _planteamiento(sol)
+    items = plan.get("yaExiste")
+    lineas = []
+    crudo = items if isinstance(items, list) else ([items] if isinstance(items, str) and items.strip() else [])
+    for item in crudo:
+        if isinstance(item, dict):
+            hace = str(item.get("queHace") or "").strip()
+            donde = str(item.get("donde") or "").strip()
+            condicion = str(item.get("condicion") or "").strip()
+            frase = hace
+            if donde:
+                frase = (frase + " Se hace en " + donde + ".").strip()
+            if condicion:
+                frase = (frase + " Condición: " + condicion).strip()
+        else:
+            frase = str(item or "").strip()
+        if frase:
+            lineas.append(frase)
+    return lineas
+
+
+def _palabras_simples(sol: dict) -> str:
+    """Sección 5.0: primero el camino que el proceso ya tiene, después solo el tramo que falta."""
+    hecho = _publicar(" ".join(_lineas_ya_existe(sol))).strip()
+    gap = _negocio(sol)
+    clas = str(_planteamiento(sol).get("clasificacion") or "").strip().lower()
+    if hecho and clas == "capacitacion":
+        return "Hoy el sistema ya lo hace. " + hecho
+    if hecho and gap and gap not in hecho:
+        return "Hoy el sistema ya lo hace. " + hecho + "\n\nAparte de ese camino: " + gap
+    if hecho:
+        return "Hoy el sistema ya lo hace. " + hecho
+    return gap
 
 
 def _negocio(sol: dict) -> str:
@@ -400,7 +439,7 @@ def render(sol: dict, id_caso: str = "") -> str:
         "TABLA_IMPACTADOS": _objetos(sol),
         "DIAGRAMA_FLUJO": _diagrama(sol),
         "NORMATIVA_ADJUNTOS": _esc(_normativa(sol, id_caso)),
-        "CAMBIOS_EN_PALABRAS_SIMPLES": _esc(negocio or "—"),
+        "CAMBIOS_EN_PALABRAS_SIMPLES": _esc(_palabras_simples(sol) or "—"),
         "CAMBIOS_FRONTEND": _bloque_capa("No hay cambio en el frontend.", str(cambio.get("frontend") or ""), fe_txt),
         "CAMBIOS_SQL": _bloque_capa("No hay cambio en IXONLINE/SQL.", str(cambio.get("sql") or ""), sql_txt),
         "CAMBIOS_SQL_CODIGO": _sql_spec(sol),

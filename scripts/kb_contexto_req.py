@@ -252,7 +252,10 @@ def _resumir_cubiertas(proceso_id: str, terminos: set[str] | None = None, limite
 
     def puntaje(item: dict) -> int:
         blob = _normalizar_texto(
-            " ".join(str(item.get(clave) or "") for clave in ("necesidad", "donde", "condicion", "noEs"))
+            " ".join(
+                str(item.get(clave) or "")
+                for clave in ("necesidad", "donde", "condicion", "metodo", "noEs")
+            )
         )
         if not terminos:
             return 0
@@ -266,9 +269,11 @@ def _resumir_cubiertas(proceso_id: str, terminos: set[str] | None = None, limite
     salida = []
     for item in ranked:
         salida.append({
-            "necesidad": _clip(item.get("necesidad"), 120),
-            "donde": _clip(item.get("donde"), 140),
-            "noEs": _clip(item.get("noEs"), 100),
+            "necesidad": _clip(item.get("necesidad"), 140),
+            "donde": _clip(item.get("donde"), 180),
+            "condicion": _clip(item.get("condicion"), 180),
+            "metodo": _clip(item.get("metodo"), 140),
+            "noEs": _clip(item.get("noEs"), 120),
         })
     return salida
 
@@ -1075,10 +1080,17 @@ def formato_prompt(contexto: dict) -> str:
                         lineas.append(f"      {m['id']}: " + " · ".join(detalle[:4]))
 
         if proc.get("yaCubiertas"):
-            lineas.append("  Necesidades ya cubiertas (si el REQ coincide, es capacitación, no desarrollo):")
+            lineas.append(
+                "  Necesidades ya cubiertas (si una coincide, ese tramo ya existe: "
+                "se escribe en el flujo de hoy y no se propone otra vez):"
+            )
             for item in proc["yaCubiertas"]:
                 extra = f" — no es: {item['noEs']}" if item.get("noEs") else ""
-                lineas.append(f"    - {item.get('necesidad') or ''} → {item.get('donde') or ''}{extra}")
+                condicion = f" | condición: {item['condicion']}" if item.get("condicion") else ""
+                metodo = f" | método: {item['metodo']}" if item.get("metodo") else ""
+                lineas.append(
+                    f"    - {item.get('necesidad') or ''} → {item.get('donde') or ''}{condicion}{metodo}{extra}"
+                )
         
         if proc.get("controles"):
             lineas.append(f"  Controles ({len(proc['controles'])}):")
