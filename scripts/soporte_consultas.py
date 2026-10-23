@@ -511,6 +511,14 @@ def cerrar_consulta(sid: str) -> dict:
             c["estado"] = meta["estado"]
             break
     _save_index(idx)
+    
+    # Reiniciar chat del agente al cerrar consulta
+    try:
+        import cursor_bot
+        cursor_bot.reiniciar_chat(sid, motivo="cerrar-consulta")
+    except Exception as exc:
+        print(f"[soporte_consultas.cerrar_consulta] advertencia al reiniciar chat: {exc}", flush=True)
+    
     return meta
 
 
