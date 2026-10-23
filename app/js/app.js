@@ -25,6 +25,7 @@
   let criteriosMeta = window.QrysCriterios ? QrysCriterios.emptyMeta() : {};
   let contValidacion = null;
   let brechaAnalisis = null;
+  let ubicacionAnalisis = null;
   let imagenesAnalisis = [];
   let archivosAnalisis = [];
   let diagramaFlujo = null;
@@ -1144,6 +1145,8 @@
     if ($("#chkCorreoEnviado")) $("#chkCorreoEnviado").checked = false;
     setVal("#fechaEnvioCorreo", "");
     brechaAnalisis = null;
+    ubicacionAnalisis = null;
+    renderUbicacion(null);
     imagenesAnalisis = [];
     archivosAnalisis = [];
     solicitudOrigen = null;
@@ -1161,7 +1164,7 @@
     renderMockupsForm();
     renderBrechaAnalisis(null);
     const hintBrecha = $("#brechaAnalisisHint");
-    if (hintBrecha) hintBrecha.textContent = "El agente recorre el flujo del control y deja clasificación, causa y cambio por capa. Si queda corto, aquí aparece lo que falta.";
+    if (hintBrecha) hintBrecha.textContent = "Analizar corre en dos pasos: ubica el flujo y después analiza el problema solo con esos recursos.";
     $("#alertOrigenCola").hidden = true;
     $("#archivoColaVinculado").textContent = "—";
     if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = false;
@@ -1898,6 +1901,27 @@
     box.innerHTML = `<strong>Validación del agente</strong>${cuando}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
   }
 
+  function renderUbicacion(dato) {
+    const el = $("#ubicacionAnalisisNota");
+    if (!el) return;
+    const proc = String(dato?.procesoId || "").trim();
+    if (!proc) {
+      el.classList.add("hidden");
+      el.textContent = "";
+      return;
+    }
+    const pieza = dato.pieza || {};
+    const recursos = (dato.recursos || [])
+      .map((r) => r?.cual || r?.tipo)
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(", ");
+    el.classList.remove("hidden");
+    el.textContent = `Flujo: ${proc} → ${dato.flujo || ""} → ${pieza.tipo || ""} ${pieza.nombre || ""}${
+      recursos ? `. Recursos: ${recursos}` : ""
+    }`;
+  }
+
   function renderBrechaAnalisis(dato) {
     const box = $("#brechaAnalisisBox");
     if (!box) return;
@@ -1964,8 +1988,9 @@
   async function pollBrechaAnalisis(idCaso, hintEl, loadingToken) {
     const hint = hintEl || $("#brechaAnalisisHint");
     const stale = () => loadingToken != null && loadingToken !== analisisLoadingToken;
-    // El agente de un REQ suele pasar de 4 min. 300 sondeos × 4 s ≈ 20 min.
-    for (let i = 0; i < 300; i++) {
+    // Dos pasos (ubicar + analizar). 450 sondeos × 4 s ≈ 30 min.
+    let ubicarEspera = 0;
+    for (let i = 0; i < 450; i++) {
       await new Promise((r) => setTimeout(r, 4000));
       if (stale()) return;
       try {
@@ -1978,6 +2003,20 @@
           return;
         }
         const termino = bot.estado === "listo" || bot.estado === "terminado";
+        const sigueAlAnalisis = bot.cadena === "analizar-req" || (bot.motivo === "ubicar-req" && !bot.ubicacionDetenida);
+        if (termino && bot.ubicacionDetenida) {
+          await cargarSolicitudCaso(idCaso, { sondeo: true });
+          if (hint) hint.textContent = "Falta un dato para ubicar el flujo. Revise el Chat.";
+          updateAnalisisLoadingDetalle("La ubicación quedó en espera. Revise el Chat.");
+          return;
+        }
+        if (termino && sigueAlAnalisis) {
+          ubicarEspera += 1;
+          updateAnalisisLoadingDetalle("Flujo ubicado. Sigue el análisis del problema en ese tramo…");
+          if (hint) hint.textContent = "Ubicó el flujo. Ahora analiza el problema, sin otra acción suya.";
+          await cargarSolicitudCaso(idCaso, { sondeo: true });
+          if (ubicarEspera < 4) continue;
+        }
         if (termino) {
           updateAnalisisLoadingDetalle("Análisis listo. Actualizando formulario…");
           await cargarSolicitudCaso(idCaso, { sondeo: true });
@@ -1991,15 +2030,20 @@
               brechaAnalisis?.estado === "superficial"
                 ? "El análisis quedó corto. Revise lo que falta en la propuesta y vuelva a pedir Analizar requerimiento."
                 : textoPropuestaEnFormulario()
-                  ? "Listo: revise el flujo, la causa y el cambio por capa en el formulario."
+                  ? "Listo: revise el flujo ubicado, la causa y el cambio."
                   : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
           }
           return;
         }
+        ubicarEspera = 0;
         const modelo = bot.modelo ? ` ${bot.modelo}${bot.fast ? " Fast" : ""}` : "";
         const mins = minutosDesdeIso(bot.iniciadoEn);
         const lleva = mins > 0 ? ` Lleva ${mins} min.` : "";
-        updateAnalisisLoadingDetalle(`El agente${modelo} sigue trabajando.${lleva} El aviso se cierra al terminar.`);
+        const fase =
+          bot.motivo === "ubicar-req"
+            ? "Ubicando proceso, flujo y pieza."
+            : "Analizando el problema en el flujo ya ubicado.";
+        updateAnalisisLoadingDetalle(`${fase}${modelo}${lleva}`);
         await cargarSolicitudCaso(idCaso, { sondeo: true });
       } catch {
         /* reintento */
@@ -2989,10 +3033,10 @@
     if (btn) btn.disabled = true;
     showAnalisisLoading(
       "Analizando requerimiento",
-      "Guardando y pidiendo análisis al agente…",
+      "Paso 1: ubicando el proceso, el flujo y la pieza…",
       idCaso,
     );
-    if (hint) hint.textContent = "Guardando y pidiendo análisis al agente…";
+    if (hint) hint.textContent = "Paso 1: ubicando el flujo en la base. El análisis arranca solo después.";
     try {
       const data = collectData();
       const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, {
@@ -3007,10 +3051,10 @@
       }
       if (hint) {
         hint.textContent =
-          "El agente está recorriendo el flujo del control y armando la causa y el cambio. Espere…";
+          "Paso 1: ubicando el proceso, el flujo y la pieza. Luego analiza solo esos recursos.";
       }
       updateAnalisisLoadingDetalle(
-        "El agente contrasta el REQ con el flujo real. El formulario se actualizará solo.",
+        "Paso 1 de 2. El formulario se actualiza cuando ubique el flujo y cuando cierre el cambio.",
       );
       await pollBrechaAnalisis(idCaso, hint, loadingToken);
     } catch (e) {
@@ -4292,6 +4336,7 @@
           })),
         criteriosMeta,
         brechaAnalisis,
+        ubicacion: ubicacionAnalisis,
         diagramaFlujo: diagramaFlujo
           ? {
               ...diagramaFlujo,
@@ -4857,6 +4902,8 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
       toggleContabilidad();
       renderContValidacion(contValidacion);
       brechaAnalisis = data.contenido?.brechaAnalisis || null;
+      ubicacionAnalisis = data.contenido?.ubicacion || null;
+      renderUbicacion(ubicacionAnalisis);
       renderBrechaAnalisis(brechaAnalisis);
       const va = data.contenido?.validarAntes || {};
       if ($("#chkValidarAntes")) $("#chkValidarAntes").checked = !!va.aplica;

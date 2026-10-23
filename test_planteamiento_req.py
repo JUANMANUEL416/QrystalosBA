@@ -34,6 +34,14 @@ def _defecto_sql():
                 "---SUGERIDO---\n"
                 "UPDATE FNOT SET VR_TOTAL = @VLR_TOTAL + @VLR_IVA WHERE CNSFNOT = @CNSFNOT\n"
             ),
+            "ubicacion": {
+                "procesoId": "inventario",
+                "flujo": "Devolución parcial de venta",
+                "pieza": {"tipo": "sp", "nombre": "SPQ_GESVENTA · GEN_NC"},
+                "recursos": [{"tipo": "sp", "cual": "SPQ_GESVENTA"}],
+                "participan": [{"sp": "SPQ_GESVENTA", "metodo": "GEN_NC"}],
+                "estado": "listo",
+            },
             "planteamiento": {
                 "clasificacion": "defecto",
                 "flujoHoy": [
@@ -105,6 +113,50 @@ def test_capacitacion_no_abre_desarrollo():
     assert any("capacitación" in item or "capacitacion" in item.lower() for item in revision["faltantes"])
 
 
+def _ubicacion_ok():
+    return {
+        "contenido": {
+            "ubicacion": {
+                "procesoId": "inventario",
+                "flujo": "Saldo inicial de entrada",
+                "pieza": {"tipo": "ventana", "nombre": "Movimiento SI"},
+                "recursos": [{"tipo": "ventana", "cual": "Movimiento SI"}, {"tipo": "codigo", "cual": "MovimientoPage.vue"}],
+                "participan": [],
+                "estado": "listo",
+            }
+        }
+    }
+
+
+def test_ubicacion_incompleta():
+    revision = planteamiento_req.evaluar_ubicacion({"contenido": {}})
+    assert revision["ok"] is False
+    assert revision["espera"] is False
+    assert revision["faltantes"]
+
+
+def test_ubicacion_lista():
+    revision = planteamiento_req.evaluar_ubicacion(_ubicacion_ok())
+    assert revision["ok"] is True, revision["faltantes"]
+
+
+def test_ubicacion_pregunta_detiene():
+    sol = _ubicacion_ok()
+    sol["contenido"]["ubicacion"]["estado"] = "pregunta"
+    sol["contenido"]["ubicacion"]["preguntas"] = ["¿El saldo inicial es por bodega o por sede?"]
+    revision = planteamiento_req.evaluar_ubicacion(sol)
+    assert revision["ok"] is False
+    assert revision["espera"] is True
+
+
+def test_sp_de_otro_flujo():
+    sol = _defecto_sql()
+    sol["contenido"]["cambioPropuestoSql"] += "\n-- también toca SPK_NOMINA_CIERRE\n"
+    revision = planteamiento_req.evaluar(sol)
+    assert revision["ok"] is False
+    assert any("no participan" in item for item in revision["faltantes"])
+
+
 def test_comite_sin_bloque():
     sol = {
         "necesidad": "La nota no lleva el IVA",
@@ -128,6 +180,10 @@ def main():
     test_defecto_con_bloque_sql()
     test_sql_sin_separar_bloques()
     test_capacitacion_no_abre_desarrollo()
+    test_ubicacion_incompleta()
+    test_ubicacion_lista()
+    test_ubicacion_pregunta_detiene()
+    test_sp_de_otro_flujo()
     test_comite_sin_bloque()
     print("ok planteamiento_req")
     return 0

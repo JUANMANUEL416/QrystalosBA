@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 
 CLASIFICACIONES = ("capacitacion", "defecto", "hueco")
+TIPOS_PIEZA = ("ventana", "boton", "proceso", "sp", "metodo")
+TIPOS_RECURSO = ("ventana", "codigo", "sp", "pregunta", "normativa")
 
 _GENERICAS = (
     "ajustar el proceso",
@@ -19,6 +21,31 @@ _GENERICAS = (
     "revisar y corregir",
     "realizar el ajuste",
 )
+
+
+def contrato_ubicacion() -> str:
+    """Paso interno 1: ubicar el flujo. Sin llaves, para incrustarlo en el prompt."""
+    return """PASO 1 DE 2 — UBICAR. No analice el problema y no proponga el cambio.
+El coordinador no interviene entre este paso y el siguiente.
+
+Escriba solicitud.json → contenido.ubicacion, en este orden:
+1. procesoId: un solo id de la base (por ejemplo inventario). No deje dos módulos.
+2. flujo: el recorrido dentro de ese proceso en el que participa el requerimiento (el grafo o el control, no el módulo entero).
+3. pieza.tipo: ventana, boton, proceso, sp o metodo. pieza.nombre: cómo se llama esa pieza.
+4. recursos: lo que hace falta para analizar ESA pieza, nada más. Cada recurso tiene tipo y cual.
+   - ventana: la pantalla.
+   - codigo: el Vue o el componente de esa pantalla.
+   - sp: el procedimiento de esta pieza (en cual va el nombre).
+   - pregunta: un dato que solo el analista puede responder.
+   - normativa: la norma adjunta, si el pedido la cita.
+5. participan: solo el SP y el METODO de este flujo. Si el recurso no es un SP, déjela vacía. No copie métodos de otro flujo del mismo módulo.
+6. estado: listo si ya se puede analizar. pregunta si falta una respuesta; en ese caso escriba preguntas con el texto.
+
+También deje sql.procesoId igual a procesoId.
+
+No escriba analisis, recomendacion, criteriosAceptacion ni cambioPropuestoSql en este paso.
+En el Chat, una línea: proceso → flujo → pieza → recursos.
+"""
 
 
 def contrato_prompt(modo: str = "analisis") -> str:
@@ -50,7 +77,116 @@ Profundidad, sin barrer la base:
 4. Si el cambio es de pantalla: abra el Vue de esa ruta y nombre el archivo, el v-if o el estado, y el llamado AppStore.json.
 5. Si es capacitación: impacto de frontend, API y SQL en No; cambioPropuestoSql vacío; validar antes = probar el camino que ya existe. No proponga un módulo nuevo.
 6. No marque brechaAnalisis.estado en listo si falta la causa o el bloque. Si un dato bloquea, pida ese dato y deje el estado en observado.
+7. El alcance es contenido.ubicacion. Abra solo esos recursos. En el cambio y en metodosDocumentados solo entran los SP y METODO de ubicacion.participan. Un procedimiento de otro flujo del mismo módulo no se nombra ni se baja.
 """
+
+
+def _norm_tipo(valor: str, validos: tuple[str, ...]) -> str:
+    texto = (valor or "").strip().lower().replace("ó", "o").replace("á", "a").replace("é", "e")
+    alias = {
+        "boton": "boton",
+        "metodo": "metodo",
+        "procedimiento": "sp",
+        "procedure": "sp",
+        "pantalla": "ventana",
+        "vue": "codigo",
+    }
+    texto = alias.get(texto, texto)
+    return texto if texto in validos else ""
+
+
+def _ubicacion(sol: dict) -> dict:
+    if not isinstance(sol, dict):
+        return {}
+    contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+    ubicacion = contenido.get("ubicacion")
+    if isinstance(ubicacion, dict):
+        return ubicacion
+    raiz = sol.get("ubicacion")
+    return raiz if isinstance(raiz, dict) else {}
+
+
+def _participan(ubicacion: dict) -> list[tuple[str, str]]:
+    salida = []
+    for item in ubicacion.get("participan") or []:
+        if not isinstance(item, dict):
+            continue
+        sp = str(item.get("sp") or "").strip().upper()
+        metodo = str(item.get("metodo") or "").strip().upper()
+        if sp:
+            salida.append((sp, metodo))
+    return salida
+
+
+def _recursos(ubicacion: dict) -> list[dict]:
+    salida = []
+    for rec in ubicacion.get("recursos") or []:
+        if not isinstance(rec, dict):
+            continue
+        tipo = _norm_tipo(str(rec.get("tipo") or ""), TIPOS_RECURSO)
+        cual = str(rec.get("cual") or "").strip()
+        if tipo and cual:
+            salida.append({"tipo": tipo, "cual": cual})
+    return salida
+
+
+def evaluar_ubicacion(sol: dict) -> dict:
+    """Paso 1: proceso, flujo, pieza y recursos. espera=True si hay que preguntar y no seguir."""
+    ubicacion = _ubicacion(sol)
+    faltantes: list[str] = []
+    if not str(ubicacion.get("procesoId") or "").strip():
+        faltantes.append("Falta el proceso de la base (por ejemplo inventario).")
+    if len(str(ubicacion.get("flujo") or "").strip()) < 8:
+        faltantes.append("Falta el flujo dentro de ese proceso: el recorrido en el que participa el requerimiento.")
+    pieza = ubicacion.get("pieza") if isinstance(ubicacion.get("pieza"), dict) else {}
+    if not _norm_tipo(str(pieza.get("tipo") or ""), TIPOS_PIEZA):
+        faltantes.append("Falta la pieza dentro del flujo: ventana, botón, proceso, SP o método.")
+    if not str(pieza.get("nombre") or "").strip():
+        faltantes.append("Falta el nombre de esa pieza.")
+    recursos = _recursos(ubicacion)
+    if not recursos:
+        faltantes.append("Falta qué recursos hacen falta: ventana, código, SP o una pregunta al analista.")
+    if any(rec["tipo"] == "sp" for rec in recursos) and not _participan(ubicacion):
+        faltantes.append("El recurso es un SP: indique solo el SP y el METODO que participan en este flujo.")
+    preguntas = [
+        str(item).strip()
+        for item in (ubicacion.get("preguntas") or [])
+        if str(item).strip()
+    ]
+    estado = str(ubicacion.get("estado") or "").strip().lower()
+    pide = estado == "pregunta" or any(rec["tipo"] == "pregunta" for rec in recursos)
+    if pide:
+        texto = preguntas[0] if preguntas else next(
+            (rec["cual"] for rec in recursos if rec["tipo"] == "pregunta"),
+            "",
+        )
+        if not texto:
+            faltantes.append("Marcó una pregunta al analista y no escribió cuál.")
+        elif not faltantes:
+            return {
+                "ok": False,
+                "espera": True,
+                "faltantes": [f"El análisis espera respuesta: {texto}"],
+            }
+    return {"ok": not faltantes, "espera": False, "faltantes": faltantes}
+
+
+def sps_fuera_de_flujo(sol: dict) -> list[str]:
+    """Procedimientos citados en el cambio que no están en la ubicación."""
+    participans = {sp for sp, _metodo in _participan(_ubicacion(sol))}
+    if not participans:
+        return []
+    _contenido, campos = _campos(sol)
+    cambio = _cambio(campos)
+    blob = " ".join(
+        (
+            campos["sql"],
+            campos["recomendacion"],
+            str(cambio.get("sql") or ""),
+        )
+    ).upper()
+    citados = set(re.findall(r"\bSP[QK]_[A-Z0-9_]+\b", blob))
+    return sorted(citados - participans)
 
 
 def texto_faltantes(faltantes: list[str]) -> str:
@@ -196,6 +332,14 @@ def evaluar(sol: dict, modo: str = "analisis") -> dict:
     lineas = [linea.strip() for linea in campos["criterios"].splitlines() if linea.strip()]
     if len(criterios_ok) < 2 and len(lineas) < 2:
         faltantes.append("Hacen falta al menos dos criterios que se puedan comprobar en un caso.")
+
+    if modo == "analisis" and not str(_ubicacion(sol).get("procesoId") or "").strip():
+        faltantes.append("Falta ubicar el flujo en la base (proceso, flujo y pieza) antes del cambio.")
+    fuera = sps_fuera_de_flujo(sol) if modo == "analisis" else []
+    if fuera:
+        faltantes.append(
+            "El cambio nombra procedimientos que no participan en el flujo ubicado: " + ", ".join(fuera) + "."
+        )
 
     if clasificacion == "capacitacion" and any(
         _impacto(contenido, nombre) for nombre in ("impactoFe", "impactoApi", "impactoSql")

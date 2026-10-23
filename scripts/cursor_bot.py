@@ -796,6 +796,65 @@ def prompt_turno(id_caso: str, motivo: str) -> str:
     return prompt
 
 
+def _bloque_precarga_req(id_caso: str) -> tuple[str, str, list[str]]:
+    """Recorte del caso y de la base para ubicar o analizar. No es el análisis."""
+    inline_solicitud = _contexto_inline_solicitud(id_caso, max_chars=4000)
+    inline_chat = _contexto_inline_chat(id_caso, max_mensajes=10, max_chars=3000)
+    inline_cola = _contexto_inline_cola(id_caso, max_chars=1000)
+    contexto_kb = ""
+    procesos_kb_ids: list[str] = []
+    try:
+        sol_data = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
+        contenido = sol_data.get("contenido") or {}
+        partes = []
+        for campo in ("titulo", "requerimiento", "descripcion", "criteriosAceptacion"):
+            txt = str(contenido.get(campo) or "").strip()
+            if txt:
+                partes.append(txt)
+        req_texto = " ".join(partes)
+        proceso_id = str((sol_data.get("sql") or {}).get("procesoId") or "")
+        ubicacion = contenido.get("ubicacion") if isinstance(contenido.get("ubicacion"), dict) else {}
+        if not proceso_id:
+            proceso_id = str(ubicacion.get("procesoId") or "")
+        if req_texto:
+            print(f"[kb_contexto] req_texto ({len(req_texto)} chars): {req_texto[:120]}...", flush=True)
+            inline_kb_texto, procesos_kb_ids = _contexto_inline_kb(req_texto, proceso_id, max_chars=8000)
+            if procesos_kb_ids:
+                contexto_kb = inline_kb_texto
+                print(f"[kb_contexto] preseleccionados: {', '.join(procesos_kb_ids)}", flush=True)
+            else:
+                print("[kb_contexto] preseleccionados: ninguno", flush=True)
+        else:
+            print("[kb_contexto] error: req_texto vacío", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[kb_contexto] error: {exc}", flush=True)
+        traceback.print_exc()
+    bloque_inline = ""
+    if inline_solicitud or inline_chat or inline_cola or contexto_kb:
+        bloque_inline = "\n**CONTEXTO PRE-CARGADO (NO vuelva a leer estos archivos salvo que necesite un detalle truncado):**\n\n"
+        if inline_solicitud:
+            bloque_inline += f"**solicitud.json (compacto):**\n```json\n{inline_solicitud}\n```\n\n"
+        if inline_chat:
+            bloque_inline += f"**chat.json (últimos mensajes):**\n```json\n{inline_chat}\n```\n\n"
+        if inline_cola:
+            bloque_inline += f"**cola.json (entrada de este caso):**\n```json\n{inline_cola}\n```\n\n"
+        if contexto_kb:
+            bloque_inline += f"{contexto_kb}\n\n"
+    return bloque_inline, contexto_kb, procesos_kb_ids
+
+
+def _contrato_ubicacion() -> str:
+    try:
+        import planteamiento_req
+
+        return "\n" + planteamiento_req.contrato_ubicacion() + "\n"
+    except Exception:
+        return (
+            "\n- Ubique un proceso, un flujo y una pieza (ventana, botón, proceso, SP o método). "
+            "Liste solo los recursos de esa pieza. No proponga el cambio.\n"
+        )
+
+
 def _contrato_planteamiento(modo: str = "analisis") -> str:
     try:
         import planteamiento_req
@@ -916,59 +975,31 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "con el código y la documentación. Si no afecta, dígalo y deje estado no_aplica. "
             "Si el texto es incompleto o contradice MCUE/CON, marque observado y pida el dato que falte."
         )
-    elif motivo == "analizar-req":
-        # === MEJORA 1: Contexto inline ===
-        # Precarga solicitud.json, chat.json, cola.json y KB relevante en el prompt
-        inline_solicitud = _contexto_inline_solicitud(id_caso, max_chars=4000)
-        inline_chat = _contexto_inline_chat(id_caso, max_mensajes=10, max_chars=3000)
-        inline_cola = _contexto_inline_cola(id_caso, max_chars=1000)
-        
-        # === MEJORA 2: Mejor preselección KB con scoring mejorado ===
-        contexto_kb = ""
-        procesos_kb_ids = []
-        try:
-            import kb_contexto_req
-            import traceback
-            sol_data = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
-            contenido = sol_data.get("contenido") or {}
-            # Construir texto completo del REQ: título + requerimiento + descripción + criterios
-            partes = []
-            for campo in ("titulo", "requerimiento", "descripcion", "criteriosAceptacion"):
-                txt = str(contenido.get(campo) or "").strip()
-                if txt:
-                    partes.append(txt)
-            req_texto = " ".join(partes)
-            proceso_id = str(sol_data.get("sql", {}).get("procesoId") or "")
-            if req_texto:
-                print(f"[kb_contexto] req_texto ({len(req_texto)} chars): {req_texto[:120]}...", flush=True)
-                inline_kb_texto, procesos_kb_ids = _contexto_inline_kb(req_texto, proceso_id, max_chars=8000)
-                if procesos_kb_ids:
-                    contexto_kb = inline_kb_texto
-                    print(f"[kb_contexto] preseleccionados: {', '.join(procesos_kb_ids)}", flush=True)
-                else:
-                    # No se preseleccionó ningún proceso: log para debug
-                    print("[kb_contexto] preseleccionados: ninguno", flush=True)
-            else:
-                print("[kb_contexto] error: req_texto vacío (campos titulo/requerimiento/descripcion/criteriosAceptacion no tienen texto)", flush=True)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[kb_contexto] error: {exc}", flush=True)
-            traceback.print_exc()
-        
-        # Construir bloque de contexto inline
-        bloque_inline = ""
-        if inline_solicitud or inline_chat or inline_cola or contexto_kb:
-            bloque_inline = "\n**CONTEXTO PRE-CARGADO (NO vuelva a leer estos archivos salvo que necesite un detalle truncado):**\n\n"
-            if inline_solicitud:
-                bloque_inline += f"**solicitud.json (compacto):**\n```json\n{inline_solicitud}\n```\n\n"
-            if inline_chat:
-                bloque_inline += f"**chat.json (últimos mensajes):**\n```json\n{inline_chat}\n```\n\n"
-            if inline_cola:
-                bloque_inline += f"**cola.json (entrada de este caso):**\n```json\n{inline_cola}\n```\n\n"
-            if contexto_kb:
-                bloque_inline += f"{contexto_kb}\n\n"
-        
-        extra = (
-            "- Motivo: ANÁLISIS DEL REQUERIMIENTO orientado a SOLUCIÓN (no dictamen HTML).\n"
+    elif motivo in ("ubicar-req", "analizar-req"):
+        bloque_inline, contexto_kb, procesos_kb_ids = _bloque_precarga_req(id_caso)
+        sol_ubi = read_json(os.path.join(caso_dir(id_caso), "solicitud.json"), {})
+        ubicacion = ((sol_ubi.get("contenido") or {}).get("ubicacion") if isinstance(sol_ubi, dict) else {}) or {}
+        alcance_ubi = ""
+        if isinstance(ubicacion, dict) and ubicacion.get("procesoId"):
+            alcance_ubi = (
+                "ALCANCE YA UBICADO. No salga de este proceso, de este flujo, de esta pieza "
+                "ni de estos SP/METODO:\n"
+                + json.dumps(ubicacion, ensure_ascii=False)[:3000]
+                + "\n\n"
+            )
+        if motivo == "ubicar-req":
+            extra = (
+                "- Motivo: UBICAR EL FLUJO. Paso 1 de 2. El paso 2 arranca solo. No escriba la solución.\n"
+                + bloque_inline
+                + ("\nNo se preseleccionó un proceso. Busque en conocimiento/_indice_busqueda.json "
+                   "la clave del REQ y abra solo esa ficha. Un solo proceso.\n\n"
+                   if not contexto_kb else "")
+                + _contrato_ubicacion()
+            )
+        else:
+            extra = (
+            "- Motivo: PASO 2 DE 2. ANÁLISIS DEL PROBLEMA ya ubicado, y después el cambio. No es el dictamen HTML.\n"
+            + alcance_ubi
             + bloque_inline
             + ("\nNo se preseleccionó contexto KB específico. Use conocimiento/_indice_busqueda.json "
                "buscando términos clave del REQ (SP, METODO, tabla, pantalla) y abra SOLO las fichas "
@@ -976,12 +1007,12 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
                "Las lecturas van al control de este cambio (ficha, cuerpo del METODO, Vue).\n\n" 
                if not contexto_kb else "")
             + "- Método obligatorio (en este orden):\n"
-            "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
-            "  2) Contrastar con el CONTEXTO KB PRESELECCIONADO (arriba). Si no alcanza, "
-            "buscar vía conocimiento/_indice_busqueda.json (solo las fichas del control; "
-            "y sql_refe si hace falta la línea exacta). "
-            "SOLO DESPUÉS, y únicamente para huecos de la base: SQL → DESAIX; código fuente → Qrystalos2; al final qrystalos.documentacion; "
-            "cada hueco va como handoff a Conocimiento (conocimiento/handoffs/cola.json).\n"
+            "  1) Leer contenido.ubicacion y el REQ. Si no hay ubicación, no invente el cambio: "
+            "el paso 1 debió dejar proceso, flujo, pieza y recursos.\n"
+            "  2) Analice el problema solo con esos recursos (la ventana y el código, o el SP indicado, "
+            "o la normativa). No abra otro flujo del módulo. Hueco de esa pieza: SQL → DESAIX de ESE "
+            "objeto; código → el Vue de esa pantalla; al final documentación. Handoff a Conocimiento "
+            "solo por ese hueco.\n"
             "  2b) PASO 0 ¿YA EXISTE?: texto del REQ ≠ captura. Inventariar TODOS los "
             "caminos del control (botones v-if, Help*, necesidadesYaCubiertas, no solo "
             "los METODOs del formulario). Clasificar: capacitación | defecto | hueco. "
@@ -995,12 +1026,8 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "     cambioPropuestoSql con el objeto, ---ANTES--- (bloque de hoy leído) y ---SUGERIDO---\n"
             "     (bloque propuesto), más la consulta de comprobación. Fuente: activo/{id}/sql/ o DESAIX\n"
             "     (PREVERSION). La ficha leido no reemplaza ese bloque. Si no hay cambio SQL, déjelo vacío.\n"
-            "  5) Actualizar solicitud.sql.metodosDocumentados (y procesoId) SOLO con los "
-            "SP/METODO que participan en ESTE cambio. NUNCA copie el catálogo entero de "
-            "conocimiento/{proceso}/sps.json (prenómina, retiros, DIAN… si el REQ es solo "
-            "impresión). Si el SP del fix no está en sps.json, deje metodosDocumentados "
-            "vacío o solo los que sí aplican, pida el .sql y anote en brechaAnalisis.sps. "
-            "Tabla en el Chat: SP · METODO · estado · rol en el fix.\n"
+            "  5) metodosDocumentados = solo ubicacion.participan. Si un SP no está en esa lista, "
+            "no lo nombre, no lo baje y no lo ponga en el cambio. procesoId = ubicacion.procesoId.\n"
             + _contrato_planteamiento("analisis")
             + "- No barra la base. El recorte KB orienta; la solución sale de la ficha del METODO "
             "y, si hay cambio SQL o de pantalla, del cuerpo o del Vue de ese control.\n"
@@ -1236,7 +1263,8 @@ Reglas:
 - Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el control es conciliaciones/FCONCI, etc.).
 - NO invente columnas ni SPs. Si falta una aclaración funcional, PIDA y deténgase.
 - El coordinador escribe solo en el Chat de la app. No pida que pegue el texto en Cursor.
-- Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → ¿ya existe? (capacitación|defecto|hueco) → flujo de hoy → causa citada → cambio por capa**. No trate por defecto un REQ como desarrollo. Inventarie todos los caminos del control, no solo las casillas SQL. No convierta el Chat en un cuestionario de «qué falta del coordinador». En textos al coordinador y al desarrollador diga **control**, no «gate».
+- Metodología Fase 1: primero el flujo ya ubicado (contenido.ubicacion: proceso, flujo, pieza y recursos); después el problema en ese tramo; al final el cambio. No trate por defecto un REQ como desarrollo. En textos al coordinador y al desarrollador diga **control**, no «gate».
+- Si existe contenido.ubicacion, no nombre SP ni METODO que no estén en participan.
 - Si escribe el dictamen HTML, la sección 5 sale de contenido.planteamiento: archivo Vue y condición, objeto SQL con el bloque de hoy y el sugerido, o la ruta de capacitación si el control ya existe. Si el planteamiento no está, complételo en este turno antes del HTML. Un apartado que solo parafrasee el requerimiento no sirve.
 - Mockup UX: la ventana debe ser la **propuesta de desarrollo**, no el problema ni la captura. No reutilice HTML de otro REQ.
 - OpenAI no interviene. Usted escribe criterios, análisis organizado y recomendación en solicitud.json cuando falten o vengan de GPT.
@@ -2101,6 +2129,7 @@ def main() -> int:
             "consultas",
             "documentar",
             "documentar-auto",
+            "ubicar-req",
             "analizar-req",
             "criterios",
             "solicitar-req",
@@ -2413,8 +2442,64 @@ def _clave_del_turno(id_caso: str, motivo: str) -> str:
         return ""
 
 
+def _encadenar_analisis(id_caso: str) -> None:
+    """Paso 1 listo: arranca el análisis del problema sin otra acción del coordinador."""
+    try:
+        import planteamiento_req
+    except Exception:
+        append_chat(
+            id_caso,
+            "sistema",
+            "No pude leer la ubicación del flujo. Vuelva a pulsar Analizar requerimiento.",
+        )
+        return
+    path = os.path.join(caso_dir(id_caso), "solicitud.json")
+    sol = read_json(path, {})
+    if not isinstance(sol, dict):
+        sol = {}
+    revision = planteamiento_req.evaluar_ubicacion(sol)
+    if revision.get("ok"):
+        contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+        ubicacion = contenido.get("ubicacion") if isinstance(contenido.get("ubicacion"), dict) else {}
+        sql = sol.get("sql") if isinstance(sol.get("sql"), dict) else {}
+        if ubicacion.get("procesoId"):
+            sql["procesoId"] = ubicacion.get("procesoId")
+            sol["sql"] = sql
+            write_json(path, sol)
+            try:
+                get_db().guardar_solicitud(id_caso, sol)
+            except Exception:
+                pass
+        pieza = ubicacion.get("pieza") if isinstance(ubicacion.get("pieza"), dict) else {}
+        append_chat(
+            id_caso,
+            "sistema",
+            "Flujo ubicado: {proc} → {flujo} → {tipo} {nombre}. "
+            "Sigue el análisis del problema, solo con esos recursos.".format(
+                proc=ubicacion.get("procesoId") or "",
+                flujo=ubicacion.get("flujo") or "",
+                tipo=pieza.get("tipo") or "",
+                nombre=pieza.get("nombre") or "",
+            ),
+        )
+        write_bot(id_caso, cadena="analizar-req", ubicacionDetenida=False)
+        lanzar_bot(id_caso, "analizar-req", encadenado=True)
+        return
+    write_bot(id_caso, cadena="", ubicacionDetenida=True)
+    if revision.get("espera"):
+        nota = (revision.get("faltantes") or ["Falta una respuesta para seguir."])[0]
+    else:
+        nota = "No quedó ubicado el flujo. El análisis no sigue hasta completar esto:\n" + "\n".join(
+            f"- {item}" for item in (revision.get("faltantes") or [])
+        )
+    append_chat(id_caso, "sistema", nota)
+
+
 def _disparar_siguiente(id_caso: str, motivo: str) -> None:
-    """Con los datos escritos, lanza el manual, la ventana, el guion y el armado."""
+    """Con los datos escritos, lanza el análisis o, al cerrarlo, el manual y la ventana."""
+    if motivo == "ubicar-req":
+        _encadenar_analisis(id_caso)
+        return
     try:
         import orquesta
     except Exception:
@@ -2490,6 +2575,8 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
         heartbeatEn=_now(),
         error="",
         terminadoEn=None,
+        cadena="",
+        ubicacionDetenida=False,
     )
 
     if _es_cuenta_servicio():

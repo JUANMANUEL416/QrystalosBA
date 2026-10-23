@@ -3284,12 +3284,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Analiza el requerimiento contra la base (proceso y fichas del control). "
-                        "Clasifique capacitación, defecto o hueco. Deje el flujo de hoy, la causa "
-                        "citada y el cambio por capa en contenido.planteamiento y en el formulario. "
-                        "Liste SOLO los SP/METODO de este cambio. Si el cambio es SQL, lea el cuerpo "
-                        "de ese METODO y escriba cambioPropuestoSql con ---ANTES--- y ---SUGERIDO---. "
-                        "No haga el dictamen completo. No cierre con un resumen del pedido."
+                        "Analizar corre en dos pasos, sin otra acción suya. "
+                        "Paso 1: ubique el proceso de la base, el flujo dentro de ese proceso "
+                        "y la pieza (ventana, botón, proceso, SP o método), y qué recursos hacen falta. "
+                        "Paso 2: con eso, analice el problema y proponga el cambio. "
+                        "No nombre SP ni métodos que no participen en ese flujo."
                         f"{img_nota}"
                     ),
                     "fecha": ahora,
@@ -3300,11 +3299,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está armando el flujo de hoy, la causa y el cambio por capa. Si el planteamiento queda corto, el Chat lo dice.",
+                    "texto": "Paso 1 de 2: ubicando el proceso, el flujo y la pieza. El análisis del problema arranca solo después.",
                     "fecha": ahora,
                 },
             )
-            bot = agentes_panel.lanzar("analista", id_caso, "analizar-req")
+            bot = agentes_panel.lanzar("analista", id_caso, "ubicar-req")
             if not bot.get("ok"):
                 db.append_chat(
                     id_caso,

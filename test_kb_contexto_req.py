@@ -336,6 +336,8 @@ def test_integration_cursor_bot_prompt():
                 "El prompt debe contener la instrucción de presupuesto"
             assert "PLANTEAMIENTO" in prompt, \
                 "El prompt debe exigir el planteamiento concreto"
+            assert "ubicacion" in prompt, \
+                "El análisis debe quedarse en el flujo ya ubicado"
             assert "hace:" in prompt or "Necesidades ya cubiertas" in prompt, \
                 "El prompt debe traer fichas del control, no solo el id del proceso"
             assert "apenas tenga lo mínimo" not in prompt, \
