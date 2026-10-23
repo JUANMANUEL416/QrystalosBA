@@ -458,12 +458,24 @@ class QrystalosBADB:
                 (estado["cerradaEn"], _now(), id_caso),
             )
             conn.commit()
+        
+        # === AISLAMIENTO: Archivar chat y limpiar sesión al cerrar fase 1 ===
+        try:
+            import cursor_bot
+            resultado = cursor_bot.reiniciar_chat(id_caso, motivo="cerrar-fase1")
+            if resultado.get("ok"):
+                msg_extra = f" Chat archivado: {resultado.get('archivoChat', '—')}."
+            else:
+                msg_extra = f" (advertencia: no se pudo archivar chat: {resultado.get('mensaje', '?')})"
+        except Exception as exc:
+            msg_extra = f" (advertencia: error al reiniciar chat: {exc})"
+        
         self.append_chat(
             id_caso,
             {
                 "id": "fase1cerrada",
                 "autor": "sistema",
-                "texto": "Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{ID-REQ}/.",
+                "texto": f"Fase 1 cerrada. Dictamen copiado a aprobados/. SQL movido a sql_refe/{{ID-REQ}}/{msg_extra}",
                 "fecha": _now(),
             },
         )
