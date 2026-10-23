@@ -711,6 +711,17 @@ def _archivar_chat_sin_lock(canal: str, titulo: str = "", proceso_id: str = "") 
         actual["procesoId"] = pid
     _write_json(_sesion_path(canal, actual["id"]), actual)
     _touch_item(idx, actual)
+    
+    # Limpiar sesión del agente al archivar (nueva sesión = chat vacío)
+    sid_anterior = actual["id"]
+    if sid_anterior and sid_anterior.startswith("__"):
+        # Es una sesión con ID tipo __consultas__~123 o __conocimiento__~456
+        try:
+            import cursor_bot
+            cursor_bot.reiniciar_chat(sid_anterior, motivo=f"nueva-sesion:{canal}")
+        except Exception as exc:
+            print(f"[conocimiento._archivar_chat] advertencia al reiniciar chat de sesión {sid_anterior}: {exc}", flush=True)
+    
     sid = _nuevo_sid(canal)
     nuevo = _empty_chat(canal, sid, _titulo_default(canal, pid), pid)
     _write_json(_sesion_path(canal, sid), nuevo)

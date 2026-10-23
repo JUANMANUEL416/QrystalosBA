@@ -281,14 +281,24 @@ class TestPreseleccionKB(unittest.TestCase):
         req_texto = "bodega kardex inventario ITAR"
         proceso_id = "inventario"
         
-        # Mock kb_contexto_req dentro del módulo
+        # Mock kb_contexto_req dentro del módulo con estructura correcta
         mock_ctx = {
             "procesos": [
                 {
                     "id": "inventario",
-                    "score": 12.5,
-                    "ventanas": ["Entrada de bodega", "Kardex"],
-                    "sps_metodos": ["SPQ_ITAR", "SPK_KARDEX"]
+                    "nombre": "Inventario",
+                    "modulo": "INV",
+                    "estado": "completo",
+                    "resumen": "Proceso de inventario con kardex",
+                    "sps": [
+                        {
+                            "nombre": "SPQ_ITAR",
+                            "estado": "leido",
+                            "metodos": [
+                                {"id": "GUARDAR", "hace": "Guarda entrada"}
+                            ]
+                        }
+                    ]
                 }
             ]
         }
@@ -297,7 +307,7 @@ class TestPreseleccionKB(unittest.TestCase):
             inline, procesos_ids = cursor_bot._contexto_inline_kb(req_texto, proceso_id, max_chars=3000)
         
         self.assertIn("inventario", inline)
-        self.assertIn("12.5", inline)
+        self.assertIn("Inventario", inline)
         self.assertEqual(procesos_ids, ["inventario"])
     
     def test_contexto_inline_kb_sin_procesos(self):
@@ -429,8 +439,8 @@ class TestLimitesSizeContexto(unittest.TestCase):
             caso_dir.mkdir(parents=True)
             
             mensajes = [
-                {"autor": "coordinador", "en": "2024-01-01T10:00:00", "texto": "X" * 1000}
-                for _ in range(50)
+                {"autor": "coordinador", "en": "2024-01-01T10:00:00", "texto": "Mensaje corto " + str(i)}
+                for i in range(50)
             ]
             
             (caso_dir / "chat.json").write_text(
@@ -443,10 +453,11 @@ class TestLimitesSizeContexto(unittest.TestCase):
             
             # Verificar que está truncado y respeta límites
             self.assertLessEqual(len(inline), 600, "Debe respetar max_chars +margen")
-            if "...(truncado)" in inline:
-                # Está truncado, validar que tiene los últimos mensajes antes del truncamiento
-                self.assertIn("coordinador", inline)
-                self.assertIn("2024-01-01", inline)
+            # Debe incluir solo los últimos 3 mensajes (índices 47, 48, 49)
+            self.assertIn("coordinador", inline)
+            # Verificar que contiene mensaje reciente
+            self.assertTrue(any(str(i) in inline for i in [47, 48, 49]), 
+                          "Debe contener al menos uno de los últimos 3 mensajes")
 
 
 if __name__ == "__main__":

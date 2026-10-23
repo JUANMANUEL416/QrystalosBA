@@ -579,6 +579,14 @@ def cerrar(id_sr: str, carpeta: str = "", opciones: dict | None = None) -> dict:
         sol["plataforma"] = plat
     guardada = _persistir(sol)
     guardada["_reutilizado"] = reutilizado
+    
+    # Reiniciar chat del agente al cerrar solicitud
+    try:
+        import cursor_bot
+        cursor_bot.reiniciar_chat(id_sr, motivo="cerrar-solicitud")
+    except Exception as exc:
+        print(f"[solicitud_req.cerrar] advertencia al reiniciar chat: {exc}", flush=True)
+    
     return guardada
 
 

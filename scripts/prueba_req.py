@@ -347,4 +347,12 @@ def cerrar_prueba(pid: str, veredicto: str) -> dict:
     )
     append_chat(pid, "sistema", frase)
     _upsert_indice(meta)
+    
+    # Reiniciar chat del agente al cerrar prueba
+    try:
+        import cursor_bot
+        cursor_bot.reiniciar_chat(pid, motivo="cerrar-prueba")
+    except Exception as exc:
+        print(f"[prueba_req.cerrar_prueba] advertencia al reiniciar chat: {exc}", flush=True)
+    
     return meta

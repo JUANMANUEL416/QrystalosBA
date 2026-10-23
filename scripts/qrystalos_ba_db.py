@@ -482,6 +482,47 @@ class QrystalosBADB:
         self.refresh_historico_for_caso(id_caso)
         return estado
 
+    def cerrar_caso_completo(self, id_caso: str, motivo: str = "") -> dict:
+        """Cierra completamente un caso en activo/ (no solo fase 1)."""
+        estado = self.get_estado(id_caso)
+        estado.update({
+            "fase": 3,
+            "casoCompletado": True,
+            "completadoEn": _now(),
+            "motivoCierre": motivo or "completado",
+        })
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE casos SET fase=3, cerrada_en=?, updated_at=? WHERE id_caso=?
+                """,
+                (estado["completadoEn"], _now(), id_caso),
+            )
+            conn.commit()
+        
+        # Archivar chat y limpiar sesión al cerrar caso completo
+        try:
+            import cursor_bot
+            resultado = cursor_bot.reiniciar_chat(id_caso, motivo=f"cerrar-caso-completo:{motivo}")
+            if resultado.get("ok"):
+                msg_extra = f" Chat archivado: {resultado.get('archivoChat', '—')}."
+            else:
+                msg_extra = f" (advertencia: no se pudo archivar chat: {resultado.get('mensaje', '?')})"
+        except Exception as exc:
+            msg_extra = f" (advertencia: error al reiniciar chat: {exc})"
+        
+        self.append_chat(
+            id_caso,
+            {
+                "id": "casocompletado",
+                "autor": "sistema",
+                "texto": f"Caso completado. Motivo: {motivo}.{msg_extra}",
+                "fecha": _now(),
+            },
+        )
+        self.refresh_historico_for_caso(id_caso)
+        return estado
+
     def get_solicitud(self, id_caso: str) -> dict:
         with self.connect() as conn:
             row = conn.execute("SELECT solicitud_json FROM casos WHERE id_caso=?", (id_caso,)).fetchone()
