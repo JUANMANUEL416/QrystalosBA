@@ -1905,6 +1905,17 @@
     const el = $("#ubicacionAnalisisNota");
     if (!el) return;
     const proc = String(dato?.procesoId || "").trim();
+    const pregunta = Array.isArray(dato?.preguntas) ? String(dato.preguntas[0] || "").trim() : "";
+    if (dato?.bloqueo === "base" || dato?.estado === "sin_mapa") {
+      el.classList.remove("hidden");
+      el.textContent = pregunta || "Este flujo no está mapeado. Complételo en Documentar antes de analizar.";
+      return;
+    }
+    if ((dato?.bloqueo === "dato" || dato?.estado === "pregunta") && pregunta) {
+      el.classList.remove("hidden");
+      el.textContent = pregunta;
+      return;
+    }
     if (!proc) {
       el.classList.add("hidden");
       el.textContent = "";
@@ -2006,8 +2017,17 @@
         const sigueAlAnalisis = bot.cadena === "analizar-req" || (bot.motivo === "ubicar-req" && !bot.ubicacionDetenida);
         if (termino && bot.ubicacionDetenida) {
           await cargarSolicitudCaso(idCaso, { sondeo: true });
-          if (hint) hint.textContent = "Falta un dato para ubicar el flujo. Revise el Chat.";
-          updateAnalisisLoadingDetalle("La ubicación quedó en espera. Revise el Chat.");
+          const porMapa = bot.ubicacionBloqueo === "base";
+          if (hint) {
+            hint.textContent = porMapa
+              ? "Ese flujo no está en la base. Mapeelo en Documentar y después vuelva a analizar."
+              : "Falta un dato. Respóndalo en el Chat o complete la ruta; al enviarlo el análisis sigue.";
+          }
+          updateAnalisisLoadingDetalle(
+            porMapa
+              ? "Sin mapa en la base el análisis no arranca. Revise el Chat."
+              : "Falta un dato del analista. Al completarlo, el análisis continúa."
+          );
           return;
         }
         if (termino && sigueAlAnalisis) {

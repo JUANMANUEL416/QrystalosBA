@@ -625,6 +625,134 @@ def mapa_ubicacion(req_texto: str, ruta: str = "", modulo: str = "", proceso_id:
     }
 
 
+def _proceso_tiene_mapa(proceso_id: str) -> bool:
+    carpeta = KB / (proceso_id or "")
+    return carpeta.is_dir() and any(carpeta.glob("grafo-*-indice.json"))
+
+
+def dictamen_previo(mapa: dict) -> dict:
+    """Antes de gastar el análisis: seguir, pedir un dato, o mapear la base primero.
+
+    seguir: el tramo o la pantalla ya están. El agente puede ubicar la pieza.
+    bloqueo dato: el proceso está mapeado y falta un dato del analista. Al completarlo, se sigue.
+    bloqueo base: no está en la base o no tiene mapa. Primero se documenta; el análisis no arranca.
+    """
+    mapa = mapa or {}
+    tramos = mapa.get("tramos") or []
+    pantallas = mapa.get("pantallas") or []
+    procesos = [p for p in (mapa.get("procesos") or []) if p]
+    ruta = str(mapa.get("ruta") or "").strip()
+    modulo = str(mapa.get("modulo") or "").strip()
+    pid = procesos[0] if len(procesos) == 1 else ""
+
+    def _salida(seguir: bool, bloqueo: str, proceso: str, flujo: str, pregunta: str) -> dict:
+        return {
+            "seguir": seguir,
+            "bloqueo": bloqueo,
+            "procesoId": proceso,
+            "flujo": flujo,
+            "pregunta": pregunta,
+        }
+
+    con_ruta = [tramo for tramo in tramos if tramo.get("rutaCoincide")]
+    if con_ruta:
+        primero = con_ruta[0]
+        rivales = [
+            tramo for tramo in con_ruta[1:]
+            if tramo.get("proceso") == primero.get("proceso")
+            and int(primero.get("score") or 0) - int(tramo.get("score") or 0) < 4
+        ]
+        if rivales:
+            nombres = ", ".join(str(tramo.get("id") or "") for tramo in [primero, *rivales][:4])
+            return _salida(
+                False,
+                "dato",
+                str(primero.get("proceso") or ""),
+                "",
+                f"La pantalla cae en varios tramos ({nombres}). "
+                "Indique cuál es el de este requerimiento. Al responder en el Chat, el análisis continúa.",
+            )
+        return _salida(True, "", str(primero.get("proceso") or ""), str(primero.get("id") or ""), "")
+
+    if ruta and not pantallas:
+        if pid and _proceso_tiene_mapa(pid):
+            return _salida(
+                False,
+                "base",
+                pid,
+                "",
+                f"La pantalla {ruta} no está en el mapa de {pid}. "
+                "Mapee ese tramo en Documentar antes de analizar el requerimiento.",
+            )
+        if pid:
+            return _salida(
+                False,
+                "base",
+                pid,
+                "",
+                f"La pantalla {ruta} no está en la base y {pid} no tiene mapa de tramos. "
+                "Mapeelo en Documentar antes de continuar.",
+            )
+        return _salida(
+            False,
+            "base",
+            "",
+            "",
+            f"La pantalla {ruta} no está en la base de conocimiento. "
+            "Mapee ese proceso antes de continuar con el requerimiento.",
+        )
+
+    if pantallas:
+        pantalla = pantallas[0]
+        return _salida(
+            True,
+            "",
+            str(pantalla.get("proceso") or pid),
+            str(pantalla.get("uso") or pantalla.get("path") or "pantalla"),
+            "",
+        )
+
+    if tramos and not mapa.get("ambiguo"):
+        primero = tramos[0]
+        return _salida(True, "", str(primero.get("proceso") or ""), str(primero.get("id") or ""), "")
+
+    if pid and not _proceso_tiene_mapa(pid):
+        return _salida(
+            False,
+            "base",
+            pid,
+            "",
+            f"El proceso {pid} no tiene mapa de tramos en la base. "
+            "Complételo en Documentar antes de analizar este requerimiento.",
+        )
+    if pid:
+        return _salida(
+            False,
+            "dato",
+            pid,
+            "",
+            f"El proceso {pid} sí está mapeado. Falta la ruta de la pantalla para elegir el tramo. "
+            "Escríbala en el formulario o en el Chat (por ejemplo /inv/gesventa). "
+            "Al enviarla, el análisis continúa.",
+        )
+    if modulo:
+        return _salida(
+            False,
+            "base",
+            "",
+            "",
+            f"El módulo {modulo} no está en la base de conocimiento. "
+            "Documente ese proceso antes de continuar con el requerimiento.",
+        )
+    return _salida(
+        False,
+        "dato",
+        "",
+        "",
+        "Faltan el módulo y la ruta de la pantalla. Al completarlos, el análisis continúa.",
+    )
+
+
 def formato_mapa(mapa: dict) -> str:
     """Texto del mapa, al inicio del paso ubicar. El agente elige un tramo de esta lista."""
     if not mapa:

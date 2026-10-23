@@ -149,6 +149,17 @@ def test_ubicacion_pregunta_detiene():
     assert revision["espera"] is True
 
 
+def test_ubicacion_sin_mapa_no_sigue():
+    sol = _ubicacion_ok()
+    sol["contenido"]["ubicacion"]["estado"] = "sin_mapa"
+    sol["contenido"]["ubicacion"]["bloqueo"] = "base"
+    sol["contenido"]["ubicacion"]["preguntas"] = ["El proceso caja no tiene mapa de tramos."]
+    revision = planteamiento_req.evaluar_ubicacion(sol)
+    assert revision["ok"] is False
+    assert revision["espera"] is True
+    assert revision["bloqueo"] == "base"
+
+
 def test_sp_de_otro_flujo():
     sol = _defecto_sql()
     sol["contenido"]["cambioPropuestoSql"] += "\n-- también toca SPK_NOMINA_CIERRE\n"
@@ -183,6 +194,7 @@ def main():
     test_ubicacion_incompleta()
     test_ubicacion_lista()
     test_ubicacion_pregunta_detiene()
+    test_ubicacion_sin_mapa_no_sigue()
     test_sp_de_otro_flujo()
     test_comite_sin_bloque()
     print("ok planteamiento_req")

@@ -312,8 +312,102 @@ def test_mapa_gesventa():
     assert orden["tramos"][0]["id"] == "ordenes-compra", orden["tramos"][0]
     assert orden["tramos"][0]["proceso"] == "inventario"
 
+    decision = kb_contexto_req.dictamen_previo(mapa)
+    assert decision["seguir"] is True
+    assert decision["flujo"] == "ventas"
+    assert decision["procesoId"] == "inventario"
+
+    sin_ruta = kb_contexto_req.dictamen_previo(sku)
+    assert sin_ruta["seguir"] is False
+    assert sin_ruta["bloqueo"] == "dato"
+    assert sin_ruta["procesoId"] == "inventario"
+
+    fuera = kb_contexto_req.dictamen_previo(
+        kb_contexto_req.mapa_ubicacion(
+            "un movimiento que no aparece",
+            ruta="/inv/pantalla-que-no-existe",
+            modulo="INVENTARIO",
+        )
+    )
+    assert fuera["seguir"] is False
+    assert fuera["bloqueo"] == "base", fuera
+
     print(f"  ✓ tramo {primero['id']} · {primero['controlClave'][:60]}")
     print("✓ Test mapa gesventa: OK")
+
+
+def test_freno_no_lanza_agente():
+    """Sin ruta no se lanza el agente. Con la ruta en el Chat, el proceso sigue."""
+    print("\nTest FRENO: dato del analista y mapa ausente...")
+
+    import tempfile
+    import shutil
+    import cursor_bot
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="qrystba_freno_"))
+    notas = []
+    original = {
+        "root": cursor_bot.ROOT,
+        "activo": cursor_bot.ACTIVO,
+        "append": cursor_bot.append_chat,
+        "guardar": cursor_bot._guardar_solicitud_caso,
+        "pedir": cursor_bot._pedir_mapeo,
+    }
+    try:
+        activo = tmp_root / "activo"
+        activo.mkdir()
+        id_caso = "20261023-freno"
+        caso = activo / id_caso
+        caso.mkdir()
+        solicitud = {
+            "identificacion": {"idCaso": id_caso},
+            "proyecto": {"nombre": "Demo", "modulo": "INVENTARIO", "rutaPantalla": ""},
+            "contenido": {
+                "titulo": "SKU que no se ve",
+                "requerimiento": "el listado maestro de SKU no se ve en inventario",
+            },
+            "sql": {"procesoId": ""},
+        }
+        (caso / "solicitud.json").write_text(json.dumps(solicitud), encoding="utf-8")
+        (caso / "chat.json").write_text(json.dumps({"mensajes": []}), encoding="utf-8")
+
+        cursor_bot.ROOT = str(tmp_root)
+        cursor_bot.ACTIVO = str(activo)
+        cursor_bot.append_chat = lambda *args, **kwargs: notas.append(args)
+        cursor_bot._guardar_solicitud_caso = lambda cid, sol: (
+            Path(cursor_bot.caso_dir(cid), "solicitud.json").write_text(
+                json.dumps(sol, ensure_ascii=False), encoding="utf-8"
+            )
+        )
+        cursor_bot._pedir_mapeo = lambda *args, **kwargs: "ho-test"
+
+        corte = cursor_bot._gate_ubicar(id_caso)
+        assert corte and corte.get("detenido") and corte.get("bloqueo") == "dato", corte
+        guardada = json.loads((caso / "solicitud.json").read_text(encoding="utf-8"))
+        assert guardada["contenido"]["ubicacion"]["bloqueo"] == "dato"
+        assert notas and "análisis continúa" in notas[-1][2]
+
+        accion = cursor_bot.continuacion_chat(id_caso, "La pantalla es /inv/gesventa")
+        assert accion == "ubicar", accion
+        guardada = json.loads((caso / "solicitud.json").read_text(encoding="utf-8"))
+        assert guardada["proyecto"]["rutaPantalla"] == "/inv/gesventa"
+        assert cursor_bot._dictamen_caso(id_caso)["seguir"] is True
+
+        guardada["proyecto"]["rutaPantalla"] = "/inv/pantalla-que-no-existe"
+        guardada["contenido"]["ubicacion"]["bloqueo"] = "base"
+        (caso / "solicitud.json").write_text(json.dumps(guardada), encoding="utf-8")
+        accion = cursor_bot.continuacion_chat(id_caso, "ya está listo, siga")
+        assert accion == "detenido", accion
+        assert any("Documentar" in (item[2] if len(item) > 2 else "") for item in notas)
+
+        print("✓ Test freno: OK")
+    finally:
+        cursor_bot.ROOT = original["root"]
+        cursor_bot.ACTIVO = original["activo"]
+        cursor_bot.append_chat = original["append"]
+        cursor_bot._guardar_solicitud_caso = original["guardar"]
+        cursor_bot._pedir_mapeo = original["pedir"]
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 def test_prompt_ubicar_trae_mapa():
@@ -495,6 +589,7 @@ def main():
         test_resumen_sps()
         test_json_output()
         test_mapa_gesventa()
+        test_freno_no_lanza_agente()
         test_prompt_ubicar_trae_mapa()
         test_integration_cursor_bot_prompt()
         

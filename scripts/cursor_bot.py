@@ -2509,6 +2509,235 @@ def _clave_del_turno(id_caso: str, motivo: str) -> str:
         return ""
 
 
+_RE_RUTA_CHAT = re.compile(r"/[a-z0-9]+(?:/[a-z0-9_\-]+)+", re.I)
+
+
+def _mensajes_coordinador(id_caso: str, limite: int = 4) -> list[str]:
+    data = read_json(os.path.join(caso_dir(id_caso), "chat.json"), {"mensajes": []})
+    mensajes = data.get("mensajes") if isinstance(data, dict) else data
+    if not isinstance(mensajes, list):
+        return []
+    textos = []
+    for msg in mensajes:
+        if not isinstance(msg, dict) or msg.get("autor") != "coordinador":
+            continue
+        texto = str(msg.get("texto") or "").strip()
+        if texto:
+            textos.append(texto)
+    return textos[-limite:]
+
+
+def _datos_para_ubicar(id_caso: str) -> dict:
+    """Texto, ruta y módulo con los que se decide si el análisis puede arrancar."""
+    path = os.path.join(caso_dir(id_caso), "solicitud.json")
+    sol = read_json(path, {})
+    if not isinstance(sol, dict):
+        sol = {}
+    contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+    proyecto = sol.get("proyecto") if isinstance(sol.get("proyecto"), dict) else {}
+    partes = []
+    for campo in ("titulo", "requerimiento", "descripcion", "criteriosAceptacion"):
+        txt = str(contenido.get(campo) or "").strip()
+        if txt:
+            partes.append(txt)
+    partes.extend(_mensajes_coordinador(id_caso))
+    ruta = str(proyecto.get("rutaPantalla") or "").strip()
+    if not ruta:
+        for texto in reversed(partes):
+            halladas = _RE_RUTA_CHAT.findall(texto)
+            if halladas:
+                ruta = halladas[0]
+                break
+    modulo = str(proyecto.get("modulo") or "").strip()
+    proceso_id = str((sol.get("sql") or {}).get("procesoId") or "")
+    ubicacion = contenido.get("ubicacion") if isinstance(contenido.get("ubicacion"), dict) else {}
+    if not proceso_id:
+        proceso_id = str(ubicacion.get("procesoId") or "")
+    if ruta:
+        partes.append(ruta)
+    if modulo:
+        partes.append(modulo)
+    return {
+        "sol": sol,
+        "path": path,
+        "req": " ".join(partes),
+        "ruta": ruta,
+        "modulo": modulo,
+        "proceso_id": proceso_id,
+        "ubicacion": ubicacion,
+    }
+
+
+def _guardar_solicitud_caso(id_caso: str, sol: dict) -> None:
+    path = os.path.join(caso_dir(id_caso), "solicitud.json")
+    write_json(path, sol)
+    try:
+        get_db().guardar_solicitud(id_caso, sol)
+    except Exception:
+        pass
+
+
+def _absorber_ruta_chat(id_caso: str, texto: str = "") -> str:
+    """Si el analista escribió una ruta y el formulario no la tenía, la deja guardada."""
+    halladas = _RE_RUTA_CHAT.findall(texto or "")
+    if not halladas:
+        for previo in reversed(_mensajes_coordinador(id_caso)):
+            halladas = _RE_RUTA_CHAT.findall(previo)
+            if halladas:
+                break
+    if not halladas:
+        return ""
+    datos = _datos_para_ubicar(id_caso)
+    sol = datos["sol"]
+    proyecto = sol.get("proyecto") if isinstance(sol.get("proyecto"), dict) else {}
+    if str(proyecto.get("rutaPantalla") or "").strip():
+        return str(proyecto.get("rutaPantalla"))
+    proyecto = dict(proyecto)
+    proyecto["rutaPantalla"] = halladas[0]
+    sol["proyecto"] = proyecto
+    _guardar_solicitud_caso(id_caso, sol)
+    return halladas[0]
+
+
+def _pedir_mapeo(id_caso: str, proceso: str, pregunta: str) -> str:
+    """Un aviso a Conocimiento. No duplica el mismo caso mientras siga abierto."""
+    try:
+        import kb_handoff
+    except Exception:
+        return ""
+    try:
+        for item in kb_handoff.leer():
+            ctx = item.get("contexto") or {}
+            if (
+                item.get("tipo") == "confirmar_hueco"
+                and item.get("estado") in ("pendiente", "en_progreso")
+                and str(ctx.get("idCaso") or "") == id_caso
+            ):
+                return str(item.get("id") or "")
+        creado = kb_handoff.encolar(
+            "requerimientos",
+            "conocimiento",
+            "confirmar_hueco",
+            {
+                "proceso": proceso or "",
+                "sp": "",
+                "metodo": "",
+                "idCaso": id_caso,
+                "pregunta": (pregunta or "")[:500],
+                "evidencia": "El requerimiento no sigue hasta que este flujo esté mapeado en la base.",
+            },
+            prioridad="alta",
+        )
+        return str(creado.get("id") or "")
+    except Exception:
+        return ""
+
+
+def _escribir_freno_ubicacion(id_caso: str, dictamen: dict) -> None:
+    """Deja el caso en espera sin lanzar el agente."""
+    datos = _datos_para_ubicar(id_caso)
+    sol = datos["sol"]
+    contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+    contenido = dict(contenido)
+    bloqueo = dictamen.get("bloqueo") or "dato"
+    pregunta = str(dictamen.get("pregunta") or "").strip()
+    contenido["ubicacion"] = {
+        "procesoId": dictamen.get("procesoId") or "",
+        "flujo": "",
+        "pieza": {},
+        "recursos": [{"tipo": "pregunta", "cual": pregunta}] if bloqueo == "dato" and pregunta else [],
+        "participan": [],
+        "estado": "sin_mapa" if bloqueo == "base" else "pregunta",
+        "bloqueo": bloqueo,
+        "preguntas": [pregunta] if pregunta else [],
+    }
+    if dictamen.get("procesoId"):
+        sql = sol.get("sql") if isinstance(sol.get("sql"), dict) else {}
+        sql = dict(sql)
+        sql["procesoId"] = dictamen.get("procesoId")
+        sol["sql"] = sql
+    sol["contenido"] = contenido
+    _guardar_solicitud_caso(id_caso, sol)
+    if bloqueo == "base":
+        _pedir_mapeo(id_caso, str(dictamen.get("procesoId") or ""), pregunta)
+        nota = (
+            "Este requerimiento no se analiza todavía. "
+            + pregunta
+            + " Primero complete ese proceso en Documentar. "
+            "Cuando el flujo esté mapeado, vuelva a pulsar Analizar requerimiento. "
+            "Así no se gasta el análisis en un tramo que la base aún no tiene."
+        )
+    else:
+        nota = pregunta or "Falta un dato para ubicar el flujo. Al completarlo en el Chat, el análisis continúa."
+    append_chat(id_caso, "sistema", nota)
+    write_bot(
+        id_caso,
+        estado="listo",
+        pid=0,
+        motivo="ubicar-req",
+        error="",
+        terminadoEn=_now(),
+        cadena="",
+        ubicacionDetenida=True,
+        ubicacionBloqueo=bloqueo,
+    )
+
+
+def _dictamen_caso(id_caso: str) -> dict:
+    try:
+        import kb_contexto_req
+    except Exception:
+        return {"seguir": True, "bloqueo": "", "procesoId": "", "flujo": "", "pregunta": ""}
+    datos = _datos_para_ubicar(id_caso)
+    if not datos["req"] and not datos["ruta"]:
+        return {"seguir": True, "bloqueo": "", "procesoId": "", "flujo": "", "pregunta": ""}
+    mapa = kb_contexto_req.mapa_ubicacion(
+        datos["req"],
+        ruta=datos["ruta"],
+        modulo=datos["modulo"],
+        proceso_id=datos["proceso_id"],
+    )
+    return kb_contexto_req.dictamen_previo(mapa)
+
+
+def _gate_ubicar(id_caso: str) -> dict | None:
+    """None si hay que lanzar el agente. Un dict si se detiene sin gastarlo."""
+    dictamen = _dictamen_caso(id_caso)
+    if dictamen.get("seguir"):
+        return None
+    bot = read_json(bot_path(id_caso), {})
+    if bot.get("forzarUbicar"):
+        write_bot(id_caso, forzarUbicar=False)
+        return None
+    _escribir_freno_ubicacion(id_caso, dictamen)
+    return {"ok": True, "detenido": True, "bloqueo": dictamen.get("bloqueo") or "dato"}
+
+
+def continuacion_chat(id_caso: str, texto: str = "") -> str:
+    """chat si el flujo ya iba; ubicar si el analista completó un dato; detenido si falta el mapa."""
+    datos = _datos_para_ubicar(id_caso)
+    ubicacion = datos["ubicacion"]
+    bloqueo = str(ubicacion.get("bloqueo") or "").strip().lower()
+    if not bloqueo:
+        bot = read_json(bot_path(id_caso), {})
+        bloqueo = str(bot.get("ubicacionBloqueo") or "").strip().lower()
+    if bloqueo not in ("dato", "base"):
+        return "chat"
+    if bloqueo == "dato":
+        _absorber_ruta_chat(id_caso, texto)
+    dictamen = _dictamen_caso(id_caso)
+    if dictamen.get("seguir"):
+        return "ubicar"
+    if dictamen.get("bloqueo") == "base":
+        _escribir_freno_ubicacion(id_caso, dictamen)
+        return "detenido"
+    if bloqueo == "dato":
+        write_bot(id_caso, forzarUbicar=True)
+        return "ubicar"
+    _escribir_freno_ubicacion(id_caso, dictamen)
+    return "detenido"
+
+
 def _encadenar_analisis(id_caso: str) -> None:
     """Paso 1 listo: arranca el análisis del problema sin otra acción del coordinador."""
     try:
@@ -2549,15 +2778,44 @@ def _encadenar_analisis(id_caso: str) -> None:
                 nombre=pieza.get("nombre") or "",
             ),
         )
-        write_bot(id_caso, cadena="analizar-req", ubicacionDetenida=False)
+        ubicacion = dict(ubicacion)
+        ubicacion["bloqueo"] = ""
+        ubicacion["estado"] = "listo"
+        contenido["ubicacion"] = ubicacion
+        sol["contenido"] = contenido
+        write_json(path, sol)
+        write_bot(id_caso, cadena="analizar-req", ubicacionDetenida=False, ubicacionBloqueo="")
         lanzar_bot(id_caso, "analizar-req", encadenado=True)
         return
-    write_bot(id_caso, cadena="", ubicacionDetenida=True)
-    if revision.get("espera"):
+    bloqueo = revision.get("bloqueo") or "dato"
+    contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+    ubicacion = contenido.get("ubicacion") if isinstance(contenido.get("ubicacion"), dict) else {}
+    if isinstance(ubicacion, dict):
+        ubicacion = dict(ubicacion)
+        ubicacion["bloqueo"] = bloqueo
+        contenido = dict(contenido)
+        contenido["ubicacion"] = ubicacion
+        sol["contenido"] = contenido
+        write_json(path, sol)
+    write_bot(id_caso, cadena="", ubicacionDetenida=True, ubicacionBloqueo=bloqueo)
+    if bloqueo == "base":
+        _pedir_mapeo(
+            id_caso,
+            str(ubicacion.get("procesoId") or ""),
+            (revision.get("faltantes") or [""])[0],
+        )
+        nota = (
+            "Este requerimiento no se analiza todavía. "
+            + ((revision.get("faltantes") or ["Falta mapear el proceso en la base."])[0])
+            + " Primero complete ese proceso en Documentar. "
+            "Cuando esté mapeado, vuelva a pulsar Analizar requerimiento."
+        )
+    elif revision.get("espera"):
         nota = (revision.get("faltantes") or ["Falta una respuesta para seguir."])[0]
     else:
-        nota = "No quedó ubicado el flujo. El análisis no sigue hasta completar esto:\n" + "\n".join(
-            f"- {item}" for item in (revision.get("faltantes") or [])
+        nota = (
+            "No quedó ubicado el flujo. Complete esto en el Chat y el análisis continúa:\n"
+            + "\n".join(f"- {item}" for item in (revision.get("faltantes") or []))
         )
     append_chat(id_caso, "sistema", nota)
 
@@ -2611,6 +2869,10 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
         return {"ok": True, "yaCorria": True, "pid": actual.get("pid")}
     if not os.path.isdir(caso_dir(id_caso)):
         return {"ok": False, "error": "sin_caso"}
+    if motivo == "ubicar-req":
+        corte = _gate_ubicar(id_caso)
+        if corte:
+            return corte
     clave = _clave_del_turno(id_caso, motivo)
     if clave:
         if not clave_por_etiqueta(clave):

@@ -30,7 +30,7 @@ El coordinador no interviene entre este paso y el siguiente.
 
 Escriba solicitud.json → contenido.ubicacion, en este orden:
 1. procesoId: un solo id de la base (por ejemplo inventario). No deje dos módulos.
-2. flujo: una fila del MAPA PARA UBICAR (el id del tramo). Si la fila dice RUTA, ese es el flujo. No use el módulo entero ni un tramo cuya pantalla es otra. Si el mapa no trae tramo ni pantalla, deje estado=pregunta y pida la pantalla.
+2. flujo: una fila del MAPA PARA UBICAR (el id del tramo). Si la fila dice RUTA, ese es el flujo. No use el módulo entero ni un tramo cuya pantalla es otra.
 3. pieza.tipo: ventana, boton, proceso, sp o metodo. pieza.nombre: cómo se llama esa pieza.
 4. recursos: lo que hace falta para analizar ESA pieza, nada más. Cada recurso tiene tipo y cual.
    - ventana: la pantalla.
@@ -39,7 +39,10 @@ Escriba solicitud.json → contenido.ubicacion, en este orden:
    - pregunta: un dato que solo el analista puede responder.
    - normativa: la norma adjunta, si el pedido la cita.
 5. participan: solo el SP y el METODO de este flujo. Si el recurso no es un SP, déjela vacía. No copie métodos de otro flujo del mismo módulo.
-6. estado: listo si ya se puede analizar. pregunta si falta una respuesta; en ese caso escriba preguntas con el texto.
+6. estado y bloqueo:
+   - listo y bloqueo vacío: el mapa ya trae el tramo o la pantalla.
+   - pregunta y bloqueo dato: el proceso está mapeado y solo falta un dato del analista (la ruta, el tramo o una respuesta). Escriba preguntas. Al responder, el análisis continúa.
+   - sin_mapa y bloqueo base: el proceso o la pantalla no están en la base, o el proceso no tiene mapa de tramos. No analice. Pida mapearlo en Documentar antes de seguir.
 
 También deje sql.procesoId igual a procesoId.
 
@@ -131,8 +134,41 @@ def _recursos(ubicacion: dict) -> list[dict]:
 
 
 def evaluar_ubicacion(sol: dict) -> dict:
-    """Paso 1: proceso, flujo, pieza y recursos. espera=True si hay que preguntar y no seguir."""
+    """Paso 1: proceso, flujo, pieza y recursos.
+
+    espera detiene el análisis. bloqueo dato: el analista completa y se sigue.
+    bloqueo base: primero se mapea en la base; el análisis no arranca.
+    """
     ubicacion = _ubicacion(sol)
+    recursos = _recursos(ubicacion)
+    preguntas = [
+        str(item).strip()
+        for item in (ubicacion.get("preguntas") or [])
+        if str(item).strip()
+    ]
+    estado = str(ubicacion.get("estado") or "").strip().lower()
+    if estado == "sin_mapa" or str(ubicacion.get("bloqueo") or "").strip().lower() == "base":
+        texto = preguntas[0] if preguntas else (
+            "Ese proceso no está mapeado en la base. "
+            "Complételo en Documentar antes de continuar con el requerimiento."
+        )
+        return {"ok": False, "espera": True, "bloqueo": "base", "faltantes": [texto]}
+    pide = estado == "pregunta" or any(rec["tipo"] == "pregunta" for rec in recursos)
+    texto = ""
+    if pide:
+        texto = preguntas[0] if preguntas else next(
+            (rec["cual"] for rec in recursos if rec["tipo"] == "pregunta"),
+            "",
+        )
+        if texto:
+            return {
+                "ok": False,
+                "espera": True,
+                "bloqueo": "dato",
+                "faltantes": [
+                    "Falta un dato del analista. Al responder en el Chat, el análisis continúa: " + texto
+                ],
+            }
     faltantes: list[str] = []
     if not str(ubicacion.get("procesoId") or "").strip():
         faltantes.append("Falta el proceso de la base (por ejemplo inventario).")
@@ -143,32 +179,18 @@ def evaluar_ubicacion(sol: dict) -> dict:
         faltantes.append("Falta la pieza dentro del flujo: ventana, botón, proceso, SP o método.")
     if not str(pieza.get("nombre") or "").strip():
         faltantes.append("Falta el nombre de esa pieza.")
-    recursos = _recursos(ubicacion)
     if not recursos:
         faltantes.append("Falta qué recursos hacen falta: ventana, código, SP o una pregunta al analista.")
     if any(rec["tipo"] == "sp" for rec in recursos) and not _participan(ubicacion):
         faltantes.append("El recurso es un SP: indique solo el SP y el METODO que participan en este flujo.")
-    preguntas = [
-        str(item).strip()
-        for item in (ubicacion.get("preguntas") or [])
-        if str(item).strip()
-    ]
-    estado = str(ubicacion.get("estado") or "").strip().lower()
-    pide = estado == "pregunta" or any(rec["tipo"] == "pregunta" for rec in recursos)
-    if pide:
-        texto = preguntas[0] if preguntas else next(
-            (rec["cual"] for rec in recursos if rec["tipo"] == "pregunta"),
-            "",
-        )
-        if not texto:
-            faltantes.append("Marcó una pregunta al analista y no escribió cuál.")
-        elif not faltantes:
-            return {
-                "ok": False,
-                "espera": True,
-                "faltantes": [f"El análisis espera respuesta: {texto}"],
-            }
-    return {"ok": not faltantes, "espera": False, "faltantes": faltantes}
+    if pide and not texto:
+        faltantes.append("Marcó una pregunta al analista y no escribió cuál.")
+    return {
+        "ok": not faltantes,
+        "espera": False,
+        "bloqueo": "" if not faltantes else "dato",
+        "faltantes": faltantes,
+    }
 
 
 def sps_fuera_de_flujo(sol: dict) -> list[str]:

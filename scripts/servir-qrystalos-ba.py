@@ -42,6 +42,7 @@ from cursor_bot import (  # noqa: E402
     agregar_clave_cursor,
     cambiar_clave_cursor,
     cursor_key_status,
+    continuacion_chat,
     leer_estado_bot,
     listar_claves_publicas,
     load_api_key,
@@ -3423,14 +3424,31 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         }
         db = get_db()
         db.append_chat(id_caso, msg)
+        accion = continuacion_chat(id_caso, texto)
+        if accion == "detenido":
+            chat = db.get_chat(id_caso, sync_disk=False)
+            return self._json({
+                "ok": True,
+                "mensaje": msg,
+                "mensajes": chat["mensajes"],
+                "bot": leer_estado_bot(id_caso),
+            })
+        if accion == "ubicar":
+            aviso_texto = (
+                "Dato recibido. Sigue la ubicación del flujo y, si ya queda cerrado, el análisis."
+            )
+            motivo_chat = "ubicar-req"
+        else:
+            aviso_texto = "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo."
+            motivo_chat = "chat"
         aviso = {
             "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
             "autor": "sistema",
-            "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+            "texto": aviso_texto,
             "fecha": datetime.now().isoformat(timespec="seconds"),
         }
         db.append_chat(id_caso, aviso)
-        bot = agentes_panel.lanzar("analista", id_caso, "chat")
+        bot = agentes_panel.lanzar("analista", id_caso, motivo_chat)
         if not bot.get("ok"):
             fallo = {
                 "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "e",
