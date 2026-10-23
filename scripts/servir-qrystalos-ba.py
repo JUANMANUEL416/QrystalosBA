@@ -880,7 +880,7 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 1. **REQ → conocimiento** (INDICE, proceso.json, sps.json; sql_refe si hace falta).
 2. Proyectar **solución concreta** en `contenido.planteamiento` (clasificación capacitación | defecto | hueco, flujo de hoy, causa citada, cambio por capa). Vuelque eso en criteriosAceptacion, alcance, restricciones, analisis y recomendacion, más la lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, `contenido.cambioPropuestoSql` trae el bloque de hoy (`---ANTES---`) y el sugerido (`---SUGERIDO---`), leídos del cuerpo del METODO. Un resumen del pedido no cierra el análisis.
 3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
-4. Cuando el coordinador lo pida: dictamen en `dictamenes/{id_caso}.html`.
+4. No escriba `dictamenes/{id_caso}.html` a mano. Al cerrar el análisis, la oficina lo genera con la plantilla del dictamen y lo deja en Documentos del Chat. Si corrige el planteamiento, actualice `solicitud.json`.
 5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
 6. **Mockup UX:** si genera o ajusta `activo/{id_caso}/mockups/`, pinte la **ventana propuesta** (`cambioPropuestoSimple`, criterios, recomendación), no la captura del error ni un control de otro REQ. `imagenes/` es solo referencia «Hoy».
 
@@ -3193,10 +3193,40 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             print(f"WARN desarrolladores al activar {id_caso}: {exc}", flush=True)
 
         bot = {}
-        try:
-            bot = agentes_panel.lanzar("analista", id_caso, "activar")
-        except Exception as exc:
-            bot = {"ok": False, "error": str(exc)}
+        fase_cerrada = bool((result.get("estado") or {}).get("fase1Cerrada"))
+        if not fase_cerrada:
+            ahora = datetime.now().isoformat(timespec="seconds")
+            db.append_chat(
+                id_caso,
+                {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "a",
+                    "autor": "sistema",
+                    "texto": (
+                        "Paso 1 de 2: ubicando el proceso, el flujo y la pieza. "
+                        "El análisis del problema arranca solo después. "
+                        "Al terminar, el dictamen queda en Documentos."
+                    ),
+                    "fecha": ahora,
+                },
+            )
+            try:
+                bot = agentes_panel.lanzar("analista", id_caso, "ubicar-req")
+            except Exception as exc:
+                bot = {"ok": False, "error": str(exc)}
+            if not bot.get("ok"):
+                db.append_chat(
+                    id_caso,
+                    {
+                        "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "e",
+                        "autor": "sistema",
+                        "texto": (
+                            "El agente no pudo arrancar ("
+                            + str(bot.get("error") or "error")
+                            + "). Reinicie el servidor y vuelva a activar la fase 1."
+                        ),
+                        "fecha": ahora,
+                    },
+                )
 
         return self._json({
             "ok": True,

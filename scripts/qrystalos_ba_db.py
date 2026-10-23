@@ -329,8 +329,9 @@ class QrystalosBADB:
                         "id": "sys1",
                         "autor": "sistema",
                         "texto": (
-                            "Fase 1 activada. Escriba solo en este Chat; no copie el texto a Cursor. "
-                            "El agente lee activo/, Qrystalos2, documentación y sql/, y responde aquí en verde."
+                            "Fase 1 activada. Este Chat es el lugar de trabajo. "
+                            "El agente ubica el flujo y analiza el problema. "
+                            "Cuando termine, el dictamen queda en Documentos."
                         ),
                         "fecha": _now(),
                     }

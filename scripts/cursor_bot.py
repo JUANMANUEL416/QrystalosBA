@@ -1105,7 +1105,8 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "no lo ignore ni lo sustituya por un cuestionario.\n"
             "- NO pregunte «qué le falta al coordinador» como eje. Solo pida un dato "
             "si bloquea de verdad la solución.\n"
-            "- NO genere dictamen HTML en este turno.\n"
+            "- No escriba el HTML del dictamen. Al cerrar este turno la oficina genera "
+            "dictamenes/" + id_caso + ".html con la plantilla oficial y lo publica en Documentos del Chat.\n"
             "- No dé por terminado el turno hasta que esos campos del formulario estén escritos.\n"
             "- Si genera o ajusta el mockup UX: debe mostrar la **ventana propuesta** "
             "(cambioPropuestoSimple / criterios / recomendación), no la captura del problema "
@@ -1124,7 +1125,7 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "---SUGERIDO--- leídos del cuerpo del METODO.\n"
             "- Liste SOLO los SP/METODO de este cambio (no todos los del módulo) en "
             "solicitud.sql.metodosDocumentados y brechaAnalisis.sps.\n"
-            "- Resuma en chat.json. No genere dictamen HTML.\n"
+            "- Resuma en chat.json. No escriba el HTML: la oficina genera el dictamen con la plantilla.\n"
             "- No termine sin haber escrito esos campos en solicitud.json."
         )
     elif motivo in ("revisar-sql", "revisar-sql-chat"):
@@ -1324,7 +1325,7 @@ Lea del disco, en este orden:
 Reglas:
 - Responda en español.
 - Escriba la respuesta en activo/{id_caso}/chat.json (autor: agente). No incruste el HTML del dictamen en el Chat.
-- Si avanza el dictamen, déjelo en dictamenes/{id_caso}.html y ponga el enlace en el Chat.
+- No escriba dictamenes/{id_caso}.html a mano. Cuando el planteamiento queda listo, la oficina genera ese archivo con la plantilla del dictamen y lo deja en Documentos del Chat. Si corrige el análisis, actualice solicitud.json.
 - NO implemente cambios en Qrystalos2, qrystalos.server ni ejecute SQL.
 - SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del control están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas para clasificar (hace, valida, noValida, errores, llama, efecto). La ficha no reemplaza el bloque: si la solución cambia ese procedimiento, baje y lea el cuerpo de ESE METODO en activo/{id_caso}/sql/ (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`; PREVERSION primero) y cite ---ANTES--- / ---SUGERIDO---. NO use la carpeta compartida sql/. No baje el catálogo entero.
 - Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el control es conciliaciones/FCONCI, etc.).
@@ -1332,7 +1333,7 @@ Reglas:
 - El coordinador escribe solo en el Chat de la app. No pida que pegue el texto en Cursor.
 - Metodología Fase 1: primero el flujo ya ubicado (contenido.ubicacion: proceso, flujo, pieza y recursos); después el problema en ese tramo; al final el cambio. No trate por defecto un REQ como desarrollo. En textos al coordinador y al desarrollador diga **control**, no «gate».
 - Si existe contenido.ubicacion, no nombre SP ni METODO que no estén en participan.
-- Si escribe el dictamen HTML, la sección 5 sale de contenido.planteamiento: archivo Vue y condición, objeto SQL con el bloque de hoy y el sugerido, o la ruta de capacitación si el control ya existe. Si el planteamiento no está, complételo en este turno antes del HTML. Un apartado que solo parafrasee el requerimiento no sirve.
+- No reescriba el HTML del dictamen. Complete contenido.planteamiento: archivo Vue y condición, objeto SQL con el bloque de hoy y el sugerido, o la ruta de capacitación si el control ya existe. La oficina regenera dictamenes/{id_caso}.html desde esos campos. Un apartado que solo parafrasee el requerimiento no sirve.
 - Mockup UX: la ventana debe ser la **propuesta de desarrollo**, no el problema ni la captura. No reutilice HTML de otro REQ.
 - OpenAI no interviene. Usted escribe criterios, análisis organizado y recomendación en solicitud.json cuando falten o vengan de GPT.
 - Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra la base (MCUE, CON, MCPE, asientos, comprobantes); si falta, DESAIX/Qrystalos2 y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}. Si afecta=false, en el dictamen HTML deje solo «Afecta contabilidad: No»; no agregue Cómo lo afecta, Desarrollo contable ni Validación del agente.
@@ -2820,11 +2821,36 @@ def _encadenar_analisis(id_caso: str) -> None:
     append_chat(id_caso, "sistema", nota)
 
 
+def _publicar_dictamen(id_caso: str, motivo: str) -> None:
+    """Con el planteamiento cerrado, deja dictamenes/{id}.html en el formato oficial."""
+    if motivo not in ("analizar-req", "criterios", "chat", "activar"):
+        return
+    try:
+        import dictamen_html
+
+        out = dictamen_html.generar(
+            id_caso,
+            reemplazar=motivo in ("analizar-req", "criterios"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        append_chat(id_caso, "sistema", "No pude generar el dictamen: " + str(exc))
+        return
+    if not out.get("ok") or out.get("sinCambio"):
+        return
+    ruta = out.get("ruta") or f"dictamenes/{id_caso}.html"
+    if out.get("actualizado"):
+        texto = "Dictamen actualizado: " + ruta + ". Está en Documentos del Chat."
+    else:
+        texto = "Dictamen listo: " + ruta + ". Ábralo en Documentos del Chat."
+    append_chat(id_caso, "sistema", texto)
+
+
 def _disparar_siguiente(id_caso: str, motivo: str) -> None:
     """Con los datos escritos, lanza el análisis o, al cerrarlo, el manual y la ventana."""
     if motivo == "ubicar-req":
         _encadenar_analisis(id_caso)
         return
+    _publicar_dictamen(id_caso, motivo)
     try:
         import orquesta
     except Exception:
@@ -2850,7 +2876,12 @@ def _disparar_siguiente(id_caso: str, motivo: str) -> None:
         except Exception as exc:  # noqa: BLE001
             append_chat(id_caso, "sistema", "No pude armar el documento: " + str(exc))
             return
-        append_chat(id_caso, "sistema", "Documento armado: " + ruta)
+        append_chat(
+            id_caso,
+            "sistema",
+            "Material de apoyo (manual, guion y ventana) quedó aparte. "
+            "El dictamen es dictamenes/" + id_caso + ".html.",
+        )
         return
     nombres = {
         "material": "el manual, la capacitación y la planeación",

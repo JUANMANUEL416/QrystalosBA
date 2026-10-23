@@ -257,8 +257,8 @@
     return pending;
   }
 
-  function switchToView(viewName) {
-    if (isAnalisisEnCurso()) return;
+  function switchToView(viewName, force) {
+    if (!force && isAnalisisEnCurso()) return;
     $$(".main-tab").forEach((t) => t.classList.toggle("active", t.dataset.view === viewName));
     $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${viewName}`));
     if (viewName === "chat") refreshChatView();
@@ -266,9 +266,9 @@
     if (viewName === "historico") refreshHistorico();
   }
 
-  function abrirChatCaso(idCasoFromCola) {
+  function abrirChatCaso(idCasoFromCola, force) {
     if (idCasoFromCola) setVal("#idCaso", idCasoFromCola);
-    switchToView("chat");
+    switchToView("chat", !!force);
   }
 
   let chatPollTimer = null;
@@ -768,14 +768,7 @@
       refreshColaTable();
       await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
 
-      alert(
-        "Fase 1 activada.\n\n" +
-          "El agente en Cursor lee activo/" +
-          idCaso +
-          "/ (Qrystalos2, conocimiento/ y activo/" + idCaso + "/sql/ si aplica).\n" +
-          "No se abre el Chat solo: use la pestaña Chat cuando quiera escribir.\n" +
-          "La propuesta queda en dictamenes/.",
-      );
+      abrirChatCaso(idCaso, true);
     } catch (e) {
       alert(`No se pudo activar:\n${e.message}\n\n¿Ejecutó abrir-app.bat?`);
     }
@@ -4821,7 +4814,7 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
     if (btnActivar) {
       btnActivar.disabled = !complete;
       btnActivar.title = complete
-        ? "Activa Fase 1: el agente lee el caso en disco"
+        ? "Activa Fase 1, abre el Chat y, al terminar el agente, deja el dictamen en Documentos"
         : `Falta: ${faltan.join("; ")}`;
     }
     const hintActivar = $("#activarAnalisisFalta");
