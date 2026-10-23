@@ -140,7 +140,7 @@ def datos_listos(id_caso: str, motivo: str) -> bool:
         meta = cursor_bot.read_json(os.path.join(cursor_bot.caso_dir(id_caso), "meta.json"), {})
         texto = str((meta or {}).get("veredictoTexto") or "").strip() if isinstance(meta, dict) else ""
         return len(texto) >= 80
-    if motivo not in ("analizar-req", "solicitar-req"):
+    if motivo not in ("analizar-req", "criterios", "solicitar-req"):
         return False
     import cursor_bot
 
@@ -150,15 +150,21 @@ def datos_listos(id_caso: str, motivo: str) -> bool:
     )
     if not isinstance(sol, dict):
         return False
-    contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
-    partes = [
-        sol.get("analisis") or "",
-        contenido.get("analisis") or "",
-        contenido.get("recomendacion") or "",
-        contenido.get("cambioPropuestoSimple") or "",
-        sol.get("recomendacion") or "",
-    ]
-    return len(" ".join(str(p) for p in partes).strip()) >= 120
+    modo = "comite" if motivo == "solicitar-req" else "analisis"
+    try:
+        import planteamiento_req
+
+        return bool(planteamiento_req.evaluar(sol, modo=modo).get("ok"))
+    except Exception:
+        contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+        partes = [
+            sol.get("analisis") or "",
+            contenido.get("analisis") or "",
+            contenido.get("recomendacion") or "",
+            contenido.get("cambioPropuestoSimple") or "",
+            sol.get("recomendacion") or "",
+        ]
+        return len(" ".join(str(p) for p in partes).strip()) >= 120
 
 
 def _esc(texto: str) -> str:

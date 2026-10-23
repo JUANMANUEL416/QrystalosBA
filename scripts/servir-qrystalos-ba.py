@@ -42,6 +42,7 @@ from cursor_bot import (  # noqa: E402
     agregar_clave_cursor,
     cambiar_clave_cursor,
     cursor_key_status,
+    continuacion_chat,
     leer_estado_bot,
     listar_claves_publicas,
     load_api_key,
@@ -840,7 +841,7 @@ def _build_instruccion(solicitud):
    - Lea esas fichas (`hace`, `valida`, `noValida`, `errores`, `llama`, `efecto`).
    - **No se detenga** porque `{carpeta_sql}/` esté vacío si esos METODO cubren el REQ.
    - En el **Chat del caso** (`activo/{id_caso}/chat.json`), en el primer resumen, indique si hace falta el .sql de hoy:
-     - Todos `leido` y el alcance no sale de lo documentado → seguir sin pedir el script.
+     - La ficha `leido` sirve para clasificar. Si la solución **cambia** ese procedimiento, baje igual el cuerpo de ESE METODO a `{carpeta_sql}/` y cite el bloque de hoy y el sugerido. El resumen de la ficha no reemplaza el bloque.
      - Alguno `listado` / `no_leido` / `parcial`, o el REQ toca validaciones no documentadas → **bajar** el .sql a `{carpeta_sql}/` (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`).
    - No invente METODOs que no estén en `sps.json`.
 {paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
@@ -877,9 +878,9 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 
 ## Fase 1 — su tarea ahora
 1. **REQ → conocimiento** (INDICE, proceso.json, sps.json; sql_refe si hace falta).
-2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, complete `contenido.cambioPropuestoSql` (fragmentos para dictamen §5.2.1).
+2. Proyectar **solución concreta** en `contenido.planteamiento` (clasificación capacitación | defecto | hueco, flujo de hoy, causa citada, cambio por capa). Vuelque eso en criteriosAceptacion, alcance, restricciones, analisis y recomendacion, más la lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, `contenido.cambioPropuestoSql` trae el bloque de hoy (`---ANTES---`) y el sugerido (`---SUGERIDO---`), leídos del cuerpo del METODO. Un resumen del pedido no cierra el análisis.
 3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
-4. Cuando el coordinador lo pida: dictamen en `dictamenes/{id_caso}.html`.
+4. No escriba `dictamenes/{id_caso}.html` a mano. Al cerrar el análisis, la oficina lo genera con la plantilla del dictamen y lo deja en Documentos del Chat. Si corrige el planteamiento, actualice `solicitud.json`.
 5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
 6. **Mockup UX:** si genera o ajusta `activo/{id_caso}/mockups/`, pinte la **ventana propuesta** (`cambioPropuestoSimple`, criterios, recomendación), no la captura del error ni un control de otro REQ. `imagenes/` es solo referencia «Hoy».
 
@@ -3192,10 +3193,40 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             print(f"WARN desarrolladores al activar {id_caso}: {exc}", flush=True)
 
         bot = {}
-        try:
-            bot = agentes_panel.lanzar("analista", id_caso, "activar")
-        except Exception as exc:
-            bot = {"ok": False, "error": str(exc)}
+        fase_cerrada = bool((result.get("estado") or {}).get("fase1Cerrada"))
+        if not fase_cerrada:
+            ahora = datetime.now().isoformat(timespec="seconds")
+            db.append_chat(
+                id_caso,
+                {
+                    "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "a",
+                    "autor": "sistema",
+                    "texto": (
+                        "Paso 1 de 2: ubicando el proceso, el flujo y la pieza. "
+                        "El análisis del problema arranca solo después. "
+                        "Al terminar, el dictamen queda en Documentos."
+                    ),
+                    "fecha": ahora,
+                },
+            )
+            try:
+                bot = agentes_panel.lanzar("analista", id_caso, "ubicar-req")
+            except Exception as exc:
+                bot = {"ok": False, "error": str(exc)}
+            if not bot.get("ok"):
+                db.append_chat(
+                    id_caso,
+                    {
+                        "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "e",
+                        "autor": "sistema",
+                        "texto": (
+                            "El agente no pudo arrancar ("
+                            + str(bot.get("error") or "error")
+                            + "). Reinicie el servidor y vuelva a activar la fase 1."
+                        ),
+                        "fecha": ahora,
+                    },
+                )
 
         return self._json({
             "ok": True,
@@ -3284,12 +3315,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Analiza el requerimiento contrastándolo con la base de conocimiento "
-                        "(proceso/sps). Proponga solución, criterios de aceptación, alcance, "
-                        "restricciones y análisis; liste SOLO los SP/METODO de este cambio "
-                        "No haga el dictamen completo. Deje el resultado en este Chat y en "
-                        "solicitud.contenido (criterios, alcance, restricciones, analisis, "
-                        "brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos)."
+                        "Analizar corre en dos pasos, sin otra acción suya. "
+                        "Paso 1: ubique el proceso de la base, el flujo dentro de ese proceso "
+                        "y la pieza (ventana, botón, proceso, SP o método), y qué recursos hacen falta. "
+                        "Paso 2: con eso, analice el problema y proponga el cambio. "
+                        "No nombre SP ni métodos que no participen en ese flujo."
                         f"{img_nota}"
                     ),
                     "fecha": ahora,
@@ -3300,11 +3330,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+                    "texto": "Paso 1 de 2: ubicando el proceso, el flujo y la pieza. El análisis del problema arranca solo después.",
                     "fecha": ahora,
                 },
             )
-            bot = agentes_panel.lanzar("analista", id_caso, "analizar-req")
+            bot = agentes_panel.lanzar("analista", id_caso, "ubicar-req")
             if not bot.get("ok"):
                 db.append_chat(
                     id_caso,
@@ -3424,14 +3454,31 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         }
         db = get_db()
         db.append_chat(id_caso, msg)
+        accion = continuacion_chat(id_caso, texto)
+        if accion == "detenido":
+            chat = db.get_chat(id_caso, sync_disk=False)
+            return self._json({
+                "ok": True,
+                "mensaje": msg,
+                "mensajes": chat["mensajes"],
+                "bot": leer_estado_bot(id_caso),
+            })
+        if accion == "ubicar":
+            aviso_texto = (
+                "Dato recibido. Sigue la ubicación del flujo y, si ya queda cerrado, el análisis."
+            )
+            motivo_chat = "ubicar-req"
+        else:
+            aviso_texto = "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo."
+            motivo_chat = "chat"
         aviso = {
             "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
             "autor": "sistema",
-            "texto": "El agente está trabajando. El temporizador de arriba confirma que el proceso sigue vivo.",
+            "texto": aviso_texto,
             "fecha": datetime.now().isoformat(timespec="seconds"),
         }
         db.append_chat(id_caso, aviso)
-        bot = agentes_panel.lanzar("analista", id_caso, "chat")
+        bot = agentes_panel.lanzar("analista", id_caso, motivo_chat)
         if not bot.get("ok"):
             fallo = {
                 "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "e",

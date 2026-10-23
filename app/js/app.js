@@ -25,6 +25,7 @@
   let criteriosMeta = window.QrysCriterios ? QrysCriterios.emptyMeta() : {};
   let contValidacion = null;
   let brechaAnalisis = null;
+  let ubicacionAnalisis = null;
   let imagenesAnalisis = [];
   let archivosAnalisis = [];
   let diagramaFlujo = null;
@@ -256,8 +257,8 @@
     return pending;
   }
 
-  function switchToView(viewName) {
-    if (isAnalisisEnCurso()) return;
+  function switchToView(viewName, force) {
+    if (!force && isAnalisisEnCurso()) return;
     $$(".main-tab").forEach((t) => t.classList.toggle("active", t.dataset.view === viewName));
     $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${viewName}`));
     if (viewName === "chat") refreshChatView();
@@ -265,9 +266,9 @@
     if (viewName === "historico") refreshHistorico();
   }
 
-  function abrirChatCaso(idCasoFromCola) {
+  function abrirChatCaso(idCasoFromCola, force) {
     if (idCasoFromCola) setVal("#idCaso", idCasoFromCola);
-    switchToView("chat");
+    switchToView("chat", !!force);
   }
 
   let chatPollTimer = null;
@@ -767,14 +768,7 @@
       refreshColaTable();
       await guardarCorreoEnLista(val("#desarrollador"), val("#correoDestino"));
 
-      alert(
-        "Fase 1 activada.\n\n" +
-          "El agente en Cursor lee activo/" +
-          idCaso +
-          "/ (Qrystalos2, conocimiento/ y activo/" + idCaso + "/sql/ si aplica).\n" +
-          "No se abre el Chat solo: use la pestaña Chat cuando quiera escribir.\n" +
-          "La propuesta queda en dictamenes/.",
-      );
+      abrirChatCaso(idCaso, true);
     } catch (e) {
       alert(`No se pudo activar:\n${e.message}\n\n¿Ejecutó abrir-app.bat?`);
     }
@@ -1144,6 +1138,8 @@
     if ($("#chkCorreoEnviado")) $("#chkCorreoEnviado").checked = false;
     setVal("#fechaEnvioCorreo", "");
     brechaAnalisis = null;
+    ubicacionAnalisis = null;
+    renderUbicacion(null);
     imagenesAnalisis = [];
     archivosAnalisis = [];
     solicitudOrigen = null;
@@ -1161,7 +1157,7 @@
     renderMockupsForm();
     renderBrechaAnalisis(null);
     const hintBrecha = $("#brechaAnalisisHint");
-    if (hintBrecha) hintBrecha.textContent = "El agente (Cursor) contrasta el REQ con su análisis y lista qué le falta revisar. No usa OpenAI.";
+    if (hintBrecha) hintBrecha.textContent = "Analizar corre en dos pasos: ubica el flujo y después analiza el problema solo con esos recursos.";
     $("#alertOrigenCola").hidden = true;
     $("#archivoColaVinculado").textContent = "—";
     if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = false;
@@ -1483,8 +1479,116 @@
     });
   }
 
+  const NOMBRES_SECCION = {
+    1: "General",
+    2: "Requerimiento",
+    3: "Análisis",
+    4: "SQL",
+    5: "Cierre",
+  };
+
+  function prepararAcordeon() {
+    $$("#formSolicitud > .panel").forEach((panel) => {
+      if (panel.dataset.acordeon) return;
+      const step = String(panel.dataset.panel || "");
+      const details = document.createElement("details");
+      details.className = "caso-fold";
+      details.dataset.fold = step;
+      details.open = step === "1";
+      const summary = document.createElement("summary");
+      summary.className = "caso-fold-sum";
+      summary.innerHTML =
+        `<span class="caso-fold-title"><span class="caso-fold-n">${step}</span> ${NOMBRES_SECCION[step] || "Sección"}</span>` +
+        `<span class="fold-badge" data-fold-badge="${step}">Pendiente</span>`;
+      const body = document.createElement("div");
+      body.className = "caso-fold-body";
+      while (panel.firstChild) body.appendChild(panel.firstChild);
+      details.appendChild(summary);
+      details.appendChild(body);
+      panel.appendChild(details);
+      panel.dataset.acordeon = "1";
+      panel.classList.add("active");
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        currentStep = Number(step);
+        pintarRail();
+      });
+    });
+    $$("#stepper .step").forEach((btn) => {
+      if (btn.querySelector(".step-state")) return;
+      const mark = document.createElement("span");
+      mark.className = "step-state";
+      mark.dataset.stepState = btn.dataset.step || "";
+      btn.appendChild(mark);
+    });
+  }
+
+  function estadoSeccion(step) {
+    if (step === 5) {
+      const faltan = faltantesActivarAnalisis();
+      return faltan.length
+        ? { ok: false, texto: `${faltan.length} pendiente${faltan.length === 1 ? "" : "s"}` }
+        : { ok: true, texto: "Listo" };
+    }
+    if (step === 4) {
+      return sqlPasoListoParaActivar()
+        ? { ok: true, texto: "Listo" }
+        : { ok: false, texto: "Falta SQL" };
+    }
+    const missing = getRequiredForStep(step).filter(({ el }) => !el?.value?.trim());
+    if (step === 2 && !val("#requerimiento") && !archivoColaVinculado) {
+      missing.push({ label: "Requerimiento" });
+    }
+    if (step === 3 && $("#chkAfectaContabilidad")?.checked && !val("#contComoAfecta")) {
+      missing.push({ label: "Contabilidad" });
+    }
+    return missing.length
+      ? { ok: false, texto: `Falta ${missing.length}` }
+      : { ok: true, texto: "Listo" };
+  }
+
+  function pintarEstadoSecciones() {
+    for (let step = 1; step <= totalSteps; step++) {
+      const estado = estadoSeccion(step);
+      const badge = document.querySelector(`[data-fold-badge="${step}"]`);
+      if (badge) {
+        badge.textContent = estado.texto;
+        badge.classList.toggle("is-ok", estado.ok);
+      }
+      const mark = document.querySelector(`[data-step-state="${step}"]`);
+      if (mark) mark.textContent = estado.ok ? "Listo" : "Falta";
+    }
+  }
+
+  function pintarRail() {
+    $$(".step").forEach((s) => {
+      const n = Number(s.dataset.step);
+      const estado = estadoSeccion(n);
+      s.classList.toggle("active", n === currentStep);
+      s.classList.toggle("done", estado.ok);
+      s.classList.toggle("warn", !estado.ok);
+    });
+    const etiqueta = NOMBRES_SECCION[currentStep] || "";
+    const indicator = $("#stepIndicator");
+    if (indicator) indicator.textContent = etiqueta;
+    const prev = $("#btnPrev");
+    const next = $("#btnNext");
+    if (prev) prev.disabled = currentStep === 1;
+    if (next) next.textContent = currentStep === totalSteps ? "Ver pendientes" : "Siguiente sección";
+  }
+
   function bindForm() {
-    $("#btnNext").addEventListener("click", () => goStep(currentStep + 1));
+    prepararAcordeon();
+    $("#btnNext").addEventListener("click", () => {
+      if (currentStep >= totalSteps) {
+        updateAll();
+        const cierre = document.querySelector('.caso-fold[data-fold="5"]');
+        if (cierre) cierre.open = true;
+        $("#validacionResumen")?.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      goStep(currentStep + 1);
+    });
     $("#btnPrev").addEventListener("click", () => goStep(currentStep - 1));
     $("#btnNuevo").addEventListener("click", resetForm);
     $("#btnAddOpcion").addEventListener("click", () => addOpcion("", ""));
@@ -1898,6 +2002,38 @@
     box.innerHTML = `<strong>Validación del agente</strong>${cuando}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
   }
 
+  function renderUbicacion(dato) {
+    const el = $("#ubicacionAnalisisNota");
+    if (!el) return;
+    const proc = String(dato?.procesoId || "").trim();
+    const pregunta = Array.isArray(dato?.preguntas) ? String(dato.preguntas[0] || "").trim() : "";
+    if (dato?.bloqueo === "base" || dato?.estado === "sin_mapa") {
+      el.classList.remove("hidden");
+      el.textContent = pregunta || "Este flujo no está mapeado. Complételo en Documentar antes de analizar.";
+      return;
+    }
+    if ((dato?.bloqueo === "dato" || dato?.estado === "pregunta") && pregunta) {
+      el.classList.remove("hidden");
+      el.textContent = pregunta;
+      return;
+    }
+    if (!proc) {
+      el.classList.add("hidden");
+      el.textContent = "";
+      return;
+    }
+    const pieza = dato.pieza || {};
+    const recursos = (dato.recursos || [])
+      .map((r) => r?.cual || r?.tipo)
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(", ");
+    el.classList.remove("hidden");
+    el.textContent = `Flujo: ${proc} → ${dato.flujo || ""} → ${pieza.tipo || ""} ${pieza.nombre || ""}${
+      recursos ? `. Recursos: ${recursos}` : ""
+    }`;
+  }
+
   function renderBrechaAnalisis(dato) {
     const box = $("#brechaAnalisisBox");
     if (!box) return;
@@ -1908,7 +2044,15 @@
     }
     box.classList.remove("hidden");
     const cuando = dato.fecha ? ` <small>(${esc(dato.fecha)})</small>` : "";
-    box.innerHTML = `<strong>Propuesta del agente (solución)</strong>${cuando}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
+    const faltan = Array.isArray(dato.faltantes) ? dato.faltantes.filter(Boolean) : [];
+    const corto = dato.estado === "superficial";
+    box.classList.toggle("brecha-superficial", corto);
+    const aviso = corto
+      ? `<p class="brecha-faltantes"><strong>El planteamiento está corto.</strong>${
+          faltan.length ? " Falta:" : ""
+        }</p>${faltan.length ? `<ul>${faltan.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}`
+      : "";
+    box.innerHTML = `<strong>Propuesta del agente (solución)</strong>${cuando}${aviso}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
   }
 
   function solicitudTienePropuesta(sol) {
@@ -1956,8 +2100,9 @@
   async function pollBrechaAnalisis(idCaso, hintEl, loadingToken) {
     const hint = hintEl || $("#brechaAnalisisHint");
     const stale = () => loadingToken != null && loadingToken !== analisisLoadingToken;
-    // El agente de un REQ suele pasar de 4 min. 300 sondeos × 4 s ≈ 20 min.
-    for (let i = 0; i < 300; i++) {
+    // Dos pasos (ubicar + analizar). 450 sondeos × 4 s ≈ 30 min.
+    let ubicarEspera = 0;
+    for (let i = 0; i < 450; i++) {
       await new Promise((r) => setTimeout(r, 4000));
       if (stale()) return;
       try {
@@ -1970,6 +2115,29 @@
           return;
         }
         const termino = bot.estado === "listo" || bot.estado === "terminado";
+        const sigueAlAnalisis = bot.cadena === "analizar-req" || (bot.motivo === "ubicar-req" && !bot.ubicacionDetenida);
+        if (termino && bot.ubicacionDetenida) {
+          await cargarSolicitudCaso(idCaso, { sondeo: true });
+          const porMapa = bot.ubicacionBloqueo === "base";
+          if (hint) {
+            hint.textContent = porMapa
+              ? "Ese flujo no está en la base. Mapeelo en Documentar y después vuelva a analizar."
+              : "Falta un dato. Respóndalo en el Chat o complete la ruta; al enviarlo el análisis sigue.";
+          }
+          updateAnalisisLoadingDetalle(
+            porMapa
+              ? "Sin mapa en la base el análisis no arranca. Revise el Chat."
+              : "Falta un dato del analista. Al completarlo, el análisis continúa."
+          );
+          return;
+        }
+        if (termino && sigueAlAnalisis) {
+          ubicarEspera += 1;
+          updateAnalisisLoadingDetalle("Flujo ubicado. Sigue el análisis del problema en ese tramo…");
+          if (hint) hint.textContent = "Ubicó el flujo. Ahora analiza el problema, sin otra acción suya.";
+          await cargarSolicitudCaso(idCaso, { sondeo: true });
+          if (ubicarEspera < 4) continue;
+        }
         if (termino) {
           updateAnalisisLoadingDetalle("Análisis listo. Actualizando formulario…");
           await cargarSolicitudCaso(idCaso, { sondeo: true });
@@ -1979,16 +2147,24 @@
             refreshColaTable();
           }
           if (hint) {
-            hint.textContent = textoPropuestaEnFormulario()
-              ? "Listo: revise criterios, alcance, restricciones y análisis en el formulario."
-              : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
+            hint.textContent =
+              brechaAnalisis?.estado === "superficial"
+                ? "El análisis quedó corto. Revise lo que falta en la propuesta y vuelva a pedir Analizar requerimiento."
+                : textoPropuestaEnFormulario()
+                  ? "Listo: revise el flujo ubicado, la causa y el cambio."
+                  : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
           }
           return;
         }
+        ubicarEspera = 0;
         const modelo = bot.modelo ? ` ${bot.modelo}${bot.fast ? " Fast" : ""}` : "";
         const mins = minutosDesdeIso(bot.iniciadoEn);
         const lleva = mins > 0 ? ` Lleva ${mins} min.` : "";
-        updateAnalisisLoadingDetalle(`El agente${modelo} sigue trabajando.${lleva} El aviso se cierra al terminar.`);
+        const fase =
+          bot.motivo === "ubicar-req"
+            ? "Ubicando proceso, flujo y pieza."
+            : "Analizando el problema en el flujo ya ubicado.";
+        updateAnalisisLoadingDetalle(`${fase}${modelo}${lleva}`);
         await cargarSolicitudCaso(idCaso, { sondeo: true });
       } catch {
         /* reintento */
@@ -2978,10 +3154,10 @@
     if (btn) btn.disabled = true;
     showAnalisisLoading(
       "Analizando requerimiento",
-      "Guardando y pidiendo análisis al agente…",
+      "Paso 1: ubicando el proceso, el flujo y la pieza…",
       idCaso,
     );
-    if (hint) hint.textContent = "Guardando y pidiendo análisis al agente…";
+    if (hint) hint.textContent = "Paso 1: ubicando el flujo en la base. El análisis arranca solo después.";
     try {
       const data = collectData();
       const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/solicitud`, {
@@ -2996,10 +3172,10 @@
       }
       if (hint) {
         hint.textContent =
-          "El agente está armando criterios, alcance, restricciones, análisis y SPs. Espere…";
+          "Paso 1: ubicando el proceso, el flujo y la pieza. Luego analiza solo esos recursos.";
       }
       updateAnalisisLoadingDetalle(
-        "El agente contrasta el REQ con conocimiento/. El formulario se actualizará solo.",
+        "Paso 1 de 2. El formulario se actualiza cuando ubique el flujo y cuando cierre el cambio.",
       );
       await pollBrechaAnalisis(idCaso, hint, loadingToken);
     } catch (e) {
@@ -4096,22 +4272,16 @@
 
   function goStep(step) {
     if (step < 1 || step > totalSteps) return;
-    if (isAnalisisEnCurso() && step !== currentStep) return;
-    if (step > currentStep && !validateStep(currentStep, true)) return;
     if (currentStep === 2 && step !== 2) captureCriteriosOriginales();
     if (currentStep === 3 && step !== 3) captureCriteriosTrasAnalisis();
     currentStep = step;
-    $$(".panel").forEach((p) => p.classList.toggle("active", Number(p.dataset.panel) === step));
-    $$(".step").forEach((s) => {
-      const n = Number(s.dataset.step);
-      s.classList.toggle("active", n === step);
-      s.classList.toggle("done", n < step && validateStep(n, false));
-    });
-    $("#btnPrev").disabled = step === 1;
-    $("#btnNext").textContent = step === totalSteps ? "Finalizar" : "Siguiente";
-    $("#stepIndicator").textContent = `Paso ${step} de ${totalSteps}`;
-    const wizardScroll = $(".wizard-scroll");
-    if (wizardScroll) wizardScroll.scrollTop = 0;
+    const fold = document.querySelector(`.caso-fold[data-fold="${step}"]`);
+    if (fold) {
+      fold.open = true;
+      fold.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+    pintarRail();
+    pintarEstadoSecciones();
     if (step === totalSteps) updateAll();
     if (step === 4) {
       leerCarpetaSql(true);
@@ -4281,6 +4451,7 @@
           })),
         criteriosMeta,
         brechaAnalisis,
+        ubicacion: ubicacionAnalisis,
         diagramaFlujo: diagramaFlujo
           ? {
               ...diagramaFlujo,
@@ -4643,7 +4814,7 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
     if (btnActivar) {
       btnActivar.disabled = !complete;
       btnActivar.title = complete
-        ? "Activa Fase 1: el agente lee el caso en disco"
+        ? "Activa Fase 1, abre el Chat y, al terminar el agente, deja el dictamen en Documentos"
         : `Falta: ${faltan.join("; ")}`;
     }
     const hintActivar = $("#activarAnalisisFalta");
@@ -4677,6 +4848,8 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
 
     updateCriteriosHint();
     renderCriteriosComparacion();
+    pintarEstadoSecciones();
+    pintarRail();
   }
 
   function renderOpciones() {
@@ -4846,6 +5019,8 @@ ${d.contenido.contabilidad?.afecta ? `### Contabilidad
       toggleContabilidad();
       renderContValidacion(contValidacion);
       brechaAnalisis = data.contenido?.brechaAnalisis || null;
+      ubicacionAnalisis = data.contenido?.ubicacion || null;
+      renderUbicacion(ubicacionAnalisis);
       renderBrechaAnalisis(brechaAnalisis);
       const va = data.contenido?.validarAntes || {};
       if ($("#chkValidarAntes")) $("#chkValidarAntes").checked = !!va.aplica;

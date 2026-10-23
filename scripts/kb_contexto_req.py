@@ -2,8 +2,12 @@
 # -*- coding: utf-8 -*-
 """Preselección de contexto KB para análisis de requerimientos.
 
-Reduce de ~100 tool calls (5-7 min) a ~15 (1-2 min) al proporcionar
-el contexto relevante del conocimiento antes de lanzar el agente.
+Entrega el recorte del proceso (fichas, controles, necesidades ya cubiertas)
+para no barrer conocimiento/. El recorte orienta; no reemplaza la ficha
+completa del METODO ni el cuerpo SQL del bloque que el cambio toca.
+
+mapa_ubicacion arma el mapa de tramos (proceso → flujo → pantalla) con la
+ruta del formulario y el texto del pedido, para el paso de ubicar.
 """
 from __future__ import annotations
 
@@ -132,44 +136,84 @@ def _cargar_proceso_meta(proceso_id: str) -> dict:
     return {}
 
 
-def _resumir_sps(proceso_id: str, limite: int = 8) -> list[dict]:
-    """Resumen compacto de SPs del proceso (nombre, estado, métodos top)."""
+def _clip(valor, n: int) -> str:
+    """Texto corto de un campo de ficha (string o lista)."""
+    if isinstance(valor, list):
+        partes = []
+        for item in valor:
+            if isinstance(item, dict):
+                partes.append(str(item.get("nombre") or item.get("sp") or item.get("id") or ""))
+            else:
+                partes.append(str(item))
+        valor = "; ".join(parte for parte in partes if parte)
+    texto = " ".join(str(valor or "").split())
+    if len(texto) <= n:
+        return texto
+    return texto[: n - 1].rstrip() + "…"
+
+
+def _blob_metodo(metodo: dict) -> str:
+    partes = [str(metodo.get("id") or "")]
+    for clave in ("hace", "valida", "noValida", "efecto", "errores", "llama"):
+        partes.append(_clip(metodo.get(clave), 400))
+    return _normalizar_texto(" ".join(partes))
+
+
+def _puntaje_metodo(metodo: dict, terminos: set[str] | None) -> int:
+    if not terminos:
+        return 0
+    blob = _blob_metodo(metodo)
+    return sum(1 for termino in terminos if _normalizar_texto(str(termino)) and _normalizar_texto(str(termino)) in blob)
+
+
+def _ficha_metodo(metodo: dict) -> dict:
+    ficha = {"id": metodo.get("id")}
+    for clave, tope in (
+        ("hace", 140),
+        ("valida", 80),
+        ("noValida", 80),
+        ("efecto", 80),
+        ("llama", 80),
+        ("errores", 80),
+    ):
+        texto = _clip(metodo.get(clave), tope)
+        if texto:
+            ficha[clave] = texto
+    return ficha
+
+
+def _resumir_sps(proceso_id: str, limite: int = 6, terminos: set[str] | None = None) -> list[dict]:
+    """SPs del proceso, con los METODO que más se acercan al texto del REQ."""
     sps_path = KB / proceso_id / "sps.json"
     if not sps_path.is_file():
         return []
-    
+
     data = kb_indice._leer(sps_path, [])
     if isinstance(data, dict):
         data = data.get("sps") or data.get("procedimientos") or []
-    
+
     if isinstance(data, dict):
         data = list(data.values())
-    
-    # Priorizar SPs con estado 'leido' y con métodos documentados
-    def peso(sp):
+
+    preparados = []
+    for sp in data:
+        if not isinstance(sp, dict):
+            continue
+        metodos = [m for m in (sp.get("metodos") or []) if isinstance(m, dict) and m.get("id")]
+        metodos.sort(key=lambda m: _puntaje_metodo(m, terminos), reverse=True)
+        mejor = _puntaje_metodo(metodos[0], terminos) if metodos else 0
         estado = sp.get("estado") or ""
-        mets = len([m for m in sp.get("metodos") or [] if isinstance(m, dict)])
-        return (estado == "leido", mets, sp.get("nombre") or "")
-    
-    data_sorted = sorted([sp for sp in data if isinstance(sp, dict)], key=peso, reverse=True)
-    
+        preparados.append((mejor, estado == "leido", len(metodos), sp.get("nombre") or "", sp, metodos))
+
+    preparados.sort(key=lambda fila: (fila[0], fila[1], fila[2], fila[3]), reverse=True)
+
     salida = []
-    for sp in data_sorted[:limite]:
-        metodos = []
-        for m in (sp.get("metodos") or [])[:6]:  # Max 6 métodos por SP
-            if isinstance(m, dict) and m.get("id"):
-                metodos.append({
-                    "id": m["id"],
-                    "hace": (m.get("hace") or "")[:120],
-                    "valida": (m.get("valida") or "")[:80],
-                })
-        
+    for _mejor, _leido, _n, _nombre, sp, metodos in preparados[:limite]:
         salida.append({
             "nombre": sp.get("nombre"),
             "estado": sp.get("estado"),
-            "metodos": metodos,
+            "metodos": [_ficha_metodo(m) for m in metodos[:4]],
         })
-    
     return salida
 
 
@@ -196,13 +240,611 @@ def _resumir_controles(proceso_id: str, limite: int = 6) -> list[dict]:
     return controles[:limite]
 
 
+def _resumir_cubiertas(proceso_id: str, terminos: set[str] | None = None, limite: int = 4) -> list[dict]:
+    """Necesidades que el control ya cubre, priorizando las que se parecen al REQ."""
+    proceso_path = KB / proceso_id / "proceso.json"
+    if not proceso_path.is_file():
+        return []
+    data = kb_indice._leer(proceso_path, {}) or {}
+    items = [item for item in (data.get("necesidadesYaCubiertas") or []) if isinstance(item, dict)]
+    if not items:
+        return []
+
+    def puntaje(item: dict) -> int:
+        blob = _normalizar_texto(
+            " ".join(
+                str(item.get(clave) or "")
+                for clave in ("necesidad", "donde", "condicion", "metodo", "noEs")
+            )
+        )
+        if not terminos:
+            return 0
+        return sum(1 for termino in terminos if _normalizar_texto(str(termino)) in blob)
+
+    ranked = sorted(items, key=puntaje, reverse=True)
+    if terminos and puntaje(ranked[0]) == 0:
+        ranked = items[:limite]
+    else:
+        ranked = ranked[:limite]
+    salida = []
+    for item in ranked:
+        salida.append({
+            "necesidad": _clip(item.get("necesidad"), 140),
+            "donde": _clip(item.get("donde"), 180),
+            "condicion": _clip(item.get("condicion"), 180),
+            "metodo": _clip(item.get("metodo"), 140),
+            "noEs": _clip(item.get("noEs"), 120),
+        })
+    return salida
+
+
 def _buscar_grafo_indice(proceso_id: str) -> str | None:
     """Busca el archivo grafo-*-indice.json si existe."""
     indice_general = kb_indice._leer(KB / "INDICE.json", {}) or {}
     for p in indice_general.get("procesos") or []:
         if (p.get("id") == proceso_id or p.get("carpeta") == proceso_id) and p.get("grafoIndice"):
             return p["grafoIndice"]
+    carpeta = KB / proceso_id
+    if carpeta.is_dir():
+        hallados = sorted(carpeta.glob("grafo-*-indice.json"))
+        if hallados:
+            return f"{proceso_id}/{hallados[0].name}"
     return None
+
+
+def _clave_pantalla(texto: str) -> str:
+    """Último tramo de una ruta (/inv/gesventa) o de un código de menú (inv.gesventa)."""
+    t = _normalizar_texto(str(texto or "")).replace("\\", "/").split("·")[0].strip()
+    if not t:
+        return ""
+    if "/" in t:
+        return t.rstrip("/").split("/")[-1]
+    if "." in t:
+        return t.split(".")[-1]
+    return t
+
+
+def _coincide_ruta(pantalla_valor, ruta: str) -> bool:
+    """La pantalla del tramo es la misma ruta del formulario. No vale un prefijo más corto."""
+    ruta_full = _normalizar_texto(ruta).replace("\\", "/").strip()
+    if not ruta_full:
+        return False
+    clave_ruta = _clave_pantalla(ruta_full)
+    if isinstance(pantalla_valor, list):
+        partes = []
+        for item in pantalla_valor:
+            partes.extend(re.split(r"[;,]", str(item or "")))
+    else:
+        partes = re.split(r"[;,]", str(pantalla_valor or ""))
+    for parte in partes:
+        full = _normalizar_texto(parte).replace("\\", "/").split("·")[0].strip()
+        if not full:
+            continue
+        if full.rstrip("/") == ruta_full.rstrip("/"):
+            return True
+        clave = _clave_pantalla(full)
+        if clave_ruta and len(clave_ruta) >= 4 and clave == clave_ruta:
+            return True
+    return False
+
+
+def _mapas_flujo() -> list[tuple[str, dict]]:
+    """Índices de tramos en disco, aunque INDICE.json no traiga grafoIndice."""
+    if not KB.is_dir():
+        return []
+    salida = []
+    for carpeta in sorted(p for p in KB.iterdir() if p.is_dir()):
+        for path in sorted(carpeta.glob("grafo-*-indice.json")):
+            data = kb_indice._leer(path, {}) or {}
+            if isinstance(data, dict):
+                salida.append((carpeta.name, data))
+    return salida
+
+
+def _filas_flujo(proceso: str, data: dict) -> list[dict]:
+    filas = []
+    for clave in ("tramos", "procedencias", "grafos"):
+        for item in data.get(clave) or []:
+            if isinstance(item, str):
+                filas.append({
+                    "proceso": proceso,
+                    "id": item,
+                    "nombre": item,
+                    "pantalla": "",
+                    "controlClave": "",
+                    "orden": 0,
+                })
+                continue
+            if not isinstance(item, dict):
+                continue
+            generadores = item.get("generadores") or []
+            if item.get("controlClave"):
+                control = str(item.get("controlClave"))
+            elif isinstance(generadores, list):
+                control = "; ".join(str(g) for g in generadores[:4])
+            else:
+                control = str(generadores or "")
+            ident = str(item.get("id") or item.get("procedencia") or item.get("nombre") or "").strip()
+            filas.append({
+                "proceso": proceso,
+                "id": ident,
+                "nombre": str(item.get("nombre") or item.get("procedencia") or ident),
+                "pantalla": item.get("pantalla") if item.get("pantalla") not in (None, "") else item.get("pantallas") or "",
+                "controlClave": control,
+                "orden": item.get("orden") or 0,
+            })
+    return filas
+
+
+def _tokens_de_proceso() -> set[str]:
+    """Palabras que nombran un proceso o su módulo. No sirven para elegir un tramo."""
+    indice = kb_indice._leer(KB / "INDICE.json", {}) or {}
+    tokens = set()
+    for meta in indice.get("procesos") or []:
+        pid = _normalizar_texto(str(meta.get("id") or meta.get("carpeta") or ""))
+        modulo = _normalizar_texto(str(meta.get("modulo") or ""))
+        if len(pid) >= 4:
+            tokens.add(pid)
+        if len(modulo) >= 4:
+            tokens.add(modulo)
+    return tokens
+
+
+def _puntaje_tramo(
+    fila: dict,
+    terminos: set[str],
+    ruta: str,
+    tokens_proceso: set[str] | None = None,
+) -> tuple[int, list[str], bool]:
+    score = 0
+    porque: list[str] = []
+    coincide = _coincide_ruta(fila.get("pantalla"), ruta)
+    if coincide:
+        score += 20
+        porque.append("pantalla")
+    blob_nombre = _normalizar_texto(f"{fila.get('id') or ''} {fila.get('nombre') or ''}")
+    blob_control = _normalizar_texto(str(fila.get("controlClave") or ""))
+    tokens_proceso = tokens_proceso or set()
+    for termino in terminos:
+        crudo = str(termino)
+        t = _normalizar_texto(crudo)
+        if not t or t in STOPWORDS or t in tokens_proceso:
+            continue
+        if "_" in crudo and t in blob_control:
+            score += 8
+            if crudo not in porque:
+                porque.append(crudo)
+            continue
+        if len(t) < 5:
+            continue
+        if t in blob_nombre:
+            score += 4
+            if t not in porque and len(porque) < 5:
+                porque.append(t)
+        elif t in blob_control:
+            score += 3
+    return score, porque, coincide
+
+
+def _fichas_pantalla(ruta: str) -> list[dict]:
+    ruta = (ruta or "").strip()
+    if not ruta:
+        return []
+    vistos = set()
+    salida = []
+    resultado = kb_buscar.buscar(ruta, limite=3)
+    if resultado.get("tipo") != "pantalla":
+        return []
+    for ref in resultado.get("resultados") or []:
+        ficha = ref.get("ficha") if isinstance(ref.get("ficha"), dict) else {}
+        pid = str(ref.get("proceso") or "")
+        path = str(ficha.get("path") or ficha.get("ruta") or ruta)
+        llave = (pid, path.lower())
+        if llave in vistos:
+            continue
+        vistos.add(llave)
+        salida.append({
+            "proceso": pid,
+            "path": str(ficha.get("path") or ""),
+            "ruta": str(ficha.get("ruta") or ""),
+            "uso": _clip(ficha.get("uso"), 80),
+            "vue": _clip(ficha.get("vue"), 140),
+            "entrada": _clip(ficha.get("entrada"), 180),
+        })
+    return salida[:4]
+
+
+def _controles_proceso(proceso_id: str, terminos: set[str], tokens_proceso: set[str] | None = None) -> list[dict]:
+    tokens_proceso = tokens_proceso or set()
+    idx = kb_buscar._cargar_indice()
+    prefijo = proceso_id + "/"
+    salida = []
+    for clave, refs in (idx.get("control") or {}).items():
+        if not str(clave).startswith(prefijo):
+            continue
+        nombre = ""
+        for ref in refs or []:
+            if isinstance(ref, dict) and ref.get("proceso") == proceso_id:
+                nombre = str(ref.get("nombre") or "")
+                break
+        cid = str(clave).split("/", 1)[1]
+        blob = _normalizar_texto(f"{cid} {nombre}")
+        score = 0
+        for termino in terminos:
+            t = _normalizar_texto(str(termino))
+            if len(t) >= 5 and t not in STOPWORDS and t not in tokens_proceso and t in blob:
+                score += 1
+        if score:
+            salida.append({"proceso": proceso_id, "id": cid, "nombre": nombre, "score": score})
+    salida.sort(key=lambda item: (-item["score"], item["id"]))
+    return salida[:6]
+
+
+def _menu_coincidencias(
+    proceso_id: str,
+    terminos: set[str],
+    clave_ruta: str,
+    tokens_proceso: set[str] | None = None,
+) -> list[dict]:
+    tokens_proceso = tokens_proceso or set()
+    proc = kb_indice._leer(KB / proceso_id / "proceso.json", {}) or {}
+    menu = proc.get("menu") if isinstance(proc.get("menu"), dict) else {}
+    hits = []
+    vistos = set()
+
+    def considera(grupo: str, texto: str) -> None:
+        blob = _normalizar_texto(texto)
+        if not blob or blob in vistos:
+            return
+        por_ruta = bool(clave_ruta) and len(clave_ruta) >= 4 and clave_ruta in blob
+        por_texto = any(
+            len(_normalizar_texto(str(t))) >= 5
+            and _normalizar_texto(str(t)) not in STOPWORDS
+            and _normalizar_texto(str(t)) not in tokens_proceso
+            and _normalizar_texto(str(t)) in blob
+            for t in terminos
+        )
+        if not por_ruta and not por_texto:
+            return
+        vistos.add(blob)
+        hits.append({"proceso": proceso_id, "grupo": grupo, "item": texto})
+
+    for item in menu.get("individuales") or []:
+        considera("", str(item))
+    grupos = menu.get("grupos") or {}
+    if isinstance(grupos, dict):
+        for grupo, items in grupos.items():
+            for item in items or []:
+                considera(str(grupo), str(item))
+    return hits[:6]
+
+
+def _procesos_nombrados(terminos: set[str], modulo: str) -> set[str]:
+    """Procesos que el texto o el módulo nombran. No es un tramo."""
+    indice = kb_indice._leer(KB / "INDICE.json", {}) or {}
+    elegidos = set()
+    tokens = {_normalizar_texto(str(t)) for t in terminos if _normalizar_texto(str(t))}
+    modulo_n = _normalizar_texto(modulo)
+    for meta in indice.get("procesos") or []:
+        pid = str(meta.get("id") or meta.get("carpeta") or "")
+        if not pid:
+            continue
+        pid_n = _normalizar_texto(pid)
+        mod_n = _normalizar_texto(str(meta.get("modulo") or ""))
+        nombre_n = _normalizar_texto(str(meta.get("nombre") or ""))
+        if pid_n and pid_n in tokens:
+            elegidos.add(pid)
+        if mod_n and len(mod_n) >= 4 and mod_n in tokens:
+            elegidos.add(pid)
+        if modulo_n and len(modulo_n) >= 4 and (
+            modulo_n == pid_n or modulo_n == mod_n or re.search(rf"\b{re.escape(modulo_n)}\b", nombre_n)
+        ):
+            elegidos.add(pid)
+    return elegidos
+
+
+def mapa_ubicacion(req_texto: str, ruta: str = "", modulo: str = "", proceso_id: str = "") -> dict:
+    """Cruza la ruta y el texto con los tramos de la base. No elige el cambio."""
+    terminos, _tags = _extraer_terminos_req(req_texto)
+    ruta = (ruta or "").strip()
+    if not ruta:
+        halladas = re.findall(r"/[a-z0-9]+(?:/[a-z0-9_\-]+)+", (req_texto or "").lower())
+        if halladas:
+            ruta = halladas[0]
+    modulo = (modulo or "").strip()
+    proceso_id = (proceso_id or "").strip()
+    pantallas = _fichas_pantalla(ruta)
+    filas: list[dict] = []
+    for pid, data in _mapas_flujo():
+        filas.extend(_filas_flujo(pid, data))
+    if proceso_id and not ruta and not pantallas:
+        propias = [fila for fila in filas if fila["proceso"] == proceso_id]
+        if propias:
+            filas = propias
+    tokens_proceso = _tokens_de_proceso()
+    ranked = []
+    for fila in filas:
+        score, porque, coincide = _puntaje_tramo(fila, terminos, ruta, tokens_proceso)
+        if score <= 0:
+            continue
+        ranked.append({**fila, "score": score, "porque": porque, "rutaCoincide": coincide})
+    nombrados = _procesos_nombrados(terminos, modulo)
+    if proceso_id:
+        nombrados.add(proceso_id)
+    if nombrados:
+        if ruta:
+            ranked = [
+                item for item in ranked
+                if item.get("rutaCoincide") or item.get("proceso") in nombrados
+            ]
+        else:
+            ranked = [item for item in ranked if item.get("proceso") in nombrados]
+    ranked.sort(key=lambda item: (
+        -item["score"],
+        0 if item["rutaCoincide"] else 1,
+        str(item.get("proceso") or ""),
+        int(item.get("orden") or 0),
+        str(item.get("id") or ""),
+    ))
+    tramos = ranked[:8]
+    procesos: list[str] = []
+    for pantalla in pantallas:
+        if pantalla.get("proceso") and pantalla["proceso"] not in procesos:
+            procesos.append(pantalla["proceso"])
+    for tramo in tramos:
+        if tramo.get("proceso") and tramo["proceso"] not in procesos:
+            procesos.append(tramo["proceso"])
+    if proceso_id and proceso_id not in procesos:
+        procesos.append(proceso_id)
+    if not tramos:
+        for pid in sorted(nombrados):
+            if pid not in procesos:
+                procesos.append(pid)
+    procesos = procesos[:2]
+    controles: list[dict] = []
+    menu: list[dict] = []
+    clave = _clave_pantalla(ruta)
+    for pid in procesos:
+        controles.extend(_controles_proceso(pid, terminos, tokens_proceso))
+        menu.extend(_menu_coincidencias(pid, terminos, clave, tokens_proceso))
+    hay_ruta = any(item.get("rutaCoincide") for item in tramos)
+    ambiguo = not hay_ruta and (
+        not tramos
+        or tramos[0]["score"] < 8
+        or (
+            len(tramos) > 1
+            and tramos[0]["proceso"] != tramos[1]["proceso"]
+            and tramos[0]["score"] - tramos[1]["score"] < 4
+        )
+    )
+    return {
+        "ruta": ruta,
+        "modulo": modulo,
+        "procesoIdFormulario": proceso_id,
+        "pantallas": pantallas,
+        "tramos": tramos,
+        "controles": controles[:6],
+        "menu": menu[:6],
+        "procesos": procesos,
+        "ambiguo": ambiguo,
+    }
+
+
+def _proceso_tiene_mapa(proceso_id: str) -> bool:
+    carpeta = KB / (proceso_id or "")
+    return carpeta.is_dir() and any(carpeta.glob("grafo-*-indice.json"))
+
+
+def dictamen_previo(mapa: dict) -> dict:
+    """Antes de gastar el análisis: seguir, pedir un dato, o mapear la base primero.
+
+    seguir: el tramo o la pantalla ya están. El agente puede ubicar la pieza.
+    bloqueo dato: el proceso está mapeado y falta un dato del analista. Al completarlo, se sigue.
+    bloqueo base: no está en la base o no tiene mapa. Primero se documenta; el análisis no arranca.
+    """
+    mapa = mapa or {}
+    tramos = mapa.get("tramos") or []
+    pantallas = mapa.get("pantallas") or []
+    procesos = [p for p in (mapa.get("procesos") or []) if p]
+    ruta = str(mapa.get("ruta") or "").strip()
+    modulo = str(mapa.get("modulo") or "").strip()
+    pid = procesos[0] if len(procesos) == 1 else ""
+
+    def _salida(seguir: bool, bloqueo: str, proceso: str, flujo: str, pregunta: str) -> dict:
+        return {
+            "seguir": seguir,
+            "bloqueo": bloqueo,
+            "procesoId": proceso,
+            "flujo": flujo,
+            "pregunta": pregunta,
+        }
+
+    con_ruta = [tramo for tramo in tramos if tramo.get("rutaCoincide")]
+    if con_ruta:
+        primero = con_ruta[0]
+        rivales = [
+            tramo for tramo in con_ruta[1:]
+            if tramo.get("proceso") == primero.get("proceso")
+            and int(primero.get("score") or 0) - int(tramo.get("score") or 0) < 4
+        ]
+        if rivales:
+            nombres = ", ".join(str(tramo.get("id") or "") for tramo in [primero, *rivales][:4])
+            return _salida(
+                False,
+                "dato",
+                str(primero.get("proceso") or ""),
+                "",
+                f"La pantalla cae en varios tramos ({nombres}). "
+                "Indique cuál es el de este requerimiento. Al responder en el Chat, el análisis continúa.",
+            )
+        return _salida(True, "", str(primero.get("proceso") or ""), str(primero.get("id") or ""), "")
+
+    if ruta and not pantallas:
+        if pid and _proceso_tiene_mapa(pid):
+            return _salida(
+                False,
+                "base",
+                pid,
+                "",
+                f"La pantalla {ruta} no está en el mapa de {pid}. "
+                "Mapee ese tramo en Documentar antes de analizar el requerimiento.",
+            )
+        if pid:
+            return _salida(
+                False,
+                "base",
+                pid,
+                "",
+                f"La pantalla {ruta} no está en la base y {pid} no tiene mapa de tramos. "
+                "Mapeelo en Documentar antes de continuar.",
+            )
+        return _salida(
+            False,
+            "base",
+            "",
+            "",
+            f"La pantalla {ruta} no está en la base de conocimiento. "
+            "Mapee ese proceso antes de continuar con el requerimiento.",
+        )
+
+    if pantallas:
+        pantalla = pantallas[0]
+        return _salida(
+            True,
+            "",
+            str(pantalla.get("proceso") or pid),
+            str(pantalla.get("uso") or pantalla.get("path") or "pantalla"),
+            "",
+        )
+
+    if tramos and not mapa.get("ambiguo"):
+        primero = tramos[0]
+        return _salida(True, "", str(primero.get("proceso") or ""), str(primero.get("id") or ""), "")
+
+    if pid and not _proceso_tiene_mapa(pid):
+        return _salida(
+            False,
+            "base",
+            pid,
+            "",
+            f"El proceso {pid} no tiene mapa de tramos en la base. "
+            "Complételo en Documentar antes de analizar este requerimiento.",
+        )
+    if pid:
+        return _salida(
+            False,
+            "dato",
+            pid,
+            "",
+            f"El proceso {pid} sí está mapeado. Falta la ruta de la pantalla para elegir el tramo. "
+            "Escríbala en el formulario o en el Chat (por ejemplo /inv/gesventa). "
+            "Al enviarla, el análisis continúa.",
+        )
+    if modulo:
+        return _salida(
+            False,
+            "base",
+            "",
+            "",
+            f"El módulo {modulo} no está en la base de conocimiento. "
+            "Documente ese proceso antes de continuar con el requerimiento.",
+        )
+    return _salida(
+        False,
+        "dato",
+        "",
+        "",
+        "Faltan el módulo y la ruta de la pantalla. Al completarlos, el análisis continúa.",
+    )
+
+
+def formato_mapa(mapa: dict) -> str:
+    """Texto del mapa, al inicio del paso ubicar. El agente elige un tramo de esta lista."""
+    if not mapa:
+        return ""
+    lineas = [
+        "MAPA PARA UBICAR (elija un tramo de esta lista; no invente otro flujo "
+        "ni nombre un procedimiento que no esté en el control de ese tramo):"
+    ]
+    if mapa.get("ruta"):
+        lineas.append(f"Ruta del formulario: {mapa['ruta']}")
+    else:
+        lineas.append("Ruta del formulario: vacía. Sin ruta el tramo sale solo de las palabras y puede quedar ambiguo.")
+    if mapa.get("modulo"):
+        lineas.append(f"Módulo del formulario: {mapa['modulo']}")
+    if mapa.get("procesoIdFormulario"):
+        lineas.append(f"procesoId del formulario: {mapa['procesoIdFormulario']}")
+    if mapa.get("pantallas"):
+        lineas.append("Pantalla en la base:")
+        for pantalla in mapa["pantallas"]:
+            donde = pantalla.get("path") or pantalla.get("ruta") or ""
+            lineas.append(
+                f"  - {pantalla.get('proceso')} · {donde} · {pantalla.get('uso') or ''} · vue {pantalla.get('vue') or ''}"
+            )
+            if pantalla.get("entrada"):
+                lineas.append(f"    entrada: {pantalla['entrada']}")
+        form_pid = str(mapa.get("procesoIdFormulario") or "")
+        pids = {p.get("proceso") for p in mapa["pantallas"]}
+        if form_pid and form_pid not in pids:
+            lineas.append(
+                f"La ruta está en {mapa['pantallas'][0].get('proceso')}. "
+                f"Ese es el proceso, aunque el formulario traiga {form_pid}."
+            )
+    else:
+        lineas.append("Pantalla en la base: la ruta no está en el índice.")
+    if mapa.get("tramos"):
+        lineas.append("Tramos:")
+        for tramo in mapa["tramos"]:
+            marca = "RUTA " if tramo.get("rutaCoincide") else ""
+            pantalla = tramo.get("pantalla")
+            if isinstance(pantalla, list):
+                pantalla = ", ".join(str(p) for p in pantalla)
+            lineas.append(
+                f"  - {marca}{tramo.get('proceso')} · {tramo.get('id')} · {tramo.get('nombre')}"
+                f" · pantalla {pantalla} · control {tramo.get('controlClave')}"
+            )
+        if any(tramo.get("rutaCoincide") for tramo in mapa["tramos"]):
+            lineas.append("Si un tramo dice RUTA, ese es el flujo. Un vecino con otra pantalla no participa.")
+        elif mapa.get("ambiguo"):
+            procesos = sorted({tramo.get("proceso") for tramo in mapa["tramos"] if tramo.get("proceso")})
+            if len(procesos) == 1:
+                lineas.append(
+                    f"El proceso sí es {procesos[0]}. El tramo no. "
+                    f"Deje procesoId={procesos[0]} y estado=pregunta, y pida la pantalla. "
+                    "No elija la primera fila solo porque está de primera."
+                )
+            else:
+                lineas.append(
+                    "Ninguna ruta coincidió y el texto cae en más de un tramo. "
+                    "Deje estado=pregunta y pida la pantalla."
+                )
+    elif mapa.get("pantallas"):
+        lineas.append(
+            "Tramos: no hay mapa de tramos para esta pantalla. "
+            "El flujo es la pantalla de arriba y la pieza es esa ventana. No recorra otros procedimientos del módulo."
+        )
+    elif mapa.get("procesos"):
+        lineas.append(
+            "Tramos: ninguno de "
+            + ", ".join(mapa["procesos"])
+            + " coincide con el texto. No salte a otro módulo. "
+            "Deje ese procesoId, estado=pregunta, y pida la pantalla."
+        )
+    else:
+        lineas.append(
+            "Tramos: ninguno coincide con la ruta ni con el texto. "
+            "No elija un procedimiento del módulo. Deje estado=pregunta y pida la pantalla."
+        )
+    if mapa.get("menu"):
+        lineas.append("Menú que coincide:")
+        for item in mapa["menu"]:
+            grupo = f"{item.get('grupo')} → " if item.get("grupo") else ""
+            lineas.append(f"  - {item.get('proceso')} · {grupo}{item.get('item')}")
+    if mapa.get("controles"):
+        lineas.append("Controles de ese proceso que mencionan el pedido (no abren otro flujo):")
+        for control in mapa["controles"]:
+            lineas.append(f"  - {control.get('proceso')}/{control.get('id')}: {control.get('nombre')}")
+    return "\n".join(lineas)
 
 
 def _resumir_grafo(grafo_path: str) -> dict | None:
@@ -380,8 +1022,9 @@ def preseleccionar_contexto(req_texto: str, proceso_id: str = "") -> dict:
             "modulo": meta.get("modulo") or "",
             "estado": meta.get("estado") or "",
             "resumen": (meta.get("resumen") or "")[:400],
-            "sps": _resumir_sps(pid),
+            "sps": _resumir_sps(pid, terminos=terminos),
             "controles": _resumir_controles(pid),
+            "yaCubiertas": _resumir_cubiertas(pid, terminos),
         }
         
         # Grafo si existe
@@ -422,8 +1065,32 @@ def formato_prompt(contexto: dict) -> str:
                 metodos_txt = ", ".join(m["id"] for m in sp.get("metodos") or [])
                 lineas.append(f"    - {sp['nombre']} (estado={sp['estado']}) · METODOs: {metodos_txt}")
                 for m in sp.get("metodos") or []:
-                    if m.get("hace"):
-                        lineas.append(f"      {m['id']}: {m['hace']}")
+                    detalle = []
+                    for clave, etiqueta in (
+                        ("hace", "hace"),
+                        ("valida", "valida"),
+                        ("noValida", "no valida"),
+                        ("efecto", "efecto"),
+                        ("llama", "llama"),
+                        ("errores", "error"),
+                    ):
+                        if m.get(clave):
+                            detalle.append(f"{etiqueta}: {m[clave]}")
+                    if detalle:
+                        lineas.append(f"      {m['id']}: " + " · ".join(detalle[:4]))
+
+        if proc.get("yaCubiertas"):
+            lineas.append(
+                "  Necesidades ya cubiertas (si una coincide, ese tramo ya existe: "
+                "se escribe en el flujo de hoy y no se propone otra vez):"
+            )
+            for item in proc["yaCubiertas"]:
+                extra = f" — no es: {item['noEs']}" if item.get("noEs") else ""
+                condicion = f" | condición: {item['condicion']}" if item.get("condicion") else ""
+                metodo = f" | método: {item['metodo']}" if item.get("metodo") else ""
+                lineas.append(
+                    f"    - {item.get('necesidad') or ''} → {item.get('donde') or ''}{condicion}{metodo}{extra}"
+                )
         
         if proc.get("controles"):
             lineas.append(f"  Controles ({len(proc['controles'])}):")
@@ -443,10 +1110,12 @@ def formato_prompt(contexto: dict) -> str:
     if contexto.get("advertencia"):
         lineas.append(f"\n⚠ {contexto['advertencia']}")
     
-    lineas.append("\nPRESUPUESTO DE HERRAMIENTAS (estricto):")
-    lineas.append("  - Máximo ~15 tool calls total (read/grep/glob).")
-    lineas.append("  - NO barridos (grep sin ruta específica, glob '**/sps.json', read de INDICE completo).")
-    lineas.append("  - Escriba criterios/análisis/recomendación apenas tenga lo mínimo del contexto.")
+    lineas.append("\nPRESUPUESTO DE HERRAMIENTAS:")
+    lineas.append("  - Este recorte orienta. No es el análisis ni el cambio.")
+    lineas.append("  - No barra conocimiento/ ni lea un sps.json entero ni el INDICE completo.")
+    lineas.append("  - Para el METODO de este cambio abra la ficha completa y, si el cambio es SQL, el cuerpo de ese procedimiento.")
+    lineas.append("  - Tope orientativo ~28 lecturas, gastadas en este control (ficha, SQL del método, Vue de la pantalla).")
+    lineas.append("  - No escriba la solución hasta tener clasificación, flujo de hoy y el bloque que cambia.")
     
     return "\n".join(lineas)
 

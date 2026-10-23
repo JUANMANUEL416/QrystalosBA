@@ -1217,8 +1217,8 @@ Reglas:
 - Si hace falta el cuerpo de un SP: **bájalo de DESAIX/SQLIX** (`python scripts/sqlix_bajar_objeto.py --solicitud {id_sr} NOMBRE`) a `solicitudes/{id_sr}/sql/`, compare PREVERSION vs última Cerrada, y **después** léalo. Tiene permiso de lectura al catálogo. No lo guarde en la carpeta compartida `sql/`.
 - Liste SOLO los SP/METODO de este cambio.
 - Escriba en solicitud.json: **titulo corto** (máx. 90 caracteres, no el párrafo), analisis, alcance, restricciones, criterios, recomendacion, procesoId.
-- Si el cambio es SQL: escriba **cambioPropuestoSql** con el texto y, enseguida, `---ANTES---` más el SQL de hoy y `---SUGERIDO---` más el SQL propuesto (especificación; no ejecutar). El documento de comité lo pinta en «Sugerencia de código SQL», en «Cómo está hoy» y «Lo que se sugiere».
-- El documento de comité usa esos campos: no deje analisis vacío ni de una línea.
+- Si el cambio es SQL: escriba **cambioPropuestoSql** con el texto y, enseguida, `---ANTES---` más el SQL de hoy (leído) y `---SUGERIDO---` más el SQL propuesto (especificación; no ejecutar). El documento de comité lo pinta en «Sugerencia de código SQL», en «Cómo está hoy» y «Lo que se sugiere». No lo arme desde el resumen de la ficha.
+- Deje **planteamiento** en la raíz: clasificación (capacitación, defecto o hueco), flujo de hoy, causa citada y cambio por capa. El documento de comité usa esos campos: no deje analisis vacío ni de una línea.
 - Responda en chat.json (autor: agente). Este Chat es solo de esta solicitud.
 - NO genere el HTML del comité ni el dictamen de Analista.
 - Si falta un dato que bloquee, PIDA y deténgase.
