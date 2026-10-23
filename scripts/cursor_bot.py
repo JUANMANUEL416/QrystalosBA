@@ -634,6 +634,69 @@ def agente_path(id_caso: str) -> str:
     return os.path.join(caso_dir(id_caso), "agente.json")
 
 
+def reiniciar_chat(id_caso: str, motivo: str = "") -> dict:
+    """
+    Archiva el chat actual, limpia el agentId y deja chat.json vacío.
+    Usar al cerrar fase1, caso, consulta, prueba, o sesión de Conocimiento/Consultas.
+    
+    Returns:
+        dict con "ok", "archivoChat" (ruta relativa) y "mensaje"
+    """
+    caso_d = caso_dir(id_caso)
+    chat_path = os.path.join(caso_d, "chat.json")
+    agente_p = agente_path(id_caso)
+    
+    if not os.path.isfile(chat_path):
+        return {"ok": False, "mensaje": f"No existe chat.json en {id_caso}"}
+    
+    # Leer chat actual
+    mensajes = read_json(chat_path, [])
+    if not isinstance(mensajes, list):
+        mensajes = []
+    
+    if not mensajes:
+        # Ya está vacío, solo limpiar agentId
+        if os.path.isfile(agente_p):
+            try:
+                os.remove(agente_p)
+            except Exception:
+                pass
+        return {"ok": True, "mensaje": "Chat ya estaba vacío, agentId limpiado"}
+    
+    # Archivar chat actual
+    historial_dir = os.path.join(caso_d, "historial")
+    os.makedirs(historial_dir, exist_ok=True)
+    
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    archivo_chat = os.path.join(historial_dir, f"chat-{timestamp}.json")
+    
+    try:
+        write_json(archivo_chat, mensajes)
+    except Exception as exc:
+        return {"ok": False, "mensaje": f"Error al archivar chat: {exc}"}
+    
+    # Vaciar chat.json
+    try:
+        write_json(chat_path, [])
+    except Exception as exc:
+        return {"ok": False, "mensaje": f"Error al vaciar chat.json: {exc}"}
+    
+    # Limpiar agente.json (para que el siguiente turno cree agente nuevo)
+    if os.path.isfile(agente_p):
+        try:
+            os.remove(agente_p)
+        except Exception as exc:
+            return {"ok": False, "mensaje": f"Error al limpiar agente.json: {exc}"}
+    
+    archivo_rel = os.path.relpath(archivo_chat, ROOT).replace("\\", "/")
+    return {
+        "ok": True,
+        "archivoChat": archivo_rel,
+        "mensaje": f"Chat archivado en {archivo_rel}, sesión reiniciada"
+    }
+
+
 def write_json(path: str, data: dict) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
@@ -1965,15 +2028,21 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
     modelo_guardado = (meta.get("modelo") or "").strip()
     fast_pedido = usa_fast(motivo)
     fast_guardado = meta.get("fast")
-    # Una sesión por rol: Conocimiento y Consultas reutilizan la suya (canal propio) y la
-    # renuevan cada KB_TURNOS_SESION turnos para que el contexto no crezca sin control.
-    # Requerimientos: una sesión por caso (agente.json vive en la carpeta del caso).
+    
+    # === AISLAMIENTO DE SESIONES ===
+    # Cada ID completo tiene su propia sesión de agente (agente.json en su carpeta).
+    # NO se comparten sesiones entre IDs diferentes, ni siquiera entre sesiones de Conocimiento/Consultas.
+    # La clave de sesión es: (id_caso completo + motivo/rol + modelo + fast).
+    # Si cambia alguno de esos, se crea agente nuevo.
+    
     rol = rol_de(id_caso, motivo)
-    turnos = int(meta.get("turnos") or 0)
     agent_id = (meta.get("agentId") or "").strip()
-    if meta.get("rol") and meta.get("rol") != rol:
-        agent_id = ""
-    if es_kb and (KB_TURNOS_SESION <= 0 or turnos >= KB_TURNOS_SESION):
+    id_guardado = (meta.get("idCaso") or "").strip()
+    
+    # Invalidar sesión si cambió el ID, rol, modelo o fast
+    if agent_id and id_guardado != id_caso:
+        agent_id = ""  # Nunca reutilizar agentId de otro ID
+    if agent_id and meta.get("rol") and meta.get("rol") != rol:
         agent_id = ""
     if agent_id and modelo_guardado and modelo_guardado != modelo_pedido:
         agent_id = ""
@@ -2015,13 +2084,16 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
             t.marca("create")
 
         try:
+            # Guardar idCaso para validar que no se reutilice con otro ID
+            turnos_actual = int(meta.get("turnos") or 0)
             meta_out = {
+                "idCaso": id_caso,  # === CLAVE: guardar el ID completo ===
                 "modelo": modelo_id(motivo),
                 "fast": usa_fast(motivo),
                 "rol": rol,
                 "agentId": agent.agent_id,
                 "lastAgentId": agent.agent_id,
-                "turnos": (turnos + 1) if agent.agent_id == agent_id else 1,
+                "turnos": (turnos_actual + 1) if agent.agent_id == agent_id else 1,
             }
             write_json(agente_path(id_caso), meta_out)
             write_bot(id_caso, agentId=agent.agent_id, modelo=modelo_id(motivo), fast=usa_fast(motivo))

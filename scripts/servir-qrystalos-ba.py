@@ -2257,6 +2257,16 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": "JSON inválido"}, 400)
         try:
             meta = prreq.cerrar_prueba(pid, (body.get("veredicto") or "").strip())
+            
+            # === AISLAMIENTO: Archivar chat y limpiar sesión al cerrar prueba ===
+            try:
+                import cursor_bot
+                resultado = cursor_bot.reiniciar_chat(pid, motivo="cerrar-prueba")
+                if not resultado.get("ok"):
+                    print(f"WARN reiniciar_chat({pid}): {resultado.get('mensaje')}", flush=True)
+            except Exception as exc:
+                print(f"WARN reiniciar_chat({pid}): {exc}", flush=True)
+            
             return self._json({
                 "ok": True,
                 "meta": meta,
@@ -2436,6 +2446,16 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
     def _post_soporte_consulta_cerrar(self, sid):
         try:
             meta = scconsulta.cerrar_consulta(sid)
+            
+            # === AISLAMIENTO: Archivar chat y limpiar sesión al cerrar consulta ===
+            try:
+                import cursor_bot
+                resultado = cursor_bot.reiniciar_chat(sid, motivo="cerrar-consulta")
+                if not resultado.get("ok"):
+                    print(f"WARN reiniciar_chat({sid}): {resultado.get('mensaje')}", flush=True)
+            except Exception as exc:
+                print(f"WARN reiniciar_chat({sid}): {exc}", flush=True)
+            
             return self._json({"ok": True, "meta": meta})
         except FileNotFoundError:
             return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
