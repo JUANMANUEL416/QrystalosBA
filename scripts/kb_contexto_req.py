@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """Preselección de contexto KB para análisis de requerimientos.
 
-Reduce de ~100 tool calls (5-7 min) a ~15 (1-2 min) al proporcionar
-el contexto relevante del conocimiento antes de lanzar el agente.
+Entrega el recorte del proceso (fichas, controles, necesidades ya cubiertas)
+para no barrer conocimiento/. El recorte orienta; no reemplaza la ficha
+completa del METODO ni el cuerpo SQL del bloque que el cambio toca.
 """
 from __future__ import annotations
 
@@ -132,44 +133,84 @@ def _cargar_proceso_meta(proceso_id: str) -> dict:
     return {}
 
 
-def _resumir_sps(proceso_id: str, limite: int = 8) -> list[dict]:
-    """Resumen compacto de SPs del proceso (nombre, estado, métodos top)."""
+def _clip(valor, n: int) -> str:
+    """Texto corto de un campo de ficha (string o lista)."""
+    if isinstance(valor, list):
+        partes = []
+        for item in valor:
+            if isinstance(item, dict):
+                partes.append(str(item.get("nombre") or item.get("sp") or item.get("id") or ""))
+            else:
+                partes.append(str(item))
+        valor = "; ".join(parte for parte in partes if parte)
+    texto = " ".join(str(valor or "").split())
+    if len(texto) <= n:
+        return texto
+    return texto[: n - 1].rstrip() + "…"
+
+
+def _blob_metodo(metodo: dict) -> str:
+    partes = [str(metodo.get("id") or "")]
+    for clave in ("hace", "valida", "noValida", "efecto", "errores", "llama"):
+        partes.append(_clip(metodo.get(clave), 400))
+    return _normalizar_texto(" ".join(partes))
+
+
+def _puntaje_metodo(metodo: dict, terminos: set[str] | None) -> int:
+    if not terminos:
+        return 0
+    blob = _blob_metodo(metodo)
+    return sum(1 for termino in terminos if _normalizar_texto(str(termino)) and _normalizar_texto(str(termino)) in blob)
+
+
+def _ficha_metodo(metodo: dict) -> dict:
+    ficha = {"id": metodo.get("id")}
+    for clave, tope in (
+        ("hace", 140),
+        ("valida", 80),
+        ("noValida", 80),
+        ("efecto", 80),
+        ("llama", 80),
+        ("errores", 80),
+    ):
+        texto = _clip(metodo.get(clave), tope)
+        if texto:
+            ficha[clave] = texto
+    return ficha
+
+
+def _resumir_sps(proceso_id: str, limite: int = 6, terminos: set[str] | None = None) -> list[dict]:
+    """SPs del proceso, con los METODO que más se acercan al texto del REQ."""
     sps_path = KB / proceso_id / "sps.json"
     if not sps_path.is_file():
         return []
-    
+
     data = kb_indice._leer(sps_path, [])
     if isinstance(data, dict):
         data = data.get("sps") or data.get("procedimientos") or []
-    
+
     if isinstance(data, dict):
         data = list(data.values())
-    
-    # Priorizar SPs con estado 'leido' y con métodos documentados
-    def peso(sp):
+
+    preparados = []
+    for sp in data:
+        if not isinstance(sp, dict):
+            continue
+        metodos = [m for m in (sp.get("metodos") or []) if isinstance(m, dict) and m.get("id")]
+        metodos.sort(key=lambda m: _puntaje_metodo(m, terminos), reverse=True)
+        mejor = _puntaje_metodo(metodos[0], terminos) if metodos else 0
         estado = sp.get("estado") or ""
-        mets = len([m for m in sp.get("metodos") or [] if isinstance(m, dict)])
-        return (estado == "leido", mets, sp.get("nombre") or "")
-    
-    data_sorted = sorted([sp for sp in data if isinstance(sp, dict)], key=peso, reverse=True)
-    
+        preparados.append((mejor, estado == "leido", len(metodos), sp.get("nombre") or "", sp, metodos))
+
+    preparados.sort(key=lambda fila: (fila[0], fila[1], fila[2], fila[3]), reverse=True)
+
     salida = []
-    for sp in data_sorted[:limite]:
-        metodos = []
-        for m in (sp.get("metodos") or [])[:6]:  # Max 6 métodos por SP
-            if isinstance(m, dict) and m.get("id"):
-                metodos.append({
-                    "id": m["id"],
-                    "hace": (m.get("hace") or "")[:120],
-                    "valida": (m.get("valida") or "")[:80],
-                })
-        
+    for _mejor, _leido, _n, _nombre, sp, metodos in preparados[:limite]:
         salida.append({
             "nombre": sp.get("nombre"),
             "estado": sp.get("estado"),
-            "metodos": metodos,
+            "metodos": [_ficha_metodo(m) for m in metodos[:4]],
         })
-    
     return salida
 
 
@@ -194,6 +235,39 @@ def _resumir_controles(proceso_id: str, limite: int = 6) -> list[dict]:
                 })
     
     return controles[:limite]
+
+
+def _resumir_cubiertas(proceso_id: str, terminos: set[str] | None = None, limite: int = 4) -> list[dict]:
+    """Necesidades que el control ya cubre, priorizando las que se parecen al REQ."""
+    proceso_path = KB / proceso_id / "proceso.json"
+    if not proceso_path.is_file():
+        return []
+    data = kb_indice._leer(proceso_path, {}) or {}
+    items = [item for item in (data.get("necesidadesYaCubiertas") or []) if isinstance(item, dict)]
+    if not items:
+        return []
+
+    def puntaje(item: dict) -> int:
+        blob = _normalizar_texto(
+            " ".join(str(item.get(clave) or "") for clave in ("necesidad", "donde", "condicion", "noEs"))
+        )
+        if not terminos:
+            return 0
+        return sum(1 for termino in terminos if _normalizar_texto(str(termino)) in blob)
+
+    ranked = sorted(items, key=puntaje, reverse=True)
+    if terminos and puntaje(ranked[0]) == 0:
+        ranked = items[:limite]
+    else:
+        ranked = ranked[:limite]
+    salida = []
+    for item in ranked:
+        salida.append({
+            "necesidad": _clip(item.get("necesidad"), 120),
+            "donde": _clip(item.get("donde"), 140),
+            "noEs": _clip(item.get("noEs"), 100),
+        })
+    return salida
 
 
 def _buscar_grafo_indice(proceso_id: str) -> str | None:
@@ -380,8 +454,9 @@ def preseleccionar_contexto(req_texto: str, proceso_id: str = "") -> dict:
             "modulo": meta.get("modulo") or "",
             "estado": meta.get("estado") or "",
             "resumen": (meta.get("resumen") or "")[:400],
-            "sps": _resumir_sps(pid),
+            "sps": _resumir_sps(pid, terminos=terminos),
             "controles": _resumir_controles(pid),
+            "yaCubiertas": _resumir_cubiertas(pid, terminos),
         }
         
         # Grafo si existe
@@ -422,8 +497,25 @@ def formato_prompt(contexto: dict) -> str:
                 metodos_txt = ", ".join(m["id"] for m in sp.get("metodos") or [])
                 lineas.append(f"    - {sp['nombre']} (estado={sp['estado']}) · METODOs: {metodos_txt}")
                 for m in sp.get("metodos") or []:
-                    if m.get("hace"):
-                        lineas.append(f"      {m['id']}: {m['hace']}")
+                    detalle = []
+                    for clave, etiqueta in (
+                        ("hace", "hace"),
+                        ("valida", "valida"),
+                        ("noValida", "no valida"),
+                        ("efecto", "efecto"),
+                        ("llama", "llama"),
+                        ("errores", "error"),
+                    ):
+                        if m.get(clave):
+                            detalle.append(f"{etiqueta}: {m[clave]}")
+                    if detalle:
+                        lineas.append(f"      {m['id']}: " + " · ".join(detalle[:4]))
+
+        if proc.get("yaCubiertas"):
+            lineas.append("  Necesidades ya cubiertas (si el REQ coincide, es capacitación, no desarrollo):")
+            for item in proc["yaCubiertas"]:
+                extra = f" — no es: {item['noEs']}" if item.get("noEs") else ""
+                lineas.append(f"    - {item.get('necesidad') or ''} → {item.get('donde') or ''}{extra}")
         
         if proc.get("controles"):
             lineas.append(f"  Controles ({len(proc['controles'])}):")
@@ -443,10 +535,12 @@ def formato_prompt(contexto: dict) -> str:
     if contexto.get("advertencia"):
         lineas.append(f"\n⚠ {contexto['advertencia']}")
     
-    lineas.append("\nPRESUPUESTO DE HERRAMIENTAS (estricto):")
-    lineas.append("  - Máximo ~15 tool calls total (read/grep/glob).")
-    lineas.append("  - NO barridos (grep sin ruta específica, glob '**/sps.json', read de INDICE completo).")
-    lineas.append("  - Escriba criterios/análisis/recomendación apenas tenga lo mínimo del contexto.")
+    lineas.append("\nPRESUPUESTO DE HERRAMIENTAS:")
+    lineas.append("  - Este recorte orienta. No es el análisis ni el cambio.")
+    lineas.append("  - No barra conocimiento/ ni lea un sps.json entero ni el INDICE completo.")
+    lineas.append("  - Para el METODO de este cambio abra la ficha completa y, si el cambio es SQL, el cuerpo de ese procedimiento.")
+    lineas.append("  - Tope orientativo ~28 lecturas, gastadas en este control (ficha, SQL del método, Vue de la pantalla).")
+    lineas.append("  - No escriba la solución hasta tener clasificación, flujo de hoy y el bloque que cambia.")
     
     return "\n".join(lineas)
 

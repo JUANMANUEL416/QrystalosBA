@@ -1161,7 +1161,7 @@
     renderMockupsForm();
     renderBrechaAnalisis(null);
     const hintBrecha = $("#brechaAnalisisHint");
-    if (hintBrecha) hintBrecha.textContent = "El agente (Cursor) contrasta el REQ con su análisis y lista qué le falta revisar. No usa OpenAI.";
+    if (hintBrecha) hintBrecha.textContent = "El agente recorre el flujo del control y deja clasificación, causa y cambio por capa. Si queda corto, aquí aparece lo que falta.";
     $("#alertOrigenCola").hidden = true;
     $("#archivoColaVinculado").textContent = "—";
     if ($("#chkSqlColocados")) $("#chkSqlColocados").checked = false;
@@ -1908,7 +1908,15 @@
     }
     box.classList.remove("hidden");
     const cuando = dato.fecha ? ` <small>(${esc(dato.fecha)})</small>` : "";
-    box.innerHTML = `<strong>Propuesta del agente (solución)</strong>${cuando}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
+    const faltan = Array.isArray(dato.faltantes) ? dato.faltantes.filter(Boolean) : [];
+    const corto = dato.estado === "superficial";
+    box.classList.toggle("brecha-superficial", corto);
+    const aviso = corto
+      ? `<p class="brecha-faltantes"><strong>El planteamiento está corto.</strong>${
+          faltan.length ? " Falta:" : ""
+        }</p>${faltan.length ? `<ul>${faltan.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}`
+      : "";
+    box.innerHTML = `<strong>Propuesta del agente (solución)</strong>${cuando}${aviso}<pre class="criterios-sugerencia-texto">${esc(dato.texto)}</pre>`;
   }
 
   function solicitudTienePropuesta(sol) {
@@ -1979,9 +1987,12 @@
             refreshColaTable();
           }
           if (hint) {
-            hint.textContent = textoPropuestaEnFormulario()
-              ? "Listo: revise criterios, alcance, restricciones y análisis en el formulario."
-              : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
+            hint.textContent =
+              brechaAnalisis?.estado === "superficial"
+                ? "El análisis quedó corto. Revise lo que falta en la propuesta y vuelva a pedir Analizar requerimiento."
+                : textoPropuestaEnFormulario()
+                  ? "Listo: revise el flujo, la causa y el cambio por capa en el formulario."
+                  : "El bot terminó sin rellenar el formulario. Revise el Chat o pulse Analizar de nuevo.";
           }
           return;
         }
@@ -2996,10 +3007,10 @@
       }
       if (hint) {
         hint.textContent =
-          "El agente está armando criterios, alcance, restricciones, análisis y SPs. Espere…";
+          "El agente está recorriendo el flujo del control y armando la causa y el cambio. Espere…";
       }
       updateAnalisisLoadingDetalle(
-        "El agente contrasta el REQ con conocimiento/. El formulario se actualizará solo.",
+        "El agente contrasta el REQ con el flujo real. El formulario se actualizará solo.",
       );
       await pollBrechaAnalisis(idCaso, hint, loadingToken);
     } catch (e) {

@@ -28,7 +28,7 @@ def test_extraer_terminos():
     a /admin/caja.
     """
     
-    terminos = kb_contexto_req._extraer_terminos_req(req)
+    terminos, _tags = kb_contexto_req._extraer_terminos_req(req)
     
     assert "CAJA" in terminos, "Debe extraer siglas (CAJA)"
     assert "SPQ_CONF_CAJA" in terminos, "Debe extraer nombres de SP"
@@ -178,7 +178,9 @@ def test_formato_prompt():
     assert "CONTEXTO KB PRESELECCIONADO" in prompt_txt, "Debe incluir encabezado"
     assert "Proceso:" in prompt_txt, "Debe listar procesos"
     assert "PRESUPUESTO DE HERRAMIENTAS" in prompt_txt, "Debe incluir presupuesto"
-    assert "~15 tool calls" in prompt_txt, "Debe especificar límite de tool calls"
+    assert "No escriba la solución" in prompt_txt, "Debe exigir el flujo y el bloque antes de escribir"
+    assert "apenas tenga lo mínimo" not in prompt_txt, "No debe cerrar el análisis con lo mínimo"
+    assert "~15 tool calls" not in prompt_txt, "El tope de 15 lecturas dejaba la solución en la superficie"
     
     # Verificar que no sea excesivamente largo
     assert len(prompt_txt) < 15000, f"Prompt muy largo: {len(prompt_txt)} chars"
@@ -228,7 +230,7 @@ def test_resumen_sps():
             # Los métodos deben estar resumidos (no completos)
             for metodo in sp.get("metodos") or []:
                 if metodo.get("hace"):
-                    assert len(metodo["hace"]) <= 120, "Debe truncar 'hace'"
+                    assert len(metodo["hace"]) <= 140, "Debe truncar 'hace'"
         
         print(f"  SPs resumidos: {len(sps)}")
         print(f"  Primer SP: {sps[0]['nombre']} con {len(sps[0]['metodos'])} métodos")
@@ -332,6 +334,12 @@ def test_integration_cursor_bot_prompt():
                 "El prompt debe mencionar el proceso 'inventario'"
             assert "PRESUPUESTO" in prompt, \
                 "El prompt debe contener la instrucción de presupuesto"
+            assert "PLANTEAMIENTO" in prompt, \
+                "El prompt debe exigir el planteamiento concreto"
+            assert "hace:" in prompt or "Necesidades ya cubiertas" in prompt, \
+                "El prompt debe traer fichas del control, no solo el id del proceso"
+            assert "apenas tenga lo mínimo" not in prompt, \
+                "El prompt no debe cerrar el análisis con lo mínimo"
             
             # Verificar que el prompt NO dice "no se preseleccionó"
             assert "No se preseleccionó contexto" not in prompt, \

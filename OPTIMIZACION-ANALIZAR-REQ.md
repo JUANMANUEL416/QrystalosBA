@@ -1,5 +1,8 @@
 # Optimización analizar-req: Reducción de 5-7 min a 1-2 min
 
+> Actualización: el recorte de contexto se mantiene (no barrer `conocimiento/`), pero ya no se cierra el análisis «apenas haya lo mínimo» ni con un tope de ~15 lecturas. Ese cierre dejaba el cambio en un resumen. El planteamiento exige clasificación, flujo de hoy, causa citada y, si hay SQL, el bloque leído (`scripts/planteamiento_req.py`). El tope orientativo pasa a ~28 lecturas, gastadas en el control de este cambio.
+
+
 ## Resumen ejecutivo
 
 El motivo `analizar-req` se ha optimizado para reducir el tiempo de análisis de **5-7 minutos (~100 tool calls)** a **1-2 minutos (~15 tool calls)** mediante:
@@ -64,10 +67,11 @@ Si necesita más detalle, abrir SOLO:
   - conocimiento/caja/proceso.json
   - conocimiento/caja/sps.json
 
-PRESUPUESTO DE HERRAMIENTAS (estricto):
-  - Máximo ~15 tool calls total (read/grep/glob).
-  - NO barridos (grep sin ruta específica, glob '**/sps.json', read de INDICE completo).
-  - Escriba criterios/análisis/recomendación apenas tenga lo mínimo del contexto.
+PRESUPUESTO DE HERRAMIENTAS:
+  - Este recorte orienta. No es el análisis ni el cambio.
+  - No barra conocimiento/ ni lea un sps.json entero.
+  - Para el METODO de este cambio abra la ficha completa y, si el cambio es SQL, el cuerpo.
+  - No escriba la solución hasta tener clasificación, flujo de hoy y el bloque que cambia.
 ```
 
 ### 2. Modificación `cursor_bot.py`

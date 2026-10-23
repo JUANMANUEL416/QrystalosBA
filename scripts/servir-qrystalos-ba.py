@@ -840,7 +840,7 @@ def _build_instruccion(solicitud):
    - Lea esas fichas (`hace`, `valida`, `noValida`, `errores`, `llama`, `efecto`).
    - **No se detenga** porque `{carpeta_sql}/` esté vacío si esos METODO cubren el REQ.
    - En el **Chat del caso** (`activo/{id_caso}/chat.json`), en el primer resumen, indique si hace falta el .sql de hoy:
-     - Todos `leido` y el alcance no sale de lo documentado → seguir sin pedir el script.
+     - La ficha `leido` sirve para clasificar. Si la solución **cambia** ese procedimiento, baje igual el cuerpo de ESE METODO a `{carpeta_sql}/` y cite el bloque de hoy y el sugerido. El resumen de la ficha no reemplaza el bloque.
      - Alguno `listado` / `no_leido` / `parcial`, o el REQ toca validaciones no documentadas → **bajar** el .sql a `{carpeta_sql}/` (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`).
    - No invente METODOs que no estén en `sps.json`.
 {paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
@@ -877,7 +877,7 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 
 ## Fase 1 — su tarea ahora
 1. **REQ → conocimiento** (INDICE, proceso.json, sps.json; sql_refe si hace falta).
-2. Proyectar **solución**: criteriosAceptacion, alcance, restricciones, analisis, recomendacion + lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, complete `contenido.cambioPropuestoSql` (fragmentos para dictamen §5.2.1).
+2. Proyectar **solución concreta** en `contenido.planteamiento` (clasificación capacitación | defecto | hueco, flujo de hoy, causa citada, cambio por capa). Vuelque eso en criteriosAceptacion, alcance, restricciones, analisis y recomendacion, más la lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, `contenido.cambioPropuestoSql` trae el bloque de hoy (`---ANTES---`) y el sugerido (`---SUGERIDO---`), leídos del cuerpo del METODO. Un resumen del pedido no cierra el análisis.
 3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
 4. Cuando el coordinador lo pida: dictamen en `dictamenes/{id_caso}.html`.
 5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
@@ -3284,12 +3284,12 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
                     "autor": "coordinador",
                     "texto": (
-                        "Analiza el requerimiento contrastándolo con la base de conocimiento "
-                        "(proceso/sps). Proponga solución, criterios de aceptación, alcance, "
-                        "restricciones y análisis; liste SOLO los SP/METODO de este cambio "
-                        "No haga el dictamen completo. Deje el resultado en este Chat y en "
-                        "solicitud.contenido (criterios, alcance, restricciones, analisis, "
-                        "brechaAnalisis; si hay fix SQL, cambioPropuestoSql con fragmentos)."
+                        "Analiza el requerimiento contra la base (proceso y fichas del control). "
+                        "Clasifique capacitación, defecto o hueco. Deje el flujo de hoy, la causa "
+                        "citada y el cambio por capa en contenido.planteamiento y en el formulario. "
+                        "Liste SOLO los SP/METODO de este cambio. Si el cambio es SQL, lea el cuerpo "
+                        "de ese METODO y escriba cambioPropuestoSql con ---ANTES--- y ---SUGERIDO---. "
+                        "No haga el dictamen completo. No cierre con un resumen del pedido."
                         f"{img_nota}"
                     ),
                     "fecha": ahora,
@@ -3300,7 +3300,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 {
                     "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "w",
                     "autor": "sistema",
-                    "texto": "El agente está contrastando el REQ con conocimiento/. Criterios, alcance y SPs quedan en el formulario y en el Chat.",
+                    "texto": "El agente está armando el flujo de hoy, la causa y el cambio por capa. Si el planteamiento queda corto, el Chat lo dice.",
                     "fecha": ahora,
                 },
             )

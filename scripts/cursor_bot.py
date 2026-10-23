@@ -204,26 +204,31 @@ def _contexto_inline_cola(id_caso: str, max_chars: int = 1000) -> str:
         return ""
 
 
-def _contexto_inline_kb(req_texto: str, proceso_id: str, max_chars: int = 3000) -> tuple[str, list[str]]:
+def _truncar_conservando_pie(texto: str, max_chars: int, marca: str) -> str:
+    """Si hay que recortar, conserva el cierre (presupuesto / profundidad)."""
+    if len(texto) <= max_chars:
+        return texto
+    idx = texto.rfind(marca)
+    pie = texto[idx:] if idx >= 0 else ""
+    if not pie or len(pie) >= max_chars:
+        return _truncar_sensiblemente(texto, max_chars)
+    cabeza = _truncar_sensiblemente(texto[:idx], max_chars - len(pie) - 1)
+    return cabeza.rstrip() + "\n" + pie
+
+
+def _contexto_inline_kb(req_texto: str, proceso_id: str, max_chars: int = 8000) -> tuple[str, list[str]]:
     """
-    Mejora de kb_contexto: scoring más robusto contra _indice_busqueda.json.
+    Recorte del proceso para el prompt: fichas, controles y necesidades ya cubiertas.
     Retorna (texto_inline, lista_procesos_ids).
     """
     try:
         import kb_contexto_req
         ctx = kb_contexto_req.preseleccionar_contexto(req_texto, proceso_id)
         procesos_ids = [p["id"] for p in ctx.get("procesos", [])]
-        if procesos_ids:
-            # Formato compacto para inline
-            texto = "**Contexto KB preseleccionado:**\n"
-            for p in ctx.get("procesos", []):
-                texto += f"- Proceso: {p['id']} (score: {p.get('score', 0):.1f})\n"
-                if p.get("ventanas"):
-                    texto += f"  Ventanas: {', '.join(p['ventanas'][:3])}\n"
-                if p.get("sps_metodos"):
-                    texto += f"  SPs: {', '.join(p['sps_metodos'][:5])}\n"
-            return (_truncar_sensiblemente(texto, max_chars), procesos_ids)
-        return ("", [])
+        if not procesos_ids:
+            return ("", [])
+        texto = kb_contexto_req.formato_prompt(ctx)
+        return (_truncar_conservando_pie(texto, max_chars, "PRESUPUESTO DE HERRAMIENTAS"), procesos_ids)
     except Exception as exc:
         print(f"[_contexto_inline_kb] error: {exc}", flush=True)
         return ("", [])
@@ -791,6 +796,67 @@ def prompt_turno(id_caso: str, motivo: str) -> str:
     return prompt
 
 
+def _contrato_planteamiento(modo: str = "analisis") -> str:
+    try:
+        import planteamiento_req
+
+        return "\n" + planteamiento_req.contrato_prompt(modo) + "\n"
+    except Exception:
+        return (
+            "\n- Deje clasificación (capacitación, defecto o hueco), el flujo de hoy "
+            "y el bloque que cambia. No cierre con un resumen del pedido.\n"
+        )
+
+
+def _revisar_planteamiento(id_caso: str, motivo: str) -> None:
+    """Si el turno cerró con un resumen, lo marca y lo dice en el Chat."""
+    if motivo not in ("analizar-req", "criterios", "solicitar-req"):
+        return
+    try:
+        import planteamiento_req
+    except Exception:
+        return
+    path = os.path.join(caso_dir(id_caso), "solicitud.json")
+    sol = read_json(path, {})
+    if not isinstance(sol, dict) or not sol:
+        return
+    modo = "comite" if motivo == "solicitar-req" else "analisis"
+    try:
+        revision = planteamiento_req.evaluar(sol, modo=modo)
+    except Exception:
+        return
+    if revision.get("ok"):
+        return
+    nota = planteamiento_req.texto_faltantes(revision.get("faltantes") or [])
+    if motivo == "solicitar-req":
+        sol["planteamientoRevision"] = {
+            "estado": "superficial",
+            "faltantes": revision.get("faltantes") or [],
+        }
+        write_json(path, sol)
+    else:
+        contenido = sol.get("contenido")
+        if not isinstance(contenido, dict):
+            contenido = {}
+            sol["contenido"] = contenido
+        brecha = contenido.get("brechaAnalisis")
+        if not isinstance(brecha, dict):
+            brecha = {"texto": str(brecha or "").strip()}
+        brecha["estado"] = "superficial"
+        brecha["faltantes"] = revision.get("faltantes") or []
+        previo = str(brecha.get("texto") or "").strip()
+        if nota and nota not in previo:
+            brecha["texto"] = (previo + "\n\n" + nota).strip()
+        contenido["brechaAnalisis"] = brecha
+        write_json(path, sol)
+        try:
+            get_db().guardar_solicitud(id_caso, sol)
+        except Exception:
+            pass
+    if nota:
+        append_chat(id_caso, "sistema", nota)
+
+
 def _prompt_base(id_caso: str, motivo: str) -> tuple[str, list[str]]:
     """Genera el prompt y devuelve (prompt_texto, procesos_kb_preseleccionados)."""
     if es_conocimiento(id_caso, motivo):
@@ -875,7 +941,7 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             proceso_id = str(sol_data.get("sql", {}).get("procesoId") or "")
             if req_texto:
                 print(f"[kb_contexto] req_texto ({len(req_texto)} chars): {req_texto[:120]}...", flush=True)
-                inline_kb_texto, procesos_kb_ids = _contexto_inline_kb(req_texto, proceso_id, max_chars=3000)
+                inline_kb_texto, procesos_kb_ids = _contexto_inline_kb(req_texto, proceso_id, max_chars=8000)
                 if procesos_kb_ids:
                     contexto_kb = inline_kb_texto
                     print(f"[kb_contexto] preseleccionados: {', '.join(procesos_kb_ids)}", flush=True)
@@ -906,7 +972,8 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             + bloque_inline
             + ("\nNo se preseleccionó contexto KB específico. Use conocimiento/_indice_busqueda.json "
                "buscando términos clave del REQ (SP, METODO, tabla, pantalla) y abra SOLO las fichas "
-               "relevantes. NO lea sps.json enteros ni barra conocimiento/. Presupuesto ~15 tool calls.\n\n" 
+               "relevantes. NO lea sps.json enteros ni barra conocimiento/. "
+               "Las lecturas van al control de este cambio (ficha, cuerpo del METODO, Vue).\n\n" 
                if not contexto_kb else "")
             + "- Método obligatorio (en este orden):\n"
             "  1) Leer el REQ (solicitud.contenido.requerimiento + cola).\n"
@@ -922,19 +989,21 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "  3) Determinar la solución concreta (qué cambia y dónde; o capacitación).\n"
             "  4) Escribir OBLIGATORIAMENTE en solicitud.json → contenido:\n"
             "     criteriosAceptacion, alcance, restricciones, analisis, recomendacion;\n"
-            "     criteriosMeta.fuente=agente; brechaAnalisis {texto, fecha ISO, estado:\"listo\"}.\n"
+            "     criteriosMeta.fuente=agente; brechaAnalisis con texto, fecha ISO y estado\n"
+            "     listo solo si el planteamiento está completo. Si falta la causa o el bloque, estado observado.\n"
             "     Si el fix toca SQL (impactoSql Sí/Parcial o cambio en SP/vista): rellene también\n"
-            "     cambioPropuestoSql con fragmentos concretos (objeto, bloque, BEFORE/AFTER del\n"
-            "     UPDATE/INSERT/METODO, consultas de validación). Fuente: activo/{id}/sql/, sql_refe/ o DESAIX\n"
-            "     (PREVERSION). Si no hay cambio SQL, deje cambioPropuestoSql vacío.\n"
+            "     cambioPropuestoSql con el objeto, ---ANTES--- (bloque de hoy leído) y ---SUGERIDO---\n"
+            "     (bloque propuesto), más la consulta de comprobación. Fuente: activo/{id}/sql/ o DESAIX\n"
+            "     (PREVERSION). La ficha leido no reemplaza ese bloque. Si no hay cambio SQL, déjelo vacío.\n"
             "  5) Actualizar solicitud.sql.metodosDocumentados (y procesoId) SOLO con los "
             "SP/METODO que participan en ESTE cambio. NUNCA copie el catálogo entero de "
             "conocimiento/{proceso}/sps.json (prenómina, retiros, DIAN… si el REQ es solo "
             "impresión). Si el SP del fix no está en sps.json, deje metodosDocumentados "
             "vacío o solo los que sí aplican, pida el .sql y anote en brechaAnalisis.sps. "
             "Tabla en el Chat: SP · METODO · estado · rol en el fix.\n"
-            "- PRESUPUESTO ESTRICTO: máximo ~15 tool calls (read/grep/glob). No barridos. "
-            "Use el contexto KB preseleccionado. Escriba criterios/análisis apenas tenga lo mínimo.\n"
+            + _contrato_planteamiento("analisis")
+            + "- No barra la base. El recorte KB orienta; la solución sale de la ficha del METODO "
+            "y, si hay cambio SQL o de pantalla, del cuerpo o del Vue de ese control.\n"
             "- Responda en chat.json (autor: agente) con el mismo resumen: problema → causa "
             "(según KB) → solución → CA/alcance/restricciones → SPs a usar; si escribió "
             "cambioPropuestoSql, indíquelo en una línea.\n"
@@ -956,7 +1025,9 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
             "- Contraste el REQ con conocimiento/{proceso}/sps.json y proceso.json.\n"
             "- Complete OBLIGATORIAMENTE solicitud.contenido: criteriosAceptacion, alcance, "
             "restricciones, analisis, recomendacion; criteriosMeta (fuente: agente). "
-            "Si aplica cambio SQL: cambioPropuestoSql con fragmentos (ver motivo analizar-req).\n"
+            "Mismo planteamiento que analizar-req: clasificación, flujo de hoy, causa citada "
+            "y cambio por capa. Si aplica cambio SQL: cambioPropuestoSql con ---ANTES--- y "
+            "---SUGERIDO--- leídos del cuerpo del METODO.\n"
             "- Liste SOLO los SP/METODO de este cambio (no todos los del módulo) en "
             "solicitud.sql.metodosDocumentados y brechaAnalisis.sps.\n"
             "- Resuma en chat.json. No genere dictamen HTML.\n"
@@ -1082,8 +1153,8 @@ Reglas:
 - Si hace falta un SP: bájelo de DESAIX/SQLIX (`python scripts/sqlix_bajar_objeto.py --solicitud {id_caso} NOMBRE`) a solicitudes/{id_caso}/sql/, compare PREVERSION vs última Cerrada, y léalo. Tiene permiso. No lo deje en la carpeta compartida sql/.
 - No invente SP ni columnas. Liste SOLO los SP/METODO de este cambio.
 - Escriba en solicitud.json: titulo CORTO (máx. 90 caracteres), analisis completo, alcance, restricciones, criterios, recomendacion, procesoId.
-- Si el cambio es SQL: cambioPropuestoSql con fragmentos BEFORE/AFTER (especificación). El documento de comité lo incluye.
-- El documento de comité usa esos campos: no deje un análisis de una línea.
+- Si el cambio es SQL: cambioPropuestoSql con ---ANTES--- (bloque de hoy, leído) y ---SUGERIDO--- (bloque propuesto). El documento de comité lo incluye. No lo invente desde el resumen de la ficha.
+- Deje planteamiento en la raíz de solicitud.json: clasificación (capacitación, defecto o hueco), flujo de hoy, causa citada y cambio por capa. El documento de comité usa esos campos: no deje un análisis de una línea.
 - NO genere el HTML del comité ni el dictamen de implementación.
 - Si falta un dato que bloquee, PIDA y deténgase.
 - OpenAI no interviene.
@@ -1161,11 +1232,12 @@ Reglas:
 - Escriba la respuesta en activo/{id_caso}/chat.json (autor: agente). No incruste el HTML del dictamen en el Chat.
 - Si avanza el dictamen, déjelo en dictamenes/{id_caso}.html y ponga el enlace en el Chat.
 - NO implemente cambios en Qrystalos2, qrystalos.server ni ejecute SQL.
-- SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del control están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas. También revise sql_refe/ si el cuerpo ya se archivó. La carpeta de ESTE caso es activo/{id_caso}/sql/. NO use la carpeta compartida sql/ (mezcla otros análisis; esa es solo de Documentar). Pida o baje el .sql a activo/{id_caso}/sql/ (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`) SOLO si el METODO está listado/no_leido/parcial, el alcance sale de la ficha, o el Chat concluyó que hay que releer la línea exacta.
+- SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del control están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas para clasificar (hace, valida, noValida, errores, llama, efecto). La ficha no reemplaza el bloque: si la solución cambia ese procedimiento, baje y lea el cuerpo de ESE METODO en activo/{id_caso}/sql/ (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`; PREVERSION primero) y cite ---ANTES--- / ---SUGERIDO---. NO use la carpeta compartida sql/. No baje el catálogo entero.
 - Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el control es conciliaciones/FCONCI, etc.).
 - NO invente columnas ni SPs. Si falta una aclaración funcional, PIDA y deténgase.
 - El coordinador escribe solo en el Chat de la app. No pida que pegue el texto en Cursor.
-- Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → ¿ya existe? (capacitación|defecto|hueco) → solución**. No trate por defecto un REQ como desarrollo. Inventarie todos los caminos del control, no solo las casillas SQL. No convierta el Chat en un cuestionario de «qué falta del coordinador». En textos al coordinador y al desarrollador diga **control**, no «gate».
+- Metodología Fase 1 (orden de trabajo): **REQ → conocimiento (proceso/sps) → ¿ya existe? (capacitación|defecto|hueco) → flujo de hoy → causa citada → cambio por capa**. No trate por defecto un REQ como desarrollo. Inventarie todos los caminos del control, no solo las casillas SQL. No convierta el Chat en un cuestionario de «qué falta del coordinador». En textos al coordinador y al desarrollador diga **control**, no «gate».
+- Si escribe el dictamen HTML, la sección 5 sale de contenido.planteamiento: archivo Vue y condición, objeto SQL con el bloque de hoy y el sugerido, o la ruta de capacitación si el control ya existe. Si el planteamiento no está, complételo en este turno antes del HTML. Un apartado que solo parafrasee el requerimiento no sirve.
 - Mockup UX: la ventana debe ser la **propuesta de desarrollo**, no el problema ni la captura. No reutilice HTML de otro REQ.
 - OpenAI no interviene. Usted escribe criterios, análisis organizado y recomendación en solicitud.json cuando falten o vengan de GPT.
 - Contabilidad: lea solicitud.contenido.contabilidad. Si afecta=true, valide cómoAfecta y desarrollo contra la base (MCUE, CON, MCPE, asientos, comprobantes); si falta, DESAIX/Qrystalos2 y documentación. No invente tablas. Escriba el veredicto en chat.json y en solicitud.json → contenido.contabilidad.validacion {{ estado: ok|observado|no_aplica, texto, validadoEn }}. Si afecta=false, en el dictamen HTML deje solo «Afecta contabilidad: No»; no agregue Cómo lo afecta, Desarrollo contable ni Validación del agente.
@@ -1747,8 +1819,9 @@ def _run_caso_impl(id_caso: str, motivo: str, clave: str = "") -> int:
                 if not pedida:
                     set_active_api_key_index(idx, label)
                 if codigo == 0:
+                    _revisar_planteamiento(id_caso, motivo)
                     _disparar_siguiente(id_caso, motivo)
-                return codigo
+                    return codigo
             except CursorAgentError as exc:
                 if isinstance(exc, AuthenticationError) and pos + 1 < len(order):
                     print(f"Clave {label} rechazada; probando siguiente…", flush=True)
@@ -2351,11 +2424,12 @@ def _disparar_siguiente(id_caso: str, motivo: str) -> None:
         nxt = orquesta.avanzar(id_caso, motivo)
     elif orquesta.siguiente(motivo):
         if not orquesta.datos_listos(id_caso, motivo):
-            append_chat(
-                id_caso,
-                "sistema",
-                "El texto de este proceso todavía no quedó escrito. Cuando esté, entra al mismo cierre que los demás: manual y documento armado.",
-            )
+            if motivo not in ("analizar-req", "criterios", "solicitar-req"):
+                append_chat(
+                    id_caso,
+                    "sistema",
+                    "El texto de este proceso todavía no quedó escrito. Cuando esté, entra al mismo cierre que los demás: manual y documento armado.",
+                )
             return
         nxt = orquesta.abrir_cierre(id_caso, motivo)
     if not nxt:
