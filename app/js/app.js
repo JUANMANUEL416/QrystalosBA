@@ -81,6 +81,8 @@
   }
   let syncingCorreo = false;
   let analisisLoadingToken = 0;
+  let analisisInlineTimer = null;
+  let analisisInlineStartTime = 0;
 
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
@@ -195,6 +197,58 @@
     const banner = $("#analisisStatusBanner");
     if (banner) banner.hidden = true;
     habilitarControlesFormulario(true);
+  }
+
+  function showAnalisisInlineLoader() {
+    const loader = $("#analisisInlineLoader");
+    const error = $("#analisisInlineError");
+    const btn = $("#btnAnalizarRequerimiento");
+    
+    if (error) error.hidden = true;
+    if (loader) {
+      loader.hidden = false;
+      analisisInlineStartTime = Date.now();
+      updateAnalisisInlineTime();
+      if (analisisInlineTimer) clearInterval(analisisInlineTimer);
+      analisisInlineTimer = setInterval(updateAnalisisInlineTime, 1000);
+    }
+    if (btn) btn.disabled = true;
+  }
+
+  function hideAnalisisInlineLoader() {
+    const loader = $("#analisisInlineLoader");
+    const btn = $("#btnAnalizarRequerimiento");
+    
+    if (loader) loader.hidden = true;
+    if (analisisInlineTimer) {
+      clearInterval(analisisInlineTimer);
+      analisisInlineTimer = null;
+    }
+    if (btn) btn.disabled = false;
+  }
+
+  function showAnalisisInlineError(mensaje) {
+    const error = $("#analisisInlineError");
+    const loader = $("#analisisInlineLoader");
+    
+    hideAnalisisInlineLoader();
+    if (error) {
+      error.textContent = mensaje || "Error al analizar";
+      error.hidden = false;
+      setTimeout(() => {
+        if (error) error.hidden = true;
+      }, 5000);
+    }
+  }
+
+  function updateAnalisisInlineTime() {
+    const timeEl = $("#analisisInlineTime");
+    if (!timeEl || !analisisInlineStartTime) return;
+    
+    const elapsed = Math.floor((Date.now() - analisisInlineStartTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    timeEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   }
 
   function habilitarControlesFormulario(habilitar) {
@@ -1111,9 +1165,48 @@
       saveToStorage();
       updateAll();
       await refreshCorreoEstado();
+      
+      // Chequear si el bot está corriendo para mostrar indicador inline
+      if (!sondeo) {
+        await checkBotStatusAndShowLoader(idCaso);
+      }
+      
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async function checkBotStatusAndShowLoader(idCaso) {
+    try {
+      const resp = await fetch(`/api/caso/${encodeURIComponent(idCaso)}/estado?t=${Date.now()}`, { cache: "no-store" });
+      if (!resp.ok) return;
+      const estado = await resp.json();
+      const bot = estado.bot || {};
+      
+      // Si el bot está corriendo en analizar-req o ubicar-req, mostrar indicador
+      const corriendo = bot.estado === "corriendo" || bot.estado === "running";
+      const analizando = bot.motivo === "analizar-req" || bot.motivo === "ubicar-req" || bot.cadena === "analizar-req";
+      
+      if (corriendo && analizando) {
+        const loadingToken = ++analisisLoadingToken;
+        showAnalisisInlineLoader();
+        showAnalisisLoading(
+          "Analizando requerimiento",
+          "El agente sigue trabajando en el análisis…",
+          idCaso,
+        );
+        const hint = $("#brechaAnalisisHint");
+        if (hint) hint.textContent = "El agente sigue trabajando. El formulario se actualiza automáticamente.";
+        await pollBrechaAnalisis(idCaso, hint, loadingToken);
+        if (loadingToken === analisisLoadingToken) {
+          hideAnalisisLoading();
+          hideAnalisisInlineLoader();
+        }
+        await cargarSolicitudCaso(idCaso);
+      }
+    } catch (e) {
+      console.error("Error checking bot status:", e);
     }
   }
 
@@ -3149,9 +3242,8 @@
     goStep(2);
     await marcarEstadoCola("en_analisis");
     const hint = $("#brechaAnalisisHint");
-    const btn = $("#btnAnalizarRequerimiento");
     const loadingToken = ++analisisLoadingToken;
-    if (btn) btn.disabled = true;
+    showAnalisisInlineLoader();
     showAnalisisLoading(
       "Analizando requerimiento",
       "Paso 1: ubicando el proceso, el flujo y la pieza…",
@@ -3180,10 +3272,13 @@
       await pollBrechaAnalisis(idCaso, hint, loadingToken);
     } catch (e) {
       if (hint) hint.textContent = e.message || "Error al analizar";
+      showAnalisisInlineError(e.message || "Error al analizar");
       alert(e.message || "No se pudo analizar el requerimiento.");
     } finally {
-      if (loadingToken === analisisLoadingToken) hideAnalisisLoading();
-      if (btn) btn.disabled = false;
+      if (loadingToken === analisisLoadingToken) {
+        hideAnalisisLoading();
+        hideAnalisisInlineLoader();
+      }
     }
     if (loadingToken === analisisLoadingToken) await cargarSolicitudCaso(idCaso);
   }
