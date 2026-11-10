@@ -21,6 +21,11 @@ import sin_consola  # noqa: E402
 
 sin_consola.instalar()
 
+# Forzar IPv4 en Node.js (undici / puente de Cursor SDK) para evitar timeouts en redes sin IPv6
+if "--dns-result-order=ipv4first" not in (os.environ.get("NODE_OPTIONS") or ""):
+    prev_node_opts = (os.environ.get("NODE_OPTIONS") or "").strip()
+    os.environ["NODE_OPTIONS"] = f"{prev_node_opts} --dns-result-order=ipv4first".strip()
+
 from qrystalos_ba_db import get_db  # noqa: E402
 
 ACTIVO = os.path.join(ROOT, "activo")
@@ -1129,6 +1134,8 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
         else:
             extra = (
             "- Motivo: PASO 2 DE 2. ANÁLISIS DEL PROBLEMA ya ubicado, y después el cambio. No es el dictamen HTML.\n"
+            "- El resultado es el cambio que hace el equipo (tablas, campos, condiciones, controles). "
+            "Prohibido parafrasear el requerimiento o repetir la queja del cliente.\n"
             + alcance_ubi
             + bloque_inline
             + ("\nNo se preseleccionó contexto KB específico. Use conocimiento/_indice_busqueda.json "
@@ -1137,6 +1144,13 @@ Responda en {ruta} autor agente, campo "en". Español. NO implemente Qrystalos2 
                "Las lecturas van al control de este cambio (ficha, cuerpo del METODO, Vue).\n\n" 
                if not contexto_kb else "")
             + "- Método obligatorio (en este orden):\n"
+            "  C) CONTEXTO del REQ: si el texto (aval, formulario o capturas) trae la palabra «contexto», "
+            "ese párrafo dirige el análisis. Busque la variable o condición que nombra, diga en qué "
+            "control se usa y si el caso la cumple. No cierre el análisis sin ese párrafo.\n"
+            "  B) BASE: conocimiento/_indice_busqueda.json → solo la ficha del control. Si falta la "
+            "ruta o el mapa, complete la base (handoff Documentar) y después siga. No invente el flujo.\n"
+            "  F) Fuentes después de la base: Qrystalos2 (pantalla/Vue) → qrystalos.documentacion → "
+            "DESAIX solo PREVERSION vs última liberada (no otras canastas).\n"
             "  0) REPRODUCIR EL REPORTE (obligatorio antes de analizar; ver sección detallada abajo):\n"
             "     a) Extraer texto literal del error del REQ.\n"
             "     b) Leer capturas adjuntas en activo/{id}/imagenes/ o solicitudes/{id}/imagenes/.\n"
@@ -1386,17 +1400,24 @@ Al terminar, el último mensaje del chat es suyo y documento.md existe.
 """, [])
     elif motivo == "mockup-ventana":
         carpeta = _carpeta_caso(id_caso)
-        return (f"""Eres quien arma la ventana de muestra de Qrystalos. UN turno y termina.
+        return (f"""Eres quien arma la ventana, el gráfico o la ilustración de muestra. UN turno y termina.
 
 Caso: {id_caso}
 Carpeta: {carpeta}
 
-1. En {carpeta}/solicitud.json y en el proceso documentado, ubique la pantalla de este cambio.
-2. Abra el Vue de esa pantalla en Qrystalos2. Copie títulos, pestañas, botones y columnas que el archivo ya tiene.
-3. Escriba un HTML autónomo que se parezca a esa ventana: misma jerarquía, mismas etiquetas. Marque solo el cambio propuesto.
-4. No agregue botones, menús ni columnas que el Vue no tenga.
-5. Guárdelo en {carpeta}/mockups/mockup-ventana-flexible.html
-6. Avise en {carpeta}/chat.json (autor: agente) con la ruta.
+Contexto fijo: Qrystalos es software para clínicas y salud (admisiones, facturación, inventarios clínicos). Use lenguaje de pantalla hospitalaria.
+
+Lea SOLO la conclusión ya cerrada por Composer:
+- {carpeta}/solicitud.json → contenido.cambioPropuestoSimple, recomendacion, criteriosAceptacion
+- Si existe, {carpeta}/material/documento.md (solo el apartado del cambio)
+
+No reabra el requerimiento original, ni el SQL, ni DESAIX, ni un sps.json entero.
+
+1. Con esa conclusión, arme un HTML autónomo de la ventana propuesta (o del gráfico/mapa si el cambio lo pide).
+2. Etiquetas de clínica: paciente, admisión, factura, servicio, etc., cuando apliquen.
+3. Marque solo el cambio propuesto. No invente botones ni columnas que la conclusión no nombre.
+4. Guárdelo en {carpeta}/mockups/mockup-ventana-flexible.html
+5. Avise en {carpeta}/chat.json (autor: agente) con la ruta.
 
 Al terminar, el HTML existe y el último mensaje del chat es suyo.
 """, [])
@@ -1436,7 +1457,7 @@ Reglas:
 - Escriba la respuesta en activo/{id_caso}/chat.json (autor: agente). No incruste el HTML del dictamen en el Chat.
 - No escriba dictamenes/{id_caso}.html a mano. Cuando el planteamiento queda listo, la oficina genera ese archivo con la plantilla del dictamen y lo deja en Documentos del Chat. Si corrige el análisis, actualice solicitud.json.
 - NO implemente cambios en Qrystalos2, qrystalos.server ni ejecute SQL.
-- SQL: si solicitud.sql.usarDocumentacion=true y los METODOs del control están `leido` en conocimiento/{{proceso}}/sps.json, USE esas fichas para clasificar (hace, valida, noValida, errores, llama, efecto). La ficha no reemplaza el bloque: si la solución cambia ese procedimiento, baje y lea el cuerpo de ESE METODO en activo/{id_caso}/sql/ (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`; PREVERSION primero) y cite ---ANTES--- / ---SUGERIDO---. NO use la carpeta compartida sql/. No baje el catálogo entero.
+- SQL: use las fichas marcadas en solicitud.sql.metodosDocumentados y la base (hace, valida, noValida, errores, llama, efecto). Si el procedimiento no está en la base, o hace falta el cuerpo para citar el bloque, bájelo de DESAIX a activo/{id_caso}/sql/ (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`; PREVERSION primero) y cite ---ANTES--- / ---SUGERIDO---. No pida al coordinador que pegue nombres ni confirme la carpeta. NO use la carpeta compartida sql/. No baje el catálogo entero.
 - Verifique que sql.procesoId coincida con el proceso del REQ (no use notas-dbcr si el control es conciliaciones/FCONCI, etc.).
 - NO invente columnas ni SPs. Si falta una aclaración funcional, PIDA y deténgase.
 - El coordinador escribe solo en el Chat de la app. No pida que pegue el texto en Cursor.
@@ -2258,6 +2279,14 @@ async def _run_caso_async(id_caso: str, motivo: str, key: str) -> int:
                     return 2
             status = getattr(result, "status", None) or ""
             if str(status) in ("error", "RunStatus.error"):
+                try:
+                    p = agente_path(id_caso)
+                    if os.path.exists(p):
+                        m = read_json(p, {})
+                        m["agentId"] = ""
+                        write_json(p, m)
+                except Exception:
+                    pass
                 write_bot(id_caso, estado="error", error="El agente falló a mitad del turno", terminadoEn=_now())
                 append_chat(id_caso, "sistema", "El bot falló en este turno. Reintente desde el Chat.")
                 return 2
@@ -2480,6 +2509,9 @@ def _env_bot(base: dict | None = None) -> dict:
             prev = (env.get("PYTHONPATH") or "").strip()
             env["PYTHONPATH"] = user_site if not prev else user_site + os.pathsep + prev
     env["CURSOR_API_KEY"] = load_api_key()
+    if "--dns-result-order=ipv4first" not in (env.get("NODE_OPTIONS") or ""):
+        prev_opts = (env.get("NODE_OPTIONS") or "").strip()
+        env["NODE_OPTIONS"] = f"{prev_opts} --dns-result-order=ipv4first".strip()
     return env
 
 
@@ -2631,6 +2663,17 @@ def _clave_del_turno(id_caso: str, motivo: str) -> str:
 _RE_RUTA_CHAT = re.compile(r"/[a-z0-9]+(?:/[a-z0-9_\-]+)+", re.I)
 
 
+def _rutas_en_texto(texto: str) -> list[str]:
+    """Rutas de pantalla. Una fecha (01/08/2025) no es una ruta."""
+    salida = []
+    for hallada in _RE_RUTA_CHAT.findall(texto or ""):
+        partes = [p for p in hallada.strip("/").split("/") if p]
+        if partes and all(p.isdigit() for p in partes):
+            continue
+        salida.append(hallada)
+    return salida
+
+
 def _mensajes_coordinador(id_caso: str, limite: int = 4) -> list[str]:
     data = read_json(os.path.join(caso_dir(id_caso), "chat.json"), {"mensajes": []})
     mensajes = data.get("mensajes") if isinstance(data, dict) else data
@@ -2663,7 +2706,7 @@ def _datos_para_ubicar(id_caso: str) -> dict:
     ruta = str(proyecto.get("rutaPantalla") or "").strip()
     if not ruta:
         for texto in reversed(partes):
-            halladas = _RE_RUTA_CHAT.findall(texto)
+            halladas = _rutas_en_texto(texto)
             if halladas:
                 ruta = halladas[0]
                 break
@@ -2698,10 +2741,10 @@ def _guardar_solicitud_caso(id_caso: str, sol: dict) -> None:
 
 def _absorber_ruta_chat(id_caso: str, texto: str = "") -> str:
     """Si el analista escribió una ruta y el formulario no la tenía, la deja guardada."""
-    halladas = _RE_RUTA_CHAT.findall(texto or "")
+    halladas = _rutas_en_texto(texto or "")
     if not halladas:
         for previo in reversed(_mensajes_coordinador(id_caso)):
-            halladas = _RE_RUTA_CHAT.findall(previo)
+            halladas = _rutas_en_texto(previo)
             if halladas:
                 break
     if not halladas:
@@ -2819,10 +2862,214 @@ def _dictamen_caso(id_caso: str) -> dict:
     return kb_contexto_req.dictamen_previo(mapa)
 
 
+def _archivar_carpeta(origen: str, destino: str) -> None:
+    if not os.path.isdir(origen):
+        return
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    if os.path.exists(destino):
+        return
+    try:
+        os.rename(origen, destino)
+    except OSError:
+        import shutil
+
+        shutil.copytree(origen, destino)
+        shutil.rmtree(origen, ignore_errors=True)
+
+
+def limpiar_sesion_analisis(id_caso: str, archivar_entrega: bool = False) -> None:
+    """Análisis nuevo: sin sesión Cursor del anterior. Si archivar_entrega, también sin plan/mockup/chat viejos."""
+    ruta = agente_path(id_caso)
+    if os.path.isfile(ruta):
+        try:
+            os.remove(ruta)
+        except OSError:
+            pass
+    if os.path.isfile(bot_path(id_caso)):
+        write_bot(id_caso, agentId="", runId="", cadena="", turnosDia=0, turnosDiaFecha="")
+    if not archivar_entrega:
+        return
+    carpeta = caso_dir(id_caso)
+    sello = datetime.now().strftime("%Y%m%d%H%M%S")
+    archivo = os.path.join(carpeta, "archivo-analisis", sello)
+    os.makedirs(archivo, exist_ok=True)
+    _archivar_carpeta(os.path.join(carpeta, "material"), os.path.join(archivo, "material"))
+    _archivar_carpeta(os.path.join(carpeta, "mockups"), os.path.join(archivo, "mockups"))
+    chat_path = os.path.join(carpeta, "chat.json")
+    if os.path.isfile(chat_path):
+        try:
+            os.rename(chat_path, os.path.join(archivo, "chat.json"))
+        except OSError:
+            pass
+    append_chat(
+        id_caso,
+        "sistema",
+        "Sesión limpia para un análisis nuevo. El historial anterior quedó en archivo-analisis/"
+        + sello
+        + ".",
+    )
+    est_path = os.path.join(carpeta, "estado.json")
+    est = read_json(est_path, {})
+    if not isinstance(est, dict):
+        est = {}
+    est["analisisCompletado"] = False
+    est["analisisPiezas"] = {"dictamen": False, "plan": False, "mockup": False}
+    est.pop("analisisCompletadoEn", None)
+    est["analisisLimpiadoEn"] = _now()
+    write_json(est_path, est)
+    try:
+        import pasos_analisis
+
+        if archivar_entrega:
+            pasos_analisis.reiniciar(id_caso)
+    except Exception:
+        pass
+
+
+def pedir_reanalisis(id_caso: str) -> dict:
+    """Solo con caso reabierto. Limpia entrega previa y arranca ubicar-req."""
+    db = get_db()
+    estado = db.get_estado(id_caso) or {}
+    if estado.get("fase1Cerrada"):
+        return {
+            "ok": False,
+            "error": "La fase 1 ya está cerrada. Primero use Abrir y corregir.",
+        }
+    if not estado.get("enmiendaAbierta"):
+        return {
+            "ok": False,
+            "error": "Volver a analizar solo funciona con el caso reabierto (Abrir y corregir).",
+        }
+    items = db.get_cola()
+    hit = False
+    for item in items:
+        if _caso_id_from_item(item) == id_caso:
+            item["reanalisisPedido"] = True
+            item["analisisPosterior"] = "en_cola"
+            item["analisisPosteriorEn"] = _now()
+            item["analisisPosteriorIntentos"] = 0
+            item.pop("analisisPosteriorFin", None)
+            item.pop("analisisPosteriorError", None)
+            item.pop("analisisPosteriorErrorCom", None)
+            item["analisisPosteriorNota"] = "Reanálisis pedido tras reapertura."
+            hit = True
+    if hit:
+        db.save_cola(items)
+    limpiar_sesion_analisis(id_caso, archivar_entrega=True)
+    append_chat(
+        id_caso,
+        "coordinador",
+        "Volver a analizar. Sesión limpia. Ubique el flujo y proponga el cambio otra vez.",
+    )
+    bot = lanzar_bot(id_caso, "ubicar-req")
+    return {"ok": bool(bot.get("ok")), "bot": bot, "estado": db.get_estado(id_caso)}
+
+
+def _caso_id_from_item(item: dict) -> str:
+    return str((item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or "").strip()
+
+
+def _piezas_analisis(id_caso: str) -> dict:
+    try:
+        import pasos_analisis
+
+        r = pasos_analisis.resumen(id_caso)
+        p = r.get("pasos") or {}
+        return {
+            "dictamen": (p.get("dictamen") or {}).get("estado") == "listo",
+            "plan": (p.get("material") or {}).get("estado") == "listo",
+            "mockup": (p.get("mockup") or {}).get("estado") == "listo",
+        }
+    except Exception:
+        carpeta = caso_dir(id_caso)
+        dictamen = os.path.isfile(os.path.join(ROOT, "dictamenes", f"{id_caso}.html"))
+        plan = os.path.isfile(os.path.join(carpeta, "material", "documento.md"))
+        mockups = os.path.join(carpeta, "mockups")
+        mockup = any(
+            os.path.isfile(os.path.join(mockups, nombre))
+            for nombre in ("mockup-ventana-flexible.html", "mockup-ux-pantalla.html")
+        )
+        return {"dictamen": dictamen, "plan": plan, "mockup": mockup}
+
+
+def asentar_analisis_completado(id_caso: str) -> bool:
+    """analisisCompletado = los cinco pasos listos (ubicar…dictamen)."""
+    try:
+        import pasos_analisis
+
+        return bool(pasos_analisis.resumen(id_caso).get("completo"))
+    except Exception:
+        piezas = _piezas_analisis(id_caso)
+        completo = all(piezas.values())
+        path = os.path.join(caso_dir(id_caso), "estado.json")
+        est = read_json(path, {})
+        if not isinstance(est, dict):
+            est = {}
+        est["analisisCompletado"] = completo
+        est["analisisPiezas"] = piezas
+        if completo and not est.get("analisisCompletadoEn"):
+            est["analisisCompletadoEn"] = _now()
+        write_json(path, est)
+        return completo
+
+
+def _asentar_paso_ok(id_caso: str, motivo: str) -> None:
+    try:
+        import pasos_analisis
+    except Exception:
+        return
+    paso = pasos_analisis.paso_de_motivo(motivo)
+    if not paso:
+        return
+    evidencia = ""
+    fn = {
+        "ubicar": pasos_analisis._evidencia_ubicar,
+        "analizar": pasos_analisis._evidencia_analizar,
+        "material": pasos_analisis._evidencia_material,
+        "mockup": pasos_analisis._evidencia_mockup,
+        "dictamen": pasos_analisis._evidencia_dictamen,
+    }.get(paso)
+    if fn:
+        evidencia = fn(id_caso) or ""
+    if evidencia or paso in ("material", "mockup"):
+        # material/mockup: el turno escribe el archivo; si aún no está, no marques listo.
+        if paso in ("material", "mockup") and not evidencia:
+            pasos_analisis.marcar(id_caso, paso, "error", error="No quedó el archivo del paso")
+            return
+        if paso == "analizar" and not evidencia:
+            pasos_analisis.marcar(id_caso, paso, "error", error="Planteamiento incompleto")
+            return
+        if paso == "ubicar" and not evidencia:
+            pasos_analisis.marcar(id_caso, paso, "error", error="Ubicación incompleta")
+            return
+        pasos_analisis.marcar(id_caso, paso, "listo", evidencia=evidencia)
+
+
+def _saltar_si_paso_listo(id_caso: str, motivo: str) -> str | None:
+    """None = hay que correr este motivo. Si no, el siguiente motivo, 'dictamen', 'armar' o 'DONE'."""
+    try:
+        import pasos_analisis
+    except Exception:
+        return None
+    pasos_analisis.sincronizar_evidencia(id_caso)
+    paso = pasos_analisis.paso_de_motivo(motivo)
+    if not paso:
+        return None
+    if not pasos_analisis.esta_listo(id_caso, paso):
+        return None
+    pendiente = pasos_analisis.siguiente_pendiente(id_caso)
+    if not pendiente:
+        return "DONE"
+    if pendiente == "dictamen":
+        return "dictamen"
+    return pasos_analisis.motivo_de_paso(pendiente) or "armar"
+
+
 def _gate_ubicar(id_caso: str) -> dict | None:
     """None si hay que lanzar el agente. Un dict si se detiene sin gastarlo."""
     dictamen = _dictamen_caso(id_caso)
-    if dictamen.get("seguir"):
+    # «base»: el análisis documenta la ruta que falta y sigue. «dato»: falta una respuesta del analista.
+    if dictamen.get("seguir") or dictamen.get("bloqueo") == "base":
         return None
     bot = read_json(bot_path(id_caso), {})
     if bot.get("forzarUbicar"):
@@ -2859,6 +3106,11 @@ def continuacion_chat(id_caso: str, texto: str = "") -> str:
 
 def _encadenar_analisis(id_caso: str) -> None:
     """Paso 1 listo: arranca el análisis del problema sin otra acción del coordinador."""
+    freno = _freno_modelo(id_caso, "analizar-req")
+    if freno:
+        append_chat(id_caso, "sistema", freno)
+        _cortar_turno(id_caso, "analizar-req", "limite", freno)
+        return
     try:
         import planteamiento_req
     except Exception:
@@ -2903,9 +3155,21 @@ def _encadenar_analisis(id_caso: str) -> None:
         contenido["ubicacion"] = ubicacion
         sol["contenido"] = contenido
         write_json(path, sol)
+        _asentar_paso_ok(id_caso, "ubicar-req")
         write_bot(id_caso, cadena="analizar-req", ubicacionDetenida=False, ubicacionBloqueo="")
         lanzar_bot(id_caso, "analizar-req", encadenado=True)
         return
+    try:
+        import pasos_analisis
+
+        pasos_analisis.marcar(
+            id_caso,
+            "ubicar",
+            "error",
+            error=str((revision.get("faltantes") or ["Ubicación incompleta"])[0]),
+        )
+    except Exception:
+        pass
     bloqueo = revision.get("bloqueo") or "dato"
     contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
     ubicacion = contenido.get("ubicacion") if isinstance(contenido.get("ubicacion"), dict) else {}
@@ -2954,21 +3218,258 @@ def _publicar_dictamen(id_caso: str, motivo: str) -> None:
         append_chat(id_caso, "sistema", "No pude generar el dictamen: " + str(exc))
         return
     if not out.get("ok") or out.get("sinCambio"):
+        # Si el HTML ya existía, igual asienta el checkpoint.
+        if os.path.isfile(os.path.join(ROOT, "dictamenes", f"{id_caso}.html")):
+            try:
+                import pasos_analisis
+
+                pasos_analisis.marcar(
+                    id_caso,
+                    "dictamen",
+                    "listo",
+                    evidencia=f"dictamenes/{id_caso}.html",
+                )
+            except Exception:
+                pass
         return
     ruta = out.get("ruta") or f"dictamenes/{id_caso}.html"
-    if out.get("actualizado"):
+    try:
+        import pasos_analisis
+
+        pasos_analisis.marcar(id_caso, "dictamen", "listo", evidencia=ruta)
+    except Exception:
+        pass
+    sigue = ""
+    try:
+        import orquesta
+
+        sigue = orquesta.siguiente(motivo) or ""
+    except Exception:
+        sigue = ""
+    if sigue:
+        texto = (
+            "Quedó el dictamen en " + ruta
+            + ". Sigue el plan y el mockup (solo lo que falte)."
+        )
+    elif out.get("actualizado"):
         texto = "Dictamen actualizado: " + ruta + ". Está en Documentos del Chat."
     else:
         texto = "Dictamen listo: " + ruta + ". Ábralo en Documentos del Chat."
     append_chat(id_caso, "sistema", texto)
 
 
+def _turnos_hoy(id_caso: str) -> int:
+    bot = read_json(bot_path(id_caso), {})
+    hoy = datetime.now().date().isoformat()
+    if str(bot.get("turnosDiaFecha") or "") != hoy:
+        return 0
+    try:
+        return int(bot.get("turnosDia") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _anotar_turno(id_caso: str) -> None:
+    hoy = datetime.now().date().isoformat()
+    write_bot(id_caso, turnosDiaFecha=hoy, turnosDia=_turnos_hoy(id_caso) + 1)
+
+
+def _cortar_turno(id_caso: str, motivo: str, corte: str, nota: str, peso: dict | None = None) -> None:
+    """Para la cadena sin dar el análisis por terminado. El worker no arma documentos."""
+    write_bot(
+        id_caso,
+        estado="listo",
+        pid=0,
+        motivo=motivo,
+        error="",
+        terminadoEn=_now(),
+        cadena="",
+        corte=corte,
+        corteNota=nota,
+        pesoBloqueo=peso,
+    )
+
+
+def _freno_modelo(id_caso: str, motivo: str) -> str:
+    try:
+        import analisis_posterior
+    except Exception:
+        return "No se pudo leer el tope de tokens. El turno no se abre."
+    return analisis_posterior.freno_modelo(id_caso, motivo, _turnos_hoy(id_caso))
+
+
+def _freno_peso(id_caso: str, motivo: str) -> dict | None:
+    """Si el prompt supera el máximo del proceso, pide aval. None = puede seguir."""
+    try:
+        import topes_modelo
+    except Exception:
+        return {
+            "ok": False,
+            "estado": "bloquear",
+            "mensaje": "No se pudo leer el tope de tokens. El turno no se abre.",
+        }
+    bot = read_json(bot_path(id_caso), {})
+    aval = bool(bot.get("avalContinuarPeso"))
+    try:
+        prompt = prompt_turno(id_caso, motivo)
+        ver = topes_modelo.decision_peso(len(prompt), motivo, aval_continuar=aval)
+    except Exception:
+        return {
+            "ok": False,
+            "estado": "bloquear",
+            "mensaje": "No se pudo medir el prompt. El turno no se abre.",
+        }
+    if ver.get("estado") == "aviso":
+        append_chat(id_caso, "sistema", ver.get("mensaje") or "")
+        return None
+    if ver.get("ok"):
+        if aval:
+            write_bot(id_caso, avalContinuarPeso=False)
+        return None
+    return ver
+
+
+def avalar_continuar_peso(id_caso: str) -> dict:
+    """El usuario avala un prompt por encima del máximo de este proceso."""
+    write_bot(id_caso, avalContinuarPeso=True)
+    append_chat(
+        id_caso,
+        "sistema",
+        "Aval registrado: el próximo turno puede superar el máximo de caracteres de este proceso.",
+    )
+    return {"ok": True, "avalContinuarPeso": True}
+
+
+def _cerrar_cadena_analisis(id_caso: str) -> None:
+    try:
+        import orquesta
+
+        orquesta.armar(id_caso)
+    except Exception as exc:  # noqa: BLE001
+        append_chat(id_caso, "sistema", "No pude armar el documento: " + str(exc))
+    completo = asentar_analisis_completado(id_caso)
+    if completo:
+        try:
+            db = get_db()
+            items = db.get_cola()
+            for item in items:
+                if _caso_id_from_item(item) == id_caso:
+                    item.pop("reanalisisPedido", None)
+                    item["analisisPosterior"] = "terminado"
+                    item["analisisPosteriorFin"] = _now()
+                    item["analisisPosteriorDocs"] = True
+            db.save_cola(items)
+        except Exception:
+            pass
+    try:
+        import pasos_analisis
+
+        linea = pasos_analisis.resumen(id_caso).get("linea") or ""
+    except Exception:
+        linea = ""
+    append_chat(
+        id_caso,
+        "sistema",
+        (
+            "Análisis completo (ubicar → analizar → plan → mockup → dictamen). "
+            if completo
+            else "Cadena cerrada. Falta algún paso: "
+        )
+        + (linea + ". " if linea and not completo else "")
+        + "El dictamen es dictamenes/"
+        + id_caso
+        + ".html.",
+    )
+
+
+def _lanzar_o_saltar(id_caso: str, motivo: str) -> None:
+    """Lanza el motivo o salta checkpoints ya listos hasta el siguiente pendiente."""
+    actual = motivo
+    vistos: set[str] = set()
+    while actual and actual not in vistos:
+        vistos.add(actual)
+        if actual in ("armar", "DONE"):
+            _cerrar_cadena_analisis(id_caso)
+            return
+        if actual == "dictamen":
+            _publicar_dictamen(id_caso, "analizar-req")
+            actual = _saltar_si_paso_listo(id_caso, "analizar-req") or ""
+            if actual in (None, ""):
+                # dictamen era el pendiente; si quedó listo, reevaluar
+                try:
+                    import pasos_analisis
+
+                    actual = pasos_analisis.motivo_siguiente(id_caso) or (
+                        "DONE" if pasos_analisis.resumen(id_caso).get("completo") else "armar"
+                    )
+                except Exception:
+                    actual = "armar"
+            continue
+        salto = _saltar_si_paso_listo(id_caso, actual)
+        if salto is None:
+            freno = _freno_modelo(id_caso, actual)
+            if freno:
+                append_chat(id_caso, "sistema", freno)
+                _cortar_turno(id_caso, actual, "limite", freno)
+                return
+            try:
+                import pasos_analisis
+
+                paso = pasos_analisis.paso_de_motivo(actual)
+                if paso:
+                    pasos_analisis.marcar(id_caso, paso, "en_curso")
+            except Exception:
+                pass
+            nombres = {
+                "material": "el plan / material",
+                "mockup-ventana": "el mockup",
+                "analizar-req": "el análisis del problema",
+                "ubicar-req": "la ubicación del flujo",
+            }
+            append_chat(
+                id_caso,
+                "sistema",
+                "Sigue " + nombres.get(actual, actual) + " (solo lo pendiente).",
+            )
+            lanzar_bot(id_caso, actual, encadenado=True)
+            return
+        append_chat(
+            id_caso,
+            "sistema",
+            f"Paso «{actual}» ya estaba listo; no se reprocesa.",
+        )
+        actual = salto
+    _cerrar_cadena_analisis(id_caso)
+
+
 def _disparar_siguiente(id_caso: str, motivo: str) -> None:
-    """Con los datos escritos, lanza el análisis o, al cerrarlo, el manual y la ventana."""
+    """Asienta el paso terminado y lanza solo lo que falta."""
     if motivo == "ubicar-req":
+        # El asiento listo ocurre en _encadenar_analisis cuando la ubicación cierra bien.
+        freno = _freno_modelo(id_caso, "analizar-req")
+        if freno:
+            append_chat(id_caso, "sistema", freno)
+            _cortar_turno(id_caso, "analizar-req", "limite", freno)
+            write_bot(id_caso, ubicacionDetenida=False)
+            return
         _encadenar_analisis(id_caso)
         return
-    _publicar_dictamen(id_caso, motivo)
+    _asentar_paso_ok(id_caso, motivo)
+    if motivo in ("analizar-req", "criterios", "chat", "activar"):
+        _publicar_dictamen(id_caso, motivo)
+        # Si el planteamiento quedó corto, no abrir material/mockup.
+        try:
+            import pasos_analisis
+
+            if not pasos_analisis.esta_listo(id_caso, "analizar"):
+                append_chat(
+                    id_caso,
+                    "sistema",
+                    "El planteamiento quedó corto. No se abre plan ni mockup hasta completarlo.",
+                )
+                return
+        except Exception:
+            pass
     try:
         import orquesta
     except Exception:
@@ -2987,27 +3488,19 @@ def _disparar_siguiente(id_caso: str, motivo: str) -> None:
             return
         nxt = orquesta.abrir_cierre(id_caso, motivo)
     if not nxt:
+        # Motivo sin cadena: igual reevalúa checkpoints.
+        try:
+            import pasos_analisis
+
+            if pasos_analisis.resumen(id_caso).get("completo"):
+                _cerrar_cadena_analisis(id_caso)
+        except Exception:
+            pass
         return
     if nxt == "armar":
-        try:
-            ruta = orquesta.armar(id_caso)
-        except Exception as exc:  # noqa: BLE001
-            append_chat(id_caso, "sistema", "No pude armar el documento: " + str(exc))
-            return
-        append_chat(
-            id_caso,
-            "sistema",
-            "Material de apoyo (manual, guion y ventana) quedó aparte. "
-            "El dictamen es dictamenes/" + id_caso + ".html.",
-        )
+        _cerrar_cadena_analisis(id_caso)
         return
-    nombres = {
-        "material": "el manual, la capacitación y la planeación",
-        "mockup-ventana": "la ventana, parecida a la pantalla",
-        "presentacion": "el guion de la capacitación",
-    }
-    append_chat(id_caso, "sistema", "Datos listos. Sigue " + nombres.get(nxt, nxt) + ".")
-    lanzar_bot(id_caso, nxt, encadenado=True)
+    _lanzar_o_saltar(id_caso, nxt)
 
 
 def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> dict:
@@ -3018,6 +3511,59 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
         return {"ok": True, "yaCorria": True, "pid": actual.get("pid")}
     if not os.path.isdir(caso_dir(id_caso)):
         return {"ok": False, "error": "sin_caso"}
+    if motivo in ("ubicar-req", "analizar-req") and not encadenado:
+        # Solo limpia sesión Cursor; no borra pasos ya listos (evita reproceso).
+        limpiar_sesion_analisis(id_caso, archivar_entrega=False)
+        try:
+            import pasos_analisis
+
+            pasos_analisis.sincronizar_evidencia(id_caso)
+            # Si pidieron ubicar pero ya está listo, arranca en el primer pendiente.
+            salto = _saltar_si_paso_listo(id_caso, motivo)
+            if salto is not None:
+                if salto in ("DONE", "armar"):
+                    _cerrar_cadena_analisis(id_caso)
+                    return {"ok": True, "detenido": True, "bloqueo": "completo"}
+                if salto == "dictamen":
+                    _publicar_dictamen(id_caso, "analizar-req")
+                    _cerrar_cadena_analisis(id_caso)
+                    return {"ok": True, "detenido": True, "bloqueo": "dictamen"}
+                append_chat(
+                    id_caso,
+                    "sistema",
+                    f"Checkpoint: «{motivo}» ya listo. Continúa en «{salto}».",
+                )
+                return lanzar_bot(id_caso, salto, encadenado=True)
+        except Exception:
+            pass
+    try:
+        import pasos_analisis
+
+        paso = pasos_analisis.paso_de_motivo(motivo)
+        if paso and pasos_analisis.esta_listo(id_caso, paso) and encadenado:
+            append_chat(id_caso, "sistema", f"Paso «{motivo}» ya listo; se omite.")
+            _lanzar_o_saltar(id_caso, motivo)
+            return {"ok": True, "detenido": True, "bloqueo": "paso_listo"}
+        if paso:
+            pasos_analisis.marcar(id_caso, paso, "en_curso")
+    except Exception:
+        pass
+    freno = _freno_modelo(id_caso, motivo)
+    if freno:
+        _cortar_turno(id_caso, motivo, "limite", freno)
+        append_chat(id_caso, "sistema", freno)
+        return {"ok": True, "detenido": True, "bloqueo": "limite"}
+    peso = _freno_peso(id_caso, motivo)
+    if peso:
+        nota = str(peso.get("mensaje") or "El prompt supera el máximo. No se abre el turno.")
+        _cortar_turno(id_caso, motivo, "peso", nota, peso)
+        append_chat(id_caso, "sistema", nota)
+        return {
+            "ok": True,
+            "detenido": True,
+            "bloqueo": "peso",
+            "peso": peso,
+        }
     if motivo == "ubicar-req":
         corte = _gate_ubicar(id_caso)
         if corte:
@@ -3054,8 +3600,13 @@ def lanzar_bot(id_caso: str, motivo: str = "chat", encadenado: bool = False) -> 
         error="",
         terminadoEn=None,
         cadena="",
+        corte="",
+        corteNota="",
+        pesoBloqueo=None,
         ubicacionDetenida=False,
     )
+    if motivo in ("ubicar-req", "analizar-req", "material", "mockup-ventana", "presentacion"):
+        _anotar_turno(id_caso)
 
     if _es_cuenta_servicio():
         vbs_path = _escribir_vbs_bot(exe, script, id_caso, motivo, clave)

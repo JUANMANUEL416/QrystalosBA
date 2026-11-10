@@ -1,0 +1,67 @@
+---
+description: Ciclo de análisis de un REQ — estados, piezas, modelos y orden de fuentes
+alwaysApply: false
+---
+
+# Análisis de requerimiento
+
+## Estados del caso
+
+| Campo | Significado |
+|-------|-------------|
+| `analisisCompletado` | `true` solo si existen las tres piezas: plan (`material/documento.md`), mockup y dictamen HTML |
+| `analisisPiezas` | `{ plan, mockup, dictamen }` — qué falta |
+| `fase1Cerrada` | El usuario avaló el dictamen. Correo enviado. REQ terminado |
+| `enmiendaAbierta` | El usuario reabrió el caso («Abrir y corregir»). Sin esto no hay reanálisis |
+| `reanalisisPedido` | Marca de cola: el usuario pulsó «Volver a analizar» con el caso ya reabierto |
+
+Cola de trabajo: `pendiente` → `en_analisis` → `dictamen` → `aprobado` / `terminado` (correo o cerrado sin análisis).
+
+## Ciclo y checkpoints (`estado.pasos`)
+
+Cada paso tiene estado `pendiente` | `en_curso` | `listo` | `error`. El agente **no reprocesa** un paso `listo`.
+
+| Paso | Motivo / origen | Evidencia |
+|------|-----------------|-----------|
+| `ubicar` | `ubicar-req` | `contenido.ubicacion` listo |
+| `analizar` | `analizar-req` | planteamiento válido |
+| `material` | `material` | `material/documento.md` |
+| `mockup` | `mockup-ventana` | HTML en `mockups/` |
+| `dictamen` | oficina | `dictamenes/{id}.html` |
+
+1. **Cadena** (Composer 2.5 Fast en todos los pasos): ubicar → analizar → plan → mockup → dictamen. Al terminar, `analisisCompletado=true` solo si los cinco están `listo`.
+2. **Validar**: el coordinador revisa el dictamen.
+3. **Cerrar fase 1**: avala → correo → REQ terminado.
+4. **Volver a analizar**: caso reabierto + botón. Reinicia `pasos` y limpia entrega previa.
+
+## Limpieza antes de un análisis nuevo
+
+Antes de `ubicar-req` / `analizar-req` (arranque, no encadenado) o de «Volver a analizar»:
+
+- Borra `agente.json` (sesión Cursor).
+- Reinicia contadores del bot.
+- Archiva `material/` y `mockups/` previos.
+- Archiva el `chat.json` anterior y deja un chat corto de arranque.
+- Pone `analisisCompletado=false`.
+
+## Modelos
+
+- **Composer 2.5 Fast:** ubicar, analizar, plan, mockup, chat y presentación. El mockup recibe la conclusión ya cerrada y el contexto de clínica. No reabre el REQ ni el SQL.
+
+## Orden del razonamiento (obligatorio)
+
+1. Si el texto del REQ (o el formulario) trae la palabra **«contexto»**, ese párrafo dirige el análisis. Buscar la variable o condición que nombra y decir si el caso la cumple.
+2. Base de conocimiento (`conocimiento/_indice_busqueda.json` → ficha). Si falta la ruta o el mapa, completar la base (Documentar / handoff) y **después** seguir.
+3. Fuentes, en este orden: base → Qrystalos2 → `qrystalos.documentacion` → DESAIX (**solo** PREVERSION vs última liberada).
+4. La propuesta habla de **cambios para el equipo** (tablas, campos, condiciones, controles). Prohibido parafrasear el requerimiento.
+
+## Segundo plano y topes de gasto
+
+No lanza si: cerrado sin análisis, fase 1 cerrada, correo enviado, o `analisisCompletado` sin `reanalisisPedido`.
+
+**Sin tope diario.** El freno es:
+
+1. **Tamaño** (`config/topes_modelo.json`): cada motivo tiene `estimado` y `maximo` (caracteres del prompt de arranque). Si supera el máximo, se detiene y pide aval del usuario para continuar.
+2. **Intentos**: un REQ en segundo plano, como mucho **2** arranques (con o sin error de comunicación). «Volver a analizar» reinicia el contador.
+
+Guía transversal para cualquier automatización nueva: `.cursor/rules/ahorro-tokens-automatizacion.mdc` (alwaysApply).

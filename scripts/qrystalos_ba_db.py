@@ -101,8 +101,12 @@ def _mejor_estado(a: str | None, b: str | None) -> str:
 def _read_json(path: str, default: Any = None) -> Any:
     if not os.path.isfile(path):
         return default if default is not None else {}
-    with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except json.JSONDecodeError as exc:
+        print(f"WARN JSON inválido {path}: {exc}", flush=True)
+        return default if default is not None else {}
 
 
 def _write_json(path: str, data: Any) -> None:
@@ -424,12 +428,42 @@ class QrystalosBADB:
             if disk.get("enmiendaAbierta") and not est["fase1Cerrada"]:
                 est["enmiendaAbierta"] = True
                 est["motivoReapertura"] = disk.get("motivoReapertura") or ""
+            est["analisisCompletado"] = bool(disk.get("analisisCompletado"))
+            if isinstance(disk.get("analisisPiezas"), dict):
+                est["analisisPiezas"] = disk.get("analisisPiezas")
+            if isinstance(disk.get("pasos"), dict):
+                est["pasos"] = disk.get("pasos")
+            try:
+                import pasos_analisis
+
+                est["pasosResumen"] = pasos_analisis.resumen(id_caso)
+                est["analisisCompletado"] = bool(est["pasosResumen"].get("completo"))
+                est["pasos"] = est["pasosResumen"].get("pasos")
+            except Exception:
+                pass
             return est
-        return disk or {"fase": 1, "fase1Cerrada": False}
+        try:
+            import pasos_analisis
+
+            disk = dict(disk or {"fase": 1, "fase1Cerrada": False})
+            disk["pasosResumen"] = pasos_analisis.resumen(id_caso)
+            disk["pasos"] = disk["pasosResumen"].get("pasos")
+            disk["analisisCompletado"] = bool(disk["pasosResumen"].get("completo"))
+            return disk
+        except Exception:
+            return disk or {"fase": 1, "fase1Cerrada": False}
+
+    def _enmienda_abierta(self, id_caso: str) -> bool:
+        if not id_caso:
+            return False
+        est = _read_json(os.path.join(self.activo, id_caso, "estado.json"), {})
+        return bool(est.get("enmiendaAbierta")) and not est.get("fase1Cerrada")
 
     def reabrir_enmienda(self, id_caso: str, motivo: str = "") -> dict:
         """Reabre Fase 1 para completar algo (p. ej. contabilidad) sin borrar el dictamen aprobado."""
         solicitud = self.get_solicitud(id_caso)
+        if not solicitud:
+            raise ValueError("Solicitud no encontrada")
         prev = _read_json(os.path.join(self.activo, id_caso, "estado.json"), {})
         estado = {
             "fase": 1,
@@ -442,10 +476,32 @@ class QrystalosBADB:
             "enmiendaAbierta": True,
             "reabiertoEn": _now(),
             "motivoReapertura": motivo or "enmienda",
+            # Conserva la marca: el reanálisis solo arranca con «Volver a analizar».
+            "analisisCompletado": bool(prev.get("analisisCompletado")),
+            "analisisPiezas": prev.get("analisisPiezas") or {},
+            "analisisCompletadoEn": prev.get("analisisCompletadoEn"),
         }
         self._upsert_caso_row(id_caso, solicitud, estado, "")
         _write_json(os.path.join(self.activo, id_caso, "estado.json"), estado)
+        self.marcar_cola_enmienda(id_caso, estado.get("idReq") or "")
         return estado
+
+    def marcar_cola_enmienda(self, id_caso: str, id_req: str = "") -> bool:
+        """Deja el REQ en análisis mientras la enmienda está abierta."""
+        items = self.get_cola()
+        hit = False
+        for item in items:
+            parsed = item.get("parsed") or {}
+            req = item.get("idReqSeleccionado") or parsed.get("idReq") or ""
+            caso = parsed.get("idCaso") or item.get("idCaso") or ""
+            if (id_req and req == id_req) or (id_caso and caso == id_caso):
+                item["estado"] = "en_analisis"
+                item.pop("terminadoPor", None)
+                item.pop("terminadoEn", None)
+                hit = True
+        if hit:
+            self.save_cola(items)
+        return hit
 
     def cerrar_fase1(self, id_caso: str) -> dict:
         estado = self.get_estado(id_caso)
@@ -810,6 +866,23 @@ class QrystalosBADB:
             req = item.get("idReqSeleccionado") or (item.get("parsed") or {}).get("idReq") or ""
             id_caso = (item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or ""
             actual = item.get("estado") or "pendiente"
+            if item.get("terminadoPor") == "sin_analisis":
+                if actual != "terminado":
+                    item["estado"] = "terminado"
+                    cambiado = True
+                continue
+            if item.get("analisisPosterior") == "en_proceso":
+                if actual != "en_analisis":
+                    item["estado"] = "en_analisis"
+                    cambiado = True
+                continue
+            if self._enmienda_abierta(id_caso):
+                if actual != "en_analisis" or item.get("terminadoPor"):
+                    item["estado"] = "en_analisis"
+                    item.pop("terminadoPor", None)
+                    item.pop("terminadoEn", None)
+                    cambiado = True
+                continue
             if actual == "terminado":
                 continue
             mail = self.caso_tiene_correo(id_caso, req)
@@ -865,6 +938,27 @@ class QrystalosBADB:
                 continue
             prev = prev_estado.get(req)
             reabierto = bool(item.pop("reabierto", None))
+            id_caso_item = (item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or ""
+            if item.get("terminadoPor") in ("sin_analisis", "correo_enviado", "ausente_en_lista"):
+                if item.get("analisisPosterior") in ("en_cola", "en_proceso"):
+                    item["analisisPosterior"] = "omitido"
+                    item["analisisPosteriorFin"] = item.get("analisisPosteriorFin") or _now()
+                    item["analisisPosteriorNota"] = (
+                        item.get("analisisPosteriorNota")
+                        or "Ya está cerrado. No se relanza el agente."
+                    )
+            if item.get("terminadoPor") == "sin_analisis":
+                item["estado"] = "terminado"
+                item["terminadoEn"] = item.get("terminadoEn") or _now()
+                continue
+            if item.get("analisisPosterior") == "en_proceso":
+                item["estado"] = "en_analisis"
+                continue
+            if self._enmienda_abierta(id_caso_item):
+                item["estado"] = "en_analisis"
+                item.pop("terminadoPor", None)
+                item.pop("terminadoEn", None)
+                continue
             if reabierto and item.get("estado") == "pendiente" and prev == "terminado":
                 merged = "pendiente"
             else:
@@ -872,7 +966,7 @@ class QrystalosBADB:
             if merged in ("enviado", "terminado"):
                 id_caso = (item.get("parsed") or {}).get("idCaso") or item.get("idCaso") or ""
                 correo = self.caso_tiene_correo(id_caso, req).get("enviado")
-                por_lista = item.get("terminadoPor") == "ausente_en_lista"
+                por_lista = item.get("terminadoPor") in ("ausente_en_lista", "sin_analisis")
                 if correo or item.get("terminadoPor") == "correo_enviado":
                     merged = "terminado"
                     item["terminadoPor"] = item.get("terminadoPor") or "correo_enviado"

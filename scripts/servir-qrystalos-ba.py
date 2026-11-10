@@ -3,10 +3,16 @@
 import base64
 import json
 import os
+
+# Forzar IPv4 en Node.js (undici / puente de Cursor SDK) para evitar timeouts en redes sin IPv6
+if "--dns-result-order=ipv4first" not in (os.environ.get("NODE_OPTIONS") or ""):
+    prev_node_opts = (os.environ.get("NODE_OPTIONS") or "").strip()
+    os.environ["NODE_OPTIONS"] = f"{prev_node_opts} --dns-result-order=ipv4first".strip()
 import re
 import shutil
 import sys
 import time
+import traceback
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -67,6 +73,7 @@ import informe_contab_sesiones as icinforme  # noqa: E402
 import soporte_consultas as scconsulta  # noqa: E402
 import gemini_ilustracion  # noqa: E402
 import prueba_req as prreq  # noqa: E402
+import openai_sugerir  # noqa: E402
 import capacitacion_bloques as capbloques  # noqa: E402
 import capacitacion_ensamblar as capensamblar  # noqa: E402
 
@@ -316,29 +323,67 @@ def _extraer_texto_archivo(path):
 
 
 def _extraer_texto_pdf(path):
-    reader = None
+    # 1. Intentar con pypdf
     try:
         from pypdf import PdfReader
+        try:
+            reader = PdfReader(path)
+            paginas = []
+            for i, page in enumerate(reader.pages or []):
+                t = page.extract_text() or ""
+                if t.strip():
+                    paginas.append(f"--- página {i + 1} ---\n{t.strip()}")
+            if paginas:
+                return "\n\n".join(paginas)[:EXTRACTO_MAX_CHARS], None
+        except Exception as e:
+            pass
+    except ImportError:
+        pass
 
-        reader = PdfReader(path)
+    # 2. Intentar con PyMuPDF (fitz)
+    try:
+        import fitz
+        try:
+            doc = fitz.open(path)
+            paginas = []
+            for i, page in enumerate(doc):
+                t = page.get_text() or ""
+                if t.strip():
+                    paginas.append(f"--- página {i + 1} ---\n{t.strip()}")
+            if paginas:
+                return "\n\n".join(paginas)[:EXTRACTO_MAX_CHARS], None
+        except Exception:
+            pass
+    except ImportError:
+        pass
+
+    # 3. Intentar con PyPDF2
+    try:
+        from PyPDF2 import PdfReader
+        try:
+            reader = PdfReader(path)
+            paginas = []
+            for i, page in enumerate(reader.pages or []):
+                t = page.extract_text() or ""
+                if t.strip():
+                    paginas.append(f"--- página {i + 1} ---\n{t.strip()}")
+            if paginas:
+                return "\n\n".join(paginas)[:EXTRACTO_MAX_CHARS], None
+        except Exception:
+            pass
+    except ImportError:
+        pass
+
+    # Si se llegó aquí, verificar si faltan librerías o si el PDF no contiene texto
+    try:
+        import pypdf
+        return "", "PDF sin texto extraíble (puede ser un documento escaneado/imagen)."
     except ImportError:
         try:
-            from PyPDF2 import PdfReader
-
-            reader = PdfReader(path)
+            import fitz
+            return "", "PDF sin texto extraíble (puede ser un documento escaneado/imagen)."
         except ImportError:
-            return "", "Falta pypdf para leer PDF. El agente igual puede abrir el archivo original."
-    paginas = []
-    for i, page in enumerate(reader.pages or []):
-        try:
-            t = page.extract_text() or ""
-        except Exception:
-            t = ""
-        if t.strip():
-            paginas.append(f"--- página {i + 1} ---\n{t.strip()}")
-    if not paginas:
-        return "", "PDF sin texto extraíble (puede ser escaneo)."
-    return "\n\n".join(paginas)[:EXTRACTO_MAX_CHARS], None
+            return "", "Falta pypdf o pymupdf para leer PDF. El agente igual puede abrir el archivo original."
 
 
 def _guardar_archivo_analisis(id_caso, data_url, nombre_sugerido="", tipo="", solicitud_base=None):
@@ -818,8 +863,6 @@ def _build_instruccion(solicitud):
     id_req = solicitud.get("identificacion", {}).get("idReq", "")
     cola = solicitud.get("cola", {}).get("rutaCola") or "cola/"
     sql = solicitud.get("sql") or {}
-    sql_list = sql.get("archivosEsperados") or []
-    usar_doc = bool(sql.get("usarDocumentacion"))
     metodos = sql.get("metodosDocumentados") or []
     proceso_id = (sql.get("procesoId") or "").strip()
     proceso_path = f"conocimiento/{proceso_id}/sps.json" if proceso_id else "conocimiento/<proceso>/sps.json"
@@ -832,26 +875,16 @@ def _build_instruccion(solicitud):
     paso_q2 = paso_sql + 1
 
     carpeta_sql = f"activo/{id_caso}/sql"
-    if usar_doc and metodos:
-        sql_bloque = f"""{paso_sql}. **SQL — métodos documentados** (no exigir `{carpeta_sql}/` de entrada)
+    metodos_txt = _fmt_metodos_documentados(metodos) if metodos else "- (ninguna casilla; ubique el procedimiento en la base o tráigalo de DESAIX)"
+    sql_bloque = f"""{paso_sql}. **SQL**
+   - Fichas marcadas en el formulario:
+{metodos_txt}
    - Catálogo: `{proceso_path}`
-   - Carpeta de ESTE análisis: `{carpeta_sql}/` (no usar la carpeta compartida `sql/`).
-   - Métodos del formulario:
-{_fmt_metodos_documentados(metodos)}
-   - Lea esas fichas (`hace`, `valida`, `noValida`, `errores`, `llama`, `efecto`).
-   - **No se detenga** porque `{carpeta_sql}/` esté vacío si esos METODO cubren el REQ.
-   - En el **Chat del caso** (`activo/{id_caso}/chat.json`), en el primer resumen, indique si hace falta el .sql de hoy:
-     - La ficha `leido` sirve para clasificar. Si la solución **cambia** ese procedimiento, baje igual el cuerpo de ESE METODO a `{carpeta_sql}/` y cite el bloque de hoy y el sugerido. El resumen de la ficha no reemplaza el bloque.
-     - Alguno `listado` / `no_leido` / `parcial`, o el REQ toca validaciones no documentadas → **bajar** el .sql a `{carpeta_sql}/` (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`).
-   - No invente METODOs que no estén en `sps.json`.
+   - Use la ficha. Si el procedimiento no está en la base, o hace falta el cuerpo para citar el bloque, bájelo de DESAIX a `{carpeta_sql}/` (`python scripts/sqlix_bajar_objeto.py --caso {id_caso} NOMBRE`; PREVERSION primero, luego la última cerrada).
+   - No pida al coordinador que pegue nombres, confirme la carpeta ni decida si hay que leer el .sql de hoy.
+   - No use la carpeta compartida `sql/`. No invente METODOs.
 {paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
-        detener = f"Si falta cola, aclaración, o el Chat concluye que hay que releer el SP: **bajar** el .sql a `{carpeta_sql}/`. No lo deje en `sql/`."
-    else:
-        lista = ", ".join(sql_list) if sql_list else "(ver manifest de esa carpeta)"
-        sql_bloque = f"""{paso_sql}. `{carpeta_sql}/` — scripts de ESTE caso: {lista}
-   No lea ni escriba la carpeta compartida `sql/` (es de Documentar y mezcla otros análisis).
-{paso_q2}. Qrystalos2 (`src/pages`, `src/components`, stores) y documentación (`tablas/`, runbooks)"""
-        detener = f"Si falta algún SQL, imagen, HTML en cola o aclaración: **DETENER y pedirla**. El .sql de este caso va en `{carpeta_sql}/`."
+    detener = "Si falta la cola o una aclaración funcional: **DETENER y pedirla**. El .sql no se pide: si no está en la base, se trae de DESAIX."
 
     img_seccion = f"{img_bloque}\n" if img_bloque else ""
     arch_seccion = f"{arch_bloque}\n" if arch_bloque else ""
@@ -881,8 +914,7 @@ Usted (agente en Cursor) hace el análisis técnico y también escribe los texto
 2. Proyectar **solución concreta** en `contenido.planteamiento` (clasificación capacitación | defecto | hueco, flujo de hoy, causa citada, cambio por capa). Vuelque eso en criteriosAceptacion, alcance, restricciones, analisis y recomendacion, más la lista de SP/METODO **de este cambio** (no el catálogo del módulo). Si el fix es SQL, `contenido.cambioPropuestoSql` trae el bloque de hoy (`---ANTES---`) y el sugerido (`---SUGERIDO---`), leídos del cuerpo del METODO. Un resumen del pedido no cierra el análisis.
 3. Resumir en `chat.json` (autor: agente). No convertir el Chat en cuestionario.
 4. No escriba `dictamenes/{id_caso}.html` a mano. Al cerrar el análisis, la oficina lo genera con la plantilla del dictamen y lo deja en Documentos del Chat. Si corrige el planteamiento, actualice `solicitud.json`.
-5. Si usó métodos documentados: veredicto breve de releer o no el .sql de hoy.
-6. **Mockup UX:** si genera o ajusta `activo/{id_caso}/mockups/`, pinte la **ventana propuesta** (`cambioPropuestoSimple`, criterios, recomendación), no la captura del error ni un control de otro REQ. `imagenes/` es solo referencia «Hoy».
+5. **Mockup UX:** si genera o ajusta `activo/{id_caso}/mockups/`, pinte la **ventana propuesta** (`cambioPropuestoSimple`, criterios, recomendación), no la captura del error ni un control de otro REQ. `imagenes/` es solo referencia «Hoy».
 
 ## Chat
 El coordinador escribe **solo** en la app (pestaña Chat → `chat.json`).
@@ -1076,8 +1108,8 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "ok": True,
                 "version": 4,
                 "db": db.db_path,
-                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "desarrolladores", "correo", "conocimiento", "criteriosAgente", "imagenesAnalisis", "archivosAnalisis", "diagramaFlujo", "solicitarReq", "auditoriaProcesos", "revisarSql", "informeContab"],
-                "openai": {"configurado": False, "deshabilitado": True, "motivo": "Los textos del formulario los escribe el agente (Cursor)."},
+                "features": ["sql", "caso", "chat", "documentos", "historico", "cola", "borrador", "chatSinOpenAI", "cursorBot", "analisisOpenAIReq", "analisisLocal", "desarrolladores", "correo", "conocimiento", "criteriosAgente", "imagenesAnalisis", "archivosAnalisis", "diagramaFlujo", "solicitarReq", "auditoriaProcesos", "revisarSql", "informeContab"],
+                "openai": {"configurado": openai_sugerir.estado_publico().get("configurado", False), "analisisReq": True, "modo": "paralelo"},
                 "cursorBot": {
                     "configurado": bool(load_api_key()),
                     **cursor_key_status(),
@@ -1094,11 +1126,7 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             })
 
         if len(parts) == 2 and parts[0] == "api" and parts[1] == "openai":
-            return self._json({
-                "configurado": False,
-                "deshabilitado": True,
-                "motivo": "OpenAI retirado del formulario. Criterios y textos los escribe el agente.",
-            })
+            return self._json({**openai_sugerir.estado_publico(), "analisisReq": True, "modo": "paralelo"})
 
         if parts == ["api", "solicitar"]:
             return self._json({"ok": True, "items": solreq.listar()})
@@ -1572,6 +1600,12 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if parts == ["api", "cola", "html"]:
             return self._post_cola_html()
 
+        if parts == ["api", "analisis-posterior", "encolar"]:
+            return self._post_analisis_posterior_encolar()
+
+        if parts == ["api", "analisis-posterior", "arrancar"]:
+            return self._post_analisis_posterior_arrancar()
+
         if parts == ["api", "desarrolladores"]:
             return self._post_desarrolladores()
 
@@ -1662,6 +1696,9 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "analisis":
             return self._post_soporte_consulta_analisis(unquote(parts[2]))
 
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "analisis-local":
+            return self._post_soporte_consulta_analisis_local(unquote(parts[2]))
+
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "soporte-consultas" and parts[3] == "agente":
             return self._post_soporte_consulta_agente(unquote(parts[2]))
 
@@ -1713,6 +1750,12 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "solicitud":
             return self._post_solicitud(unquote(parts[2]))
 
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "analizar-openai":
+            return self._post_analizar_openai(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "analizar-local":
+            return self._post_analizar_local(unquote(parts[2]))
+
         if len(parts) == 5 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "mockups" and parts[4] == "subir":
             return self._post_mockup_subir(unquote(parts[2]))
 
@@ -1727,6 +1770,13 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "cerrar-fase1":
             return self._cerrar_fase1(unquote(parts[2]))
+
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "reabrir":
+            return self._reabrir_caso(unquote(parts[2]))
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "reanalizar":
+            return self._reanalizar_caso(unquote(parts[2]))
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "aval-peso":
+            return self._aval_peso_caso(unquote(parts[2]))
 
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "caso" and parts[3] == "imagen":
             return self._post_imagen(unquote(parts[2]))
@@ -2542,6 +2592,39 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                     "sistema",
                     "El agente no pudo arrancar (" + str(bot.get("error") or "error") + "). Revise CURSOR_API_KEY y bot.log.",
                 )
+            scconsulta.actualizar_meta(sid, analisisLanzado=ahora)
+            return self._json({"ok": True, "bot": bot, **scconsulta.panel_consulta(sid)})
+        except FileNotFoundError:
+            return self._json({"ok": False, "error": "Consulta no encontrada."}, 404)
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)}, 500)
+
+    def _post_soporte_consulta_analisis_local(self, sid):
+        try:
+            ahora = datetime.now().isoformat(timespec="seconds")
+            body = {}
+            try:
+                body = self._read_json_body()
+            except Exception:
+                pass
+            nota = (body.get("texto") or "").strip()
+            imagenes = body.get("imagenes") if isinstance(body.get("imagenes"), list) else None
+            if nota or imagenes:
+                scconsulta.append_chat(sid, "coordinador", nota, imagenes)
+            else:
+                pedido = (
+                    "Analice esta consulta contrastando conocimiento/ (procesos, manuales y Stored Procedures). "
+                    "Redacte respuestaOficial con diagnóstico, pasos en pantalla para el cliente y consultas SQL para soporte."
+                )
+                scconsulta.append_chat(sid, "coordinador", pedido)
+            aviso = (
+                "El especialista local (Ollama) está procesando la consulta. "
+                "En breve verá la respuesta en el chat y el documento actualizado."
+            )
+            scconsulta.append_chat(sid, "sistema", aviso)
+            scconsulta.escribir_instruccion(sid)
+            import agente_oficina
+            bot = agente_oficina.lanzar("soporte-consultas", sid, "soporte-consulta-analisis")
             scconsulta.actualizar_meta(sid, analisisLanzado=ahora)
             return self._json({"ok": True, "bot": bot, **scconsulta.panel_consulta(sid)})
         except FileNotFoundError:
@@ -3420,6 +3503,88 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             out["archivo"] = archivo_subido
         return self._json(out)
 
+    def _post_analizar_openai(self, id_caso):
+        """Genera un análisis OpenAI separado; no reemplaza el resultado de Cursor."""
+        if not id_caso or any(c in id_caso for c in "\\/:") or ".." in id_caso:
+            return self._json({"ok": False, "error": "idCaso inválido."}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido."}, 400)
+        solicitud = body.get("solicitud") if isinstance(body, dict) else None
+        if not isinstance(solicitud, dict):
+            solicitud = get_db().get_solicitud(id_caso)
+        if not solicitud:
+            return self._json({"ok": False, "error": "No se encontró el caso."}, 404)
+        contenido = solicitud.get("contenido") if isinstance(solicitud.get("contenido"), dict) else {}
+        if not contenido.get("requerimiento") and not (solicitud.get("cola") or {}).get("archivoCola"):
+            return self._json({"ok": False, "error": "Falta el requerimiento o el archivo de cola."}, 400)
+        try:
+            import openai_analisis_req
+            result = openai_analisis_req.analizar(id_caso, solicitud, incluir_capturas=bool(body.get("incluirCapturas")))
+        except Exception as exc:
+            print(f"ERROR análisis OpenAI {id_caso}: {exc}", flush=True)
+            traceback.print_exc()
+            return self._json({"ok": False, "error": "analisis_openai", "mensaje": "No se pudo preparar el análisis. Revise el registro del servidor."}, 500)
+        if not result.get("ok"):
+            return self._json(result, 502 if result.get("error", "").startswith("openai_") else 400)
+        meta = contenido.get("criteriosMeta") if isinstance(contenido.get("criteriosMeta"), dict) else {}
+        if meta.get("fuente") != "openai" or not contenido.get("analisisPrevioOpenAI"):
+            contenido["analisisPrevioOpenAI"] = {
+                "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "fuente": meta.get("fuente") or "formulario",
+                **{key: contenido.get(key) or "" for key in (
+                    "analisis", "recomendacion", "cambioPropuestoSimple", "cambioPropuestoSql",
+                    "criteriosAceptacion", "alcance", "restricciones", "impactoFe", "impactoApi", "impactoSql",
+                )},
+                "planteamiento": contenido.get("planteamiento") or {},
+            }
+        contenido["analisisOpenAI"] = result["analisis"]
+        solicitud["contenido"] = contenido
+        get_db().guardar_solicitud(id_caso, solicitud)
+        return self._json({"ok": True, "analisis": result["analisis"], "analisisPrevio": contenido.get("analisisPrevioOpenAI") or {}, "modelo": result.get("modelo"), "fuentes": result.get("fuentes") or []})
+
+    def _post_analizar_local(self, id_caso):
+        """Genera un análisis técnico 100% LOCAL con Ollama (Qwen) y la base de conocimiento."""
+        if not id_caso or any(c in id_caso for c in "\\/:") or ".." in id_caso:
+            return self._json({"ok": False, "error": "idCaso inválido."}, 400)
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"ok": False, "error": "JSON inválido."}, 400)
+        solicitud = body.get("solicitud") if isinstance(body, dict) else None
+        if not isinstance(solicitud, dict):
+            solicitud = get_db().get_solicitud(id_caso)
+        if not solicitud:
+            return self._json({"ok": False, "error": "No se encontró el caso."}, 404)
+        contenido = solicitud.get("contenido") if isinstance(solicitud.get("contenido"), dict) else {}
+        if not contenido.get("requerimiento") and not (solicitud.get("cola") or {}).get("archivoCola"):
+            return self._json({"ok": False, "error": "Falta el requerimiento o el archivo de cola."}, 400)
+        try:
+            import local_analisis_req
+            result = local_analisis_req.analizar(id_caso, solicitud, incluir_capturas=bool(body.get("incluirCapturas")))
+        except Exception as exc:
+            print(f"ERROR análisis Local {id_caso}: {exc}", flush=True)
+            traceback.print_exc()
+            return self._json({"ok": False, "error": "analisis_local", "mensaje": f"Error en análisis local: {exc}"}, 500)
+        if not result.get("ok"):
+            return self._json(result, 502 if result.get("error", "").startswith("ollama_") else 400)
+        meta = contenido.get("criteriosMeta") if isinstance(contenido.get("criteriosMeta"), dict) else {}
+        if meta.get("fuente") != "local" or not contenido.get("analisisPrevioOpenAI"):
+            contenido["analisisPrevioOpenAI"] = {
+                "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "fuente": meta.get("fuente") or "formulario",
+                **{key: contenido.get(key) or "" for key in (
+                    "analisis", "recomendacion", "cambioPropuestoSimple", "cambioPropuestoSql",
+                    "criteriosAceptacion", "alcance", "restricciones", "impactoFe", "impactoApi", "impactoSql",
+                )},
+                "planteamiento": contenido.get("planteamiento") or {},
+            }
+        contenido["analisisOpenAI"] = result["analisis"]
+        solicitud["contenido"] = contenido
+        get_db().guardar_solicitud(id_caso, solicitud)
+        return self._json({"ok": True, "analisis": result["analisis"], "analisisPrevio": contenido.get("analisisPrevioOpenAI") or {}, "modelo": result.get("modelo"), "fuentes": result.get("fuentes") or []})
+
     def _get_solicitud(self, id_caso):
         disk = _read_json_file(os.path.join(ACTIVO_ROOT, id_caso, "solicitud.json"), {})
         db_sol = get_db().get_solicitud(id_caso) or {}
@@ -3483,7 +3648,11 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
                 "mensajes": chat["mensajes"],
                 "bot": leer_estado_bot(id_caso),
             })
-        if accion == "ubicar":
+        motor = (body.get("motor") or "").strip().lower()
+        if motor == "gemini":
+            aviso_texto = "El agente de Gemini está analizando el caso. Espere su respuesta aquí."
+            motivo_chat = "chat"
+        elif accion == "ubicar":
             aviso_texto = (
                 "Dato recibido. Sigue la ubicación del flujo y, si ya queda cerrado, el análisis."
             )
@@ -3498,7 +3667,13 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
             "fecha": datetime.now().isoformat(timespec="seconds"),
         }
         db.append_chat(id_caso, aviso)
-        bot = agentes_panel.lanzar("analista", id_caso, motivo_chat)
+        if motor == "gemini":
+            import importlib
+            import gemini_bot
+            importlib.reload(gemini_bot)
+            bot = gemini_bot.lanzar_bot(id_caso, motivo_chat)
+        else:
+            bot = agentes_panel.lanzar("analista", id_caso, motivo_chat)
         if not bot.get("ok"):
             fallo = {
                 "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "e",
@@ -3668,7 +3843,36 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
     def _get_cola(self):
         db = get_db()
         db.aplicar_estados_cola()
-        return self._json({"items": db.get_cola()})
+        limite = {}
+        try:
+            import analisis_posterior
+
+            analisis_posterior.sincronizar_estados()
+            limite = analisis_posterior.estado_limite()
+        except Exception as exc:
+            print(f"WARN analisis posterior: {exc}", flush=True)
+        return self._json({"items": db.get_cola(), "limitePosterior": limite})
+
+    def _post_analisis_posterior_encolar(self):
+        try:
+            body = self._read_json_body()
+        except json.JSONDecodeError:
+            return self._json({"error": "JSON inválido"}, 400)
+        import analisis_posterior
+
+        out = analisis_posterior.encolar(
+            str(body.get("idCaso") or ""),
+            str(body.get("idReq") or ""),
+            str(body.get("proyecto") or ""),
+            str(body.get("modulo") or ""),
+        )
+        code = 200 if out.get("ok") else 400
+        return self._json(out, code)
+
+    def _post_analisis_posterior_arrancar(self):
+        import analisis_posterior
+
+        return self._json(analisis_posterior.arrancar())
 
     def _post_cola_html(self):
         try:
@@ -4323,6 +4527,51 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _reabrir_caso(self, id_caso):
+        try:
+            body = self._read_json_body() or {}
+        except json.JSONDecodeError:
+            body = {}
+        motivo = (body.get("motivo") or "corregir requerimiento").strip()
+        db = get_db()
+        try:
+            estado = db.reabrir_enmienda(id_caso, motivo)
+        except ValueError as exc:
+            return self._json({"ok": False, "error": str(exc)}, 404)
+        aviso = {
+            "id": datetime.now().strftime("%Y%m%d%H%M%S%f") + "r",
+            "autor": "sistema",
+            "texto": (
+                "Caso reabierto. El dictamen anterior sigue en Documentos. "
+                "Para un análisis nuevo, pulse Volver a analizar (limpia sesión y piezas previas)."
+            ),
+            "fecha": datetime.now().isoformat(timespec="seconds"),
+        }
+        db.append_chat(id_caso, aviso)
+        return self._json({"ok": True, "estado": estado})
+
+    def _reanalizar_caso(self, id_caso):
+        from cursor_bot import pedir_reanalisis
+
+        out = pedir_reanalisis(id_caso)
+        code = 200 if out.get("ok") else 400
+        return self._json(out, code)
+
+    def _aval_peso_caso(self, id_caso):
+        from cursor_bot import avalar_continuar_peso, leer_estado_bot, lanzar_bot
+
+        out = avalar_continuar_peso(id_caso)
+        bot = leer_estado_bot(id_caso)
+        motivo = str(bot.get("motivo") or "analizar-req").strip() or "analizar-req"
+        try:
+            body = self._read_json_body() or {}
+        except json.JSONDecodeError:
+            body = {}
+        if body.get("reanudar"):
+            lanzado = lanzar_bot(id_caso, motivo)
+            out["bot"] = lanzado
+        return self._json(out)
+
     def _cerrar_fase1(self, id_caso):
         try:
             body = self._read_json_body() or {}
@@ -4334,7 +4583,25 @@ class QrystalosBAHandler(SimpleHTTPRequestHandler):
         estado = db.cerrar_fase1(id_caso)
         solicitud = db.get_solicitud(id_caso) or {}
         nombre_dev = ((solicitud.get("personas") or {}).get("desarrollador") or "").strip()
-        if dest and nombre_dev:
+        data_devs = devs.load_lista()
+        dev_obj = devs._find(data_devs, nombre_dev) if nombre_dev else None
+        dev_reg_mail = (dev_obj.get("correo") or "").strip().lower() if dev_obj else ""
+
+        if dev_reg_mail and dest.lower() != dev_reg_mail:
+            for d in data_devs.get("desarrolladores", []):
+                d_mail = (d.get("correo") or "").strip().lower()
+                if d_mail and d_mail == dest.lower() and devs.norm_nombre(d.get("nombre")) != devs.norm_nombre(nombre_dev):
+                    print(
+                        f"WARN _cerrar_fase1: '{dest}' pertenece a {d.get('nombre')}, "
+                        f"pero el caso es de {nombre_dev}. Corrigiendo a {dev_reg_mail}.",
+                        flush=True,
+                    )
+                    dest = dev_reg_mail
+                    break
+        if not dest:
+            dest = dev_reg_mail
+
+        if dest and nombre_dev and not dev_reg_mail:
             try:
                 devs.set_correo(nombre_dev, dest)
             except (ValueError, OSError) as exc:
@@ -4698,6 +4965,12 @@ def main():
     _free_port_if_needed(PORT)
     try:
         get_db().init()
+        try:
+            import analisis_posterior
+
+            analisis_posterior.asegurar_worker()
+        except Exception as exc:
+            print(f"Analisis posterior: {exc}", flush=True)
         server = ThreadingHTTPServer(("127.0.0.1", PORT), QrystalosBAHandler)
     except OSError as exc:
         print(f"ERROR: no se pudo usar el puerto {PORT}: {exc}", flush=True)
@@ -4715,6 +4988,14 @@ def main():
     except Exception as exc:
         print(f"Documentar vigilante: {exc}", flush=True)
     server.serve_forever()
+
+
+import analisis_posterior as _analisis_posterior  # noqa: E402
+
+_analisis_posterior.registrar_generadores(
+    _generar_y_guardar_diagrama_caso,
+    _generar_y_guardar_mockups_caso,
+)
 
 
 if __name__ == "__main__":

@@ -1,33 +1,32 @@
 ---
 description: Agente Requerimientos (Analista/BA) — REQ vs base primero, luego código; dudas, cambio propuesto, impactos y dictamen
-globs: activo/**,solicitudes/**,cola/**,dictamenes/**
+globs: 
 alwaysApply: false
 ---
 
-# Agente Requerimientos
+# Agente Requerimientos (Analista / BA)
 
-Modos: **analisis** (caso `activo/`, dictamen), **comite** (solicitud `solicitudes/`), **contable** (validar contabilidad o comprobante errado con `conocimiento/contabilidad/procedencias`). No implementa en Qrystalos2 ni BD.
+Atiende un requerimiento o necesidad: `activo/{id-caso}/` o `solicitudes/{id}/`. Sesión propia por caso.
 
-## Orden
+## Ciclo y estados
 
-0. **REPRODUCIR EL REPORTE** (obligatorio cuando hay error o fallo):
-   a) Extraer texto literal del error del REQ.
-   b) Leer TODAS las capturas en `activo/{id}/imagenes/` o `solicitudes/{id}/imagenes/` — interpretar ventana, botón y datos.
-   c) Ubicar SP/METODO que lanza el error: buscar el texto en **DESAIX (PREVERSION siempre)**, nunca un `.sql` guardado.
-   d) Trazar parámetros reales según ventana de origen (ej. `CNSFCT` puede traer `CNSFNOT` cuando origen es nota).
-   e) Seguir el flujo en el SP hasta la validación que falla (y SPKs llamados).
-   f) Contrastar con diagnóstico del usuario: **no aceptarlo sin evidencia**. Si difiere, decirlo y explicar causa real.
-   g) Dejar en `solicitud.json → contenido.reproduccion`: `errorLiteral`, `pantalla`, `spMetodo`, `parametrosReales` (dict con valor real según origen), `ramaQueFalla`, `diagnosticoUsuario`, `diagnosticoReal`, `confirmaDiagnostico` (bool).
-   h) Resumir en `chat.json` (autor: agente) antes del análisis: 'Reproducción: [error] en [pantalla] → [SP:línea]. Parámetro [X] trae [valor real]. Falla en [rama]. Diagnóstico usuario: [texto]. Real: [causa raíz].'
-   
-   **Caso real que FALLÓ sin este paso:** RIPS JSON nota crédito anulación total (FENC591, 01C00000413). Error: 'No se encontró factura ni glosa para CNSFCT...'. Usuario dijo que FE no envía CNSFCT. **Realidad:** FE envía CNSFNOT en parámetro CNSFCT (correcto, viene de NOTACT); el SP debe identificar por parámetro de origen que viene de nota y buscar CNSFCT real en FTR desde factura de la nota. Faltaba rama de anulación total.
+Ver `.cursor/rules/analisis-requerimiento.mdc`. Resumen:
 
-1. Leer el REQ (cola HTML, `solicitud.json`, chat del caso).
-2. **Base primero**: proceso y control vía `conocimiento/_indice_busqueda.json`; leer solo las fichas SP/METODO del control.
+- **Análisis completo** = plan + mockup + dictamen (`estado.analisisCompletado`).
+- **Cerrar fase 1** = aval del dictamen → correo → REQ terminado.
+- **Volver a analizar** solo con caso reabierto; limpia sesión e historial del agente antes.
+- Modelo: Composer 2.5 Fast en toda la cadena, mockup incluido. El mockup solo recibe la conclusión ya cerrada.
+- Orden: «contexto» del REQ → base (completar si falta) → Qrystalos2 → documentación → DESAIX (PREVERSION vs liberada).
+- Propuesta = cambios para el equipo; no parafrasear el REQ.
+
+## Reglas principales
+
+1. **Base primero:** buscar solo en `conocimiento/_indice_busqueda.json` las fichas del control.
+2. **Paso 0:** ¿el sistema ya lo hace? Contrastar texto del REQ vs captura vs todos los caminos del control (botones, ayuda, `necesidadesYaCubiertas`). Clasificar: capacitación | defecto | hueco. No proponer desarrollo si es desconocimiento del proceso.
 3. ¿Ya existe? (capacitación | defecto | hueco) — inventariar todos los caminos del control.
 4. **Solo para huecos**: si es SQL → DESAIX (`.sql` a la carpeta del caso); si es código fuente → Qrystalos2; al final `qrystalos.documentacion`.
 5. Cada hueco: decirlo en el Chat y **handoff** a Conocimiento (`documentar_metodo`/`pedir_sql`, `idCaso`).
-6. Dudas al coordinador, cambio propuesto e impactos (UI | persistencia | SP/vista | API | mixto), dictamen según `coordinador-qrystalos.mdc`.
+6. Dudas al coordinador, cambio propuesto e impactos (UI | persistencia | SP/vista | API | mixto). El análisis queda en `solicitud.json` y en el chat. El dictamen HTML lo genera la oficina al cerrar el planteamiento; el coordinador lo avala con **Cerrar fase 1**.
 
 ## Dos pasos al analizar (sin otra acción del coordinador)
 
@@ -43,6 +42,10 @@ El análisis no parafrasea el pedido. Deje `contenido.planteamiento` según `scr
 - Clasificación: capacitación, defecto o hueco, después de ver los caminos del control (botones, ayuda, `necesidadesYaCubiertas`).
 - Flujo de hoy: pantalla o botón, MODELO/METODO, procedimiento, efecto.
 - Causa citada de la ficha o del bloque leído.
+- **`cambioPropuestoSimple` / `cambio.negocio` (Propuesta de cambio - Sección 5.0):** Sigue estrictamente `.cursor/rules/propuesta-cambio.mdc`.
+  > [!IMPORTANT]
+  > **PROHIBIDO repetir el texto del requerimiento o la queja del cliente en la propuesta.**
+  > La propuesta es la solución técnica prescriptiva del Analista de Negocio para el Desarrollador. Debe indicar qué se propone hacer: qué tabla/campo cambia, qué condición o filtro lógico se modifica, qué cálculo o fórmula se implementa, qué nuevo comportamiento adquiere el control y cómo se preservan los registros históricos. En dos bloques: **Propuesta** (pasos numerados de la solución) y **Antecedentes** (hecho técnico que lo impedía).
 - Cambio por capa. Si hay cambio SQL, el fragmento sale del cuerpo de ese METODO (`---ANTES---` / `---SUGERIDO---`), aunque la ficha esté `leido`. El resumen de la ficha no reemplaza el bloque.
 - Al menos dos criterios que se puedan comprobar.
 

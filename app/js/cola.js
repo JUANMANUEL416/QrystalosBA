@@ -7,6 +7,7 @@ window.QrysCola = (function () {
   const PATH_COLA = "C:\\DevQuasar\\Qrystalos\\QrystalosBA\\cola\\";
   /** Copia en memoria: si el navegador rechaza localStorage, la tabla igual muestra el estado nuevo. */
   let memoriaCola = null;
+  let limitePosterior = null;
 
   function loadCola() {
     if (memoriaCola) return memoriaCola;
@@ -76,6 +77,7 @@ window.QrysCola = (function () {
       const resp = await fetch("/api/cola", { cache: "no-store" });
       if (!resp.ok) return loadCola();
       const data = await resp.json();
+      limitePosterior = data.limitePosterior || null;
       if (Array.isArray(data.items) && data.items.length) {
         const slim = colaParaGuardar(data.items);
         memoriaCola = slim;
@@ -513,7 +515,9 @@ window.QrysCola = (function () {
         const prev = cola[existingIdx];
         // Si volvió a aparecer en la lista dinámica, reabre como pendiente
         // solo cuando estaba marcado terminado (no toca en_analisis/dictamen/…).
-        const reabrir = prev.estado === "terminado" ? { estado: "pendiente", reabierto: true } : {};
+        const cerradoAMano = prev.terminadoPor === "sin_analisis";
+        const reabrir =
+          prev.estado === "terminado" && !cerradoAMano ? { estado: "pendiente", reabierto: true } : {};
         cola[existingIdx] = {
           ...prev,
           ...reabrir,
@@ -677,6 +681,38 @@ window.QrysCola = (function () {
     return req.toLowerCase().includes(q.toLowerCase());
   }
 
+  function proyectoDeItem(item) {
+    return String(item?.parsed?.proyecto || "").trim();
+  }
+
+  function coincideFiltroProyecto(item, proyecto) {
+    const q = String(proyecto || "").trim();
+    if (!q) return true;
+    return proyectoDeItem(item).toLowerCase() === q.toLowerCase();
+  }
+
+  /** Llena el desplegable con los proyectos de la lista visible y conserva la selección. */
+  function sincronizarFiltroProyecto(items, seleccionado) {
+    const sel = document.getElementById("filtroColaProyecto");
+    const proyectos = [...new Set(items.map(proyectoDeItem).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, "es", { sensitivity: "base" }),
+    );
+    const pedido = String(seleccionado || "").trim();
+    const actual = proyectos.find((p) => p.toLowerCase() === pedido.toLowerCase()) || "";
+    if (sel) {
+      const firma = proyectos.join("\u0001");
+      if (sel.dataset.proyectos !== firma) {
+        sel.innerHTML =
+          `<option value="">Todos los proyectos</option>` +
+          proyectos.map((p) => `<option value="${escAttr(p)}">${esc(p)}</option>`).join("");
+        sel.dataset.proyectos = firma;
+      }
+      if (sel.value !== actual) sel.value = actual;
+      sel.classList.toggle("activo", !!actual);
+    }
+    return actual;
+  }
+
   function renderColaTable(tbody, onAbrir, onSeleccionarReq, onChat, opts) {
     migrateOrdenPagina();
     const cola = sortColaItems(loadCola());
@@ -684,7 +720,10 @@ window.QrysCola = (function () {
     const verTerminados = !!opts?.verTerminados;
     const activos = cola.filter((item) => item.estado !== "terminado");
     const base = verTerminados ? cola : activos;
-    const visibles = base.filter((item) => coincideFiltroReq(item, filtro));
+    const filtroProy = sincronizarFiltroProyecto(base, opts?.filtroProyecto);
+    const visibles = base.filter(
+      (item) => coincideFiltroReq(item, filtro) && coincideFiltroProyecto(item, filtroProy),
+    );
     const nTerm = cola.length - activos.length;
     const nPend = cola.filter((i) => i.estado === "pendiente" || !i.estado).length;
     const nDict = cola.filter((i) => i.estado === "dictamen" || i.estado === "aprobado").length;
@@ -700,12 +739,14 @@ window.QrysCola = (function () {
     setKpi("colaKpiTerminados", nTerm);
     setKpi("hubKpiColaTotal", activos.length);
     setKpi("hubKpiCasosFase1", nProg);
+    pintarResumenAnalisisPosterior(cola);
 
     const hint = document.getElementById("colaFiltroHint");
     if (hint) {
       const partes = [];
-      if (filtro.trim()) partes.push(`${visibles.length} de ${base.length}`);
+      if (filtro.trim() || filtroProy) partes.push(`${visibles.length} de ${base.length}`);
       else partes.push(`${activos.length} activos`);
+      if (filtroProy) partes.push(filtroProy);
       if (nTerm) partes.push(`${nTerm} terminados`);
       hint.textContent = partes.join(" · ");
     }
@@ -714,11 +755,15 @@ window.QrysCola = (function () {
       return;
     }
     if (!visibles.length) {
-      const vacio = filtro.trim()
-        ? `Ningún REQ coincide con «${esc(filtro.trim())}».`
-        : nTerm && !verTerminados
-          ? `No hay REQ activos. ${nTerm} terminados (ausentes en la lista de avalasesor). Marque «Ver terminados» para listarlos.`
-          : "Sin items visibles.";
+      const vacio = filtroProy && filtro.trim()
+        ? `Ningún REQ de «${esc(filtroProy)}» coincide con «${esc(filtro.trim())}».`
+        : filtroProy
+          ? `Ningún REQ del proyecto «${esc(filtroProy)}».`
+          : filtro.trim()
+            ? `Ningún REQ coincide con «${esc(filtro.trim())}».`
+            : nTerm && !verTerminados
+              ? `No hay REQ activos. ${nTerm} terminados (ausentes en la lista de avalasesor). Marque «Ver terminados» para listarlos.`
+              : "Sin items visibles.";
       tbody.innerHTML = `<tr><td colspan="7" class="empty">${vacio}</td></tr>`;
       return;
     }
@@ -728,10 +773,14 @@ window.QrysCola = (function () {
         const p = item.parsed;
         const necesitaSel = item.parseResult?.esLista && !item.parsed;
         const num = item.ordenPagina != null ? item.ordenPagina + 1 : idx + 1;
+        const trabajando = item.analisisPosterior === "en_proceso";
+        const pill = trabajando
+          ? `<span class="pill pill-progress cola-trabajando-pill" title="El agente sigue en este requerimiento"><span class="cola-trabajando-spinner" aria-hidden="true"></span>Trabajando</span>`
+          : `<span class="pill pill-${estadoClass(item.estado)}">${labelEstadoItem(item)}</span>${pillAnalisisPosterior(item)}`;
         return `
-      <tr>
+      <tr class="${trabajando ? "cola-fila-trabajando" : ""}">
         <td class="col-orden">${num}</td>
-        <td><span class="pill pill-${estadoClass(item.estado)}">${labelEstado(item.estado)}</span></td>
+        <td>${pill}</td>
         <td><strong>${esc(p?.idReq || item.idReqSeleccionado || "—")}</strong><br><small>${esc(item.archivoCola)}</small></td>
         <td>${esc(p?.proyecto || (necesitaSel ? "— seleccione REQ —" : "—"))}</td>
         <td>${esc(p?.moduloNombre || "—")}</td>
@@ -740,6 +789,7 @@ window.QrysCola = (function () {
           ${necesitaSel ? `<button type="button" class="btn btn-secondary btn-sm btn-sel-req" data-file="${escAttr(item.archivoCola)}">Elegir REQ</button>` : ""}
           <button type="button" class="btn btn-primary btn-sm btn-abrir-cola" data-file="${escAttr(item.archivoCola)}" data-req="${escAttr(item.idReqSeleccionado || p?.idReq || "")}" ${necesitaSel ? "disabled" : ""}>Abrir</button>
           ${!necesitaSel && p?.idCaso ? `<button type="button" class="btn btn-secondary btn-sm btn-chat-cola" data-file="${escAttr(item.archivoCola)}" data-req="${escAttr(item.idReqSeleccionado || p?.idReq || "")}" title="Chat del caso">💬 Chat</button>` : ""}
+          ${!necesitaSel && item.estado !== "terminado" ? `<button type="button" class="btn btn-ghost btn-sm btn-cerrar-sin" data-file="${escAttr(item.archivoCola)}" data-req="${escAttr(item.idReqSeleccionado || p?.idReq || "")}" title="Ver el aval y cerrar sin análisis">Cerrar sin análisis</button>` : ""}
           <button type="button" class="btn btn-ghost btn-sm btn-del-cola" data-file="${escAttr(item.archivoCola)}" data-req="${escAttr(item.idReqSeleccionado || "")}">×</button>
         </td>
       </tr>`;
@@ -754,6 +804,11 @@ window.QrysCola = (function () {
         btn.addEventListener("click", () => onChat(btn.dataset.file, btn.dataset.req));
       });
     }
+    if (opts?.onCerrarSinAnalisis) {
+      tbody.querySelectorAll(".btn-cerrar-sin").forEach((btn) => {
+        btn.addEventListener("click", () => opts.onCerrarSinAnalisis(btn.dataset.file, btn.dataset.req));
+      });
+    }
     tbody.querySelectorAll(".btn-sel-req").forEach((btn) => {
       btn.addEventListener("click", () => onSeleccionarReq(btn.dataset.file));
     });
@@ -766,6 +821,80 @@ window.QrysCola = (function () {
         renderColaTable(tbody, onAbrir, onSeleccionarReq, onChat, opts);
       });
     });
+  }
+
+  function pillAnalisisPosterior(item) {
+    const estado = item?.analisisPosterior;
+    const mapa = {
+      en_cola: ["pending", "Análisis · En cola"],
+      en_proceso: ["progress", "Trabajando"],
+      terminado: ["done", "Análisis · Terminado"],
+      omitido: ["done", "Análisis · No se relanza"],
+      error: ["mail-no", "Análisis · No terminó"],
+    };
+    const par = mapa[estado];
+    if (!par) return "";
+    const title = item.analisisPosteriorNota
+      ? escAttr(item.analisisPosteriorNota)
+      : item.analisisPosteriorError
+        ? escAttr(item.analisisPosteriorError)
+        : par[1];
+    const marca = estado === "en_proceso"
+      ? `<span class="pill pill-${par[0]} cola-trabajando-pill" title="${title}"><span class="cola-trabajando-spinner" aria-hidden="true"></span>${par[1]}</span>`
+      : `<span class="pill pill-${par[0]}" title="${title}">${par[1]}</span>`;
+    return `<div class="cola-analisis-estado">${marca}</div>`;
+  }
+
+  function pintarResumenAnalisisPosterior(cola) {
+    const btn = document.getElementById("btnAnalizarSegundoPlano");
+    if (!btn) return;
+    const nCola = cola.filter((i) => i.analisisPosterior === "en_cola").length;
+    const nProc = cola.filter((i) => i.analisisPosterior === "en_proceso").length;
+    const actual = cola.find((i) => i.analisisPosterior === "en_proceso");
+    const reqActual = actual?.parsed?.idReq || actual?.idReqSeleccionado || "";
+    btn.textContent = nProc
+      ? (reqActual ? `Trabajando · ${reqActual}` : "Trabajando…")
+      : (nCola ? `Analizar con Antigravity en segundo plano (${nCola})` : "Analizar con Antigravity en segundo plano");
+    btn.disabled = !nCola && !nProc;
+    const aviso = document.getElementById("avisoAnalisisTrabajando");
+    const titulo = document.getElementById("avisoAnalisisTrabajandoTitulo");
+    const detalle = document.getElementById("avisoAnalisisTrabajandoDetalle");
+    if (aviso) {
+      if (actual) {
+        const proyecto = actual.parsed?.proyecto || "";
+        const modulo = actual.parsed?.moduloNombre || "";
+        const donde = [proyecto, modulo].filter(Boolean).join(" · ");
+        if (titulo) titulo.textContent = reqActual
+          ? `Trabajando el REQ ${reqActual}`
+          : "Trabajando en segundo plano";
+        if (detalle) {
+          const resto = nCola === 1 ? "Queda 1 en cola." : nCola > 1 ? `Quedan ${nCola} en cola.` : "No quedan más en cola.";
+          detalle.textContent = [donde, resto].filter(Boolean).join(" · ");
+        }
+        aviso.hidden = false;
+      } else {
+        aviso.hidden = true;
+      }
+    }
+    const partes = [];
+    if (limitePosterior?.maxIntentos) {
+      partes.push(`Máx. ${limitePosterior.maxIntentos} intentos por REQ`);
+    }
+    if (limitePosterior?.bloqueadosPorIntentos) {
+      partes.push(`${limitePosterior.bloqueadosPorIntentos} bloqueados por intentos`);
+    }
+    if (nCola) partes.push(`${nCola} en cola`);
+    if (nProc) partes.push(`${nProc} en proceso`);
+    const nFin = cola.filter((i) => i.analisisPosterior === "terminado").length;
+    if (nFin) partes.push(`${nFin} terminados`);
+    btn.title = partes.length
+      ? partes.join(" · ")
+      : "Analiza, uno por uno, los requerimientos guardados con Análisis posterior. Tope: tamaño del prompt + 2 intentos.";
+  }
+
+  function labelEstadoItem(item) {
+    if (item?.estado === "terminado" && item.terminadoPor === "sin_analisis") return "Cerrado sin análisis";
+    return labelEstado(item?.estado);
   }
 
   function labelEstado(e) {

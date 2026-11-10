@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUTA = os.path.join(ROOT, "config", "orquesta.json")
@@ -72,6 +73,22 @@ def usa_fast(motivo: str) -> bool:
         if param["id"] == "fast":
             return param["value"].lower() in ("1", "true", "yes", "si", "on")
     return False
+
+
+def limites_segundo_plano() -> dict:
+    """Topes del segundo plano: intentos (tamaño vive en topes_modelo.json)."""
+    try:
+        import topes_modelo
+
+        cfg = topes_modelo.cargar().get("intentosSegundoPlano") or {}
+        return {
+            "maxSinError": int(cfg.get("maxSinError") or 2),
+            "maxConError": int(cfg.get("maxConError") or 2),
+            "maxCasosPorDia": 0,
+            "maxTurnosPorCaso": 0,
+        }
+    except Exception:
+        return {"maxSinError": 2, "maxConError": 2, "maxCasosPorDia": 0, "maxTurnosPorCaso": 0}
 
 
 def siguiente(motivo: str) -> str:
@@ -189,6 +206,49 @@ def _md_html(texto: str) -> str:
     return "\n".join(bloques) or "<p>No documentado.</p>"
 
 
+def _cabecera_validacion(id_caso: str, sol: dict) -> str:
+    """Checklist y validar-antes desde solicitud.json."""
+    ident = sol.get("identificacion") if isinstance(sol.get("identificacion"), dict) else {}
+    contenido = sol.get("contenido") if isinstance(sol.get("contenido"), dict) else {}
+    id_req = _esc(ident.get("idReq") or "")
+    criterios = str(contenido.get("criteriosAceptacion") or "").strip()
+    validar = contenido.get("validarAntes") if isinstance(contenido.get("validarAntes"), dict) else {}
+    validar_txt = _esc(str(validar.get("texto") or "").strip())
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    items = []
+    for linea in criterios.replace("\r\n", "\n").split("\n"):
+        fila = linea.strip()
+        if not fila:
+            continue
+        items.append(f"<li>{_esc(fila.lstrip('0123456789. '))}</li>")
+    lista = "\n".join(items) if items else "<li>Sin criterios en el formulario.</li>"
+    imgs = []
+    for img in contenido.get("imagenesAnalisis") or []:
+        if not isinstance(img, dict):
+            continue
+        nombre = _esc(str(img.get("nombre") or "").strip())
+        if not nombre:
+            continue
+        src = f"/api/caso/{_esc(id_caso)}/imagen/{nombre}"
+        imgs.append(
+            f'<figure><img src="{src}" alt="{nombre}" style="max-width:100%;border:1px solid #e4d5c0;border-radius:6px">'
+            f"<figcaption>{nombre}</figcaption></figure>"
+        )
+    evidencias = "\n".join(imgs) if imgs else "<p>Sin capturas adjuntas.</p>"
+    return f"""
+<section class="validacion">
+<h1>Documento para validar — REQ {id_req}</h1>
+<p class="meta">Caso {_esc(id_caso)} · Generado {ts}</p>
+<h2>Checklist de aceptación</h2>
+<ol>{lista}</ol>
+<h2>Validar antes de desarrollar</h2>
+<p>{validar_txt or "No aplica."}</p>
+<h2>Evidencias del REQ</h2>
+{evidencias}
+</section>
+"""
+
+
 def armar(id_caso: str) -> str:
     """Junta manual, guion, ventana y diagrama en un solo HTML."""
     import cursor_bot
@@ -196,6 +256,8 @@ def armar(id_caso: str) -> str:
     base = cursor_bot.caso_dir(id_caso)
     material = os.path.join(base, "material")
     os.makedirs(material, exist_ok=True)
+    sol_path = os.path.join(base, "solicitud.json")
+    sol = cursor_bot.read_json(sol_path, {})
     documento = ""
     guion = ""
     doc_path = os.path.join(material, "documento.md")
@@ -210,7 +272,7 @@ def armar(id_caso: str) -> str:
     ventana = ""
     if os.path.isfile(mockup):
         ventana = (
-            '<iframe class="ventana" src="../mockups/mockup-ventana-flexible.html" '
+            f'<iframe class="ventana" src="/activo/{_esc(id_caso)}/mockups/mockup-ventana-flexible.html" '
             'title="Ventana"></iframe>'
         )
     else:
@@ -219,7 +281,6 @@ def armar(id_caso: str) -> str:
     try:
         import diagrama_flujo
 
-        sol = cursor_bot.read_json(os.path.join(base, "solicitud.json"), {})
         if isinstance(sol, dict) and sol:
             ctx = diagrama_flujo.contexto_caso(sol)
             diagrama = diagrama_flujo.render_fragmento(ctx)

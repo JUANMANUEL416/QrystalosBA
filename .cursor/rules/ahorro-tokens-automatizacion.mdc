@@ -1,0 +1,94 @@
+---
+description: Guía obligatoria al diseñar o tocar automatizaciones — menos tokens, menos reproceso, topes claros
+alwaysApply: true
+---
+
+# Ahorro de tokens y recursos (automatizaciones)
+
+Aplique esta guía **cada vez** que se diseñe, amplíe o corrija un flujo que llame a un modelo (Cursor, segundo plano, chat, Documentar, Consultas, comité, revisión SQL, etc.).
+
+Si la propuesta gasta contexto o relanza trabajo ya hecho, **dígalo antes de implementar** y ofrezca el diseño con checkpoints y topes.
+
+## 1. No reprocesar lo asentado
+
+- Toda cadena multipaso lleva **estados por paso** (`pendiente` | `en_curso` | `listo` | `error`).
+- Referencia de REQ: `estado.pasos` y `scripts/pasos_analisis.py` (ubicar → analizar → material → mockup → dictamen).
+- El orquestador **solo lanza el primer paso pendiente**. Un paso `listo` no vuelve al modelo.
+- Si cambia un paso intermedio, **invalide desde ese paso hacia adelante**, no borre todo salvo «Volver a analizar» / reinicio explícito.
+
+```
+Mal:  al fallar el mockup, volver a ubicar y analizar.
+Bien: mockup pendiente; ubicar y analizar siguen listos.
+```
+
+## 2. Limpiar antes de un trabajo nuevo
+
+- Antes de un **análisis o turno nuevo** (no encadenado): limpiar sesión del agente (`agente.json`, contadores).
+- Antes de un **reanálisis explícito**: archivar chat / material / mockups previos; reiniciar pasos; no mezclar historial del intento anterior en el prompt.
+- No pegar en el prompt el chat completo ni `sps.json` enteros. Recortes acotados (ver topes).
+
+## 3. Topes de gasto (obligatorios en todo proceso con modelo)
+
+Configuración: `config/topes_modelo.json`. Lógica: `scripts/topes_modelo.py`.
+
+| Tope | Qué hace |
+|------|----------|
+| **Tamaño** | Cada motivo tiene `estimado` y `maximo` (caracteres del prompt de arranque). Sobre el máximo → detener y **pedir aval** del usuario. |
+| **Intentos** | Segundo plano (y cadenas similares): **máx. 2** arranques por ítem. Clasificar error de comunicación vs datos; el tope sigue siendo 2. Reinicio solo con acción explícita (p. ej. Volver a analizar). |
+
+**No** use cupos diarios genéricos («máx. N al día») como freno principal: no evitan el prompt inflado.
+
+Al crear un motivo nuevo (`ubicar-req`, `consultas`, `revisar-sql`, …):
+
+1. Medir 3–5 prompts reales.
+2. Registrar `estimado` (~mediana) y `maximo` (~2× o techo seguro) en `topes_modelo.json`.
+3. Cablear `decision_peso` antes de `lanzar_bot` / equivalente.
+
+## 4. Modelos: el caro solo con conclusión
+
+- Toda la cadena de la oficina usa Composer 2.5 Fast (`config/orquesta.json`): ubicar, analizar, plan, mockup, chat, revisión y presentación.
+- El mockup (pieza `diseno-modelo`) solo recibe la conclusión ya cerrada y el contexto de clínica. No reabre el REQ, el SQL ni DESAIX en ese turno.
+- Orquesta: `config/orquesta.json`.
+
+## 5. Contexto mínimo al modelo
+
+Orden de fuentes (no invertirlo):
+
+1. Párrafo **«contexto»** del REQ si existe.
+2. Base (`conocimiento/_indice_busqueda.json` → ficha puntual). Si falta mapa → completar base / handoff, luego seguir.
+3. Qrystalos2 → `qrystalos.documentacion` → DESAIX (**solo** PREVERSION vs última liberada).
+
+Prohibido en prompts de automatización:
+
+- Pegar catálogos enteros, colas masivas, o historial de otro caso.
+- Parafrasear el requerimiento como «propuesta»; la salida es el **cambio para el equipo** (`propuesta-cambio.mdc`).
+- Relanzar un caso cerrado, con correo enviado, o con análisis completo sin reapertura + botón explícito.
+
+## 6. Checklist antes de merge / dictamen de automatización
+
+Al tocar `scripts/cursor_bot.py`, `analisis_posterior.py`, `orquesta.json`, `topes_modelo.json`, agentes o colas en segundo plano, verificar:
+
+- [ ] ¿Hay estado por paso y se salta lo `listo`?
+- [ ] ¿El motivo nuevo tiene `estimado` / `maximo` en `topes_modelo.json`?
+- [ ] ¿Si supera máximo, se detiene y pide aval?
+- [ ] ¿Hay tope de intentos (≤ 2) y reinicio solo explícito?
+- [ ] ¿Se limpia sesión (y archivo si es reanálisis) antes del turno nuevo?
+- [ ] ¿El mockup recibe solo la conclusión, no el expediente completo?
+- [ ] ¿Un caso cerrado / `analisisCompletado` no se relanza solo?
+- [ ] ¿El Chat informa el checkpoint («ya listo; no se reprocesa») y el peso si avisa/bloquea?
+
+## 7. Dónde está el detalle
+
+| Tema | Archivo |
+|------|---------|
+| Ciclo REQ y pasos | `.cursor/rules/analisis-requerimiento.mdc` |
+| Agente REQ | `.cursor/rules/agente-requerimientos.mdc` |
+| Propuesta sin copiar el REQ | `.cursor/rules/propuesta-cambio.mdc` |
+| Modelos y cadena | `config/orquesta.json` |
+| Topes tamaño / intentos | `config/topes_modelo.json` |
+| Checkpoints | `scripts/pasos_analisis.py` |
+| Segundo plano | `scripts/analisis_posterior.py` |
+
+## Mensaje al coordinador
+
+Si al desarrollar una automatización se omite un punto de esta guía, el agente debe **avisar en una frase** qué riesgo de tokens implica y qué checkpoint o tope falta, antes de seguir con el código.
