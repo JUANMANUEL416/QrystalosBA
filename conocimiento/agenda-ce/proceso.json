@@ -1,0 +1,275 @@
+{
+  "id": "agenda-ce",
+  "nombre": "Consulta externa · Agenda",
+  "modulo": "CIT",
+  "familia": "consulta-externa",
+  "estado": "parcial",
+  "resumen": "Modelo MAG y asignación del médico en MEDS, programación MAGP, agenda del día y asignación del paciente al cupo. Pantallas vistas. Cuerpos SQL en listado.",
+  "actualizado": "2026-11-19T18:10:00",
+  "notaSql": "No se leyó el cuerpo. Las fichas citan la pantalla. Falta IXONLINE/SQL de SPQ_MAG_COL, SPQ_MAGD_COL, SPQ_MAGP_COL, SPQ_MEDS_COL, SPQ_CIT_COL, SPQ_CIT_COL_2 y SPQ_CIT_VALIDA.",
+  "alcanceHasta": "Configuración del modelo, asignación del médico, programación, grilla del día y botón Agendar. Sin oncología, tópico, sesiones ni el recaudo completo.",
+  "ventanas": [
+    {
+      "uso": "Agenda del día y asignar paciente",
+      "ruta": "/ce/agendamiento",
+      "name": "ce.agendamiento",
+      "vue": "AgendaNuevaPage.vue → AgendaNuevaComponent.vue",
+      "entrada": "Consulta externa → Agenda"
+    },
+    {
+      "uso": "Diálogo Agendar (paciente sobre un cupo)",
+      "ruta": "/ce/agendamiento",
+      "name": "ce.agendamiento",
+      "vue": "AgendarCitaComponent.vue",
+      "entrada": "Botón Agendar dentro de la Agenda"
+    },
+    {
+      "uso": "Modelos de agenda (franjas MAG)",
+      "ruta": "/ce/mag",
+      "name": "ce.confmag",
+      "vue": "MAGPage.vue → MAGComponent.vue",
+      "entrada": "Consulta externa → Modelos de Agenda. La misma pieza está en Configuración /conf/mag (conf.mag)."
+    },
+    {
+      "uso": "Catálogo MAGQ (no genera cupos)",
+      "ruta": "/ce/modagenda",
+      "name": "ce.modeloagenda",
+      "vue": "ModeloAgendaPage.vue",
+      "entrada": "Consulta externa → Modelos de Agenda (ruta modagenda). Grilla MAGQ."
+    },
+    {
+      "uso": "Programación de agendas",
+      "ruta": "/ce/magp",
+      "name": "ce.confmagp",
+      "vue": "MAGPPage.vue → MAGPComponent.vue",
+      "entrada": "Consulta externa → programación. MAGPComponent llama GENERAR_MAGP."
+    },
+    {
+      "uso": "Asignar modelo y programar al médico",
+      "ruta": "/consultorio/administrativo/agenda",
+      "name": "consultorio.administrativo.agenda",
+      "vue": "AgendasPage.vue → AgendaAsignacionComponent.vue",
+      "entrada": "Consultorio médico → Administrativo → Agenda. Pestañas Configurar y Agendar."
+    },
+    {
+      "uso": "Disponibilidad",
+      "ruta": "/ce/dis",
+      "name": "ce.agen_dis",
+      "vue": "DisponibilidadPage.vue → DisponibilidadComponent.vue",
+      "entrada": "Consulta externa → Disponibilidad de Agenda. Componente sin abrir."
+    }
+  ],
+  "necesidadesYaCubiertas": [
+    {
+      "necesidad": "ver la agenda del día",
+      "donde": "Consulta externa → Agenda",
+      "condicion": "Sede, especialidad y fecha. CIT_COL_2 · DISPONIBILIDAD (APLI · DISPONIBILIDAD si el origen es aplicación de medicamentos).",
+      "noEs": "No es Gestión (/ce/gesagenda): esa abre la atención del paciente."
+    },
+    {
+      "necesidad": "asignar el paciente a un cupo",
+      "donde": "Consulta externa → Agenda → Agendar",
+      "condicion": "Cupo elegido, afiliado y al menos un servicio. CIT_VALIDA · ASIGNAR.",
+      "noEs": "No es asignar el modelo al médico."
+    },
+    {
+      "necesidad": "asignar la agenda al médico",
+      "donde": "Consultorio médico → Administrativo → Agenda, pestaña Agendar",
+      "condicion": "Médico de consultorio activo, con fila en MEDS. MEDS_COL · GUARDAR_MEDS y, si falta el modelo, MAG_COL · GUARDAR_MAG.",
+      "noEs": "No es el botón Agendar de la cita del paciente."
+    },
+    {
+      "necesidad": "programar o generar los cupos del médico",
+      "donde": "Consultorio → Agenda → Programar hoy / Programar con anticipación, y Consulta externa → programación (/ce/magp)",
+      "condicion": "Modelo ya ligado al médico. MAGP_COL · GUARDAR_MAGP y GENERAR_MAGP.",
+      "noEs": "No crea la cita del paciente. El alta suelta de un cupo es CREA_AGENDA."
+    }
+  ],
+  "capas": [
+    {
+      "id": "01-configuracion",
+      "numero": 1,
+      "nombre": "Configuración",
+      "estado": "parcial",
+      "explicacion": "Antes de operar hacen falta el modelo de franjas (MAG / MAGD), el médico y la sede. El catálogo MAGQ de /ce/modagenda es otra pantalla: no genera cupos. La disponibilidad (/ce/dis) convive con la agenda y no se leyó.",
+      "tablasClave": ["MAG", "MAGD", "MAGQ", "MED", "MEDS", "MES", "SED"],
+      "controles": [
+        {
+          "id": "modelo-mag",
+          "nombre": "Modelo de agenda (MAG)",
+          "explicacion": "Pantallas /ce/mag y /conf/mag abren MAGComponent. En Consultorio, crear el modelo del médico llama MAG_COL · GUARDAR_MAG con el código derivado del id del médico, la descripción con su nombre y estado Activa. El detalle de días y franjas (MAGD) no se abrió.",
+          "invariante": "Sin modelo no aparecen Programar hoy ni Programar con anticipación. MAGQ no sustituye a MAG.",
+          "ventanasFe": "/ce/mag · MAGComponent; Consultorio · useAgendaConsultorio.crearModeloAgendaMedico",
+          "sps": [
+            {
+              "nombre": "SPQ_MAG_COL",
+              "metodo": "GUARDAR_MAG",
+              "rol": "Listado. Visto al crear el modelo desde Consultorio. Falta el cuerpo y el detalle MAGD."
+            }
+          ]
+        },
+        {
+          "id": "catalogo-magq",
+          "nombre": "Catálogo MAGQ",
+          "explicacion": "/ce/modagenda lista MAGQ (ID, DESCRIPCION, ESTADO, USUARIOREG, FECHAREG). El alta envía AGENDACOL · MAGQ con PROCESO Insertar y los campos del formulario. Descripción obligatoria de más de 5 caracteres.",
+          "invariante": "Es un catálogo de texto. No programa cupos ni liga al médico.",
+          "ventanasFe": "/ce/modagenda · ModeloAgendaPage.vue",
+          "sps": [
+            {
+              "nombre": "SPQ_AGENDACOL",
+              "metodo": "MAGQ",
+              "rol": "Listado. Alta del catálogo MAGQ."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "02-operacion",
+      "numero": 2,
+      "nombre": "Proceso propio",
+      "estado": "parcial",
+      "explicacion": "Asignar el modelo al médico, generar la programación y, en la Agenda, cargar el día y asignar el paciente al cupo.",
+      "tablasClave": ["MEDS", "MAG", "MAGP", "MAGPRP", "CIT"],
+      "controles": [
+        {
+          "id": "asignacion-medico",
+          "nombre": "Asignar la agenda al médico",
+          "explicacion": "Consultorio médico → Administrativo → Agenda. Selector de médicos con ENCONSUL y estado Activo. La pestaña Agendar lee MEDS (sede, especialidad, modelo, sede de atención). Si no hay fila, el mensaje es que el médico no tiene sede ni especialidad. Si no existe el modelo, pide configurarlo. Guardar llama MEDS_COL · GUARDAR_MEDS.",
+          "invariante": "La pestaña Agendar no programa sola: Programar hoy y Programar con anticipación exigen IDMODELOAG.",
+          "ventanasFe": "/consultorio/administrativo/agenda · AgendaAsignacionComponent.vue",
+          "sps": [
+            {
+              "nombre": "SPQ_MEDS_COL",
+              "metodo": "GUARDAR_MEDS",
+              "rol": "Listado. Persiste la asignación médico–sede–modelo."
+            },
+            {
+              "nombre": "SPQ_MAG_COL",
+              "metodo": "GUARDAR_MAG",
+              "rol": "Listado. Crea el modelo si aún no está."
+            }
+          ]
+        },
+        {
+          "id": "programacion-magp",
+          "nombre": "Programar y generar cupos",
+          "explicacion": "En Consultorio, Programar hoy y Programar con anticipación abren el diálogo de programación. Métodos vistos: MAGP_COL · GUARDAR_MAGP, GENERAR_MAGP y DESHACER_MAGP. Restricciones del médico: MAGPRP_COL · GUARDAR_MAGPRP y ELIMINAR_MAGPRP. MAGPComponent de /ce/magp también llama GENERAR_MAGP. El efecto sobre CIT queda para cuando se lea el cuerpo.",
+          "invariante": "Generar no es asignar paciente. El cupo sale vacío de afiliado hasta el botón Agendar, salvo el alta suelta CREA_AGENDA.",
+          "ventanasFe": "Consultorio · useAgendaConsultorio; /ce/magp · MAGPComponent.vue",
+          "sps": [
+            {
+              "nombre": "SPQ_MAGP_COL",
+              "metodo": "GUARDAR_MAGP, GENERAR_MAGP, DESHACER_MAGP",
+              "rol": "Listado. Programación del médico."
+            },
+            {
+              "nombre": "SPQ_MAGPRP_COL",
+              "metodo": "GUARDAR_MAGPRP, ELIMINAR_MAGPRP",
+              "rol": "Listado. Restricción por médico."
+            }
+          ]
+        },
+        {
+          "id": "agenda-dia",
+          "nombre": "Agenda del día",
+          "explicacion": "Consulta externa → Agenda. La carga no dispara si falta sede, especialidad o una fecha válida de 10 caracteres. CIT_COL_2 · DISPONIBILIDAD recibe día, sede, especialidad, médico, modalidad, disponibilidad, tercero, plan y rol. Si el origen es aplicación de medicamentos el modelo es APLI y el método sigue siendo DISPONIBILIDAD. Cupo manual: CIT_COL · CREA_AGENDA.",
+          "invariante": "La grilla consulta cupos ya existentes. No reemplaza a GENERAR_MAGP.",
+          "ventanasFe": "/ce/agendamiento · AgendaNuevaComponent.vue",
+          "sps": [
+            {
+              "nombre": "SPQ_CIT_COL_2",
+              "metodo": "DISPONIBILIDAD",
+              "rol": "Listado. Arma la grilla del día."
+            },
+            {
+              "nombre": "SPQ_CIT_COL",
+              "metodo": "CREA_AGENDA",
+              "rol": "Listado. Alta de un cupo suelto."
+            }
+          ]
+        },
+        {
+          "id": "asignar-paciente",
+          "nombre": "Asignar el paciente al cupo",
+          "explicacion": "Botón Agendar de AgendarCitaComponent. Exige al menos un servicio. Si se marcó cambiar contratante, exige tercero y plan. Si la orden es Normal, el paciente maneja modelo y la pregunta está habilitada, confirma que se agenda como Normal. Si está en lista de espera de la especialidad, pregunta si se quita. CIT_VALIDA · ASIGNAR envía consecutivo del cupo, afiliado, servicios, cantidades, clase de orden, autorización, copago y, cuando vienen, CNSNOCIT e ITEM_HCATDC.",
+          "invariante": "Asignar paciente no es asignar el modelo al médico. Sin servicio el diálogo no llama al método.",
+          "ventanasFe": "AgendarCitaComponent.vue · botón Agendar",
+          "sps": [
+            {
+              "nombre": "SPQ_CIT_VALIDA",
+              "metodo": "ASIGNAR",
+              "rol": "Listado. Cierra la asignación del cupo. Falta el cuerpo para saber qué deja en CIT, NOCIT y HCATDC."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "03-alimentadores",
+      "numero": 3,
+      "nombre": "Lo que llega",
+      "estado": "parcial",
+      "explicacion": "La misma Agenda recibe la lista de espera y las citas de control. El afiliado se consulta; no se da de alta aquí.",
+      "tablasClave": ["NOCIT", "HCATDC", "AFI"],
+      "controles": [
+        {
+          "id": "lista-y-control",
+          "nombre": "Lista de espera y citas de control",
+          "explicacion": "Botones Lista de espera y Citas de control en la barra de la Agenda. Al asignar, el diálogo manda CNSNOCIT y la decisión de quitar al paciente de la lista, e ITEM_HCATDC si la cita nace de una solicitud de control. El alta de la lista y el archivo de la solicitud de control no se leyeron.",
+          "invariante": "Esos botones no crean el cupo. Preparan datos para ASIGNAR.",
+          "ventanasFe": "AgendaNuevaComponent.vue",
+          "sps": []
+        }
+      ]
+    },
+    {
+      "id": "04-caja",
+      "numero": 4,
+      "nombre": "Encuentro con caja",
+      "estado": "parcial",
+      "explicacion": "La Agenda recauda, confirma y devuelve recibo. El ciclo de la caja está en el proceso Caja.",
+      "tablasClave": ["FCJ"],
+      "controles": [
+        {
+          "id": "puente-caja",
+          "nombre": "Recaudo desde la Agenda",
+          "explicacion": "Botones Recaudar recibo, Confirmar recibo y Devolver recibo. Métodos vistos: CONF_CAJA (CRUDFPA, VALIDA_INSERT_FPA, ELIMINA_FPA), CIT_VALIDA · INFO_CITA_RECAUDAR y CONFIRMAR_RECIBO, CIT_COL_2 · DEVOLVER_RECIBO. Sin ficha de efecto.",
+          "invariante": "No abre ni cierra el turno de caja. Solo deja el cobro de la cita.",
+          "ventanasFe": "AgendaNuevaComponent.vue",
+          "sps": [
+            {
+              "nombre": "SPQ_CONF_CAJA",
+              "metodo": "CRUDFPA",
+              "rol": "El proceso Caja ya documenta el recibo. Aquí solo el llamado desde la Agenda."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "05-contabilidad",
+      "numero": 5,
+      "nombre": "Envío a contabilidad",
+      "estado": "parcial",
+      "explicacion": "La Agenda no arma comprobante. Facturar cita entrega la atención a facturación. El envío de citas a factura por la bandeja es el proceso Consulta externa · Autorizaciones.",
+      "tablasClave": [],
+      "controles": [
+        {
+          "id": "sin-asiento",
+          "nombre": "Sin asiento en la Agenda",
+          "explicacion": "CIT_COL_2 · FACTURAR_CITA es el puente. El asiento, si nace, nace en facturación o en caja, no en esta pantalla.",
+          "invariante": "Documentar un comprobante de la Agenda sería inventarlo.",
+          "ventanasFe": "AgendaNuevaComponent.vue · Facturar cita",
+          "sps": [
+            {
+              "nombre": "SPQ_CIT_COL_2",
+              "metodo": "FACTURAR_CITA",
+              "rol": "Listado. Puente a facturación. El cuerpo está pedido en un handoff de facturación."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
